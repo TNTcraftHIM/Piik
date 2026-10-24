@@ -52,6 +52,7 @@ export class NativeMediaBridge {
   private disconnectTimer: number | null = null;
   private completeNegotiation: (() => void) | null = null;
   private rejectNegotiation: ((error: Error) => void) | null = null;
+  private releaseDebug: (() => void) | undefined;
 
   constructor(
     private readonly shareId: string,
@@ -65,7 +66,7 @@ export class NativeMediaBridge {
     try {
       this.stream = new MediaStream();
       this.peer = peer = new RTCPeerConnection();
-      observeDebugConnection(this.peer, { connectionId: this.connectionId, sourceConnectionId, shareId, role: "native-preview" });
+      this.releaseDebug = observeDebugConnection(this.peer, { connectionId: this.connectionId, sourceConnectionId, shareId, role: "native-preview" });
     } catch (error) {
       peer?.close();
       debugError("native-bridge", "initialization-failed", error);
@@ -129,6 +130,7 @@ export class NativeMediaBridge {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.releaseDebug?.();
     this.remoteInput.dispose();
     this.lifetime.abort();
     this.rejectNegotiation?.(new NativeMediaBridgeError("Native media bridge failed"));

@@ -9,8 +9,11 @@ The current source restores optional commentary under **Sharing settings →
 Sound → Include my microphone**, independently of room voice. The stable Browser
 output and Native mixer described below have a current UI consumer. Commentary
 starts off for each new share; enabling room voice does not change it. Both may
-remain enabled with a duplicate-speech warning. Earlier capture evidence does not
-establish acceptance of this restored combined UI; [TODO](../todo.md#now) owns that check.
+remain enabled under the [current microphone contract](../standards/media-quality.md#capture-and-controls).
+The normal-page room-voice gate verified simultaneous room microphone and source
+commentary delivery, commentary retirement on share stop, and the next share's
+default-off state with synthetic devices. This does not establish physical echo
+or device acceptance.
 
 The existing source picker offers Browser, Camera, Window and Screen in that
 order, defaulting to Window when an App is detected. Without an App, it shows

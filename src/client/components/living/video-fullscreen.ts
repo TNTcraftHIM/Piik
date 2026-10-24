@@ -3,6 +3,8 @@ import { leavePictureInPicture } from "./use-picture-in-picture";
 export type FullscreenVideo = HTMLVideoElement & {
   webkitEnterFullscreen?: () => void;
   webkitExitFullscreen?: () => void;
+  webkitEnterFullScreen?: () => void;
+  webkitExitFullScreen?: () => void;
   webkitSupportsFullscreen?: boolean;
   webkitDisplayingFullscreen?: boolean;
   webkitPresentationMode?: string;
@@ -11,11 +13,12 @@ export type FullscreenVideo = HTMLVideoElement & {
 export function videoFullscreenState(video: FullscreenVideo) {
   const screen = video.parentElement;
   const pageSupported = Boolean(document.fullscreenEnabled && screen?.requestFullscreen);
-  const nativeSupported = typeof video.webkitEnterFullscreen === "function";
+  const nativeSupported = typeof (video.webkitEnterFullscreen ?? video.webkitEnterFullScreen) === "function";
   const nativeActive = Boolean(video.webkitDisplayingFullscreen || video.webkitPresentationMode === "fullscreen");
   return {
     supported: pageSupported || nativeSupported,
-    ready: pageSupported || (nativeSupported && video.readyState >= 1 && video.webkitSupportsFullscreen === true),
+    // Native players need not expose Safari's optional readiness property.
+    ready: pageSupported || (nativeSupported && video.readyState >= 1 && video.webkitSupportsFullscreen !== false),
     active: Boolean(screen && document.fullscreenElement === screen) || nativeActive,
     nativeActive,
   };
@@ -29,13 +32,13 @@ export async function toggleVideoFullscreen(video: FullscreenVideo): Promise<voi
   if (screen && document.fullscreenElement === screen) {
     await document.exitFullscreen();
   } else if (state.nativeActive) {
-    video.webkitExitFullscreen?.();
+    (video.webkitExitFullscreen ?? video.webkitExitFullScreen)?.call(video);
   } else if (state.ready) {
     if (document.fullscreenEnabled && screen?.requestFullscreen) {
       await screen.requestFullscreen();
       await leavePictureInPicture(video).catch(() => undefined);
     } else {
-      video.webkitEnterFullscreen?.();
+      (video.webkitEnterFullscreen ?? video.webkitEnterFullScreen)?.call(video);
     }
   }
 }

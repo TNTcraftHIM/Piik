@@ -423,6 +423,7 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	var nativeReceiver *Receiver
 	var upstreamCandidates []*webrtc.ICECandidateInit
 	var receiverCandidates []*webrtc.ICECandidateInit
+	var gatheredCandidates []*webrtc.ICECandidateInit
 	var candidateMu sync.Mutex
 	remoteReady := false
 	completed := make(chan struct{}, 4)
@@ -471,6 +472,7 @@ func testReceiverForwarding(t *testing.T, codec string) {
 					return
 				}
 				candidateMu.Lock()
+				gatheredCandidates = append(gatheredCandidates, candidate)
 				if strings.Contains(candidate.Candidate, "candidate:ns") {
 					surveyCandidates++
 				}
@@ -596,6 +598,22 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		}
 	}
 	waitSignal(t, completed, "initial receiver gathering")
+	checkCandidateGeneration := func(description webrtc.SessionDescription) {
+		t.Helper()
+		fragment := descriptionUfrag(t, description)
+		candidateMu.Lock()
+		defer candidateMu.Unlock()
+		if len(gatheredCandidates) == 0 {
+			t.Fatal("receiver gathering produced no candidates")
+		}
+		for _, candidate := range gatheredCandidates {
+			if candidate.UsernameFragment == nil || *candidate.UsernameFragment != fragment {
+				t.Fatalf("receiver candidate lost its actual SDP generation: %+v", candidate)
+			}
+		}
+		gatheredCandidates = nil
+	}
+	checkCandidateGeneration(answer)
 	firstGatheringCurrent := <-gatheringCurrent
 	if !firstGatheringCurrent() {
 		t.Fatal("current receiver gathering lost delivery authority")
@@ -624,6 +642,9 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		if renegotiateErr != nil || !reused {
 			t.Fatalf("receiver renegotiation: reused=%v, %v", reused, renegotiateErr)
 		}
+		if strings.Contains(answer.SDP, "a=end-of-candidates") {
+			t.Fatal("trickle answer bypassed the merged candidate completion owner")
+		}
 		if err = upstream.SetRemoteDescription(answer); err != nil {
 			t.Fatal(err)
 		}
@@ -644,6 +665,7 @@ func testReceiverForwarding(t *testing.T, codec string) {
 		}
 		if restart {
 			waitSignal(t, completed, "restarted receiver gathering")
+			checkCandidateGeneration(answer)
 			if firstGatheringCurrent() || !(<-gatheringCurrent)() {
 				t.Fatal("queued candidates did not retain their gathering owner")
 			}

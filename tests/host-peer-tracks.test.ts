@@ -1045,8 +1045,8 @@ describe("HostPeer source replacement", () => {
         signal.candidate?.candidate.startsWith("candidate:base"),
       ),
     ).toHaveLength(3);
-    expect(candidateSignals.at(-1)?.candidate).toBeNull();
-    expect(candidateSignals.filter((signal) => signal.candidate === null)).toHaveLength(1);
+    expect(candidateSignals.at(-1)?.candidate).toMatchObject({ candidate: "", usernameFragment: "test" });
+    expect(candidateSignals.filter((signal) => signal.candidate?.candidate === "")).toHaveLength(1);
     peer.dispose();
   });
 

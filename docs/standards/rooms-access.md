@@ -73,7 +73,7 @@ Three independent authorities exist:
    active. It authorizes room creation, Host role, and code-only Viewer
    attempts; it is not a room credential, and Viewer-grant admission cannot
    create or renew it. Cookie transport attributes follow the configured
-   destination: HTTPS retains the Secure host-prefixed cookie, while a
+   production destination: HTTPS retains the Secure host-prefixed cookie, while a
    separately configured HTTP origin, such as App loopback, uses its HTTP cookie. Login,
    renewal, room creation and WebSocket admission use that same selection.
    Cookie signatures use a random process key independent of the password;
@@ -153,6 +153,11 @@ them to storage or diagnostics. Re-admission to the same room may retain that
 page's conversation, but refresh, leaving or authority loss clears it. There is
 no history replay or offline outbox. HTTPS/WSS protects transport; chat is not
 end-to-end encrypted, and the site operator can access live message contents.
+
+A send-confirmation timeout releases the send control without retransmitting.
+A late reply on the same connection can still settle the latest submitted send;
+another submitted send or reconnection retires that confirmation identity. Only confirmation
+of the matching chat text clears its draft.
 
 [Presentation and lifecycle](./presentation-lifecycle.md#product-surface) owns
 the distinction between a room session and its current media publication.

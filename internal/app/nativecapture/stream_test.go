@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -83,6 +84,10 @@ func TestCaptureStopHelper(t *testing.T) {
 	if mode == "" {
 		return
 	}
+	if mode == "startup-stage" {
+		_, _ = io.WriteString(os.Stderr, "result=window-capture-failed\nstage=mft-output-timeout\nhresult=0x80004005\ndetail=private window title C:\\private\\capture.exe\n")
+		os.Exit(2)
+	}
 	if err := writeFrame(os.Stdout, Frame{Kind: FrameStatus, Data: []byte("ready")}); err != nil {
 		os.Exit(2)
 	}
@@ -107,6 +112,32 @@ func TestCaptureStopHelper(t *testing.T) {
 		os.Exit(5)
 	}
 	os.Exit(0)
+}
+
+func TestCaptureFailureSurvivesProcessRetirementWithoutDebugLogging(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stream, err := startStreamWithEnvironment(t.Context(), executable,
+		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"PIIK_CAPTURE_STOP_FIXTURE=startup-stage"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Read(); err == nil {
+		t.Fatal("failed process produced a ready frame")
+	}
+	err = stream.Close()
+	if err == nil || !strings.Contains(err.Error(), "mft-output-timeout") || !strings.Contains(err.Error(), "0x80004005") {
+		t.Fatalf("process retirement lost native failure stage: %v", err)
+	}
+	if strings.Contains(err.Error(), "private") {
+		t.Fatalf("native failure exposed raw stderr: %v", err)
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 2 {
+		t.Fatalf("native failure lost its process exit cause: %v", err)
+	}
 }
 
 func TestCaptureStopUsesOneBoundedRetirementPath(t *testing.T) {

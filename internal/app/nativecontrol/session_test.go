@@ -279,14 +279,15 @@ func runQuietCaptureFixture(directory string) {
 }
 
 func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing.T) {
-	for _, optIn := range []bool{false, true} {
-		t.Run(strconv.FormatBool(optIn), func(t *testing.T) {
+	for _, capabilities := range []struct{ optIn, microphone bool }{{false, true}, {true, true}, {true, false}} {
+		optIn, microphone := capabilities.optIn, capabilities.microphone
+		t.Run(strconv.FormatBool(optIn)+"/microphone="+strconv.FormatBool(microphone), func(t *testing.T) {
 			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
 			executable, err := os.Executable()
 			if err != nil {
 				t.Fatal(err)
 			}
-			session := New(executable, nativecapture.Capabilities{VideoCapture: true, SoftwareVP8: true, Microphone: true}, false, nil)
+			session := New(executable, nativecapture.Capabilities{VideoCapture: true, SoftwareVP8: true, Microphone: microphone}, false, nil)
 			defer session.Close()
 			request := startShareRequest{Version: 10, ID: "request_start", Type: "start-share", ShareID: "share_123456",
 				Source:           nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
@@ -309,6 +310,9 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 				}
 			} else if _, failed := result.(requestFailedResponse); err != nil || !failed {
 				t.Fatalf("volume accepted without an audio source: %v %#v", err, result)
+			}
+			if !microphone {
+				return // Source gain must work without requesting an unavailable device.
 			}
 			result, err = session.Handle(t.Context(), []byte(`{"version":10,"id":"request_mic","type":"set-microphone","shareId":"share_123456","enabled":true,"volume":1}`))
 			if !optIn {

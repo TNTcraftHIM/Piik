@@ -65,7 +65,7 @@ export const en: Record<CopyKey, string> = {
   "remote.mode.room": "Room Viewers",
   "remote.mode.password": "Password",
   "remote.help.ask": "Decide whether to allow each control request.",
-  "remote.help.room": "Any room Viewer can take control when no one else has it.",
+  "remote.help.room": "Room Viewers can take control without individual approval.",
   "remote.help.password": "Viewers can control this computer after entering the control password.",
   "remote.policyLifetime": "Applies to this shared source only. Changing sources or stopping turns remote control off.",
   "remote.password": "Control password",

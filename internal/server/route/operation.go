@@ -8,19 +8,17 @@ import (
 
 // validation is the private validateOrAdvance result.
 type validation struct {
-	released             []*Resource
-	exhaustedChildPeerID string
-	expired              bool
-	consumedGuard        bool
+	released         []*Resource
+	exhaustedPeerIDs []string
+	expired          bool
+	consumedGuard    bool
 }
 
 // failedPeerIDsFrom deduplicates while preserving argument order.
 func failedPeerIDsFrom(results ...validation) []string {
 	ids := make([]string, 0, len(results))
 	for _, result := range results {
-		if result.exhaustedChildPeerID != "" {
-			ids = append(ids, result.exhaustedChildPeerID)
-		}
+		ids = append(ids, result.exhaustedPeerIDs...)
 	}
 	return dedupeStrings(ids)
 }
@@ -80,6 +78,11 @@ func (c *Controller) Reconcile(nowMs int64) ReconcileResult {
 	if c.startPublicationAttach(nowMs) {
 		return ReconcileResult{Operation: c.operationSnapshot(), RemovedPeerIDs: removedPeerIDs,
 			FailedPeerIDs: failedPeerIDs, Released: released}
+	}
+
+	// Refresh current parent/session opportunities; the ledger preserves spent attempts.
+	for peerID := range c.upstreamByViewer.All() {
+		c.restoreDirectContinuation(peerID)
 	}
 
 	// The loop bound is a count, not an order.
@@ -375,11 +378,11 @@ func (c *Controller) SkipCurrentCandidate(guard CandidateCursorGuard, nowMs int6
 		}
 	}
 	if op.reason == DemandPublicationAttach {
-		c.finishPublicationAttach(op, false)
-		return BeginResult{Accepted: true, FailedPeerIDs: []string{op.childPeerID}, Released: validation.released}
+		failed := c.finishPublicationAttach(op, false)
+		return BeginResult{Accepted: true, FailedPeerIDs: failed, Released: validation.released}
 	}
 	if bucket == RejectionCandidateFailed {
-		if isAvailabilityOperation(op.reason) {
+		if isAvailabilityOperation(op.reason) || op.reason == DemandDirectConvergence {
 			c.consumeCandidateOpportunity(op.childPeerID, op.candidates[op.cursor])
 		}
 		c.promoteNextDirectWithinHeadStart(op, nowMs)
@@ -818,9 +821,9 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 		}
 		result.expired = true
 		if failedBootstrapDemand != "" {
-			result.exhaustedChildPeerID = failedBootstrapDemand
+			result.exhaustedPeerIDs = []string{failedBootstrapDemand}
 		} else if exhausted {
-			result.exhaustedChildPeerID = op.demandPeerID
+			result.exhaustedPeerIDs = []string{op.demandPeerID}
 		}
 		return result
 	}
@@ -921,9 +924,9 @@ func (c *Controller) validateOrAdvance(nowMs int64, failedGuard *CandidateGuard)
 		}
 		c.blockAndClear(op, !backgroundConvergence && !sfuBootstrap, &result.released, c.revision != activeRevisionAtStart)
 		if failedBootstrapDemand != "" {
-			result.exhaustedChildPeerID = failedBootstrapDemand
+			result.exhaustedPeerIDs = []string{failedBootstrapDemand}
 		} else if exhausted {
-			result.exhaustedChildPeerID = op.demandPeerID
+			result.exhaustedPeerIDs = []string{op.demandPeerID}
 			c.rememberUnavailableSfuBootstrap(op.demandPeerID)
 		}
 	}
@@ -1490,6 +1493,11 @@ func (c *Controller) consumeDirectContinuationCandidate(op *operation) {
 	if op.reason != DemandDirectConvergence || tuple == nil || tuple.Kind != UpstreamPeer {
 		return
 	}
+	// Unstarted candidates invalidated by changing facts retain their opportunity.
+	plan := op.planAt(op.cursor)
+	if op.current != nil && op.current.connectionAttempt == nil && plan != nil {
+		c.consumeCandidateOpportunity(op.childPeerID, *plan)
+	}
 	continuation, ok := c.directContinuations.Get(op.childPeerID)
 	if !ok {
 		return
@@ -1499,7 +1507,6 @@ func (c *Controller) consumeDirectContinuationCandidate(op *operation) {
 		return
 	}
 	continuation.parentPeerIDs = slices.Delete(continuation.parentPeerIDs, index, index+1)
-	plan := op.planAt(op.cursor)
 	if op.current != nil && op.current.connectionAttempt != nil &&
 		plan != nil &&
 		c.candidateOpportunityAvailable(op.childPeerID, *plan) {

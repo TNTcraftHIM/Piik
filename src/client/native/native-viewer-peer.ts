@@ -21,7 +21,7 @@ import {
 import {
   iceServersWithNatPrediction,
   isNativeNatSurveyCandidate,
-  NatPredictionCandidateBatch,
+  NatPredictionCandidateEmitter,
   natPredictionSurveyUrls,
   type SignalCandidate,
 } from "../webrtc/nat-prediction";
@@ -236,7 +236,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
   private parentPeerId: string | null = null;
   private connectionId: string | null = null;
   private bridge: NativeMediaBridge | null = null;
-  private localCandidates: { batch: NatPredictionCandidateBatch; iceConfig: IceConfig } | null = null;
+  private localCandidates: { emitter: NatPredictionCandidateEmitter; iceConfig: IceConfig } | null = null;
   private unsubscribe: (() => void) | null = null;
   private unsubscribeClose: (() => void) | null = null;
   private snapshot: PeerSnapshot | null = null;
@@ -381,7 +381,7 @@ class NativeViewerPeer implements ViewerMediaPeer {
     this.disposed = true;
     this.clearTimers();
     this.disposeBridge();
-    this.localCandidates?.batch.discard();
+    this.localCandidates?.emitter.discard();
     this.localCandidates = null;
     this.unsubscribe?.();
     this.unsubscribe = null;
@@ -411,7 +411,8 @@ class NativeViewerPeer implements ViewerMediaPeer {
     if (identityChanged) {
       const previous = this.connectionId;
       this.disposeBridge();
-      this.localCandidates?.batch.discard();
+      this.localCandidates?.emitter.discard();
+      this.localCandidates = null;
       if (previous) {
         await this.client.closeReceiver(this.sessionId, previous).catch(
           () => undefined,
@@ -422,7 +423,6 @@ class NativeViewerPeer implements ViewerMediaPeer {
     } else if (!retainSource) {
       this.disposeBridge();
     }
-    this.localCandidates?.batch.discard();
     if (!retainSource) {
       this.state = "connecting";
       this.failureNotified = false;
@@ -469,10 +469,12 @@ class NativeViewerPeer implements ViewerMediaPeer {
         candidate,
       });
     };
-    const candidates = predictionEnabled
-      ? new NatPredictionCandidateBatch(sendCandidate)
-      : null;
-    this.localCandidates = candidates ? { batch: candidates, iceConfig: nativeIceConfig } : null;
+    if (!this.localCandidates) {
+      this.localCandidates = {
+        emitter: new NatPredictionCandidateEmitter(this.natPredictionEnabled, sendCandidate),
+        iceConfig: nativeIceConfig,
+      };
+    } else this.localCandidates.iceConfig = nativeIceConfig;
     this.emit();
     const pending = { bridge: retainSource ? this.bridge : null, bridgeFailed: false };
     this.pendingOffer = pending;
@@ -578,13 +580,9 @@ class NativeViewerPeer implements ViewerMediaPeer {
     }
     if (event.type === "edge-candidate") {
       if (this.localCandidates) {
-        const { batch, iceConfig } = this.localCandidates;
-        if (event.candidate) {
-          batch.add(
-            event.candidate,
-            isNativeNatSurveyCandidate(event.candidate, iceConfig.iceServers, iceConfig.natPredictionStunUrls),
-          );
-        } else batch.complete();
+        const { emitter, iceConfig } = this.localCandidates;
+        emitter.addSignal(event.candidate,
+          isNativeNatSurveyCandidate(event.candidate, iceConfig.iceServers, iceConfig.natPredictionStunUrls));
       } else if (this.parentPeerId && this.connectionId) {
         this.events.sendSignal(this.parentPeerId, {
           kind: "candidate",

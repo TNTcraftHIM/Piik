@@ -36,8 +36,10 @@ Keep metadata and ordinary prose as the continuous sentence.
 Keep the public brand line consistent in the homepage, film ending and README
 opening, beside a plain screen-sharing description. Scene titles should name
 the action or benefit; do not turn every section into another slogan. Games, drawings, photos and
-movie nights show the range of screen sharing without implying voice chat,
-shared input or synchronized playback controls. Each locale must read naturally
+movie nights show the range of screen sharing. Scenes may demonstrate room
+voice and attended remote control when they show the required participation and
+permission; sharing alone does not enable either. Do not imply synchronized
+playback controls. Each locale must read naturally
 as a complete sequence, without depending on a pun from the other language.
 
 Set the register by the reader's task:

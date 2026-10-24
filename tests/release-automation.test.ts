@@ -174,6 +174,7 @@ describe("release automation", () => {
         "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",
         "scripts/publish-container.mjs",
         "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
+        "scripts/network-lab.ts", "scripts/network-lab/endpoint.ts", "scripts/network-lab/stun/main.go",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml",
         ".github/workflows/gitee-mirror.yml", "scripts/release-mirror-source.mjs"]) {
         mkdirSync(dirname(join(root, path)), { recursive: true });

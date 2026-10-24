@@ -145,14 +145,25 @@ func (c *Controller) parentRouteRetired(edge *CommittedEdge) bool {
 // rebindCommittedSession preserves the reconnecting peer's edges and
 // publication, updating them to its new session ID.
 func (c *Controller) rebindCommittedSession(peerID, sessionID string) {
-	if ownEdge, ok := c.upstreamByViewer.Get(peerID); ok {
-		ownEdge.ChildSessionID = sessionID
-	}
-	for _, edge := range c.upstreamByViewer.Values() {
-		if edge.Kind != UpstreamPeer || edge.ParentPeerID != peerID {
-			continue
+	for childPeerID, edge := range c.upstreamByViewer.All() {
+		involved := false
+		if childPeerID == peerID {
+			edge.ChildSessionID = sessionID
+			involved = true
 		}
-		edge.ParentSessionID = sessionID
+		if edge.Kind == UpstreamPeer && edge.ParentPeerID == peerID {
+			edge.ParentSessionID = sessionID
+			involved = true
+		}
+		// A failed optional attachment belongs to its endpoint sessions. Proven
+		// video and the retained room transport survive reauthentication.
+		if edge.Kind == UpstreamSfu && peerID == c.hostPeerID && c.hostPublication != nil &&
+			edge.PublicationGeneration == c.hostPublication.Generation {
+			involved = true
+		}
+		if involved && edge.VideoGeneration != "" && !edge.VideoReady {
+			edge.VideoGeneration = ""
+		}
 	}
 	if peerID == c.hostPeerID && c.hostPublication != nil {
 		c.hostPublication.HostSessionID = sessionID

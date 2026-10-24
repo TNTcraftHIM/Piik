@@ -71,7 +71,7 @@ void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace, bool activ
   // still rebuilds it from the same factory.
   auto prepared = create(VideoProfile{});
   OutputWorker worker(0, VideoProfile{}, OutputKind::h264, device, writer,
-      create, std::move(prepared), active, [&](const EncodedAccessUnit&) { output.set_value(); },
+      create, std::move(prepared), active, [&](const AdaptiveAccessUnit&) { output.set_value(); },
       [&](std::exception_ptr error) {
         try { std::rethrow_exception(error); }
         catch (const GateFailure& actual) { assert(actual.result() == E_FAIL); }
@@ -135,7 +135,11 @@ void CheckWorkerDimensions(ID3D11Device* device, SIZE content, SIZE expected) {
   OutputWorker worker(0, VideoProfile{}, OutputKind::h264, device, writer,
       [](const VideoProfile&) -> std::unique_ptr<VideoEncoder> {
         return std::make_unique<FixtureEncoder>(nullptr, std::shared_future<void>{});
-      }, nullptr, true, [&](const EncodedAccessUnit&) { output.set_value(); },
+      }, nullptr, true, [&](const AdaptiveAccessUnit& actual) {
+        assert(actual.width == static_cast<UINT32>(expected.cx));
+        assert(actual.height == static_cast<UINT32>(expected.cy));
+        output.set_value();
+      },
       [&](std::exception_ptr error) { output.set_exception(error); });
   auto frame = std::make_shared<CaptureInput>();
   frame->width = static_cast<UINT32>(content.cx);
@@ -176,13 +180,15 @@ void CheckH264ProfileCompatibility() {
   ProtocolWriter writer(write);
   ProductArguments arguments;
   arguments.outputs = {profile};
-  EncodedAccessUnit output{0, true, {0, 0, 0, 1, 0x67, 0x42, 0xe0, 0x1f}};
+  AdaptiveAccessUnit output{{0, true, {0, 0, 0, 1, 0x67, 0x42, 0xe0, 0x1f}}, 640, 480, 333'333};
   WriteVideoActive(writer, arguments, true, output);
   std::array<char, 4096> bytes{};
   DWORD count = 0;
   assert(ReadFile(read, bytes.data(), static_cast<DWORD>(bytes.size()), &count, nullptr));
   const std::string status(bytes.data(), count);
   assert(status.find("\"profileLevelId\":\"42e01f\"") != std::string::npos);
+  assert(status.find("\"width\":640,\"height\":480") != std::string::npos);
+  assert(arguments.profile.width == 1280 && arguments.profile.height == 720);
   assert(status.find("42c01f") == std::string::npos);
   CloseHandle(write);
   CloseHandle(read);
@@ -447,6 +453,74 @@ void CheckDecodedDisplayArea(ID3D11Device* device) {
                             RECT{16, 8, 3856, 2168}).Get());
 }
 
+void CheckAudioCapabilityIsolation() {
+  using Clock = AudioCapabilityProbe::Clock;
+  // Each real worker must own its COM apartment; quick completion must not
+  // wait out the optional budget or conflate the independently queried flags.
+  const auto apartment = []() {
+    APTTYPE type;
+    APTTYPEQUALIFIER qualifier;
+    assert(SUCCEEDED(CoGetApartmentType(&type, &qualifier)) && type == APTTYPE_MTA);
+  };
+  const auto start = Clock::now();
+  AudioCapabilityProbe quick(start + std::chrono::seconds(5),
+      [apartment](bool exclude) { apartment(); return !exclude; },
+      [apartment]() { apartment(); return true; });
+  const auto supported = quick.Snapshot();
+  assert(Clock::now() - start < std::chrono::seconds(1));
+  assert(supported.process && supported.system && !supported.exclusion);
+
+  auto include_release = std::make_shared<std::promise<void>>();
+  auto include_released = include_release->get_future().share();
+  AudioCapabilityProbe include_slow(Clock::now() + std::chrono::milliseconds(30),
+      [include_released](bool exclude) { if (!exclude) include_released.wait(); return true; },
+      []() { return true; });
+  const auto partial = include_slow.Snapshot();
+  assert(!partial.process && partial.exclusion && partial.system);
+  include_release->set_value();
+  const auto include_deadline = Clock::now() + std::chrono::seconds(2);
+  while (!include_slow.Snapshot().process) {
+    assert(Clock::now() < include_deadline);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  auto release = std::make_shared<std::promise<void>>();
+  auto released = release->get_future().share();
+  AudioCapabilityProbe slow(Clock::now() + std::chrono::milliseconds(30),
+      [released](bool) { released.wait(); return true; },
+      [released]() { released.wait(); return true; });
+  const auto snapshot = slow.Snapshot();
+  assert(!snapshot.process && !snapshot.system && !snapshot.exclusion);
+  {
+    Runtime runtime;
+    std::ostringstream output;
+    const auto previous = std::cout.rdbuf(output.rdbuf());
+    try { WriteCapabilityProbe(slow); }
+    catch (...) { std::cout.rdbuf(previous); release->set_value(); throw; }
+    std::cout.rdbuf(previous);
+    const auto payload = output.str();
+    // The actual production serializer still emits video/encoder discovery
+    // while all optional API queries remain blocked past their shared budget.
+    assert(payload.find("\"videoCapture\":") != std::string::npos);
+    assert(payload.find("\"adapters\":[") != std::string::npos);
+    assert(payload.find("\"processAudio\":false") != std::string::npos);
+    assert(payload.find("\"systemAudio\":false") != std::string::npos);
+    assert(payload.find("\"processAudioExclusion\":false") != std::string::npos);
+  }
+  // The returned snapshot is independent of shared late results. Release the
+  // controlled APIs and observe their successful completion before this fixture
+  // ends, without requiring the production probe to join a blocked OS call.
+  release->set_value();
+  const auto deadline = Clock::now() + std::chrono::seconds(2);
+  for (;;) {
+    const auto current = slow.Snapshot();
+    if (current.process && current.system && current.exclusion) break;
+    assert(Clock::now() < deadline);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  assert(!snapshot.process && !snapshot.system && !snapshot.exclusion);
+}
+
 int main() {
   VideoProfile profile{2560, 1440, 60, 12'000'000};
   ValidateVideoProfile(profile);
@@ -496,6 +570,7 @@ int main() {
   CheckEncoderCandidates();
   CheckH264ProfileCompatibility();
   CheckPrimaryFailureDetails();
+  CheckAudioCapabilityIsolation();
   CheckOutputSampleAlignment();
   ComPtr<ID3D11Device> device;
   Check(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_WARP, nullptr, 0, nullptr, 0,

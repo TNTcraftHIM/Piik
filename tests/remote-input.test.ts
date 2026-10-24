@@ -356,3 +356,72 @@ it("flushes coalesced motion before buttons and discards it when control ends", 
     vi.useRealTimers();
   }
 });
+
+it("sends idle motion immediately and only batches samples inside the send interval", () => {
+  vi.useFakeTimers();
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  const grant = "b".repeat(64);
+  try {
+    channel.receive({ platform: "windows", mode: "ask", state: "ready" });
+    session.request();
+    const intent = channel.sent.at(-1)?.intent;
+    channel.receive({ platform: "windows", mode: "ask", state: "active", intent, grant });
+    const before = channel.sent.length;
+    session.input({ type: "move", x: .1, y: .2 });
+    expect(channel.sent.slice(before)).toEqual([{ type: "move", x: .1, y: .2, grant }]);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(1);
+    session.input({ type: "move", x: .3, y: .4 });
+    vi.advanceTimersByTime(1);
+    session.input({ type: "move", x: .5, y: .6 });
+    expect(channel.sent).toHaveLength(before + 1);
+    vi.advanceTimersByTime(2);
+    expect(channel.sent.slice(before)).toEqual([
+      { type: "move", x: .1, y: .2, grant }, { type: "move", x: .5, y: .6, grant },
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.advanceTimersByTime(12);
+    session.input({ type: "relative", dx: 2, dy: -3 });
+    expect(channel.sent.at(-1)).toEqual({ type: "relative", dx: 2, dy: -3, grant });
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    session.dispose();
+    vi.useRealTimers();
+  }
+});
+
+it("keeps queued motion and wheel precision across updates to the same active grant", () => {
+  vi.useFakeTimers();
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  const grant = "b".repeat(64);
+  try {
+    channel.receive({ platform: "windows", mode: "room", state: "ready", coPlay: true, capabilities: ["coPlay", "text"] });
+    session.request();
+    const intent = channel.sent.at(-1)?.intent;
+    const active = { platform: "windows", mode: "room", state: "active", intent, grant, coPlay: true };
+    channel.receive({ ...active, capabilities: ["coPlay", "text"] });
+    session.input({ type: "move", x: .1, y: .2 });
+    session.input({ type: "move", x: .3, y: .4 });
+    session.scroll(.5, 0);
+    // Another controller joining disables committed text, not this player's motion.
+    channel.receive({ ...active, capabilities: ["coPlay"] });
+    vi.advanceTimersByTime(4);
+    expect(channel.sent.at(-1)).toEqual({ type: "move", x: .3, y: .4, grant });
+    session.scroll(.5, 0);
+    expect(channel.sent.at(-1)).toEqual({ type: "wheel", delta: -1, grant });
+    // Suspension still discards motion and precision belonging to the old activity.
+    session.input({ type: "move", x: .9, y: .9 });
+    const beforeSuspend = channel.sent.length;
+    channel.receive({ ...active, state: "suspended", capabilities: ["coPlay"] });
+    vi.advanceTimersByTime(4);
+    expect(channel.sent).toHaveLength(beforeSuspend);
+    channel.receive({ ...active, capabilities: ["coPlay"] });
+    session.scroll(.75, 0);
+    expect(channel.sent).toHaveLength(beforeSuspend);
+  } finally {
+    session.dispose();
+    vi.useRealTimers();
+  }
+});

@@ -20,6 +20,7 @@ import { composeDocumentTitle, useDocumentTitle } from "../ui/document-title";
 import { HOST_STATUS_SCENARIOS, STATUS_SCENARIOS } from "./status-preview-scenarios";
 import "./status-preview.css";
 import { usePreviewAnchor } from "./use-preview-anchor";
+import { usePreviewReducedMotion } from "./use-preview-reduced-motion";
 
 function StatusMark({ status }: { status: StatusDescriptor }) {
   const { t, vis } = useCopy();
@@ -36,6 +37,7 @@ export function StatusPreviewPage() {
   const { lang, vis, t, titleFrames } = useCopy();
   const [selected, setSelected] = useState("playing");
   const [reducedMotion, setReducedMotion] = useState(false);
+  usePreviewReducedMotion(reducedMotion);
   const [couchView, setCouchView] = useState<"host" | "viewer">("viewer");
   const [loadingLabel, setLoadingLabel] = useState<CopyKey | "">("client.launch.starting");
   const scenario = STATUS_SCENARIOS.find((item) => item.id === selected)!;

@@ -73,7 +73,6 @@ export function PlaybackControls({
     }
   };
   const toggleFullscreen = () => {
-    if (theaterMode) return;
     const video = videoRef.current as FullscreenVideo | null;
     if (!video) return;
     setFullscreenFailed(false);
@@ -202,7 +201,7 @@ export function PlaybackControlsView({
   </button>;
 
   return <>
-    <div id={controlsId} ref={barRef} className={`lr-playback lr-host-share-controls lr-media-toolbar lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
+    <div id={controlsId} ref={barRef} className={`lr-playback lr-media-toolbar lr-media-controls${visibility?.hidden ? " is-hidden" : ""}`}
       role="group" aria-label={t("playback.controls")}>
       <div className="lr-playback-main">
         <span className="lr-playback-watch">
@@ -249,7 +248,7 @@ export function PlaybackControlsView({
       </div>
       <span className="lr-playback-window" role="group" aria-label={t("playback.windowControls")}>
         {displayActions}
-        {fullscreen.supported && !theaterMode ? (
+        {fullscreen.supported ? (
           <Btn icon={fullscreen.active ? "contract" : "expand"}
             draw="playback-fullscreen"
             title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen"

@@ -6,7 +6,7 @@
 
 ## Release notes
 
-<!-- Required for product-changing PRs; omit this section for standalone website/docs/maintenance work. Public copy, automatically published in GitHub Releases. Keep this exact heading; use ### for subsections. Describe user benefits, fixes and required upgrade actions in concise Chinese and English. Omit internal logs, audit prompts and unverified claims. 产品改动需填写公开的中英文更新说明；仅官网、文档或外围维护可删去此节。 -->
+<!-- Required for product-changing PRs; omit this section for standalone website/docs/maintenance work. Public copy, automatically published in GitHub Releases. Keep this exact heading; use ### for subsections. Describe user benefits, fixes and required upgrade actions in concise English followed by Chinese. Omit internal logs, audit prompts and unverified claims. 产品改动需填写公开更新说明，先英文、后中文；仅官网、文档或外围维护可删去此节。 -->
 
 <!-- Follow docs/standards/versioning.md#release-notes. Keep the public Release title Piik vX.Y.Z.
 An optional editorial opening uses a short **bold title** and one plain paragraph explaining its concrete

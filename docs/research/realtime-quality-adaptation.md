@@ -1,12 +1,18 @@
 # Realtime Screen-Share Quality Evidence
 
-- Reviewed: 2026-08-30
+- Initial review: 2026-08-30; dated follow-ups record subsequent evidence
 - Scope: Browser game capture, codecs, startup adaptation, relay, and LiveKit
-- Status: current evidence; product behavior is owned by
+- Status: historical Browser/LiveKit SDK measurements and subsequent implementation evidence; current product behavior is owned by
   [media quality](../standards/media-quality.md) and
   [ADR-0007](../adr/0007-path-isolated-representation-quality.md)
 
 ## Findings
+
+The initial findings below describe the August Browser and external LiveKit
+composition. [ADR-0013](../adr/0013-embedded-node-local-media.md) replaced that
+service/SDK boundary with embedded media components. The later
+[recovery ownership](#recovery-ownership) section distinguishes current paths;
+SDK options below are retained measurement inputs.
 
 - Browser settings are ceilings and content intent, not delivered floors.
   WebRTC owns each direct/relay edge's congestion adaptation; LiveKit owns SFU
@@ -295,7 +301,7 @@ not justify removing protection for H.264, other browsers or cold recovery.
 The [WebRTC statistics model](https://www.w3.org/TR/webrtc-stats/#dom-rtcoutboundrtpstreamstats-framesencoded)
 defines this counter per RTP stream, independently of a capture-track lifetime.
 
-## LiveKit Representation Evidence
+## Historical LiveKit SDK Representation Evidence
 
 Pinned LiveKit client 2.22.0, server 1.13.5, and Chrome 151/153 showed that
 default screen-share publication can expose original and lower representations,
@@ -320,7 +326,7 @@ connections. This is an A/B input, not evidence to raise video priority.
 
 Forcing a lower encoding permanently consumed the same Host-to-SFU congestion
 budget and reduced HIGH performance. Publishing only HIGH abandoned constrained
-subscribers. Current ownership is therefore:
+subscribers. The measured SDK composition used:
 
 - one Host publication for all SFU subscribers;
 - no custom `screenShareSimulcastLayers` and no backup codec;
@@ -332,7 +338,7 @@ A LiveKit H.264 publication may use more than one hardware encoder for its
 representations. Reducing Host network copies to one publication does not by
 itself prove lower Host encode cost.
 
-Production room 8489 separated an SFU delivery problem from route churn. SFU
+An August SFU study separated an SFU delivery problem from route churn. SFU
 roots showed synchronized freeze windows and frequent 1920-to-960 representation
 changes before any quality-convergence operation existed, while a brief direct
 Peer Viewer remained near 1080p and full cadence. Later, the Host publication
@@ -400,13 +406,10 @@ in [background capture research](./browser-background-capture.md), not Web
 keepalive features.
 
 The Media Capture specification copies a track's constraints when it is cloned,
-then lets each clone change constraints independently. Current Host Peer senders
-trust those copied constraints when constructed, while the SFU publisher applies
-the same profile again immediately after creating an equivalent clone. Removing
-only that initial duplicate application should preserve constraints; clearing
-clone constraints altogether would change the source/sink contract and requires
-an A/B across live profile changes, sibling pressure, source replacement and
-same-edge regeneration.
+then lets each clone change constraints independently. At the initial review,
+Host Peer senders trusted those copied constraints while the SDK SFU publisher
+applied the same profile again. That observation did not establish a safe
+constraint-removal change; the later embedded publisher owns its current path.
 
 Web content has no supported API for raising capture, encoder, renderer-process,
 GPU, or operating-system scheduling priority. WebRTC sender `priority` allocates
@@ -417,8 +420,8 @@ does not change page visibility. Silent audio, animation loops, or command-line
 throttling flags are therefore not product keepalive mechanisms.
 
 The mature resource choices remain bounded Browser P2P copies, one bounded SFU
-publication when its accepted route condition applies, or a future native/shared
-encoder. LiveKit Dynacast can stop unused SFU representations; it cannot combine
+publication when its accepted route condition applies, or native/shared
+encoding. LiveKit Dynacast can stop unused SFU representations; it cannot combine
 independent P2P encoders.
 
 ### Current Pipeline Screening
@@ -557,7 +560,7 @@ low-cadence sources, measuring latency, loss, recovery and retained dimensions.
 The [Native QP comparison](./webrtc-encoder-pool.md#budget-restoration) tunes
 that existing encoder owner; Browser internals expose a different API boundary.
 
-Production room 4521 supplied a separate network/source boundary. It used one
+A P2P study isolated a separate network/source boundary. It used one
 stable Host-to-Viewer P2P edge with no reparent or SFU activity, yet Chromium
 reported `bandwidth` for 112 consecutive sender windows, estimated only
 0.42-1.78 Mbps available outgoing bandwidth, and adapted through 960p, 640p and
@@ -747,7 +750,7 @@ into a scalar score or infer unconnected path quality. The single SFU
 publication does not imply one quality node: Host ingress is generation-scoped,
 and every Viewer subscription needs its own candidate proof.
 
-The 2026-08-27 room-6020 canary observed 21 successful Peer candidates, all
+The 2026-08-27 canary observed 21 successful Peer candidates, all
 within two seconds, and 19 failed candidates with a 15-second median. Reusing the
 existing five-second no-progress window for each background Peer candidate
 therefore removes measured queue tail without adding a new threshold; candidates
@@ -775,7 +778,7 @@ not copied. Overcast and End System Multicast demonstrate gradual measured
 overlay parent changes; their periodic probes, scalar metrics, published
 percentages, and tuning loops are not adopted for this Browser product.
 
-## Open Evidence
+## Evidence Limits
 
 - Real games and sustained CPU/GPU contention across weaker Hosts and operating
   systems.
@@ -793,10 +796,10 @@ percentages, and tuning loops are not adopted for this Browser product.
 - Controlled and production correlation of Host SFU active representations,
   subscribed-quality changes, keyframe reacquisition, and Viewer freezes before
   changing Dynacast policy or its delay.
-- Current-Browser A/B of the duplicate initial SFU clone constraint application,
-  source-only versus independently constrained clones across live profile
-  changes, and default two-layer screen-share publication versus any proposed
-  representation or priority change.
+
+The earlier SDK clone-constraint and representation comparisons belong to that
+retired composition. Current pending work is owned by [TODO](../todo.md), and
+[verification status](../verification-status.md) owns acceptance limits.
 
 ## Primary Sources
 

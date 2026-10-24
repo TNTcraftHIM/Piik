@@ -246,8 +246,10 @@ foreign-frame ownership, not replacement of a sender's own frame payload.
 It does not reject an independent local producer. The later
 [node-local producer/carrier experiments](./browser-local-encoding-pool.md)
 establish a working standard-transform prototype with separate findings and
-remaining quality/accounting obligations. Product media still uses normal
-Browser senders and the verified optional App fanout pending that acceptance.
+remaining quality/accounting obligations. Those September 9 results preceded the
+accepted Browser pool in
+[ADR-0014](../adr/0014-browser-node-local-encoding-pool.md), which owns the current
+optional Browser reuse composition.
 
 A relevant future input API is Chromium's experimental
 [`RTCEncodedSource` implementation](https://chromium-review.googlesource.com/c/chromium/src/+/8097283),

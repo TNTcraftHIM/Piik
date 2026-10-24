@@ -44,6 +44,7 @@ import { browserCaptureDevices } from "../media/capture-devices";
 import { ShareMicrophoneSettings } from "../components/living/ShareMicrophoneSettings";
 import {
   CaptureSourcePicker,
+  nativeAppDetected,
   type NativeSourceList,
 } from "../components/living/CaptureSourcePicker";
 import { PawnDetail } from "../components/living/PawnDetail";
@@ -104,6 +105,7 @@ import { readPreferredQuality, savePreferredQuality } from "../lib/quality-prefe
 import { AppQualityPreference } from "../native/quality-preference";
 import { createOpaqueId } from "../lib/opaque-id";
 import { debugError, debugEvent, debugOperation } from "../lib/debug";
+import { observeDebugPlayback } from "../lib/debug-webrtc";
 import {
   defaultHostDisplayName,
   readDisplayName,
@@ -177,6 +179,7 @@ import type {
 } from "../types";
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient, NativeCompatibilityError, NativeRequestError } from "../native/client";
+import { NativeClientConnection } from "../native/client-connection";
 import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
@@ -407,7 +410,7 @@ export function HostPage({
   const [nativeActive, setNativeActive] = useState(false);
   const [remoteControlState, setRemoteControlState] = useState<RemoteControlState | null>(null);
   const remoteStopShortcut = useCallback(async (key?: number) => {
-    const client = nativeClientRef.current;
+    const client = nativeConnection.current;
     const shareId = nativeShareGenerationRef.current;
     if (!client || !shareId) throw new Error("Native share is unavailable");
     return client.remoteStopShortcut(shareId, key);
@@ -630,22 +633,21 @@ export function HostPage({
   );
   const codecProbeAbortRef = useRef<AbortController | null>(null);
   const sharingPausedRef = useRef(false);
+  const sharingPauseOperationRef = useRef<object | null>(null);
   const retiringStreamRef = useRef<MediaStream | null>(null);
   const hostSfuRouteRef = useRef<HostSfuRoute | null>(null);
-  const nativeClientRef = useRef<NativeClient | null>(null);
-  const nativeClientConnectRef = useRef<{ promise: Promise<NativeClient | null>; controller: AbortController } | null>(null);
+  const [nativeConnection] = useState(() => new NativeClientConnection(connectNativeClient, handleNativeClientClosed));
   const nativeShareGenerationRef = useRef<string | null>(null);
   const serverShareGenerationRef = useRef<string | null>(null);
   const nativeMediaBridgeRef = useRef<NativeMediaBridge | null>(null);
   const nativeInputRoute = useMemo(() => new InputRoute(() => {}), []);
   const nativeMediaIngressRef = useRef<NativeMediaIngress | null>(null);
   const nativeEventCleanupRef = useRef<(() => void) | null>(null);
-  const nativeClientCloseCleanupRef = useRef<(() => void) | null>(null);
   const nativeModeRef = useRef(false);
   const nativeSourceAudioRef = useRef<boolean | undefined>(undefined);
   const nativeSourceSelectionRef = useRef<Extract<ShareSourceSelection, { kind: "native" }> | null>(null);
   const loadAudioApplications = useCallback(async () => {
-    const client = nativeClientRef.current;
+    const client = nativeConnection.current;
     if (!client || !nativeModeRef.current) throw new Error("Piik App is unavailable");
     return client.sources();
   }, []);
@@ -697,6 +699,15 @@ export function HostPage({
       previewPausedByUser.current = false;
       setTheaterMode(false);
     }
+  }, [stream]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!stream || !video) return;
+    return observeDebugPlayback(video, {
+      role: "host-preview", generation: activeGenerationRef.current,
+      source: nativeModeRef.current ? "native" : "browser",
+    });
   }, [stream]);
 
   useEffect(() => {
@@ -762,6 +773,7 @@ export function HostPage({
       generationRef.current += 1;
       roomMutationRef.current = null;
       sourceSwitchRef.current = null;
+      sharingPauseOperationRef.current = null;
       qualityChangeRef.current = null;
       pendingQualityChangeRef.current = null;
       codecProbeAbortRef.current?.abort();
@@ -790,12 +802,7 @@ export function HostPage({
       nativeSourceRequestRef.current = null;
       nativeSourcePathRef.current = null;
       disposeNativeShare();
-      nativeClientCloseCleanupRef.current?.();
-      nativeClientCloseCleanupRef.current = null;
-      nativeClientConnectRef.current?.controller.abort();
-      nativeClientConnectRef.current = null;
-      nativeClientRef.current?.close();
-      nativeClientRef.current = null;
+      nativeConnection.release();
       hostAudioRef.current?.dispose();
       hostAudioRef.current = null;
       streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -868,7 +875,7 @@ export function HostPage({
           onDisconnected, onStats,
         };
         if (nativeModeRef.current) {
-          const client = nativeClientRef.current;
+          const client = nativeConnection.current;
           const shareId = nativeShareGenerationRef.current;
           const ice = iceConfigRef.current;
           if (!client || !shareId || !ice) throw new Error("Native publication source is unavailable");
@@ -927,6 +934,7 @@ export function HostPage({
 
   function disposeResources(notifyServer: boolean, keepRoomSession = false): void {
     closeCaptureSourcePicker();
+    sharingPauseOperationRef.current = null;
     sourceSwitchRef.current = null;
     qualityChangeRef.current = null;
     pendingQualityChangeRef.current = null;
@@ -1312,7 +1320,7 @@ export function HostPage({
       await nativeShareCleanupRef.current;
       await nativePreviewTailRef.current;
       if (!isCurrentShare(generation, shareGeneration)) return null;
-      if (nativeClientRef.current !== client) throw new NativeRequestError("unavailable", "start-share");
+      if (nativeConnection.current !== client) throw new NativeRequestError("unavailable", "start-share");
       // Acquire the required Browser peer before starting capture. Pending
       // cancellation owns this bridge, but still closes control to abort startup.
       bridge = new NativeMediaBridge(
@@ -1338,7 +1346,7 @@ export function HostPage({
       audioAvailableRef.current = false;
       nativeSourceSelectionRef.current = selection;
       nativeEventCleanup = client.onEvent((event) => {
-        if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeClientRef.current !== client) return;
+        if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeConnection.current !== client) return;
         if (event.type === "remote-control-state") {
           setRemoteControlState(event);
           signalRef.current?.setCoPlayGrants(event.coPlay ? event.requests.flatMap(request =>
@@ -1379,16 +1387,16 @@ export function HostPage({
       if (!isCurrentShare(generation, shareGeneration)) {
         if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
         bridge.dispose();
-        await client.stopShare(shareGeneration).catch(() => discardNativeClient(client));
+        await client.stopShare(shareGeneration).catch(() => nativeConnection.discard(client));
         return null;
       }
-      if (nativeClientRef.current !== client) throw new NativeRequestError("unavailable", "start-share");
+      if (nativeConnection.current !== client) throw new NativeRequestError("unavailable", "start-share");
       nativeSourceAudioRef.current ??= started.sourceAudio ?? started.audio;
       audioAvailableRef.current = nativeSourceAudioRef.current || audioAvailableRef.current;
       videoCodecRef.current = manualVideoCodecPreference(started.codec);
       // Register ownership before waiting for the local bridge. A native edge
       // may fail immediately after becoming ready.
-      ownNativeClient(client);
+      nativeConnection.adopt(client);
       nativeShareGenerationRef.current = shareGeneration;
       nativeModeRef.current = true;
       if (client.health.nativeMedia.remoteInput) await client.setRemoteInputPeers(shareGeneration, remoteInputPeersRef.current);
@@ -1404,7 +1412,7 @@ export function HostPage({
       nativeEventCleanup?.();
       if (nativeEventCleanupRef.current === nativeEventCleanup) nativeEventCleanupRef.current = null;
       if (
-        nativeClientRef.current === client &&
+        nativeConnection.current === client &&
         nativeShareGenerationRef.current === shareGeneration
       ) {
         disposeNativeShare();
@@ -1414,72 +1422,37 @@ export function HostPage({
         if (shareStarted) {
           nativeShareCleanupRef.current = client
             .stopShare(shareGeneration)
-            .catch(() => discardNativeClient(client));
+            .catch(() => nativeConnection.discard(client));
         } else {
-          discardNativeClient(client);
+          nativeConnection.discard(client);
         }
       }
       throw error;
     }
   }
 
-  function ownNativeClient(client: NativeClient): void {
-    if (nativeClientRef.current === client) return;
-    nativeClientCloseCleanupRef.current?.();
-    nativeClientRef.current = client;
-    nativeClientCloseCleanupRef.current = client.onClose(() => {
-      if (nativeClientRef.current !== client) return;
-      nativeClientRef.current = null;
-      nativeClientConnectRef.current?.controller.abort();
-      nativeClientConnectRef.current = null;
-      nativeClientCloseCleanupRef.current = null;
-      if (nativeSourceRequestRef.current) {
-        nativeSourcePathRef.current = null;
-        setNativeSources({ kind: "unavailable" });
-      }
-      if (nativeMediaIngressRef.current) {
-        recoverBrowserFanout(nativeMediaIngressRef.current);
-      } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
-        endSharing({ key: "native.fail.controlDisconnected", failureCode: "app/control/disconnected" }, true, "route-failed", "bad");
-      }
-    });
-  }
-
-  function discardNativeClient(client: NativeClient): void {
-    if (nativeClientRef.current === client) {
-      nativeClientCloseCleanupRef.current?.();
-      nativeClientCloseCleanupRef.current = null;
-      nativeClientRef.current = null;
-      nativeClientConnectRef.current?.controller.abort();
-      nativeClientConnectRef.current = null;
+  function handleNativeClientClosed(): void {
+    if (nativeSourceRequestRef.current) {
+      nativeSourcePathRef.current = null;
+      setNativeSources({ kind: "unavailable" });
     }
-    client.close();
+    if (nativeMediaIngressRef.current) {
+      recoverBrowserFanout(nativeMediaIngressRef.current);
+    } else if (nativeModeRef.current && activeGenerationRef.current !== null) {
+      endSharing({ key: "native.fail.controlDisconnected", failureCode: "app/control/disconnected" }, true, "route-failed", "bad");
+    }
   }
 
-  function acquireNativeClient(): Promise<NativeClient | null> {
-    if (nativeClientConnectRef.current) return nativeClientConnectRef.current.promise;
-    const controller = new AbortController();
-    const promise: Promise<NativeClient | null> = nativeShareCleanupRef.current.then(() =>
-      nativeClientConnectRef.current === connecting
-        ? nativeClientRef.current ?? NativeClient.connect({ signal: controller.signal })
-        : null,
-    ).catch((error) => {
+  function connectNativeClient(signal: AbortSignal): Promise<NativeClient | null> {
+    return NativeClient.connect({ signal }).catch((error) => {
       debugError("native", "discovery-failed", error);
       if (error instanceof NativeCompatibilityError) throw error;
       return null;
-    }).then((client) => {
-      if (nativeClientConnectRef.current !== connecting) {
-        client?.close();
-        return null;
-      }
-      if (client) ownNativeClient(client);
-      return client;
-    }).finally(() => {
-      if (nativeClientConnectRef.current === connecting) nativeClientConnectRef.current = null;
     });
-    const connecting = { promise, controller };
-    nativeClientConnectRef.current = connecting;
-    return promise;
+  }
+
+  function acquireNativeClient(): Promise<NativeClient | null> {
+    return nativeConnection.acquire(nativeShareCleanupRef.current);
   }
 
   function releaseUnusedNativeClient(): void {
@@ -1487,10 +1460,7 @@ export function HostPage({
     // needs to keep it after startup. Merely visiting the page owns no session.
     if (nativeSourceRequestRef.current || nativeShareGenerationRef.current ||
       (activeGenerationRef.current !== null && roomMutationRef.current !== null)) return;
-    nativeClientConnectRef.current?.controller.abort();
-    nativeClientConnectRef.current = null;
-    const client = nativeClientRef.current;
-    if (client) discardNativeClient(client);
+    nativeConnection.release();
   }
 
   function closeCaptureSourcePicker(): void {
@@ -1513,7 +1483,7 @@ export function HostPage({
       setNativeSources({ kind: "browser" });
       return;
     }
-    setNativeSources({ kind: "loading" });
+    setNativeSources(previous => ({ kind: "loading", appDetected: nativeAppDetected(previous) }));
 
     let client: NativeClient | null;
     try {
@@ -1550,7 +1520,7 @@ export function HostPage({
         codec,
         client.health.nativeMedia.softwareVP8,
       );
-      if (nativeSourceRequestRef.current !== request || nativeClientRef.current !== client) {
+      if (nativeSourceRequestRef.current !== request || nativeConnection.current !== client) {
         return;
       }
       if (!path) {
@@ -1568,10 +1538,10 @@ export function HostPage({
         captureBorderControl: client.health.nativeMedia.captureBorderControl,
       });
     } catch (error) {
-      if (nativeSourceRequestRef.current !== request || nativeClientRef.current !== client) return;
+      if (nativeSourceRequestRef.current !== request || nativeConnection.current !== client) return;
       debugError("native", "source-list-failed", error);
       if (!nativeShareGenerationRef.current) {
-        discardNativeClient(client);
+        nativeConnection.discard(client);
       }
       setNativeSources({ kind: "failed" });
     }
@@ -1584,10 +1554,10 @@ export function HostPage({
   ): Promise<void> {
     if (!launchedByClient || videoCodecRef.current.primary !== "h264" ||
       !routePolicyRef.current.topologyOptimization) return;
-    const client = nativeClientRef.current;
+    const client = nativeConnection.current;
     if (!client || !isCurrentShare(generation, shareGeneration)) return;
     await nativeShareCleanupRef.current;
-    if (nativeClientRef.current !== client || !isCurrentShare(generation, shareGeneration)) return;
+    if (nativeConnection.current !== client || !isCurrentShare(generation, shareGeneration)) return;
     const ingress = new NativeMediaIngress(shareGeneration, client, () => {
       recoverBrowserFanout(ingress);
     }, () => qualitySettingsRef.current);
@@ -1633,12 +1603,12 @@ export function HostPage({
     target: NativeCaptureTarget,
     signal?: AbortSignal,
   ): Promise<string | null> {
-    const client = nativeClientRef.current;
+    const client = nativeConnection.current;
     const request = nativeSourceRequestRef.current;
     if (!client || !request || nativeSources?.kind !== "ready") return null;
     const owns = () => !signal?.aborted &&
       nativeSourceRequestRef.current === request &&
-      nativeClientRef.current === client;
+      nativeConnection.current === client;
     // Keep thumbnails from filling the same control queue used to start media.
     const preview = nativePreviewTailRef.current.then(async () => {
       if (!owns()) return null;
@@ -1660,7 +1630,7 @@ export function HostPage({
     excludeAudio?: NativeCaptureTarget,
   ): void {
     if (nativeSources?.kind !== "ready") return;
-    const client = nativeClientRef.current;
+    const client = nativeConnection.current;
     const path = nativeSourcePathRef.current;
     if (!client || !path) return;
     setShowCaptureBorder(showCaptureBorder);
@@ -1673,7 +1643,7 @@ export function HostPage({
 
   function disposeNativeShare(expectedShare = nativeShareGenerationRef.current): void {
     if (nativeShareGenerationRef.current !== expectedShare) return;
-    const client = nativeClientRef.current;
+    const client = nativeConnection.current;
     const shareGeneration = nativeShareGenerationRef.current;
     const ingress = nativeMediaIngressRef.current;
     nativeMediaIngressRef.current = null;
@@ -1697,7 +1667,7 @@ export function HostPage({
     nativeShareCleanupRef.current = (ingress
       ? client.stopReceive(shareGeneration)
       : client.stopShare(shareGeneration))
-      .catch(() => discardNativeClient(client));
+      .catch(() => nativeConnection.discard(client));
     releaseUnusedNativeClient();
   }
 
@@ -1838,7 +1808,7 @@ export function HostPage({
       screenAudioBitrate(previousProfile.maxAudioBitrate) !==
       screenAudioBitrate(nextProfile.maxAudioBitrate);
     try {
-      const nativeClient = nativeClientRef.current;
+      const nativeClient = nativeConnection.current;
       const nativeShareGeneration = nativeShareGenerationRef.current;
       const nativeUpdate = nativeModeRef.current
         ? nativeClient && nativeShareGeneration
@@ -1979,7 +1949,7 @@ export function HostPage({
     shareVolumeChangeRef.current = token;
     const volume = muted ? 0 : level;
     const update = nativeModeRef.current && shareId
-      ? nativeClientRef.current!.setShareVolume(shareId, volume)
+      ? nativeConnection.current!.setShareVolume(shareId, volume)
       : Promise.resolve(hostAudioRef.current?.setVolume(volume));
     void update.then(() => {
       if (isCurrentGeneration(generation) && shareVolumeChangeRef.current === token) setShareVolume({ level, muted });
@@ -1990,7 +1960,7 @@ export function HostPage({
 
   function toggleSharingPause(): void {
     const activeStream = streamRef.current;
-    const nativeClient = nativeClientRef.current;
+    const nativeClient = nativeConnection.current;
     const nativeShareGeneration = nativeShareGenerationRef.current;
     if (
       phase !== "live" ||
@@ -2001,16 +1971,20 @@ export function HostPage({
     if (nativeModeRef.current && nativeClient && nativeShareGeneration) {
       const generation = activeGenerationRef.current;
       if (generation === null) return;
+      const operation = {};
+      sharingPauseOperationRef.current = operation;
+      const owns = () => isCurrentGeneration(generation) && sharingPauseOperationRef.current === operation;
       const nextPaused = !sharingPausedRef.current;
       void nativeClient
         .setPaused(nativeShareGeneration, nextPaused)
-        .then(() => {
-          if (!isCurrentGeneration(generation)) return;
+        .then(async () => {
+          if (!owns()) return;
           const sent = signalRef.current?.setSharingPaused(nextPaused) === true;
           if (!sent && !nextPaused) {
             // Mirror the Browser branch: a resume the server did not hear
             // rolls back to paused and restores the wire intent.
-            void nativeClient.setPaused(nativeShareGeneration, true);
+            await nativeClient.setPaused(nativeShareGeneration, true);
+            if (!owns()) return;
             signalRef.current?.confirmSharingPaused();
             setNoticeErrorKey("host.pause.signalRecovering", "signal-recovering", undefined, "warn");
             return;
@@ -2032,7 +2006,7 @@ export function HostPage({
           }
         })
         .catch((error: unknown) => {
-          if (isCurrentGeneration(generation)) {
+          if (owns()) {
             setNoticeError(error, "connection");
           }
         });
@@ -2144,7 +2118,7 @@ export function HostPage({
     generation: number,
   ): boolean {
     const stream = streamRef.current;
-    const nativeClient = nativeClientRef.current;
+    const nativeClient = nativeConnection.current;
     const nativeShareGeneration = nativeShareGenerationRef.current;
     const iceConfig = iceConfigRef.current;
     const signal = signalRef.current;
@@ -2277,7 +2251,7 @@ export function HostPage({
       return;
     }
     const activeStream = streamRef.current;
-    const nativeClient = nativeClientRef.current;
+    const nativeClient = nativeConnection.current;
     const nativeShareGeneration = nativeShareGenerationRef.current;
     const useNative = nativeClient !== null && nativeShareGeneration !== null;
     const iceConfig = iceConfigRef.current;
@@ -2524,8 +2498,9 @@ export function HostPage({
       if (message.shareGeneration !== shareGenerationRef.current) {
         return;
       }
+      sharingPauseOperationRef.current = null;
       const activeStream = streamRef.current;
-      const nativeClient = nativeClientRef.current;
+      const nativeClient = nativeConnection.current;
       const nativeShareGeneration = nativeShareGenerationRef.current;
       if (nativeModeRef.current && nativeClient && nativeShareGeneration) {
         void nativeClient
@@ -2675,7 +2650,7 @@ export function HostPage({
           if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
           if (message.type === "remote-input-peers") {
             remoteInputPeersRef.current = message.peers;
-            const client = nativeClientRef.current, shareId = nativeShareGenerationRef.current;
+            const client = nativeConnection.current, shareId = nativeShareGenerationRef.current;
             if (client?.health.nativeMedia.remoteInput && nativeModeRef.current && shareId) {
               void client.setRemoteInputPeers(shareId, message.peers).catch(error => debugError("native", "input-endpoints", error));
             }
@@ -3029,7 +3004,7 @@ export function HostPage({
       generation === null ||
       !shareGeneration ||
       !isCurrentGeneration(generation) ||
-      nativeClientRef.current !== client ||
+      nativeConnection.current !== client ||
       sourceSwitchRef.current ||
       qualityChangeRef.current
     ) {
@@ -3048,7 +3023,7 @@ export function HostPage({
       if (
         !isCurrentGeneration(generation) ||
         sourceSwitchRef.current !== token ||
-        nativeClientRef.current !== client
+        nativeConnection.current !== client
       ) return;
       // Preserve an exclusion request even on failure: the App mutes source
       // audio before replacing it, and the next picker must not default to all.
@@ -3064,7 +3039,7 @@ export function HostPage({
       if (
         !isCurrentGeneration(generation) ||
         sourceSwitchRef.current !== token ||
-        nativeClientRef.current !== client
+        nativeConnection.current !== client
       ) {
         return;
       }
@@ -3084,7 +3059,7 @@ export function HostPage({
       if (
         !isCurrentGeneration(generation) ||
         sourceSwitchRef.current !== token ||
-        nativeClientRef.current !== client
+        nativeConnection.current !== client
       ) {
         return;
       }
@@ -3109,7 +3084,7 @@ export function HostPage({
     if (generation === null || commentaryOperationRef.current) return;
     const operation = {}; commentaryOperationRef.current = operation; setCommentaryBusy(true);
     try {
-      const client = nativeClientRef.current, shareId = nativeShareGenerationRef.current;
+      const client = nativeConnection.current, shareId = nativeShareGenerationRef.current;
       if (nativeActive && client && shareId) await client.setMicrophone(shareId, enabled, input.volume, input.deviceId);
       else if (hostAudioRef.current) await hostAudioRef.current.setMicrophone(enabled, input);
       else throw new Error("Shared audio is unavailable");
@@ -3129,7 +3104,7 @@ export function HostPage({
   function changeCommentaryVolume(volume: number): void {
     setCommentaryInput(previous => ({ ...previous, volume }));
     const generation = activeGenerationRef.current;
-    const client = nativeClientRef.current, shareId = nativeShareGenerationRef.current;
+    const client = nativeConnection.current, shareId = nativeShareGenerationRef.current;
     if (nativeActive && client && shareId) void client.setMicrophoneVolume(shareId, volume).catch(error => {
       if (generation !== null && isCurrentGeneration(generation)) setNoticeError(error, "sourceAudio");
     });
@@ -3250,7 +3225,7 @@ export function HostPage({
       if (ingress) {
         try {
           if (ingress.hasAudio !== (captured.getAudioTracks().length > 0)) {
-            const client = nativeClientRef.current;
+            const client = nativeConnection.current;
             if (!client) throw new Error("Native media ingress is unavailable");
             const replacement = new NativeMediaIngress(ingress.shareId, client, () => {
               recoverBrowserFanout(replacement);
@@ -3280,6 +3255,10 @@ export function HostPage({
         } catch {
           recoverBrowserFanout(ingress);
         }
+      }
+      if (!isCurrentGeneration(generation) || sourceSwitchRef.current !== token) {
+        captured.getTracks().forEach((track) => track.stop());
+        return;
       }
       const activeSfuRoute = hostSfuRouteRef.current;
       const provisional = hostProvisionalChildRef.current;
@@ -3727,9 +3706,9 @@ export function HostPage({
   useDocumentTitle([room?.roomId, titleContent.label, hostStatus.titleMarker], titleContent.variations,
     `${lang}:${vis}:${hostStatus.titleFrameKey}:${room?.roomId ?? ""}`);
   const audioBitrateCeiling = Math.min(MAX_AUDIO_SEND_BITRATE, nativeActive
-    ? nativeClientRef.current?.health.nativeMedia.maxAudioBitrate ?? MAX_AUDIO_SEND_BITRATE
+    ? nativeConnection.current?.health.nativeMedia.maxAudioBitrate ?? MAX_AUDIO_SEND_BITRATE
     : MAX_AUDIO_SEND_BITRATE);
-  const videoLimits = videoCaptureLimits(nativeActive ? nativeClientRef.current?.health.nativeMedia : undefined);
+  const videoLimits = videoCaptureLimits(nativeActive ? nativeConnection.current?.health.nativeMedia : undefined);
 
   return (
     <div className="lr-app">
@@ -3774,7 +3753,7 @@ export function HostPage({
             ) : null}
             {stream && <PlaybackControls videoRef={videoRef} stream={stream}
               sharingAudio={{ ...shareVolume, available: nativeActive
-                ? !!nativeClientRef.current?.health.nativeMedia.shareVolume : hostAudioRef.current?.commentaryAvailable === true,
+                ? !!nativeConnection.current?.health.nativeMedia.shareVolume : hostAudioRef.current?.commentaryAvailable === true,
                 onChange: changeShareVolume }}
               audioAvailable={audioAvailableRef.current}
               canPlay={phase === "live" && !nativeSources && !sharingPaused && !localPreviewPaused}
@@ -3928,24 +3907,24 @@ export function HostPage({
               gamepad={remoteControlState.gamepad}
               simultaneous={remoteControlState.simultaneous}
               onSimultaneous={remoteControlState.simultaneous !== undefined ? async enabled => {
-                const client = nativeClientRef.current;
+                const client = nativeConnection.current;
                 const shareId = nativeShareGenerationRef.current;
                 if (!client || !shareId) throw new Error("Native share is unavailable");
                 await client.setRemoteControlSimultaneous(shareId, enabled);
               } : undefined}
-              onShortcut={nativeClientRef.current?.health.nativeMedia.remoteStopShortcut ? remoteStopShortcut : undefined}
+              onShortcut={nativeConnection.current?.health.nativeMedia.remoteStopShortcut ? remoteStopShortcut : undefined}
               disabled={sharingPaused || switchingSource}
               requests={remoteControlState.requests.map(request => {
                 return { ...request, name: viewers.find(viewer => viewer.peerId === request.peerId)?.label ?? t("common.name.viewerDefault") };
               })}
               onPolicy={async (mode, password) => {
-                const client = nativeClientRef.current;
+                const client = nativeConnection.current;
                 const shareId = nativeShareGenerationRef.current;
                 if (!client || !shareId) throw new Error("Native share is unavailable");
                 await client.setRemoteControlPolicy(shareId, mode, password);
               }}
               onDecide={async (id, allow) => {
-                const client = nativeClientRef.current;
+                const client = nativeConnection.current;
                 const shareId = nativeShareGenerationRef.current;
                 if (!client || !shareId) throw new Error("Native share is unavailable");
                 await client.setRemoteControl(shareId, id, allow);
@@ -4046,7 +4025,7 @@ export function HostPage({
               </div>
             </>}
             audio={<>
-              {phase === "live" && (!nativeActive || nativeClientRef.current?.health.nativeMedia.microphone) ?
+              {phase === "live" && (!nativeActive || nativeConnection.current?.health.nativeMedia.microphone) ?
                   <ShareMicrophoneSettings enabled={commentary}
                     browser={!nativeActive}
                     available={nativeActive || hostAudioRef.current?.commentaryAvailable === true}
@@ -4056,12 +4035,12 @@ export function HostPage({
                     volume={commentaryInput.volume} onVolume={changeCommentaryVolume}
                     deviceId={commentaryInput.deviceId}
                     onDevice={deviceId => { void changeCommentary(true, { ...commentaryInput, deviceId }); }}
-                    loadDevices={() => nativeActive && nativeClientRef.current
-                      ? nativeClientRef.current.microphones() : browserCaptureDevices("audioinput")}
+                    loadDevices={() => nativeActive && nativeConnection.current
+                      ? nativeConnection.current.microphones() : browserCaptureDevices("audioinput")}
                     voiceProcessing={nativeActive ? undefined : commentaryInput.voiceProcessing}
                     onVoiceProcessing={voiceProcessing => { void changeCommentary(true, { ...commentaryInput, voiceProcessing }); }} /> : null}
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&
-                nativeClientRef.current?.health.nativeMedia.microphone && nativeClientRef.current.health.nativeMedia.processAudioExclusion ? (
+                nativeConnection.current?.health.nativeMedia.microphone && nativeConnection.current.health.nativeMedia.processAudioExclusion ? (
                 <div className="lr-door-group lr-source-audio-settings">
                   <SwitchItem checked={nativeSourceSelectionRef.current.audio}
                     label={t("host.sourcePicker.systemAudio")} hint={nativeSourceSelectionRef.current.audio ? "hint-stop-audio" : "hint-share-audio"}

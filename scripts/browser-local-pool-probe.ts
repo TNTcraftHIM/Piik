@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
@@ -45,7 +46,12 @@ const body = Buffer.from(bundle.outputFiles[0].contents);
 let cdp: CdpConnection | null = null;
 let page: Awaited<ReturnType<typeof createPage>> | undefined;
 let originalTarget: string | undefined, backgroundTarget: string | undefined;
-const shaper = network ? await createPoolShaper() : null;
+let shaper: Awaited<ReturnType<typeof createPoolShaper>> | null = null;
+let profile: string | null = null;
+let chrome: ChildProcessWithoutNullStreams | null = null;
+let port = 0, debugPort = 0;
+let result: Record<string, unknown> = { mode, codec, product: true, network, automatic, high, av, single, late, shortPulse, repeatedPulses, textured,
+    background, nativeSource, displaySource, quietStart, lifecycle, relay, shapedRate: rate, preference };
 const server = createServer((request, response) => {
     const url = new URL(request.url!, 'http://127.0.0.1');
     if (url.pathname === '/visibility' && cdp && page) {
@@ -77,19 +83,19 @@ const server = createServer((request, response) => {
     response.end(url.pathname === '/probe.js' ? body :
         '<!doctype html><meta charset=utf-8><title>Browser local pool</title><script type=module src=/probe.js></script>');
 });
-await new Promise<void>(r => server.listen(0, '127.0.0.1', r));
-const port = (server.address() as { port: number }).port, debugPort = await reservePort();
-const profile = await mkdtemp(join(tmpdir(), 'piik-client-media-'));
-const chrome = await launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile,
-    ['--headless=new', '--no-first-run', '--autoplay-policy=no-user-gesture-required',
-        ...(displaySource ? [`--window-size=${size?.width ?? 1920},${size?.height ?? 1200}`, '--force-device-scale-factor=1',
-            '--auto-accept-this-tab-capture', '--auto-select-tab-capture-source-by-title=Browser local pool'] : []),
-        ...(background ? [] : ['--disable-background-timer-throttling', '--disable-renderer-backgrounding']),
-        ...(nativeSource ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] : [])]);
-chrome.stdout.resume(); chrome.stderr.resume();
-let result: Record<string, unknown> = { mode, codec, product: true, network, automatic, high, av, single, late, shortPulse, repeatedPulses, textured,
-    background, nativeSource, displaySource, quietStart, lifecycle, relay, shapedRate: rate, preference };
 try {
+    shaper = network ? await createPoolShaper() : null;
+    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    port = (server.address() as { port: number }).port;
+    debugPort = await reservePort();
+    profile = await mkdtemp(join(tmpdir(), 'piik-client-media-'));
+    chrome = await launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile,
+        ['--headless=new', '--no-first-run', '--autoplay-policy=no-user-gesture-required',
+            ...(displaySource ? [`--window-size=${size?.width ?? 1920},${size?.height ?? 1200}`, '--force-device-scale-factor=1',
+                '--auto-accept-this-tab-capture', '--auto-select-tab-capture-source-by-title=Browser local pool'] : []),
+            ...(background ? [] : ['--disable-background-timer-throttling', '--disable-renderer-backgrounding']),
+            ...(nativeSource ? ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'] : [])]);
+    chrome.stdout.resume(); chrome.stderr.resume();
     const version = await waitForVersion(debugPort, chrome);
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 5000);
     page = await createPage(cdp, 'about:blank');
@@ -113,8 +119,11 @@ try {
     if (cdp && page) result.partial = await evaluate(cdp, page, 'window.probeResult || window.probeProgress?.()', Date.now() + 3000).catch(() => null);
 } finally {
     const clean = await cleanupRun({ cdp, native: null, chrome,
-        server: { close: () => new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve())) },
-        profile, ports: [port, debugPort] });
+        server: { close: () => new Promise<void>((resolve, reject) => {
+            if (!server.listening) { resolve(); return; }
+            server.close(e => e ? reject(e) : resolve());
+        }) },
+        profile, ports: [port, debugPort].filter(Boolean) });
     if (shaper) { result.shaper = shaper.stats(); await shaper.close(); }
     result.probeSha256 = createHash('sha256').update(body).digest('hex');
     result.cleanup = clean;

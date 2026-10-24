@@ -237,7 +237,13 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	}
 	// Pause the first answer to prove a forged publication cannot consume it.
 	a.hold.Store(true)
-	if err = service.ConfigureVoice(aPlan, a.event); err != nil {
+	connected := make(chan VoiceMediaEvent, 1)
+	if err = configureVoiceForTest(service, aPlan, func(event VoiceMediaEvent) {
+		if event.State == webrtc.PeerConnectionStateConnected {
+			connected <- event
+		}
+		a.event(event)
+	}); err != nil {
 		t.Fatal(err)
 	}
 	var first VoiceDescription
@@ -250,16 +256,25 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	if err = a.answer(first, true); err != nil {
 		t.Fatal(err)
 	}
-	if err = service.ConfigureVoice(bPlan, b.event); err != nil {
+	if err = configureVoiceForTest(service, bPlan, b.event); err != nil {
 		t.Fatal(err)
 	}
 	wait(func() bool { return a.count(0xb1) >= 3 && b.count(0xa1) >= 3 && b.count(0xa2) >= 3 })
+	var connectedEvent VoiceMediaEvent
+	select {
+	case connectedEvent = <-connected:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	if connectedEvent.IsCurrentState == nil || !connectedEvent.IsCurrentState() {
+		t.Fatal("live voice transport did not provide current connection evidence")
+	}
 	if a.count(0xa1) != 0 || b.count(0xb1) != 0 {
 		t.Fatal("voice was echoed to its incoming connection")
 	}
 
 	// A late close from a previous session cannot touch the current physical PC.
-	if err = service.CloseVoice(aPlan.RoomID, aPlan.PeerID, "old_session", aPlan.ConnectionID); err != nil {
+	if err = closeVoiceForTest(service, aPlan.RoomID, aPlan.PeerID, "old_session", aPlan.ConnectionID); err != nil {
 		t.Fatal(err)
 	}
 	before := b.count(0xa1)
@@ -273,7 +288,7 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	a.hold.Store(true)
 	revoked := aPlan
 	revoked.Publish = []VoicePublication{a2}
-	if err = service.ConfigureVoice(revoked, a.event); err != nil {
+	if err = configureVoiceForTest(service, revoked, a.event); err != nil {
 		t.Fatal(err)
 	}
 	var pending VoiceDescription
@@ -298,12 +313,12 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 
 	// Reusing a grant must reuse its empty media section, not grow SDP forever.
 	for range 2 {
-		if err = service.ConfigureVoice(aPlan, a.event); err != nil {
+		if err = configureVoiceForTest(service, aPlan, a.event); err != nil {
 			t.Fatal(err)
 		}
 		before = b.count(0xa1)
 		wait(func() bool { return b.count(0xa1) >= before+3 })
-		if err = service.ConfigureVoice(revoked, a.event); err != nil {
+		if err = configureVoiceForTest(service, revoked, a.event); err != nil {
 			t.Fatal(err)
 		}
 		wait(func() bool {
@@ -333,7 +348,7 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	}
 	withoutA2 := bPlan
 	withoutA2.Subscribe = []VoicePublication{a1}
-	if err = service.ConfigureVoice(withoutA2, b.event); err != nil {
+	if err = configureVoiceForTest(service, withoutA2, b.event); err != nil {
 		t.Fatal(err)
 	}
 	beforeB = a.count(0xb1)
@@ -344,7 +359,7 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	if b.count(0xa2) != stopped {
 		t.Fatal("revoked subscription kept receiving before SDP acknowledgement")
 	}
-	if err = service.ConfigureVoice(bPlan, b.event); err != nil {
+	if err = configureVoiceForTest(service, bPlan, b.event); err != nil {
 		t.Fatal(err)
 	}
 	b.hold.Store(false)
@@ -357,8 +372,11 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	a.sources[a2.ID].active.Store(false)
 	beforeB = a.count(0xb1)
 	wait(func() bool { return a.count(0xb1) >= beforeB+3 })
-	if err = service.CloseVoice(aPlan.RoomID, aPlan.PeerID, aPlan.SessionID, aPlan.ConnectionID); err != nil {
+	if err = closeVoiceForTest(service, aPlan.RoomID, aPlan.PeerID, aPlan.SessionID, aPlan.ConnectionID); err != nil {
 		t.Fatal(err)
+	}
+	if connectedEvent.IsCurrentState() {
+		t.Fatal("queued connection evidence survived physical voice retirement")
 	}
 	if err = service.SignalVoice(aPlan.RoomID, aPlan.PeerID, aPlan.SessionID, aPlan.ConnectionID, VoiceSignal{Renegotiate: true}); err == nil {
 		t.Fatal("closed connection accepted signaling")
@@ -379,7 +397,7 @@ func TestVoiceFullRoomAdmitsBothPublicationReplacementFacets(t *testing.T) {
 		}
 	})
 	configure := func(peer, connection string) error {
-		return service.ConfigureVoice(VoiceConnectionPlan{
+		return configureVoiceForTest(service, VoiceConnectionPlan{
 			RoomID: "1234", PeerID: peer, SessionID: "session_" + peer, ConnectionID: connection,
 		}, func(VoiceMediaEvent) {})
 	}
@@ -404,25 +422,74 @@ func TestVoiceFullRoomAdmitsBothPublicationReplacementFacets(t *testing.T) {
 	}
 }
 
+func TestVoiceQueuedCandidateFailureDoesNotPoisonNegotiation(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	service := NewMedia(MediaOptions{})
+	t.Cleanup(func() { _ = service.Close() })
+	plan := VoiceConnectionPlan{RoomID: "1234", PeerID: "peer", SessionID: "session", ConnectionID: "connection"}
+	peer := newVoiceFixturePeer(t, ctx, service, webrtc.SettingEngine{}, plan, nil)
+	peer.hold.Store(true)
+	if err := configureVoiceForTest(service, plan, peer.event); err != nil {
+		t.Fatal(err)
+	}
+	var first VoiceDescription
+	select {
+	case first = <-peer.held:
+	case <-ctx.Done():
+		t.Fatal(ctx.Err())
+	}
+	// One disposable candidate must not leave an already-applied SDP answer
+	// pending forever or block later changes to this admitted connection.
+	if err := service.SignalVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID,
+		VoiceSignal{Candidate: &webrtc.ICECandidateInit{Candidate: "candidate:malformed"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := peer.answer(first, false); err != nil {
+		t.Fatalf("valid answer was rejected by a queued candidate: %v", err)
+	}
+	for _, candidate := range []string{"candidate:malformed", "candidate:control 1 udp 2122260223 127.0.0.1 9999 typ host"} {
+		if err := service.SignalVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID,
+			VoiceSignal{Candidate: &webrtc.ICECandidateInit{Candidate: candidate}}); err != nil {
+			t.Fatalf("live candidate prevented continued signaling: %v", err)
+		}
+	}
+	if err := service.SignalVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID,
+		VoiceSignal{Renegotiate: true}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case next := <-peer.held:
+		if next.Revision <= first.Revision {
+			t.Fatal("renegotiation did not advance")
+		}
+		if err := peer.answer(next, false); err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("queued candidate blocked later negotiation")
+	}
+}
+
 func TestVoicePlanBoundsAndMediaShutdown(t *testing.T) {
 	service := NewMedia(MediaOptions{})
 	plan := VoiceConnectionPlan{RoomID: "1234", PeerID: "peer", SessionID: "session", ConnectionID: "connection"}
 	for i := range maxVoicePublications + 1 {
 		plan.Publish = append(plan.Publish, VoicePublication{ID: fmt.Sprint("voice_", i), PeerID: "speaker"})
 	}
-	if err := service.ConfigureVoice(plan, func(VoiceMediaEvent) {}); err == nil {
+	if err := configureVoiceForTest(service, plan, func(VoiceMediaEvent) {}); err == nil {
 		t.Fatal("oversized plan allocated a connection")
 	}
 	plan.Publish = slices.Clone(plan.Publish[:1])
 	plan.Subscribe = slices.Clone(plan.Publish)
-	if err := service.ConfigureVoice(plan, func(VoiceMediaEvent) {}); err == nil {
+	if err := configureVoiceForTest(service, plan, func(VoiceMediaEvent) {}); err == nil {
 		t.Fatal("looping publication was admitted in both directions")
 	}
 	plan.Publish, plan.Subscribe = nil, nil
 	closed := make(chan error, 1)
-	if err := service.ConfigureVoice(plan, func(event VoiceMediaEvent) {
+	if err := configureVoiceForTest(service, plan, func(event VoiceMediaEvent) {
 		if event.Description != nil {
-			closed <- service.CloseVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID)
+			closed <- closeVoiceForTest(service, plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID)
 		}
 	}); err != nil {
 		t.Fatal(err)
@@ -436,13 +503,13 @@ func TestVoicePlanBoundsAndMediaShutdown(t *testing.T) {
 		t.Fatal("voice callback could not retire its own connection")
 	}
 	plan.ConnectionID = "shutdown_connection"
-	if err := service.ConfigureVoice(plan, func(VoiceMediaEvent) {}); err != nil {
+	if err := configureVoiceForTest(service, plan, func(VoiceMediaEvent) {}); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ConfigureVoice(plan, func(VoiceMediaEvent) {}); err == nil {
+	if err := configureVoiceForTest(service, plan, func(VoiceMediaEvent) {}); err == nil {
 		t.Fatal("closed media admitted voice")
 	}
 	service.voice.mu.Lock()
@@ -467,7 +534,7 @@ func TestVoiceSilentTransportAcceptsLatePublicationOnSameConnection(t *testing.T
 	a := newVoiceFixturePeer(t, ctx, service, settings, aPlan, map[string]byte{pub.ID: 0x71})
 	b := newVoiceFixturePeer(t, ctx, service, settings, bPlan, nil)
 	for _, peer := range []*voiceFixturePeer{a, b} {
-		if err := service.ConfigureVoice(peer.plan, peer.event); err != nil {
+		if err := configureVoiceForTest(service, peer.plan, peer.event); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -499,10 +566,10 @@ func TestVoiceSilentTransportAcceptsLatePublicationOnSameConnection(t *testing.T
 		t.Fatal("silent transport did not reserve exactly one audio slot")
 	}
 	aPlan.Publish, bPlan.Subscribe = []VoicePublication{pub}, []VoicePublication{pub}
-	if err := service.ConfigureVoice(aPlan, a.event); err != nil {
+	if err := configureVoiceForTest(service, aPlan, a.event); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ConfigureVoice(bPlan, b.event); err != nil {
+	if err := configureVoiceForTest(service, bPlan, b.event); err != nil {
 		t.Fatal(err)
 	}
 	wait(func() bool { return b.count(0x71) >= 3 })
@@ -511,5 +578,132 @@ func TestVoiceSilentTransportAcceptsLatePublicationOnSameConnection(t *testing.T
 	service.voice.mu.Unlock()
 	if !retained || len(aConnection.pc.GetTransceivers()) != 1 {
 		t.Fatal("late microphone replaced the admitted connection or missed its idle slot")
+	}
+}
+
+func configureVoiceForTest(service *Media, plan VoiceConnectionPlan, emit func(VoiceMediaEvent)) error {
+	work, err := service.ConfigureVoice(plan, emit)
+	if err == nil && work != nil {
+		err = work()
+	}
+	return err
+}
+func closeVoiceForTest(service *Media, room, peer, session, connection string) error {
+	if work := service.CloseVoice(room, peer, session, connection); work != nil {
+		return work()
+	}
+	return nil
+}
+
+func TestVoiceDeferredWorkUsesCurrentPlanAndCannotReviveRetiredConnection(t *testing.T) {
+	service := NewMedia(MediaOptions{})
+	t.Cleanup(func() { _ = service.Close() })
+	plan := VoiceConnectionPlan{RoomID: "room", PeerID: "peer", SessionID: "session", ConnectionID: "connection"}
+	emit := func(VoiceMediaEvent) {}
+	oldWork, err := service.ConfigureVoice(plan, emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	latest := plan
+	latest.Publish = []VoicePublication{{ID: "latest", PeerID: "peer"}}
+	newWork, err := service.ConfigureVoice(latest, emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := newWork(); err != nil {
+		t.Fatal(err)
+	}
+	if err := oldWork(); err != nil {
+		t.Fatal(err)
+	}
+	service.voice.mu.Lock()
+	c := service.voice.connections[plan.key()]
+	if !slices.Equal(c.plan.Publish, latest.Publish) {
+		t.Error("old work replaced current publication authority")
+	}
+	service.voice.mu.Unlock()
+	closeOld := service.CloseVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID)
+	if !c.closed {
+		t.Fatal("retirement did not revoke delivery synchronously")
+	}
+	if err := oldWork(); err == nil {
+		t.Fatal("retired negotiation succeeded")
+	}
+	service.voice.mu.Lock()
+	if service.voice.connections[plan.key()] != c {
+		t.Error("retirement lost its physical capacity charge")
+	}
+	service.voice.mu.Unlock()
+	if _, err := service.ConfigureVoice(latest, emit); err == nil {
+		t.Fatal("configuration reused a retiring physical key")
+	}
+	if err := closeOld(); err != nil {
+		t.Fatal(err)
+	}
+	replacementWork, err := service.ConfigureVoice(latest, emit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := closeOld(); err != nil {
+		t.Fatal(err)
+	}
+	if err := replacementWork(); err != nil {
+		t.Fatalf("old physical close retired replacement: %v", err)
+	}
+}
+
+func TestVoiceRetirementKeepsPhysicalCapacityChargedUntilReadersJoin(t *testing.T) {
+	service := NewMedia(MediaOptions{})
+	var held []*voiceConnection
+	defer func() {
+		for _, c := range held {
+			if c != nil {
+				c.readers.Done()
+			}
+		}
+		_ = service.Close()
+	}()
+	var closeFirst func() error
+	for i := range maxVoicePublications + 2 {
+		plan := VoiceConnectionPlan{RoomID: "room", PeerID: "peer", SessionID: "session", ConnectionID: fmt.Sprint("connection", i)}
+		if _, err := service.ConfigureVoice(plan, func(VoiceMediaEvent) {}); err != nil {
+			t.Fatal(err)
+		}
+		service.voice.mu.Lock()
+		c := service.voice.connections[plan.key()]
+		c.readers.Add(1) // Hold the existing reader-join boundary of physical close.
+		service.voice.mu.Unlock()
+		held = append(held, c)
+		work := service.CloseVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID)
+		if i == 0 {
+			closeFirst = work
+		}
+	}
+	extra := VoiceConnectionPlan{RoomID: "room", PeerID: "peer", SessionID: "session", ConnectionID: "extra"}
+	if _, err := service.ConfigureVoice(extra, func(VoiceMediaEvent) {}); err == nil {
+		t.Fatal("retiring physical connections escaped room capacity")
+	}
+	done := make(chan error, 1)
+	go func() { done <- closeFirst() }()
+	select {
+	case err := <-done:
+		t.Fatalf("close escaped reader join: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	if _, err := service.ConfigureVoice(extra, func(VoiceMediaEvent) {}); err == nil {
+		t.Fatal("incomplete physical close released room capacity")
+	}
+	held[0].readers.Done()
+	held[0] = nil
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("physical close did not settle")
+	}
+	if _, err := service.ConfigureVoice(extra, func(VoiceMediaEvent) {}); err != nil {
+		t.Fatalf("completed close retained room capacity: %v", err)
 	}
 }

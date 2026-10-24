@@ -30,6 +30,7 @@ export class SfuPeer {
     "kind" | "description" | "media"
   > | null = null;
   private readonly lifetime = new AbortController();
+  private readonly releaseDebug: () => void;
   private get closed(): boolean { return this.lifetime.signal.aborted; }
   private signalTail: Promise<void> = Promise.resolve();
 
@@ -37,7 +38,7 @@ export class SfuPeer {
     private config: SfuConnectionConfig,
     private readonly events: SfuPeerEvents,
   ) {
-    observeDebugConnection(this.pc, { connectionId: config.connectionId,
+    this.releaseDebug = observeDebugConnection(this.pc, { connectionId: config.connectionId,
       publicationGeneration: config.publicationGeneration, role: "sfu" });
     this.pc.onicecandidate = ({ candidate }) => {
       if (this.closed || !candidate || candidate.protocol === "tcp") return;
@@ -156,6 +157,7 @@ export class SfuPeer {
 
   close(): void {
     if (this.closed) return;
+    this.releaseDebug();
     this.lifetime.abort();
     this.pc.onicecandidate = null;
     this.pc.onconnectionstatechange = null;

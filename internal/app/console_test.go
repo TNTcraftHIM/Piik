@@ -34,6 +34,9 @@ func TestConsoleLocalizesFailureAtRenderWithoutLosingCause(t *testing.T) {
 		if !errors.Is(model.view.problem, cause) {
 			t.Fatal("console lost original cause")
 		}
+		if language == "vis" && !strings.Contains(content, "\n!\n\n!\n"+problem.Error()) {
+			t.Fatalf("known failure was not shown as a visual error: %s", content)
+		}
 	}
 	model.language = "en"
 	model.view.problem = errors.New("unclassified technical failure")

@@ -575,7 +575,8 @@ describe("ViewerPeer connection generations", () => {
         signal.candidate?.candidate.startsWith("candidate:base"),
       ),
     ).toHaveLength(3);
-    expect(candidates.filter((signal) => signal.candidate === null)).toHaveLength(1);
+    expect(candidates.filter((signal) => signal.candidate?.candidate === "")).toHaveLength(1);
+    expect(candidates.at(-1)?.candidate).toMatchObject({ usernameFragment: "test" });
     peer.dispose();
   });
 

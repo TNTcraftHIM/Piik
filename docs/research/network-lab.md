@@ -244,7 +244,9 @@ build the current binaries with
 The four Browser/App directions exercise initial playback, a quiet source and
 repainting, stop/reshare, either page reloading, joining before sharing, and
 replacement during unfinished preparation. The last case releases real old SDP
-after the new share is playing. The SFU-only case covers the same steady
+after the new share is playing. Browser senders also receive a normal Viewer
+ICE-restart request; both Browser and App receivers must recover on the same
+playback connection. The SFU-only case covers the same steady
 lifecycle, and the two fallback cases delay real Peer signaling for 15 seconds
 to exercise SFU commitment followed by direct continuation. Video-frame callbacks
 check that the working route keeps presenting during that continuation.

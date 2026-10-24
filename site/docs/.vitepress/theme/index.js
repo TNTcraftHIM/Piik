@@ -1,12 +1,24 @@
 import DefaultTheme from 'vitepress/theme-without-fonts';
 import { useData, withBase } from 'vitepress';
-import { h, provide } from 'vue';
+import { h, onBeforeUnmount, onMounted, provide, ref } from 'vue';
 import { useStorage } from '@vueuse/core';
 import { THEME_STORAGE_KEY } from '../../../../src/client/ui/theme.ts';
-import { brandMarkup } from '../../../assets/brand.js';
+import { bindBrandMotion, brandMarkup } from '../../../assets/brand.js';
 import { initialLanguage, rememberLanguage } from '../../../assets/language.js';
 import '../../../assets/brand.css';
 import './style.css';
+
+const DocumentationBrand = {
+  setup() {
+    const element = ref();
+    let stopMotion;
+    onMounted(() => {
+      stopMotion = bindBrandMotion(element.value.querySelector('.lr-brand-mark'));
+    });
+    onBeforeUnmount(() => stopMotion?.());
+    return () => h('span', { ref: element, class: 'identity', innerHTML: brandMarkup('docs-brand') });
+  },
+};
 
 export default {
   extends: DefaultTheme,
@@ -24,8 +36,7 @@ export default {
   Layout() {
     const { lang } = useData();
     return h(DefaultTheme.Layout, null, {
-      'nav-bar-title-before': () => h('span', { class: 'identity',
-        innerHTML: brandMarkup('docs-brand') }),
+      'nav-bar-title-before': () => h(DocumentationBrand),
       'doc-bottom': () => h('p', { class: 'docs-license' }, [
         h('a', { href: withBase('/third-party-licenses.txt') },
           lang.value === 'zh-CN' ? '第三方软件许可' : 'Third-party licenses'),

@@ -1,7 +1,10 @@
 package nativeviewer
 
 import (
+	"context"
+	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,9 +13,44 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
+// Delay the real Native callback while Pion and SCTP recover independently.
+type delayedInputStateHandler struct {
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (h *delayedInputStateHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (h *delayedInputStateHandler) Handle(_ context.Context, record slog.Record) error {
+	var event, direction, state string
+	record.Attrs(func(a slog.Attr) bool {
+		switch a.Key {
+		case "event":
+			event = a.Value.String()
+		case "direction":
+			direction = a.Value.String()
+		case "state":
+			state = a.Value.String()
+		}
+		return true
+	})
+	if event == "media-connection-state" && direction == "inbound" && state == "connecting" {
+		h.once.Do(func() { close(h.entered); <-h.release })
+	}
+	return nil
+}
+func (h *delayedInputStateHandler) WithAttrs([]slog.Attr) slog.Handler { return h }
+func (h *delayedInputStateHandler) WithGroup(string) slog.Handler      { return h }
+
 // Exercise the actual native receiver and local playback edge, not a second
 // Browser-only path. Both local playback and relay children use the media tree.
 func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
+	previous := slog.Default()
+	delayed := &delayedInputStateHandler{entered: make(chan struct{}), release: make(chan struct{})}
+	slog.SetDefault(slog.New(delayed))
+	var releaseOnce sync.Once
+	resume := func() { releaseOnce.Do(func() { close(delayed.release) }) }
+	t.Cleanup(func() { resume(); slog.SetDefault(previous) })
 	peer := func() *webrtc.PeerConnection {
 		t.Helper()
 		p, err := webrtc.NewPeerConnection(webrtc.Configuration{})
@@ -127,6 +165,49 @@ func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
 		t.Fatal(err)
 	}
 	waitMessage(requests, packet)
+	// Restart the same Native PC, but delay its transient loss callback until
+	// the current connection and input handshake have recovered.
+	offer, err = upstream.CreateOffer(&webrtc.OfferOptions{ICERestart: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer = localDescription(upstream, offer)
+	result, err = session.AcceptOffer("upstream", offer, nil, true, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Reused {
+		t.Fatal("restart replaced the Native receiver")
+	}
+	if err = upstream.SetRemoteDescription(result.Answer); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-delayed.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Native connecting callback was not delayed")
+	}
+	waitMessage(requests, `{"ready":true}`)
+	if err = remote.SendText(`{"ready":true}`); err != nil {
+		t.Fatal(err)
+	}
+	waitMessage(states, `{"ready":true}`)
+	if err = local.SendText(packet); err != nil {
+		t.Fatal(err)
+	}
+	waitMessage(requests, packet)
+	resume()
+	waitMessage(states, `{"ready":false}`)
+	waitMessage(requests, `{"ready":true}`)
+	if err = remote.SendText(`{"ready":true}`); err != nil {
+		t.Fatal(err)
+	}
+	waitMessage(states, `{"ready":true}`)
+	if err = local.SendText(packet); err != nil {
+		t.Fatal(err)
+	}
+	waitMessage(requests, packet)
+
 	if err = session.UpdateProfile(nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 2_000_000, Preference: "balanced"}); err != nil {
 		t.Fatal(err)
 	}

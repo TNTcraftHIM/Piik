@@ -42,6 +42,12 @@ type voiceEdge struct {
 	send                                    map[string][]string
 	connected                               map[string]bool
 	sfuPlan                                 *sfu.VoiceConnectionPlan
+	sfuWork                                 *voiceNegotiation
+}
+
+type voiceNegotiation struct {
+	run  func() error
+	done chan struct{}
 }
 
 func (s *Server) voiceRoom(roomID string) *roomVoice {

@@ -33,7 +33,7 @@ export async function endpointWorker(): Promise<void> {
   };
   try {
     for await (const line of createInterface({ input: process.stdin })) {
-      const request = JSON.parse(line) as { id: number; action: string; origin?: string; app?: boolean;
+      const request = JSON.parse(line) as { id: number; action: string; origin?: string; app?: boolean; loopbackMedia?: boolean;
         url?: string; output?: string; delayMs?: number; load?: boolean; ipv6?: boolean; prediction?: boolean; sfuOnly?: boolean; peer?: { address: string; port: number } };
       try {
         let result: unknown;
@@ -61,6 +61,8 @@ export async function endpointWorker(): Promise<void> {
           chrome = await launchChrome(process.env.CHROME_PATH!, debugPort, profile, [
             "--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--no-first-run", "--no-default-browser-check",
             "--no-proxy-server", "--autoplay-policy=no-user-gesture-required", "--disable-background-timer-throttling",
+            // The lifecycle SFU binds only loopback; namespace trials keep ordinary ICE interfaces.
+            ...(request.loopbackMedia ? ["--allow-loopback-in-peer-connection"] : []),
             "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream",
             "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows",
             `--unsafely-treat-insecure-origin-as-secure=${origin}`,
@@ -119,6 +121,8 @@ export async function endpointWorker(): Promise<void> {
         } else if (request.action === "reset-playback-progress") {
           await evaluate(cdp!, page!, "networkLab.resetPlaybackProgress()", Date.now() + 5000);
           result = true;
+        } else if (request.action === "restart-upstream") {
+          result = await evaluate(cdp!, page!, "networkLab.restartUpstream()", Date.now() + 5000);
         } else if (request.action === "freeze-picture") {
           result = await evaluate(cdp!, page!, "networkLab.freezeCapture()", Date.now() + 5000);
         } else if (request.action === "resume-picture") {

@@ -11,7 +11,7 @@ This page indexes developer and maintainer references.
 | Task | Guide |
 | --- | --- |
 | Try or change the source code | [Run from source](#run-from-source) |
-| Find a directory or the module responsible for a behavior | [Repository layout and module map](./standards/engineering.md#repository-layout) |
+| Find a module, interface, lifecycle or source entry point | [Engineering maps and source index](./standards/engineering.md#repository-layout) |
 | Find the shared product, design and lifecycle rules | [Standards index](./standards/README.md) |
 | Deploy or configure a service | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
 | Build App packages and native capture | [App development](../cmd/piik-app/DEVELOPMENT.md) |

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { remoteControlModeSchema, remoteInputPlatformSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
-import { sfuMediaSchema, positiveUint32Schema, qualityResolutionSchema, punchPredictionSchema,
+import { iceCandidateSchema, sfuMediaSchema, positiveUint32Schema, qualityResolutionSchema, punchPredictionSchema,
   nullableSafeEvidenceNumber, nullableSafeEvidenceInteger } from "../../shared/protocol";
 
 export const NATIVE_CLIENT_PROTOCOL = 10;
@@ -42,7 +42,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       maxVideoFramerate: z.number().positive().max(Number.MAX_SAFE_INTEGER).optional(),
       maxVideoBitrate: positiveUint32Schema.optional(),
       receiverReuse: z.boolean().default(false),
-      maxRelayChildren: z.number().int().min(1).max(20).optional(),
+      maxRelayChildren: positiveUint32Schema.optional(),
       remoteInput: z.boolean().optional(),
       remoteStopShortcut: z.boolean().optional(),
       remoteCoPlay: z.boolean().optional(),
@@ -122,15 +122,6 @@ const nativeAdapterSchema = z
   })
   .strict();
 export type NativeAdapter = z.infer<typeof nativeAdapterSchema>;
-
-const candidateSchema = z
-  .object({
-    candidate: z.string().max(4096),
-    sdpMid: z.string().max(128).nullable().optional(),
-    sdpMLineIndex: z.number().int().min(0).max(255).nullable().optional(),
-    usernameFragment: z.string().max(256).nullable().optional(),
-  })
-  .strict();
 
 const responseBase = {
   version: z.literal(NATIVE_CLIENT_PROTOCOL),
@@ -347,7 +338,7 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
       type: z.literal("publication-candidate"),
       publicationGeneration: opaqueIdentifierSchema,
       connectionId: opaqueIdentifierSchema,
-      candidate: candidateSchema.nullable(),
+      candidate: iceCandidateSchema.nullable(),
     })
     .strict(),
   z
@@ -378,7 +369,7 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
       ...eventBase,
       type: z.literal("edge-candidate"),
       connectionId: opaqueIdentifierSchema,
-      candidate: candidateSchema.nullable(),
+      candidate: iceCandidateSchema.nullable(),
     })
     .strict(),
   z
@@ -456,4 +447,4 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
 ]);
 export type NativeClientEvent = z.infer<typeof nativeEventSchema>;
 
-export type NativeIceCandidate = z.infer<typeof candidateSchema>;
+export type NativeIceCandidate = z.infer<typeof iceCandidateSchema>;

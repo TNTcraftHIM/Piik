@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -58,6 +59,7 @@ func runAudioRecoveryCapture() {
 	}
 	audio := microphone || (len(os.Args) > 1 && os.Args[1] == "--capture-audio")
 	if !audio && os.Getenv("PIIK_VIDEO_FAIL") == "1" {
+		_, _ = io.WriteString(os.Stderr, "stage=mft-set-output-type\nhresult=0xc00d36b4\ndetail=private capture target\n")
 		os.Exit(2)
 	}
 	if !microphone && audio && os.Args[2] == "exclude" {
@@ -129,6 +131,30 @@ func runAudioRecoveryCapture() {
 			write(nativecapture.Frame{Kind: nativecapture.FrameVP8, Layer: layer, Width: 8, Height: 8,
 				Timestamp: pts, Duration: period, KeyFrame: true, Data: sfu.VP8KeyFrame8x8})
 		}
+	}
+}
+
+func TestCaptureStartupReturnsNativeFailureCodesWithoutPrivateDetail(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("PIIK_VIDEO_FAIL", "1")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	video := nativecapture.VideoOptions{Codec: "h264", Profile: audioRecoveryProfile(),
+		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}}
+	session, err := Start(t.Context(), Options{ShareID: "startup-failure", CaptureProcess: executable,
+		Video: video, Profile: QualityProfile{Video: video.Profile, AudioBitrate: 64_000}, EdgeCapacity: 1,
+		BindAddress: "127.0.0.1:0"})
+	if session != nil {
+		_ = session.Close()
+		t.Fatal("failed capture started a share")
+	}
+	if err == nil || !strings.Contains(err.Error(), "mft-set-output-type") || !strings.Contains(err.Error(), "0xc00d36b4") {
+		t.Fatalf("startup lost native machine codes: %v", err)
+	}
+	if strings.Contains(err.Error(), "private") {
+		t.Fatalf("startup exposed private helper detail: %v", err)
 	}
 }
 

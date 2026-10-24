@@ -64,7 +64,7 @@
 }
 /* Drawing paints on the main thread. Release composited gestures only after
    its last stroke ends, so a busy page cannot wink on an unfinished shell. */
-.lr-brand-mark:is(.is-animated, .is-once).is-drawing :is(.lr-brand-face, .lr-brand-sparkles) { visibility: hidden; }
+:where(html:not([data-reduced-motion])) .lr-brand-mark:is(.is-animated, .is-once).is-drawing :is(.lr-brand-face, .lr-brand-sparkles) { visibility: hidden; }
 .lr-brand-mark .lr-brand-antenna-motion { transform-origin: 16px 8px; }
 .lr-brand-mark:is(.is-animated.is-loop-intro, .is-once):not(.is-drawing) .lr-brand-antenna-motion { animation: lr-brand-antenna-wiggle 1.6s ease-in-out both; }
 .lr-brand-mark.is-animated.is-loop-active .lr-brand-antenna-motion { animation: lr-brand-antenna-wiggle 3.6s ease-in-out infinite; }
@@ -127,6 +127,9 @@
 }
 .lr-brand-sparkles { stroke: #d08a22; }
 html[data-theme="dark"] .lr-brand-sparkles { stroke: #f4c14d; }
+
+/* The catalogue/website motion preference shares the system's static shell. */
+html[data-reduced-motion] .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-shell :where([pathLength]) { stroke-dashoffset: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-antenna-motion,

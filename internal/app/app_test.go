@@ -205,7 +205,7 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 			joined := false
 			go func() {
 				done <- runLauncher(ctx, Options{Port: listener.Addr().(*net.TCPAddr).Port, console: console},
-					configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
+					configPath, config, control, func(*Options, appconfig.Config) error { return nil })
 			}()
 			defer func() {
 				cancel()
@@ -311,7 +311,7 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 
 func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 	t.Setenv("TERM", "dumb")
-	for _, mode := range []string{"launcher", "site", "starred-site", "revoked-site"} {
+	for _, mode := range []string{"launcher", "site", "starred-site", "starred-second-site", "revoked-site"} {
 		t.Run(mode, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -338,14 +338,20 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 					config.Site = "https://share.example"
 				}
 			}
+			if mode == "starred-second-site" {
+				config.SetApprovedSites([]string{"https://first.example", "https://share.example"})
+				if err := launcher.SaveStartupSite(configPath, "https://share.example"); err != nil {
+					t.Fatal(err)
+				}
+			}
 			done := make(chan error, 1)
 			go func() {
 				if mode == "site" {
 					options.SiteSet = true
 					config.Site = "https://share.example"
-					done <- runLauncher(ctx, options, configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
+					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
 				} else {
-					done <- runLauncher(ctx, options, configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
+					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
 				}
 			}()
 			select {
@@ -359,7 +365,7 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 			if model.view.entry == "" {
 				t.Fatal("manual entry was not available while browser opening hung")
 			}
-			if mode == "site" || mode == "starred-site" {
+			if mode == "site" || mode == "starred-site" || mode == "starred-second-site" {
 				if model.view.entry != launchURL("https://share.example") {
 					t.Fatalf("App did not open the selected Site: %s", model.view.entry)
 				}
@@ -425,9 +431,9 @@ func TestBrowserOpenFailureKeepsTheAppAvailable(t *testing.T) {
 				if mode == "site" {
 					options.SiteSet = true
 					config.Site = "https://share.example"
-					done <- runLauncher(ctx, options, configPath, config, control, nil, func(*Options, appconfig.Config) error { return nil })
+					done <- runLauncher(ctx, options, configPath, config, control, func(*Options, appconfig.Config) error { return nil })
 				} else {
-					done <- runLauncher(ctx, options, configPath, config, control, nil,
+					done <- runLauncher(ctx, options, configPath, config, control,
 						func(*Options, appconfig.Config) error { return nil })
 				}
 			}()

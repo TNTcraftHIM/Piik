@@ -1,6 +1,30 @@
 package forwarding
 
-import "github.com/pion/transport/v5/packetio"
+import (
+	"io"
+
+	"github.com/livekit/livekit-server/pkg/sfu/buffer"
+	"github.com/pion/transport/v5/packetio"
+)
+
+// packetBufferFactory uses LiveKit's claimed video RTCP reader and preserves
+// stock Pion SRTP/SRTCP bounds for all remaining streams, including audio.
+func packetBufferFactory(factory *buffer.Factory) func(packetio.BufferPacketType, uint32) io.ReadWriteCloser {
+	return func(kind packetio.BufferPacketType, ssrc uint32) io.ReadWriteCloser {
+		if kind == packetio.RTCPBufferPacket {
+			if reader := factory.GetRTCPReader(ssrc); reader != nil {
+				return reader
+			}
+		}
+		input := &packetBuffer{Buffer: packetio.NewBuffer()}
+		limit := 1_000_000
+		if kind == packetio.RTCPBufferPacket {
+			limit = 100_000
+		}
+		input.SetLimitSize(limit)
+		return input
+	}
+}
 
 // packetBuffer adapts Pion's bounded packet queue to its SRTP BufferFactory's
 // io.ReadWriteCloser contract, retaining optional packet attributes.

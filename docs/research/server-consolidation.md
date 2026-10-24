@@ -14,7 +14,8 @@ reachability, and lifecycle policy. Within that scope `protocol` owns wire types
 strict decoding, and shared scalars; `config` owns environment validation plus
 the Hosted and Local compositions; `room` owns room authority, participants, and
 the SQLite database; `route` decides graph transitions without I/O; `signal`
-executes signaling and SFU effects under one lock; `sfu` owns admission and
+serializes room/signaling authority and commits SFU intent, then runs slow
+media effects outside that lock with exact lifetime checks; `sfu` owns admission and
 embedded media through the shared Pion/LiveKit adapter; `app` owns HTTP
 composition, site access, static assets, and lifecycle; and `webassets` carries
 the embedded Browser bundle.

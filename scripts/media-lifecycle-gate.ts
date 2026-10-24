@@ -119,7 +119,8 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
     for (let index = 0; index < 2; index++) endpoints.push(new Endpoint(null,
       await mkdtemp(join(tmpdir(), "piik-client-media-")), signal, env));
     versions = await Promise.all(endpoints.map((endpoint, index) => endpoint.call<typeof versions[number]>("start", {
-      origin: index ? viewerOrigin : origin, app: index ? scenario.viewer : scenario.host })));
+      origin: index ? viewerOrigin : origin, app: index ? scenario.viewer : scenario.host,
+      loopbackMedia: scenario.sfu || scenario.fallback === true })));
     result.versions = versions;
     await endpoints[0]!.call("navigate", { url: origin + (scenario.host ? "/#piik-client=1" : "/") });
     const share = () => endpoints[0]!.call<string>("share", { sfuOnly: scenario.sfu });
@@ -145,6 +146,18 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
       await delay(3000, undefined, { signal });
       checkContinuity(frozen, (await sample()).viewer);
       throw new Error("Frozen source incorrectly passed");
+    }
+    if (!scenario.host && !scenario.sfu) {
+      stage("ice-restart");
+      const before = await sample();
+      if (!await endpoints[1]!.call("restart-upstream")) throw new Error("No committed Peer route to restart");
+      await waitForSample(sample, row => row.host.events.filter(event => event.type === "restart-request").length >
+        before.host.events.filter(event => event.type === "restart-request").length && (!scenario.viewer ||
+        row.viewer.controls.filter(command => command.type === "receive-offer").length >
+        before.viewer.controls.filter(command => command.type === "receive-offer").length), 10_000);
+      const restarted = await media("same-edge-recovered");
+      if (restarted.playbackPeerId !== received.playbackPeerId) throw new Error("ICE restart replaced the playback connection");
+      received = restarted;
     }
     stage("quiet-source"); await endpoints[0]!.call("freeze-picture");
     await delay(6000, undefined, { signal });

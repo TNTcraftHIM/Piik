@@ -5,7 +5,10 @@
 - Status: historical evidence; obsolete sender implementation deleted
 
 Current product scope is owned by [media quality](../standards/media-quality.md).
-[ADR-0006](../adr/0006-fixed-high-native-sender-canary.md) owns the stop line.
+[ADR-0006](../adr/0006-fixed-high-native-sender-canary.md) records the retired
+canary stop line. Native App adoption and subsequent evidence are owned by
+[ADR-0010](../adr/0010-cross-platform-client-runtime.md) and
+[Native App media](./native-client-media.md).
 
 ## Conclusion
 
@@ -26,7 +29,8 @@ The retained measurements prove:
 It does not prove two-Viewer product fanout, heterogeneous congestion feedback,
 loss/retransmission correctness, audio synchronization, reconnect isolation,
 public networks, endurance, packaging, update/signing, cross-platform behavior,
-or distribution licensing. Native remains outside the current release.
+or distribution licensing. These were the limits of the August 27 canary,
+before the later Native App integration.
 
 ## Candidate Shape
 
@@ -44,8 +48,9 @@ opaque window target
 Each PeerConnection must keep independent ICE, DTLS-SRTP, SSRC/sequence/TWCC,
 pacing, RTCP, congestion, and retransmission state. PLI/FIR from any child may be
 coalesced into one shared SPS/PPS/IDR request, but a weak child's bitrate request
-cannot silently become a room-wide minimum policy. A third Viewer must wait
-under the same endpoint capacity as Web Hosts.
+cannot silently become a room-wide minimum policy. That canary required a third
+Viewer to wait under its then-current endpoint capacity; current placement is owned by
+[routing and transport](../standards/routing-transport.md).
 
 Local target identity, HWND/PID, process creation time, adapter/MFT identity,
 PCM, and hardware diagnostics never enter signaling. The helper revalidates the
@@ -112,9 +117,11 @@ frames and 500 Opus packets to a Chrome Viewer. The exact helper PID and adapter
 LUID matched nonzero `VideoEncode`. This is a one-Viewer functional proof, not a
 resource or product release claim.
 
-## Remaining Gates
+## Historical Canary Gates
 
-Before native product consideration, one current-wire candidate must prove:
+The August 27 canary required the following evidence before product consideration.
+Later implementation and current acceptance are recorded in Native App media
+and verification status, rather than this retired checklist:
 
 1. current room/Host authorization and source-generation cleanup;
 2. exact emitted H.264 profile negotiation and unmodified Chrome, Edge, Firefox,
@@ -138,8 +145,9 @@ make a diagnostic gate pass.
 Pion is MIT and coder/websocket is ISC. The Windows APIs use installed hardware
 MFTs; vendor codec binaries are not redistributed. Direct NVENC would require a
 separate NVIDIA Video Codec SDK and redistribution review. H.264 patent and
-project licensing remain unresolved before executable distribution. No
-proprietary or GPL/AGPL implementation code was copied.
+project licensing were unresolved at that canary boundary. Current distribution
+terms and packaged notices are owned by the repository license and dependency
+provenance. No proprietary or GPL/AGPL implementation code was copied.
 
 ## Primary Sources
 

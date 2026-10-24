@@ -1,37 +1,49 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-23
+Last reviewed: 2026-10-24
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Remote-control end-to-end latency.** Measure input-to-visible-response
+  on an attended target, covering OS execution, Native capture/encoding, remote
+  transport and display in the same trial. The
+  [input assessment](./research/room-interactions.md#window-capture-and-game-input)
+  owns completed local component measurements.
 - [ ] **Windows window-sharing black screen (#495).** Investigate
   [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
-  Piik v2.3.0; App window sharing is black while full-screen sharing works.
-  The attachment shows the Host selecting its own Chrome window, then a black
-  preview after sharing starts. This path works in local Windows 11 / Chrome 155
-  checks. A same-attempt App/Web report from the affected device is needed to
-  distinguish capture output from decoding. Keep this investigation separate
-  from the release; it is not covered by the macOS #492 crop fix.
+  Piik v2.3.0; native Chrome/Edge window sharing fails while QQ and Browser
+  capture work. The latest report uses VP8: transport connects, but capture
+  remains `starting` with no video frames. Obtain the App failure stage or compare
+  the existing Intel/NVIDIA adapter choices with VP8 fixed on that device.
+- [ ] **Intel native H.264 startup (#452).** Follow the
+  [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
+  fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report
+  records App startup rejection; an App diagnostic is needed to identify its
+  native failure stage.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
 
+## Next
+
+- [ ] **Release headlines in App and Server update checks.** Keep the prepared
+  implementation on the feature branch for a later feature release. It consumes
+  the existing [headline contract](./standards/versioning.md#release-notes).
+- [ ] **Android App release scope.** Keep the Local-sharing APK prototype on
+  the feature branch. Complete phone, tablet and TV acceptance, hosted-site
+  integration and release packaging before including Android in a public release.
+
 ## Held By Owner
 
+- [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
+  Keep the local QR implementation on the feature branch for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
-- [ ] **Separate accompaniment sharing.** Deferred on 2026-10-20 and excluded
-  from this candidate. Preserve the unfinished prototype on
-  `spike/audio-accompaniment` (`5e385add`); it is not a working feature.
-  Sharing a music application with source audio remains available.
-- [ ] **Remote-control latency and responsiveness.** Scheduled after release.
-  Compare input delivery, Host execution, capture/encoding and playback on the
-  same endpoints and network before changing budgets or buffering.
 - [ ] **Persistent-loss estimator replacement.** Deferred on 2026-10-18.
   Keep mature congestion control and accept quality reduction under sustained
   high loss; concrete accounting/recovery defects remain ordinary bug fixes.
@@ -39,7 +51,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Multiple remote-control screens.** Deferred on 2026-10-17. Keep one
   shared source; Viewer screen switching and simultaneous screens are later work.
 - [ ] **32-bit Windows/Linux Apps.** Deferred on 2026-10-02. No package or
-  website option is planned; preserve the isolated Windows x86 experiment in Git.
+  website option is planned.
 - [ ] **Windows ARM64 App.** Deferred on 2026-10-03. Keep Windows downloads x64-only.
 - [ ] **Alternative public-invitation providers.** Deferred on 2026-10-16.
   Keep Cloudflare Quick Tunnel. The [provider assessment](./research/cross-platform-client-runtime.md#alternative-invitation-providers)
@@ -74,14 +86,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - **Phone as a Host microphone.** Revisit only for a concrete use case that
   justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
-  control and the co-play candidate above.
-- **Android App assessment.** Evaluate native phone screen sharing and source
-  audio beyond the existing mobile Browser features. Start with Android's
-  [MediaProjection](https://developer.android.com/media/grow/media-projection)
-  permission/foreground-service lifecycle and
-  [playback-capture limits](https://developer.android.com/media/platform/av-capture),
-  then assess reuse of the Go room/transport core. This is separate from the
-  current voice candidate; a website wrapper alone does not add screen capture.
+  control and desktop co-play.
 - **Multiple simultaneous sharers.** Define publication/subscription ownership
   before prototyping. The [party-mode assessment](./research/room-interactions.md#multiple-sharers-assessment-not-implemented)
   owns the proposal; the current one-Host contract remains.

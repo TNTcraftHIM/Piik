@@ -204,13 +204,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 /* ---------- room layout ---------- */
 
-/* overflow-x: clip keeps invisible absolutely-positioned decor (the resting
-   opacity:0 comic-tip panels, up to 320px wide and centered on triggers near
-   the viewport edge) out of the document's scrollable overflow — at narrow
-   widths they otherwise inflate scrollWidth and open a blank horizontal
-   gutter. clip (unlike hidden) creates no scroll container and leaves
-   overflow-y: visible untouched. Open panels are edge-aligned via
-   is-start/is-end, so nothing visible is cut in practice. */
+/* Clip horizontal decoration without creating a scrolling container. */
 .lr-app { min-height: 100dvh; display: flex; flex-direction: column; overflow-x: clip; }
 .lr-room {
   flex: 1;
@@ -287,7 +281,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
    source-picker panels retain their content-driven size; theater is explicit. */
 @media (orientation: landscape) and (max-height: 500px) {
   .lr-room { --tv-viewport-reserve: 128px; }
-  .lr-room:has(.lr-host-share-controls) { --tv-viewport-reserve: 200px; }
+  .lr-room:has(.lr-host-controls) { --tv-viewport-reserve: 200px; }
   .lr-room:not(.is-theater) .lr-tv:has(.lr-playback):not(:has(.has-entry)) {
     width: min(960px, 100%, calc(max(168px, 100svh - var(--tv-viewport-reserve)) * 16 / 9 + 30px));
   }
@@ -869,7 +863,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   cursor: text;
   font-family: var(--mono);
   font-size: 11px;
-  outline: 0;
   text-align: left;
   user-select: text;
 }

@@ -48,10 +48,11 @@ func (s *Server) handleRoomVoiceSignal(sess *session, auth *authenticatedSession
 		if err == nil {
 			err = json.Unmarshal(encoded, &incoming)
 		}
+		plan := edge.sfuPlan
 		if err == nil {
-			err = runtime.SignalVoice(auth.roomID, auth.peerID, sess.sessionID, edge.id, incoming)
+			s.router.io(func() { err = runtime.SignalVoice(auth.roomID, auth.peerID, sess.sessionID, edge.id, incoming) })
 		}
-		if err != nil {
+		if err != nil && s.voiceConnection(auth.roomID, auth.peerID, sess.sessionID, edge.id) == edge && edge.sfuPlan == plan {
 			s.voiceError(sess, "connection-unavailable")
 		}
 		return
@@ -117,6 +118,9 @@ func (s *Server) onVoiceMediaEvent(event sfu.VoiceMediaEvent) {
 		}
 	}
 	if event.State == webrtc.PeerConnectionStateConnected {
+		if event.IsCurrentState != nil && !event.IsCurrentState() {
+			return
+		}
 		edge.connected[""] = true
 		s.commitVoiceCandidate(event.RoomID)
 		s.syncRoomVoice(event.RoomID)

@@ -84,7 +84,7 @@ Peer relay is part of the deployed Browser route owned by ADR-0005. This ADR
 retains only the experiment evidence used to evaluate that route; its historical
 policy and gates do not independently authorize current behavior.
 
-The current accepted endpoint rule is one server-authoritative downstream
+The current ordinary endpoint rule is one server-authoritative downstream
 capacity for every non-server endpoint, default `2` and statically configurable
 as `1`, `2`, or `3`; upstream receive is free and role or user agent does not
 create an exception. ADR-0005 owns the implemented and deployed Browser route
@@ -113,8 +113,9 @@ Negative:
 - ADR-0001 remains the direct browser P2P baseline.
 - ADR-0005 owns current automatic routing and capacity invariants.
 - ADR-0007 owns path-quality evidence and representation behavior.
-- A future native shared-encode sender or relay requires its own decision and
-  evidence; this experiment does not pre-approve it.
+- [ADR-0013](./0013-embedded-node-local-media.md) and
+  [ADR-0014](./0014-browser-node-local-encoding-pool.md) own accepted encoding
+  reuse; this experiment does not define that behavior.
 
 ## References
 

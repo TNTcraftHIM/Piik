@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -230,6 +231,35 @@ func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
 	applyRemote(viewer, subscriber, viewerConfig, true)
 	if !waitFor(t, 3*time.Second, func() bool { return received.Load() >= 3 }) {
 		t.Fatal("authenticated signaling did not produce forwarded video RTP")
+	}
+	for _, peer := range []struct {
+		client *testClient
+		pc     *webrtc.PeerConnection
+		config protocol.SfuConfigMessage
+	}{{host, publisher, hostConfig}, {viewer, subscriber, viewerConfig}} {
+		valid := ""
+		for _, line := range strings.Split(peer.pc.LocalDescription().SDP, "\n") {
+			if strings.HasPrefix(line, "a=candidate:") {
+				valid = strings.TrimSpace(strings.TrimPrefix(line, "a:"))
+				break
+			}
+		}
+		if valid == "" {
+			t.Fatal("positive candidate control is missing")
+		}
+		for _, candidate := range []string{"candidate:malformed", valid} {
+			encoded, err := json.Marshal(protocol.SfuSignalMessage{Type: "sfu-signal", Kind: "candidate",
+				Revision: peer.config.Revision, PublicationGeneration: peer.config.PublicationGeneration,
+				ConnectionID: peer.config.ConnectionID, Candidate: &protocol.IceCandidate{Candidate: candidate}})
+			check(err)
+			peer.client.sendText(string(encoded))
+		}
+	}
+	if !waitFor(t, time.Second, func() bool {
+		return diagnostics.calledWith(h.room.RoomID, "sfu-signal-failed", map[string]any{"role": "host", "kind": "candidate"}) &&
+			diagnostics.calledWith(h.room.RoomID, "sfu-signal-failed", map[string]any{"role": "viewer", "kind": "candidate"})
+	}) {
+		t.Fatal("candidate rejection was not processed on both physical facets")
 	}
 	if !waitFor(t, time.Second, func() bool {
 		return diagnostics.calledWith(h.room.RoomID, "sfu-transport-state", map[string]any{

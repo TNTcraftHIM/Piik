@@ -434,7 +434,7 @@ lower video output; each outbound PeerConnection owns its RTP identity and
 transport feedback. When an edge is
 persistently degraded, the existing quality operation may prepare a Browser
 WebRTC sender from the stable local bridge as that edge's candidate. The old
-edge stays live until the Viewer proves the candidate is better; a failed
+edge stays live until the Viewer completes the route owner's relative quality proof; a failed
 candidate rolls back, and a later operation may return the edge to the shared
 native source. This gives one difficult path stock per-sender adaptation without
 lowering the shared representation for healthy paths. It adds no quality score,

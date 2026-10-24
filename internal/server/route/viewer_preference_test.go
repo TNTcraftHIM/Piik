@@ -1,6 +1,7 @@
 package route
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
@@ -165,6 +166,7 @@ func TestViewerRoutePreferenceP2PExhaustionThenAuto(t *testing.T) {
 	routes.hydrateHostPublication("publication", res("publication"), "publisher")
 	routes.hydrateEdge(A, sfuEdge("publication", "a_sfu", "a_subscription"))
 	routes.hydrateEdge(B, sfuEdge("publication", "b_sfu", "b_subscription"))
+	routes.SetViewerRoutePreference(B, sessionOf(B), protocol.ViewerRouteSfu, ms(0))
 	routes.SetViewerRoutePreference(A, sessionOf(A), protocol.ViewerRoutePeer, ms(0))
 	result := routes.Reconcile(1)
 	noOperation(t, result.Operation)
@@ -175,4 +177,23 @@ func TestViewerRoutePreferenceP2PExhaustionThenAuto(t *testing.T) {
 	op := must(t, routes.Reconcile(4).Operation)
 	eq(t, op.ChildPeerID, A)
 	eqSlice(t, tuples(op), []CandidateTuple{sfuTuple(PublicationReuse)})
+}
+
+func TestFreshRelayRespectsSfuPolicy(t *testing.T) {
+	for _, siteOnly := range []bool{false, true} {
+		t.Run(fmt.Sprintf("siteOnly=%v", siteOnly), func(t *testing.T) {
+			routes := newController(1, Options{SfuEnabled: true, SfuOnly: siteOnly})
+			addViewer(routes, A, 0, nil)
+			addViewer(routes, B, 0, nil)
+			routes.hydrateHostPublication("publication", res("publication"), "publisher")
+			routes.hydrateEdge(A, sfuEdge("publication", "a_sfu", "subscription_a"))
+			routes.hydrateEdge(B, sfuEdge("publication", "b_sfu", "subscription_b"))
+			if !siteOnly {
+				routes.SetViewerRoutePreference(A, sessionOf(A), protocol.ViewerRouteSfu, ms(0))
+			}
+			routes.SetEffectiveCapacity(B, sessionOf(B), 1, ms(1))
+			noOperation(t, routes.Reconcile(2).Operation)
+			eq(t, edgeOf(t, routes, A).ConnectionID, "a_sfu")
+		})
+	}
 }

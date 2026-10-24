@@ -10,6 +10,7 @@ import type { NativeClientEvent } from "../src/client/native/wire";
 import { debugError, debugEvent } from "../src/client/lib/debug";
 
 vi.mock("../src/client/lib/debug", () => ({
+  registerDebugCollector: vi.fn(() => vi.fn()),
   browserDebugEnabled: true,
   debugEvent: vi.fn(),
   debugError: vi.fn(),

@@ -13,7 +13,7 @@ verification procedures stay in [CONTRIBUTING.md](../../CONTRIBUTING.md).
 | Universal constraints and navigation | `AGENTS.md` | Short mandatory boundaries and links; no procedure manual |
 | Reusable agent methods | `.agents/skills/*/SKILL.md` | Task triggers and methods under project constraints; link to domain rules and delivery rather than repeat them |
 | Branches, review, validation, PRs, releases and cleanup | `CONTRIBUTING.md` | Executable workflow |
-| Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Current responsibility map and shared coding rules |
+| Module boundaries, interface discipline and ablation | [Engineering](./engineering.md) | Module, contract, lifecycle and source navigation; shared coding rules |
 | Names, terminology and voice | [Naming and copy](./naming.md) | Product/tool names, role labels and Chinese/English writing conventions |
 | Translation contributions | [Translation guide](../guide/translating.md) and its Chinese counterpart | Catalog editing, new-language registration and translation review |
 | Illustration, palette, motion and accessible layout | [Visual language](./visual-language.md) | Shared Browser/App design grammar |
@@ -57,6 +57,8 @@ Introductions and the general guide link to those procedures rather than duplica
 2. Update the existing owner first. Add a new owner only for a distinct topic
    with real consumers; give it an entry in the documentation map. Delete
    replaced normative text elsewhere and link to the owner.
+   When an entry point moves or a cross-module responsibility changes, update
+   the engineering index and its links to the relevant verification entry points.
 3. Keep current owners consistent. Update memory/status only when their compact
    snapshot materially changes; put unresolved work in TODO. Checkpoint and
    integration timing follows CONTRIBUTING, not an automatic extra commit for

@@ -19,6 +19,7 @@ Start at the first thing that fails:
 | Source picker is missing or sharing will not start | [Source and capture checks](#starting-a-share). |
 | Page opens, but the picture will not connect | [Media connection](#when-video-will-not-connect). |
 | Picture blurs or stutters | [Picture quality](#picture-blurs-stutters-or-stops). |
+| Phone fullscreen or playback controls are missing | [Fullscreen and controls](#fullscreen-or-playback-after-sleep). |
 | Picture works, but no game/movie sound | [Source sound](#picture-but-no-source-sound). |
 | Cannot hear a friend, or cannot use the microphone | [Room voice](#cannot-hear-someone-speaking) and [permissions](#microphone-or-remote-controls-are-unavailable). |
 | Gamepad does not respond | [Gamepad checks](#gamepads). |
@@ -390,10 +391,19 @@ for current setup details.
 
 ### Fullscreen or playback after sleep
 
+- **Playback controls are hidden:** tap the picture to bring them back. During
+  remote control, use the drawer tab at the TV's bottom edge.
+- **Fullscreen is missing or rejected:** open the invitation in a standalone
+  browser, such as Chrome on Android or Safari on iPhone, instead of a chat app's
+  embedded browser. **Theater mode** expands playback within the page when the
+  browser does not offer screen fullscreen.
+- **Piik controls disappear in fullscreen:** the browser has opened its native
+  video player. Exit fullscreen and use **Theater mode** to keep Piik's playback
+  controls, chat overlay and remote input on the page.
 - **Phone fullscreen has black bars:** video preserves its proportions. Try
-  landscape orientation, or select **Fill** or **Stretch** under **Playback settings**.
-- **Fullscreen button does not work:** use the playback bar's **Fullscreen** button.
-  System video fullscreen depends on the browser; see [viewing controls](./getting-started.md#join-a-friends-room).
+  landscape, or use **Switch picture fit** on the playback bar to select **Fill**
+  or **Stretch**. Exit the browser's native video player to use Piik's picture-fit
+  controls. See [viewing controls](./getting-started.md#join-a-friends-room).
 - **Sharing stops after sleep or suspension:** wake the device and return to the
   sharing tab. Start sharing again if needed; browser and OS suspension can
   interrupt capture or playback.

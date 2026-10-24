@@ -14,7 +14,9 @@ producer's encoded payload/type and exposed codec metadata, with the outgoing
 stream's RTP clock. It avoids making one downstream
 connection the shared encoding authority. Small carrier encodes and local
 transport/decoder work remain real costs. Measured savings and recovery vary
-by codec; the prototype is not production acceptance.
+by codec. The initial prototype established feasibility; the subsequent
+implementation evidence and its physical limits remain in the linked research
+and [verification status](../verification-status.md).
 
 This decision extends [ADR-0007](./0007-path-isolated-representation-quality.md)
 and [ADR-0013](./0013-embedded-node-local-media.md) for eligible Browser outputs.

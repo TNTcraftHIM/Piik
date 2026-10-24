@@ -85,4 +85,30 @@ describe("Video fullscreen", () => {
     await expect(toggleVideoFullscreen(standard.element)).rejects.toBe(rejected);
     expect(standard.page.exitPictureInPicture).not.toHaveBeenCalled();
   });
+
+  it("uses native FullScreen methods without requiring a Safari-only capability flag", async () => {
+    const { video, element } = player(true);
+    delete video.webkitEnterFullscreen;
+    delete video.webkitExitFullscreen;
+    delete video.webkitSupportsFullscreen;
+    element.webkitEnterFullScreen = vi.fn(function (this: FullscreenVideo) {
+      expect(this).toBe(element);
+      this.webkitDisplayingFullscreen = true;
+    });
+    element.webkitExitFullScreen = vi.fn(function (this: FullscreenVideo) {
+      expect(this).toBe(element);
+      this.webkitDisplayingFullscreen = false;
+    });
+    expect(videoFullscreenState(element)).toMatchObject({ supported: true, ready: false });
+    await toggleVideoFullscreen(element);
+    expect(element.webkitEnterFullScreen).not.toHaveBeenCalled();
+    video.readyState = 1;
+    expect(videoFullscreenState(element).ready).toBe(true);
+    await toggleVideoFullscreen(element);
+    expect(element.webkitEnterFullScreen).toHaveBeenCalledOnce();
+    expect(videoFullscreenState(element).nativeActive).toBe(true);
+    await toggleVideoFullscreen(element);
+    expect(element.webkitExitFullScreen).toHaveBeenCalledOnce();
+    expect(videoFullscreenState(element).active).toBe(false);
+  });
 });

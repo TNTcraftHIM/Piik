@@ -243,7 +243,7 @@ func TestShutdownClosesSiblingTransportsBeforeWaitingForWrites(t *testing.T) {
 			for index := range closed {
 				_, err := engine.NewEdge(source, EdgeOptions{
 					ConnectionID: "shutdown-" + owner + string(rune('a'+index)),
-					Events: EdgeEvents{ConnectionState: func(state webrtc.PeerConnectionState, _ *SelectedPair) {
+					Events: EdgeEvents{ConnectionState: func(state webrtc.PeerConnectionState, _ *SelectedPair, _ func(webrtc.PeerConnectionState) bool) {
 						if state == webrtc.PeerConnectionStateClosed {
 							closed[index] <- struct{}{}
 						}
@@ -636,7 +636,7 @@ func TestBandwidthObserverReceivesTransportFeedbackWithoutPacing(t *testing.T) {
 			}
 			sample, ok := edge.QualitySample(time.Now())
 			if !ok || sample.State != "healthy" || sample.Reason == nil ||
-				*sample.Reason != "none" || sample.IntervalFramesEncoded == 0 ||
+				*sample.Reason != "none" || sample.IntervalFramesSent == 0 ||
 				sample.RTPStatsID == "" || sample.TrackIdentifier == "" {
 				t.Fatalf("quality sample = %+v, %v", sample, ok)
 			}
@@ -775,7 +775,7 @@ func connectedReceiver(
 	t.Helper()
 	connected := make(chan struct{}, 1)
 	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: connectionID, Events: EdgeEvents{
-		ConnectionState: func(state webrtc.PeerConnectionState, _ *SelectedPair) {
+		ConnectionState: func(state webrtc.PeerConnectionState, _ *SelectedPair, _ func(webrtc.PeerConnectionState) bool) {
 			if state == webrtc.PeerConnectionStateConnected {
 				select {
 				case connected <- struct{}{}:
@@ -933,5 +933,64 @@ func waitPacket(t *testing.T, packets <-chan *rtp.Packet, edges ...*Edge) *rtp.P
 		}
 		t.Fatal("timed out waiting for RTP")
 		return nil
+	}
+}
+
+// Connection callbacks and the final event writer can run after Pion has moved
+// on. Retain the real callback until the PC closes, then consume its projection.
+func TestEdgeDelayedConnectionStateIsNotCurrent(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = engine.Close() })
+	source, err := engine.NewSource("vp8", 2, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connected := make(chan func(webrtc.PeerConnectionState) bool, 1)
+	release := make(chan struct{})
+	delivered := make(chan bool, 1)
+	var releaseOnce sync.Once
+	resume := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(resume)
+	edge, err := engine.NewEdge(source, EdgeOptions{ConnectionID: "delayed-state", Events: EdgeEvents{
+		ConnectionState: func(state webrtc.PeerConnectionState, _ *SelectedPair, current func(webrtc.PeerConnectionState) bool) {
+			if state == webrtc.PeerConnectionStateConnected {
+				connected <- current
+				<-release
+				delivered <- current(state)
+			}
+		},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiver := newReceiver(t)
+	t.Cleanup(func() { _ = receiver.Close() })
+	connectEdgeToReceiver(t, edge, receiver)
+	var current func(webrtc.PeerConnectionState) bool
+	select {
+	case current = <-connected:
+	case <-time.After(5 * time.Second):
+		t.Fatal("no connected Native callback")
+	}
+	if !current(webrtc.PeerConnectionStateConnected) {
+		t.Fatal("live connection was not current")
+	}
+	if err = edge.Close(); err != nil {
+		t.Fatal(err)
+	}
+	resume()
+	select {
+	case valid := <-delivered:
+		if valid {
+			t.Fatal("delayed connected event survived PC closure")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Native callback did not resume")
+	}
+	if !current(webrtc.PeerConnectionStateClosed) {
+		t.Fatal("current-state predicate retained a historical snapshot")
 	}
 }

@@ -117,6 +117,7 @@ test("data needs explicit readiness, waits for server echo, and has no offline r
   expect(session.getSnapshot().confirmed?.payload).toEqual({ kind: "chat", text: "Hi" });
   vi.advanceTimersByTime(800);
   expect(session.send({ kind: "reaction", reaction: "tomato", targetPeerId: "other_peer_1234" })).toBe(true);
+  const retired = session.getSnapshot().pending!;
   session.disconnected();
   expect(session.getSnapshot()).toMatchObject({ ready: false, pending: null, error: "unconfirmed", reactions: [] });
   const count = send.mock.calls.length;
@@ -124,6 +125,10 @@ test("data needs explicit readiness, waits for server echo, and has no offline r
   expect(send.mock.calls.slice(count)).toEqual([[{ type: "subscribe-room-interactions" }]]);
   expect(session.getSnapshot().messages).toHaveLength(1);
   expect(session.getSnapshot().error).toBe("unconfirmed");
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  session.receive({ ...message("retired_echo"), requestId: retired.requestId, payload: retired.payload,
+    sender: { peerId: "self_peer_1234", role: "host", displayName: "Host" } });
+  expect(session.getSnapshot()).toMatchObject({ confirmed: null, pending: null, error: "unconfirmed" });
   session.close();
   expect(vi.getTimerCount()).toBe(0);
 });
@@ -157,10 +162,20 @@ test("rejection and timeout leave delivery unconfirmed without automatic retries
   expect(session.getSnapshot()).toMatchObject({ error: "rate-limited", pending: null, confirmed: null });
   vi.advanceTimersByTime(800);
   session.send({ kind: "chat", text: "Try me" });
+  const pending = session.getSnapshot().pending!;
   const count = send.mock.calls.length;
   vi.advanceTimersByTime(6000);
   expect(session.getSnapshot()).toMatchObject({ error: "unconfirmed", pending: null, confirmed: null });
   expect(send).toHaveBeenCalledTimes(count);
+  const echoed = { ...message("late_confirmed"), requestId: pending.requestId, payload: pending.payload,
+    sender: { peerId: "self_peer_1234", role: "viewer" as const, displayName: "Me" } };
+  session.receive(echoed);
+  expect(session.getSnapshot()).toMatchObject({ error: null, pending: null, confirmed: { id: "late_confirmed" } });
+  session.send({ kind: "chat", text: "Next attempt" });
+  const rejected = session.getSnapshot().pending!;
+  vi.advanceTimersByTime(5000);
+  session.receive({ type: "room-interaction-rejected", requestId: rejected.requestId, reason: "busy" });
+  expect(session.getSnapshot()).toMatchObject({ error: "busy", pending: null });
   session.close();
 });
 

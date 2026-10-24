@@ -25,7 +25,7 @@ const SOURCE_ICONS = {
 
 export type NativeSourceList =
   | { kind: "browser" }
-  | { kind: "loading" }
+  | { kind: "loading"; appDetected?: boolean }
   | { kind: "unavailable" }
   | { kind: "incompatible" }
   | { kind: "unsupported" }
@@ -38,6 +38,11 @@ export type NativeSourceList =
       processAudioExclusion?: boolean;
       captureBorderControl?: boolean;
     };
+
+export function nativeAppDetected(sources: NativeSourceList | null): boolean {
+  return sources?.kind === "loading" ? sources.appDetected === true
+    : sources !== null && sources.kind !== "browser" && sources.kind !== "unavailable";
+}
 
 export function CaptureSourcePicker({
   nativeSources,
@@ -90,8 +95,7 @@ export function CaptureSourcePicker({
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const [excludeAudio, setExcludeAudio] = useState(initialExcludeAudio);
-  const appDetected = nativeSources.kind === "ready" || nativeSources.kind === "failed" ||
-    nativeSources.kind === "unsupported" || nativeSources.kind === "incompatible";
+  const appDetected = nativeAppDetected(nativeSources);
   const tabs = SOURCE_TABS.filter((value) => appDetected || value === "browser" || value === "camera");
   const preferredTab = tab ?? initialTab;
   const tabAvailable = (value: SourceTab) => value === "camera" ? cameraAvailable
@@ -379,7 +383,11 @@ export function CaptureSourcePicker({
             <AppConnectionButton sourcePicker onConnected={onAppConnected} />
           )}
 
-          {issueKey ? (
+          {nativeTab && nativeSources.kind === "loading" ? (
+            <span className="lr-source-picker-status" role="status" aria-label={t("host.sourcePicker.loading")}>
+              <Glyph name="refresh" className="lr-spin" size={18} />{!vis && t("host.sourcePicker.loading")}
+            </span>
+          ) : issueKey ? (
             <Pill icon="alert" label={t(issueKey)} comic="warning" />
           ) : browserCapture || activeTab === "camera" ? null : sources.length === 0 ? (
             <span

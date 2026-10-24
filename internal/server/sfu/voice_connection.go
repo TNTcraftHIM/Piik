@@ -10,6 +10,7 @@ import (
 	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
+	"github.com/pion/webrtc/v4/pkg/rtcerr"
 )
 
 var voiceCodec = webrtc.RTPCodecCapability{
@@ -154,6 +155,12 @@ func (c *voiceConnection) dispatch(event VoiceMediaEvent) {
 	c.owner.mu.Unlock()
 	if current {
 		event.RoomID, event.PeerID, event.SessionID, event.ConnectionID = c.key.room, c.key.peer, c.key.session, c.key.connection
+		state := event.State
+		event.IsCurrentState = func() bool {
+			c.owner.mu.Lock()
+			defer c.owner.mu.Unlock()
+			return !c.closed && c.owner.connections[c.key] == c && c.pc.ConnectionState() == state
+		}
 		emit(event)
 	}
 }
@@ -349,7 +356,7 @@ func (c *voiceConnection) signal(signal VoiceSignal) error {
 			c.candidates = append(c.candidates, *signal.Candidate)
 			return nil
 		}
-		return c.pc.AddICECandidate(*signal.Candidate)
+		return c.addCandidate(*signal.Candidate)
 	}
 	answer := signal.Description
 	if c.pending == nil || answer.Revision != c.pending.description.Revision || answer.SDP.Type != webrtc.SDPTypeAnswer ||
@@ -372,7 +379,9 @@ func (c *voiceConnection) signal(signal VoiceSignal) error {
 	c.remote = remote
 	c.owner.mu.Unlock()
 	for _, candidate := range c.candidates {
-		if err := c.pc.AddICECandidate(candidate); err != nil {
+		// Candidates are disposable input, not the SDP transaction. A rejected
+		// candidate must not strand an already-applied answer in pending.
+		if err := c.addCandidate(candidate); err != nil {
 			return err
 		}
 	}
@@ -380,6 +389,15 @@ func (c *voiceConnection) signal(signal VoiceSignal) error {
 	c.negotiatedVersion = c.pending.version
 	c.pending = nil
 	return c.offer(false)
+}
+
+func (c *voiceConnection) addCandidate(candidate webrtc.ICECandidateInit) error {
+	err := forwarding.AddICECandidate(c.pc, candidate)
+	var candidateError *rtcerr.OperationError
+	if errors.As(err, &candidateError) {
+		return nil
+	}
+	return err
 }
 
 func (c *voiceConnection) startReader() bool {
@@ -460,17 +478,27 @@ func (c *voiceConnection) consume(track *webrtc.TrackRemote, receiver *webrtc.RT
 	}
 }
 
+// retireLocked revokes packet delivery before physical close can block.
+func (c *voiceConnection) retireLocked() {
+	c.closed = true
+	for _, out := range c.outgoing {
+		out.disable()
+	}
+}
+
 func (c *voiceConnection) close() error {
 	c.closeOnce.Do(func() {
 		c.owner.mu.Lock()
-		c.closed = true
-		for _, out := range c.outgoing {
-			out.disable()
-		}
+		c.retireLocked()
 		c.owner.mu.Unlock()
 		close(c.stop)
 		c.closeErr = c.pc.Close()
 		c.readers.Wait()
+		c.owner.mu.Lock()
+		if c.owner.connections[c.key] == c {
+			delete(c.owner.connections, c.key)
+		}
+		c.owner.mu.Unlock()
 	})
 	return c.closeErr
 }

@@ -1558,6 +1558,10 @@
     {
       "name": "co-play-participants-cleared",
       "json": "{\"type\":\"co-play-presence\",\"participants\":[]}"
+    },
+    {
+      "name": "room-relay-video-attachment-diagnostic",
+      "json": "{\"type\":\"route-diagnostic-snapshot\",\"snapshot\":{\"children\":[{\"ordinal\":1,\"parent\":{\"kind\":\"host\"},\"effectiveCapacity\":20,\"childCount\":4,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":2,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":3,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":4,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":5,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null}],\"operation\":{\"childOrdinal\":1,\"reason\":\"publication-attach\",\"stage\":\"admission\",\"cursor\":0,\"candidateCount\":1}}}"
     }
   ]
 }

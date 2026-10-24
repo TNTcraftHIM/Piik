@@ -252,9 +252,9 @@ danmaku or reaction effects. Current behavior remains the no-history contract ab
 
 ## Audio Boundary
 
-The published Host microphone remains commentary mixed into the shared source.
 Text, reactions and danmaku introduce no microphone capture or additional media
-peers. Room voice is an isolated prototype, not a published capability.
+peers. Published room voice and optional Host source commentary follow the
+[current microphone contract](../standards/media-quality.md#capture-and-controls).
 
 ### Room Voice Transport Assessment
 
@@ -263,9 +263,9 @@ room controller for voice and picture, with companion Browser audio connections
 on its selected edges and an embedded Opus SFU adapter on the existing UDP mux.
 The earlier experiments below remain design evidence, not the distributable
 implementation. Room voice now opens when the Host joins and closes when the
-Host leaves. Room admission replaces per-person voice permissions. All current
-microphone controls use room voice; pausing local listening leaves the microphone
-on. Source sound stays with the picture. This follows the independent media
+Host leaves. Room admission replaces per-person voice permissions. Pausing local
+listening leaves the room-voice microphone on. Source sound stays with the picture.
+This follows the independent media
 source model in [LiveKit](https://docs.livekit.io/intro/basics/rooms-participants-tracks/)
 and the [RTP synchronization boundary](https://www.rfc-editor.org/rfc/rfc8834.html#section-12.2.3):
 sharing a route does not guarantee synchronized playback across independent
@@ -281,8 +281,10 @@ NAT success rates or 21-person all-speaking audio capacity.
 older checkout and records its revision, checking that an older Viewer retains
 picture playback without subscribing to voice events.
 Product owners are [room voice](../standards/rooms-access.md#room-voice) and
-[room media](../standards/routing-transport.md#room-media); the public release
-does not yet include this candidate.
+[room media](../standards/routing-transport.md#room-media). This integration shipped
+in v2.4.0; the dated experiments below describe its earlier design evidence.
+
+#### Historical Prototype Assessment
 
 Reviewed 2026-10-19. The owner requested optional self-hosted voice and assessment
 of App-hosted voice. The local prototype forwards independent Opus publications,
@@ -396,8 +398,10 @@ keeps `Host -> A -> B` video decoding while B's direct voice ICE is denied;
 lifting that denial and explicitly rejoining restores voice. A connected video
 route therefore cannot be displayed as proof of an available voice endpoint.
 
-Voice integration also needs one Host microphone publication, rather than both
-commentary and room voice carrying the same capture. System-audio capture can
+The earlier prototype trial used one Host microphone publication, moving it out
+of commentary. The current dual-microphone behavior is owned by
+[media quality](../standards/media-quality.md#capture-and-controls), not this
+historical trial. System-audio capture can
 recapture received voices even with headphones; reuse supported audio exclusion
 and validate simultaneous capture/playback before making an echo-free claim.
 In the synthetic sharing trial, moving the Host microphone out of commentary
@@ -804,8 +808,8 @@ admission counts Viewers rather than device types. The current Browser
 collector uses one standard-mapped controller per page and reports at up to 60 Hz.
 No new media route, port or multiple screen publisher is required. Slot capacity
 follows the backend and game, including physical controllers already in use;
-it is not the room capacity. Real-game recognition and concurrent-player
-acceptance remain in [TODO](../todo.md#now).
+it is not the room capacity. Remaining Linux/macOS desktop and game-recognition
+checks are tracked in [TODO](../todo.md#parked-product-work).
 
 ### Window Capture And Game Input
 
@@ -857,6 +861,16 @@ key-up events from permanently holding a key, but does not promise immediate
 release during loss. Keep the first prototype on the existing ordered channel;
 desktop acceptance must not be presented as competitive-game readiness. These
 are input semantics and acceptance work, not reasons to replace the media pipeline.
+
+Local component timing on 2026-10-24 used Windows and headless Chrome 155.
+For 200 samples, Browser input dispatch and AES-GCM-to-send each had a 0.1 ms
+95th percentile; ordered Browser SCTP loopback round-trip was 0.8 ms. Across
+100 ten-point mouse bursts, the latest batched point reached send in 5.1 ms
+at the 95th percentile, matching the short timer rather than a rendering-frame
+wait. Encrypted Pion delivery through Host authorization to a recorded input
+sink was 0.13 ms at the 95th percentile. No slow point appeared in these local
+components. End-to-end timing still needs target execution, Native capture and
+encoding, remote transport and physical display response in the same trial.
 
 The reviewed implementation uses WGC capture and the documented Windows input
 API, without game-memory access, injected game code or an input driver.

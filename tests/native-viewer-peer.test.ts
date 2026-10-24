@@ -115,6 +115,56 @@ it("uses the offer's STUN destinations for prediction while the next ICE config 
   }
 });
 
+it.each([false, true])("keeps restarted Native candidates after a delayed previous gathering end (prediction=%s)", async (prediction) => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue({} as MediaStream);
+  let event!: (event: NativeClientEvent) => void;
+  const result = { answer: { type: "answer" as const, sdp: "answer" }, audio: false, codec: "vp8" as const, reused: true };
+  const receiveOffer = vi.fn(async () => result);
+  const client = {
+    health: { nativeMedia: { receiverReuse: true } }, receiveOffer,
+    onEvent: (listener: typeof event) => { event = listener; return () => {}; },
+    onClose: () => () => {}, closeReceiver: vi.fn(async () => {}), closeEdge: vi.fn(async () => {}),
+  } as unknown as NativeClient;
+  const sent: SignalPayload[] = [];
+  const peer = new NativeCapableViewerPeer({
+    iceServers: [{ urls: "stun:site.example:3478" }],
+    natPredictionStunUrls: ["stun:site.example:3479", "stun:site.example:3480"],
+  }, {
+    sendSignal: (_parent, payload) => { sent.push(payload); return true; },
+    sendRestartRequest: () => true, onStream: () => {}, onUpdate: () => {},
+  }, { natPredictionEnabled: prediction }, async () => client, () => {}, "session", 2);
+  const offer = (fragment: string): SignalPayload => ({
+    kind: "description", connectionId: "current", description: { type: "offer",
+      sdp: `v=0\r\na=ice-ufrag:${fragment}\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n` },
+  });
+  const emit = (candidate: Extract<NativeClientEvent, { type: "edge-candidate" }>["candidate"]) =>
+    event({ version: 10, type: "edge-candidate", shareId: "session", connectionId: "current", candidate });
+  try {
+    await peer.acceptSignal("parent", offer("first"));
+    emit({ candidate: "candidate:ns1 1 udp 1 203.0.113.7 40000 typ srflx", usernameFragment: "previous" });
+    let finish!: () => void;
+    receiveOffer.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve(result); }));
+    const restarting = peer.acceptSignal("parent", offer("restarted"));
+    await vi.waitFor(() => expect(receiveOffer).toHaveBeenCalledTimes(2));
+    // The room WS delivered the new offer before an old event already written
+    // by the independent App WS. The same physical receiver survives restart.
+    emit(null);
+    for (let index = 1; index <= 3; index++) {
+      emit({ candidate: `candidate:ns${index} 1 udp 1 203.0.113.7 ${50000 + index * 3} typ srflx`, usernameFragment: "next" });
+    }
+    finish();
+    await restarting;
+    const candidates = sent.flatMap(payload => payload.kind === "candidate" ? [payload.candidate] : []);
+    expect(candidates.filter(candidate => candidate?.candidate && candidate.usernameFragment === "next")).toHaveLength(prediction ? 11 : 3);
+    expect(candidates.find(candidate => candidate?.candidate === "")).toMatchObject({ usernameFragment: "previous" });
+    expect(candidates).not.toContain(null);
+  } finally { peer.dispose(); }
+});
+
 it("retires queued candidates when disposed during their delivery", async () => {
   vi.stubGlobal("window", globalThis);
   vi.stubGlobal("MediaStream", class { getTracks() { return []; } });

@@ -58,7 +58,7 @@ export function ViewerPlaybackSettings({ route, relayVolunteer, overlaySettings,
               : preference === "auto" ? "hint-route-auto" : preference === "p2p" ? "hint-route-p2p" : "hint-route-sfu"}
             hintText={t(locked ?? `playback.routeHint.${preference}`)}
             onClick={() => { if (route.preference !== preference) route.onChange(preference); }}>
-            {vis && <Glyph name={preference === "auto" ? "branch" : preference === "p2p" ? "link" : "server"} size={17} />}
+            {vis && <Glyph name={preference === "auto" ? "branch" : preference === "p2p" ? "network" : "server"} size={17} />}
             <Cap k={`playback.route.${preference}`} />
           </Chip>;
         })}</RowGroup>

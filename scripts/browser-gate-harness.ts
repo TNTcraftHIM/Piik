@@ -550,7 +550,11 @@ async function removeGateProfile(profile: string): Promise<boolean> {
     try {
       while (pending.length > 0) {
         const current = pending.pop()!;
-        const stat = await lstat(current);
+        const stat = await lstat(current).catch(error => {
+          if (current === profile && (error as NodeJS.ErrnoException).code === "ENOENT") return null;
+          throw error;
+        });
+        if (!stat) return true;
         if (stat.isSymbolicLink()) return false;
         if (stat.isDirectory()) {
           pending.push(

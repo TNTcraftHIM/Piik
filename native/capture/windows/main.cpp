@@ -53,6 +53,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cwctype>
 #include <exception>
@@ -1207,7 +1208,68 @@ UINT32 WindowsBuild() {
   return version.dwBuildNumber;
 }
 
-void WriteCapabilityProbe() {
+// Optional WASAPI activation must not consume the helper's entire discovery
+// budget. These three workers belong to this one-shot probe process. Each owns
+// its COM apartment and shared results even if a driver returns after Snapshot.
+class AudioCapabilityProbe final {
+ public:
+  using Clock = std::chrono::steady_clock;
+  struct Capabilities final {
+    bool process = false;
+    bool system = false;
+    bool exclusion = false;
+  };
+  explicit AudioCapabilityProbe(
+      Clock::time_point deadline = Clock::now() + std::chrono::seconds(1),
+      std::function<bool(bool)> process = piik::capture::ProcessAudioAvailable,
+      std::function<bool()> system = piik::capture::SystemAudioAvailable)
+      : state_(std::make_shared<State>()), deadline_(deadline) {
+    Start([process](const std::shared_ptr<State>& state) {
+      const bool available = process(false);
+      std::lock_guard lock(state->mutex);
+      state->capabilities.process = available;
+    });
+    Start([process = std::move(process)](const std::shared_ptr<State>& state) {
+      const bool available = process(true);
+      std::lock_guard lock(state->mutex);
+      state->capabilities.exclusion = available;
+    });
+    Start([system = std::move(system)](const std::shared_ptr<State>& state) {
+      const bool available = system();
+      std::lock_guard lock(state->mutex);
+      state->capabilities.system = available;
+    });
+  }
+
+  Capabilities Snapshot() const {
+    std::unique_lock lock(state_->mutex);
+    state_->changed.wait_until(lock, deadline_, [state = state_]() { return state->pending == 0; });
+    return state_->capabilities;
+  }
+
+ private:
+  struct State final {
+    std::mutex mutex;
+    std::condition_variable changed;
+    Capabilities capabilities;
+    unsigned pending = 3;
+  };
+  void Start(std::function<void(const std::shared_ptr<State>&)> query) {
+    std::thread([state = state_, query = std::move(query)]() {
+      const HRESULT apartment = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+      if (SUCCEEDED(apartment)) {
+        try { query(state); } catch (...) { /* Optional capabilities remain unavailable. */ }
+        CoUninitialize();
+      }
+      { std::lock_guard lock(state->mutex); --state->pending; }
+      state->changed.notify_one();
+    }).detach();
+  }
+  const std::shared_ptr<State> state_;
+  const Clock::time_point deadline_;
+};
+
+void WriteCapabilityProbe(AudioCapabilityProbe audio = AudioCapabilityProbe()) {
   const UINT32 build = WindowsBuild();
   bool window_capture = false;
   try {
@@ -1220,9 +1282,6 @@ void WriteCapabilityProbe() {
   } catch (const winrt::hresult_error&) {
     window_capture = false;
   }
-  const bool process_audio = piik::capture::ProcessAudioAvailable();
-  const bool system_audio = piik::capture::SystemAudioAvailable();
-  const bool process_audio_exclusion = piik::capture::ProcessAudioAvailable(true);
 
   std::vector<Adapter> adapters = EnumerateAdapters();
   std::ostringstream output;
@@ -1232,10 +1291,6 @@ void WriteCapabilityProbe() {
          << ",\"captureBorderControl\":"
          << (window_capture && piik::capture::CaptureBorder::Supported() ? "true" : "false")
          << ",\"microphone\":true,\"softwareVP8\":true"
-         << ",\"processAudio\":"
-         << (process_audio ? "true" : "false")
-         << ",\"processAudioExclusion\":" << (process_audio_exclusion ? "true" : "false")
-         << ",\"systemAudio\":" << (system_audio ? "true" : "false")
          << ",\"adapters\":[";
   for (size_t adapter_index = 0; adapter_index < adapters.size();
        ++adapter_index) {
@@ -1262,7 +1317,10 @@ void WriteCapabilityProbe() {
     }
     output << "]}";
   }
-  output << "]}";
+  const auto capabilities = audio.Snapshot();
+  output << "],\"processAudio\":" << (capabilities.process ? "true" : "false")
+         << ",\"processAudioExclusion\":" << (capabilities.exclusion ? "true" : "false")
+         << ",\"systemAudio\":" << (capabilities.system ? "true" : "false") << '}';
   std::cout << output.str();
   if (!std::cout.good()) {
     Fail("capability-output", "could not write the capability result");
@@ -1486,7 +1544,7 @@ class OutputWorker final {
   OutputWorker(UINT8 layer, VideoProfile profile, OutputKind kind, ID3D11Device* device,
                ProtocolWriter& writer, Factory create,
                std::unique_ptr<VideoEncoder> initial, bool active,
-               std::function<void(const EncodedAccessUnit&)> on_output,
+               std::function<void(const AdaptiveAccessUnit&)> on_output,
                std::function<void(std::exception_ptr)> on_failure)
       : layer_(layer), profile_(profile), kind_(kind), device_(device), writer_(writer),
         create_(std::move(create)), initial_(std::move(initial)),
@@ -1586,7 +1644,7 @@ class OutputWorker final {
                              access_unit.bytes.data(), static_cast<DWORD>(access_unit.bytes.size()),
                              layer_, static_cast<UINT16>(output->width),
                              static_cast<UINT16>(output->height)), "capture-video-output");
-        if (on_output_) on_output_(access_unit);
+        if (on_output_) on_output_(*output);
       }
     } catch (...) {
       if (mailbox_.Fail()) on_failure_(std::current_exception());
@@ -1604,7 +1662,7 @@ class OutputWorker final {
   ProtocolWriter& writer_;
   Factory create_;
   std::unique_ptr<VideoEncoder> initial_;
-  std::function<void(const EncodedAccessUnit&)> on_output_;
+  std::function<void(const AdaptiveAccessUnit&)> on_output_;
   std::function<void(std::exception_ptr)> on_failure_;
   using Mailbox = piik::capture::OutputMailbox<CaptureInput>;
   Mailbox mailbox_;
@@ -1641,16 +1699,16 @@ void WriteVideoStarting(ProtocolWriter& writer, const ProductArguments& argument
 }
 
 void WriteVideoActive(ProtocolWriter& writer, const ProductArguments& arguments,
-                      bool hardware, const EncodedAccessUnit& output) {
+                      bool hardware, const AdaptiveAccessUnit& output) {
   std::ostringstream status;
   status << "{\"state\":\"active\",\"hardwareOnly\":" << (hardware ? "true" : "false")
          << ",\"codec\":" << JSONString(hardware ? "h264" : "vp8");
   if (hardware) {
-    const auto profile = InspectAnnexB(output.bytes).profile_level_id;
+    const auto profile = InspectAnnexB(output.access_unit.bytes).profile_level_id;
     if (!profile) Fail("capture-active-profile", "first H264 output did not carry an SPS profile");
     status << ",\"profileLevelId\":" << JSONString(*profile);
   }
-  status << ",\"width\":" << arguments.profile.width << ",\"height\":" << arguments.profile.height
+  status << ",\"width\":" << output.width << ",\"height\":" << output.height
          << ",\"fps\":" << arguments.profile.frame_rate;
   AppendOutputProfiles(status, arguments.outputs);
   status << '}';
@@ -1660,7 +1718,7 @@ void WriteVideoActive(ProtocolWriter& writer, const ProductArguments& arguments,
 std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     const ProductArguments& arguments, const Adapter& adapter, const DeviceContext& device,
     ProtocolWriter& writer, VideoEncoderSelection encoder,
-    const std::function<void(const EncodedAccessUnit&)>& on_active,
+    const std::function<void(const AdaptiveAccessUnit&)>& on_active,
     const std::function<void(size_t, std::exception_ptr)>& on_failure) {
   const bool hardware = encoder.kind == OutputKind::h264;
   const UINT encoder_index = arguments.mft_index;
@@ -1681,7 +1739,7 @@ std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     workers.push_back(std::make_unique<OutputWorker>(
         static_cast<UINT8>(layer), profile, encoder.kind, device.device.Get(), writer,
         std::move(create), original ? std::move(encoder.initial) : nullptr, capture && layer < 2,
-        [original, on_active](const EncodedAccessUnit& output) { if (original) on_active(output); },
+        [original, on_active](const AdaptiveAccessUnit& output) { if (original) on_active(output); },
         [layer, on_failure](std::exception_ptr error) { on_failure(layer, error); }));
   }
   return workers;
@@ -1819,7 +1877,7 @@ void RunEncodedVideo(ProductArguments arguments) {
   std::atomic<bool> active{false};
   std::atomic<size_t> failed{0};
   auto workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
-      [&](const EncodedAccessUnit& output) {
+      [&](const AdaptiveAccessUnit& output) {
         if (!active.exchange(true)) WriteVideoActive(writer, arguments, hardware, output);
       },
       [&](size_t layer, std::exception_ptr error) {
@@ -2003,7 +2061,7 @@ void RunVideoCapture(ProductArguments arguments) {
     const DWORD control_wait_ms = static_cast<DWORD>((frame_duration + 9'999) / 10'000);
     WriteVideoStarting(writer, arguments, adapter, encoder);
     workers = CreateOutputWorkers(arguments, adapter, device, writer, std::move(encoder),
-      [&](const EncodedAccessUnit& output) {
+      [&](const AdaptiveAccessUnit& output) {
         if (!active_status_written.exchange(true)) WriteVideoActive(writer, arguments, hardware, output);
       },
       [&](size_t layer, std::exception_ptr error) {

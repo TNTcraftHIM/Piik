@@ -204,11 +204,13 @@ func (writer *LineWriter) Close() error {
 
 func PionLoggerFactory(fields ...any) logging.LoggerFactory {
 	factory := logging.NewDefaultLoggerFactory()
+	// Dependency ICE detail belongs to opt-in diagnostics, including Pion's
+	// error-level candidate observations. Never bypass redaction via stderr.
+	writer := Writer("pion")
+	writer.logger = writer.logger.With(fields...)
+	factory.Writer = writer
 	if slog.Default().Enabled(context.Background(), slog.LevelDebug) {
 		factory.DefaultLogLevel = logging.LogLevelDebug
-		writer := Writer("pion")
-		writer.logger = writer.logger.With(fields...)
-		factory.Writer = writer
 	}
 	return factory
 }

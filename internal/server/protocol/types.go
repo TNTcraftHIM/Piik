@@ -37,7 +37,7 @@ var (
 var (
 	degradationPreferences       = []string{"maintain-resolution", "balanced", "maintain-framerate"}
 	mediaRoutePhases             = []string{"prepare", "active"}
-	routeDemandReasons           = []string{"join", "edge-unavailable", "parent-departed", "capacity-reduction", "sfu-bootstrap", "direct-convergence", "quality-convergence", "root-convergence"}
+	routeDemandReasons           = []string{"join", "edge-unavailable", "parent-departed", "capacity-reduction", "sfu-bootstrap", "direct-convergence", "quality-convergence", "root-convergence", "publication-attach"}
 	routeDiagnosticFinalRoutes   = []string{"direct", "sfu", "waiting", "failed"}
 	routeDiagnosticBuckets       = []string{"none", "stale", "endpoint-capacity", "sfu-admission", "candidate-failed", "first-frame-timeout", "operation-deadline", "aborted"}
 	routeDiagnosticStages        = []string{"admission", "first-frame", "quality-proof"}
@@ -772,8 +772,8 @@ func (v *RouteDiagnosticChild) UnmarshalJSON(data []byte) error {
 	if !inRangeInt(v.Ordinal, 1, MaxViewersPerRoomLimit) {
 		return errors.New("route diagnostic ordinal is out of range")
 	}
-	if !inRangeInt(v.EffectiveCapacity, 0, MaxEndpointMediaCopyCapacity) ||
-		!inRangeInt(v.ChildCount, 0, MaxEndpointMediaCopyCapacity) {
+	if !inRangeInt(v.EffectiveCapacity, 0, MaxViewersPerRoomLimit) ||
+		!inRangeInt(v.ChildCount, 0, MaxViewersPerRoomLimit) {
 		return errors.New("route diagnostic capacity is out of range")
 	}
 	for _, duration := range []*Int{v.DemandAgeMs, v.QueueWaitMs, v.CandidateStartMs,

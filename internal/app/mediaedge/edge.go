@@ -20,8 +20,10 @@ import (
 const maxPendingCandidates = 64
 
 type EdgeEvents struct {
-	LocalCandidate  func(*webrtc.ICECandidateInit)
-	ConnectionState func(webrtc.PeerConnectionState, *SelectedPair)
+	LocalCandidate func(*webrtc.ICECandidateInit)
+	// Historical loss still retires input permission. Media projections must
+	// check isCurrentState again after any event queues.
+	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool)
 }
 
 type EdgeOptions struct {
@@ -159,8 +161,13 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 		}
 	}
 	if !options.Local {
+		parameters, parametersErr := connection.SCTP().Transport().ICETransport().GetLocalParameters()
+		if parametersErr != nil {
+			_ = edge.Close()
+			return nil, parametersErr
+		}
 		edge.localCandidates = newLocalCandidateGathering(
-			socket, options.ICEServers, prepareMapping, options.Events.LocalCandidate,
+			socket, options.ICEServers, prepareMapping, parameters.UsernameFragment, options.Events.LocalCandidate,
 		)
 		connection.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 			edge.localCandidates.addPion(candidate)
@@ -175,11 +182,12 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 		})
 	}
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		isCurrentState := func(expected webrtc.PeerConnectionState) bool { return connection.ConnectionState() == expected }
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
 			log.Debug("piik-client", "event", "media-connection-state", "direction", "outbound", "local", options.Local, "state", state.String())
 		}
-		if state == webrtc.PeerConnectionStateConnected {
+		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) {
 			if err := edge.transport.SetConnected(); err != nil {
 				if debug {
 					log.Debug("piik-client", "event", "media-activation-failed", diagnostics.Error(err))
@@ -190,7 +198,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 			edge.source.RequestRecoveryFrame()
 		}
 		var selected *SelectedPair
-		if state == webrtc.PeerConnectionStateConnected && (edge.events.ConnectionState != nil || debug) {
+		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) && (edge.events.ConnectionState != nil || debug) {
 			if pair, pairErr := edge.SelectedPair(); pairErr == nil {
 				selected = &pair
 				if debug {
@@ -200,7 +208,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 			}
 		}
 		if edge.events.ConnectionState != nil {
-			edge.events.ConnectionState(state, selected)
+			edge.events.ConnectionState(state, selected, isCurrentState)
 		}
 	})
 	return edge, nil
@@ -342,7 +350,7 @@ func (edge *Edge) SetAnswer(answer webrtc.SessionDescription, offerID string) er
 	for _, candidate := range pending {
 		// Candidates are disposable edge input. The connection state callback
 		// remains the authority for a real media failure.
-		if err := edge.connection.AddICECandidate(candidate); err != nil {
+		if err := forwarding.AddICECandidate(edge.connection, candidate); err != nil {
 			slog.Debug("media-candidate-rejected", "connectionId", diagnostics.ID(edge.connectionID), "stage", "drain", diagnostics.Error(err))
 		}
 	}
@@ -380,7 +388,7 @@ func (edge *Edge) AddRemoteCandidate(candidate *webrtc.ICECandidateInit) error {
 	// A candidate may become stale between validation and delivery. Dropping
 	// that one edge input keeps the shared control session alive; ICE state
 	// events still report whether the edge itself can connect.
-	if err := edge.connection.AddICECandidate(value); err != nil {
+	if err := forwarding.AddICECandidate(edge.connection, value); err != nil {
 		slog.Debug("media-candidate-rejected", "connectionId", diagnostics.ID(edge.connectionID), "stage", "apply", diagnostics.Error(err))
 	}
 	return nil
