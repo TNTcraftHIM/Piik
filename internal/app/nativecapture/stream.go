@@ -134,6 +134,7 @@ type Stream struct {
 	controlMu sync.Mutex
 	closed    bool
 	closeOnce sync.Once
+	failure   error // Published before done; read only after process retirement.
 	readMu    sync.Mutex
 	readEnd   sync.Once
 	logger    *slog.Logger
@@ -530,6 +531,12 @@ func startStreamWithEnvironment(
 		waitErr := command.Wait()
 		stopParent()
 		_ = trace.Close()
+		stage, hresult := captureFailureCodes(stderr.Bytes())
+		if waitErr != nil && (stage != "" || hresult != "") {
+			// Preserve validated failure codes and the exit cause for diagnostics
+			// and errors.Is/As, never the helper's raw detail.
+			stream.failure = fmt.Errorf("native capture failed (stage=%s, hresult=%s): %w", stage, hresult, waitErr)
+		}
 		logCaptureFailure(ctx, waitErr, command.ProcessState.ExitCode(), stderr.Bytes())
 		logger.DebugContext(ctx, "piik-client", "event", "capture-process-ended", "mode", mode,
 			"durationMs", time.Since(started).Milliseconds(), "exitCode", command.ProcessState.ExitCode(),
@@ -544,7 +551,18 @@ func logCaptureFailure(ctx context.Context, err error, exitCode int, stderr []by
 	if err == nil || !slog.Default().Enabled(ctx, slog.LevelDebug) {
 		return
 	}
-	stage, hresult := "", ""
+	stage, hresult := captureFailureCodes(stderr)
+	canceled := ctx.Err() != nil
+	// A real child failure may race owner cancellation. Keep its fixed codes,
+	// while ordinary cancellation without a reported failure stays silent.
+	if canceled && stage == "" && hresult == "" {
+		return
+	}
+	slog.DebugContext(ctx, "piik-client", "event", "capture-process-failed",
+		"exitCode", exitCode, "stage", stage, "hresult", hresult, "canceled", canceled)
+}
+
+func captureFailureCodes(stderr []byte) (stage, hresult string) {
 	for _, line := range strings.Split(string(stderr), "\n") {
 		key, value, _ := strings.Cut(strings.TrimSuffix(line, "\r"), "=")
 		switch {
@@ -554,14 +572,7 @@ func logCaptureFailure(ctx context.Context, err error, exitCode int, stderr []by
 			hresult = strings.ToLower(value)
 		}
 	}
-	canceled := ctx.Err() != nil
-	// A real child failure may race owner cancellation. Keep its fixed codes,
-	// while ordinary cancellation without a reported failure stays silent.
-	if canceled && stage == "" && hresult == "" {
-		return
-	}
-	slog.DebugContext(ctx, "piik-client", "event", "capture-process-failed",
-		"exitCode", exitCode, "stage", stage, "hresult", hresult, "canceled", canceled)
+	return
 }
 
 func (stream *Stream) Read() (Frame, error) {
@@ -710,5 +721,5 @@ func (stream *Stream) Close() error {
 		stream.cancel()
 		<-drained
 	})
-	return nil
+	return stream.failure
 }

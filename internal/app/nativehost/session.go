@@ -178,10 +178,10 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	}
 	if err != nil {
 		cancel()
-		_ = stream.Close()
+		captureErr := stream.Close()
 		<-videoDone
 		session.retire()
-		return nil, err
+		return nil, errors.Join(err, captureErr)
 	}
 	// Start the optional audio helper only after video initialization, avoiding
 	// concurrent platform source enumeration while continuing to drain video.
@@ -646,8 +646,7 @@ func (session *Session) prepareVideo(
 		allowQuiet,
 	)
 	if err != nil {
-		_ = replacement.Close()
-		return nil, CaptureState{}, err
+		return nil, CaptureState{}, errors.Join(err, replacement.Close())
 	}
 	if options.RemoteInput && !state.RemoteInput {
 		_ = replacement.Close()

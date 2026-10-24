@@ -714,7 +714,7 @@ func (session *Session) startShare(
 			EncoderIndex:      request.EncoderIndex,
 			Profile:           profile.Video,
 		},
-		MicrophoneMixing: request.MicrophoneMixing && session.capabilities.Microphone,
+		MicrophoneMixing: request.MicrophoneMixing,
 		ExcludeAudio:     request.ExcludeAudio,
 		Profile:          profile,
 		EdgeCapacity:     request.EdgeCapacity,

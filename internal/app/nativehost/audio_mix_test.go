@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -111,6 +112,8 @@ func TestAudioExclusionFailureMutesOnlySourceAndNeverFallsBack(t *testing.T) {
 		}
 		if err := session.ReplaceSource(attempt, true, excluded); err == nil {
 			t.Fatal("failed exclusion was accepted", fault)
+		} else if fault == "PIIK_VIDEO_FAIL" && !strings.Contains(err.Error(), "mft-set-output-type") {
+			t.Fatalf("replacement lost the native failure stage: %v", err)
 		}
 		if session.SourceAudio() == nil || *session.SourceAudio() || session.audioStream != nil || session.stream != video {
 			t.Fatal("failed exclusion retained unfiltered audio or retired video", fault)
