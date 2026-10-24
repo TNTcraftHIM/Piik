@@ -36,6 +36,7 @@ type Options struct {
 	// Zero keeps the desktop default. Single-source platforms may admit one.
 	MaxControlSessions int
 	AllowedOrigins     []string
+	ActivationURL      string
 	NativeMedia        NativeMediaCapabilities
 	NewControl         func() ControlSession
 	Presentation       func(language string)
@@ -75,6 +76,7 @@ type Health struct {
 	InstanceToken     string                  `json:"instanceToken"`
 	NativeMedia       NativeMediaCapabilities `json:"nativeMedia"`
 	QualityPreference bool                    `json:"qualityPreference,omitempty"`
+	ActivationURL     string                  `json:"activationURL,omitempty"`
 }
 
 type NativeMediaCapabilities struct {
@@ -108,6 +110,7 @@ type Server struct {
 	endpoint          Endpoint
 	allowedOrigins    []string
 	nativeMedia       NativeMediaCapabilities
+	activationURL     string
 	newControl        func() ControlSession
 	maxSessions       int
 	presentation      func(string)
@@ -170,6 +173,7 @@ func Start(parent context.Context, options Options) (*Server, error) {
 		},
 		allowedOrigins:    normalizedOrigins(options.AllowedOrigins),
 		nativeMedia:       options.NativeMedia,
+		activationURL:     options.ActivationURL,
 		newControl:        options.NewControl,
 		maxSessions:       sessionLimit,
 		presentation:      options.Presentation,
@@ -394,6 +398,7 @@ func (server *Server) handleHealth(response http.ResponseWriter, request *http.R
 		InstanceToken:     server.endpoint.InstanceToken,
 		NativeMedia:       server.nativeMedia,
 		QualityPreference: server.qualityPreference != nil,
+		ActivationURL:     server.activationURL,
 	})
 }
 

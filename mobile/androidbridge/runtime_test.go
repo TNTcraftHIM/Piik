@@ -6,8 +6,16 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
+
+func TestStartRejectsUnownedActivationURLBeforeAllocating(t *testing.T) {
+	_, err := Start(&testPlatform{}, "", "", "", "", "", "https://other.example/")
+	if err == nil || !strings.Contains(err.Error(), "activation URL") {
+		t.Fatalf("unexpected activation URL result: %v", err)
+	}
+}
 
 func TestSiteApprovalPersistsExactOriginAndRevocation(t *testing.T) {
 	control, err := loopback.Start(context.Background(), loopback.Options{})

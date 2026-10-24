@@ -19,6 +19,38 @@ import (
 
 const testOrigin = "https://share.example.com"
 
+func TestHealthActivationURLIsOptionalAndOriginBound(t *testing.T) {
+	for _, activation := range []string{"", "piik://media"} {
+		t.Run(activation, func(t *testing.T) {
+			server := startTestServerWithOptions(t, Options{
+				AllowedOrigins: []string{testOrigin}, ActivationURL: activation,
+			})
+			endpoint := server.Endpoint()
+			response := doHealthRequest(t, endpoint, endpoint.Host, testOrigin)
+			defer response.Body.Close()
+			var health map[string]json.RawMessage
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("health status = %d", response.StatusCode)
+			}
+			if err := json.NewDecoder(response.Body).Decode(&health); err != nil {
+				t.Fatal(err)
+			}
+			field, present := health["activationURL"]
+			if present != (activation != "") {
+				t.Fatalf("activationURL presence = %t, want %t", present, activation != "")
+			}
+			if present && string(field) != `"piik://media"` {
+				t.Fatalf("activationURL = %s", field)
+			}
+			denied := doHealthRequest(t, endpoint, endpoint.Host, testOrigin+".other")
+			defer denied.Body.Close()
+			if denied.StatusCode != http.StatusForbidden {
+				t.Fatalf("unapproved origin health status = %d", denied.StatusCode)
+			}
+		})
+	}
+}
+
 func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
 	expectedMedia := NativeMediaCapabilities{
 		Video: true, ProcessAudio: false, SystemAudio: true, HardwareH264: true, MaxRelayChildren: 20,

@@ -48,9 +48,12 @@ type Runtime struct {
 	closeErr           error
 }
 
-func Start(platform Platform, lanAddress string, codecCapabilities string, dataDirectory, temporaryDirectory, tunnelExecutable string) (*Runtime, error) {
+func Start(platform Platform, lanAddress string, codecCapabilities string, dataDirectory, temporaryDirectory, tunnelExecutable, activationURL string) (*Runtime, error) {
 	if platform == nil {
 		return nil, errors.New("Android capture platform is unavailable")
+	}
+	if activationURL != "" && activationURL != "piik://media" {
+		return nil, errors.New("Android media activation URL is invalid")
 	}
 	if webassets.FS() == nil {
 		return nil, errors.New("build the Piik Web assets before the Android library")
@@ -89,6 +92,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	mediaCapabilities := catalog.mediaCapabilities()
 	mediaCapabilities.Microphone = capabilities.Microphone
 	r.control, err = loopback.Start(ctx, loopback.Options{
+		ActivationURL:      activationURL,
 		MaxControlSessions: 1,
 		AllowedOrigins:     preferences.ApprovedSites(),
 		NativeMedia:        mediaCapabilities,
