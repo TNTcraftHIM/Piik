@@ -782,9 +782,9 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 		{name: "local ignores public override", override: "invalid"},
 		{
 			name: "link", link: true,
-			stunURLs: []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB},
+			stunURLs: []string{"stun:stun.cloudflare.com:3478", "stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"},
 			natPredictionSTUNURLs: []string{
-				publicFallbackSTUNURLA, publicFallbackSTUNURLB,
+				"stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478",
 			},
 		},
 		{

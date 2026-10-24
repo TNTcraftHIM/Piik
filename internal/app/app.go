@@ -40,10 +40,7 @@ import (
 )
 
 const (
-	DefaultLocalPort       = 8787
-	publicSTUNURL          = "stun:stun.cloudflare.com:3478"
-	publicFallbackSTUNURLA = "stun:stun.miwifi.com:3478"
-	publicFallbackSTUNURLB = "stun:stun.chat.bilibili.com:3478"
+	DefaultLocalPort = 8787
 	// localShutdownTimeout bounds the ordered Local stop. The packaged smoke
 	// allows 10 s between the stop request and the exit, so it stays well
 	// inside that budget.
@@ -571,6 +568,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 			ctx,
 			tunnelExecutable(options.TunnelProcess),
 			fmt.Sprintf("http://127.0.0.1:%d", options.Port),
+			"",
 		)
 		if err != nil {
 			// Only the caller's clean cancellation is a normal stopped outcome.
@@ -755,20 +753,7 @@ func localSTUNURLs(link bool) (stunURLs []string, natPredictionSTUNURLs []string
 	if !link {
 		return nil, nil, nil
 	}
-	stunURLs, err = serverconfig.ParseSTUNURLs(os.Getenv("PIIK_STUN_URLS"), "PIIK_STUN_URLS")
-	if err != nil {
-		return nil, nil, err
-	}
-	if len(stunURLs) == 0 {
-		stunURLs = []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB}
-	}
-	if len(stunURLs) >= 3 {
-		if len(stunURLs) > protocol.MaxIceServerURLs-protocol.MaxNatPredictionAuxiliaryStunURLs {
-			return nil, nil, errors.New("PIIK_STUN_URLS must contain at most 6 URLs")
-		}
-		natPredictionSTUNURLs = stunURLs[1:3]
-	}
-	return stunURLs, natPredictionSTUNURLs, nil
+	return appconfig.PublicSTUNURLs(os.Getenv("PIIK_STUN_URLS"))
 }
 
 // endLocalServer is step 1 of the ADR-0010 item 12 unwind: every room ends,

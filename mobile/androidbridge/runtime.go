@@ -3,10 +3,12 @@ package androidbridge
 import (
 	"context"
 	"crypto/tls"
-	"encoding/json"
 	"errors"
+	"log/slog"
 	"net"
+	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -14,104 +16,75 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
+	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	"github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
 	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
 )
 
 // The App process owns the room runtime. Its foreground service owns capture.
 type Runtime struct {
-	capture    *capture
-	server     *serverapp.Server
-	control    *loopback.Server
-	launcher   *launcher.Server
-	ctx        context.Context
-	cancel     context.CancelFunc
-	once       sync.Once
-	url        string
-	entry      string
-	configMu   sync.Mutex
-	configPath string
-	config     appconfig.Config
+	capture            *capture
+	server             *serverapp.Server
+	control            *loopback.Server
+	launcher           *launcher.Server
+	ctx                context.Context
+	cancel             context.CancelFunc
+	once               sync.Once
+	url                string
+	entry              string
+	configMu           sync.Mutex
+	configPath         string
+	config             appconfig.Config
+	tunnel             *publictunnel.Process
+	tunnelExecutable   string
+	temporaryDirectory string
+	launchDone         chan struct{}
+	closeErr           error
 }
 
-func Start(platform Platform, lanAddress string, codecCapabilities string, dataDirectory string) (*Runtime, error) {
+func Start(platform Platform, lanAddress string, codecCapabilities string, dataDirectory, temporaryDirectory, tunnelExecutable string) (*Runtime, error) {
 	if platform == nil {
 		return nil, errors.New("Android capture platform is unavailable")
 	}
 	if webassets.FS() == nil {
 		return nil, errors.New("build the Piik Web assets before the Android library")
 	}
-	var device struct {
-		Video       bool   `json:"video"`
-		Width       int    `json:"width"`
-		Height      int    `json:"height"`
-		Pixels      int    `json:"pixels"`
-		Macroblocks int    `json:"macroblocks"`
-		FPS         int    `json:"fps"`
-		Bitrate     int    `json:"bitrate"`
-		Name        string `json:"name"`
-		Codec       string `json:"codec"`
+	if !filepath.IsAbs(temporaryDirectory) {
+		return nil, errors.New("Android cache directory is unavailable")
 	}
-	if err := json.Unmarshal([]byte(codecCapabilities), &device); err != nil {
-		return nil, errors.New("Android codec capabilities are invalid")
+	if err := os.MkdirAll(temporaryDirectory, 0700); err != nil {
+		return nil, err
+	}
+	catalog, err := decodeEncoderCapabilities(codecCapabilities)
+	if err != nil {
+		return nil, err
 	}
 	preferences, err := appconfig.LoadOrCreate(filepath.Join(dataDirectory, "client.json"))
 	if err != nil {
 		return nil, err
 	}
-	audio := device.Video
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Runtime{
 		capture: &capture{
 			platform: platform,
-			codec:    device.Codec,
+			encoders: catalog.Encoders,
 			streams:  make(map[int64]*captureStream),
 		},
 		ctx: ctx, cancel: cancel,
 		config: preferences, configPath: filepath.Join(dataDirectory, "client.json"),
+		temporaryDirectory: temporaryDirectory, tunnelExecutable: tunnelExecutable,
 	}
-	capabilities := nativecapture.Capabilities{
-		Protocol:     7,
-		Platform:     "android",
-		VideoCapture: device.Video,
-		SystemAudio:  audio,
-		Adapters:     []nativecapture.Adapter{},
-	}
-	if device.Video {
-		capabilities.Adapters = []nativecapture.Adapter{{Index: 0, Name: "Android MediaCodec", Identity: "android", HardwareH264: []nativecapture.Encoder{}}}
-		if device.Codec == "h264" {
-			capabilities.Adapters[0].HardwareH264 = []nativecapture.Encoder{{Index: 0, Name: device.Name, Identity: device.Name}}
-		}
-	}
-	capabilities.SoftwareVP8 = device.Video && device.Codec == "vp8"
+	capabilities := catalog.nativeCapabilities()
 	r.control, err = loopback.Start(ctx, loopback.Options{
 		MaxControlSessions: 1,
 		AllowedOrigins:     preferences.ApprovedSites(),
-		NativeMedia: loopback.NativeMediaCapabilities{
-			Video:            device.Video,
-			HardwareH264:     device.Video && device.Codec == "h264",
-			SoftwareVP8:      capabilities.SoftwareVP8,
-			SystemAudio:      audio,
-			ShareVolume:      audio,
-			ReceiverReuse:    true,
-			MaxRelayChildren: protocol.MaxViewersPerRoomLimit,
-			MaxVideoResolution: protocol.QualityResolution{
-				Width:  protocol.Int(device.Width),
-				Height: protocol.Int(device.Height),
-			},
-			MaxVideoPixels:               device.Pixels,
-			MaxVideoMacroblocksPerSecond: device.Macroblocks,
-			MaxVideoFramerate:            device.FPS,
-			MaxVideoBitrate:              device.Bitrate,
-			MaxAudioBitrate:              320000,
-		},
+		NativeMedia:        catalog.mediaCapabilities(),
 		NewControl: func() loopback.ControlSession {
 			return nativecontrol.NewWithCapture(capabilities, false, nil, r.capture)
 		},
@@ -122,11 +95,14 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	}
 	startup, err := launcher.LoadStartupSite(r.configPath, preferences.ApprovedSites()...)
 	if err != nil {
-		r.Close()
-		return nil, err
+		return nil, errors.Join(err, r.Close())
+	}
+	modes := []launcher.Mode{launcher.ModeLocal}
+	if helper, statErr := os.Stat(tunnelExecutable); statErr == nil && filepath.IsAbs(tunnelExecutable) && helper.Mode().IsRegular() {
+		modes = append(modes, launcher.ModeLink)
 	}
 	r.launcher, err = launcher.Start(ctx, webassets.FS(), launcher.Options{
-		Modes: []launcher.Mode{launcher.ModeLocal}, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: launcher.ModeLocal, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
+		Modes: modes, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: launcher.ModeLocal, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
 		ChangeSite: func(site string, allowed bool) ([]string, error) {
 			var err error
 			if allowed {
@@ -142,8 +118,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 		SaveStartupSite: func(site string) error { return launcher.SaveStartupSite(r.configPath, site) },
 	})
 	if err != nil {
-		r.Close()
-		return nil, err
+		return nil, errors.Join(err, r.Close())
 	}
 	r.entry = r.launcher.URL()
 	if startup != "" {
@@ -151,16 +126,13 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	}
 	r.control.SetConnectURL(r.launcher.URL())
 	if err = r.control.SetAllowedOrigins(append(r.localOrigins(), preferences.ApprovedSites()...)); err != nil {
-		r.Close()
-		return nil, err
+		return nil, errors.Join(err, r.Close())
 	}
+	r.launchDone = make(chan struct{})
 	go func() {
+		defer close(r.launchDone)
 		select {
 		case selected := <-r.launcher.Selection():
-			if selected.Mode != launcher.ModeLocal {
-				r.launcher.SetResult("", errors.New("Use an HTTPS Piik site for sharing over the internet"))
-				return
-			}
 			target, err := r.startLocal(selected, lanAddress)
 			r.launcher.SetResult(target, err)
 		case <-ctx.Done():
@@ -202,7 +174,7 @@ func (r *Runtime) SiteURL(value string) (string, error) {
 	return target.String(), nil
 }
 
-func (r *Runtime) startLocal(selection launcher.Selection, address string) (string, error) {
+func (r *Runtime) startLocal(selection launcher.Selection, address string) (target string, returnedErr error) {
 	r.configMu.Lock()
 	next := r.config
 	next.LocalAccessPassword = selection.LocalAccessPassword
@@ -217,53 +189,117 @@ func (r *Runtime) startLocal(selection launcher.Selection, address string) (stri
 	if selection.LANAddress != nil {
 		address = *selection.LANAddress
 	}
-	local, err := net.Listen("tcp4", "127.0.0.1:0")
+	link := selection.Mode == launcher.ModeLink
+	bind := "127.0.0.1:0"
+	if link {
+		bind = "0.0.0.0:0"
+	}
+	local, err := net.Listen("tcp4", bind)
 	if err != nil {
 		return "", err
 	}
 	port := local.Addr().(*net.TCPAddr).Port
-	configuration, err := config.Local(config.LocalOptions{PublicAddress: address, Port: port, SiteAccessPassword: selection.LocalAccessPassword})
+	listeners := []net.Listener{local}
+	var server *serverapp.Server
+	var tunnel *publictunnel.Process
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		if server != nil {
+			returnedErr = errors.Join(returnedErr, endRuntimeServer(server))
+		}
+		if tunnel != nil {
+			returnedErr = errors.Join(returnedErr, tunnel.Close())
+		}
+		for _, listener := range listeners {
+			_ = listener.Close()
+		}
+	}()
+	options := config.LocalOptions{PublicAddress: address, Port: port, SiteAccessPassword: selection.LocalAccessPassword}
+	if link {
+		options.STUNURLs, options.NATPredictionSTUNURLs, err = appconfig.PublicSTUNURLs(os.Getenv("PIIK_STUN_URLS"))
+		if err != nil {
+			return "", err
+		}
+		tunnel, err = publictunnel.Start(r.ctx, r.tunnelExecutable, "http://127.0.0.1:"+strconv.Itoa(port), r.temporaryDirectory)
+		if err != nil {
+			return "", err
+		}
+		options.PublicOrigin = tunnel.Origin()
+		options.AllowedAddresses, _ = lan.Addresses()
+		// A public invitation does not require a currently selected LAN interface.
+		options.PublicAddress = ""
+	} else {
+		secure, err := net.Listen("tcp4", net.JoinHostPort(address, strconv.Itoa(port)))
+		if err != nil {
+			return "", err
+		}
+		listeners = append(listeners, secure)
+		certificate, err := tlsconfig.SelfSigned(address)
+		if err != nil {
+			return "", err
+		}
+		listeners[len(listeners)-1] = tls.NewListener(secure, certificate)
+	}
+	configuration, err := config.Local(options)
 	if err != nil {
-		local.Close()
 		return "", err
 	}
-	secure, err := net.Listen("tcp4", net.JoinHostPort(address, strconv.Itoa(port)))
+	server, err = serverapp.New(serverapp.Options{Config: configuration, Assets: webassets.FS(), Listeners: listeners})
 	if err != nil {
-		local.Close()
-		return "", err
-	}
-	certificate, err := tlsconfig.SelfSigned(address)
-	if err != nil {
-		local.Close()
-		secure.Close()
-		return "", err
-	}
-	server, err := serverapp.New(serverapp.Options{Config: configuration, Assets: webassets.FS(), Listeners: []net.Listener{local, tls.NewListener(secure, certificate)}})
-	if err != nil {
-		local.Close()
-		secure.Close()
 		return "", err
 	}
 	if _, err = server.Listen(r.ctx); err != nil {
 		return "", err
 	}
-	target := launcher.LocalEntryURL("http://127.0.0.1:"+strconv.Itoa(port)+"/", selection.LocalAccessPassword)
+	target = launcher.LocalEntryURL("http://127.0.0.1:"+strconv.Itoa(port)+"/", selection.LocalAccessPassword)
+	r.configMu.Lock()
+	sites := r.config.ApprovedSites()
+	r.configMu.Unlock()
+	targetURL, _ := url.Parse(target)
+	origins := append(r.localOrigins(), targetURL.Scheme+"://"+targetURL.Host)
+	if err = r.control.SetAllowedOrigins(append(origins, sites...)); err != nil {
+		return "", err
+	}
 	r.configMu.Lock()
 	if r.ctx.Err() != nil {
 		r.configMu.Unlock()
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		server.End(ctx)
 		return "", r.ctx.Err()
 	}
-	r.server = server
-	r.url = target
-	sites := r.config.ApprovedSites()
+	r.server, r.tunnel, r.url = server, tunnel, target
+	committed = true
 	r.configMu.Unlock()
-	if err = r.control.SetAllowedOrigins(append(r.localOrigins(), sites...)); err != nil {
-		return "", err
+	if tunnel != nil {
+		go r.watchTunnel(tunnel)
 	}
 	return target, nil
+}
+
+func endRuntimeServer(server *serverapp.Server) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	err := server.End(ctx)
+	if errors.Is(err, context.Canceled) || errors.Is(err, http.ErrServerClosed) {
+		return nil
+	}
+	return err
+}
+
+func (r *Runtime) watchTunnel(tunnel *publictunnel.Process) {
+	select {
+	case <-r.ctx.Done():
+		return
+	case <-tunnel.Done():
+		if r.ctx.Err() != nil {
+			return
+		}
+		if err := r.Close(); err != nil {
+			slog.Warn("Android public-link cleanup failed", "error", err)
+		}
+		r.capture.platform.RuntimeStopped("public-link-stopped")
+	}
 }
 
 // Sites retain the desktop configuration and exact-origin approval owner.
@@ -348,20 +384,27 @@ func (r *Runtime) TrustedURL(value string) bool {
 	return false
 }
 
-func (r *Runtime) Close() {
+func (r *Runtime) Close() error {
 	r.once.Do(func() {
 		r.cancel()
-		r.control.Close()
-		if r.launcher != nil {
-			_ = r.launcher.Close()
+		if r.launchDone != nil {
+			<-r.launchDone
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
 		r.configMu.Lock()
 		server := r.server
+		tunnel := r.tunnel
 		r.configMu.Unlock()
 		if server != nil {
-			server.End(ctx)
+			r.closeErr = errors.Join(r.closeErr, endRuntimeServer(server))
+		}
+		if tunnel != nil {
+			r.closeErr = errors.Join(r.closeErr, tunnel.Close())
+		}
+		if r.control != nil {
+			r.closeErr = errors.Join(r.closeErr, r.control.Close())
+		}
+		if r.launcher != nil {
+			r.closeErr = errors.Join(r.closeErr, r.launcher.Close())
 		}
 		r.capture.mu.Lock()
 		streams := make([]*captureStream, 0, len(r.capture.streams))
@@ -370,7 +413,8 @@ func (r *Runtime) Close() {
 		}
 		r.capture.mu.Unlock()
 		for _, s := range streams {
-			s.Close()
+			r.closeErr = errors.Join(r.closeErr, s.Close())
 		}
 	})
+	return r.closeErr
 }

@@ -65,6 +65,7 @@ func Start(
 	parent context.Context,
 	executable string,
 	localOrigin string,
+	temporaryDirectory string,
 ) (*Process, error) {
 	if parent == nil {
 		parent = context.Background()
@@ -83,7 +84,7 @@ func Start(
 	var err error
 	for attempt := 1; attempt <= startupAttempts; attempt++ {
 		var process *Process
-		process, err = startAttempt(startup, executable, localOrigin)
+		process, err = startAttempt(startup, executable, localOrigin, temporaryDirectory)
 		if err == nil {
 			return process, nil
 		}
@@ -123,11 +124,11 @@ func Start(
 	return nil, err
 }
 
-func startAttempt(parent context.Context, executable, localOrigin string) (*Process, error) {
+func startAttempt(parent context.Context, executable, localOrigin, temporaryDirectory string) (*Process, error) {
 	if err := parent.Err(); err != nil {
 		return nil, err
 	}
-	configPath, err := writeTemporaryConfig()
+	configPath, err := writeTemporaryConfig(temporaryDirectory)
 	if err != nil {
 		return nil, err
 	}
@@ -273,8 +274,8 @@ func startAttempt(parent context.Context, executable, localOrigin string) (*Proc
 	return process, nil
 }
 
-func writeTemporaryConfig() (string, error) {
-	file, err := os.CreateTemp("", "piik-cloudflared-*.yml")
+func writeTemporaryConfig(directory string) (string, error) {
+	file, err := os.CreateTemp(directory, "piik-cloudflared-*.yml")
 	if err != nil {
 		return "", fmt.Errorf("public tunnel temporary file could not be created: %w", err)
 	}

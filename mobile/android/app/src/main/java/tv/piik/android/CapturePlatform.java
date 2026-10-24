@@ -40,4 +40,9 @@ final class CapturePlatform implements Platform {
           if (runtime == MainActivity.runtime) MainActivity.refreshBrowserMedia();
         });
   }
+
+  public void runtimeStopped(String reason) {
+    Runtime runtime = owner.get();
+    MainActivity.main.post(() -> MainActivity.runtimeStopped(runtime, reason));
+  }
 }

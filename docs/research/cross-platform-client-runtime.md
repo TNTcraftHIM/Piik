@@ -339,7 +339,12 @@ approval notification and close return to the original live Host.
 The existing App management page owns approval, revocation and the starred
 startup site. Local mode starts the Go room and LAN HTTPS invitation only when
 selected; Hosted mode uses that site's room service. Room signaling stays with
-the same Web UI; Android has no temporary public-link sidecar.
+the same Web UI. Public-link mode reuses the desktop supervised cloudflared
+process and the same room server. Its Android PIE executable is installed in
+the APK native-library directory; temporary configuration uses the Android
+cache directory rather than a process-wide temporary-path override. Runtime
+shutdown joins startup work, ends the room server, then joins the sidecar.
+An unexpected sidecar exit ends the runtime and presents an explicit restart.
 
 A `mediaProjection` foreground service owns consent, Projection, VirtualDisplay,
 MediaCodec and AudioRecord. A narrow

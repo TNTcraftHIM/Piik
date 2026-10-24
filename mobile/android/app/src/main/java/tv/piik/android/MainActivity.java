@@ -11,7 +11,6 @@ import android.webkit.*;
 import android.widget.*;
 import java.net.Inet4Address;
 import java.util.concurrent.*;
-import org.json.JSONObject;
 import tv.piik.androidbridge.*;
 
 public final class MainActivity extends Activity {
@@ -23,7 +22,6 @@ public final class MainActivity extends Activity {
   static CompletableFuture<tv.piik.androidbridge.Runtime> startup;
   static long pendingVideo;
   static String pendingConfig;
-  static String encoderName;
   static BrowserMedia browserMedia;
   static final int CAPTURE = 10;
   WebPermissions permissions;
@@ -91,7 +89,10 @@ public final class MainActivity extends Activity {
       showWeb(runtime.entryURL());
       return;
     }
-    if (startup != null) return;
+    if (startup != null) {
+      if (startup.isCompletedExceptionally()) showRuntimeFailure();
+      return;
+    }
     CompletableFuture<tv.piik.androidbridge.Runtime> starting =
         CompletableFuture.supplyAsync(
             () -> {
@@ -110,7 +111,13 @@ public final class MainActivity extends Activity {
                 CapturePlatform platform = new CapturePlatform();
                 var started =
                     Androidbridge.start(
-                        platform, address, capabilities, getFilesDir().getAbsolutePath());
+                        platform,
+                        address,
+                        capabilities,
+                        getFilesDir().getAbsolutePath(),
+                        getCacheDir().getAbsolutePath(),
+                        new java.io.File(getApplicationInfo().nativeLibraryDir, "libcloudflared.so")
+                            .getAbsolutePath());
                 platform.owner = new java.lang.ref.WeakReference<>(started);
                 return started;
               } catch (Exception error) {
@@ -124,13 +131,13 @@ public final class MainActivity extends Activity {
             main.post(
                 () -> {
                   if (startup != starting) {
-                    if (started != null) work.execute(started::close);
+                    if (started != null) work.execute(() -> closeRuntime(started));
                     return;
                   }
                   startup = null;
                   MainActivity active = current;
                   if (active == null || active.isFinishing() || active.isDestroyed()) {
-                    if (started != null) work.execute(started::close);
+                    if (started != null) work.execute(() -> closeRuntime(started));
                     return;
                   }
                   if (error != null) {
@@ -146,41 +153,7 @@ public final class MainActivity extends Activity {
   }
 
   static String codecCapabilities() throws Exception {
-    JSONObject result = new JSONObject();
-    result.put("video", false);
-    for (String wanted : new String[] {"video/avc", "video/x-vnd.on2.vp8"})
-      for (MediaCodecInfo codec : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos())
-        if (codec.isEncoder() && (!wanted.equals("video/avc") || codec.isHardwareAccelerated()))
-          for (String type : codec.getSupportedTypes())
-            if (type.equalsIgnoreCase(wanted)) {
-              MediaCodecInfo.CodecCapabilities capabilities = codec.getCapabilitiesForType(type);
-              boolean surface = false;
-              for (int color : capabilities.colorFormats)
-                if (color == MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) surface = true;
-              if (!surface) continue;
-              MediaCodecInfo.VideoCapabilities video =
-                  codec.getCapabilitiesForType(type).getVideoCapabilities();
-              encoderName = codec.getName();
-              result.put("video", true);
-              result.put("name", encoderName);
-              result.put("codec", wanted.equals("video/avc") ? "h264" : "vp8");
-              result.put("width", Math.min(1920, video.getSupportedWidths().getUpper()));
-              result.put("height", Math.min(1920, video.getSupportedHeights().getUpper()));
-              int width = Math.min(1920, video.getSupportedWidths().getUpper());
-              width -= width % video.getWidthAlignment();
-              int height = Math.min(1920, video.getSupportedHeightsFor(width).getUpper());
-              height -= height % video.getHeightAlignment();
-              double rate = Math.min(60, video.getSupportedFrameRatesFor(width, height).getUpper());
-              result.put("pixels", (long) width * height);
-              result.put(
-                  "macroblocks",
-                  Math.min(
-                      2073600L, (long) ((width + 15) / 16) * ((height + 15) / 16) * (long) rate));
-              result.put("fps", Math.min(60, video.getSupportedFrameRates().getUpper()));
-              result.put("bitrate", Math.min(100000000, video.getBitrateRange().getUpper()));
-              return result.toString();
-            }
-    return result.toString();
+    return EncoderCatalog.capabilities();
   }
 
   void showWeb(String url) {
@@ -199,7 +172,7 @@ public final class MainActivity extends Activity {
     web.setWebChromeClient(new AppChromeClient());
     setContentView(web);
     web.loadUrl(url);
-    if (encoderName == null)
+    if (EncoderCatalog.candidates("auto").isEmpty())
       new AlertDialog.Builder(this)
           .setMessage(R.string.no_capture)
           .setPositiveButton(android.R.string.ok, null)
@@ -515,7 +488,7 @@ public final class MainActivity extends Activity {
               startup = null;
               pendingVideo = 0;
               pendingConfig = null;
-              if (old != null) work.execute(old::close);
+              if (old != null) work.execute(() -> closeRuntime(old));
               if (web != null) {
                 web.destroy();
                 web = null;
@@ -532,5 +505,50 @@ public final class MainActivity extends Activity {
     permissions.close();
     if (current == this) current = null;
     super.onDestroy();
+  }
+
+  static void closeRuntime(tv.piik.androidbridge.Runtime owner) {
+    try {
+      owner.close();
+    } catch (Exception error) {
+      android.util.Log.w("PiikRuntime", "runtime shutdown failed", error);
+    }
+  }
+
+  static void runtimeStopped(tv.piik.androidbridge.Runtime owner, String reason) {
+    if (owner == null || runtime != owner) return;
+    runtime = null;
+    startup = CompletableFuture.failedFuture(new IllegalStateException(reason));
+    pendingVideo = 0;
+    pendingConfig = null;
+    if (browserMedia != null) browserMedia.close();
+    CaptureService.shutdown();
+    if (web != null) {
+      web.destroy();
+      web = null;
+    }
+    MainActivity active = current;
+    if (active == null || active.isFinishing() || active.isDestroyed()) return;
+    active.fullscreen.hide();
+    if (active.sitePopup != null) active.sitePopup.dismiss();
+    active.showRuntimeFailure();
+  }
+
+  void showRuntimeFailure() {
+    LinearLayout failure = new LinearLayout(this);
+    failure.setOrientation(LinearLayout.VERTICAL);
+    failure.setPadding(24, 48, 24, 24);
+    TextView message = new TextView(this);
+    message.setText(R.string.public_link_stopped);
+    failure.addView(message);
+    Button restart = new Button(this);
+    restart.setText(R.string.restart_piik);
+    restart.setOnClickListener(
+        ignored -> {
+          startup = null;
+          recreate();
+        });
+    failure.addView(restart);
+    setContentView(failure);
   }
 }
