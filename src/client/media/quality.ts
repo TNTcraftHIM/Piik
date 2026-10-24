@@ -1,3 +1,4 @@
+import { acquireUserMedia, stopUserMediaTrack } from "./user-media";
 import {
   DEFAULT_QUALITY_SETTINGS,
   MIN_AUDIO_BITRATE,
@@ -267,7 +268,7 @@ export async function captureDisplay(profile: QualityProfile): Promise<MediaStre
 
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach((track) => stopUserMediaTrack(track));
     complete("failed", { reason: "no-video-track" });
     throw new Error("display capture produced no video track");
   }
@@ -288,11 +289,11 @@ export type BrowserCaptureSource = "browser" | "camera";
 export async function captureBrowserSource(profile: QualityProfile, source: BrowserCaptureSource, deviceId = ""): Promise<MediaStream> {
   if (source !== "camera") return captureDisplay(profile);
   requireCaptureProfile(profile);
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: false,
+  const stream = await acquireUserMedia({ audio: false,
     video: cameraCaptureConstraints(profile.resolution, profile.maxFramerate, deviceId) });
   const track = stream.getVideoTracks()[0];
   if (!track || track.readyState === "ended") {
-    stream.getTracks().forEach((track) => track.stop());
+    stream.getTracks().forEach((track) => stopUserMediaTrack(track));
     throw new Error("Camera capture produced no live video track");
   }
   track.contentHint = "motion";

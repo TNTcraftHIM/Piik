@@ -5,7 +5,8 @@ import { clientMessageSchema, type ClientMessage, type RoomVoiceState } from "..
 afterEach(() => vi.unstubAllGlobals());
 
 function microphone() {
-  const track = { readyState: "live", contentHint: "", onended: null as null | (() => void),
+  const events = new EventTarget();
+  const track = { kind: "audio", addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), readyState: "live", contentHint: "", onended: null as null | (() => void),
     stop: vi.fn(() => { track.readyState = "ended"; }) };
   const stream = { getTracks: () => [track], getAudioTracks: () => [track] } as unknown as MediaStream;
   return { track, stream };

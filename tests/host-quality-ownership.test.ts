@@ -1,3 +1,4 @@
+import { stopUserMediaTrack } from "../src/client/media/user-media";
 import { readFileSync } from "node:fs";
 import { createContext, runInContext } from "node:vm";
 import ts from "typescript";
@@ -134,7 +135,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     ensureHostSfuRoute: () => route,
     reconcileBoundedMediaChildren, activeHostChildPeerIdsRef: ref<string[]>([]),
   };
-  context = createContext({ ...state,
+  context = createContext({ ...state, stopUserMediaTrack,
     isCurrentGeneration: (generation: number) => state.activeGenerationRef.current === generation,
     isCurrentShare: (generation: number, share: string) =>
       state.activeGenerationRef.current === generation && state.shareGenerationRef.current === share,

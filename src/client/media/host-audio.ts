@@ -1,3 +1,4 @@
+import { acquireUserMedia, stopUserMediaTrack } from "./user-media";
 import type { BrowserCaptureSource } from "./quality";
 import { audioInputConstraints } from "./audio-capture";
 import { MicrophoneInput } from "./microphone-input";
@@ -52,7 +53,7 @@ export class HostAudio {
   private closeGraph(): void {
     this.sourceNode?.disconnect(); this.sourceNode = null;
     this.gain?.disconnect(); this.gain = null;
-    this.destination?.stream.getTracks().forEach(track => track.stop()); this.destination = null;
+    this.destination?.stream.getTracks().forEach(track => stopUserMediaTrack(track)); this.destination = null;
     void this.context?.close().catch(() => {}); this.context = null;
   }
   private connectSource(): void {
@@ -71,7 +72,7 @@ export class HostAudio {
     try {
       const resumed = context.resume().then(() => true, () => false);
       await this.context.resume();
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioInputConstraints(settings.voiceProcessing),
+      stream = await acquireUserMedia({ audio: { ...audioInputConstraints(settings.voiceProcessing),
         ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false });
       if (!await resumed) throw new Error("Microphone audio could not start");
       if (this.closed || request !== this.microphoneRequest) return;
@@ -89,7 +90,7 @@ export class HostAudio {
     } catch (error) {
       input?.close(); throw error;
     } finally {
-      if (!input) { stream?.getTracks().forEach(track => track.stop()); void context.close().catch(() => {}); }
+      if (!input) { stream?.getTracks().forEach(track => stopUserMediaTrack(track)); void context.close().catch(() => {}); }
     }
   }
   microphoneVolume(value: number): void { this.microphone?.volume(value); }
@@ -114,7 +115,7 @@ export class HostAudio {
     this.unwatchSource(); this.source = source; this.kind = kind; this.watchSource();
     this.connectSource();
     this.reportAvailability();
-    if (previous !== source) previous.getAudioTracks().forEach(track => track.stop());
+    if (previous !== source) previous.getAudioTracks().forEach(track => stopUserMediaTrack(track));
     return this.output();
   }
   dispose(): void {
@@ -122,6 +123,6 @@ export class HostAudio {
     this.closed = true; ++this.microphoneRequest;
     this.unwatchSource();
     this.clearMicrophone(); this.closeGraph();
-    this.source.getAudioTracks().forEach(track => track.stop());
+    this.source.getAudioTracks().forEach(track => stopUserMediaTrack(track));
   }
 }

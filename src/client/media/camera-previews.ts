@@ -1,3 +1,4 @@
+import { acquireUserMedia, stopUserMediaTrack } from "./user-media";
 import { browserCameras, cameraCaptureConstraints, type CaptureDevice } from "./capture-devices";
 
 export type CameraPreview = CaptureDevice & { preview: string | null };
@@ -44,10 +45,10 @@ async function snapshot(stream: MediaStream, signal: AbortSignal): Promise<strin
 export async function loadCameraPreviews(signal: AbortSignal,
   publish: (sources: CameraPreview[]) => void, activeVideo?: HTMLVideoElement | null): Promise<void> {
   let owned: MediaStream | null = null;
-  const release = () => { owned?.getTracks().forEach(track => track.stop()); owned = null; };
+  const release = () => { owned?.getTracks().forEach(track => stopUserMediaTrack(track)); owned = null; };
   const open = async (id: string) => {
     signal.throwIfAborted();
-    owned = await navigator.mediaDevices.getUserMedia({ audio: false,
+    owned = await acquireUserMedia({ audio: false,
       video: cameraCaptureConstraints({ width: 320, height: 180 }, 15, id) });
     // A permission promise can settle after the picker has closed.
     if (signal.aborted) { release(); signal.throwIfAborted(); }
