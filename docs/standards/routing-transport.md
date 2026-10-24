@@ -217,6 +217,8 @@ first request.
 The budget belongs to the current parent and survives physical connection or
 Browser/Native backend replacement. Only a connected transport or a new parent
 resets it; replacing an unconnected backend cannot renew recovery indefinitely.
+Host signaling status is not transport-failure evidence. Its offline status alone
+does not cancel current-edge recovery or retire a relay's downstream connections.
 Capable Native receivers also renegotiate that connection while retaining the
 encoded source, local playback and downstream edges when its codec/audio shape
 is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplemental

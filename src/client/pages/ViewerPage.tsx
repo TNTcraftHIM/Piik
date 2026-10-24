@@ -469,7 +469,6 @@ export function ViewerPage({
   useEffect(() => {
     let active = true;
     let currentIceConfig: IceConfig | null = null;
-    let currentHostOnline = false;
     let currentHostPaused = false;
     let currentPeerId: string | null = null;
     let currentRouteRevision = 0;
@@ -1478,15 +1477,8 @@ export function ViewerPage({
               noteReceiveFailure(snapshot, currentRouteRevision);
               activePeerMetrics = snapshot.metrics;
               offerPeerQualityEvidence(snapshot, peer);
-              if (
-                !currentHostOnline &&
-                (snapshot.connectionState === "failed" ||
-                  snapshot.connectionState === "closed")
-              ) {
-                clearPeerState();
-                invalidatePresentedMedia();
-                return;
-              }
+              // Host signaling presence does not retire this edge's recovery
+              // or the relay's downstream connections.
               setPeerSnapshot(snapshot);
               dispatchPresentation({
                 type: "connection",
@@ -1588,7 +1580,6 @@ export function ViewerPage({
         );
         signal.send(relayCapacityMessageForBrowser());
         currentIceConfig = message.iceConfig;
-        currentHostOnline = message.hostOnline;
         const sharingPaused = message.hostPaused ?? false;
         if (currentHostPaused !== sharingPaused && sharingPaused) {
           invalidatePresentedMedia();
@@ -1819,7 +1810,6 @@ export function ViewerPage({
       }
       if (message.type === "host-status") {
         if (!message.online) setCoPlayParticipants([]);
-        currentHostOnline = message.online;
         if (currentHostPaused !== message.paused && message.paused) {
           invalidatePresentedMedia();
         }
@@ -1852,7 +1842,6 @@ export function ViewerPage({
         currentShareGeneration = null;
         currentRoutePolicy = DEFAULT_ROUTE_POLICY;
         setAssignedRoute(null);
-        currentHostOnline = false;
         currentHostPaused = false;
         clearViewerSfuRoute();
         clearPeerState(true);
