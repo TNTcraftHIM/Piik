@@ -16,6 +16,7 @@ import tv.piik.androidbridge.Runtime;
 
 // One approved main document owns this port and its Browser camera/microphone demand.
 final class BrowserMedia {
+  static final int MAX_STATE_MESSAGE_LENGTH = 256;
   final Context context;
   final Runtime runtime;
   final WebView web;
@@ -52,8 +53,10 @@ final class BrowserMedia {
           @Override
           public void onMessage(WebMessagePort received, WebMessage message) {
             if (!current() || received != port) return;
+            String data = message.getData();
+            if (data == null || data.length() > MAX_STATE_MESSAGE_LENGTH) return;
             try {
-              JSONObject state = new JSONObject(message.getData());
+              JSONObject state = new JSONObject(data);
               if (!state.getString("type").equals("media-state")
                   || !(state.get("microphone") instanceof Boolean)
                   || !(state.get("camera") instanceof Boolean)) return;

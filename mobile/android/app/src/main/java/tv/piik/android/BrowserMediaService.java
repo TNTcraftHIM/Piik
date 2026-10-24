@@ -112,11 +112,12 @@ public final class BrowserMediaService extends Service {
       startForeground(2, notice, android.os.Build.VERSION.SDK_INT >= 30 ? desired : 0);
       owner = request.owner;
       types = desired;
-      if (request.ready != null) request.ready.run();
     } catch (RuntimeException error) {
       if (request.failed != null) request.failed.run();
       if (owner == null) stopSelf();
+      return;
     }
+    if (request.ready != null) request.ready.run();
   }
 
   @Override
