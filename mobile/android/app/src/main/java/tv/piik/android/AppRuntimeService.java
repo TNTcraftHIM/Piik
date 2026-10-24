@@ -26,6 +26,8 @@ public final class AppRuntimeService extends Service {
   CompletableFuture<Runtime> startup;
   Throwable failure;
   MediaRequest active;
+  // Go prepares selected source audio after the first admitted video frame.
+  MediaRequest preparing;
 
   static final class MediaRequest {
     final Runtime owner;
@@ -191,7 +193,7 @@ public final class AppRuntimeService extends Service {
         || !activity.canConfirmMedia()) return;
     MediaRequest next = requests.poll();
     if (next == null) {
-      activity.mediaFinished();
+      if (preparing == null) activity.mediaFinished();
       return;
     }
     active = next;
@@ -199,6 +201,7 @@ public final class AppRuntimeService extends Service {
     activity.permissionOwner = this;
     activity.permissionRequest = next;
     if (next.kind.equals("video")) {
+      preparing = next;
       try {
         MediaProjectionManager manager = activity.getSystemService(MediaProjectionManager.class);
         Intent consent =
@@ -269,6 +272,16 @@ public final class AppRuntimeService extends Service {
         });
   }
 
+  static void preparationDone(Runtime owner, long id) {
+    AppRuntimeService service = instance;
+    if (service == null
+        || service.preparing == null
+        || service.preparing.owner != owner
+        || service.preparing.id != id) return;
+    service.preparing = null;
+    service.processRequests();
+  }
+
   static void failed(Runtime owner, long id) {
     main.post(
         () -> {
@@ -283,24 +296,32 @@ public final class AppRuntimeService extends Service {
 
   static void retire(Runtime owner, long id) {
     AppRuntimeService service = instance;
-    if (service == null) return;
+    if (service == null || owner != service.runtime) return;
     service.requests.removeIf(request -> request.owner == owner && request.id == id);
+    if (service.preparing != null && service.preparing.owner == owner && service.preparing.id == id)
+      service.preparing = null;
     if (service.active != null
         && service.active.owner == owner
         && service.active.id == id
         && !service.active.awaitingResult) service.complete(service.active, false);
+    else service.processRequests();
     // Keep an in-flight OS result bound to its original request until it returns.
   }
 
   void cancelPending() {
     for (MediaRequest request : requests) request.owner.captureEnded(request.id);
     requests.clear();
+    if (preparing != null) {
+      preparing.owner.captureEnded(preparing.id);
+      preparing = null;
+    }
     if (active != null && !active.awaitingResult) complete(active, false);
   }
 
   void complete(MediaRequest request, boolean admitted) {
     if (active != request) return;
     active = null;
+    if (!admitted && preparing == request) preparing = null;
     MainActivity activity = MainActivity.current;
     if (activity != null && activity.permissionRequest == request) {
       activity.permissionOwner = null;
@@ -317,6 +338,7 @@ public final class AppRuntimeService extends Service {
     service.runtime = null;
     service.requests.clear();
     service.active = null;
+    service.preparing = null;
     MainActivity.retireDocument();
     CaptureService.shutdown();
     service.notifyActivity();
@@ -339,6 +361,7 @@ public final class AppRuntimeService extends Service {
     runtime = null;
     requests.clear();
     active = null;
+    preparing = null;
     work.execute(
         () -> {
           Runtime closing = retired;

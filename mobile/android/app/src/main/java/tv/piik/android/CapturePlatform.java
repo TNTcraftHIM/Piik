@@ -54,6 +54,11 @@ final class CapturePlatform implements Platform {
         });
   }
 
+  public void preparationDone(long id) {
+    Runtime runtime = owner.get();
+    MainActivity.main.post(() -> AppRuntimeService.preparationDone(runtime, id));
+  }
+
   public void siteAccessChanged() {
     Runtime runtime = owner.get();
     MainActivity.main.post(

@@ -141,7 +141,9 @@ public final class MainActivity extends Activity {
     if (BuildConfig.EXTERNAL_BROWSER) {
       if (mediaEntry()
           || (getIntent().getData() == null
-              && (service.active != null || !service.requests.isEmpty()))) {
+              && (service.active != null
+                  || service.preparing != null
+                  || !service.requests.isEmpty()))) {
         service.processRequests();
         return;
       }
