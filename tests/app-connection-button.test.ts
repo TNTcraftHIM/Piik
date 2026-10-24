@@ -40,6 +40,14 @@ describe("desktop App connection entry", () => {
     expect(renderToStaticMarkup(createElement(AppConnectionButton, { sourcePicker: true })))
       .toContain("lr-source-app-connection");
   });
+
+  it("keeps management and source recovery available in an activated Android App", () => {
+    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Linux; Android 16) Mobile", platform: "Linux armv8l", maxTouchPoints: 5 });
+    vi.stubGlobal("window", { localStorage: { getItem: () => "1" } });
+    expect(renderToStaticMarkup(createElement(AppConnectionButton))).toContain("lr-app-connect");
+    expect(renderToStaticMarkup(createElement(AppConnectionButton, { sourcePicker: true })))
+      .toContain("lr-source-app-connection");
+  });
 });
 
 // Exercise the button's actual operation and unmount effect without a Browser.

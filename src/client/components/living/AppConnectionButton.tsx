@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { activateClient, isClientActivated, watchClientActivation } from "../../lib/session";
 import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
@@ -22,9 +22,11 @@ interface ConnectionAttempt {
 }
 
 export function AppConnectionButton(props: AppConnectionProps) {
-  // This is a desktop-package entry, not a test of Browser capture support.
+  const activated = useSyncExternalStore(watchClientActivation, isClientActivated, isClientActivated);
+  // A running mobile App retains its management and reconnect entry.
+  // Ordinary mobile browsers do not offer the desktop-package workflow.
   // iPad's desktop UA still identifies a touch-capable Mac platform.
-  if (typeof navigator !== "undefined" && (
+  if (!activated && typeof navigator !== "undefined" && (
     /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
   )) return null;

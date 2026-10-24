@@ -39,7 +39,7 @@ const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: t
 function mount(fetch: ReturnType<typeof vi.fn>) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
-    "Mode", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Sites", "StartupSite",
+    "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Sites", "StartupSite",
     "AppDebug", "Debug", "Error", "Loading", "Update", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
@@ -73,6 +73,16 @@ function mount(fetch: ReturnType<typeof vi.fn>) {
 }
 
 describe("App launcher state recovery", () => {
+  it("uses the App's available modes and keeps existing desktop defaults", async () => {
+    for (const modes of [undefined, ["local"]]) {
+      const page = mount(vi.fn(async () => response({ ...saved, ...(modes ? { modes } : {}) })));
+      await settle();
+      expect(page.state.Modes).toEqual(modes ?? ["local", "link"]);
+      expect(page.state.Mode).toBe("local");
+      page.cleanup();
+    }
+  });
+
   it.each([true, false])("keeps approval pending until the optional startup preference settles (saved: %s)", async (savedStartup) => {
     const nextSite = "https://next.example";
     let finishStartup!: (value: ReturnType<typeof response>) => void;

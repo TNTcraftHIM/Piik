@@ -34,6 +34,7 @@ const MODES: Array<{
 // The product and film share this form; requests and navigation stay in the page.
 export function LauncherForm({
   mode,
+  modes,
   onModeChange,
   sites,
   startupSite,
@@ -51,6 +52,7 @@ export function LauncherForm({
   roomError,
 }: {
   mode: AppMode;
+  modes?: readonly AppMode[];
   onModeChange: (mode: AppMode) => void;
   sites: readonly string[];
   startupSite: string;
@@ -72,6 +74,7 @@ export function LauncherForm({
   roomError?: ReactNode;
 }) {
   const { vis, t } = useCopy();
+  const choices = modes ? MODES.filter(choice => modes.includes(choice.mode)) : MODES;
   const accessHintId = useId();
   const standbyRef = useRef<HTMLElement>(null);
   const removalFocus = useRef<{ site: string; index: number } | null>(null);
@@ -157,18 +160,19 @@ export function LauncherForm({
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
         className="lr-client-modes"
+        style={{ gridTemplateColumns: `repeat(${choices.length}, minmax(0, 1fr))` }}
         role="radiogroup"
         aria-label={t("client.launch.title")}
         onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
           event.preventDefault();
           const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-          const index = (MODES.findIndex((choice) => choice.mode === mode) + direction + MODES.length) % MODES.length;
-          onModeChange(MODES[index]!.mode);
+          const index = (choices.findIndex((choice) => choice.mode === mode) + direction + choices.length) % choices.length;
+          onModeChange(choices[index]!.mode);
           event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]?.focus();
         }}
       >
-        {MODES.map((choice) => {
+        {choices.map((choice) => {
           const button = (
             <button
               key={choice.mode}

@@ -23,6 +23,7 @@ const launcherStateSchema = z.object({
   startupSite: z.string(),
   localAccessPassword: z.string(),
   defaultMode: z.enum(["local", "link"]),
+  modes: z.array(z.enum(["local", "link"])).default(["local", "link"]),
   target: z.string().optional(),
   starting: z.boolean().optional(),
   reason: z.string().optional(),
@@ -44,6 +45,7 @@ export function AppLauncherPage() {
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
+  const [modes, setModes] = useState<readonly AppMode[]>(["local", "link"]);
   const [sites, setSites] = useState<string[]>([]);
   const [startupSite, setStartupSite] = useState("");
   const [openOnApproval, setOpenOnApproval] = useState(false);
@@ -105,6 +107,7 @@ export function AppLauncherPage() {
         if (!fresh()) return;
         if (!restoredSettings) {
           setMode(state.defaultMode);
+          setModes(state.modes);
           setLocalAccessPassword(state.localAccessPassword);
           setLan(state.lan);
           restoredSettings = true;
@@ -326,6 +329,7 @@ export function AppLauncherPage() {
               </details>}
             </> : undefined}
             mode={mode}
+            modes={modes}
             sites={sites}
             startupSite={startupSite}
             onToggleStartupSite={site => void changeSite(startupSite === site ? "" : site, "startup-site")}
