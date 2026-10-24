@@ -21,7 +21,7 @@ const audioPeriod = 20 * time.Millisecond
 // absorbs scheduling jitter; it never replays samples or builds a latency tail.
 // It does not claim to eliminate long-term drift between hardware clocks.
 type audioInput struct {
-	stream *nativecapture.Stream
+	stream CaptureStream
 	frames [][]byte
 }
 
@@ -64,7 +64,7 @@ func (mix *audioMix) stateLocked(failed bool) Event {
 		SourceAudio: mix.source != nil, Microphone: mix.microphone != nil, Failed: failed}
 }
 
-func (mix *audioMix) setSource(stream *nativecapture.Stream) {
+func (mix *audioMix) setSource(stream CaptureStream) {
 	mix.eventMu.Lock()
 	defer mix.eventMu.Unlock()
 	mix.mu.Lock()
@@ -145,7 +145,7 @@ func (mix *audioMix) inputEnded(input *audioInput, microphone bool) {
 	mix.emit(state)
 }
 
-func (mix *audioMix) setMicrophone(executable string, enabled *bool, gain *float64, deviceID *string) error {
+func (mix *audioMix) setMicrophone(capture CaptureProvider, enabled *bool, gain *float64, deviceID *string) error {
 	if deviceID != nil && !nativecapture.ValidDeviceID(*deviceID) {
 		return errors.New("microphone device is invalid")
 	}
@@ -169,10 +169,10 @@ func (mix *audioMix) setMicrophone(executable string, enabled *bool, gain *float
 	if unchanged {
 		return nil
 	}
-	var stream *nativecapture.Stream
+	var stream CaptureStream
 	if wanted {
 		var err error
-		stream, err = nativecapture.StartMicrophone(mix.ctx, executable, device)
+		stream, err = capture.Microphone(mix.ctx, device)
 		if err != nil {
 			return err
 		}

@@ -31,13 +31,15 @@ const (
 )
 
 type Options struct {
-	PortStart         int
-	PortEnd           int
-	AllowedOrigins    []string
-	NativeMedia       NativeMediaCapabilities
-	NewControl        func() ControlSession
-	Presentation      func(language string)
-	QualityPreference *appconfig.QualityPreference
+	PortStart int
+	PortEnd   int
+	// Zero keeps the desktop default. Single-source platforms may admit one.
+	MaxControlSessions int
+	AllowedOrigins     []string
+	NativeMedia        NativeMediaCapabilities
+	NewControl         func() ControlSession
+	Presentation       func(language string)
+	QualityPreference  *appconfig.QualityPreference
 }
 
 type ControlSession interface {
@@ -107,6 +109,7 @@ type Server struct {
 	allowedOrigins    []string
 	nativeMedia       NativeMediaCapabilities
 	newControl        func() ControlSession
+	maxSessions       int
 	presentation      func(string)
 	qualityPreference *appconfig.QualityPreference
 	connectURL        string
@@ -133,6 +136,13 @@ type controlConnection struct {
 func Start(parent context.Context, options Options) (*Server, error) {
 	if parent == nil {
 		parent = context.Background()
+	}
+	sessionLimit := options.MaxControlSessions
+	if sessionLimit == 0 {
+		sessionLimit = maxControlSessions
+	}
+	if sessionLimit < 1 || sessionLimit > maxControlSessions {
+		return nil, errors.New("native control session limit is invalid")
 	}
 	portStart, portEnd := normalizePortRange(options.PortStart, options.PortEnd)
 	listener, err := listenInRange(defaultBindAddress, portStart, portEnd)
@@ -161,6 +171,7 @@ func Start(parent context.Context, options Options) (*Server, error) {
 		allowedOrigins:    normalizedOrigins(options.AllowedOrigins),
 		nativeMedia:       options.NativeMedia,
 		newControl:        options.NewControl,
+		maxSessions:       sessionLimit,
 		presentation:      options.Presentation,
 		qualityPreference: options.QualityPreference,
 		done:              make(chan error, 1),
@@ -631,7 +642,7 @@ func (server *Server) localOrigin(origin string) bool {
 func (server *Server) claimConnection(origin string) *controlConnection {
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	if server.closed || len(server.connections) >= maxControlSessions || !server.originAllowedLocked(origin) {
+	if server.closed || len(server.connections) >= server.maxSessions || !server.originAllowedLocked(origin) {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(server.ctx)

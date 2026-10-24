@@ -116,6 +116,24 @@ export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand,
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
 }
 
+export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand) {
+  const mobileRoot = join(repositoryRoot, "mobile");
+  const target = { goos: "android", goarch: "arm64", cgo: false };
+  const notices = goNotices(mobileRoot, goCommand, target, "./androidbridge");
+  // gomobile adds the JNI binding runtime when generating the AAR. It is not
+  // imported by the bridge package before generation, and has its own notice.
+  const runtime = JSON.parse(execFileSync(goCommand, ["list", "-m", "-json", "golang.org/x/mobile"], {
+    cwd: mobileRoot, encoding: "utf8", windowsHide: true,
+  }));
+  const files = new Map(noticesIn(runtime.Dir).map((file) => [file, readFileSync(join(runtime.Dir, file), "utf8")]));
+  if (!files.size) throw new Error("Missing Go mobile runtime license");
+  notices.modules.set(`${runtime.Path}@${runtime.Version}`, files);
+  mkdirSync(dirname(outputFile), { recursive: true });
+  writeFileSync(outputFile, "Piik Android third-party software notices\n" +
+    section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
+    WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
+}
+
 export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {
   copyFileSync(join(repositoryRoot, "LICENSE"), join(packageRoot, "LICENSE"));
   if (tunnelVersion) {

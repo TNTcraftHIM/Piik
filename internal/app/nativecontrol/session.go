@@ -41,6 +41,8 @@ var identityPattern = regexp.MustCompile("^[A-Za-z0-9_-]{8,256}$")
 
 type Session struct {
 	captureProcess string
+	capture        nativehost.CaptureProvider
+	sources        sourceProvider
 	capabilities   nativecapture.Capabilities
 	portMapping    bool
 	remoteInput    *remoteinput.Manager
@@ -73,9 +75,22 @@ func New(
 	portMapping bool,
 	remoteInput *remoteinput.Manager,
 ) *Session {
+	return newSession(captureProcess, capabilities, portMapping, remoteInput, nil, processSources{captureProcess})
+}
+
+func newSession(
+	captureProcess string,
+	capabilities nativecapture.Capabilities,
+	portMapping bool,
+	remoteInput *remoteinput.Manager,
+	capture nativehost.CaptureProvider,
+	sources sourceProvider,
+) *Session {
 	ctx, cancel := context.WithCancel(context.Background())
 	session := &Session{
 		captureProcess: captureProcess,
+		capture:        capture,
+		sources:        sources,
 		capabilities:   capabilities,
 		portMapping:    portMapping,
 		remoteInput:    remoteInput,
@@ -139,7 +154,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if !session.capabilities.Microphone {
 			return operationFailure(envelope, errors.New("native microphone is unavailable")), nil
 		}
-		devices, err := nativecapture.ListMicrophones(ctx, session.captureProcess)
+		devices, err := session.sources.ListMicrophones(ctx)
 		if err != nil {
 			return operationFailure(envelope, err), nil
 		}
@@ -152,7 +167,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
 			return nil, protocolViolation("native list-sources request is invalid")
 		}
-		targets, err := nativecapture.ListSources(ctx, session.captureProcess)
+		targets, err := session.sources.ListSources(ctx)
 		if err != nil {
 			return operationFailure(envelope, err), nil
 		}
@@ -165,11 +180,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if err := decodeStrict(payload, &request); err != nil || request.Type != envelope.Type {
 			return nil, protocolViolation("native source-preview request is invalid")
 		}
-		preview, err := nativecapture.PreviewSource(
-			ctx,
-			session.captureProcess,
-			request.Source,
-		)
+		preview, err := session.sources.PreviewSource(ctx, request.Source)
 		data := ""
 		if err == nil {
 			data = base64.StdEncoding.EncodeToString(preview)
@@ -706,6 +717,7 @@ func (session *Session) startShare(
 		RemoteInput:    input,
 		ShareID:        request.ShareID,
 		CaptureProcess: session.captureProcess,
+		Capture:        session.capture,
 		Video: nativecapture.VideoOptions{
 			Target:            request.Source,
 			ShowCaptureBorder: request.ShowCaptureBorder && session.capabilities.CaptureBorderControl,

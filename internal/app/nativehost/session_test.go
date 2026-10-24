@@ -321,7 +321,7 @@ func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
 	defer stopShare()
 	operationContext, finishOperation := context.WithCancel(shareContext)
 	defer finishOperation()
-	session := &Session{ctx: shareContext, captureProcess: executable, edgeCapacity: 4}
+	session := &Session{ctx: shareContext, capture: processCapture{executable}, edgeCapacity: 4}
 	stream, _, err := session.prepareVideo(operationContext, nativecapture.VideoOptions{
 		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
 		Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
@@ -332,13 +332,13 @@ func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
 	defer stream.Close()
 	finishOperation()
 	select {
-	case <-stream.Done():
+	case <-stream.(*nativecapture.Stream).Done():
 		t.Fatal("finishing permission preparation stopped its accepted picture")
 	case <-time.After(250 * time.Millisecond):
 	}
 	stopShare()
 	select {
-	case <-stream.Done():
+	case <-stream.(*nativecapture.Stream).Done():
 	case <-time.After(2 * time.Second):
 		t.Fatal("capture outlived its owning share")
 	}

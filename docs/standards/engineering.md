@@ -24,6 +24,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `internal/thirdparty/` | Scoped Go dependency repairs with pinned upstream provenance, licenses and tests; removal criteria live beside the source |
 | `native/capture`, `native/fixtures`, `native/probes` | Platform capture implementations, synthetic workloads and standalone capability probes |
 | `site/` | Independently published static introduction; its assets do not implement product behavior |
+| `mobile/` | Unreleased Android platform shell and in-process capture bridge over the shared Go core |
 | `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |
 | `tests/` | TypeScript/tooling tests and cross-language fixtures; Go tests stay beside their packages |
 | `deploy/` | Operator scripts and container, proxy, service and certificate templates |
@@ -33,8 +34,10 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `build/`, `node_modules/`, `coverage/` | Ignored local output and dependencies; never current product truth |
 
 `site/` introduces Piik; `src/client/` is Piik's interactive application.
-`internal/app/nativecapture` adapts the capture contract in Go; `native/capture/`
-implements it using platform APIs. `scripts/` prepares and verifies artifacts;
+`internal/app/nativecapture` owns the desktop helper process and frame contract;
+`native/capture/` implements its platform APIs. `nativehost` consumes a capture
+stream; the Android prototype supplies that stream in-process through `mobile/`.
+`scripts/` prepares and verifies artifacts;
 `deploy/` operates them. Move files with their actual consumers, and update paths
 and checks together; a smaller root alone does not justify another abstraction.
 
@@ -49,7 +52,8 @@ and checks together; a smaller root alone does not justify another abstraction.
 | `internal/server/route` | Synchronous room graph and single-operation decisions; returns resource effects to `signal`, owns no locks or timers, and calls its optional diagnostic sink synchronously |
 | `internal/server/sfu`, `internal/app/mediaedge` | Server forwarding and native peer adapters over the shared `internal/media/forwarding`; Pion/LiveKit own transport and adaptation |
 | `internal/app` | Local/public-link/Site composition, loopback service, native sessions and App lifecycle; never a second room backend |
-| `internal/app/nativecapture`, `native/capture/*` | App-side capture contract and minimal platform adapters; platform-specific capture/encoding stays here |
+| `internal/app/nativecapture`, `native/capture/*` | Desktop capture process, frame contract and platform capture/encoding adapters |
+| `internal/app/nativehost/capture.go`, `mobile/androidbridge`, `mobile/android` | Capture producer contract, Android frame bridge and Android-owned consent/codec resources; reuse room control and media routes |
 | `src/client/pages`, `lib`, `media`, `native` | Browser orchestration and endpoint adapters; bind current media and retire owned resources |
 | `src/client/media/viewer-presentation.ts`, `ui/media-status.ts` | Playback facts and their derived status projection; UI indicators do not create recovery or quality policy |
 | `src/client/components`, `locales`, `ui` | Shared interaction, visual primitives and localized copy; same product interface for Server and App |
@@ -78,6 +82,7 @@ Keep this check outside room startup, authorization and media lifecycles.
 | Browser/App discovery and control | `src/client/native/wire.ts`, `internal/app/loopback/protocol.go`, `internal/app/nativecontrol/wire.go` |
 | Remote input data channel | [Browser input protocol](../../src/client/remote-control/protocol.ts), [native input validation](../../internal/app/remoteinput/manager.go) and [channel routing](../../internal/media/inputroute); admission remains with the existing room and native control owners |
 | App/capture sidecar | `internal/app/nativecapture` and each platform capture adapter; probe/commands and encoded-frame envelope are distinct formats |
+| In-process capture producer | `internal/app/nativehost/capture.go`; the platform supplies frames and retires its own resources, without another control or routing protocol |
 | Configuration and persistence | `internal/server/config`, `internal/app/config`, `internal/server/room/database.go`; operator semantics in [configuration](./configuration.md) |
 | Release and update metadata | Existing packaging scripts, `src/client/lib/release-update.ts`, `cmd/piik-server/release.go`; identity/compatibility in [versioning](./versioning.md), operations in [deployment](../deployment.md) |
 
@@ -159,6 +164,7 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 | SFU endpoints | [src/client/sfu/publisher.ts](../../src/client/sfu/publisher.ts), [src/client/sfu/subscriber.ts](../../src/client/sfu/subscriber.ts), [src/client/sfu/peer.ts](../../src/client/sfu/peer.ts), [internal/server/sfu](../../internal/server/sfu) |
 | Localized copy and failure facts | [src/client/locales](../../src/client/locales), [src/client/ui/copy.ts](../../src/client/ui/copy.ts), [src/client/ui/media-failure.ts](../../src/client/ui/media-failure.ts) |
 | Native control connection and media adapters | [src/client/native/client-connection.ts](../../src/client/native/client-connection.ts), [src/client/native](../../src/client/native), [internal/app/loopback](../../internal/app/loopback), [internal/app/nativecontrol](../../internal/app/nativecontrol), [internal/app/nativehost](../../internal/app/nativehost), [internal/app/nativeviewer](../../internal/app/nativeviewer), [internal/app/nativecapture](../../internal/app/nativecapture) |
+| Android prototype and platform lifecycle | [mobile/README.md](../../mobile/README.md), [mobile/androidbridge](../../mobile/androidbridge), [mobile/android/app/src/main](../../mobile/android/app/src/main) |
 | Room authority, persistence and graph | [internal/server/signal](../../internal/server/signal), [internal/server/room](../../internal/server/room), [internal/server/route](../../internal/server/route) |
 | Room signaling intent and interaction delivery | [src/client/lib/signaling.ts](../../src/client/lib/signaling.ts), [src/client/lib/room-interactions.ts](../../src/client/lib/room-interactions.ts); admission and transient delivery follow [rooms and access](./rooms-access.md) |
 | Shared wire contract | [src/shared/protocol.ts](../../src/shared/protocol.ts), [internal/server/protocol](../../internal/server/protocol), [tests/fixtures/wire-samples.json](../../tests/fixtures/wire-samples.json) |

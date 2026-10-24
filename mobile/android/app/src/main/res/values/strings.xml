@@ -1,0 +1,13 @@
+﻿<resources>
+ <string name="app_name">Piik Android Preview</string>
+ <string name="preparing">Preparing local screen sharing…</string>
+ <string name="no_webview">This device needs Android System WebView to run Piik.</string>
+ <string name="no_network">Connect to Wi-Fi or a local network, then reopen Piik.</string>
+ <string name="no_capture">You can join rooms on this device. Supported screen capture is unavailable.</string>
+ <string name="consent_busy">Finish or cancel the Android capture prompt before trying again.</string>
+ <string name="capture_unavailable">Screen capture unavailable: %1$s</string>
+ <string name="notification_channel">Screen sharing</string>
+ <string name="notification_title">Piik — sharing screen</string>
+ <string name="notification_body">Tap to return and stop sharing.</string>
+ <string name="leave_prompt">Leave Piik and stop sharing?</string>
+</resources>

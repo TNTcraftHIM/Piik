@@ -1,0 +1,13 @@
+﻿<resources>
+ <string name="app_name">Piik Android 预览版</string>
+ <string name="preparing">正在准备本地屏幕分享…</string>
+ <string name="no_webview">此设备需要安装 Android System WebView 才能运行 Piik。</string>
+ <string name="no_network">请先连接 Wi-Fi 或局域网，然后重新打开 Piik。</string>
+ <string name="no_capture">此设备可加入房间观看，但暂不支持屏幕捕获。</string>
+ <string name="consent_busy">请先完成或取消 Android 捕获授权，再重新尝试。</string>
+ <string name="capture_unavailable">屏幕捕获不可用：%1$s</string>
+ <string name="notification_channel">屏幕分享</string>
+ <string name="notification_title">Piik 正在分享屏幕</string>
+ <string name="notification_body">点击返回并停止分享。</string>
+ <string name="leave_prompt">离开 Piik 并停止分享？</string>
+</resources>

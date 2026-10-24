@@ -1,0 +1,9 @@
+plugins { id 'com.android.application' }
+android {
+ namespace 'tv.piik.android'
+ compileSdk 35
+ defaultConfig { applicationId 'tv.piik.android'; minSdk 29; targetSdk 35; versionCode 1; versionName 'development'; ndk { abiFilters 'arm64-v8a', 'x86_64' } }
+ compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+ packaging { jniLibs { useLegacyPackaging = true } }
+}
+dependencies { implementation files('libs/piik.aar') }

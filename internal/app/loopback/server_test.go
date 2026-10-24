@@ -169,64 +169,75 @@ func TestPresentationUpdatesOnlyLanguageWithoutClaimingMediaControl(t *testing.T
 }
 
 func TestControlSessionsAreBoundedAndRetireIndependently(t *testing.T) {
-	created := make(chan *testControlSession, maxControlSessions)
-	server := startTestServerWithOptions(t, Options{
-		AllowedOrigins: []string{testOrigin},
-		NewControl: func() ControlSession {
-			session := &testControlSession{events: make(chan any), closed: make(chan struct{})}
-			created <- session
-			return session
-		},
-	})
-	endpoint := server.Endpoint()
-	var connections []*websocket.Conn
-	var sessions []*testControlSession
-	for index := 0; index < maxControlSessions; index++ {
-		connection := dialControl(t, endpoint, endpoint.InstanceToken, testOrigin)
-		defer connection.CloseNow()
-		writeControl(t, connection, requestJSON("request_hello", "hello"))
-		var ready controlMessage
-		readControl(t, connection, &ready)
-		connections = append(connections, connection)
-		select {
-		case session := <-created:
-			sessions = append(sessions, session)
-		case <-time.After(time.Second):
-			t.Fatal("accepted control did not acquire its own session")
-		}
-	}
-	extra, response, err := websocket.Dial(context.Background(), websocketURL(endpoint)+"/control", &websocket.DialOptions{
-		HTTPHeader:   http.Header{"Origin": []string{testOrigin}},
-		Subprotocols: []string{ControlSubprotocol + "." + endpoint.InstanceToken},
-	})
-	if extra != nil {
-		extra.CloseNow()
-	}
-	if err == nil || response == nil || response.StatusCode != http.StatusConflict {
-		t.Fatalf("excess control dial: conn=%v response=%v err=%v", extra, response, err)
-	}
-	_ = response.Body.Close()
-	_ = connections[0].CloseNow()
-	select {
-	case <-sessions[0].closed:
-	case <-time.After(time.Second):
-		t.Fatal("closed room retained its native session")
-	}
-	writeControl(t, connections[1], requestJSON("request_ping", "ping"))
-	var pong controlMessage
-	readControl(t, connections[1], &pong)
-	if pong.Type != "pong" {
-		t.Fatal("closing one room affected its sibling control")
-	}
-	if err = server.Close(); err != nil {
-		t.Fatal(err)
-	}
-	for _, session := range sessions {
-		select {
-		case <-session.closed:
-		default:
-			t.Fatal("App close returned before native session cleanup")
-		}
+	for _, configured := range []int{0, 1} {
+		t.Run(strconv.Itoa(configured), func(t *testing.T) {
+			limit := configured
+			if limit == 0 {
+				limit = maxControlSessions
+			}
+			created := make(chan *testControlSession, limit)
+			server := startTestServerWithOptions(t, Options{
+				MaxControlSessions: configured,
+				AllowedOrigins:     []string{testOrigin},
+				NewControl: func() ControlSession {
+					session := &testControlSession{events: make(chan any), closed: make(chan struct{})}
+					created <- session
+					return session
+				},
+			})
+			endpoint := server.Endpoint()
+			var connections []*websocket.Conn
+			var sessions []*testControlSession
+			for index := 0; index < limit; index++ {
+				connection := dialControl(t, endpoint, endpoint.InstanceToken, testOrigin)
+				defer connection.CloseNow()
+				writeControl(t, connection, requestJSON("request_hello", "hello"))
+				var ready controlMessage
+				readControl(t, connection, &ready)
+				connections = append(connections, connection)
+				select {
+				case session := <-created:
+					sessions = append(sessions, session)
+				case <-time.After(time.Second):
+					t.Fatal("accepted control did not acquire its own session")
+				}
+			}
+			extra, response, err := websocket.Dial(context.Background(), websocketURL(endpoint)+"/control", &websocket.DialOptions{
+				HTTPHeader:   http.Header{"Origin": []string{testOrigin}},
+				Subprotocols: []string{ControlSubprotocol + "." + endpoint.InstanceToken},
+			})
+			if extra != nil {
+				extra.CloseNow()
+			}
+			if err == nil || response == nil || response.StatusCode != http.StatusConflict {
+				t.Fatalf("excess control dial: conn=%v response=%v err=%v", extra, response, err)
+			}
+			_ = response.Body.Close()
+			_ = connections[0].CloseNow()
+			select {
+			case <-sessions[0].closed:
+			case <-time.After(time.Second):
+				t.Fatal("closed room retained its native session")
+			}
+			if len(connections) > 1 {
+				writeControl(t, connections[1], requestJSON("request_ping", "ping"))
+				var pong controlMessage
+				readControl(t, connections[1], &pong)
+				if pong.Type != "pong" {
+					t.Fatal("closing one room affected its sibling control")
+				}
+			}
+			if err = server.Close(); err != nil {
+				t.Fatal(err)
+			}
+			for _, session := range sessions {
+				select {
+				case <-session.closed:
+				default:
+					t.Fatal("App close returned before native session cleanup")
+				}
+			}
+		})
 	}
 }
 

@@ -67,6 +67,7 @@ type Event struct {
 type Options struct {
 	ShareID          string
 	CaptureProcess   string
+	Capture          CaptureProvider
 	Video            nativecapture.VideoOptions
 	Profile          QualityProfile
 	AudioEnabled     bool
@@ -80,18 +81,18 @@ type Options struct {
 }
 
 type Session struct {
-	shareID        string
-	captureProcess string
-	videoOptions   nativecapture.VideoOptions
-	profile        QualityProfile
-	edgeCapacity   int
-	stream         *nativecapture.Stream
-	audioStream    *nativecapture.Stream
-	engine         *mediaedge.Engine
-	source         *mediaedge.Source
-	audioSource    *mediaedge.AudioSource
-	mixer          *audioMix
-	events         func(context.Context, Event)
+	shareID      string
+	capture      CaptureProvider
+	videoOptions nativecapture.VideoOptions
+	profile      QualityProfile
+	edgeCapacity int
+	stream       CaptureStream
+	audioStream  CaptureStream
+	engine       *mediaedge.Engine
+	source       *mediaedge.Source
+	audioSource  *mediaedge.AudioSource
+	mixer        *audioMix
+	events       func(context.Context, Event)
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -135,28 +136,32 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		return nil, err
 	}
 	options.Video.OutputGroups = min(options.EdgeCapacity, nativecapture.MaxOutputGroups)
-	stream, err := nativecapture.StartVideo(parent, options.CaptureProcess, options.Video)
+	capture := options.Capture
+	if capture == nil {
+		capture = processCapture{options.CaptureProcess}
+	}
+	stream, err := capture.Video(parent, options.Video)
 	if err != nil {
 		_ = engine.Close()
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
-		shareID:        options.ShareID,
-		captureProcess: options.CaptureProcess,
-		videoOptions:   options.Video,
-		profile:        options.Profile,
-		edgeCapacity:   options.EdgeCapacity,
-		stream:         stream,
-		engine:         engine,
-		events:         options.Events,
-		ctx:            ctx,
-		cancel:         cancel,
-		done:           make(chan error, 1),
-		ready:          make(chan error, 1),
-		edges:          make(map[string]*mediaedge.Edge),
-		audioChanged:   make(chan struct{}, 1),
-		remoteInput:    options.RemoteInput.NewSession(),
+		shareID:      options.ShareID,
+		capture:      capture,
+		videoOptions: options.Video,
+		profile:      options.Profile,
+		edgeCapacity: options.EdgeCapacity,
+		stream:       stream,
+		engine:       engine,
+		events:       options.Events,
+		ctx:          ctx,
+		cancel:       cancel,
+		done:         make(chan error, 1),
+		ready:        make(chan error, 1),
+		edges:        make(map[string]*mediaedge.Edge),
+		audioChanged: make(chan struct{}, 1),
+		remoteInput:  options.RemoteInput.NewSession(),
 	}
 	session.syncRemoteInputSource(nil)
 	// Drain video while the optional audio process initializes. Otherwise a full
@@ -185,10 +190,10 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	}
 	// Start the optional audio helper only after video initialization, avoiding
 	// concurrent platform source enumeration while continuing to drain video.
-	var audioStream *nativecapture.Stream
+	var audioStream CaptureStream
 	if options.AudioEnabled {
 		var audioErr error
-		audioStream, audioErr = startAudioCapture(ctx, options.CaptureProcess, options.Video.Target, options.ExcludeAudio)
+		audioStream, audioErr = capture.Audio(ctx, options.Video.Target, options.ExcludeAudio)
 		if audioErr != nil {
 			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
 		}
@@ -495,7 +500,7 @@ func (session *Session) ReplaceSource(
 	}
 	options.Profile = profile.Video
 	options.RestoreToken = ""
-	var replacement *nativecapture.Stream
+	var replacement CaptureStream
 	var state CaptureState
 	var err error
 	if !audioOnly {
@@ -504,11 +509,10 @@ func (session *Session) ReplaceSource(
 			return err
 		}
 	}
-	var replacementAudio *nativecapture.Stream
+	var replacementAudio CaptureStream
 	if audioEnabled {
-		replacementAudio, err = startAudioCapture(
+		replacementAudio, err = session.capture.Audio(
 			session.ctx,
-			session.captureProcess,
 			options.Target,
 			excludeAudio,
 		)
@@ -592,7 +596,7 @@ func (session *Session) SetRemoteInputSimultaneous(enabled bool) error {
 func (session *Session) syncRemoteInputSource(change *remoteinput.PolicyChange) {
 	session.mu.Lock()
 	target := session.videoOptions.Target
-	capture := session.stream
+	capture, _ := session.stream.(*nativecapture.Stream)
 	session.mu.Unlock()
 	if change != nil {
 		change.SetTarget(target, capture)
@@ -621,16 +625,15 @@ func (session *Session) prepareVideo(
 	options nativecapture.VideoOptions,
 	interactive bool,
 	allowQuiet bool,
-) (*nativecapture.Stream, CaptureState, error) {
+) (CaptureStream, CaptureState, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, CaptureState{}, err
 	}
 	options.OutputGroups = min(session.edgeCapacity, nativecapture.MaxOutputGroups)
 	// Preparation can be cancelled independently. Installed capture always lives
 	// with the share; cancelling a permission request must not kill its process.
-	replacement, err := nativecapture.StartVideo(
+	replacement, err := session.capture.Video(
 		session.ctx,
-		session.captureProcess,
 		options,
 	)
 	if err != nil {
@@ -658,9 +661,9 @@ func (session *Session) prepareVideo(
 func (session *Session) commitCapture(
 	options nativecapture.VideoOptions,
 	profile QualityProfile,
-	replacement *nativecapture.Stream,
+	replacement CaptureStream,
 	state CaptureState,
-	replacementAudio *nativecapture.Stream,
+	replacementAudio CaptureStream,
 	replaceAudio bool,
 	inputChange *remoteinput.PolicyChange,
 ) error {
@@ -734,7 +737,7 @@ func (session *Session) commitCapture(
 
 // Only the video reader installs source metadata, after leaving the old input.
 // The update response waits for this exact stream's installation, not its process.
-func (session *Session) installCapture(next *nativecapture.Stream) error {
+func (session *Session) installCapture(next CaptureStream) error {
 	session.mu.Lock()
 	unavailable := session.captureUnavailable
 	session.mu.Unlock()
@@ -760,7 +763,7 @@ func (session *Session) installCapture(next *nativecapture.Stream) error {
 	return nil
 }
 
-func (session *Session) disableCaptureLayer(stream *nativecapture.Stream, layer int) error {
+func (session *Session) disableCaptureLayer(stream CaptureStream, layer int) error {
 	session.mu.Lock()
 	if session.stream != stream || session.closed || session.ctx.Err() != nil {
 		session.mu.Unlock()
@@ -863,7 +866,7 @@ func (session *Session) run(videoDone <-chan error) {
 	session.mu.Unlock()
 	if closed || session.ctx.Err() != nil {
 		// Closing this owner or its parent is a clean end, even if stopping the
-		// capture process made the video reader return an error.
+		// capture made the video reader return an error.
 		result = nil
 	}
 	session.cancel()
@@ -893,7 +896,7 @@ func (session *Session) runVideo() error {
 		return err
 	}
 	current := session.currentStream()
-	changeStream := func(next *nativecapture.Stream) error {
+	changeStream := func(next CaptureStream) error {
 		if err := session.installCapture(next); err != nil {
 			return err
 		}
@@ -914,7 +917,7 @@ func (session *Session) runVideo() error {
 			}
 			slog.DebugContext(session.ctx, "piik-client", "event", "capture-video-read-ended",
 				"share", diagnostics.ID(session.shareID), "canceled", session.ctx.Err() != nil, "eof", errors.Is(err, io.EOF), diagnostics.Error(err))
-			return fail(errors.New("native capture process stopped unexpectedly"))
+			return fail(errors.New("native capture stopped unexpectedly"))
 		}
 		if next := session.currentStream(); next != current {
 			if next != nil {
@@ -1040,7 +1043,7 @@ func (session *Session) runVideo() error {
 			return fail(errors.New("native video process emitted an unknown frame"))
 		}
 	}
-	return fail(errors.New("native capture process stopped unexpectedly"))
+	return fail(errors.New("native capture stopped unexpectedly"))
 }
 
 func configureCaptureOutputs(source *mediaedge.Source, outputs []nativecapture.OutputProfile) error {
@@ -1065,7 +1068,7 @@ func configureCaptureOutputs(source *mediaedge.Source, outputs []nativecapture.O
 	return nil
 }
 
-func applyOutputPlan(stream *nativecapture.Stream, plan mediaedge.OutputPlan, activeSeen bool) error {
+func applyOutputPlan(stream CaptureStream, plan mediaedge.OutputPlan, activeSeen bool) error {
 	for layer, bitrate := range plan.Bitrates {
 		if bitrate > 0 {
 			if err := stream.SetOutputBitrate(layer, bitrate); err != nil {
@@ -1090,7 +1093,7 @@ func applyOutputPlan(stream *nativecapture.Stream, plan mediaedge.OutputPlan, ac
 	return nil
 }
 
-func (session *Session) currentStream() *nativecapture.Stream {
+func (session *Session) currentStream() CaptureStream {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	if session.closed {
@@ -1107,7 +1110,7 @@ func captureProfileFailure(ctx context.Context, profile nativecapture.VideoProfi
 
 func waitForCaptureProfile(
 	ctx context.Context,
-	stream *nativecapture.Stream,
+	stream CaptureStream,
 	profile nativecapture.VideoProfile,
 	codec string,
 	interactive bool,
@@ -1306,7 +1309,7 @@ func (session *Session) runAudio() {
 	}
 }
 
-func (session *Session) currentAudioStream() *nativecapture.Stream {
+func (session *Session) currentAudioStream() CaptureStream {
 	session.mu.Lock()
 	defer session.mu.Unlock()
 	if session.closed {
@@ -1390,7 +1393,7 @@ func (session *Session) SetMicrophone(enabled *bool, gain *float64, deviceID *st
 	if session.mixer == nil || session.ctx.Err() != nil {
 		return errors.New("native microphone is unavailable")
 	}
-	return session.mixer.setMicrophone(session.captureProcess, enabled, gain, deviceID)
+	return session.mixer.setMicrophone(session.capture, enabled, gain, deviceID)
 }
 
 func (session *Session) SetVolume(volume float64) error {

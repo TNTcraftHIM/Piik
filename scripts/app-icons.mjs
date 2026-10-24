@@ -3,7 +3,7 @@ import {
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const PNG_SIGNATURE = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -164,4 +164,9 @@ export function writeAppPlatformAssets({
     : target.goos === "darwin"
       ? "Piik App.app"
       : null;
+}
+
+export function writeAndroidAppIcon(iconPath, outputFile) {
+  mkdirSync(dirname(outputFile), { recursive: true });
+  writeFileSync(outputFile, requireEntry(readPngEntries(iconPath), 256));
 }
