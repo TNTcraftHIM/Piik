@@ -1984,6 +1984,17 @@ void RunVideoCapture(ProductArguments arguments) {
                   arguments.source_id, arguments.pid, arguments.creation_time)
             : piik::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-before-capture");
+  if (window_target) {
+    DWORD affinity = 0;
+    const bool available = GetWindowDisplayAffinity(
+        reinterpret_cast<HWND>(static_cast<UINT_PTR>(arguments.source_id)), &affinity);
+    const DWORD error = available ? ERROR_SUCCESS : GetLastError();
+    std::osyncstream diagnostic(std::cerr);
+    diagnostic << "result=capture-window-policy";
+    if (available) diagnostic << " display-affinity=0x" << std::hex << affinity;
+    else diagnostic << " display-affinity=unknown error=" << error;
+    diagnostic << '\n';
+  }
   auto capture_device = CreateCaptureDevice(device.device.Get());
   GraphicsCaptureItem item = window_target
                                  ? CreateCaptureItem(reinterpret_cast<HWND>(
