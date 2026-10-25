@@ -46,32 +46,35 @@ export function SiteAddressEntry({ initialAddress = "", onSelect }: {
         setOpen(opened);
         if (opened) input.current?.focus();
       }}>
-      <label className="lr-input">
-        <Glyph name="globe" size={18} />
-        <input ref={input} defaultValue={initialAddress} type="text" inputMode="url" autoComplete="url"
-          autoCapitalize="none" spellCheck={false} placeholder="https://…"
-          aria-label={t("client.connect.siteAddress")} aria-invalid={invalid}
-          aria-describedby={invalid ? `${id}-error` : undefined} onInput={() => setInvalid(false)}
-          onBlur={event => {
-            const origin = siteEntryOrigin(event.currentTarget.value);
-            if (origin) event.currentTarget.value = origin;
-          }}
-          onPaste={event => {
-            const address = event.clipboardData.getData("text").trim();
-            if (!/^https?:\/\//i.test(address)) return;
-            event.preventDefault();
-            event.currentTarget.value = address;
-            setInvalid(false);
-          }}
-          onKeyDown={event => {
-            if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+      <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.addSite")}</strong>
+      <div className="lr-client-site-address">
+        <label className="lr-input">
+          <Glyph name="globe" size={18} />
+          <input ref={input} defaultValue={initialAddress} type="text" inputMode="url" autoComplete="url"
+            autoCapitalize="none" spellCheck={false} placeholder="piik.example"
+            aria-label={t("client.connect.siteAddress")} aria-invalid={invalid}
+            aria-describedby={invalid ? `${id}-error` : undefined} onInput={() => setInvalid(false)}
+            onBlur={event => {
+              const origin = siteEntryOrigin(event.currentTarget.value);
+              if (origin) event.currentTarget.value = origin;
+            }}
+            onPaste={event => {
+              const origin = siteEntryOrigin(event.clipboardData.getData("text"));
+              if (!origin) return;
               event.preventDefault();
-              selectSite();
-            }
-          }} />
-      </label>
+              event.currentTarget.value = origin;
+              setInvalid(false);
+            }}
+            onKeyDown={event => {
+              if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                selectSite();
+              }
+            }} />
+        </label>
+        <Btn icon="arrowRight" title="client.connect.continue" size="compact" tone="primary" onClick={selectSite} />
+      </div>
       {invalid && <p id={`${id}-error`} role="alert">{t("client.connect.invalid")}</p>}
-      <Btn icon="arrowRight" title="client.connect.continue" cap="client.connect.continue" tone="primary" onClick={selectSite} />
       <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.addSiteHint")}</p>
     </div>
   </>;

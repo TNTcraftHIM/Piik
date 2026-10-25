@@ -77,6 +77,25 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
 }
 
 describe("App launcher state recovery", () => {
+  it("shows a failed Enter attempt and navigates after its retry succeeds", async () => {
+    type Result = { ok: boolean; status: number; json(): Promise<unknown> };
+    const fetch = vi.fn(async (): Promise<Result> => response());
+    const page = mount(fetch);
+    await settle();
+    let finish!: (value: Result) => void;
+    fetch.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const event = { preventDefault() {} };
+    const first = page.launch(event);
+    expect(fetch).toHaveBeenCalledTimes(2); // Initial state and launch.
+    finish({ ok: false, status: 503, json: async () => ({ detail: "Startup failed" }) });
+    await first;
+    expect(page.state).toMatchObject({ Starting: false, Error: { kind: "launch", detail: "Startup failed" } });
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#piik-client=1" }) });
+    await page.launch(event);
+    expect(page.navigate).toHaveBeenCalledWith("https://room.example/#piik-client=1");
+    page.cleanup();
+  });
+
   it("keeps mode choices and the submit action available after a failed room start", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
       mode: "link", sites: saved.sites, startupSite: "", localAccessPassword: "saved password",
@@ -88,6 +107,16 @@ describe("App launcher state recovery", () => {
     expect(html).toContain('value="saved password"');
     expect(html).toMatch(/type="submit"[^>]*aria-label="(?:Retry|重试)"/);
     expect(html).toContain(saved.sites[0]);
+  });
+
+  it("reopens a healthy room without offering another mode or password", () => {
+    const html = renderToStaticMarkup(createElement(LauncherForm, {
+      mode: "local", sites: [], startupSite: "", localAccessPassword: "saved password", target: "http://127.0.0.1:8787/#piik-client=1",
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+    }));
+    expect(html).toContain('href="http://127.0.0.1:8787/#piik-client=1"');
+    expect(html).not.toContain('role="radiogroup"');
+    expect(html).not.toContain('type="password"');
   });
 
   it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {

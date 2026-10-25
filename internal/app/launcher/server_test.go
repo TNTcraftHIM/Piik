@@ -91,6 +91,80 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	}
 }
 
+func TestLauncherReentryReturnsTheExistingRoom(t *testing.T) {
+	server := startFixture(t, "https://share.example")
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	post := func(ctx context.Context) (*http.Response, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, origin+"/api/client-launcher/launch",
+			strings.NewReader(`{"mode":"local","language":"en"}`))
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Origin", origin)
+		request.Header.Set("Content-Type", "application/json")
+		return (&http.Client{Timeout: 3 * time.Second}).Do(request)
+	}
+	results := make(chan *http.Response, 2)
+	errors := make(chan error, 2)
+	enter := func(ctx context.Context) {
+		response, err := post(ctx)
+		if err != nil {
+			errors <- err
+			return
+		}
+		results <- response
+	}
+	first, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go enter(first)
+	select {
+	case <-server.Selection():
+	case <-time.After(time.Second):
+		t.Fatal("first entry did not start the room")
+	}
+	// Leaving the page cancels HTTP, but the accepted startup remains alive.
+	cancel()
+	select {
+	case <-errors:
+	case <-time.After(time.Second):
+		t.Fatal("departed page did not release its request")
+	}
+	// A second page or rapid repeat entry must join the accepted startup.
+	go enter(t.Context())
+	go enter(t.Context())
+	target := "http://localhost:8787/#piik-client=1"
+	server.SetResult(target, nil)
+	check := func(response *http.Response) {
+		t.Helper()
+		defer response.Body.Close()
+		var result struct{ Target string }
+		if json.NewDecoder(response.Body).Decode(&result) != nil || response.StatusCode != http.StatusOK || result.Target != target {
+			t.Fatalf("entry did not open the existing room: status=%d result=%+v", response.StatusCode, result)
+		}
+	}
+	for range 2 {
+		select {
+		case response := <-results:
+			check(response)
+		case err := <-errors:
+			t.Fatal(err)
+		case <-time.After(time.Second):
+			t.Fatal("repeat entry did not finish")
+		}
+	}
+	// Returning to the launcher after sharing uses the same healthy room.
+	response, err := post(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(response)
+	select {
+	case <-server.Selection():
+		t.Fatal("reentry started a second room")
+	default:
+	}
+}
+
 func TestRoomFailureInvalidatesReadyTargetButKeepsSiteApprovalAvailable(t *testing.T) {
 	server := startFixture(t, "https://share.example")
 	server.changeSite = func(site string, allowed bool) ([]string, error) { return []string{}, nil }

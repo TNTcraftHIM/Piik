@@ -1484,6 +1484,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-site-add { display: inline-flex; padding-top: 4px; }
 .lr-client-site-entry { width: min(360px, calc(100vw - 16px)); }
 .lr-client-site-entry:is(:popover-open, .\:popover-open) { display: grid; gap: 12px; }
+.lr-client-site-entry > strong { font-size: 14px; }
+.lr-client-site-address { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lr-client-site-address > .lr-input { flex: 1; }
+.lr-client-site-address > .lr-btn { flex: none; }
 .lr-client-site-entry p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
 .lr-client-site-entry [role="alert"] { color: var(--danger); }
 .lr-client-standby strong { font-size: 14px; }

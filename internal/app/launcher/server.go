@@ -170,17 +170,18 @@ func (server *Server) Done() <-chan error {
 }
 
 func (server *Server) Begin() bool {
-	return server.begin() != nil
+	_, fresh := server.begin()
+	return fresh
 }
 
-func (server *Server) begin() *launchAttempt {
+func (server *Server) begin() (*launchAttempt, bool) {
 	server.mu.Lock()
 	defer server.mu.Unlock()
 	if server.attempt != nil && server.attempt.err == nil {
-		return nil
+		return server.attempt, false
 	}
 	server.attempt = &launchAttempt{ready: make(chan struct{})}
-	return server.attempt
+	return server.attempt, true
 }
 
 // SetResult is called by the serial room owner after readiness or full retirement.
@@ -414,17 +415,14 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 		http.Error(response, "unsupported launch mode", http.StatusBadRequest)
 		return
 	}
-	attempt := server.begin()
-	if attempt == nil {
-		writeJSON(response, http.StatusConflict, map[string]string{
-			"error": "launch already requested", "detail": "A room is already starting or running.",
-		})
-		return
+	attempt, fresh := server.begin()
+	if fresh {
+		// Each accepted attempt outlives its page request and owns its own result.
+		// The single-slot queue cannot block: only the accepted request writes it.
+		server.selection <- selection
 	}
-
-	// Each accepted attempt outlives its page request and owns its own result.
-	// The single-slot queue cannot block: only the accepted request writes it.
-	server.selection <- selection
+	// Reentry joins this exact attempt, including an accepted startup whose
+	// original page has gone away. It cannot start another room or join a retry.
 	select {
 	case <-attempt.ready:
 	case <-request.Context().Done():
