@@ -98,6 +98,11 @@ require a wire bump.
 
 Clean up worktrees and branches only after semantic review and integration are complete and the normal merged-head, open-reference, clean-tree, and non-following link checks pass. Never merge an old branch wholesale after a newer truth checkpoint.
 
+For owner-managed manual deletion, collect permitted retired artifacts in
+`Desktop/Piik-cleanup` with their original paths. Keep worktrees under Git's cleanup
+workflow. Targets of a policy-rejected cleanup stay in place and go in that path
+index; do not substitute a move for the rejected deletion.
+
 ## Research Standard
 
 The [engineering reference](./docs/standards/engineering.md) owns module and
