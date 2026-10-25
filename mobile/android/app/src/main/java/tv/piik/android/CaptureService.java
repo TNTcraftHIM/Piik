@@ -310,7 +310,10 @@ public final class CaptureService extends Service {
                   next.proven = true;
                   AppRuntimeService.prepared(runtime, id);
                   handler.removeCallbacks(next.timeout);
-                  if (next.replaced != null && next.replaced.id == id) releaseVideo(next.replaced);
+                  if (next.replaced != null && next.replaced.id == id) {
+                    retireVideo(next.replaced);
+                    next.replaced = null;
+                  }
                   JSONObject locked = new JSONObject(next.configuration);
                   locked.put("codec", next.actualCodec);
                   next.configuration = locked.toString();
@@ -727,7 +730,8 @@ public final class CaptureService extends Service {
                 && s.previousVideo.id == id) {
               Video committed = s.previousVideo;
               s.previousVideo = null;
-              s.releaseVideo(committed);
+              if (s.video != null && s.video.replaced == committed) s.video.replaced = null;
+              s.retireVideo(committed);
               s.resizeVideo();
             }
             if (s.video != null && s.video.runtime == owner && s.video.id == id) {
@@ -768,6 +772,7 @@ public final class CaptureService extends Service {
   void releaseVideo(Video value) {
     if (value == null || value.released) return;
     value.released = true;
+    value.replaced = null;
     if (value.timeout != null) handler.removeCallbacks(value.timeout);
     try {
       value.codec.stop();
@@ -778,6 +783,16 @@ public final class CaptureService extends Service {
     } catch (Exception ignored) {
     }
     if (value.surface != null) value.surface.release();
+  }
+
+  // A retired target can retain an unfinished rotation of the same Go stream.
+  // Rollback releases only the failed candidate; final retirement owns its chain.
+  void retireVideo(Video value) {
+    while (value != null) {
+      Video previous = value.replaced;
+      releaseVideo(value);
+      value = previous;
+    }
   }
 
   void finishProjection() {
@@ -799,8 +814,8 @@ public final class CaptureService extends Service {
       display.release();
       display = null;
     }
-    releaseVideo(old);
-    releaseVideo(pendingOld);
+    retireVideo(old);
+    retireVideo(pendingOld);
     CapturedAudio.close(oldAudio);
     CapturedAudio.close(pendingOldAudio);
     CapturedAudio.close(oldMicrophone);
