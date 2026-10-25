@@ -1,0 +1,16 @@
+"Start Piik" = "Start Piik";
+"Open Piik in browser" = "Open Piik in browser";
+"Open App page" = "Open App page";
+"Stop Piik" = "Stop Piik";
+"Start a session to use Piik in your browser. You can stop it here or in the system session controls." = "Start a session to use Piik in your browser. You can stop it here or in the system session controls.";
+"Waiting for the system to allow background execution…" = "Waiting for the system to allow background execution…";
+"Starting Piik…" = "Starting Piik…";
+"Stopping Piik…" = "Stopping Piik…";
+"Piik is running. Rooms, camera and voice stay in your browser." = "Piik is running. Rooms, camera and voice stay in your browser.";
+"Use the browser return button at the top of the screen to continue in the same tab." = "Use the browser return button at the top of the screen to continue in the same tab.";
+"The system could not register this Piik session." = "The system could not register this Piik session.";
+"Starting your session" = "Starting your session";
+"Background execution is unavailable. Allow Background App Refresh for Piik, then try again." = "Background execution is unavailable. Allow Background App Refresh for Piik, then try again.";
+"The system ended this session. Start Piik again to reconnect." = "The system ended this session. Start Piik again to reconnect.";
+"Session active · %@" = "Session active · %@";
+"The browser could not open Piik. Start the session again to retry." = "The browser could not open Piik. Start the session again to retry.";

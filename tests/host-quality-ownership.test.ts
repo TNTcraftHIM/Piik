@@ -13,7 +13,7 @@ import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
 import { HostPeer } from "../src/client/webrtc/host-peer";
 import { NativeCompatibilityError, NativeRequestError, type NativeClient } from "../src/client/native/client";
 import { NativeClientConnection } from "../src/client/native/client-connection";
-import { androidAppIntent } from "../src/client/native/activation";
+import { nativeAppActivationURL } from "../src/client/native/activation";
 import { nativeCaptureTargetKey } from "../src/client/native/capture-selection";
 import { nativeAppDetected, type NativeSourceList } from "../src/client/components/living/CaptureSourcePicker";
 import { NativeMediaBridgeError } from "../src/client/native/media-bridge";
@@ -108,7 +108,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
     NativeMediaBridge: vi.fn(function (_shareId: string, _client: unknown, _onFailed: () => void) { return bridge; }), manualVideoCodecPreference: vi.fn(),
     phase: "live", qualitySettingsRef: ref<QualitySettings>(original), advancedQualityRef: ref<QualitySettings>(original),
     nativeActive: false, switchingSource: false, sourceSwitchState: null, shareVolume: { level: 1, muted: false },
-    androidAppIntent: (action: unknown) => androidAppIntent(action, "Android"),
+    nativeAppActivationURL: (action: unknown) => nativeAppActivationURL(action, "Android"),
     window: { location: { assign: vi.fn() } },
     qualityChangeRef: ref<object | null>(null), pendingQualityChangeRef: ref<QualitySettings | null>(null),
     appQualityPreferenceRef: ref<{ save: (quality: QualitySettings) => void } | null>(null),

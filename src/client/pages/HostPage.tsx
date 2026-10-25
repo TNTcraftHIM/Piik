@@ -181,7 +181,7 @@ import type {
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient, NativeCompatibilityError, NativeRequestError } from "../native/client";
 import { NativeClientConnection } from "../native/client-connection";
-import { activateNativePicker, androidAppIntent } from "../native/activation";
+import { activateNativePicker, nativeAppActivationURL } from "../native/activation";
 import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
@@ -3815,13 +3815,13 @@ export function HostPage({
     ? nativeConnection.current?.health.nativeMedia.maxAudioBitrate ?? MAX_AUDIO_SEND_BITRATE
     : MAX_AUDIO_SEND_BITRATE);
   const videoLimits = videoCaptureLimits(nativeActive ? nativeConnection.current?.health.nativeMedia : undefined);
-  const nativePermissionIntent = androidAppIntent(nativeConnection.current?.health.activationURL);
+  const nativePermissionIntent = nativeAppActivationURL(nativeConnection.current?.health.activationURL);
   const confirmNativeCapture = Boolean(nativePermissionIntent && (
     (phase === "starting" && !nativeActive && nativeSourceSelectionRef.current) ||
     sourceSwitchState?.nativePending
   ));
   function confirmNativePermission(): void {
-    const intent = androidAppIntent(nativeConnection.current?.health.activationURL);
+    const intent = nativeAppActivationURL(nativeConnection.current?.health.activationURL);
     if (intent && activeGenerationRef.current !== null) window.location.assign(intent);
   }
 

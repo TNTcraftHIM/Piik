@@ -2,6 +2,7 @@ import UIKit
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
+    let session = CompanionSession()
     func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
         let configuration = UISceneConfiguration(name: "Piik", sessionRole: connectingSceneSession.role)
@@ -12,27 +13,21 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
-    private var runtime: PiikRuntime?
+    private var companion: CompanionViewController?
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
-        let runtime = PiikRuntime()
-        let browser = BrowserViewController(runtime: runtime)
-        browser.onRestart = { [weak self] in self?.restart(runtime) }
-        window.rootViewController = UINavigationController(rootViewController: browser)
+        let session = (UIApplication.shared.delegate as! AppDelegate).session
+        let companion = CompanionViewController(session: session)
+        window.rootViewController = UINavigationController(rootViewController: companion)
         window.makeKeyAndVisible()
-        self.window = window; self.runtime = runtime
+        self.window = window; self.companion = companion
+        for context in connectionOptions.urlContexts { companion.activate(context.url) }
     }
-    private func restart(_ previous: PiikRuntime) {
-        previous.close { [weak self] error in
-            guard let self, self.runtime === previous else { return }
-            if let error { previous.failed(error); return }
-            let next = PiikRuntime()
-            let browser = BrowserViewController(runtime: next)
-            browser.onRestart = { [weak self] in self?.restart(next) }
-            self.runtime = next
-            self.window?.rootViewController = UINavigationController(rootViewController: browser)
-        }
+    func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
+        for context in contexts { companion?.activate(context.url) }
     }
-    func sceneDidBecomeActive(_ scene: UIScene) { runtime?.becameActive() }
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        (UIApplication.shared.delegate as? AppDelegate)?.session.becameActive()
+    }
 }

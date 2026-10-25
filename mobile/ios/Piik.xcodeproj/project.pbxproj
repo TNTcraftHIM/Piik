@@ -4,26 +4,30 @@
  classes = {};
  objectVersion = 56;
  objects = {
-  A00000000000000000000001 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2700; }; buildConfigurationList = A00000000000000000000010; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, Base); mainGroup = A00000000000000000000002; productRefGroup = A00000000000000000000003; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000020); };
+  A00000000000000000000001 = { isa = PBXProject; attributes = { LastUpgradeCheck = 2700; }; buildConfigurationList = A00000000000000000000010; compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0; knownRegions = (en, "zh-Hans", Base); mainGroup = A00000000000000000000002; productRefGroup = A00000000000000000000003; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000020); };
   A00000000000000000000002 = { isa = PBXGroup; children = (A00000000000000000000004, A00000000000000000000048, A00000000000000000000003); sourceTree = "<group>"; };
   A00000000000000000000003 = { isa = PBXGroup; name = Products; children = (A00000000000000000000030); sourceTree = "<group>"; };
-  A00000000000000000000004 = { isa = PBXGroup; path = Piik; children = (A00000000000000000000040, A00000000000000000000041, A00000000000000000000042, A00000000000000000000043, A00000000000000000000044, A00000000000000000000045, A00000000000000000000046); sourceTree = "<group>"; };
+  A00000000000000000000004 = { isa = PBXGroup; path = Piik; children = (A00000000000000000000040, A00000000000000000000041, A00000000000000000000042, A00000000000000000000043, A00000000000000000000044, A00000000000000000000045, A00000000000000000000046, A00000000000000000000047, A00000000000000000000049); sourceTree = "<group>"; };
   A00000000000000000000010 = { isa = XCConfigurationList; buildConfigurations = (A00000000000000000000011, A00000000000000000000012); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
   A00000000000000000000011 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 27.0; SWIFT_VERSION = 5.0; PIIK_BUNDLE_IDENTIFIER = tv.piik.ios; CLANG_ENABLE_MODULES = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; DEBUG_INFORMATION_FORMAT = dwarf; OTHER_LDFLAGS = ("-ObjC", "-lresolv"); }; };
   A00000000000000000000012 = { isa = XCBuildConfiguration; name = Release; buildSettings = { SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 27.0; SWIFT_VERSION = 5.0; PIIK_BUNDLE_IDENTIFIER = tv.piik.ios; CLANG_ENABLE_MODULES = YES; SWIFT_OPTIMIZATION_LEVEL = "-O"; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; OTHER_LDFLAGS = ("-ObjC", "-lresolv"); }; };
   A00000000000000000000020 = { isa = PBXNativeTarget; name = Piik; productName = Piik; productReference = A00000000000000000000030; productType = "com.apple.product-type.application"; buildConfigurationList = A00000000000000000000060; buildPhases = (A00000000000000000000050, A00000000000000000000053, A00000000000000000000054); buildRules = (); dependencies = (); };
   A00000000000000000000030 = { isa = PBXFileReference; explicitFileType = wrapper.application; path = Piik.app; sourceTree = BUILT_PRODUCTS_DIR; };
   A00000000000000000000040 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
-  A00000000000000000000041 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrowserViewController.swift; sourceTree = "<group>"; };
+  A00000000000000000000041 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionViewController.swift; sourceTree = "<group>"; };
   A00000000000000000000042 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PiikRuntime.swift; sourceTree = "<group>"; };
   A00000000000000000000043 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenCapture.swift; sourceTree = "<group>"; };
   A00000000000000000000044 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoEncoder.swift; sourceTree = "<group>"; };
   A00000000000000000000045 = { isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
   A00000000000000000000046 = { isa = PBXFileReference; lastKnownFileType = text; path = "THIRD-PARTY-NOTICES.txt"; sourceTree = "<group>"; };
+  A00000000000000000000047 = { isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CompanionSession.swift; sourceTree = "<group>"; };
+  A00000000000000000000049 = { isa = PBXVariantGroup; children = (A0000000000000000000004A, A0000000000000000000004B); name = Localizable.strings; sourceTree = "<group>"; };
+  A0000000000000000000004A = { isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
+  A0000000000000000000004B = { isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/Localizable.strings"; sourceTree = "<group>"; };
   A00000000000000000000048 = { isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Frameworks/PiikBridge.xcframework; sourceTree = "<group>"; };
-  A00000000000000000000050 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000080, A00000000000000000000081, A00000000000000000000082, A00000000000000000000083, A00000000000000000000084); runOnlyForDeploymentPostprocessing = 0; };
+  A00000000000000000000050 = { isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000080, A00000000000000000000081, A00000000000000000000082, A00000000000000000000083, A00000000000000000000084, A00000000000000000000085); runOnlyForDeploymentPostprocessing = 0; };
   A00000000000000000000053 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000088); runOnlyForDeploymentPostprocessing = 0; };
-  A00000000000000000000054 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000089); runOnlyForDeploymentPostprocessing = 0; };
+  A00000000000000000000054 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000089, A0000000000000000000008A); runOnlyForDeploymentPostprocessing = 0; };
   A00000000000000000000060 = { isa = XCConfigurationList; buildConfigurations = (A00000000000000000000061, A00000000000000000000062); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
   A00000000000000000000061 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = "$(PIIK_BUNDLE_IDENTIFIER)"; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = Piik/Info.plist; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = Piik/Piik.entitlements; }; };
   A00000000000000000000062 = { isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = "$(PIIK_BUNDLE_IDENTIFIER)"; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = Piik/Info.plist; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = Piik/Piik.entitlements; }; };
@@ -32,8 +36,10 @@
   A00000000000000000000082 = { isa = PBXBuildFile; fileRef = A00000000000000000000042; };
   A00000000000000000000083 = { isa = PBXBuildFile; fileRef = A00000000000000000000043; };
   A00000000000000000000084 = { isa = PBXBuildFile; fileRef = A00000000000000000000044; };
+  A00000000000000000000085 = { isa = PBXBuildFile; fileRef = A00000000000000000000047; };
   A00000000000000000000088 = { isa = PBXBuildFile; fileRef = A00000000000000000000048; };
   A00000000000000000000089 = { isa = PBXBuildFile; fileRef = A00000000000000000000046; };
+  A0000000000000000000008A = { isa = PBXBuildFile; fileRef = A00000000000000000000049; };
  };
  rootObject = A00000000000000000000001;
 }

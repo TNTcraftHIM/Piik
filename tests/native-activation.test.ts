@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { activateNativePicker, androidAppIntent } from "../src/client/native/activation";
+import { activateNativePicker, nativeAppActivationURL } from "../src/client/native/activation";
 import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL, NATIVE_CLIENT_PORT_START } from "../src/client/native/wire";
 
-describe("Android App foreground actions", () => {
+describe("Native App foreground actions", () => {
   afterEach(() => vi.unstubAllGlobals());
   const android = "Mozilla/5.0 (Linux; Android 16) Chrome/150 Mobile";
   it.each([true, false, undefined])("hands off only while the original gesture is active: %s", isActive => {
@@ -20,14 +20,29 @@ describe("Android App foreground actions", () => {
     }
   });
   it("allows only fixed Piik actions in its explicit Android package", () => {
-    expect(androidAppIntent("piik://app", android)).toBe("intent://app#Intent;scheme=piik;package=tv.piik.android;end");
-    expect(androidAppIntent("piik://media", android)).toBe("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
+    expect(nativeAppActivationURL("piik://app", android)).toBe("intent://app#Intent;scheme=piik;package=tv.piik.android;end");
+    expect(nativeAppActivationURL("piik://media", android)).toBe("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
     for (const action of [undefined, null, "https://piik.tv", "piik://media?approve=true", "piik://media#token=secret",
       "piik://user@media", "piik://media/start", "intent://media#Intent;package=other;end"]) {
-      expect(androidAppIntent(action, android)).toBeNull();
+      expect(nativeAppActivationURL(action, android)).toBeNull();
     }
-    expect(androidAppIntent("piik://app", "Mozilla/5.0 (Windows NT 10.0)")).toBeNull();
-    expect(androidAppIntent("piik://app", "Mozilla/5.0 (iPhone)")).toBeNull();
+    expect(nativeAppActivationURL("piik://app", "Mozilla/5.0 (Windows NT 10.0)")).toBeNull();
+    expect(nativeAppActivationURL("piik://app", "Mozilla/5.0 (iPhone)")).toBe("piik://app");
+  });
+
+  it.each(["Mozilla/5.0 (iPhone)", "Mozilla/5.0 (iPad)", "Mozilla/5.0 (Macintosh) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1"])("uses the fixed iOS action without Android intent syntax: %s", userAgent => {
+    const assign = vi.fn();
+    vi.stubGlobal("navigator", { userAgent, userActivation: { isActive: true } });
+    vi.stubGlobal("window", { location: { assign } });
+    activateNativePicker("piik://media");
+    expect(assign).toHaveBeenCalledWith("piik://media");
+    expect(nativeAppActivationURL("piik://media?approve=true", userAgent)).toBeNull();
+  });
+
+  it("recognizes iPadOS desktop mode without changing ordinary Mac behavior", () => {
+    const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 Version/27.0 Safari/605.1.15";
+    expect(nativeAppActivationURL("piik://media", userAgent, 5)).toBe("piik://media");
+    expect(nativeAppActivationURL("piik://app", userAgent, 0)).toBeNull();
   });
 
   it("uses the connected App's media action in Android desktop mode", () => {
@@ -37,7 +52,7 @@ describe("Android App foreground actions", () => {
     vi.stubGlobal("window", { location: { assign } });
     activateNativePicker("piik://media");
     expect(assign).toHaveBeenCalledWith("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
-    expect(androidAppIntent("piik://app", desktop)).toBeNull();
+    expect(nativeAppActivationURL("piik://app", desktop)).toBeNull();
   });
 
   it("keeps activation optional and validates the known health extension", () => {

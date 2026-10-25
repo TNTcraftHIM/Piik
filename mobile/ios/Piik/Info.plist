@@ -11,7 +11,9 @@
  <key>UILaunchScreen</key><dict/>
  <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/><key>UISceneConfigurations</key><dict/></dict>
  <key>NSScreenCaptureUsageDescription</key><string>Piik uses screen capture only when you explicitly start it through the system picker.</string>
- <key>UIBackgroundModes</key><array><string>screen-capture</string></array>
+ <key>UIBackgroundModes</key><array><string>screen-capture</string><string>processing</string></array>
+ <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>$(PRODUCT_BUNDLE_IDENTIFIER).session.*</string></array>
+ <key>CFBundleURLTypes</key><array><dict><key>CFBundleURLName</key><string>$(PRODUCT_BUNDLE_IDENTIFIER)</string><key>CFBundleURLSchemes</key><array><string>piik</string></array></dict></array>
  <key>NSAppTransportSecurity</key><dict><key>NSExceptionDomains</key><dict><key>127.0.0.1</key><dict><key>NSExceptionAllowsInsecureHTTPLoads</key><true/></dict></dict></dict>
  <key>NSCameraUsageDescription</key><string>Piik uses the camera when you select camera sharing.</string>
  <key>NSMicrophoneUsageDescription</key><string>Piik uses the microphone when you explicitly join room voice or enable commentary.</string>

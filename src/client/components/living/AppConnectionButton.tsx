@@ -8,7 +8,7 @@ import { Comic } from "./Comic";
 import { HintComic } from "./hints";
 import { LoadingStatus } from "./WaitingStatus";
 import { useAnchoredPopover } from "./use-anchored-popover";
-import { androidAppIntent } from "../../native/activation";
+import { nativeAppActivationURL } from "../../native/activation";
 
 interface AppConnectionProps {
   sourcePicker?: boolean;
@@ -30,7 +30,7 @@ export function AppConnectionButton(props: AppConnectionProps) {
 function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnectionProps) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
-  const wakeURL = androidAppIntent("piik://app");
+  const wakeURL = nativeAppActivationURL("piik://app");
   const [helpOpen, setHelpOpen] = useState(false);
   const downloadURL = useProjectLink("/#download", "https://github.com/TNTcraftHIM/Piik/releases/latest", helpOpen);
   const helpId = useId();

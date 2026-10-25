@@ -52,7 +52,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
     private var closed = false
     var ready: (String) -> Void = { _ in }
     var failed: (Error) -> Void = { _ in }
-    var accessChanged: () -> Void = {}
+    var prepared: () -> Void = {}
 
     func start() {
         startup.async {
@@ -68,7 +68,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
                 let catalog = "{\"platform\":\"ios\",\"provider\":\"VideoToolbox\",\"systemAudio\":false,\"encoders\":\(supported ? "[{\"name\":\"VideoToolbox AVC\",\"codec\":\"h264\"}]" : "[]")}"
                 var startError: NSError?
                 let candidate = PiikBridgeStart(self, Self.lanAddress(), catalog, data.path,
-                                                NSTemporaryDirectory(), "", "", &startError)
+                                                NSTemporaryDirectory(), "", "piik://media", &startError)
                 if let startError { throw startError }
                 guard let next = candidate else {
                     throw NSError(domain: "Piik", code: 1, userInfo: [NSLocalizedDescriptionKey: "Piik runtime did not start."])
@@ -89,7 +89,6 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
         }
     }
     var managementURL: URL? { core.flatMap { URL(string: $0.url()) } }
-    func trusts(_ url: URL) -> Bool { core?.trustedURL(url.absoluteString) == true }
     func becameActive() {
 #if canImport(ScreenCaptureKit)
         presentPicker()
@@ -155,8 +154,11 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
             } catch { core.captureEnded(id_); self.captureFailed(error) }
         }
     }
-    // The shared Web UI waits for the Go ACK; no other App needs foregrounding.
-    func preparationDone(_ id_: Int64) {}
+    // Safari retains its original tab. The system's return-to-browser affordance
+    // returns there without opening a new Host tab or inventing a callback URL.
+    func preparationDone(_ id_: Int64) {
+        DispatchQueue.main.async { if !self.closed { self.prepared() } }
+    }
     func stop(_ id_: Int64) {
         DispatchQueue.main.async {
             self.pendingVideo.removeValue(forKey: id_)
@@ -176,14 +178,12 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
     func microphones(_ error: NSErrorPointer) -> String { "[]" }
     func startAudio(_ id_: Int64) { DispatchQueue.main.async { self.core?.captureEnded(id_) } }
     func startMicrophone(_ id_: Int64, deviceID: String?) { DispatchQueue.main.async { self.core?.captureEnded(id_) } }
-    func siteAccessChanged() { DispatchQueue.main.async { if !self.closed { self.accessChanged() } } }
+    func siteAccessChanged() {} // The loopback service retires revoked native connections.
     func runtimeStopped(_ reason: String?) {
         DispatchQueue.main.async {
             guard !self.closed else { return }
-            self.close { error in
-                self.failed(error ?? NSError(domain: "Piik", code: 3,
-                    userInfo: [NSLocalizedDescriptionKey: reason ?? "Piik stopped."]))
-            }
+            self.report(NSError(domain: "Piik", code: 3,
+                userInfo: [NSLocalizedDescriptionKey: reason ?? "Piik stopped."]))
         }
     }
     private static func lanAddress() -> String {

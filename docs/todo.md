@@ -45,8 +45,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   recovery, then prepare release packaging. The system-browser companion is the
   primary candidate; keep the embedded build for comparison until acceptance.
 - [ ] **iOS device acceptance.** Verify the [integrated App](../mobile/ios/README.md#integration-boundary)
-  on a signed iOS 27 device: recording consent, real capture background lifetime
-  and WKWebView Host routing. Hosted HTTPS native linkage remains unverified.
+  on a signed iOS 27 device: continued-session admission/idle lifetime and expiry,
+  recording consent/browser return, capture background lifetime and system-browser
+  Host routing. Hosted HTTPS native linkage remains unverified.
 
 ## Held By Owner
 

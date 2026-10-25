@@ -30,6 +30,11 @@ for (const sdk of ['iphoneos', 'iphonesimulator']) {
     join(root, 'build', 'ios-client', `piik-${sdk}-unsigned.zip`)]);
 }
 const encoderCheck = join(root, 'build', 'ios-client', 'video-encoder-check');
+const sessionCheck = join(root, 'build', 'ios-client', 'companion-session-check');
+run('xcrun', ['--sdk', 'macosx', 'swiftc', '-swift-version', '5',
+  join(root, 'mobile', 'ios', 'Piik', 'CompanionSession.swift'),
+  join(root, 'mobile', 'ios', 'checks', 'session', 'main.swift'), '-o', sessionCheck]);
+run(sessionCheck, []);
 run('xcrun', ['--sdk', 'macosx', 'swiftc', '-swift-version', '5',
   join(root, 'mobile', 'ios', 'Piik', 'VideoEncoder.swift'),
   join(root, 'mobile', 'ios', 'checks', 'main.swift'), '-o', encoderCheck]);
