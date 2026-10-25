@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build darwin && !ios && cgo
 
 #include "platform_darwin.h"
 #include <ApplicationServices/ApplicationServices.h>
