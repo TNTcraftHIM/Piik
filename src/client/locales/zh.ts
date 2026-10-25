@@ -490,7 +490,7 @@ export const zh = {
   "native.fail.browserMedia": "浏览器无法建立媒体连接，请刷新页面重试。",
   "native.fail.signaling": "Piik App 信令失败",
   "native.fail.receiver": "Piik App 媒体接收失败",
-  "native.fail.controlDisconnected": "与 Piik App 的连接已断开，请确认 App 运行后刷新页面。",
+  "native.fail.controlDisconnected": "与 Piik App 的连接已断开，请通过 App 按钮重新连接。",
   "native.fail.requestTimeout": "Piik App 响应超时，请稍后重试。",
   "native.fail.invalidResponse": "Piik App 返回的数据无法识别。请更新 App 并刷新页面。",
   "native.fail.captureStart": "App 未能采集所选来源，请换一个来源重试。",

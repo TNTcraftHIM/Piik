@@ -490,7 +490,7 @@ export const en: Record<CopyKey, string> = {
   "native.fail.browserMedia": "The browser could not create a media connection; reload to retry.",
   "native.fail.signaling": "Piik App signaling failed",
   "native.fail.receiver": "Piik App media receive failed",
-  "native.fail.controlDisconnected": "Disconnected from Piik App; check that the App is running, then reload.",
+  "native.fail.controlDisconnected": "Piik App disconnected. Reconnect using the App button.",
   "native.fail.requestTimeout": "Piik App timed out; try again in a moment.",
   "native.fail.invalidResponse": "The page could not read Piik App's response. Update the App and refresh the page.",
   "native.fail.captureStart": "App capture failed; try another source.",

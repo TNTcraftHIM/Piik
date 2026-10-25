@@ -34,11 +34,13 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on the feature branch for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
-- [ ] **Android App release scope.** Complete integrated phone, tablet and TV
-  acceptance of Local rooms, public invitations and approved hosted Sites,
-  including the embedded/system-browser comparison, sharing with room voice,
-  and stationary-screen late join/keyframe recovery,
-  then prepare release packaging. Keep the candidate on the feature branch until accepted.
+- [ ] **Android App release scope.** Complete phone/tablet/TV hardware acceptance
+  and stationary-screen late join/keyframe
+  recovery, then prepare release packaging. The system-browser companion is the
+  primary candidate; keep the embedded build for comparison until acceptance.
+- [ ] **iOS browser companion.** Connect the [Swift capture producer](../mobile/ios/README.md#integration-boundary)
+  to the shared mobile bridge. Verify Safari-to-App control and background Host
+  operation with the Apple SDK and a device before preparing an iOS test package.
 
 ## Held By Owner
 

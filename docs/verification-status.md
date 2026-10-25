@@ -23,12 +23,14 @@ phases, including NAT and Auto codec behavior.
 
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
-- The Android embedded APK passed emulator screen/camera sharing with concurrent
-  room voice, Local/public startup and startup-page reentry. The system-browser
-  variant passed consent and return to the same tab; media acceptance remains
-  open because MuMu's bundled Chromium 110 supplied no usable UDP candidates.
-  Standard-browser comparison, phone/tablet/TV hardware and physical audio remain
-  in the [Android acceptance scope](./todo.md#next).
+- Android embedded and system-browser APKs passed emulator screen/camera sharing
+  with concurrent room voice. Browser consent returns to the same tab; source
+  replacement, cancellation and background return preserve the share. Local/public
+  startup and launcher reentry also have emulator evidence. Phone/tablet/TV
+  hardware and physical audio remain in the [Android acceptance scope](./todo.md#next).
+- The iOS source prototype has a local capture probe and generated Objective-C
+  bindings for the shared mobile Go bridge. Swift integration and Apple SDK/device
+  acceptance remain in the [iOS scope](../mobile/ios/README.md#integration-boundary).
 - Windows HDR-to-SDR has synthetic GPU and decoded-video evidence; it does not
   establish Browser-capture HDR conversion or end-to-end HDR. The
   [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns that boundary.

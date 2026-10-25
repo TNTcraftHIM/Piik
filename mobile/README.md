@@ -59,9 +59,11 @@ management without unloading a live Host. **Startup page** returns its main view
 after confirmation.
 
 The browser variant opens that same startup page in the default browser.
-Its ongoing notification opens Piik or stops the local backend. Screen sharing
-uses **Confirm in App** for recording and any requested sound permission. App
-returns to the original browser tab after the complete capture startup settles.
+Its ongoing notification opens Piik or stops the local backend. Starting screen
+sharing opens App for system recording consent when the browser permits the
+handoff; **Confirm in App** remains available when another click is needed.
+Replacing an active native source reuses recording consent without opening App.
+App returns to the original browser tab after the complete capture startup settles.
 Opening App while a request is pending also handles
 that request, so sites without the new shortcut can still confirm in App.
 The website's App approval still requires its displayed exact origin; waking
