@@ -89,6 +89,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
         }
     }
     var managementURL: URL? { core.flatMap { URL(string: $0.url()) } }
+    var entryURL: URL? { core.flatMap { URL(string: $0.entryURL()) } }
     func becameActive() {
 #if canImport(ScreenCaptureKit)
         presentPicker()
@@ -103,8 +104,10 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
         // Startup and close share the same queue, including Stop during Start.
         // The UI may start a successor only after the actual Go close joins.
         startup.async {
+            let closing = self.lifecycleCore
+            self.lifecycleCore = nil
             do {
-                try self.lifecycleCore?.close(); self.lifecycleCore = nil
+                try closing?.close()
                 DispatchQueue.main.async { completion(nil) }
             }
             catch { DispatchQueue.main.async { completion(error) } }

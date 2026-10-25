@@ -59,6 +59,12 @@ final class CompanionViewController: UIViewController {
         ])
         session.changed = { [weak self] in self?.render() }
         session.preparationFinished = { [weak self] in self?.returningToBrowser = true; self?.render() }
+        session.browserFailed = { [weak self] in
+            guard let self, self.presentedViewController == nil else { return }
+            let alert = UIAlertController(title: "Piik", message: NSLocalizedString("The browser could not open Piik. Try again.", comment: "Browser launch failed"), preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: NSLocalizedString("OK", comment: "Dismiss"), style: .default))
+            self.present(alert, animated: true)
+        }
         render()
     }
 

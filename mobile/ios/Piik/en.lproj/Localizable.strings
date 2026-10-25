@@ -13,4 +13,5 @@
 "Background execution is unavailable. Allow Background App Refresh for Piik, then try again." = "Background execution is unavailable. Allow Background App Refresh for Piik, then try again.";
 "The system ended this session. Start Piik again to reconnect." = "The system ended this session. Start Piik again to reconnect.";
 "Session active · %@" = "Session active · %@";
-"The browser could not open Piik. Start the session again to retry." = "The browser could not open Piik. Start the session again to retry.";
+"The browser could not open Piik. Try again." = "The browser could not open Piik. Try again.";
+"OK" = "OK";

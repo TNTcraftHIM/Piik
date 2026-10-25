@@ -18,11 +18,11 @@ final class CompanionSession {
         let started = ProcessInfo.processInfo.systemUptime
     }
     private var current: Attempt?
+    private let submissions = DispatchQueue(label: "tv.piik.ios.session.submission")
     private(set) var state = State.stopped { didSet { changed() } }
-    private(set) var entryURL: URL?
-    private(set) var managementURL: URL?
     var changed: () -> Void = {}
     var preparationFinished: () -> Void = {}
+    var browserFailed: () -> Void = {}
 
     func start(openBrowser: Bool) {
         guard current == nil, UIApplication.shared.applicationState == .active else { return }
@@ -46,9 +46,20 @@ final class CompanionSession {
         let request = BGContinuedProcessingTaskRequest(identifier: attempt.identifier, title: "Piik",
             subtitle: NSLocalizedString("Starting your session", comment: "Background session admission"))
         request.strategy = .fail
-        do { try scheduler.submit(request) }
-        catch {
-            stop(reason: NSLocalizedString("Background execution is unavailable. Allow Background App Refresh for Piik, then try again.", comment: "Background admission rejected"))
+        // iOS 27 reports all submission failures asynchronously and requires
+        // submission off the main thread. Actual task delivery still owns readiness.
+        submissions.async { [weak self] in
+            scheduler.submitTaskRequest(request) { error in
+                DispatchQueue.main.async {
+                    guard let self, self.current === attempt else {
+                        scheduler.cancel(taskRequestWithIdentifier: attempt.identifier)
+                        return
+                    }
+                    if error != nil {
+                        self.stop(reason: NSLocalizedString("Background execution is unavailable. Allow Background App Refresh for Piik, then try again.", comment: "Background admission rejected"))
+                    }
+                }
+            }
         }
     }
 
@@ -69,10 +80,8 @@ final class CompanionSession {
         }
         let runtime = PiikRuntime()
         attempt.runtime = runtime
-        runtime.ready = { [weak self, weak runtime] address in
-            guard let self, let runtime, self.current === attempt, self.state == .starting else { return }
-            self.entryURL = URL(string: address)
-            self.managementURL = runtime.managementURL
+        runtime.ready = { [weak self] _ in
+            guard let self, self.current === attempt, self.state == .starting else { return }
             self.state = .running
             if openBrowser { self.openEntry() }
         }
@@ -101,10 +110,11 @@ final class CompanionSession {
     func stop(reason: String? = nil) {
         guard let attempt = current, state != .stopping else { return }
         state = .stopping
-        entryURL = nil; managementURL = nil
         attempt.timer?.invalidate(); attempt.timer = nil
         attempt.task?.expirationHandler = nil
-        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: attempt.identifier)
+        if attempt.task == nil {
+            submissions.async { BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: attempt.identifier) }
+        }
         let finish: (Error?) -> Void = { [weak self] error in
             guard let self, self.current === attempt else { return }
             attempt.task?.setTaskCompleted(success: reason == nil && error == nil)
@@ -117,15 +127,15 @@ final class CompanionSession {
         else { finish(nil) }
     }
 
-    func openEntry() { open(entryURL) }
-    func openManagement() { open(managementURL) }
+    func openEntry() { open(current?.runtime?.entryURL) }
+    func openManagement() { open(current?.runtime?.managementURL) }
     private func open(_ url: URL?) {
         guard state == .running, let attempt = current, let url else { return }
         UIApplication.shared.open(url, options: [:]) { [weak self] opened in
             if !opened {
                 DispatchQueue.main.async {
                     guard let self, self.current === attempt, self.state == .running else { return }
-                    self.stop(reason: NSLocalizedString("The browser could not open Piik. Start the session again to retry.", comment: "Browser launch failed"))
+                    self.browserFailed()
                 }
             }
         }

@@ -28,9 +28,10 @@ phases, including NAT and Auto codec behavior.
   replacement, cancellation and background return preserve the share. Local/public
   startup and launcher reentry also have emulator evidence. Phone/tablet/TV
   hardware and physical audio remain in the [Android acceptance scope](./todo.md#next).
-- The iOS source prototype has a local capture probe and generated Objective-C
-  bindings for the shared mobile Go bridge. Swift integration and Apple SDK/device
-  acceptance remain in the [iOS scope](../mobile/ios/README.md#integration-boundary).
+- The iOS system-browser candidate builds against device and simulator Apple SDKs.
+  Host checks exercise the production session lifecycle and real VideoToolbox
+  output/recovery. Signed-device background admission, idle lifetime, consent and
+  browser/native linkage remain in the [iOS scope](../mobile/ios/README.md#integration-boundary).
 - Windows HDR-to-SDR has synthetic GPU and decoded-video evidence; it does not
   establish Browser-capture HDR conversion or end-to-end HDR. The
   [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns that boundary.

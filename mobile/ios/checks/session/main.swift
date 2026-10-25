@@ -38,15 +38,21 @@ final class BGContinuedProcessingTaskRequest {
 final class BGTaskScheduler {
     static let shared = BGTaskScheduler()
     var handlers: [String: (BGTask) -> Void] = [:]
-    var submitted: [BGContinuedProcessingTaskRequest] = []
+    private let lock = NSLock()
+    private var requests: [BGContinuedProcessingTaskRequest] = []
+    var submitted: [BGContinuedProcessingTaskRequest] { lock.lock(); defer { lock.unlock() }; return requests }
     var rejected = false
     func register(forTaskWithIdentifier identifier: String, using queue: DispatchQueue?, launchHandler: @escaping (BGTask) -> Void) -> Bool {
         precondition(handlers[identifier] == nil, "registered a task identifier twice")
         handlers[identifier] = launchHandler; return true
     }
-    func submit(_ request: BGContinuedProcessingTaskRequest) throws {
-        if rejected { throw CheckFailure("system rejected admission") }
-        submitted.append(request)
+    func submitTaskRequest(_ request: BGContinuedProcessingTaskRequest, completionHandler: @escaping (Error?) -> Void) {
+        precondition(!Thread.isMainThread, "submission blocked the main thread")
+        lock.lock()
+        let shouldReject = rejected
+        if !shouldReject { requests.append(request) }
+        lock.unlock()
+        completionHandler(shouldReject ? CheckFailure("system rejected admission") : nil)
     }
     func cancel(taskRequestWithIdentifier identifier: String) {}
     func deliver(_ identifier: String) -> BGContinuedProcessingTask {
@@ -62,6 +68,7 @@ final class PiikRuntime {
     var prepared: () -> Void = {}
     var closing: ((Error?) -> Void)?
     var managementURL: URL? { URL(string: "http://127.0.0.1:8787/client") }
+    var entryURL = URL(string: "http://127.0.0.1:8787/client")
     init() { Self.instances.append(self) }
     func start() {}
     func becameActive() {}
@@ -70,15 +77,22 @@ final class PiikRuntime {
 struct CheckFailure: Error { let detail: String; init(_ detail: String) { self.detail = detail } }
 func check(_ value: Bool, _ detail: String) throws { if !value { throw CheckFailure(detail) } }
 func flushMain() { RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.02)) }
+func awaitCondition(_ message: String, _ condition: () -> Bool) throws {
+    let deadline = Date(timeIntervalSinceNow: 2)
+    while !condition(), Date() < deadline { flushMain() }
+    try check(condition(), message)
+}
 
 func run() throws {
     let scheduler = BGTaskScheduler.shared
     let session = CompanionSession()
     session.start(openBrowser: true)
+    try awaitCondition("first request was not submitted") { scheduler.submitted.count == 1 }
     let cancelledID = scheduler.submitted.last!.identifier
     try check(PiikRuntime.instances.isEmpty && UIApplication.shared.opened.isEmpty, "submission started the runtime/browser before actual admission")
     session.stop()
     session.start(openBrowser: true)
+    try awaitCondition("replacement request was not submitted") { scheduler.submitted.count == 2 }
     let currentID = scheduler.submitted.last!.identifier
     let late = scheduler.deliver(cancelledID)
     try check(late.completed == [false] && PiikRuntime.instances.isEmpty, "a cancelled task adopted the replacement session")
@@ -96,6 +110,7 @@ func run() throws {
     runtime.closing!(nil)
     try check(task.completed == [true] && session.state == .stopped, "explicit stop did not retire both owners")
     session.start(openBrowser: false)
+    try awaitCondition("second admitted session was not submitted") { scheduler.submitted.count == 3 }
     let replacementTask = scheduler.deliver(scheduler.submitted.last!.identifier)
     let replacement = PiikRuntime.instances.last!
     runtime.ready("http://127.0.0.1:1/stale")
@@ -106,6 +121,13 @@ func run() throws {
     session.preparationFinished = { prepared = true }
     replacement.prepared()
     try check(prepared && UIApplication.shared.opened.count == 1, "capture completion reopened a browser tab")
+    replacement.entryURL = URL(string: "https://starred.example/#piik-client=1")
+    var browserFailures = 0
+    session.browserFailed = { browserFailures += 1 }
+    session.openEntry()
+    try check(UIApplication.shared.opened.last == replacement.entryURL, "explicit browser open replayed a stale startup Site")
+    UIApplication.shared.completions.last!(false); flushMain()
+    try check(browserFailures == 1 && session.state == .running, "optional browser launch failure retired a healthy runtime")
     replacementTask.expirationHandler!(); flushMain()
     try check(session.state == .stopping && replacement.closing != nil && replacementTask.completed.isEmpty, "expiry did not join runtime retirement")
     replacement.closing!(nil)
@@ -114,9 +136,11 @@ func run() throws {
     scheduler.rejected = true
     let count = PiikRuntime.instances.count
     session.start(openBrowser: true)
+    try awaitCondition("submission rejection did not reach the owner") { if case .failed = session.state { return true }; return false }
     try check(PiikRuntime.instances.count == count, "rejected admission started a runtime")
     scheduler.rejected = false
     session.start(openBrowser: false)
+    try awaitCondition("startup cancellation request was not submitted") { scheduler.submitted.count == 4 }
     let startupTask = scheduler.deliver(scheduler.submitted.last!.identifier)
     let startup = PiikRuntime.instances.last!
     session.stop()
