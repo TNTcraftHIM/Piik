@@ -97,7 +97,6 @@ public final class MainActivity extends Activity {
       requestPermissions(
           new String[] {android.Manifest.permission.POST_NOTIFICATIONS}, NOTIFICATIONS);
     }
-    startForegroundService(new Intent(this, AppRuntimeService.class));
   }
 
   @Override
@@ -117,7 +116,8 @@ public final class MainActivity extends Activity {
     super.onStart();
     current = this;
     visible = true;
-    if (AppRuntimeService.instance != null) runtimeAvailable(AppRuntimeService.instance);
+    // Service foreground readiness precedes reopening even an existing runtime.
+    startForegroundService(new Intent(this, AppRuntimeService.class));
   }
 
   @Override
@@ -436,7 +436,7 @@ public final class MainActivity extends Activity {
     super.onRequestPermissionsResult(request, names, results);
     if (request == NOTIFICATIONS) {
       notificationRequest = false;
-      if (AppRuntimeService.instance != null) runtimeAvailable(AppRuntimeService.instance);
+      startForegroundService(new Intent(this, AppRuntimeService.class));
     } else if (request == WebPermissions.REQUEST) permissions.finish();
     else if (request == AppRuntimeService.AUDIO_PERMISSION && permissionOwner != null) {
       AppRuntimeService owner = permissionOwner;

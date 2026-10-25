@@ -110,6 +110,13 @@ by separate apps: if browser room voice and App commentary compete, use one
 microphone path. Headphones also prevent speaker sound from feeding back into
 the microphone.
 
+If a local room stops responding after switching to the browser or locking the
+screen, check Piik's battery and background-activity settings. Some devices
+restrict background network access even while the process remains running.
+Allow unrestricted background activity for Piik and keep its ongoing notification
+enabled. [Xiaomi's network troubleshooting](https://www.mi.com/ph/support/faq/details/KA-538010/)
+describes this battery-policy setting.
+
 Open the invitation in another device's Browser. Local HTTPS requires the usual
 certificate confirmation. Stop from Piik or Android's projection indicator;
 Android can also end projection on screen lock. Capture and optional audio use
