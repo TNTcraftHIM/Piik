@@ -910,8 +910,12 @@ func (session *Session) run(videoDone <-chan error) {
 	<-audioDone
 	<-qualityDone
 	session.retire()
-	if slog.Default().Enabled(session.ctx, slog.LevelDebug) {
-		slog.Debug("piik-client", "event", "share-ended", "share", diagnostics.ID(session.shareID), "failed", result != nil, diagnostics.Error(result))
+	level := slog.LevelDebug
+	if result != nil && !errors.Is(result, nativecapture.ErrSourceCanceled) {
+		level = slog.LevelWarn
+	}
+	if slog.Default().Enabled(session.ctx, level) {
+		slog.Log(session.ctx, level, "piik-client", "event", "share-ended", "share", diagnostics.ID(session.shareID), "failed", result != nil, diagnostics.Error(result))
 	}
 	session.done <- result
 	close(session.done)
