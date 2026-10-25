@@ -224,16 +224,22 @@ public final class MainActivity extends Activity {
       browserMedia = new BrowserMedia(owner, web, web.getUrl());
   }
 
-  void showWeb(String url) {
-    WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
-    web = new WebView(getApplicationContext());
-    WebSettings settings = web.getSettings();
+  WebView createWebView() {
+    WebView view = new WebView(new ContextThemeWrapper(getApplicationContext(), R.style.PiikTheme));
+    WebSettings settings = view.getSettings();
     settings.setJavaScriptEnabled(true);
     settings.setDomStorageEnabled(true);
-    settings.setMediaPlaybackRequiresUserGesture(false);
     settings.setAllowFileAccess(false);
     settings.setAllowContentAccess(false);
     settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+    return view;
+  }
+
+  void showWeb(String url) {
+    WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+    web = createWebView();
+    WebSettings settings = web.getSettings();
+    settings.setMediaPlaybackRequiresUserGesture(false);
     settings.setSupportMultipleWindows(true);
     web.setWebViewClient(new AppWebClient());
     // No JavaScript interface is exposed. Only the current approved Piik origin can
@@ -322,12 +328,7 @@ public final class MainActivity extends Activity {
   }
 
   WebView showSitePopup() {
-    WebView child = new WebView(getApplicationContext());
-    child.getSettings().setJavaScriptEnabled(true);
-    child.getSettings().setDomStorageEnabled(true);
-    child.getSettings().setAllowFileAccess(false);
-    child.getSettings().setAllowContentAccess(false);
-    child.getSettings().setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+    WebView child = createWebView();
     MainActivity owner = this;
     if (owner.sitePopup != null) owner.sitePopup.dismiss();
     Dialog popup = new Dialog(owner);
