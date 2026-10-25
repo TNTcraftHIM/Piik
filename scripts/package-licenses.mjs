@@ -116,11 +116,10 @@ export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand,
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
 }
 
-export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand) {
+function mobileNotices(repositoryRoot, goCommand, target) {
   const mobileRoot = join(repositoryRoot, "mobile");
-  const target = { goos: "android", goarch: "arm64", cgo: false };
   const notices = goNotices(mobileRoot, goCommand, target, "./bridge");
-  // gomobile adds the JNI binding runtime when generating the AAR. It is not
+  // gomobile adds its Java/Objective-C binding runtime when generating the library. It is not
   // imported by the bridge package before generation, and has its own notice.
   const runtime = JSON.parse(execFileSync(goCommand, ["list", "-m", "-json", "golang.org/x/mobile"], {
     cwd: mobileRoot, encoding: "utf8", windowsHide: true,
@@ -128,6 +127,19 @@ export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand
   const files = new Map(noticesIn(runtime.Dir).map((file) => [file, readFileSync(join(runtime.Dir, file), "utf8")]));
   if (!files.size) throw new Error("Missing Go mobile runtime license");
   notices.modules.set(`${runtime.Path}@${runtime.Version}`, files);
+  return notices;
+}
+
+export function writeIOSLicenseNotices(repositoryRoot, outputFile, goCommand) {
+  const notices = mobileNotices(repositoryRoot, goCommand, { goos: "ios", goarch: "arm64", cgo: true });
+  mkdirSync(dirname(outputFile), { recursive: true });
+  writeFileSync(outputFile, "Piik iOS third-party software notices\n" +
+    section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
+    WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
+}
+
+export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand) {
+  const notices = mobileNotices(repositoryRoot, goCommand, { goos: "android", goarch: "arm64", cgo: false });
   mkdirSync(dirname(outputFile), { recursive: true });
   writeFileSync(outputFile, "Piik Android third-party software notices\n" +
     section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +

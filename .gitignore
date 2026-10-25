@@ -24,6 +24,8 @@ benchmark-results/
 *.sqlite-journal
 *.sqlite-shm
 *.sqlite-wal
+mobile/ios/Frameworks/
+mobile/ios/Piik/THIRD-PARTY-NOTICES.txt
 
 # Editor and operating-system noise
 .DS_Store

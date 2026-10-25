@@ -1,74 +1,71 @@
-# iPhone and iPad prototype
+# iPhone and iPad App
 
-This slice provides a Swift/WKWebView shell for Piik's existing HTTPS Web UI and
-a local native capture/VideoToolbox probe. Rooms, playback, camera and room voice
-use the same Hosted application. Local App rooms and native room sharing are not
-connected yet. There is no second frontend, room backend or route controller.
+This development candidate targets iOS and iPadOS 27 or later. It uses the same
+Web application in WKWebView and the shared [Go mobile bridge](../bridge).
+One App-owned ScreenCaptureKit stream supplies VideoToolbox H.264 access units
+to the existing native media pipeline. There is no separate room backend,
+frontend or ReplayKit extension.
 
-## Open a site
+## Shared Web workflow
 
-The App opens the public Demo on launch. Use the menu's **Open site** for another
-HTTPS site or invitation; its path, query and fragment are retained. Opening a
-site leaves the current page. Popups preserve their opener and can close normally.
-Actual camera and voice requests use the standard WebKit/iOS permission prompts;
-the wrapper rejects requests from cross-origin subframes.
+Open Piik App to start its runtime and show the shared startup page. Saved sites,
+exact-origin approval and Local entry use the same UI as desktop and Android.
+The native **App page** action opens management alongside a live page;
+**Stop Piik** closes this runtime and its capture. A new start waits for the old
+runtime to retire. No public-link helper is packaged for iOS.
 
-## Run the local capture probe
+Use **+** to enter a site, then explicitly allow its displayed origin. WebKit
+popups keep their real opener. Native site approval and browser camera/microphone
+prompts remain separate; the wrapper permits media prompts only for the current
+approved top-level origin. Revocation ends that page by returning to management.
 
-Choose **Capture probe** and confirm Apple's system picker. The probe encodes
-H.264 at up to 30fps and 720x1280/1280x720, logging output metadata without saving
-or sending media to a room.
+Choose the system capture source in the ordinary source picker, then confirm
+Apple's recording chooser. Actual encoded frames and the existing native ACK
+complete startup. Replacing a live native source reuses its physical stream;
+explicit cancellation and platform stop retire the owning Go request.
 
-On systems with iOS27 ScreenCaptureKit, an App-owned SCStream uses the standard
-`screen-capture` background mode. Camera, application audio and microphone output
-are off. Stop through **Stop capture probe** or the system capture control.
-Older systems use a ReplayKit broadcast extension. Its system microphone switch
-remains visible; the probe discards microphone samples and activates no audio
-session. Stop that probe using the system recording indicator.
+The candidate advertises native video only. Native source audio and commentary
+are unavailable; camera and room voice keep the shared Web application's existing
+permissions and capture. Other iOS versions can use Piik sites in their normal browser.
 
-## Build and check on a Mac
+## Build with the Apple SDK
 
-Open `Piik.xcodeproj`, select scheme **Piik**, then choose an iPhone/iPad simulator
-or device. The deployment target is iOS16. For a device, select your development
-team and a unique `PIIK_BUNDLE_IDENTIFIER`; the extension uses the same value plus
-`.Broadcast`. Signing identities and provisioning profiles are not included.
-
-From the repository root, compile for the simulator:
+Use macOS with Xcode 27, the Go version in the root `go.mod` and Node from
+`.node-version`. Install the repository's pinned binding tools, then run:
 
 ```sh
-xcodebuild -project mobile/ios/Piik.xcodeproj -scheme Piik \
-  -configuration Debug -sdk iphonesimulator \
-  -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath build/ios-client/DerivedData CODE_SIGNING_ALLOWED=NO build
+npm ci
+go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20261011034528-197770444867
+go install golang.org/x/mobile/cmd/gobind@v0.0.0-20261011034528-197770444867
+node scripts/build-ios.mjs
 ```
 
-Run the focused HTTPS/invitation navigation check:
+`PIIK_GOMOBILE` may select an installed tool outside `PATH`. The entry builds the
+shared Web assets and license notices, creates `Frameworks/PiikBridge.xcframework`
+from the unique `mobile/bridge` package, and runs Xcode for device and simulator.
+Outputs are unsigned development `.app` bundles under
+`build/ios-client/DerivedData/Build/Products`. They are not installable release
+IPAs. For a device, select a development team and bundle identifier in Xcode;
+no signing identity or profile is included.
 
-```sh
-mkdir -p build/ios-client
-swiftc mobile/ios/Piik/SiteAddress.swift mobile/ios/checks/main.swift -o build/ios-client/check-site-address
-build/ios-client/check-site-address
-```
-
-The source was authored on Windows. XML/project-reference and repository checks
-have passed; Swift/Apple SDK compilation and device execution remain outstanding.
-System screen capture and hardware encoding require a physical device.
+The `iOS build` workflow uses the official `xcode-27` runner and uploads only
+unsigned build artifacts. It neither publishes a release nor changes `main`.
+Generated frameworks, notice files and build output are ignored.
 
 ## Integration boundary
 
-The shared Go runtime/capture owner is [mobile/bridge](../bridge); its Objective-C
-API has been generated with `gobind`. This Swift probe is not connected to that
-bridge and does not advertise Native readiness. Wiring its actual encoded samples
-and platform callbacks, then compiling against the Apple SDK, remains outstanding.
-ReplayKit's extension has a separate process lifetime from its containing App.
-ScreenCaptureKit keeps the capturing App active, but WKWebView has its own Web
-process: background Host signaling, new-Viewer admission and reconnect still need
-an established owner and runtime acceptance. These integration tasks stay in the
-repository's [TODO](../../docs/todo.md#next).
+The foreground App owns one Go runtime; platform callbacks implement start, encoder control,
+preparation completion and precise stop. Full-display capture uses the real
+`screen-capture` background mode only while a real stream is active. Idle startup,
+configuration, camera and room voice keep their normal foreground lifetime. There
+is no background task, dummy audio session or unrelated keepalive mode. Ordinary
+Safari-to-App operation is not advertised as a persistent native service.
 
-## Platform references
+Apple SDK compilation and physical-device acceptance are separate checks. System
+consent, rotation, background capture, late Viewer admission and reconnect require
+an iOS 27 device. Safari's Web process has its own background lifecycle; active
+App capture does not promise perpetual execution of a background browser tab.
 
-- [ScreenCaptureKit and the iOS sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios)
-- [ReplayKit sample handler](https://developer.apple.com/documentation/replaykit/rpbroadcastsamplehandler)
-- [Extension process boundary](https://developer.apple.com/library/archive/documentation/General/Conceptual/ExtensibilityPG/ExtensionOverview.html)
-- [VideoToolbox output handler](https://developer.apple.com/documentation/videotoolbox/vtcompressionsessionencodeframe(_:imagebuffer:presentationtimestamp:duration:frameproperties:infoflagsout:outputhandler:))
+References: [Apple's iOS capture sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios),
+[SCStream availability](https://developer.apple.com/documentation/screencapturekit/scstream),
+[official Xcode 27 runner](https://github.com/actions/runner-images/issues/14404).
