@@ -79,7 +79,8 @@ The source selector exposes that same connection action before sharing; a
 successful connection refreshes its current list. An already approved exact
 origin needs no repeat confirmation, but the page still verifies authorized App
 health. Closing the selector cancels its pending connection action. Existing
-Browser shares retain their capture implementation until sharing ends.
+Browser shares stay unchanged when App connects; explicit source replacement
+uses the current share's source transaction.
 App-created Local/public-invite Host pages open at their automatically approved
 loopback origin. The shared App button reflects verified authorized health,
 including activation through another entry and return to an activated page;

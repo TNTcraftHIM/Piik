@@ -11,20 +11,9 @@ import org.json.JSONObject;
 final class EncoderCatalog {
   static final class Entry {
     final String name, codec;
-    final JSONObject metadata;
-    Entry(String name, String codec, MediaCodecInfo.VideoCapabilities video) throws org.json.JSONException {
+    Entry(String name, String codec) {
       this.name = name;
       this.codec = codec;
-      int width = Math.min(1920, video.getSupportedWidths().getUpper());
-      width -= width % video.getWidthAlignment();
-      int height = Math.min(1920, video.getSupportedHeightsFor(width).getUpper());
-      height -= height % video.getHeightAlignment();
-      double rate = Math.min(60, video.getSupportedFrameRatesFor(width, height).getUpper());
-      metadata = new JSONObject().put("name", name).put("codec", codec)
-          .put("width", width).put("height", height).put("pixels", (long) width * height)
-          .put("macroblocks", Math.min(2073600L, (long) ((width + 15) / 16) * ((height + 15) / 16) * (long) rate))
-          .put("fps", Math.min(60, video.getSupportedFrameRates().getUpper()))
-          .put("bitrate", Math.min(100000000, video.getBitrateRange().getUpper()));
     }
   }
 
@@ -42,11 +31,11 @@ final class EncoderCatalog {
               MediaCodecInfo.CodecCapabilities capabilities = info.getCapabilitiesForType(type);
               for (int color : capabilities.colorFormats) {
                 if (color == MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface) {
-                  entries.add(new Entry(info.getName(), mime.equals("video/avc") ? "h264" : "vp8", capabilities.getVideoCapabilities()));
+                  entries.add(new Entry(info.getName(), mime.equals("video/avc") ? "h264" : "vp8"));
                   break;
                 }
               }
-            } catch (IllegalArgumentException | org.json.JSONException unavailable) { /* Continue with the next platform encoder. */ }
+            } catch (IllegalArgumentException unavailable) { /* Continue with the next platform encoder. */ }
           }
         }
       }
@@ -60,10 +49,10 @@ final class EncoderCatalog {
     return hasNext ? Math.min(deadline, now + 2000) : deadline;
   }
 
-  static String capabilities() throws Exception {
+  static String capabilities() throws org.json.JSONException {
     JSONArray encoders = new JSONArray();
     for (Entry entry : candidates("auto")) {
-      encoders.put(entry.metadata);
+      encoders.put(new JSONObject().put("name", entry.name).put("codec", entry.codec));
     }
     return new JSONObject().put("platform", "android").put("provider", "Android MediaCodec")
         .put("systemAudio", encoders.length() > 0).put("encoders", encoders).toString();

@@ -26,8 +26,18 @@ describe("Android App foreground actions", () => {
       "piik://user@media", "piik://media/start", "intent://media#Intent;package=other;end"]) {
       expect(androidAppIntent(action, android)).toBeNull();
     }
-    expect(androidAppIntent("piik://media", "Mozilla/5.0 (Windows NT 10.0)")).toBeNull();
+    expect(androidAppIntent("piik://app", "Mozilla/5.0 (Windows NT 10.0)")).toBeNull();
     expect(androidAppIntent("piik://app", "Mozilla/5.0 (iPhone)")).toBeNull();
+  });
+
+  it("uses the connected App's media action in Android desktop mode", () => {
+    const desktop = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36";
+    const assign = vi.fn();
+    vi.stubGlobal("navigator", { userAgent: desktop, userActivation: { isActive: true } });
+    vi.stubGlobal("window", { location: { assign } });
+    activateNativePicker("piik://media");
+    expect(assign).toHaveBeenCalledWith("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
+    expect(androidAppIntent("piik://app", desktop)).toBeNull();
   });
 
   it("keeps activation optional and validates the known health extension", () => {

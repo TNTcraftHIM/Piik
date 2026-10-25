@@ -15,6 +15,8 @@ to Android's capture policy and excludes this app's playback.
 Phones and tablets use the existing responsive UI. Automatic capture prefers
 hardware AVC, then a Surface-capable MediaCodec VP8 encoder using the existing
 software-VP8 native path. An explicit AVC request never silently switches codec.
+Quality settings use the shared capture limits; the selected MediaCodec admits
+each requested profile during startup.
 Devices without either encoder can still join rooms. The browser variant needs
 an installed system browser; the embedded variant needs Android System WebView.
 TV capture depends on the system's Projection and encoder support. Physical TV
@@ -114,16 +116,8 @@ Android can also end projection on screen lock. Capture and optional audio use
 the existing stream replacement transaction; the foreground service owns the
 projection token and its single VirtualDisplay.
 
-The embedded variant on the API 35 emulator has verified Local creation,
-pure-video consent, native Host preview frames, capture rotation, stop/cancel and
-normal exit/reopen. The installed APK's public-link helper completed real
-DNS/TLS/public HTTP access and shutdown.
-Management popups retain their opener; title-bar and keyboard insets leave the
-Web UI unobscured. Background new-Viewer admission/reconnect, live room voice
-and camera remain in the integrated acceptance scope. Physical microphone routing,
-background audio samples, hardware AVC and phone/tablet/TV source-audio policies
-remain device checks.
-The system-browser variant's native media path remains in acceptance.
+Release acceptance and remaining platform checks are tracked in the
+[TODO ledger](../docs/todo.md#next).
 
 Platform references: [Projection lifecycle](https://developer.android.com/media/grow/media-projection),
 [playback audio](https://developer.android.com/media/platform/av-capture),

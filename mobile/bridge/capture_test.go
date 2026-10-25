@@ -28,7 +28,7 @@ type testPlatform struct {
 }
 
 func TestVideoOnlyPlatformDoesNotAdvertisePlaybackAudio(t *testing.T) {
-	catalog, err := decodeEncoderCapabilities(`{"platform":"ios","provider":"VideoToolbox","encoders":[{"name":"hardware-avc","codec":"h264","width":1280,"height":720,"pixels":921600,"macroblocks":100000,"fps":30,"bitrate":3000000}]}`)
+	catalog, err := decodeEncoderCapabilities(`{"platform":"ios","provider":"VideoToolbox","encoders":[{"name":"hardware-avc","codec":"h264"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -300,7 +300,7 @@ func TestAudioProviderCommitsOnlyAfterPlatformStarted(t *testing.T) {
 }
 
 func TestEncoderCatalogPreservesBothExplicitPaths(t *testing.T) {
-	catalog, err := decodeEncoderCapabilities(`{"platform":"android","provider":"Android MediaCodec","systemAudio":true,"encoders":[{"name":"hardware-avc","codec":"h264","width":1920,"height":1080,"pixels":2073600,"macroblocks":100000,"fps":60,"bitrate":20000000},{"name":"platform-vp8","codec":"vp8","width":1280,"height":720,"pixels":921600,"macroblocks":100000,"fps":30,"bitrate":10000000}]}`)
+	catalog, err := decodeEncoderCapabilities(`{"platform":"android","provider":"Android MediaCodec","systemAudio":true,"encoders":[{"name":"hardware-avc","codec":"h264"},{"name":"platform-vp8","codec":"vp8"}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,6 +308,11 @@ func TestEncoderCatalogPreservesBothExplicitPaths(t *testing.T) {
 	health := catalog.mediaCapabilities()
 	if !health.HardwareH264 || !health.SoftwareVP8 || !capabilities.SoftwareVP8 || len(capabilities.Adapters[0].HardwareH264) != 1 {
 		t.Fatal("catalog hid an available codec")
+	}
+	if health.MaxVideoResolution.Width != nativecapture.MaxVideoDimension || health.MaxVideoResolution.Height != nativecapture.MaxVideoDimension ||
+		health.MaxVideoPixels != nativecapture.MaxVideoPixels || health.MaxVideoMacroblocksPerSecond != nativecapture.MaxVideoMacroblocksPerSecond ||
+		health.MaxVideoFramerate != nativecapture.MaxVideoFramerate || health.MaxVideoBitrate != nativecapture.MaxVideoBitrate || health.MaxAudioBitrate != nativeaudio.MaxSendBitrate {
+		t.Fatal("catalog replaced the shared implementation bounds with an encoder-specific envelope")
 	}
 	for _, requested := range []string{"h264", "vp8", "auto"} {
 		var configured string
