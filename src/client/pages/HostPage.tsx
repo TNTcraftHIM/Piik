@@ -3052,7 +3052,6 @@ export function HostPage({
         path,
         showCaptureBorder,
         audio ? excludeAudio : undefined,
-        target.kind === "picker" ? () => activateNativePicker(client.health.activationURL) : undefined,
       );
       if (
         !isCurrentGeneration(generation) ||

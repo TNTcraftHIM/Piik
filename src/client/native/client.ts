@@ -389,7 +389,6 @@ export class NativeClient {
     path: NativeCapturePath,
     showCaptureBorder = false,
     excludeAudio?: NativeCaptureTarget,
-    onRequested?: () => void,
   ): Promise<void> {
     this.validateAudioExclusion(excludeAudio);
     const response = await this.request(
@@ -406,7 +405,6 @@ export class NativeClient {
       },
       shareSourceReplacedResponseSchema,
       source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
-      onRequested,
     );
     if (response.shareId !== shareId) {
       throw new Error("Native share identity changed");

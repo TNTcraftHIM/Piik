@@ -667,9 +667,7 @@ describe("native App private wire", () => {
         expect(onRequested).toHaveBeenCalledOnce();
         expect(acknowledged).toBe(false);
         await starting;
-        const onReplacing = vi.fn(() => expect(requests.at(-1)?.type).toBe("replace-share-source"));
-        await client!.replaceShareSource(input.shareId, input.source, input.audio, input, showCaptureBorder, undefined, onReplacing);
-        expect(onReplacing).toHaveBeenCalledOnce();
+        await client!.replaceShareSource(input.shareId, input.source, input.audio, input, showCaptureBorder);
         const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false, reportSourceCancellation: true } : {};
         expect(requests.at(-2)).toEqual({
           version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "start-share", ...input, ...extension,
