@@ -122,6 +122,7 @@ describe("App launcher state recovery", () => {
   it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {
     expect(siteEntryOrigin(" PIIK.example:443 ")).toBe("https://piik.example");
     expect(siteEntryOrigin("https://piik.example/r/1234?lang=en#v=private-invitation")).toBe("https://piik.example");
+    expect(siteEntryOrigin("https://example.com/my room?q=hello world")).toBe("https://example.com");
     expect(siteEntryOrigin("http://127.0.0.1:8787/")).toBe("http://127.0.0.1:8787");
     for (const invalid of ["", "https://user:password@piik.example", "javascript:alert(1)", "file:///local", "https://", "not a site"]) {
       expect(siteEntryOrigin(invalid)).toBeNull();
