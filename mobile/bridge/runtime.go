@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -22,6 +23,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
 	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	"github.com/TNTcraftHIM/Piik/internal/server/config"
 	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
@@ -113,9 +115,19 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	if helper, statErr := os.Stat(tunnelExecutable); statErr == nil && filepath.IsAbs(tunnelExecutable) && helper.Mode().IsRegular() {
 		modes = append(modes, launcher.ModeLink)
 	}
+	mode, err := launcher.LoadMode(r.configPath)
+	if err != nil {
+		slog.Debug("Could not restore the last launcher mode", diagnostics.Error(err))
+	}
+	if mode == "" {
+		mode = launcher.ModeLink
+	}
+	if !slices.Contains(modes, mode) {
+		mode = modes[0]
+	}
 	r.launcher, err = launcher.Start(ctx, webassets.FS(), launcher.Options{
 		ControlPort: r.control.Endpoint().Port,
-		Modes:       modes, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: launcher.ModeLocal, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
+		Modes:       modes, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: mode, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
 		ChangeSite: func(site string, allowed bool) ([]string, error) {
 			var err error
 			if allowed {
@@ -154,6 +166,9 @@ func (r *Runtime) runLauncher(lanAddress string) {
 	for {
 		select {
 		case selected := <-r.launcher.Selection():
+			if err := launcher.SaveMode(r.configPath, selected.Mode); err != nil {
+				slog.Debug("Could not save the launcher mode", diagnostics.Error(err))
+			}
 			target, err := r.startLocal(selected, lanAddress)
 			r.launcher.SetResult(target, err)
 			if err == nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -20,6 +21,74 @@ func TestStartRejectsUnownedActivationURLBeforeAllocating(t *testing.T) {
 	_, err := Start(&testPlatform{}, "", "", "", "", "", "https://other.example/")
 	if err == nil || !strings.Contains(err.Error(), "activation URL") {
 		t.Fatalf("unexpected activation URL result: %v", err)
+	}
+}
+
+func TestLauncherRestoresOnlyAvailableModes(t *testing.T) {
+	if webassets.FS() == nil {
+		t.Skip("mobile runtime requires built Web assets")
+	}
+	helper, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	directory := t.TempDir()
+	path := filepath.Join(directory, "client.json")
+	for _, test := range []struct {
+		name        string
+		saved       launcher.Mode
+		helper      string
+		want        launcher.Mode
+		modes       []launcher.Mode
+		selectLocal bool
+	}{
+		{"first launch with helper", "", helper, launcher.ModeLink, []launcher.Mode{launcher.ModeLocal, launcher.ModeLink}, true},
+		{"saved local after restart", "", helper, launcher.ModeLocal, []launcher.Mode{launcher.ModeLocal, launcher.ModeLink}, false},
+		{"saved link without helper", launcher.ModeLink, "", launcher.ModeLocal, []launcher.Mode{launcher.ModeLocal}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.saved != "" {
+				if err := launcher.SaveMode(path, test.saved); err != nil {
+					t.Fatal(err)
+				}
+			}
+			r, err := Start(&testPlatform{}, "", `{"platform":"android","provider":"fixture","encoders":[]}`,
+				directory, t.TempDir(), test.helper, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer r.Close()
+			response, err := http.Get(strings.TrimSuffix(r.URL(), "/client") + "/api/client-launcher")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			var state struct {
+				DefaultMode launcher.Mode
+				Modes       []launcher.Mode
+			}
+			if err = json.NewDecoder(response.Body).Decode(&state); err != nil {
+				t.Fatal(err)
+			}
+			if state.DefaultMode != test.want || !slices.Equal(state.Modes, test.modes) {
+				t.Fatalf("launcher mode = %+v, want default=%s modes=%v", state, test.want, test.modes)
+			}
+			if test.selectLocal {
+				origin := strings.TrimSuffix(r.URL(), "/client")
+				request, _ := http.NewRequest(http.MethodPost, origin+"/api/client-launcher/launch", strings.NewReader(`{"mode":"local","language":"en"}`))
+				request.Header.Set("Origin", origin)
+				request.Header.Set("Content-Type", "application/json")
+				chosen, err := http.DefaultClient.Do(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				chosen.Body.Close()
+				// Mode is remembered even when Local has no invitation interface.
+				if chosen.StatusCode != http.StatusServiceUnavailable {
+					t.Fatalf("Local without an address = %d", chosen.StatusCode)
+				}
+			}
+		})
 	}
 }
 

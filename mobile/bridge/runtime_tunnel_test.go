@@ -304,6 +304,9 @@ func TestLauncherRetriesFailedStartupAndKeepsSuccessfulRoom(t *testing.T) {
 	if response := post(`{"mode":"link","language":"en"}`); response.StatusCode != http.StatusOK {
 		t.Fatalf("public retry = %d", response.StatusCode)
 	}
+	if mode, err := launcher.LoadMode(r.configPath); err != nil || mode != launcher.ModeLink {
+		t.Fatalf("Public selection was not saved: %q, %v", mode, err)
+	}
 	r.configMu.Lock()
 	server, tunnel, target := r.server, r.tunnel, r.url
 	r.configMu.Unlock()
