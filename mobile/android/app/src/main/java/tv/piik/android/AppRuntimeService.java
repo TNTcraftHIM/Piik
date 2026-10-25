@@ -77,6 +77,17 @@ public final class AppRuntimeService extends Service {
   }
 
   void foreground() {
+    startForeground(
+        3,
+        notification(),
+        Build.VERSION.SDK_INT >= 34 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
+  }
+
+  void refreshNotification() {
+    getSystemService(NotificationManager.class).notify(3, notification());
+  }
+
+  Notification notification() {
     NotificationManager notifications = getSystemService(NotificationManager.class);
     notifications.createNotificationChannel(
         new NotificationChannel(
@@ -95,11 +106,14 @@ public final class AppRuntimeService extends Service {
             21,
             new Intent(this, AppRuntimeService.class).setAction("stop"),
             PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-    Notification notice =
-        new Notification.Builder(this, "piik-runtime")
+    int title =
+        failure != null ? R.string.runtime_failed : runtime != null ? R.string.runtime_title : R.string.preparing;
+    int body =
+        failure != null ? R.string.runtime_restart : runtime != null ? R.string.runtime_body : R.string.runtime_channel;
+    return new Notification.Builder(this, "piik-runtime")
             .setSmallIcon(android.R.drawable.ic_menu_share)
-            .setContentTitle(getString(R.string.runtime_title))
-            .setContentText(getString(R.string.runtime_body))
+            .setContentTitle(getString(title))
+            .setContentText(getString(body))
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(
@@ -109,10 +123,6 @@ public final class AppRuntimeService extends Service {
                 new Notification.Action.Builder(null, getString(R.string.runtime_stop), stop)
                     .build())
             .build();
-    startForeground(
-        3,
-        notice,
-        Build.VERSION.SDK_INT >= 34 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
   }
 
   void startRuntime() {
@@ -159,6 +169,7 @@ public final class AppRuntimeService extends Service {
                   startup = null;
                   runtime = started;
                   failure = error;
+                  refreshNotification();
                   notifyActivity();
                 }));
   }
@@ -341,6 +352,7 @@ public final class AppRuntimeService extends Service {
     service.requests.clear();
     service.active = null;
     service.preparing = null;
+    service.refreshNotification();
     MainActivity.retireDocument();
     CaptureService.shutdown();
     service.notifyActivity();

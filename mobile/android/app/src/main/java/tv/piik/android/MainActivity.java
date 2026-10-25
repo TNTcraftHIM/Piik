@@ -511,7 +511,7 @@ public final class MainActivity extends Activity {
     failure.setOrientation(LinearLayout.VERTICAL);
     failure.setPadding(24, 48, 24, 24);
     TextView message = new TextView(this);
-    message.setText(R.string.public_link_stopped);
+    message.setText(R.string.runtime_failed);
     failure.addView(message);
     Button restart = new Button(this);
     restart.setText(R.string.restart_piik);

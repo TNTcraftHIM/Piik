@@ -63,15 +63,6 @@ final class WebPermissions {
     next();
   }
 
-  void audio(Runnable complete, Runnable denied) {
-    Grant grant = new Grant();
-    grant.permissions = new String[] {Manifest.permission.RECORD_AUDIO};
-    grant.complete = complete;
-    grant.denied = denied;
-    pending.add(grant);
-    next();
-  }
-
   void cancel(PermissionRequest request) {
     if (MainActivity.browserMedia != null) MainActivity.browserMedia.cancel(request);
     pending.removeIf(grant -> grant.web == request);

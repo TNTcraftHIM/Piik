@@ -3,6 +3,8 @@
  <string name="runtime_channel">Piik companion</string>
  <string name="runtime_title">Piik is ready</string>
  <string name="runtime_body">Local rooms and native sharing are available. Stop Piik when finished.</string>
+ <string name="runtime_failed">Piik stopped</string>
+ <string name="runtime_restart">Open Piik to retry.</string>
  <string name="runtime_open">Open</string>
  <string name="runtime_stop">Stop Piik</string>
  <string name="media_waiting">Complete the screen or audio request from your browser. Press Back to return.</string>
@@ -11,10 +13,7 @@
  <string name="no_browser">Install or enable a browser to open Piik.</string>
  <string name="preparing">Preparing local screen sharing…</string>
  <string name="no_webview">This device needs Android System WebView to run Piik.</string>
- <string name="no_network">Connect to Wi-Fi or a local network, then reopen Piik.</string>
  <string name="no_capture">You can join rooms on this device. Supported screen capture is unavailable.</string>
- <string name="consent_busy">Finish or cancel the Android capture prompt before trying again.</string>
- <string name="capture_unavailable">Screen capture unavailable: %1$s</string>
  <string name="notification_channel">Screen sharing</string>
  <string name="notification_title">Piik — sharing screen</string>
  <string name="notification_body">Tap to return and stop sharing.</string>
@@ -22,7 +21,6 @@
  <string name="choose_site">Manage sites</string>
  <string name="start_page">Startup page</string>
  <string name="start_page_prompt">Return to the startup page?</string>
- <string name="public_link_stopped">The public invitation stopped. Restart Piik to create a new link.</string>
  <string name="restart_piik">Restart Piik</string>
  <string name="browser_media_channel">Camera and room voice</string>
  <string name="browser_media_title">Piik — camera or room voice</string>
