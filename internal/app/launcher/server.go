@@ -161,6 +161,18 @@ func (server *Server) URL() string {
 	return "http://" + server.listener.Addr().String() + "/client"
 }
 
+// EntryURL follows the current approved startup preference; URL always opens
+// the launcher itself, including when returning from an existing room.
+func (server *Server) EntryURL() string {
+	server.mu.Lock()
+	startup := server.startupSite
+	server.mu.Unlock()
+	if startup != "" {
+		return startup + "/#piik-client=1"
+	}
+	return server.URL()
+}
+
 func (server *Server) Selection() <-chan Selection {
 	return server.selection
 }

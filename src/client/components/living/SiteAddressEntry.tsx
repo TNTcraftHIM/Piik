@@ -51,7 +51,7 @@ export function SiteAddressEntry({ initialAddress = "", onSelect }: {
       <div className="lr-client-site-address">
         <label className="lr-input">
           <Glyph name="globe" size={18} />
-          <input ref={input} defaultValue={initialAddress} type="text" inputMode="url" autoComplete="url"
+          <input ref={input} defaultValue={initialAddress} type="text" inputMode="url" enterKeyHint="go" autoComplete="url"
             autoCapitalize="none" spellCheck={false} placeholder="piik.example"
             aria-label={t("client.connect.siteAddress")} aria-invalid={invalid}
             aria-describedby={invalid ? `${id}-error` : undefined} onInput={() => setInvalid(false)}

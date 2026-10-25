@@ -37,7 +37,6 @@ type Runtime struct {
 	cancel             context.CancelFunc
 	once               sync.Once
 	url                string
-	entry              string
 	configMu           sync.Mutex
 	configPath         string
 	config             appconfig.Config
@@ -131,10 +130,6 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	if err != nil {
 		return nil, errors.Join(err, r.Close())
 	}
-	r.entry = r.launcher.URL()
-	if startup != "" {
-		r.entry = startup + "/#piik-client=1"
-	}
 	r.control.SetConnectURL(r.launcher.URL())
 	if err = r.control.SetAllowedOrigins(append(r.localOrigins(), preferences.ApprovedSites()...)); err != nil {
 		return nil, errors.Join(err, r.Close())
@@ -164,7 +159,7 @@ func (r *Runtime) runLauncher(lanAddress string) {
 }
 
 func (r *Runtime) URL() string      { return r.launcher.URL() }
-func (r *Runtime) EntryURL() string { return r.entry }
+func (r *Runtime) EntryURL() string { return r.launcher.EntryURL() }
 
 func (r *Runtime) startLocal(selection launcher.Selection, address string) (target string, returnedErr error) {
 	r.configMu.Lock()

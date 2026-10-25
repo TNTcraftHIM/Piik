@@ -2,6 +2,7 @@ package androidbridge
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -124,8 +125,10 @@ func TestLauncherRetriesFailedStartupAndKeepsSuccessfulRoom(t *testing.T) {
 	if server == nil || tunnel == nil || !r.TrustedURL("https://site.example") || !r.TrustedURL(target) {
 		t.Fatal("retry did not retain room and Site authority")
 	}
-	if response := post(`{"mode":"local","language":"en"}`); response.StatusCode != http.StatusConflict {
-		t.Fatalf("active room permitted another selection = %d", response.StatusCode)
+	response := post(`{"mode":"local","language":"en"}`)
+	var reopened struct{ Target string }
+	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&reopened) != nil || reopened.Target != target {
+		t.Fatalf("active room reentry = %d, target unchanged = %v", response.StatusCode, reopened.Target == target)
 	}
 	r.configMu.Lock()
 	defer r.configMu.Unlock()
