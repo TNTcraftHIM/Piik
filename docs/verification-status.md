@@ -28,6 +28,8 @@ phases, including NAT and Auto codec behavior.
   replacement, cancellation and background return preserve the share. Local/public
   startup and launcher reentry also have emulator evidence. Phone/tablet/TV
   hardware and physical audio remain in the [Android acceptance scope](./todo.md#next).
+  Low-bitrate software VP8 output remains above its configured target; the
+  [current investigation](./todo.md#now) holds Android weak-network acceptance.
 - The separate iOS system-browser implementation passes Apple SDK device and
   simulator builds and its session/encoder checks. Physical capture, background
   lifetime and hosted-site linkage remain in the [held iOS scope](./todo.md#held-by-owner).

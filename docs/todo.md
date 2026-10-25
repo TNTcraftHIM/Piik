@@ -7,6 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Android low-bitrate encoding.** In the emulator, software VP8 configured
+  at 100 kbps still produces about 2.3 Mbps at 1080p/24 fps, with quantization
+  saturated. The shared Go budget reaches MediaCodec correctly. Compare reduced
+  capture cadence and the encoder's frame-drop mode before accepting weak-network output.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -58,6 +62,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session
   admission/expiry, recording consent, background capture and hosted-site linkage.
+- [ ] **Relay-volunteer capacity choice.** Deferred until playback and Android
+  acceptance finish. Review the existing cap before changing the control or protocol.
 - [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
   Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
