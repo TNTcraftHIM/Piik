@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { activateNativePicker, androidAppIntent } from "../src/client/native/activation";
-import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL, NATIVE_CLIENT_PORT_START } from "../src/client/native/wire";
+import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL } from "../src/client/native/wire";
+import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
 describe("Android App foreground actions", () => {
   afterEach(() => vi.unstubAllGlobals());
