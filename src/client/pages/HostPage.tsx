@@ -181,7 +181,7 @@ import type {
 import { HostPeer, type HostMediaPeer } from "../webrtc/host-peer";
 import { NativeClient, NativeCompatibilityError, NativeRequestError } from "../native/client";
 import { NativeClientConnection } from "../native/client-connection";
-import { androidAppIntent } from "../native/activation";
+import { activateNativePicker, androidAppIntent } from "../native/activation";
 import {
   NativeSenderPeer,
   shouldUseBrowserQualityCandidate,
@@ -1372,7 +1372,7 @@ export function HostPage({
         edgeCapacity: MAX_ENDPOINT_MEDIA_CHILDREN,
         profile: qualitySettingsRef.current,
         codec: videoCodecModeRef.current,
-      });
+      }, target.kind === "picker" ? () => activateNativePicker(client.health.activationURL) : undefined);
       shareStarted = true;
       if (!isCurrentShare(generation, shareGeneration)) {
         if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
@@ -3052,6 +3052,7 @@ export function HostPage({
         path,
         showCaptureBorder,
         audio ? excludeAudio : undefined,
+        target.kind === "picker" ? () => activateNativePicker(client.health.activationURL) : undefined,
       );
       if (
         !isCurrentGeneration(generation) ||

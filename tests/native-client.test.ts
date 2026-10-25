@@ -660,8 +660,16 @@ describe("native App private wire", () => {
     };
     try {
       for (const showCaptureBorder of [undefined, false, true]) {
-        await client!.startShare({ ...input, showCaptureBorder });
-        await client!.replaceShareSource(input.shareId, input.source, input.audio, input, showCaptureBorder);
+        const onRequested = vi.fn(() => expect(requests.at(-1)?.type).toBe("start-share"));
+        let acknowledged = false;
+        const starting = client!.startShare({ ...input, showCaptureBorder }, onRequested);
+        void starting.then(() => { acknowledged = true; });
+        expect(onRequested).toHaveBeenCalledOnce();
+        expect(acknowledged).toBe(false);
+        await starting;
+        const onReplacing = vi.fn(() => expect(requests.at(-1)?.type).toBe("replace-share-source"));
+        await client!.replaceShareSource(input.shareId, input.source, input.audio, input, showCaptureBorder, undefined, onReplacing);
+        expect(onReplacing).toHaveBeenCalledOnce();
         const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false, reportSourceCancellation: true } : {};
         expect(requests.at(-2)).toEqual({
           version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "start-share", ...input, ...extension,
@@ -672,6 +680,13 @@ describe("native App private wire", () => {
           shareId: input.shareId, source: input.source, audio: true, adapterIndex: 0, encoderIndex: 0, ...extension,
         });
       }
+      const unsent = vi.fn();
+      vi.spyOn(CaptureSocket.prototype, "send").mockImplementationOnce(() => { throw new Error("send failed"); });
+      await expect(client!.startShare(input, unsent)).rejects.toMatchObject({ reason: "send-failed" });
+      expect(unsent).not.toHaveBeenCalled();
+      client!.close();
+      await expect(client!.startShare(input, unsent)).rejects.toMatchObject({ reason: "unavailable" });
+      expect(unsent).not.toHaveBeenCalled();
     } finally { client!.close(); }
   });
 

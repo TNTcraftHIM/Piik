@@ -338,6 +338,7 @@ export class NativeClient {
 
   async startShare(
     input: NativeShareInput,
+    onRequested?: () => void,
   ): Promise<{ audio: boolean; codec: NativeVideoCodec; sourceAudio?: boolean }> {
     // Older Apps reject unknown command fields.
     const { showCaptureBorder = false, excludeAudio, ...shareInput } = input;
@@ -355,6 +356,7 @@ export class NativeClient {
       },
       shareStartedResponseSchema,
       input.source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
+      onRequested,
     );
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
@@ -387,6 +389,7 @@ export class NativeClient {
     path: NativeCapturePath,
     showCaptureBorder = false,
     excludeAudio?: NativeCaptureTarget,
+    onRequested?: () => void,
   ): Promise<void> {
     this.validateAudioExclusion(excludeAudio);
     const response = await this.request(
@@ -403,6 +406,7 @@ export class NativeClient {
       },
       shareSourceReplacedResponseSchema,
       source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
+      onRequested,
     );
     if (response.shareId !== shareId) {
       throw new Error("Native share identity changed");
@@ -775,6 +779,7 @@ export class NativeClient {
     fields: object,
     schema: z.ZodType<T>,
     timeoutMs: number | null = REQUEST_TIMEOUT_MS,
+    onRequested?: () => void,
   ): Promise<T> {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new NativeRequestError("unavailable", type));
@@ -819,7 +824,9 @@ export class NativeClient {
         this.pending.delete(id);
         debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
         rejectRequest(new NativeRequestError("send-failed", type, { cause: error }));
+        return;
       }
+      onRequested?.();
     });
   }
 
