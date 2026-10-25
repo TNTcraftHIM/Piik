@@ -500,7 +500,7 @@ export const en: Record<CopyKey, string> = {
   "shareHelp.source": "Try another ordinary window or screen. Keep the source open and allow screen recording when your system asks.",
   "shareHelp.compare": "Compare with the Browser source picker. On Windows, also try Auto or VP8 with the same source.",
   "shareHelp.report": "If it still fails, enable diagnostics, try again and save reports from that attempt. Include the failure message, Piik version and what you were doing.",
-  "shareHelp.appDebug": "For App logs, enable Debug launch on the mode selection page, reproduce the problem, then press D in the terminal to export. The button below records browser diagnostics only.",
+  "shareHelp.appDebug": "The button below records browser diagnostics. For App logs, see the troubleshooting guide.",
   "shareHelp.site": "Check the site address and your access. For a self-hosted site, check PUBLIC_BASE_URL, ALLOWED_ORIGINS and the reverse proxy configuration; see the guide for steps.",
   "shareHelp.appConnection": "Keep the App running and click App at the top of this page to connect. Allow local-network access if your browser asks.",
   "shareHelp.mediaConnection": "Check that the browser permits WebRTC and local network access, then refresh and try again. You can also compare with another browser.",

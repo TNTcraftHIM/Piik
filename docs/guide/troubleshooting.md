@@ -511,7 +511,7 @@ Enable diagnostics before reproducing once, then export before refreshing:
 - **Web:** use the page's diagnostics button. A sharing failure's error icon below
   the TV also provides a copyable summary; it contains the Web version, message
   and code, without invitation links or source names.
-- **App capture:** also enable **Debug launch** on the App's mode selection page,
+- **Desktop App capture:** also enable **Debug launch** on the App's mode selection page,
   then press `D` in the terminal to export its report.
 - **Connection failure:** collect the affected Viewer and Host reports for the
   same attempt. For self-hosted SFU, include the Server report too.

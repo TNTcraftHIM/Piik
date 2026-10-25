@@ -500,7 +500,7 @@ export const zh = {
   "shareHelp.source": "先换一个普通窗口或屏幕重试，确认来源仍然打开，并允许系统请求的录屏权限。",
   "shareHelp.compare": "对照试一次「浏览器」选源。Windows 上也可将编码器改为「自动」或 VP8，再试同一来源。",
   "shareHelp.report": "仍然失败时，开启诊断后再试一次，并保存同一次尝试的报告。请附上失败提示、Piik 版本和当时的操作。",
-  "shareHelp.appDebug": "App 日志需从模式选择页开启「诊断启动」，重现后在终端按 D 导出。下方按钮只记录网页诊断。",
+  "shareHelp.appDebug": "下方按钮记录网页诊断，App 日志的获取方法见问题排查文档。",
   "shareHelp.site": "确认当前站点地址和访问权限。自部署站点请核对 PUBLIC_BASE_URL、ALLOWED_ORIGINS 与反向代理配置，具体步骤见排查文档。",
   "shareHelp.appConnection": "确认 App 仍在运行，点击页面顶部的 App 完成连接；浏览器询问本地网络权限时，请允许访问。",
   "shareHelp.mediaConnection": "检查浏览器是否允许 WebRTC 和本地网络访问，再刷新页面重试；也可换一个浏览器对照。",

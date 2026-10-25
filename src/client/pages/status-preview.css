@@ -1,5 +1,5 @@
 .sp-page { --muted: color-mix(in srgb, var(--ink) 65%, var(--wall)); }
-.sp-main { max-width: 1190px; margin: 0 auto; padding: 32px 24px 64px; }
+.sp-main { width: 100%; max-width: 1190px; margin: 0 auto; padding: 32px 24px 64px; }
 .sp-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .sp-heading h1 { margin: 6px 0 12px; font-size: clamp(1.5rem, 4vw, 2.2rem); letter-spacing: -.04em; }
 .sp-heading p, .sp-catalog header p { margin: 0; color: var(--muted); line-height: 1.65; }
@@ -44,6 +44,9 @@
 .sp-surfaces .sp-kicker, .sp-surfaces .sp-caption { margin: 0; }
 .sp-catalog { margin-top: 36px; }
 .sp-catalog header { margin-bottom: 18px; }
+.sp-failure-choice { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.sp-failure-choice select { flex: 1; min-width: 0; height: auto; padding: 8px; }
+.sp-failure-stage { max-width: 640px; margin-inline: auto; }
 .sp-loading-preview { display: grid; place-items: center; min-height: 210px; margin-block: 18px; padding: 18px; background: var(--paper); border-radius: 18px; }
 .sp-title-catalog { padding: 12px 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 15%, transparent); }
 .sp-title-catalog summary { cursor: pointer; }

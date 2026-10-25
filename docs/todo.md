@@ -32,7 +32,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Next
 
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
-  implementation on the feature branch for a later feature release. It consumes
+  implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
 - [ ] **Android App release scope.** Complete phone/tablet/TV hardware acceptance
   and stationary-screen late join/keyframe
@@ -45,7 +45,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Held By Owner
 
 - [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
-  Keep the local QR implementation on the feature branch for later acceptance.
+  Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Persistent-loss estimator replacement.** Deferred on 2026-10-18.
