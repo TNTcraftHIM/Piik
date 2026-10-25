@@ -10,6 +10,7 @@ import {
   type QualitySettings,
 } from "../src/client/media/quality";
 import { NativeSenderPeer } from "../src/client/native/native-sender-peer";
+import { HostPeer } from "../src/client/webrtc/host-peer";
 import { NativeCompatibilityError, NativeRequestError, type NativeClient } from "../src/client/native/client";
 import { NativeClientConnection } from "../src/client/native/client-connection";
 import { androidAppIntent } from "../src/client/native/activation";
@@ -282,15 +283,16 @@ describe("Camera replacement ownership", () => {
     };
     const previous = picture(), camera = picture(), nativeStream = picture(true);
     const oldBridge = { stream: previous, dispose: vi.fn(() => previous.video.stop()) };
-    const peer = { replaceStream: vi.fn(async () => true) };
+    const peer = Object.assign(Object.create(HostPeer.prototype), { replaceStream: vi.fn(async () => true), dispose: vi.fn() });
     const nativePeer = Object.assign(Object.create(NativeSenderPeer.prototype), { dispose: vi.fn() });
     const startedPeerStreams: unknown[] = [];
     const replacePublication = vi.fn(async () => true);
     current.peersRef.current.clear();
     current.peersRef.current.set("viewer", native ? nativePeer : peer as never);
     current.removePeer.mockImplementation(id => {
+      const retired = current.peersRef.current.get(id) as unknown as { dispose?: () => void };
       current.peersRef.current.delete(id);
-      nativePeer.dispose();
+      retired?.dispose?.();
     });
     current.startPeer.mockImplementation(async id => {
       startedPeerStreams.push(current.context.streamRef.current);
@@ -304,7 +306,19 @@ describe("Camera replacement ownership", () => {
       captureBrowserSource: vi.fn(async () => camera), endSharing: vi.fn(),
       createOpaqueId: () => "native-source-2", nativeSources: { kind: "ready" },
       hostSfuRouteRef: ref({ replaceStream: replacePublication }),
+      iceConfigRef: ref({ iceServers: [] }), hostChildIsAssigned: () => true,
+      acceptHostPeerUpdate: vi.fn(), reportHostChildFailure: vi.fn(),
     });
+    const nativeControl = {
+      prepareEdge: vi.fn(async () => ({ type: "offer", sdp: "native encoded offer" })),
+      closeEdge: vi.fn(async () => {}),
+      setRemoteInputPeers: vi.fn(async () => {
+        current.client.onEvent.mock.calls[0]![0](remoteSnapshot);
+      }),
+    };
+    const remoteSnapshot = { version: 10, type: "remote-control-state", shareId: "native-source-2", mode: "ask", platform: "windows", requests: [], coPlay: false };
+    Object.assign(current.client, nativeControl);
+    current.signalRef.current.send.mockReturnValue(true);
     current.nativeModeRef.current = native;
     current.context.nativeActive = native;
     current.nativeShareGenerationRef.current = native ? "native-source-1" : null;
@@ -313,7 +327,7 @@ describe("Camera replacement ownership", () => {
     current.bridge.start.mockResolvedValue(nativeStream);
     Object.assign(current.bridge, { stream: nativeStream });
     Object.assign(current.client.health, { activationURL: "piik://media" });
-    return { ...current, picture, previous, camera, nativeStream, oldBridge, peer, nativePeer, startedPeerStreams, replacePublication };
+    return { ...current, nativeControl, remoteSnapshot, picture, previous, camera, nativeStream, oldBridge, peer, nativePeer, startedPeerStreams, replacePublication };
   }
 
   it.each(["NotAllowedError", "NotReadableError"])("keeps native capture and its room when Camera fails with %s", async name => {
@@ -343,13 +357,16 @@ describe("Camera replacement ownership", () => {
     expect(current.nativeModeRef.current).toBe(false);
     expect(current.nativePeer.dispose).toHaveBeenCalledOnce();
     expect(current.startedPeerStreams).toEqual([current.camera]);
-    expect(current.replacePublication).toHaveBeenCalledWith(current.camera);
+    expect(current.replacePublication).toHaveBeenCalledWith(current.camera, true);
     expect(current.context.hostAudioRef.current).toBeInstanceOf(HostAudio);
     expect(current.context.endSharing).not.toHaveBeenCalled();
 
     // Revisiting the picker reacquires its control owner; the Browser camera
     // remains the publication until App ACK and the required bridge both finish.
     current.nativeConnection.adopt(current.client as unknown as NativeClient);
+    current.context.startPeer = current.startChild;
+    Object.assign(current.client.health.nativeMedia, { remoteInput: true });
+    current.setRemoteControlState.mockClear();
     current.nativeSourcePathRef.current = { adapterIndex: 0, encoderIndex: 0 };
     const ack = deferred<{ audio: boolean; codec: "h264" }>();
     const bridge = deferred<typeof current.nativeStream>();
@@ -364,11 +381,22 @@ describe("Camera replacement ownership", () => {
     expect(current.renderNativePermission()).toBe(false);
     expect(current.context.streamRef.current).toBe(current.camera);
     expect(current.nativeModeRef.current).toBe(false);
+    expect(current.peersRef.current.get("viewer")).toBe(current.peer);
+    expect(current.peer.dispose).not.toHaveBeenCalled();
+    expect(current.setRemoteControlState).not.toHaveBeenCalledWith(current.remoteSnapshot);
     expect(current.camera.video.stop).not.toHaveBeenCalled();
     bridge.resolve(current.nativeStream);
     await vi.waitFor(() => expect(current.sourceSwitchRef.current).toBeNull());
     expect(current.context.streamRef.current).toBe(current.nativeStream);
     expect(current.nativeModeRef.current).toBe(true);
+    expect(current.setRemoteControlState).toHaveBeenCalledWith(current.remoteSnapshot);
+    expect(current.peersRef.current.get("viewer")).toBeInstanceOf(NativeSenderPeer);
+    expect(current.peer.dispose).toHaveBeenCalledOnce();
+    expect(current.peer.replaceStream).not.toHaveBeenCalledWith(current.nativeStream);
+    expect(current.nativeControl.prepareEdge).toHaveBeenCalledWith(
+      "native-source-2", expect.any(String), { iceServers: [] }, undefined, false,
+    );
+    expect(current.replacePublication).toHaveBeenLastCalledWith(current.nativeStream, true);
     expect(current.audioAvailableRef.current).toBe(true);
     expect(current.nativeShareGenerationRef.current).toBe("native-source-2");
     expect(current.shareGenerationRef.current).toBe("share");
@@ -378,7 +406,7 @@ describe("Camera replacement ownership", () => {
     expect(current.createRoom).not.toHaveBeenCalled();
     expect(current.disposeResources).not.toHaveBeenCalled();
     expect(current.context.endSharing).not.toHaveBeenCalled();
-    const nativeEvents = current.client.onEvent.mock.calls.at(-1)![0];
+    const nativeEvents = current.client.onEvent.mock.calls[0]![0];
     nativeEvents({ type: "share-ended", shareId: "native-source-1", failed: true });
     expect(current.context.endSharing).not.toHaveBeenCalled();
     nativeEvents({ type: "share-ended", shareId: "native-source-2", failed: true });
@@ -389,6 +417,7 @@ describe("Camera replacement ownership", () => {
     const current = sourceFixture(false);
     const previousCodec = current.videoCodecRef.current;
     current.audioAvailableRef.current = true;
+    Object.assign(current.client.health.nativeMedia, { remoteInput: true });
     const failure = new NativeRequestError("rejected", "start-share");
     if (stage === "permission") current.client.startShare.mockRejectedValue(failure);
     else current.bridge.start.mockImplementation(async () => {
@@ -407,6 +436,9 @@ describe("Camera replacement ownership", () => {
     expect(current.context.endSharing).not.toHaveBeenCalled();
     expect(current.createRoom).not.toHaveBeenCalled();
     expect(current.peer.replaceStream).not.toHaveBeenCalled();
+    expect(current.peersRef.current.get("viewer")).toBe(current.peer);
+    expect(current.peer.dispose).not.toHaveBeenCalled();
+    expect(current.setRemoteControlState).not.toHaveBeenCalledWith(current.remoteSnapshot);
     expect(current.sourceSwitchRef.current).toBeNull();
     expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({ target: "operation" }));
   });

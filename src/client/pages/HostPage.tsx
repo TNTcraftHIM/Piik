@@ -1296,6 +1296,12 @@ export function HostPage({
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
     let nativeEventCleanup: (() => void) | null = null;
+    let pendingRemoteControl: RemoteControlState | null = null;
+    const applyRemoteControl = (state: RemoteControlState) => {
+      setRemoteControlState(state);
+      signalRef.current?.setCoPlayGrants(state.coPlay ? state.requests.flatMap(request =>
+        request.state !== "pending" && request.endpointId ? [{ endpointId: request.endpointId }] : []) : []);
+    };
     try {
       await nativeShareCleanupRef.current;
       await nativePreviewTailRef.current;
@@ -1329,11 +1335,8 @@ export function HostPage({
       nativeEventCleanup = client.onEvent((event) => {
         if (event.shareId !== nativeShareId || !isCurrentShare(generation, shareGeneration) || nativeConnection.current !== client) return;
         if (event.type === "remote-control-state") {
-          if (replacement && !nativeModeRef.current) return;
-          setRemoteControlState(event);
-          signalRef.current?.setCoPlayGrants(event.coPlay ? event.requests.flatMap(request =>
-            request.state !== "pending" && request.endpointId
-              ? [{ endpointId: request.endpointId }] : []) : []);
+          if (replacement && !nativeModeRef.current) pendingRemoteControl = event;
+          else applyRemoteControl(event);
         }
         if (event.type === "audio-state") {
           nativeSourceAudioRef.current = event.sourceAudio;
@@ -1411,6 +1414,7 @@ export function HostPage({
         videoCodecRef.current = manualVideoCodecPreference(started.codec);
         nativeModeRef.current = true;
         setNativeActive(true);
+        if (pendingRemoteControl) applyRemoteControl(pendingRemoteControl);
         nativeInputRoute.setUpstream(bridge.getRemoteInput());
       }
       return stream;
@@ -3135,7 +3139,7 @@ export function HostPage({
       discardPreparedHostChild();
       signalRef.current?.setAudioAvailable(audioAvailableRef.current);
       setResolvedVideoCodec(videoCodecRef.current.primary);
-      await replaceBrowserStream(captured, generation, token);
+      await replaceBrowserStream(captured, generation, token, [], true);
     } catch (error) {
       if (isCurrentShare(generation, shareGeneration) && sourceSwitchRef.current === token) {
         setNoticeError(error, "source");
@@ -3263,7 +3267,7 @@ export function HostPage({
       } else {
         captured = hostAudioRef.current?.attach(captured, source) ?? captured;
       }
-      await replaceBrowserStream(captured, generation, token, reboundPeerIds);
+      await replaceBrowserStream(captured, generation, token, reboundPeerIds, wasNative);
       if (wasNative && isCurrentGeneration(generation) && sourceSwitchRef.current === token) {
         await startBrowserNativeIngress(generation, shareGenerationRef.current!, captured);
       }
@@ -3287,7 +3291,7 @@ export function HostPage({
       failureCode: hostFailureCode(error, action, "camera") });
   }
 
-  async function replaceBrowserStream(captured: MediaStream, generation: number, token: object, reboundPeerIds: string[] = []): Promise<void> {
+  async function replaceBrowserStream(captured: MediaStream, generation: number, token: object, reboundPeerIds: string[] = [], rebuildTransport = false): Promise<void> {
     // The caller retires its operation; this function owns only stream resources.
     const previousStream = streamRef.current;
     if (!previousStream) {
@@ -3313,6 +3317,14 @@ export function HostPage({
     if (videoChanged) watchCaptureEnd(captured, generation);
 
     try {
+      if (rebuildTransport) {
+        const useNative = nativeModeRef.current || nativeMediaIngressRef.current !== null;
+        for (const [peerId, peer] of peersRef.current) {
+          if ((peer instanceof NativeSenderPeer) === useNative) continue;
+          removePeer(peerId);
+          reboundPeerIds.push(peerId);
+        }
+      }
       const ingress = nativeMediaIngressRef.current;
       if (ingress) {
         try {
@@ -3369,7 +3381,7 @@ export function HostPage({
           }),
         ),
         provisional?.replaceStream(captured) ?? Promise.resolve(true),
-        activeSfuRoute?.replaceStream(captured) ?? Promise.resolve(true),
+        activeSfuRoute?.replaceStream(captured, rebuildTransport) ?? Promise.resolve(true),
       ]);
 
       if (

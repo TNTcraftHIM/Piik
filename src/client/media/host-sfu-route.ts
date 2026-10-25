@@ -334,7 +334,16 @@ export class HostSfuRoute {
       : null;
   }
 
-  async replaceStream(stream: MediaStream): Promise<boolean> {
+  async replaceStream(stream: MediaStream, rebuildTransport = false): Promise<boolean> {
+    if (rebuildTransport) {
+      const slots = [...new Set([this.active, this.pending])].filter(
+        (slot): slot is HostPublisherSlot => slot !== null && !slot.failed,
+      );
+      for (const slot of slots) this.handleFailure(slot, false);
+      const closing = Promise.all(slots.map(slot => this.disconnectPublisher(slot))).then(() => undefined);
+      await this.queueTransition(() => closing);
+      return slots.length === 0;
+    }
     const slots = this.publishingSlots();
     const initialActive = this.active;
     if (slots.length === 0) {
@@ -609,7 +618,7 @@ export class HostSfuRoute {
     await this.disconnectPublisher(active);
   }
 
-  private handleFailure(slot: HostPublisherSlot): void {
+  private handleFailure(slot: HostPublisherSlot, refreshConnection = true): void {
     if (this.closed || slot.failed) {
       return;
     }
@@ -656,7 +665,10 @@ export class HostSfuRoute {
     if (!matchesPlannedRoute) {
       return;
     }
-    this.requestRecovery(revision, slot.connectionId);
+    if (refreshConnection) this.requestRecovery(revision, slot.connectionId);
+    // A different source backend needs its own encoder/transport. Refresh only
+    // describes the old physical connection; authority must replace that slot.
+    else this.routeFailed(revision, "active", slot.connectionId);
   }
 
   private failPublisherSlot(slot: HostPublisherSlot): void {

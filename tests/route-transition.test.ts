@@ -6,6 +6,7 @@ import type {
   PreparedRouteCandidate,
 } from "../src/shared/protocol.ts";
 import { HostSfuRoute } from "../src/client/media/host-sfu-route.ts";
+import { NativeSfuPublisher } from "../src/client/native/native-sfu-publisher.ts";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
 import {
   invalidateSenderQualityEvidence,
@@ -709,6 +710,66 @@ describe("minimal route transition contracts", () => {
     await route.disconnect();
     metrics.sampleTimestampMs += 2_000;
     expect(evidence()?.state).toBe("unknown");
+  });
+
+  it("rebinds source backends through the existing SFU authority after retiring the old publisher", async () => {
+    const send = vi.fn(() => true);
+    let native = false;
+    let stream = {} as MediaStream;
+    let releaseBrowser!: () => void;
+    const retiring = new Promise<void>(resolve => { releaseBrowser = resolve; });
+    const browser = createFakePublisher([], "browser");
+    browser.disconnect.mockReturnValueOnce(retiring);
+    const media = { codec: "h264" as const, layers: [{ rid: "", width: 1280, height: 720, bitrate: 1_000_000 }], audio: false, audioBitrate: 0 };
+    const control = {
+      preparePublication: vi.fn(async () => ({ description: { type: "offer" as const, sdp: "native encoded source" }, media })),
+      publicationMedia: vi.fn(async () => media), acceptPublicationSignal: vi.fn(async () => {}),
+      closePublication: vi.fn(async () => {}), onEvent: vi.fn(() => () => {}),
+    };
+    const publishers: Array<NativeSfuPublisher | typeof browser> = [];
+    const route = new HostSfuRoute({
+      getStream: () => stream, getProfile: () => QUALITY_PROFILES["720p30"],
+      getVideoCodec: () => native ? "h264" : "vp8", reconcileChildren: () => {}, send,
+      createPublisher: onDisconnected => {
+        const publisher = native ? new NativeSfuPublisher(control, "native-source", { iceServers: [] }, { send, onDisconnected })
+          : publishers.length === 0 ? browser : createFakePublisher([], "camera");
+        publishers.push(publisher);
+        return publisher;
+      },
+    });
+    await route.acceptAndWait({ revision: 1, phase: "active", assignment: hostAssignment("browser-publication") });
+    await route.acceptConfig(sfuConfig(1, "browser-publication"));
+    send.mockClear();
+    native = true;
+    stream = {} as MediaStream;
+    const replacing = route.replaceStream(stream, true);
+    expect(send).toHaveBeenCalledWith({ type: "route-failed", revision: 1, phase: "active", connectionId: sfuConfig(1).connectionId });
+    expect(send).not.toHaveBeenCalledWith({ type: "refresh-sfu", revision: 1 });
+    expect(browser.replaceStream).not.toHaveBeenCalled();
+    const accepting = route.acceptAndWait({ revision: 2, phase: "active", assignment: hostAssignment("native-publication") });
+    const configuring = route.acceptConfig(sfuConfig(2, "native-publication"));
+    await vi.waitFor(() => expect(publishers[1]).toBeInstanceOf(NativeSfuPublisher));
+    expect(control.preparePublication).not.toHaveBeenCalled();
+    releaseBrowser();
+    await Promise.all([replacing, accepting, configuring]);
+    expect(control.preparePublication).toHaveBeenCalledExactlyOnceWith(
+      "native-source", "native-publication", sfuConfig(2).connectionId, { iceServers: [] },
+    );
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({
+      type: "sfu-signal", kind: "description", description: { type: "offer", sdp: "native encoded source" }, media,
+    }));
+
+    native = false;
+    stream = {} as MediaStream;
+    await route.replaceStream(stream, true);
+    expect(control.closePublication).toHaveBeenCalledExactlyOnceWith("native-source", "native-publication", sfuConfig(2).connectionId);
+    expect(send).toHaveBeenCalledWith({ type: "route-failed", revision: 2, phase: "active", connectionId: sfuConfig(2).connectionId });
+    await route.acceptAndWait({ revision: 3, phase: "active", assignment: hostAssignment("camera-publication") });
+    await route.acceptConfig(sfuConfig(3, "camera-publication"));
+    expect(publishers[2]).not.toBeInstanceOf(NativeSfuPublisher);
+    expect(publishers[2]).not.toBe(browser);
+    expect(publishers[2]!.activate).toHaveBeenCalledOnce();
+    await route.disconnect();
   });
 
   it("reports and retires an exact active SFU source replacement failure", async () => {
