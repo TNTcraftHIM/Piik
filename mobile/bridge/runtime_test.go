@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -39,18 +40,19 @@ func TestEntryTracksCurrentStartupPreferenceAndSiteRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer r.Close()
-	if r.EntryURL() != "https://first.example/#piik-client=1" {
+	entrySuffix := "/?piik-client-port=" + strconv.Itoa(r.control.Endpoint().Port) + "#piik-client=1"
+	if r.EntryURL() != "https://first.example"+entrySuffix {
 		t.Fatal("saved entry was not restored")
 	}
 	startup := r.URL()
 	origin := strings.TrimSuffix(startup, "/client")
 	for _, test := range []struct{ setting, body, entry, startupSite string }{
-		{"startup-site", `{"site":"https://second.example"}`, "https://second.example/#piik-client=1", "https://second.example"},
+		{"startup-site", `{"site":"https://second.example"}`, "https://second.example" + entrySuffix, "https://second.example"},
 		{"startup-site", `{"site":""}`, startup, ""},
-		{"startup-site", `{"site":"https://first.example"}`, "https://first.example/#piik-client=1", "https://first.example"},
+		{"startup-site", `{"site":"https://first.example"}`, "https://first.example" + entrySuffix, "https://first.example"},
 		{"site", `{"site":"https://first.example","allowed":false}`, startup, ""},
 		{"site", `{"site":"https://third.example","allowed":true}`, startup, ""},
-		{"startup-site", `{"site":"https://third.example"}`, "https://third.example/#piik-client=1", "https://third.example"},
+		{"startup-site", `{"site":"https://third.example"}`, "https://third.example" + entrySuffix, "https://third.example"},
 	} {
 		request, _ := http.NewRequest(http.MethodPost, origin+"/api/client-launcher/"+test.setting, strings.NewReader(test.body))
 		request.Header.Set("Origin", origin)

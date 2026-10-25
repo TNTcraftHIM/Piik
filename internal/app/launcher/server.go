@@ -171,7 +171,7 @@ func (server *Server) EntryURL() string {
 	startup := server.startupSite
 	server.mu.Unlock()
 	if startup != "" {
-		return startup + "/#piik-client=1"
+		return EntryURL(startup+"/", server.controlPort)
 	}
 	return server.URL()
 }

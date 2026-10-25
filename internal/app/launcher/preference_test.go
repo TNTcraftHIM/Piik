@@ -85,7 +85,7 @@ func TestStarredSiteSurvivesOtherApprovalsAndClearsOnRevocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	sites := []string{"https://share.example"}
-	server, err := Start(t.Context(), appAssets(), Options{Sites: sites,
+	server, err := Start(t.Context(), appAssets(), Options{Sites: sites, ControlPort: 39730,
 		SaveStartupSite: func(site string) error { return SaveStartupSite(path, site) },
 		ChangeSite: func(site string, allowed bool) ([]string, error) {
 			sites = editSites(sites, site, allowed)
@@ -123,6 +123,13 @@ func TestStarredSiteSurvivesOtherApprovalsAndClearsOnRevocation(t *testing.T) {
 		}
 		if saved, err := LoadStartupSite(path, state.Sites...); err != nil || saved != test.want {
 			t.Fatalf("saved startup: %q %v", saved, err)
+		}
+		entry := server.URL()
+		if test.want != "" {
+			entry = test.want + "/?piik-client-port=39730#piik-client=1"
+		}
+		if server.EntryURL() != entry {
+			t.Fatalf("startup entry lost its App endpoint: %q, want %q", server.EntryURL(), entry)
 		}
 	}
 	if server.attempt != nil || config.Site != "" {
