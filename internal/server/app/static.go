@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/klauspost/compress/gzhttp"
 )
 
 // staticContentTypes fixes the MIME types for this repository's Web assets.
@@ -45,7 +46,13 @@ var staticContentTypes = map[string]string{
 // staticHandler serves embedded assets and falls back to index.html for SPA
 // routes. Missing files use the application's JSON 404 handler.
 func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	compress, err := gzhttp.NewWrapper(gzhttp.EnableZstd(false), gzhttp.ContentTypes([]string{
+		"text/html", "text/javascript", "application/javascript", "text/css",
+	}))
+	if err != nil {
+		panic(err)
+	}
+	return compress(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		// API and health routes have already been handled by ServeHTTP.
 		cleaned := path.Clean("/" + request.URL.Path)
 		name := strings.TrimPrefix(cleaned, "/")
@@ -89,7 +96,7 @@ func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 			}
 		}
 		notFound.ServeHTTP(writer, request)
-	})
+	}))
 }
 
 // hasDotSegment excludes hidden assets, with the published .well-known exemption.

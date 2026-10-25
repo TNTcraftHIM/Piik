@@ -2,15 +2,96 @@ package app
 
 import (
 	"bytes"
+	"compress/gzip"
 	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
 
 const staticNotFoundBody = `{"error":"Not found"}`
+
+func TestStaticCompressionKeepsNegotiationAndServeContentSemantics(t *testing.T) {
+	body := strings.Repeat("const application = 'owned fixture';\n", 100)
+	assets := fstest.MapFS{}
+	for _, name := range []string{"index.html", "app.js", "app.mjs", "app.css", "data.json", "audio.opus"} {
+		assets[name] = &fstest.MapFile{Data: []byte(body)}
+	}
+	handler := staticHandler(assets, staticNotFound)
+	for _, test := range []struct {
+		path, method, encoding, byteRange string
+		status                            int
+		compressed                        bool
+		length                            int
+	}{
+		{"/", "GET", "gzip", "", 200, true, len(body)},
+		{"/app.js", "GET", "br, gzip", "", 200, true, len(body)},
+		{"/app.mjs", "GET", "zstd, gzip", "", 200, true, len(body)},
+		{"/app.css", "GET", "gzip", "", 200, true, len(body)},
+		{"/app.js", "GET", "gzip;q=0", "", 200, false, len(body)},
+		{"/app.js", "GET", "", "", 200, false, len(body)},
+		{"/app.js", "HEAD", "gzip", "", 200, false, 0},
+		{"/app.js", "GET", "gzip", "bytes=0-2047", 206, false, 2048},
+		{"/app.js", "GET", "gzip", "bytes=99999-", 416, false, -1},
+		{"/data.json", "GET", "gzip", "", 200, false, len(body)},
+		{"/audio.opus", "GET", "gzip", "", 200, false, len(body)},
+	} {
+		t.Run(test.path+test.method+test.encoding+test.byteRange, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, test.path, nil)
+			request.Header.Set("Accept-Encoding", test.encoding)
+			if test.byteRange != "" {
+				request.Header.Set("Range", test.byteRange)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status=%d", response.Code)
+			}
+			if (response.Header().Get("Content-Encoding") == "gzip") != test.compressed {
+				t.Fatalf("encoding=%q", response.Header().Get("Content-Encoding"))
+			}
+			if response.Header().Get("Vary") != "Accept-Encoding" {
+				t.Fatal("missing encoding cache variance")
+			}
+			data := response.Body.Bytes()
+			if test.compressed {
+				reader, err := gzip.NewReader(bytes.NewReader(data))
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, err = io.ReadAll(reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+				reader.Close()
+				if string(data) != body || response.Body.Len() >= len(body) {
+					t.Fatal("compressed asset changed or grew")
+				}
+				if response.Header().Get("Content-Length") != "" {
+					t.Fatal("raw length retained on compressed asset")
+				}
+			}
+			if test.length >= 0 && len(data) != test.length {
+				t.Fatalf("body length=%d", len(data))
+			}
+			if test.method == "HEAD" && response.Header().Get("Content-Length") != strconv.Itoa(len(body)) {
+				t.Fatal("HEAD lost the unencoded asset length")
+			}
+			if test.status == 206 && response.Header().Get("Content-Range") != "bytes 0-2047/"+strconv.Itoa(len(body)) {
+				t.Fatalf("range=%q", response.Header().Get("Content-Range"))
+			}
+			for _, header := range []string{"Cache-Control", "Last-Modified", "ETag"} {
+				if response.Header().Get(header) != "" {
+					t.Fatalf("fabricated %s", header)
+				}
+			}
+		})
+	}
+}
 
 // staticNotFound is app.ts's `sendJson(response, 404, { error: "Not found" })`,
 // the next() callback sirv fell through to.
