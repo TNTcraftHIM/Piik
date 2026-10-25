@@ -11,7 +11,7 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
         let id: Int64
         let encoder: VideoEncoder
         init(id: Int64, core: PiikBridgeRuntime, configuration: CaptureConfiguration,
-             ready: @escaping () -> Void,
+             ready: @escaping (Bool) -> Void,
              fail: @escaping (Error) -> Void) {
             self.id = id
             var format = ""
@@ -46,8 +46,12 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
     func add(id: Int64, configuration: CaptureConfiguration) {
         queue.async {
             guard self.core.captureCurrent(id) else { return }
-            self.sinks[id] = Sink(id: id, core: self.core, configuration: configuration, ready: { [weak self] in
-                self?.queue.async { self?.replay(id: id) }
+            self.sinks[id] = Sink(id: id, core: self.core, configuration: configuration, ready: { [weak self] retryRecovery in
+                self?.queue.async {
+                    guard let self, let sink = self.sinks[id] else { return }
+                    if retryRecovery { sink.encoder.requestKeyFrame(); self.recovery.insert(id) }
+                    self.replay(id: id)
+                }
             }) { [weak self] error in
                 self?.queue.async { self?.fail(id: id, error: error) }
             }
@@ -58,34 +62,35 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
     func select(_ filter: SCContentFilter, id: Int64) {
         queue.async {
             guard self.sinks[id] != nil, self.core.captureCurrent(id), self.stream == nil else { return }
-            let configuration = self.configuration(for: filter)
-            let candidate = SCStream(filter: filter, configuration: configuration, delegate: self)
-            do { try candidate.addStreamOutput(self, type: .screen, sampleHandlerQueue: self.queue) }
-            catch { self.fail(id: id, error: error); return }
-            self.stream = candidate
-            candidate.startCapture { error in
-                self.queue.async {
-                    guard self.stream === candidate else { return }
-                    if let error { self.end(error: error) }
-                }
-            }
+            self.start(filter)
         }
     }
     func update(_ filter: SCContentFilter, for expected: SCStream?) {
         queue.async {
             guard let current = self.stream, expected === current else { return }
-            self.lastImage = nil
-            current.updateContentFilter(filter) { error in
-                self.queue.async {
-                    if self.stream === current, let error { self.end(error: error) }
-                }
-            }
-            current.updateConfiguration(self.configuration(for: filter)) { error in
-                self.queue.async {
-                    if self.stream === current, let error { self.end(error: error) }
+            self.start(filter)
+        }
+    }
+    // iOS changes the OS-selected filter by replacing the physical SCStream.
+    // Logical Go requests and their encoder ownership remain in this capture owner.
+    private func start(_ filter: SCContentFilter) {
+        let candidate = SCStream(filter: filter, configuration: configuration(for: filter), delegate: self)
+        do { try candidate.addStreamOutput(self, type: .screen, sampleHandlerQueue: queue) }
+        catch { end(error: error); return }
+        let previous = stream
+        stream = candidate; lastImage = nil
+        let begin = {
+            self.queue.async {
+                guard self.stream === candidate else { return }
+                candidate.startCapture { error in
+                    self.queue.async {
+                        if self.stream === candidate, let error { self.end(error: error) }
+                    }
                 }
             }
         }
+        if let previous { previous.stopCapture { _ in begin() } }
+        else { begin() }
     }
     func control(id: Int64, command: String, layer: Int64, value: Int64) {
         queue.async {

@@ -21,8 +21,9 @@ approved top-level origin. Revocation ends that page by returning to management.
 
 Choose the system capture source in the ordinary source picker, then confirm
 Apple's recording chooser. Actual encoded frames and the existing native ACK
-complete startup. Replacing a live native source reuses its physical stream;
-explicit cancellation and platform stop retire the owning Go request.
+complete startup. Encoder-profile replacement shares the current physical stream;
+an OS-selected filter change replaces that stream inside the same capture owner.
+Explicit cancellation and platform stop retire the owning Go request.
 
 The candidate advertises native video only. Native source audio and commentary
 are unavailable; camera and room voice keep the shared Web application's existing
@@ -73,6 +74,11 @@ App capture does not promise perpetual execution of WKWebView's separate Web
 process or a background browser tab. Existing native output can remain App-owned;
 new Viewer admission, route changes and Web camera/voice still require actual
 Web-process execution and must be checked on a device.
+
+Local uses same-origin loopback HTTP. Approved hosted HTTPS sites additionally
+depend on WebKit allowing their active fetch/WebSocket requests to loopback;
+the narrow ATS loopback exception alone does not establish that capability.
+Hosted native linkage remains unverified rather than bypassing WebKit policy.
 
 References: [Apple's iOS capture sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios),
 [SCStream availability](https://developer.apple.com/documentation/screencapturekit/scstream),

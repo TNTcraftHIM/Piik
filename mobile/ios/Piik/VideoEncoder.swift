@@ -28,14 +28,24 @@ struct EncodedVideo {
 // One in-flight buffer bounds capture input. The Go bridge copies each access unit
 // before returning, so output backpressure never creates an unbounded Swift queue.
 final class VideoEncoder {
+    static func hardwareAvailable() -> Bool {
+        var session: VTCompressionSession?
+        let status = VTCompressionSessionCreate(allocator: nil, width: 16, height: 16,
+            codecType: kCMVideoCodecType_H264,
+            encoderSpecification: [kVTVideoEncoderSpecification_RequireHardwareAcceleratedVideoEncoder: true] as CFDictionary,
+            imageBufferAttributes: nil, compressedDataAllocator: nil, outputCallback: nil,
+            refcon: nil, compressionSessionOut: &session)
+        if let session { VTCompressionSessionInvalidate(session) }
+        return status == noErr && session != nil
+    }
     private final class Output {
         private let lock = NSLock()
         private var busy = false
         private var alive = true
         private let receive: (CMSampleBuffer) -> Void
         private let fail: (Error) -> Void
-        private let ready: () -> Void
-        init(receive: @escaping (CMSampleBuffer) -> Void, ready: @escaping () -> Void, fail: @escaping (Error) -> Void) {
+        private let ready: (Bool) -> Void
+        init(receive: @escaping (CMSampleBuffer) -> Void, ready: @escaping (Bool) -> Void, fail: @escaping (Error) -> Void) {
             self.receive = receive; self.ready = ready; self.fail = fail
         }
         func acquire() -> Bool {
@@ -43,7 +53,7 @@ final class VideoEncoder {
             guard alive, !busy else { return false }
             busy = true; return true
         }
-        func complete(_ status: OSStatus, sample: CMSampleBuffer?) {
+        func complete(_ status: OSStatus, sample: CMSampleBuffer?, retryRecovery: Bool = false) {
             lock.lock()
             let current = alive
             lock.unlock()
@@ -52,7 +62,7 @@ final class VideoEncoder {
                 else if let sample, CMSampleBufferDataIsReady(sample) { receive(sample) }
             }
             lock.lock(); busy = false; lock.unlock()
-            if current { ready() }
+            if current { ready(retryRecovery) }
         }
         func retire() { lock.lock(); alive = false; lock.unlock() }
     }
@@ -64,7 +74,7 @@ final class VideoEncoder {
     private let configuration: CaptureConfiguration
     private let receive: (EncodedVideo) -> Void
     private let fail: (Error) -> Void
-    private let ready: () -> Void
+    private let ready: (Bool) -> Void
     private var output: Output?
     private var session: VTCompressionSession?
     private var transfer: VTPixelTransferSession?
@@ -75,7 +85,7 @@ final class VideoEncoder {
     private var bitrate: Int
 
     init(configuration: CaptureConfiguration, receive: @escaping (EncodedVideo) -> Void,
-         ready: @escaping () -> Void,
+         ready: @escaping (Bool) -> Void,
          fail: @escaping (Error) -> Void) {
         self.configuration = configuration; self.bitrate = configuration.bitrate
         self.receive = receive; self.ready = ready; self.fail = fail
@@ -88,6 +98,7 @@ final class VideoEncoder {
         return true
     }
     func setBitrate(_ value: Int) throws {
+        guard bitrate != value else { return }
         bitrate = value
         if let session { try require(VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate,
                                                          value: NSNumber(value: value)), "bitrate") }
@@ -107,12 +118,15 @@ final class VideoEncoder {
             try require(CVPixelBufferPoolCreatePixelBuffer(nil, pool, &scaled), "allocate")
             guard let scaled else { throw EncoderError(stage: "pixel buffer", status: kCVReturnError) }
             try require(VTPixelTransferSessionTransferImage(transfer, from: image, to: scaled), "scale")
-            let properties: CFDictionary? = keyFrame
+            let forced = keyFrame
+            let properties: CFDictionary? = forced
                 ? [kVTEncodeFrameOptionKey_ForceKeyFrame: true] as CFDictionary : nil
             let status = VTCompressionSessionEncodeFrame(session, imageBuffer: scaled,
                 presentationTimeStamp: time, duration: CMTime(value: 1, timescale: Int32(configuration.framerate)),
-                frameProperties: properties, infoFlagsOut: nil) { status, _, sample in
-                    output.complete(status, sample: sample)
+                frameProperties: properties, infoFlagsOut: nil) { status, flags, sample in
+                    let dropped = flags.contains(.frameDropped)
+                    output.complete(status, sample: dropped ? nil : sample,
+                                    retryRecovery: status == noErr && dropped && forced)
                 }
             try require(status, "encode")
             keyFrame = false; lastBucket = bucket

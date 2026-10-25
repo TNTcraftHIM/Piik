@@ -61,7 +61,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
                                                        appropriateFor: nil, create: true).appendingPathComponent("Piik")
                 try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
 #if canImport(ScreenCaptureKit)
-                let supported = VTIsHardwareEncodeSupported(kCMVideoCodecType_H264)
+                let supported = VideoEncoder.hardwareAvailable()
 #else
                 let supported = false // ScreenCaptureKit is absent from the simulator SDK.
 #endif
@@ -121,7 +121,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
         guard !closed, let selection, !selection.presented, UIApplication.shared.applicationState == .active,
               core?.captureCurrent(selection.id) == true else { return }
         selection.presented = true
-        let configuration = SCContentSharingPickerConfiguration()
+        var configuration = SCContentSharingPickerConfiguration()
         configuration.showsCameraControl = false; configuration.showsMicrophoneControl = false
         let picker = SCContentSharingPicker.shared
         picker.defaultConfiguration = configuration; picker.isActive = true; picker.present()
@@ -171,7 +171,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
     }
     // Native audio is not advertised. Browser camera and room voice keep their
     // existing browser permission/capture owner instead of opening a second mic.
-    func microphones() throws -> String { "[]" }
+    func microphones(_ error: NSErrorPointer) -> String { "[]" }
     func startAudio(_ id_: Int64) { DispatchQueue.main.async { self.core?.captureEnded(id_) } }
     func startMicrophone(_ id_: Int64, deviceID: String?) { DispatchQueue.main.async { self.core?.captureEnded(id_) } }
     func siteAccessChanged() { DispatchQueue.main.async { if !self.closed { self.accessChanged() } } }
