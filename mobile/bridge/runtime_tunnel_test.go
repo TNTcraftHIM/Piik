@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -33,6 +34,14 @@ func TestMain(tests *testing.M) {
 				os.Exit(9)
 			}
 		}
+		if mode == "held" {
+			for {
+				if _, err := os.Stat(os.Getenv("PIIK_ANDROID_TUNNEL_RELEASE")); err == nil {
+					break
+				}
+				time.Sleep(time.Millisecond)
+			}
+		}
 		if mode != "pending" {
 			fmt.Println(`{"message":"https://android-fixture.trycloudflare.com"}`)
 			fmt.Println(`{"message":"Registered tunnel connection"}`)
@@ -47,6 +56,110 @@ func TestMain(tests *testing.M) {
 		}
 	}
 	os.Exit(tests.Run())
+}
+
+func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
+	dir := t.TempDir()
+	started, release := filepath.Join(dir, "started"), filepath.Join(dir, "release")
+	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "held")
+	t.Setenv("PIIK_ANDROID_TUNNEL_STARTED", started)
+	t.Setenv("PIIK_ANDROID_TUNNEL_RELEASE", release)
+	if err := appconfig.Save(filepath.Join(dir, "client.json"), appconfig.Config{Version: 1, Sites: []string{"https://revoked.example"}}); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	platform := &testPlatform{}
+	r, err := Start(platform, "", `{"platform":"android","provider":"fixture","encoders":[]}`, dir, t.TempDir(), executable, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	client := &http.Client{Timeout: 5 * time.Second}
+	origin := strings.TrimSuffix(r.URL(), "/client")
+	post := func(path, body string) int {
+		t.Helper()
+		request, _ := http.NewRequest(http.MethodPost, origin+"/api/client-launcher/"+path, strings.NewReader(body))
+		request.Header.Set("Origin", origin)
+		request.Header.Set("Content-Type", "application/json")
+		response, err := client.Do(request)
+		if err != nil {
+			t.Error(err)
+			return 0
+		}
+		response.Body.Close()
+		return response.StatusCode
+	}
+	health := func(site string) int {
+		t.Helper()
+		request, _ := http.NewRequest(http.MethodGet, r.control.Endpoint().URL+"/health", nil)
+		request.Header.Set("Origin", site)
+		response, err := client.Do(request)
+		if err != nil {
+			t.Error(err)
+			return 0
+		}
+		response.Body.Close()
+		return response.StatusCode
+	}
+	launched := make(chan int, 1)
+	go func() { launched <- post("launch", `{"mode":"link","language":"en"}`) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(started); err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("startup did not reach the pending helper")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	notified, notificationReleased := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	defer once.Do(func() { close(notificationReleased) })
+	platform.siteChanged = func() {
+		if r.TrustedURL("https://revoked.example") || health("https://revoked.example") != http.StatusForbidden {
+			t.Error("platform notification preceded the exact-origin revocation commit")
+		}
+		close(notified)
+		<-notificationReleased
+	}
+	revoked := make(chan int, 1)
+	go func() { revoked <- post("site", `{"site":"https://revoked.example","allowed":false}`) }()
+	select {
+	case <-notified:
+	case <-time.After(5 * time.Second):
+		t.Fatal("revocation notification blocked")
+	}
+	if err := os.WriteFile(release, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	var target string
+	for {
+		r.configMu.Lock()
+		target = r.url
+		r.configMu.Unlock()
+		if target != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("platform notification held the runtime authority lock")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	local, _ := url.Parse(target)
+	if !r.TrustedURL(target) || health(local.Scheme+"://"+local.Host) != http.StatusOK || health("https://revoked.example") != http.StatusForbidden {
+		t.Fatal("startup lost its local origin or restored the revoked Site")
+	}
+	once.Do(func() { close(notificationReleased) })
+	if status := <-revoked; status != http.StatusOK {
+		t.Fatalf("revocation = %d", status)
+	}
+	if status := <-launched; status != http.StatusOK {
+		t.Fatalf("startup = %d", status)
+	}
 }
 
 type runtimePlatform struct {

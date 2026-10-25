@@ -132,7 +132,10 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 		return nil, errors.Join(err, r.Close())
 	}
 	r.control.SetConnectURL(r.launcher.URL())
-	if err = r.control.SetAllowedOrigins(append(r.localOrigins(), preferences.ApprovedSites()...)); err != nil {
+	r.configMu.Lock()
+	err = r.syncAllowedOriginsLocked()
+	r.configMu.Unlock()
+	if err != nil {
 		return nil, errors.Join(err, r.Close())
 	}
 	r.launchDone = make(chan struct{})
@@ -243,18 +246,15 @@ func (r *Runtime) startLocal(selection launcher.Selection, address string) (targ
 		return "", err
 	}
 	target = launcher.LocalEntryURL("http://127.0.0.1:"+strconv.Itoa(port)+"/", selection.LocalAccessPassword)
-	r.configMu.Lock()
-	sites := r.config.ApprovedSites()
-	r.configMu.Unlock()
 	targetURL, _ := url.Parse(target)
-	origins := append(r.localOrigins(), targetURL.Scheme+"://"+targetURL.Host)
-	if err = r.control.SetAllowedOrigins(append(origins, sites...)); err != nil {
-		return "", err
-	}
 	r.configMu.Lock()
 	if r.ctx.Err() != nil {
 		r.configMu.Unlock()
 		return "", r.ctx.Err()
+	}
+	if err = r.syncAllowedOriginsLocked(targetURL.Scheme + "://" + targetURL.Host); err != nil {
+		r.configMu.Unlock()
+		return "", err
 	}
 	r.server, r.tunnel, r.url = server, tunnel, target
 	committed = true
@@ -311,9 +311,10 @@ func (r *Runtime) approveSite(value string) (string, error) {
 		return "", err
 	}
 	r.config = next
+	err = r.syncAllowedOriginsLocked()
 	r.configMu.Unlock()
 	r.capture.platform.SiteAccessChanged()
-	return site, r.control.SetAllowedOrigins(append(r.localOrigins(), next.ApprovedSites()...))
+	return site, err
 }
 func (r *Runtime) revokeSite(value string) error {
 	r.configMu.Lock()
@@ -330,13 +331,26 @@ func (r *Runtime) revokeSite(value string) error {
 		return err
 	}
 	r.config = next
+	err := r.syncAllowedOriginsLocked()
 	r.configMu.Unlock()
 	r.capture.platform.SiteAccessChanged()
-	return r.control.SetAllowedOrigins(append(r.localOrigins(), sites...))
+	return err
 }
+
+// Caller holds configMu through the permission commit, so room startup cannot
+// replay a stale Site snapshot or discard the newly installed local origin.
+func (r *Runtime) syncAllowedOriginsLocked(pendingOrigins ...string) error {
+	origins := append(r.localOriginsLocked(), pendingOrigins...)
+	return r.control.SetAllowedOrigins(append(origins, r.config.ApprovedSites()...))
+}
+
 func (r *Runtime) localOrigins() []string {
 	r.configMu.Lock()
 	defer r.configMu.Unlock()
+	return r.localOriginsLocked()
+}
+
+func (r *Runtime) localOriginsLocked() []string {
 	origins := []string{}
 	if r.url != "" {
 		origins = append(origins, r.localOrigin())
