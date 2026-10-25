@@ -243,11 +243,11 @@ public final class CaptureService extends Service {
       next.actualCodec = selected.codec;
       boolean h264 = selected.codec.equals("h264");
       next.codec = MediaCodec.createByCodecName(selected.name);
-      MediaCodecInfo.VideoCapabilities supported =
+      MediaCodecInfo.CodecCapabilities capabilities =
           next.codec
               .getCodecInfo()
-              .getCapabilitiesForType(h264 ? "video/avc" : "video/x-vnd.on2.vp8")
-              .getVideoCapabilities();
+              .getCapabilitiesForType(h264 ? "video/avc" : "video/x-vnd.on2.vp8");
+      MediaCodecInfo.VideoCapabilities supported = capabilities.getVideoCapabilities();
       next.width -= next.width % Math.max(2, supported.getWidthAlignment());
       next.height -= next.height % Math.max(2, supported.getHeightAlignment());
       MediaFormat format =
@@ -256,6 +256,11 @@ public final class CaptureService extends Service {
       format.setInteger(
           MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
       format.setInteger(MediaFormat.KEY_BIT_RATE, options.getInt("bitrate"));
+      // CBR avoids Android's VBR quality floor overriding transport bitrate budgets.
+      if (capabilities.getEncoderCapabilities()
+          .isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR))
+        format.setInteger(
+            MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR);
       format.setInteger(MediaFormat.KEY_FRAME_RATE, next.fps);
       format.setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, next.fps);
       format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
