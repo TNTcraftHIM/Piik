@@ -522,6 +522,7 @@ public final class CaptureService extends Service {
               if (command.equals("bitrate")) current.bitrate = (int) value;
               if (command.equals("keyframe")) s.renderer.refresh(current.target);
             } catch (Exception error) {
+              android.util.Log.w("PiikCapture", "encoder control failed", error);
               s.fail(current.runtime, id);
             }
           });
