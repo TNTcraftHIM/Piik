@@ -383,8 +383,10 @@ func TestLauncherRetriesARetiredFailureWithoutReplacingAReadyRoom(t *testing.T) 
 	if err := json.NewDecoder(response.Body).Decode(&ready); err != nil || response.StatusCode != http.StatusOK || ready.Target == "" {
 		t.Fatalf("retry did not become ready: %d %+v %v", response.StatusCode, ready, err)
 	}
-	if response := post(); response.StatusCode != http.StatusConflict {
-		t.Fatalf("successful room permitted replacement = %d", response.StatusCode)
+	response = post()
+	var reopened struct{ Target string }
+	if err := json.NewDecoder(response.Body).Decode(&reopened); err != nil || response.StatusCode != http.StatusOK || reopened.Target != ready.Target {
+		t.Fatalf("reentry replaced the ready room: %d %+v %v", response.StatusCode, reopened, err)
 	}
 	response, err = client.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", port))
 	if err != nil {
