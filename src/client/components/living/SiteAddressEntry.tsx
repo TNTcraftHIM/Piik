@@ -45,7 +45,10 @@ export function SiteAddressEntry({ initialAddress = "", onSelect }: {
         if (event.target !== event.currentTarget) return;
         const opened = event.newState === "open";
         setOpen(opened);
-        if (opened) input.current?.focus();
+        if (opened) {
+          input.current?.focus();
+          input.current?.select();
+        }
       }}>
       <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.addSite")}</strong>
       <div className="lr-client-site-address">
@@ -58,13 +61,6 @@ export function SiteAddressEntry({ initialAddress = "", onSelect }: {
             onBlur={event => {
               const origin = siteEntryOrigin(event.currentTarget.value);
               if (origin) event.currentTarget.value = origin;
-            }}
-            onPaste={event => {
-              const origin = siteEntryOrigin(event.clipboardData.getData("text"));
-              if (!origin) return;
-              event.preventDefault();
-              event.currentTarget.value = origin;
-              setInvalid(false);
             }}
             onKeyDown={event => {
               if (event.key === "Enter" && !event.nativeEvent.isComposing) {

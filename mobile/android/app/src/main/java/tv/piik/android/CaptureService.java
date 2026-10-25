@@ -555,6 +555,8 @@ public final class CaptureService extends Service {
               .setAudioPlaybackCaptureConfig(config)
               .build();
       next.recorder.startRecording();
+      if (next.recorder.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING)
+        throw new IllegalStateException("Playback audio did not start");
       if (!runtime.captureCurrent(id)) throw new IllegalStateException("capture retired");
       audio = next;
       previousAudio = old;

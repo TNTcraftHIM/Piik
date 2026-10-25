@@ -387,8 +387,8 @@ export function ControlsPreview() {
 function InteractionControlsPreview() {
   const [viewer, setViewer] = useState(false);
   const { session, receiveSample } = usePreviewInteractions(viewer);
-  const voice = useRoomVoicePreview(viewer);
   const [crowded, setCrowded] = useState(false);
+  const voice = useRoomVoicePreview(viewer, crowded);
   const [reaction, setReaction] = useState<ReactionId>("heart");
   const [theater, setTheater] = useTheaterMode();
   const video = useRef<HTMLVideoElement>(null);

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-24
+Last reviewed: 2026-10-25
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -36,7 +36,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   the existing [headline contract](./standards/versioning.md#release-notes).
 - [ ] **Android App release scope.** Complete integrated phone, tablet and TV
   acceptance of Local rooms, public invitations and approved hosted Sites,
-  including the embedded/system-browser comparison and sharing with room voice,
+  including the embedded/system-browser comparison, sharing with room voice,
+  and stationary-screen late join/keyframe recovery,
   then prepare release packaging. Keep the candidate on the feature branch until accepted.
 
 ## Held By Owner
