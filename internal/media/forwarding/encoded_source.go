@@ -27,7 +27,10 @@ type EncodedSource struct {
 	inputPTS    time.Duration
 	anchorPTS   time.Duration
 	anchorTime  time.Time
+	originTime  time.Time
 	hasInput    bool
+	clockSource *Source
+	clockLayer  int
 }
 
 func NewEncodedSource(options SourceOptions) (*EncodedSource, error) {
@@ -58,6 +61,12 @@ func NewEncodedSource(options SourceOptions) (*EncodedSource, error) {
 	return input, nil
 }
 
+// UseSourceClock binds derived output to the original layer's current remote
+// clock offset. The owner installs this before feeding any encoded frames.
+func (input *EncodedSource) UseSourceClock(source *Source, layer int) {
+	input.clockSource, input.clockLayer = source, layer
+}
+
 func (input *EncodedSource) BeginFrame(pts time.Duration, at time.Time) error {
 	if input.IsClosed() {
 		return errors.New("encoded forwarding source is closed")
@@ -68,6 +77,9 @@ func (input *EncodedSource) BeginFrame(pts time.Duration, at time.Time) error {
 	if !input.hasInput {
 		input.anchorPTS, input.anchorTime = pts, at
 	}
+	if input.originTime.IsZero() {
+		input.originTime = at
+	}
 	input.hasInput, input.inputPTS = true, pts
 	return nil
 }
@@ -77,7 +89,8 @@ func (input *EncodedSource) WriteFrame(layer int, frame encoded.Frame) error {
 		frame.PTS < input.anchorPTS || frame.PTS > input.inputPTS {
 		return errors.New("encoded output has no matching source input")
 	}
-	packets, err := input.packetizers[layer].Packetize(frame.Data, frame.PTS, frame.Duration)
+	sourceTime := input.anchorTime.Add(frame.PTS - input.anchorPTS)
+	packets, err := input.packetizers[layer].Packetize(frame.Data, sourceTime.Sub(input.originTime), frame.Duration)
 	if err != nil {
 		return err
 	}
@@ -91,12 +104,22 @@ func (input *EncodedSource) WriteFrame(layer int, frame encoded.Frame) error {
 		input.rtpBytes[layer] += uint64(packet.MarshalSize())
 	}
 	input.codecBytes[layer] += uint64(len(frame.Data))
+	// Retain the capture instant's Go monotonic component when converting to
+	// the media core's epoch-based monotonic clock, including after wall jumps.
+	localTime := mono.FromTime(sourceTime)
+	if input.clockSource != nil {
+		var ok bool
+		localTime, ok = input.clockSource.LocalTime(input.clockLayer, sourceTime)
+		if !ok {
+			return errors.New("encoded output has no source clock reference")
+		}
+	}
 	// Correlate each layer with the actual input clock, not its encoder finish
 	// time. This is internal correlation data, not a backdated wire sender report.
 	return input.SetCorrelation(layer, &livekit.RTCPSenderReportState{
 		RtpTimestamp: packets[0].Timestamp,
-		NtpTimestamp: uint64(mediatransportutil.ToNtpTime(input.anchorTime.Add(frame.PTS - input.anchorPTS))),
-		Packets:      input.packets[layer], Octets: input.octets[layer], At: mono.UnixNano(),
+		NtpTimestamp: uint64(mediatransportutil.ToNtpTime(sourceTime)),
+		Packets:      input.packets[layer], Octets: input.octets[layer], At: localTime.UnixNano(),
 	})
 }
 
@@ -114,11 +137,8 @@ func (input *EncodedSource) CodecBudget(layer int, rtpBudget int64) int64 {
 }
 
 func (input *EncodedSource) BeginGeneration() {
-	// Capture replacement changes the input clock, not these RTP identities.
-	// Rebase the packetizers; restarting DownTrack as well would rebase twice.
-	for _, packetizer := range input.packetizers {
-		packetizer.BeginGeneration()
-	}
+	// Replacement resets input PTS, but all renditions retain the elapsed
+	// capture clock and RTP identities, including time spent dormant.
 	input.hasInput = false
 	clear(input.codecBytes)
 	clear(input.rtpBytes)

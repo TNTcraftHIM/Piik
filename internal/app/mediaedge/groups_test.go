@@ -441,11 +441,52 @@ func TestOutputGroupGenerationRefreshesMetadataAndClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := group.media.GetAllBuffers()[0].GetSenderReportData()
-	if report == nil || report.RtpTimestamp-previousTimestamp < 2999 || report.RtpTimestamp-previousTimestamp > 3001 {
+	if report == nil || report.RtpTimestamp-previousTimestamp != 100*90_000 {
 		t.Fatal("new capture generation broke the group RTP clock")
 	}
 	correlated, ok := group.media.ReferenceTime(0, report.RtpTimestamp)
 	if !ok || correlated.Sub(at) < -time.Microsecond || correlated.Sub(at) > time.Microsecond {
 		t.Fatalf("new generation correlation = %v, available=%v", correlated, ok)
+	}
+}
+
+func TestLateOutputGroupKeepsSharedCaptureClock(t *testing.T) {
+	source, _, _, _ := newGroupLifecycleFixture(t)
+	// The capture clock advances one second while input-pipe latency grows.
+	if err := source.beginGroupFrame(11*time.Second, time.Unix(101, 500_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	group, err := source.newGroup(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(pts time.Duration, expected time.Time) uint32 {
+		t.Helper()
+		var timestamp uint32
+		for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
+			if err := media.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
+				PTS: pts, Duration: time.Second / 30}); err != nil {
+				t.Fatal(err)
+			}
+			report := media.GetAllBuffers()[0].GetSenderReportData()
+			if report == nil {
+				t.Fatal("output did not establish its capture clock")
+			}
+			at, ok := media.ReferenceTime(0, report.RtpTimestamp)
+			if !ok || at.Sub(expected).Abs() > time.Microsecond {
+				t.Fatalf("output capture clock = %v, expected %v", at, expected)
+			}
+			timestamp = report.RtpTimestamp
+		}
+		return timestamp
+	}
+	previous := write(11*time.Second, time.Unix(101, 0))
+	source.BeginGeneration()
+	if err := source.beginGroupFrame(time.Second, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	current := write(time.Second, time.Unix(200, 0))
+	if advance := current - previous; advance != 99*90_000 {
+		t.Fatalf("replacement group RTP timestamp advanced %d ticks", advance)
 	}
 }

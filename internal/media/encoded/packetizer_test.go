@@ -51,10 +51,12 @@ func TestPacketizerKeepsVP8IdentityAcrossAccessUnits(t *testing.T) {
 	if _, err := p.Packetize([]byte{1}, 0, time.Second/30); !errors.Is(err, ErrInvalidTimestamp) {
 		t.Fatalf("backward source timestamp error = %v", err)
 	}
-	p.BeginGeneration()
-	packets, err := p.Packetize([]byte{1}, 0, time.Second/30)
+	packets, err := p.Packetize([]byte{1}, 5*time.Second, time.Second/30)
 	if err != nil || len(packets) != 1 || packets[0].SequenceNumber != sequence+1 {
-		t.Fatalf("source generation did not retain packet identity: %v", err)
+		t.Fatalf("dormant source did not retain packet identity: %v", err)
+	}
+	if advance := packets[0].Timestamp - timestamp; advance < 440999 || advance > 441001 {
+		t.Fatalf("dormant source clock advanced %d ticks, want 4.9 seconds", advance)
 	}
 }
 

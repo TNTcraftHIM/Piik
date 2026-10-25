@@ -523,16 +523,23 @@ func TestNewCaptureGenerationKeepsTheRTPClockContinuous(t *testing.T) {
 	t.Cleanup(func() { _ = receiver.Close() })
 	accessUnit := sfu.VP8KeyFrame8x8
 	frameDuration := time.Second / 30
-	if err = writeSourceFrame(source, accessUnit, 50*time.Second, frameDuration); err != nil {
+	origin := time.Now()
+	if _, err = source.beginFrame(50*time.Second, origin); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.WriteVideo(0, encoded.Frame{Data: accessUnit, PTS: 50 * time.Second, Duration: frameDuration, Recovery: true}); err != nil {
 		t.Fatal(err)
 	}
 	first := waitPacket(t, packets, edge)
 	source.BeginGeneration()
-	if err = writeSourceFrame(source, accessUnit, 100*time.Millisecond, frameDuration); err != nil {
+	if _, err = source.beginFrame(100*time.Millisecond, origin.Add(200*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.WriteVideo(0, encoded.Frame{Data: accessUnit, PTS: 100 * time.Millisecond, Duration: frameDuration, Recovery: true}); err != nil {
 		t.Fatal(err)
 	}
 	second := waitPacket(t, packets, edge)
-	if got := second.Timestamp - first.Timestamp; got < 2_999 || got > 3_001 {
+	if got := second.Timestamp - first.Timestamp; got < 17_999 || got > 18_001 {
 		t.Fatalf("generation timestamp delta = %d", got)
 	}
 }

@@ -259,6 +259,9 @@ func (source *Source) newGroup(slot int) (*outputGroup, error) {
 	if err != nil {
 		return nil, err
 	}
+	if source.relay != nil {
+		media.UseSourceClock(source.media.Source, len(source.formats)-1)
+	}
 	media.SetLowestLayerRateControlled(true)
 	group := &outputGroup{slot: slot, media: media, start: source.inputPTS}
 	if source.hasInput {
@@ -302,6 +305,11 @@ func groupConsumerID(consumer groupConsumer) string {
 }
 
 func (source *Source) beginGroupFrame(pts time.Duration, at time.Time) error {
+	if source.hasInput {
+		// New groups inherit the established capture clock. Pipe arrival time
+		// can change independently of the input timestamps.
+		at = source.inputAt.Add(pts - source.inputPTS)
+	}
 	if err := source.media.BeginFrame(pts, at); err != nil {
 		return err
 	}

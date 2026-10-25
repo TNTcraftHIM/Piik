@@ -26,6 +26,21 @@ type LayerFormat struct {
 	Width, Height, Bitrate uint32
 }
 
+// Internal encoders already know the local time of their source RTP/NTP
+// correlation. Received reports still need the buffer's remote clock estimate.
+type sourceBuffer struct {
+	*buffer.Buffer
+	knownInputClock atomic.Bool
+}
+
+func (input *sourceBuffer) GetSenderReportData() *livekit.RTCPSenderReportState {
+	report := input.Buffer.GetSenderReportData()
+	if report != nil && input.knownInputClock.Load() {
+		report.AtAdjusted = report.At
+	}
+	return report
+}
+
 type SourceOptions struct {
 	ID, StreamID     string
 	Codec            webrtc.RTPCodecParameters
@@ -41,7 +56,7 @@ type SourceOptions struct {
 type Source struct {
 	*sfu.ReceiverBase
 	mu                   sync.Mutex
-	buffers              []*buffer.Buffer
+	buffers              []*sourceBuffer
 	maxPackets           int
 	onRTCP               func(int, []rtcp.Packet)
 	closed               bool
@@ -85,7 +100,7 @@ func NewSource(options SourceOptions) (*Source, error) {
 			HeaderExtensions: canonicalHeaderExtensions(options.HeaderExtensions), Logger: diagnostics.MediaLogger("source").WithValues("trackId", diagnostics.ID(options.ID)),
 			StreamTrackerManagerConfig: sfu.DefaultStreamTrackerManagerConfig,
 		}, info, sfu.ReceiverCodecStateNormal),
-		buffers:    make([]*buffer.Buffer, len(options.Formats)),
+		buffers:    make([]*sourceBuffer, len(options.Formats)),
 		maxPackets: options.MaxPackets, onRTCP: options.OnRTCP,
 	}
 	source.currentTrackInfo.Store(info)
@@ -221,7 +236,7 @@ func (source *Source) BindLayer(layer int, ssrc uint32, parameters webrtc.RTPPar
 			return errors.New("forwarded video layers cannot share an SSRC")
 		}
 	}
-	input := buffer.NewBuffer(ssrc, source.maxPackets, buffer.InitPacketBufferSizeAudio)
+	input := &sourceBuffer{Buffer: buffer.NewBuffer(ssrc, source.maxPackets, buffer.InitPacketBufferSizeAudio)}
 	input.SetLogger(diagnostics.MediaLogger("rtp-buffer").WithValues("trackId", diagnostics.ID(string(source.TrackID()))))
 	if err := input.Bind(parameters, codec.RTPCodecCapability, int(source.TrackInfo().Layers[layer].Bitrate)); err != nil {
 		_ = input.Close()
@@ -236,7 +251,7 @@ func (source *Source) BindLayer(layer int, ssrc uint32, parameters webrtc.RTPPar
 	return nil
 }
 
-func (source *Source) layerBuffer(layer int) (*buffer.Buffer, error) {
+func (source *Source) layerBuffer(layer int) (*sourceBuffer, error) {
 	source.mu.Lock()
 	defer source.mu.Unlock()
 	if source.closed {
@@ -295,7 +310,23 @@ func (source *Source) ReferenceTime(layer int, timestamp uint32) (time.Time, boo
 	return mediatransportutil.NtpTime(report.NtpTimestamp).Time().Add(delta), true
 }
 
-// SetCorrelation receives the local source owner's RTP/NTP mapping unchanged.
+// LocalTime projects the source's clock through its current received report.
+// A derived encoder shares this clock offset with the untouched original layer.
+func (source *Source) LocalTime(layer int, sourceTime time.Time) (time.Time, bool) {
+	input, err := source.layerBuffer(layer)
+	if err != nil {
+		return time.Time{}, false
+	}
+	report := input.GetSenderReportData()
+	if report == nil || report.NtpTimestamp == 0 || report.AtAdjusted == 0 {
+		return time.Time{}, false
+	}
+	delta := sourceTime.Sub(mediatransportutil.NtpTime(report.NtpTimestamp).Time())
+	return time.Unix(0, report.AtAdjusted).Add(delta), true
+}
+
+// SetCorrelation receives the source owner's RTP/NTP mapping and its known
+// local input time in At. Encoder completion is not a network delay observation.
 // The layer must already have received RTP; the media core owns report ordering.
 func (source *Source) SetCorrelation(layer int, correlation *livekit.RTCPSenderReportState) error {
 	input, err := source.layerBuffer(layer)
@@ -305,6 +336,7 @@ func (source *Source) SetCorrelation(layer int, correlation *livekit.RTCPSenderR
 	if correlation == nil {
 		return errors.New("forwarded source correlation is absent")
 	}
+	input.knownInputClock.Store(true)
 	input.SetSenderReportData(correlation)
 	return nil
 }
