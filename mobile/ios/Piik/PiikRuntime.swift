@@ -1,5 +1,7 @@
 import UIKit
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
+#endif
 import VideoToolbox
 import PiikBridge
 import Darwin
@@ -8,6 +10,7 @@ import os
 // One instance belongs to one actual Go runtime. Late startup and OS callbacks
 // can only close or update this instance, never a replacement started by the UI.
 final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
+#if canImport(ScreenCaptureKit)
     private final class Selection: NSObject, SCContentSharingPickerObserver {
         weak var owner: PiikRuntime?
         let id: Int64
@@ -36,13 +39,16 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
             }
         }
     }
+#endif
     private let startup = DispatchQueue(label: "tv.piik.ios.runtime")
     private let log = Logger(subsystem: "tv.piik.ios", category: "Capture")
     private var lifecycleCore: PiikBridgeRuntime? // Only the startup queue creates and closes this resource.
     private var core: PiikBridgeRuntime?
+#if canImport(ScreenCaptureKit)
     private var capture: ScreenCapture?
-    private var pendingVideo: [Int64: String] = [:]
     private var selection: Selection?
+#endif
+    private var pendingVideo: [Int64: String] = [:]
     private var closed = false
     var ready: (String) -> Void = { _ in }
     var failed: (Error) -> Void = { _ in }
@@ -54,7 +60,11 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
                 let data = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask,
                                                        appropriateFor: nil, create: true).appendingPathComponent("Piik")
                 try FileManager.default.createDirectory(at: data, withIntermediateDirectories: true)
+#if canImport(ScreenCaptureKit)
                 let supported = VTIsHardwareEncodeSupported(kCMVideoCodecType_H264)
+#else
+                let supported = false // ScreenCaptureKit is absent from the simulator SDK.
+#endif
                 let catalog = "{\"platform\":\"ios\",\"provider\":\"VideoToolbox\",\"systemAudio\":false,\"encoders\":\(supported ? "[{\"name\":\"VideoToolbox AVC\",\"codec\":\"h264\"}]" : "[]")}"
                 let candidate: PiikBridgeRuntime? = try PiikBridgeStart(self, Self.lanAddress(), catalog, data.path,
                                                                        NSTemporaryDirectory(), "", "")
@@ -65,8 +75,10 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
                 DispatchQueue.main.async {
                     guard !self.closed else { return }
                     self.core = next
+#if canImport(ScreenCaptureKit)
                     self.capture = ScreenCapture(core: next, needsPicker: { [weak self] id in self?.requestPicker(id) },
                         idle: { [weak self] in self?.clearSelection() }, report: { [weak self] error in self?.captureFailed(error) })
+#endif
                     let waiting = self.pendingVideo; self.pendingVideo.removeAll()
                     for (id, configuration) in waiting { self.startVideo(id, configuration: configuration) }
                     self.ready(next.entryURL())
@@ -76,9 +88,17 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
     }
     var managementURL: URL? { core.flatMap { URL(string: $0.url()) } }
     func trusts(_ url: URL) -> Bool { core?.trustedURL(url.absoluteString) == true }
-    func becameActive() { presentPicker() }
+    func becameActive() {
+#if canImport(ScreenCaptureKit)
+        presentPicker()
+#endif
+    }
     func close(completion: @escaping (Error?) -> Void) {
-        closed = true; pendingVideo.removeAll(); clearSelection(); capture?.close(); capture = nil; core = nil
+        closed = true; pendingVideo.removeAll()
+#if canImport(ScreenCaptureKit)
+        clearSelection(); capture?.close(); capture = nil
+#endif
+        core = nil
         // Startup and close share the same queue, including Stop during Start.
         // The UI may start a successor only after the actual Go close joins.
         startup.async {
@@ -89,6 +109,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
             catch { DispatchQueue.main.async { completion(error) } }
         }
     }
+#if canImport(ScreenCaptureKit)
     private func requestPicker(_ id: Int64) {
         guard !closed, core?.captureCurrent(id) == true else { return }
         clearSelection()
@@ -109,6 +130,7 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
         if let selection { SCContentSharingPicker.shared.remove(selection) }
         selection = nil; SCContentSharingPicker.shared.isActive = false
     }
+#endif
     private func report(_ error: Error) { if !closed { failed(error) } }
     private func captureFailed(_ error: Error) {
         log.error("Native capture failed, code \((error as NSError).code)")
@@ -123,7 +145,11 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
                       value.codec == "auto" || value.codec == "h264" else {
                     throw NSError(domain: "Piik", code: 2, userInfo: [NSLocalizedDescriptionKey: "Unsupported capture configuration."])
                 }
+#if canImport(ScreenCaptureKit)
                 self.capture?.add(id: id_, configuration: value)
+#else
+                core.captureEnded(id_)
+#endif
             } catch { core.captureEnded(id_); self.captureFailed(error) }
         }
     }
@@ -132,12 +158,16 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
     func stop(_ id_: Int64) {
         DispatchQueue.main.async {
             self.pendingVideo.removeValue(forKey: id_)
+#if canImport(ScreenCaptureKit)
             if self.selection?.id == id_ && self.selection?.committed == false { self.clearSelection() }
             self.capture?.remove(id: id_)
+#endif
         }
     }
     func control(_ id_: Int64, command: String?, layer: Int64, value: Int64) {
+#if canImport(ScreenCaptureKit)
         DispatchQueue.main.async { if let command { self.capture?.control(id: id_, command: command, layer: layer, value: value) } }
+#endif
     }
     // Native audio is not advertised. Browser camera and room voice keep their
     // existing browser permission/capture owner instead of opening a second mic.

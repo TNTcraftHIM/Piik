@@ -49,6 +49,6 @@ jobs:
         with:
           name: piik-ios-unsigned-${{ github.sha }}
           path: |
-            build/ios-client/DerivedData/Build/Products/Debug-iphoneos/Piik.app
-            build/ios-client/DerivedData/Build/Products/Debug-iphonesimulator/Piik.app
+            build/ios-client/piik-iphoneos-unsigned.zip
+            build/ios-client/piik-iphonesimulator-unsigned.zip
           if-no-files-found: error

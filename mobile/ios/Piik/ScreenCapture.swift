@@ -1,3 +1,4 @@
+#if canImport(ScreenCaptureKit)
 import ScreenCaptureKit
 import CoreMedia
 import Foundation
@@ -10,6 +11,7 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
         let id: Int64
         let encoder: VideoEncoder
         init(id: Int64, core: PiikBridgeRuntime, configuration: CaptureConfiguration,
+             ready: @escaping () -> Void,
              fail: @escaping (Error) -> Void) {
             self.id = id
             var format = ""
@@ -23,13 +25,16 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
                     format = nextFormat
                 }
                 core.video(id, data: frame.data, ptsMicros: frame.pts, durationMicros: frame.duration, key: frame.key)
-            }, fail: fail)
+            }, ready: ready, fail: fail)
         }
     }
     private let core: PiikBridgeRuntime
     private let queue = DispatchQueue(label: "tv.piik.ios.capture")
     private var sinks: [Int64: Sink] = [:]
     private var stream: SCStream?
+    private var lastImage: CVPixelBuffer?
+    private var lastTimestamp = CMTime.invalid
+    private var recovery: Set<Int64> = []
     private let needsPicker: (Int64) -> Void
     private let idle: () -> Void
     private let report: (Error) -> Void
@@ -41,17 +46,19 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
     func add(id: Int64, configuration: CaptureConfiguration) {
         queue.async {
             guard self.core.captureCurrent(id) else { return }
-            self.sinks[id] = Sink(id: id, core: self.core, configuration: configuration) { [weak self] error in
+            self.sinks[id] = Sink(id: id, core: self.core, configuration: configuration, ready: { [weak self] in
+                self?.queue.async { self?.replay(id: id) }
+            }) { [weak self] error in
                 self?.queue.async { self?.fail(id: id, error: error) }
             }
+            self.recovery.insert(id); self.replay(id: id)
             if self.stream == nil { DispatchQueue.main.async { self.needsPicker(id) } }
         }
     }
     func select(_ filter: SCContentFilter, id: Int64) {
         queue.async {
             guard self.sinks[id] != nil, self.core.captureCurrent(id), self.stream == nil else { return }
-            let configuration = SCStreamConfiguration()
-            configuration.capturesAudio = false
+            let configuration = self.configuration(for: filter)
             let candidate = SCStream(filter: filter, configuration: configuration, delegate: self)
             do { try candidate.addStreamOutput(self, type: .screen, sampleHandlerQueue: self.queue) }
             catch { self.fail(id: id, error: error); return }
@@ -67,7 +74,13 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
     func update(_ filter: SCContentFilter, for expected: SCStream?) {
         queue.async {
             guard let current = self.stream, expected === current else { return }
+            self.lastImage = nil
             current.updateContentFilter(filter) { error in
+                self.queue.async {
+                    if self.stream === current, let error { self.end(error: error) }
+                }
+            }
+            current.updateConfiguration(self.configuration(for: filter)) { error in
                 self.queue.async {
                     if self.stream === current, let error { self.end(error: error) }
                 }
@@ -79,17 +92,20 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
             guard layer == 0, let sink = self.sinks[id] else { return }
             do {
                 switch command {
-                case "keyframe": sink.encoder.requestKeyFrame()
-                case "active": sink.encoder.setActive(value != 0)
+                case "keyframe": sink.encoder.requestKeyFrame(); self.recovery.insert(id)
+                case "active":
+                    if sink.encoder.setActive(value != 0), value != 0 { self.recovery.insert(id) }
                 case "bitrate": try sink.encoder.setBitrate(Int(value))
                 default: break
                 }
+                self.replay(id: id)
             } catch { self.fail(id: id, error: error) }
         }
     }
     func remove(id: Int64) {
         queue.async {
             self.sinks.removeValue(forKey: id)?.encoder.close()
+            self.recovery.remove(id)
             if self.sinks.isEmpty { self.stopStream() }
         }
     }
@@ -100,12 +116,13 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
         }
     }
     private func stopStream() {
-        let retired = stream; stream = nil
+        let retired = stream; stream = nil; lastImage = nil; lastTimestamp = .invalid; recovery.removeAll()
         retired?.stopCapture { _ in }
         DispatchQueue.main.async { self.idle() }
     }
     private func fail(id: Int64, error: Error) {
         guard let sink = sinks.removeValue(forKey: id) else { return }
+        recovery.remove(id)
         sink.encoder.close(); core.captureEnded(id)
         DispatchQueue.main.async { self.report(error) }
         if sinks.isEmpty { stopStream() }
@@ -117,14 +134,39 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
     }
     func stream(_ stream: SCStream, didOutputSampleBuffer sample: CMSampleBuffer, of type: SCStreamOutputType) {
         guard self.stream === stream, type == .screen, CMSampleBufferDataIsReady(sample),
+              let attachments = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+              let status = attachments.first?[.status] as? Int, SCFrameStatus(rawValue: status) == .complete,
               let image = CMSampleBufferGetImageBuffer(sample) else { return }
-        let time = CMSampleBufferGetPresentationTimeStamp(sample)
+        let captured = CMSampleBufferGetPresentationTimeStamp(sample)
+        guard captured.isNumeric else { return }
+        let next = CMTimeAdd(lastTimestamp, CMTime(value: 1, timescale: 1_000_000))
+        let time = lastTimestamp.isNumeric && CMTimeCompare(next, captured) > 0 ? next : captured
+        lastImage = image; lastTimestamp = time
         for sink in Array(sinks.values) {
-            do { try sink.encoder.encode(image, at: time) }
+            do { if try sink.encoder.encode(image, at: time) { recovery.remove(sink.id) } }
             catch { fail(id: sink.id, error: error) }
         }
+    }
+    private func configuration(for filter: SCContentFilter) -> SCStreamConfiguration {
+        let value = SCStreamConfiguration()
+        value.capturesAudio = false
+        value.width = max(2, Int(filter.contentRect.width * CGFloat(filter.pointPixelScale)))
+        value.height = max(2, Int(filter.contentRect.height * CGFloat(filter.pointPixelScale)))
+        return value
+    }
+    // Retain one actual frame for explicit recovery and late admission on a static screen.
+    // A busy encoder calls back when ready; no polling or fabricated image is needed.
+    private func replay(id: Int64) {
+        guard recovery.contains(id), let sink = sinks[id], let image = lastImage else { return }
+        let now = CMClockGetTime(CMClockGetHostTimeClock())
+        let next = CMTimeAdd(lastTimestamp, CMTime(value: 1, timescale: 1_000_000))
+        let time = CMTimeCompare(now, next) > 0 ? now : next
+        do {
+            if try sink.encoder.encode(image, at: time) { lastTimestamp = time; recovery.remove(id) }
+        } catch { fail(id: id, error: error) }
     }
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         queue.async { if self.stream === stream { self.end(error: error) } }
     }
 }
+#endif

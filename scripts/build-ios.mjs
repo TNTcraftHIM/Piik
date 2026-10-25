@@ -21,9 +21,12 @@ writeIOSLicenseNotices(root, join(root, 'mobile', 'ios', 'Piik', 'THIRD-PARTY-NO
 run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=ios,iossimulator',
   '-iosversion=27.0', '-prefix=Piik', '-ldflags=-s -w', '-o', framework, './mobile/bridge']);
 const derived = join(root, 'build', 'ios-client', 'DerivedData');
-for (const sdk of ['iphonesimulator', 'iphoneos']) {
+for (const sdk of ['iphoneos', 'iphonesimulator']) {
   run('xcodebuild', ['-project', 'mobile/ios/Piik.xcodeproj', '-scheme', 'Piik', '-configuration', 'Debug',
     '-sdk', sdk, '-destination', `generic/platform=${sdk === 'iphoneos' ? 'iOS' : 'iOS Simulator'}`,
     '-derivedDataPath', derived, 'CODE_SIGNING_ALLOWED=NO', 'build']);
+  run('ditto', ['-c', '-k', '--sequesterRsrc', '--keepParent',
+    join(derived, 'Build', 'Products', `Debug-${sdk}`, 'Piik.app'),
+    join(root, 'build', 'ios-client', `piik-${sdk}-unsigned.zip`)]);
 }
 console.log(`Unsigned iOS development applications: ${join(derived, 'Build', 'Products')}`);

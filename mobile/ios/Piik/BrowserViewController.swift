@@ -85,8 +85,12 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         web.stopLoading(); web.load(URLRequest(url: URL(string: "about:blank")!)); web.isHidden = true
     }
     private func checkSiteAccess() {
-        if trustedPage, let url = web.url, !runtime.trusts(url), let management = runtime.managementURL {
-            trustedPage = false; web.load(URLRequest(url: management))
+        if let url = web.url {
+            let wasTrusted = trustedPage
+            trustedPage = runtime.trusts(url)
+            if wasTrusted && !trustedPage, let management = runtime.managementURL {
+                web.load(URLRequest(url: management))
+            }
         }
         ((presentedViewController as? UINavigationController)?.topViewController as? BrowserViewController)?.checkSiteAccess()
     }

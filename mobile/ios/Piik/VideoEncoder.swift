@@ -34,8 +34,9 @@ final class VideoEncoder {
         private var alive = true
         private let receive: (CMSampleBuffer) -> Void
         private let fail: (Error) -> Void
-        init(receive: @escaping (CMSampleBuffer) -> Void, fail: @escaping (Error) -> Void) {
-            self.receive = receive; self.fail = fail
+        private let ready: () -> Void
+        init(receive: @escaping (CMSampleBuffer) -> Void, ready: @escaping () -> Void, fail: @escaping (Error) -> Void) {
+            self.receive = receive; self.ready = ready; self.fail = fail
         }
         func acquire() -> Bool {
             lock.lock(); defer { lock.unlock() }
@@ -51,6 +52,7 @@ final class VideoEncoder {
                 else if let sample, CMSampleBufferDataIsReady(sample) { receive(sample) }
             }
             lock.lock(); busy = false; lock.unlock()
+            if current { ready() }
         }
         func retire() { lock.lock(); alive = false; lock.unlock() }
     }
@@ -62,6 +64,7 @@ final class VideoEncoder {
     private let configuration: CaptureConfiguration
     private let receive: (EncodedVideo) -> Void
     private let fail: (Error) -> Void
+    private let ready: () -> Void
     private var output: Output?
     private var session: VTCompressionSession?
     private var transfer: VTPixelTransferSession?
@@ -72,27 +75,33 @@ final class VideoEncoder {
     private var bitrate: Int
 
     init(configuration: CaptureConfiguration, receive: @escaping (EncodedVideo) -> Void,
+         ready: @escaping () -> Void,
          fail: @escaping (Error) -> Void) {
         self.configuration = configuration; self.bitrate = configuration.bitrate
-        self.receive = receive; self.fail = fail
+        self.receive = receive; self.ready = ready; self.fail = fail
     }
-    func requestKeyFrame() { keyFrame = true }
-    func setActive(_ value: Bool) { active = value; if value { keyFrame = true } }
+    // A recovery frame must reach Go before its output plan can reactivate us.
+    func requestKeyFrame() { keyFrame = true; active = true }
+    func setActive(_ value: Bool) -> Bool {
+        guard active != value else { return false }
+        active = value; if value { keyFrame = true }
+        return true
+    }
     func setBitrate(_ value: Int) throws {
         bitrate = value
         if let session { try require(VTSessionSetProperty(session, key: kVTCompressionPropertyKey_AverageBitRate,
                                                          value: NSNumber(value: value)), "bitrate") }
     }
-    func encode(_ image: CVPixelBuffer, at time: CMTime) throws {
-        guard active, time.isNumeric else { return }
+    func encode(_ image: CVPixelBuffer, at time: CMTime) throws -> Bool {
+        guard active, time.isNumeric else { return false }
         let bucket = CMTimeConvertScale(time, timescale: Int32(configuration.framerate), method: .roundTowardZero).value
-        if bucket == lastBucket { return }
+        if bucket == lastBucket && !keyFrame { return false }
         let width = CVPixelBufferGetWidth(image), height = CVPixelBufferGetHeight(image)
         if session == nil || sourceWidth != width || sourceHeight != height {
             close(); try prepare(width: width, height: height)
         }
         guard let session, let transfer, let pool = VTCompressionSessionGetPixelBufferPool(session),
-              let output, output.acquire() else { return }
+              let output, output.acquire() else { return false }
         do {
             var scaled: CVPixelBuffer?
             try require(CVPixelBufferPoolCreatePixelBuffer(nil, pool, &scaled), "allocate")
@@ -107,6 +116,7 @@ final class VideoEncoder {
                 }
             try require(status, "encode")
             keyFrame = false; lastBucket = bucket
+            return true
         } catch { output.complete(noErr, sample: nil); throw error }
     }
     private func prepare(width: Int, height: Int) throws {
@@ -138,7 +148,7 @@ final class VideoEncoder {
             output = Output(receive: { [receive, fail, configuration] sample in
                 do { receive(try Self.accessUnit(sample, duration: 1_000_000 / Int64(configuration.framerate))) }
                 catch { fail(error) }
-            }, fail: fail)
+            }, ready: ready, fail: fail)
             sourceWidth = width; sourceHeight = height; keyFrame = true
         } catch { close(); throw error }
     }
@@ -165,6 +175,7 @@ final class VideoEncoder {
             }
         }
         let length = CMBlockBufferGetDataLength(buffer)
+        guard length > 0 else { throw EncoderError(stage: "empty access unit", status: -1) }
         var avc = Data(count: length)
         let status = avc.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(buffer, atOffset: 0, dataLength: length,
                                                                           destination: $0.baseAddress!) }

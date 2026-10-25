@@ -25,8 +25,8 @@
   A00000000000000000000053 = { isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000088); runOnlyForDeploymentPostprocessing = 0; };
   A00000000000000000000054 = { isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000089); runOnlyForDeploymentPostprocessing = 0; };
   A00000000000000000000060 = { isa = XCConfigurationList; buildConfigurations = (A00000000000000000000061, A00000000000000000000062); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-  A00000000000000000000061 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = "$(PIIK_BUNDLE_IDENTIFIER)"; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = Piik/Info.plist; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGN_STYLE = Automatic; }; };
-  A00000000000000000000062 = { isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = "$(PIIK_BUNDLE_IDENTIFIER)"; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = Piik/Info.plist; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGN_STYLE = Automatic; }; };
+  A00000000000000000000061 = { isa = XCBuildConfiguration; name = Debug; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = "$(PIIK_BUNDLE_IDENTIFIER)"; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = Piik/Info.plist; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = Piik/Piik.entitlements; }; };
+  A00000000000000000000062 = { isa = XCBuildConfiguration; name = Release; buildSettings = { PRODUCT_BUNDLE_IDENTIFIER = "$(PIIK_BUNDLE_IDENTIFIER)"; PRODUCT_NAME = "$(TARGET_NAME)"; INFOPLIST_FILE = Piik/Info.plist; TARGETED_DEVICE_FAMILY = "1,2"; CODE_SIGN_STYLE = Automatic; CODE_SIGN_ENTITLEMENTS = Piik/Piik.entitlements; }; };
   A00000000000000000000080 = { isa = PBXBuildFile; fileRef = A00000000000000000000040; };
   A00000000000000000000081 = { isa = PBXBuildFile; fileRef = A00000000000000000000041; };
   A00000000000000000000082 = { isa = PBXBuildFile; fileRef = A00000000000000000000042; };

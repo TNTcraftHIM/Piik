@@ -44,9 +44,14 @@ node scripts/build-ios.mjs
 shared Web assets and license notices, creates `Frameworks/PiikBridge.xcframework`
 from the unique `mobile/bridge` package, and runs Xcode for device and simulator.
 Outputs are unsigned development `.app` bundles under
-`build/ios-client/DerivedData/Build/Products`. They are not installable release
-IPAs. For a device, select a development team and bundle identifier in Xcode;
-no signing identity or profile is included.
+`build/ios-client/DerivedData/Build/Products`, also packaged with macOS `ditto` as
+`build/ios-client/piik-{iphoneos,iphonesimulator}-unsigned.zip` to preserve bundle
+permissions and links. They are not installable release IPAs. For a device,
+select a development team, bundle identifier and provisioning profile with the
+`com.apple.developer.screen-recording` entitlement requested by `Piik.entitlements`;
+no signing identity or profile is included. ScreenCaptureKit is absent from the
+simulator SDK: that build supports the shared UI and runtime, and advertises no
+native capture encoder. Actual recording requires a physical iOS 27 device.
 
 The `iOS build` workflow uses the official `xcode-27` runner and uploads only
 unsigned build artifacts. It neither publishes a release nor changes `main`.
@@ -64,7 +69,10 @@ Safari-to-App operation is not advertised as a persistent native service.
 Apple SDK compilation and physical-device acceptance are separate checks. System
 consent, rotation, background capture, late Viewer admission and reconnect require
 an iOS 27 device. Safari's Web process has its own background lifecycle; active
-App capture does not promise perpetual execution of a background browser tab.
+App capture does not promise perpetual execution of WKWebView's separate Web
+process or a background browser tab. Existing native output can remain App-owned;
+new Viewer admission, route changes and Web camera/voice still require actual
+Web-process execution and must be checked on a device.
 
 References: [Apple's iOS capture sample](https://developer.apple.com/documentation/screencapturekit/capturing-screen-content-on-ios),
 [SCStream availability](https://developer.apple.com/documentation/screencapturekit/scstream),
