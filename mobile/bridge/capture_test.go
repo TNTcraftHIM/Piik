@@ -1,4 +1,4 @@
-package androidbridge
+package bridge
 
 import (
 	"bytes"
@@ -25,6 +25,20 @@ type testPlatform struct {
 	siteChanged     func()
 	videoStarted    func(int64, string)
 	preparationDone func(int64)
+}
+
+func TestVideoOnlyPlatformDoesNotAdvertisePlaybackAudio(t *testing.T) {
+	catalog, err := decodeEncoderCapabilities(`{"platform":"ios","provider":"VideoToolbox","encoders":[{"name":"hardware-avc","codec":"h264","width":1280,"height":720,"pixels":921600,"macroblocks":100000,"fps":30,"bitrate":3000000}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	native, media := catalog.nativeCapabilities(), catalog.mediaCapabilities()
+	if native.Platform != "ios" || native.Adapters[0].Name != "VideoToolbox" || !media.Video || !media.HardwareH264 {
+		t.Fatalf("video producer was not preserved: native=%+v media=%+v", native, media)
+	}
+	if native.SystemAudio || media.SystemAudio || media.ShareVolume {
+		t.Fatalf("video support invented playback audio: native=%+v media=%+v", native, media)
+	}
 }
 
 func (p *testPlatform) StartVideo(id int64, configuration string) {
@@ -286,7 +300,7 @@ func TestAudioProviderCommitsOnlyAfterPlatformStarted(t *testing.T) {
 }
 
 func TestEncoderCatalogPreservesBothExplicitPaths(t *testing.T) {
-	catalog, err := decodeEncoderCapabilities(`{"encoders":[{"name":"hardware-avc","codec":"h264","width":1920,"height":1080,"pixels":2073600,"macroblocks":100000,"fps":60,"bitrate":20000000},{"name":"platform-vp8","codec":"vp8","width":1280,"height":720,"pixels":921600,"macroblocks":100000,"fps":30,"bitrate":10000000}]}`)
+	catalog, err := decodeEncoderCapabilities(`{"platform":"android","provider":"Android MediaCodec","systemAudio":true,"encoders":[{"name":"hardware-avc","codec":"h264","width":1920,"height":1080,"pixels":2073600,"macroblocks":100000,"fps":60,"bitrate":20000000},{"name":"platform-vp8","codec":"vp8","width":1280,"height":720,"pixels":921600,"macroblocks":100000,"fps":30,"bitrate":10000000}]}`)
 	if err != nil {
 		t.Fatal(err)
 	}

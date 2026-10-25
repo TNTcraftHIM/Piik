@@ -1,4 +1,4 @@
-package androidbridge
+package bridge
 
 import (
 	"context"

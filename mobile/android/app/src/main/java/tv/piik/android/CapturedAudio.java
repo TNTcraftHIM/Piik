@@ -5,9 +5,9 @@ import android.media.AudioRecord;
 // One admitted PCM input owns its recorder and reader until close joins it.
 final class CapturedAudio {
   final long id;
-  final tv.piik.androidbridge.Runtime runtime;
+  final tv.piik.bridge.Runtime runtime;
 
-  CapturedAudio(long id, tv.piik.androidbridge.Runtime runtime) {
+  CapturedAudio(long id, tv.piik.bridge.Runtime runtime) {
     this.id = id;
     this.runtime = runtime;
   }

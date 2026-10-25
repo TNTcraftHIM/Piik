@@ -12,7 +12,7 @@ import android.webkit.WebView;
 import java.util.ArrayDeque;
 import java.util.IdentityHashMap;
 import org.json.JSONObject;
-import tv.piik.androidbridge.Runtime;
+import tv.piik.bridge.Runtime;
 
 // One approved main document owns this port and its Browser camera/microphone demand.
 final class BrowserMedia {

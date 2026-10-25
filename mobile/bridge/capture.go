@@ -1,5 +1,5 @@
-// Package androidbridge binds Android capture to Piik's existing native session.
-package androidbridge
+// Package bridge binds mobile capture to Piik's existing native session.
+package bridge
 
 import (
 	"context"
@@ -16,8 +16,8 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 )
 
-// Platform runs Android-owned permission and codec work on its appropriate threads.
-// Byte buffers are copied before returning from a JNI callback.
+// Platform runs Platform-owned permission and codec work on its appropriate threads.
+// Byte buffers are copied before returning from a platform callback.
 type Platform interface {
 	StartVideo(id int64, configuration string)
 	PreparationDone(id int64)
@@ -73,7 +73,7 @@ func (c *capture) Video(ctx context.Context, options nativecapture.VideoOptions)
 		}
 	}
 	if !available {
-		return nil, errors.New("requested Android encoder is unavailable")
+		return nil, errors.New("requested mobile encoder is unavailable")
 	}
 	output := nativecapture.OutputProfile{Width: options.Profile.Width, Height: options.Profile.Height, Framerate: options.Profile.Framerate, Bitrate: options.Profile.Bitrate}
 	s := c.stream(ctx, []nativecapture.OutputProfile{output})
@@ -88,13 +88,13 @@ func (c *capture) Video(ctx context.Context, options nativecapture.VideoOptions)
 
 func (c *capture) Audio(ctx context.Context, _ nativecapture.CaptureTarget, excluded *nativecapture.CaptureTarget) (nativehost.CaptureStream, error) {
 	if excluded != nil {
-		return nil, errors.New("Android source exclusion is unavailable")
+		return nil, errors.New("mobile source exclusion is unavailable")
 	}
 	s := c.stream(ctx, nil)
 	c.platform.StartAudio(s.id)
 	select {
 	case <-s.ctx.Done():
-		return nil, errors.New("Android playback audio is unavailable")
+		return nil, errors.New("mobile playback audio is unavailable")
 	case <-s.ready:
 		return s, nil
 	}
@@ -104,16 +104,16 @@ func (c *capture) Microphone(ctx context.Context, device string) (nativehost.Cap
 	c.platform.StartMicrophone(s.id, device)
 	select {
 	case <-s.ctx.Done():
-		return nil, errors.New("Android commentary microphone is unavailable")
+		return nil, errors.New("mobile commentary microphone is unavailable")
 	case <-s.ready:
 		return s, nil
 	}
 }
 func (c *capture) ListSources(context.Context) ([]nativecapture.CaptureTarget, error) {
-	return []nativecapture.CaptureTarget{{Kind: "picker", SourceID: "1", Title: "Android screen"}}, nil
+	return []nativecapture.CaptureTarget{{Kind: "picker", SourceID: "1", Title: "Screen"}}, nil
 }
 func (c *capture) PreviewSource(context.Context, nativecapture.CaptureTarget) ([]byte, error) {
-	return nil, errors.New("Android screen preview is unavailable before system consent")
+	return nil, errors.New("mobile screen preview is unavailable before system consent")
 }
 func (c *capture) ListMicrophones(context.Context) ([]nativecapture.Microphone, error) {
 	payload, err := c.platform.Microphones()
@@ -122,11 +122,11 @@ func (c *capture) ListMicrophones(context.Context) ([]nativecapture.Microphone, 
 	}
 	var devices []nativecapture.Microphone
 	if json.Unmarshal([]byte(payload), &devices) != nil || devices == nil || len(devices) > 64 {
-		return nil, errors.New("Android microphone list is invalid")
+		return nil, errors.New("mobile microphone list is invalid")
 	}
 	for _, device := range devices {
 		if device.ID == "" || !nativecapture.ValidDeviceID(device.ID) || device.Label == "" || len(device.Label) > 512 {
-			return nil, errors.New("Android microphone identity is invalid")
+			return nil, errors.New("mobile microphone identity is invalid")
 		}
 	}
 	return devices, nil

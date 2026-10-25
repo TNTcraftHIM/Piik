@@ -18,9 +18,9 @@ public final class CaptureService extends Service {
   static volatile CaptureService instance;
 
   static final class ProjectionOwner extends Binder {
-    final tv.piik.androidbridge.Runtime runtime;
+    final tv.piik.bridge.Runtime runtime;
 
-    ProjectionOwner(tv.piik.androidbridge.Runtime runtime) {
+    ProjectionOwner(tv.piik.bridge.Runtime runtime) {
       this.runtime = runtime;
     }
   }
@@ -43,9 +43,9 @@ public final class CaptureService extends Service {
 
   final class Video {
     final long id;
-    final tv.piik.androidbridge.Runtime runtime;
+    final tv.piik.bridge.Runtime runtime;
 
-    Video(long id, tv.piik.androidbridge.Runtime runtime) {
+    Video(long id, tv.piik.bridge.Runtime runtime) {
       this.id = id;
       this.runtime = runtime;
     }
@@ -158,7 +158,7 @@ public final class CaptureService extends Service {
     return START_NOT_STICKY;
   }
 
-  static boolean replaceVideo(tv.piik.androidbridge.Runtime owner, long id, String config) {
+  static boolean replaceVideo(tv.piik.bridge.Runtime owner, long id, String config) {
     CaptureService s = instance;
     if (s == null
         || s.projection == null
@@ -169,7 +169,7 @@ public final class CaptureService extends Service {
     return true;
   }
 
-  void beginVideo(tv.piik.androidbridge.Runtime runtime, long id, String json) {
+  void beginVideo(tv.piik.bridge.Runtime runtime, long id, String json) {
     if (runtime == null || runtime != AppRuntimeService.runtime() || !runtime.captureCurrent(id))
       return;
     if (retiring || stopRequested || projection == null) {
@@ -198,7 +198,7 @@ public final class CaptureService extends Service {
   }
 
   void beginVideo(
-      tv.piik.androidbridge.Runtime runtime,
+      tv.piik.bridge.Runtime runtime,
       long id,
       String json,
       List<EncoderCatalog.Entry> candidates,
@@ -485,7 +485,7 @@ public final class CaptureService extends Service {
     return result;
   }
 
-  static void control(tv.piik.androidbridge.Runtime owner, long id, String command, long value) {
+  static void control(tv.piik.bridge.Runtime owner, long id, String command, long value) {
     CaptureService s = instance;
     if (s != null)
       s.handler.post(
@@ -506,7 +506,7 @@ public final class CaptureService extends Service {
           });
   }
 
-  static void startAudio(tv.piik.androidbridge.Runtime owner, long id) {
+  static void startAudio(tv.piik.bridge.Runtime owner, long id) {
     CaptureService s = instance;
     if (s == null) {
       if (owner != null) owner.captureEnded(id);
@@ -515,7 +515,7 @@ public final class CaptureService extends Service {
     s.handler.post(() -> s.beginAudio(owner, id));
   }
 
-  void beginAudio(tv.piik.androidbridge.Runtime runtime, long id) {
+  void beginAudio(tv.piik.bridge.Runtime runtime, long id) {
     if (runtime == null || runtime != AppRuntimeService.runtime() || !runtime.captureCurrent(id))
       return;
     if (retiring || stopRequested) {
@@ -574,7 +574,7 @@ public final class CaptureService extends Service {
     }
   }
 
-  static void startMicrophone(tv.piik.androidbridge.Runtime owner, long id, String device) {
+  static void startMicrophone(tv.piik.bridge.Runtime owner, long id, String device) {
     CaptureService service = instance;
     if (service == null) {
       owner.captureEnded(id);
@@ -688,7 +688,7 @@ public final class CaptureService extends Service {
         });
   }
 
-  static void stopCapture(tv.piik.androidbridge.Runtime owner, long id) {
+  static void stopCapture(tv.piik.bridge.Runtime owner, long id) {
     CaptureService s = instance;
     if (s != null) {
       if (s.video != null
@@ -762,7 +762,7 @@ public final class CaptureService extends Service {
     }
   }
 
-  void fail(tv.piik.androidbridge.Runtime runtime, long id) {
+  void fail(tv.piik.bridge.Runtime runtime, long id) {
     if (runtime != null) {
       runtime.captureEnded(id);
       AppRuntimeService.failed(runtime, id);

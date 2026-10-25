@@ -1,4 +1,4 @@
-package androidbridge
+package bridge
 
 import (
 	"context"
@@ -27,7 +27,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
 )
 
-// The App process owns the room runtime. Its foreground service owns capture.
+// The App process owns the room runtime; the platform owns capture resources.
 type Runtime struct {
 	capture            *capture
 	server             *serverapp.Server
@@ -49,16 +49,16 @@ type Runtime struct {
 
 func Start(platform Platform, lanAddress string, codecCapabilities string, dataDirectory, temporaryDirectory, tunnelExecutable, activationURL string) (*Runtime, error) {
 	if platform == nil {
-		return nil, errors.New("Android capture platform is unavailable")
+		return nil, errors.New("mobile capture platform is unavailable")
 	}
 	if activationURL != "" && activationURL != "piik://media" {
-		return nil, errors.New("Android media activation URL is invalid")
+		return nil, errors.New("mobile media activation URL is invalid")
 	}
 	if webassets.FS() == nil {
-		return nil, errors.New("build the Piik Web assets before the Android library")
+		return nil, errors.New("build the Piik Web assets before the mobile library")
 	}
 	if !filepath.IsAbs(temporaryDirectory) {
-		return nil, errors.New("Android cache directory is unavailable")
+		return nil, errors.New("mobile cache directory is unavailable")
 	}
 	if err := os.MkdirAll(temporaryDirectory, 0700); err != nil {
 		return nil, err
@@ -86,7 +86,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	microphones, microphoneErr := r.capture.ListMicrophones(ctx)
 	capabilities.Microphone = microphoneErr == nil && len(microphones) > 0
 	if microphoneErr != nil {
-		slog.Debug("Android microphone enumeration failed", "error", microphoneErr)
+		slog.Debug("mobile microphone enumeration failed", "error", microphoneErr)
 	}
 	mediaCapabilities := catalog.mediaCapabilities()
 	mediaCapabilities.Microphone = capabilities.Microphone
@@ -284,7 +284,7 @@ func (r *Runtime) watchTunnel(tunnel *publictunnel.Process) {
 			return
 		}
 		if err := r.Close(); err != nil {
-			slog.Warn("Android public-link cleanup failed", "error", err)
+			slog.Warn("mobile public-link cleanup failed", "error", err)
 		}
 		r.capture.platform.RuntimeStopped("public-link-stopped")
 	}

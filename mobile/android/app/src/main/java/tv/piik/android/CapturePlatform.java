@@ -1,8 +1,8 @@
 package tv.piik.android;
 
 import java.lang.ref.WeakReference;
-import tv.piik.androidbridge.Platform;
-import tv.piik.androidbridge.Runtime;
+import tv.piik.bridge.Platform;
+import tv.piik.bridge.Runtime;
 
 // Each JNI adapter belongs to one Go runtime, even when stream IDs restart at one.
 final class CapturePlatform implements Platform {

@@ -119,7 +119,7 @@ export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand,
 export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand) {
   const mobileRoot = join(repositoryRoot, "mobile");
   const target = { goos: "android", goarch: "arm64", cgo: false };
-  const notices = goNotices(mobileRoot, goCommand, target, "./androidbridge");
+  const notices = goNotices(mobileRoot, goCommand, target, "./bridge");
   // gomobile adds the JNI binding runtime when generating the AAR. It is not
   // imported by the bridge package before generation, and has its own notice.
   const runtime = JSON.parse(execFileSync(goCommand, ["list", "-m", "-json", "golang.org/x/mobile"], {

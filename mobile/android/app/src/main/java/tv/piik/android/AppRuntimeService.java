@@ -12,8 +12,8 @@ import android.os.*;
 import java.net.Inet4Address;
 import java.util.ArrayDeque;
 import java.util.concurrent.*;
-import tv.piik.androidbridge.Androidbridge;
-import tv.piik.androidbridge.Runtime;
+import tv.piik.bridge.Bridge;
+import tv.piik.bridge.Runtime;
 
 // One user-started native companion owns the Go core and pending OS consent.
 public final class AppRuntimeService extends Service {
@@ -132,7 +132,7 @@ public final class AppRuntimeService extends Service {
                     }
                 CapturePlatform platform = new CapturePlatform(getApplicationContext());
                 Runtime started =
-                    Androidbridge.start(
+                    Bridge.start(
                         platform,
                         address,
                         EncoderCatalog.capabilities(),

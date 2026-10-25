@@ -65,6 +65,7 @@ final class EncoderCatalog {
     for (Entry entry : candidates("auto")) {
       encoders.put(entry.metadata);
     }
-    return new JSONObject().put("encoders", encoders).toString();
+    return new JSONObject().put("platform", "android").put("provider", "Android MediaCodec")
+        .put("systemAudio", encoders.length() > 0).put("encoders", encoders).toString();
   }
 }

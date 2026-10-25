@@ -1,4 +1,4 @@
-package androidbridge
+package bridge
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func TestStartRejectsUnownedActivationURLBeforeAllocating(t *testing.T) {
 
 func TestEntryTracksCurrentStartupPreferenceAndSiteRevocation(t *testing.T) {
 	if webassets.FS() == nil {
-		t.Skip("Android runtime requires built Web assets")
+		t.Skip("mobile runtime requires built Web assets")
 	}
 	directory := t.TempDir()
 	configPath := filepath.Join(directory, "client.json")
@@ -34,7 +34,7 @@ func TestEntryTracksCurrentStartupPreferenceAndSiteRevocation(t *testing.T) {
 	if err := launcher.SaveStartupSite(configPath, "https://first.example"); err != nil {
 		t.Fatal(err)
 	}
-	r, err := Start(&testPlatform{}, "", `{"encoders":[]}`, directory, t.TempDir(), "", "piik://media")
+	r, err := Start(&testPlatform{}, "", `{"platform":"android","provider":"Android MediaCodec","systemAudio":true,"encoders":[]}`, directory, t.TempDir(), "", "piik://media")
 	if err != nil {
 		t.Fatal(err)
 	}

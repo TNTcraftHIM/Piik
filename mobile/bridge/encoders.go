@@ -1,4 +1,4 @@
-package androidbridge
+package bridge
 
 import (
 	"encoding/json"
@@ -21,7 +21,10 @@ type encoderCapability struct {
 }
 
 type encoderCapabilities struct {
-	Encoders []encoderCapability `json:"encoders"`
+	Platform    string              `json:"platform"`
+	Provider    string              `json:"provider"`
+	SystemAudio bool                `json:"systemAudio"`
+	Encoders    []encoderCapability `json:"encoders"`
 }
 
 func decodeEncoderCapabilities(value string) (encoderCapabilities, error) {
@@ -29,20 +32,23 @@ func decodeEncoderCapabilities(value string) (encoderCapabilities, error) {
 	if err := json.Unmarshal([]byte(value), &catalog); err != nil {
 		return catalog, err
 	}
+	if catalog.Platform == "" || catalog.Provider == "" {
+		return encoderCapabilities{}, errors.New("mobile capture platform is invalid")
+	}
 	for _, encoder := range catalog.Encoders {
 		if encoder.Name == "" || (encoder.Codec != "h264" && encoder.Codec != "vp8") || encoder.Width < 2 || encoder.Height < 2 || encoder.Pixels < 4 || encoder.Macroblocks < 1 || encoder.FPS < 1 || encoder.Bitrate < 1 {
-			return encoderCapabilities{}, errors.New("Android encoder capabilities are invalid")
+			return encoderCapabilities{}, errors.New("mobile encoder capabilities are invalid")
 		}
 	}
 	return catalog, nil
 }
 
 func (catalog encoderCapabilities) nativeCapabilities() nativecapture.Capabilities {
-	result := nativecapture.Capabilities{Protocol: 7, Platform: "android", VideoCapture: len(catalog.Encoders) > 0, SystemAudio: len(catalog.Encoders) > 0, Adapters: []nativecapture.Adapter{}}
+	result := nativecapture.Capabilities{Protocol: 7, Platform: catalog.Platform, VideoCapture: len(catalog.Encoders) > 0, SystemAudio: catalog.SystemAudio && len(catalog.Encoders) > 0, Adapters: []nativecapture.Adapter{}}
 	if !result.VideoCapture {
 		return result
 	}
-	adapter := nativecapture.Adapter{Index: 0, Name: "Android MediaCodec", Identity: "android", HardwareH264: []nativecapture.Encoder{}}
+	adapter := nativecapture.Adapter{Index: 0, Name: catalog.Provider, Identity: catalog.Platform, HardwareH264: []nativecapture.Encoder{}}
 	for _, encoder := range catalog.Encoders {
 		if encoder.Codec == "vp8" {
 			result.SoftwareVP8 = true
