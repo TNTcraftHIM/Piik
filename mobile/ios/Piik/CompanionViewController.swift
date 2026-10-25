@@ -102,7 +102,7 @@ final class CompanionViewController: UIViewController {
         case .starting: text = "Starting Piik…"
         case .running:
             text = returningToBrowser
-                ? "Use the browser return button at the top of the screen to continue in the same tab."
+                ? "Return to the same browser tab using the browser return button or the app switcher."
                 : "Piik is running. Rooms, camera and voice stay in your browser."
         case .stopping: text = "Stopping Piik…"
         case .failed(let reason): detail.text = reason; return

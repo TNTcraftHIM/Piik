@@ -7,7 +7,7 @@
 "Starting Piik…" = "Starting Piik…";
 "Stopping Piik…" = "Stopping Piik…";
 "Piik is running. Rooms, camera and voice stay in your browser." = "Piik is running. Rooms, camera and voice stay in your browser.";
-"Use the browser return button at the top of the screen to continue in the same tab." = "Use the browser return button at the top of the screen to continue in the same tab.";
+"Return to the same browser tab using the browser return button or the app switcher." = "Return to the same browser tab using the browser return button or the app switcher.";
 "The system could not register this Piik session." = "The system could not register this Piik session.";
 "Starting your session" = "Starting your session";
 "Background execution is unavailable. Allow Background App Refresh for Piik, then try again." = "Background execution is unavailable. Allow Background App Refresh for Piik, then try again.";

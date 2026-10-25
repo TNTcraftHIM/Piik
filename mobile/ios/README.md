@@ -24,8 +24,8 @@ through the existing exact-origin loopback authority.
 Choose the system capture source in the ordinary source picker, then confirm
 Apple's recording chooser in App. **Confirm in App** uses the fixed
 `piik://media` action; waking App never approves a site. After confirmation, use
-iOS's return-to-browser button at the top of the screen to return to the same
-room tab. Piik does not reopen a startup URL after capture and lose that tab's
+iOS's return-to-browser button or app switcher to return to the same room tab.
+Piik does not reopen a startup URL after capture and lose that tab's
 ownership. A normal App open also presents any current pending chooser.
 Actual encoded frames and the existing native ACK
 complete startup. Encoder-profile replacement shares the current physical stream;

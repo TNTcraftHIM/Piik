@@ -7,7 +7,7 @@
 "Starting Piik…" = "正在启动 Piik…";
 "Stopping Piik…" = "正在停止 Piik…";
 "Piik is running. Rooms, camera and voice stay in your browser." = "Piik 正在运行。房间、摄像头和语音都在浏览器中使用。";
-"Use the browser return button at the top of the screen to continue in the same tab." = "使用屏幕顶部的返回浏览器按钮，在原来的标签页中继续。";
+"Return to the same browser tab using the browser return button or the app switcher." = "使用返回浏览器按钮或 App 切换器，回到原来的浏览器标签页继续。";
 "The system could not register this Piik session." = "系统未能注册本次 Piik 会话。";
 "Starting your session" = "正在启动会话";
 "Background execution is unavailable. Allow Background App Refresh for Piik, then try again." = "后台运行暂不可用。请允许 Piik 使用后台 App 刷新，然后重试。";
