@@ -121,7 +121,7 @@ describe("native capture source selection", () => {
   it("keeps pending native selection from implicitly opening a mobile camera", () => {
     const props = { onBrowser: () => {}, onNative: () => {}, onCamera: () => {},
       onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
-      browserAvailable: false, cameraAvailable: true };
+      browserSupported: false };
     const pending = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       ...props, nativeSources: { kind: "loading" }, initialTab: "window",
     }));
@@ -201,7 +201,7 @@ describe("native capture source selection", () => {
     expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
   });
 
-  it("separates windows from displays and locks Browser switching during native sharing", () => {
+  it("separates windows from displays while keeping Browser and Camera switching available", () => {
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: {
         kind: "ready",
@@ -209,16 +209,17 @@ describe("native capture source selection", () => {
         processAudio: false,
         systemAudio: true,
       },
-      browserAvailable: false,
       audioLocked: true,
       onBrowser: () => {},
+      onCamera: () => {},
       onNative: () => {},
       onPreview: async () => null,
       onRefresh: () => {},
       onCancel: () => {},
     }));
     expect(html).toContain('data-source-tab="browser"');
-    expect(html).toMatch(/data-source-tab="browser"[^>]*disabled=""/);
+    expect(html).not.toMatch(/data-source-tab="browser"[^>]*disabled=""/);
+    expect(html).not.toMatch(/data-source-tab="camera"[^>]*disabled=""/);
     expect(html).toMatch(/data-native-source="window:1:10:123456"[^>]*disabled=""/);
     expect(html).not.toContain('data-native-source="display:2"');
     expect(html.match(/role="tab"/g)).toHaveLength(4);
@@ -240,14 +241,14 @@ describe("native capture source selection", () => {
     expect(html).not.toContain('role="status"');
   });
 
-  it("selects a focusable Camera tab when Browser sharing is unavailable", () => {
+  it("selects a focusable Camera tab when Browser capture is unsupported", () => {
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
-      nativeSources: { kind: "browser" }, browserAvailable: false,
+      nativeSources: { kind: "browser" }, browserSupported: false,
       onBrowser: () => {}, onCamera: () => {}, onNative: () => {},
       onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
     }));
     expect(html).toMatch(/data-source-tab="camera"[^>]*aria-selected="true"[^>]*tabindex="0"/);
-    expect(html).toMatch(/data-source-tab="browser"[^>]*tabindex="-1"[^>]*disabled=""/);
+    expect(html).not.toContain('data-source-tab="browser"');
   });
 
   it("retains the platform-owned combined source picker", () => {

@@ -56,8 +56,6 @@ export function CaptureSourcePicker({
   onAppConnected,
   browserSupported = true,
   cameraSupported = true,
-  browserAvailable = true,
-  cameraAvailable = !!onCamera,
   initialTab = "window",
   initialCamera = "",
   activeCameraVideo,
@@ -84,8 +82,6 @@ export function CaptureSourcePicker({
   onAppConnected?: () => void;
   browserSupported?: boolean;
   cameraSupported?: boolean;
-  browserAvailable?: boolean;
-  cameraAvailable?: boolean;
   initialTab?: SourceTab;
   initialAudio?: boolean;
   initialShowCaptureBorder?: boolean;
@@ -111,14 +107,13 @@ export function CaptureSourcePicker({
     : !pickerOnly && (appDetected || nativeSources.kind === "loading"));
   const requestedTab = tab ?? initialTab;
   const preferredTab = pickerOnly && (requestedTab === "window" || requestedTab === "display") ? "picker" : requestedTab;
-  const tabAvailable = (value: SourceTab) => value === "camera" ? cameraAvailable
-    : value === "browser" ? browserAvailable : true;
+  const tabAvailable = (value: SourceTab) => value !== "camera" || !!onCamera;
   const activeTab = tabs.includes(preferredTab) && tabAvailable(preferredTab)
     ? preferredTab : tabs.find(tabAvailable) ?? tabs[0];
   const nativeTab = activeTab === "window" || activeTab === "display" || activeTab === "picker";
   useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }); }, [activeTab]);
   const browserCapture = activeTab === "browser";
-  const cameraSources = useCameraSources(activeTab === "camera", activeCameraVideo, loadCameras);
+  const cameraSources = useCameraSources(activeTab === "camera" && !!onCamera, activeCameraVideo, loadCameras);
   const supportsCaptureBorder = nativeTab && nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
   const issueKey = !nativeTab ? null : nativeSources.kind === "incompatible" ? "native.incompatible"
     : (nativeSources.kind === "unsupported" || nativeSources.kind === "failed")
@@ -346,7 +341,7 @@ export function CaptureSourcePicker({
           ) : null}
 
           {activeTab === "camera" ? <CameraSources {...cameraSources} selected={initialCamera}
-            disabled={selectionDisabled} onSelect={id => {
+            disabled={selectionDisabled || !onCamera} onSelect={id => {
               cameraSources.cancel();
               onCamera?.(id);
             }} /> : <>
@@ -356,7 +351,7 @@ export function CaptureSourcePicker({
                 type="button"
                 className="lr-source-option is-action"
                 aria-label={t("host.sourcePicker.browser")}
-                disabled={selectionDisabled || !tabAvailable(activeTab)}
+                disabled={selectionDisabled}
                 onClick={onBrowser}
               >
                 <span className="lr-source-option-icon" aria-hidden="true">

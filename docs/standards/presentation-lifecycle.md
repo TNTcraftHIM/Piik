@@ -60,9 +60,10 @@ promise game-overlay transparency, click-through or exclusive-fullscreen coverag
 
 Desktop Piik App opens this same application in the system Browser. Its startup surface
 offers Local and temporary public invitation; the running App is already
-available to its approved Sites before either mode starts. Android offers the
-same App entry with an explicit wake action; unsupported mobile platforms omit
-that entry. Browser and camera actions retain their own capability checks.
+available to its approved Sites before either mode starts. Browser pages share
+one App entry across platforms; discovery and authorized health determine its
+connection state. Android adds an explicit wake action. Browser and camera
+actions retain their own capability checks.
 A Site's explicit App action discovers the local approval
 page, where the user confirms its exact origin. The launcher lists approvals and
 revokes each independently. Starring one approved Site makes an ordinary App launch open it;

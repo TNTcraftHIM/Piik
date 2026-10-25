@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { activateClient, isClientActivated, watchClientActivation } from "../../lib/session";
 import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
@@ -23,13 +23,6 @@ interface ConnectionAttempt {
 }
 
 export function AppConnectionButton(props: AppConnectionProps) {
-  const activated = useSyncExternalStore(watchClientActivation, isClientActivated, isClientActivated);
-  // Android can explicitly wake App from its browser. iOS keeps Browser media.
-  // iPad's desktop UA still identifies a touch-capable Mac platform.
-  if (!activated && typeof navigator !== "undefined" && (
-    /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
-  )) return null;
   const button = <AppConnectionControl {...props} />;
   return props.sourcePicker ? <div className="lr-source-app-connection">{button}</div> : button;
 }

@@ -7,16 +7,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConnectionButton } from "../src/client/components/living/AppConnectionButton";
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
 
-describe("desktop App connection entry", () => {
+describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it.each([
     ["iPhone", "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)", "iPhone", 5],
     ["iPad", "Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X)", "iPad", 5],
     ["desktop-mode iPad", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 5],
-  ])("omits the desktop workflow on %s, retaining Browser and camera choices", (_, userAgent, platform, maxTouchPoints) => {
+    ["Android phone", "Mozilla/5.0 (Linux; Android 16) Mobile", "Linux armv8l", 5],
+    ["Android tablet", "Mozilla/5.0 (Linux; Android 16)", "Linux armv8l", 5],
+    ["touch Windows", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 10],
+    ["Mac", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 0],
+    ["Linux", "Mozilla/5.0 (X11; Linux x86_64)", "Linux x86_64", 0],
+    ["unknown", "", "", 0],
+  ])("offers the same connection entry on %s without hiding Browser capture", (_, userAgent, platform, maxTouchPoints) => {
     vi.stubGlobal("navigator", { userAgent, platform, maxTouchPoints });
-    expect(renderToStaticMarkup(createElement(AppConnectionButton))).toBe("");
+    expect(renderToStaticMarkup(createElement(AppConnectionButton))).toContain("lr-app-connect");
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "browser" },
       onBrowser: () => {}, onNative: () => {}, onCamera: () => {},
@@ -24,29 +30,7 @@ describe("desktop App connection entry", () => {
     }));
     expect(html).toContain('data-source-tab="browser"');
     expect(html).toContain('data-source-tab="camera"');
-    expect(html).not.toContain("lr-source-app-connection");
-  });
-
-  it.each([
-    ["Android phone", "Mozilla/5.0 (Linux; Android 16) Mobile", "Linux armv8l", 5],
-    ["Android tablet", "Mozilla/5.0 (Linux; Android 16)", "Linux armv8l", 5],
-    ["touch Windows", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 10],
-    ["Mac", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 0],
-    ["Linux", "Mozilla/5.0 (X11; Linux x86_64)", "Linux x86_64", 0],
-    ["unknown", "", "", 0],
-  ])("retains the shared connection entry on %s", (_, userAgent, platform, maxTouchPoints) => {
-    vi.stubGlobal("navigator", { userAgent, platform, maxTouchPoints });
-    expect(renderToStaticMarkup(createElement(AppConnectionButton))).toContain("lr-app-connect");
-    expect(renderToStaticMarkup(createElement(AppConnectionButton, { sourcePicker: true })))
-      .toContain("lr-source-app-connection");
-  });
-
-  it("keeps management and source recovery available in an activated Android App", () => {
-    vi.stubGlobal("navigator", { userAgent: "Mozilla/5.0 (Linux; Android 16) Mobile", platform: "Linux armv8l", maxTouchPoints: 5 });
-    vi.stubGlobal("window", { localStorage: { getItem: () => "1" } });
-    expect(renderToStaticMarkup(createElement(AppConnectionButton))).toContain("lr-app-connect");
-    expect(renderToStaticMarkup(createElement(AppConnectionButton, { sourcePicker: true })))
-      .toContain("lr-source-app-connection");
+    expect(html).toContain("lr-source-app-connection");
   });
 });
 
