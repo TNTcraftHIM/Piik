@@ -15,7 +15,7 @@
  <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
  <uses-feature android:name="android.hardware.microphone" android:required="false"/>
  <uses-feature android:name="android.software.leanback" android:required="false"/>
- <application android:label="${appLabel}" android:icon="@drawable/piik" android:theme="@android:style/Theme.Material.Light" android:usesCleartextTraffic="true" android:allowBackup="false">
+ <application android:label="${appLabel}" android:icon="@drawable/piik" android:theme="@style/PiikTheme" android:usesCleartextTraffic="true" android:allowBackup="false">
   <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize|keyboardHidden" android:resizeableActivity="true">
    <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/><category android:name="android.intent.category.LEANBACK_LAUNCHER"/></intent-filter>
    <intent-filter><action android:name="android.intent.action.VIEW"/><category android:name="android.intent.category.DEFAULT"/><category android:name="android.intent.category.BROWSABLE"/><data android:scheme="piik" android:host="app"/><data android:scheme="piik" android:host="media"/></intent-filter>
