@@ -100,9 +100,11 @@ if (!tunnelOnly) {
   mkdirSync(join(android, 'app', 'libs'), { recursive: true });
   run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
     '-ldflags=-s -w -checklinkname=0', '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/androidbridge']);
+  const variant = flavor === 'browser' ? 'BrowserDebug' : 'EmbeddedDebug';
+  // Recreate the final ZIP so replaced native libraries leave no free blocks.
   run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
     '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android,
-    flavor === 'browser' ? ':app:assembleBrowserDebug' : ':app:assembleEmbeddedDebug', '--console=plain']);
+    `:app:package${variant}`, '--rerun', `:app:assemble${variant}`, '--console=plain']);
   const apk = join(android, 'app', 'build', 'outputs', 'apk', flavor, 'debug', `app-${flavor}-debug.apk`);
   if (!existsSync(apk)) throw new Error('The Android build did not produce its APK.');
   console.log(`Android ${flavor} development APK: ${apk}`);
