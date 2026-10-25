@@ -138,14 +138,14 @@ func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
 					t.Fatal("successful startup retired live source audio")
 				}
 			}
-			if outcome == "replace" && (r.CaptureCurrent(1) || !r.CaptureCurrent(2)) {
+			if outcome == "replace" && (r.CaptureCurrent(1) || !r.CaptureCurrent(3)) {
 				t.Fatal("old source retirement affected the committed replacement")
 			}
 			select {
 			case id := <-completed:
 				want := int64(1)
 				if outcome == "replace" {
-					want = 2
+					want = 3
 				}
 				if id != want {
 					t.Fatalf("preparation identity %d, want %d", id, want)
@@ -155,6 +155,101 @@ func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
 			}
 			if session != nil {
 				_ = session.Close()
+			}
+		})
+	}
+}
+
+func TestSourceReplacementSharesPlatformHandlerWithAudioAdmission(t *testing.T) {
+	for _, outcome := range []string{"ready", "cancelled", "failed"} {
+		t.Run(outcome, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			handler := make(chan func(), 16)
+			handlerDone := make(chan struct{})
+			go func() {
+				defer close(handlerDone)
+				for callback := range handler {
+					callback()
+				}
+			}()
+			p := &testPlatform{started: make(chan int64, 1)}
+			c := &capture{platform: p, encoders: []encoderCapability{{Codec: "vp8"}}, streams: make(map[int64]*captureStream)}
+			r := &Runtime{capture: c}
+			var replacementID int64
+			p.videoStarted = func(id int64, configuration string) {
+				handler <- func() {
+					if id != 1 {
+						replacementID = id
+						if outcome == "cancelled" {
+							r.CaptureCanceled(id)
+							return
+						}
+						if outcome == "failed" {
+							r.CaptureEnded(id)
+							return
+						}
+					}
+					var output nativecapture.OutputProfile
+					if err := json.Unmarshal([]byte(configuration), &output); err != nil {
+						t.Error(err)
+						return
+					}
+					r.VideoReady(id, "vp8", int64(output.Width), int64(output.Height), "")
+					if id != 1 {
+						// MediaCodec callbacks and audio admission share one handler.
+						// An unread candidate fills the bridge queue before it yields.
+						for frame := int64(0); frame < 10; frame++ {
+							r.Video(id, []byte{0x10, 0, 0}, frame*33333, 33333, true)
+						}
+					}
+				}
+			}
+			video := nativecapture.VideoOptions{Codec: "vp8", Target: nativecapture.CaptureTarget{Kind: "picker"},
+				Profile: nativecapture.VideoProfile{Width: 640, Height: 360, Framerate: 30, Bitrate: 1_000_000, Preference: "balanced"}}
+			session, err := nativehost.Start(ctx, nativehost.Options{ShareID: "replacement-fixture", Capture: c, Video: video,
+				Profile: nativehost.QualityProfile{Video: video.Profile, AudioBitrate: 64_000}, MicrophoneMixing: true,
+				EdgeCapacity: 1, BindAddress: "127.0.0.1:0"})
+			if err != nil {
+				close(handler)
+				<-handlerDone
+				t.Fatal(err)
+			}
+			defer func() {
+				cancel()
+				_ = session.Close()
+				close(handler)
+				<-handlerDone
+			}()
+			result := make(chan error, 1)
+			go func() { result <- session.ReplaceSource(video, true, nil) }()
+			var audioID int64
+			select {
+			case audioID = <-p.started:
+				handler <- func() { r.AudioReady(audioID) }
+			case <-time.After(2 * time.Second):
+				t.Fatal("replacement audio admission was not requested")
+			}
+			select {
+			case err = <-result:
+			case <-time.After(2 * time.Second):
+				t.Fatal("replacement video blocked the handler needed for audio admission")
+			}
+			sourceAudio := session.SourceAudio()
+			if sourceAudio == nil {
+				t.Fatal("mixed source audio state is unavailable")
+			}
+			if outcome == "ready" {
+				if err != nil || !*sourceAudio || r.CaptureCurrent(1) || !r.CaptureCurrent(replacementID) {
+					t.Fatalf("replacement did not commit picture and sound: %v", err)
+				}
+			} else {
+				if err == nil || r.CaptureCurrent(audioID) || r.CaptureCurrent(replacementID) || !r.CaptureCurrent(1) || *sourceAudio {
+					t.Fatalf("failed preparation retained a candidate or retired the current picture: %v", err)
+				}
+				if outcome == "cancelled" && !errors.Is(err, nativecapture.ErrSourceCanceled) {
+					t.Fatalf("source cancellation lost its classification: %v", err)
+				}
 			}
 		})
 	}

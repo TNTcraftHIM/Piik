@@ -7,9 +7,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **HyperOS browser reentry.** Confirm Chrome/Edge can reenter a running
-  Public-link room after returning through the App icon. If it still stalls,
-  locate the blocked HTTP request in that device's background-service state.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -40,10 +37,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
-- [ ] **Android App release scope.** Complete phone/tablet/TV hardware acceptance
-  and stationary-screen late join/keyframe
-  recovery, then prepare release packaging. The system-browser companion is the
-  primary candidate; keep the embedded build for comparison until acceptance.
+- [ ] **Android App release scope.** Complete native demand-driven quality
+  adaptation, stationary-screen late join/keyframe recovery and phone/tablet/TV
+  hardware acceptance, then prepare release packaging. The system-browser
+  companion is the primary candidate; keep the embedded build for comparison
+  until acceptance.
 - [ ] **iOS device acceptance.** Verify the implementation on `feat/ios-client`
   with a signed iOS 27 device: recording consent, capture background lifetime
   and WKWebView Host routing. Verify hosted HTTPS native linkage separately.

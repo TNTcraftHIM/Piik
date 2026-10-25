@@ -315,7 +315,7 @@ export const zh = {
   "host.commentary.include": "分享麦克风",
   "host.commentary.unavailable": "麦克风混音不可用，画面和源声音仍可继续分享。",
   "host.commentary.description": "将你的声音加入分享画面，无需加入房间语音。",
-  "host.commentary.duplicate": "分享和语音都已开麦，听众会收到两路声音。",
+  "host.commentary.duplicate": "分享和语音都已开麦。若有回声或一路无声，请关闭一路。",
   "host.commentary.failed": "分享麦克风未能开启，请检查权限和所选设备。",
   "host.audioInput.stopped": "一项声音输入已停止，画面分享继续。",
   "host.device.microphone": "麦克风",

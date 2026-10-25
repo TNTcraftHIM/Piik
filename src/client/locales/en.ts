@@ -315,7 +315,7 @@ export const en: Record<CopyKey, string> = {
   "host.commentary.include": "Include my microphone",
   "host.commentary.unavailable": "Microphone mixing is unavailable. Picture and source sound sharing continue.",
   "host.commentary.description": "Add your voice to the shared picture, without joining room voice.",
-  "host.commentary.duplicate": "Your microphones are sending to both shared audio and room voice.",
+  "host.commentary.duplicate": "Sharing and voice microphones are enabled. If one is silent or you hear echoes, use one path.",
   "host.commentary.failed": "The shared microphone could not start. Check its permission and selected device.",
   "host.audioInput.stopped": "An audio input stopped. Picture sharing continues.",
   "host.device.microphone": "Microphone",

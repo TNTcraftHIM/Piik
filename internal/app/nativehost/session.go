@@ -522,13 +522,8 @@ func (session *Session) ReplaceSource(
 	var replacement CaptureStream
 	var state CaptureState
 	var err error
-	if !audioOnly {
-		replacement, state, err = session.prepareVideo(session.ctx, options, options.Target.Kind == "picker", false)
-		if err != nil {
-			return err
-		}
-		defer capturePreparationDone(replacement)
-	}
+	// Admit audio before candidate video can fill its unread queue and block a
+	// platform handler that also starts audio. The current picture stays drained.
 	var replacementAudio CaptureStream
 	if audioEnabled {
 		replacementAudio, err = session.capture.Audio(
@@ -537,11 +532,18 @@ func (session *Session) ReplaceSource(
 			excludeAudio,
 		)
 		if err != nil {
-			if replacement != nil {
-				_ = replacement.Close()
-			}
 			return errors.New("native source audio could not start")
 		}
+	}
+	if !audioOnly {
+		replacement, state, err = session.prepareVideo(session.ctx, options, options.Target.Kind == "picker", false)
+		if err != nil {
+			if replacementAudio != nil {
+				_ = replacementAudio.Close()
+			}
+			return err
+		}
+		defer capturePreparationDone(replacement)
 	}
 	return session.commitCapture(
 		options,

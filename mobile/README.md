@@ -22,6 +22,13 @@ an installed system browser; the embedded variant needs Android System WebView.
 TV capture depends on the system's Projection and encoder support. Physical TV
 checks are pending.
 
+Native Android capture currently provides one encoded rendition. It reuses the
+shared P2P/SFU transports and can forward received media, but does not yet derive
+lower renditions for individual viewers as the desktop capture backend does.
+Android can control a desktop through the shared browser controls; it does not
+accept remote keyboard, mouse or virtual-gamepad input itself. Detached tool
+windows depend on the browser's Document Picture-in-Picture support.
+
 ## Build
 
 Use JDK 17, Gradle 8.11.1, Android platform/build-tools 35, platform-tools and
