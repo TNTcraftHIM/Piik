@@ -313,6 +313,14 @@ func (source *Source) beginGroupFrame(pts time.Duration, at time.Time) error {
 		// New groups inherit the established capture clock. Pipe arrival time
 		// can change independently of the input timestamps.
 		at = source.inputAt.Add(pts - source.inputPTS)
+	} else if source.relay == nil && !source.inputAt.IsZero() && !at.IsZero() {
+		// Capture generations can reset PTS while first-arrival latency changes.
+		// Normalize their common origin beyond the last input by one RTP tick;
+		// relay input already supplies its authoritative upstream clock.
+		earliest := source.inputAt.Add(time.Second/videoClockRate + time.Nanosecond)
+		if at.Before(earliest) {
+			at = earliest
+		}
 	}
 	if err := source.media.BeginFrame(pts, at); err != nil {
 		return err

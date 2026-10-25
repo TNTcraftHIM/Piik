@@ -16,6 +16,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
+	"github.com/livekit/livekit-server/pkg/sfu"
 )
 
 type testPlatform struct {
@@ -25,6 +26,76 @@ type testPlatform struct {
 	siteChanged     func()
 	videoStarted    func(int64, string)
 	preparationDone func(int64)
+}
+
+type bitratePlatform struct {
+	*testPlatform
+	bitrates chan int64
+}
+
+func (p *bitratePlatform) Control(_ int64, command string, _ int64, value int64) {
+	if command == "bitrate" {
+		p.bitrates <- value
+	}
+}
+
+func TestProfileReplacementPreservesMobileCaptureTimeline(t *testing.T) {
+	p := &bitratePlatform{testPlatform: &testPlatform{}, bitrates: make(chan int64, 8)}
+	c := &capture{platform: p, encoders: []encoderCapability{{Codec: "vp8"}}, streams: make(map[int64]*captureStream)}
+	r := &Runtime{capture: c}
+	configurations := make(chan int64, 2)
+	p.videoStarted = func(id int64, configuration string) {
+		var output nativecapture.OutputProfile
+		if err := json.Unmarshal([]byte(configuration), &output); err != nil {
+			t.Error(err)
+			return
+		}
+		configurations <- id
+		r.VideoReady(id, "vp8", int64(output.Width), int64(output.Height), "")
+	}
+	video := nativecapture.VideoOptions{Codec: "vp8", Target: nativecapture.CaptureTarget{Kind: "picker"},
+		Profile: nativecapture.VideoProfile{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 5_000_000, Preference: "balanced"}}
+	profile := nativehost.QualityProfile{Video: video.Profile, AudioBitrate: 64_000}
+	session, err := nativehost.Start(t.Context(), nativehost.Options{ShareID: "profile-clock", Capture: c,
+		Video: video, Profile: profile, EdgeCapacity: 2, BindAddress: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	awaitBitrates := func(want int64) {
+		t.Helper()
+		for range 3 {
+			select {
+			case value := <-p.bitrates:
+				if value != want {
+					t.Fatalf("codec bitrate = %d, want %d", value, want)
+				}
+			case err := <-session.Done():
+				t.Fatalf("profile replacement ended sharing: %v", err)
+			case <-time.After(2 * time.Second):
+				t.Fatal("capture did not process input")
+			}
+		}
+	}
+	previous := <-configurations
+	// Capture PTS remains correct when the initial frame takes longer to encode
+	// than subsequent frames, projecting the first-arrival anchor ahead of now.
+	for _, pts := range []int64{0, 500_000, 533_333} {
+		r.Video(previous, sfu.VP8KeyFrame8x8, pts, 33_333, true)
+	}
+	awaitBitrates(5_000_000)
+	profile.Video.Bitrate = 100_000
+	if err = session.UpdateProfile(profile); err != nil {
+		t.Fatal(err)
+	}
+	current := <-configurations
+	if r.CaptureCurrent(previous) || current == previous {
+		t.Fatal("profile replacement retained the old capture")
+	}
+	for _, pts := range []int64{0, 33_333, 66_666} {
+		r.Video(current, sfu.VP8KeyFrame8x8, pts, 33_333, true)
+	}
+	awaitBitrates(100_000)
 }
 
 func TestVideoOnlyPlatformDoesNotAdvertisePlaybackAudio(t *testing.T) {

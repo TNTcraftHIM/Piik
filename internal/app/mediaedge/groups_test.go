@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -491,6 +492,78 @@ func TestLateOutputGroupKeepsSharedCaptureClock(t *testing.T) {
 	if advance := current - previous; advance != 99*90_000 {
 		t.Fatalf("replacement group RTP timestamp advanced %d ticks", advance)
 	}
+}
+
+func TestCaptureGenerationNormalizesOneSharedClock(t *testing.T) {
+	source, err := (&Engine{}).NewSource("vp8", 2, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if err = source.ConfigureOutputs([]uint32{500_000, 2_000_000, 500_000, 500_000}); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.beginGroupFrame(10*time.Second, time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = source.planGroups(nil); err != nil {
+		t.Fatal(err)
+	}
+	group, err := source.newGroup(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(media *forwarding.EncodedSource, layer int, pts time.Duration, expected time.Time) {
+		t.Helper()
+		if err := media.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
+			PTS: pts, Duration: time.Second / 30, Recovery: true}); err != nil {
+			t.Fatal(err)
+		}
+		report := media.GetAllBuffers()[layer].GetSenderReportData()
+		at, ok := media.ReferenceTime(layer, report.RtpTimestamp)
+		if !ok || at.Sub(expected).Abs() > time.Microsecond {
+			t.Fatalf("output clock = %v, expected %v", at, expected)
+		}
+	}
+	for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
+		for layer := range 2 {
+			write(media, layer, 10*time.Second, time.Unix(100, 0))
+		}
+	}
+	// Later input completes faster than the first one. Its capture timeline
+	// advances to 101 even though the input arrives at 100.1.
+	if err := source.beginGroupFrame(11*time.Second, time.Unix(100, 100_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	write(source.media, 0, 11*time.Second, time.Unix(101, 0))
+	source.BeginGeneration()
+	if err := source.beginGroupFrame(0, time.Unix(100, 200_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	origin := time.Unix(101, 0).Add(time.Second/videoClockRate + time.Nanosecond)
+	write(source.media, 0, 0, origin)
+	late, err := source.newGroup(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Original and derived outputs resume after different dormant intervals;
+	// the newly created group inherits the same normalized generation origin.
+	if err = source.beginGroupFrame(5*time.Second, time.Unix(100, 300_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	for _, media := range []*forwarding.EncodedSource{source.media, group.media, late.media} {
+		for layer := range 2 {
+			write(media, layer, 5*time.Second, origin.Add(5*time.Second))
+		}
+	}
+	if err = source.beginGroupFrame(4*time.Second, time.Unix(200, 0)); !errors.Is(err, encoded.ErrInvalidTimestamp) {
+		t.Fatalf("same-generation reverse PTS = %v", err)
+	}
+	source.BeginGeneration()
+	if err = source.beginGroupFrame(0, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	write(source.media, 0, 0, time.Unix(200, 0))
 }
 
 func TestRelayGroupSharesReceivedClockAcrossWrap(t *testing.T) {
