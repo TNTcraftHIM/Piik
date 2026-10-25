@@ -8,7 +8,6 @@ import android.hardware.display.*;
 import android.media.*;
 import android.media.projection.*;
 import android.os.*;
-import android.util.DisplayMetrics;
 import android.view.*;
 import java.nio.*;
 import java.util.*;
@@ -30,6 +29,7 @@ public final class CaptureService extends Service {
   Handler handler;
   volatile MediaProjection projection;
   VirtualDisplay display;
+  CaptureRenderer renderer;
   volatile Video video;
   volatile Video previousVideo;
   CapturedAudio audio;
@@ -40,6 +40,7 @@ public final class CaptureService extends Service {
   int captureWidth, captureHeight;
   volatile boolean retiring;
   volatile boolean stopRequested;
+  boolean destroyed, cleanupDone, restoringVideo;
 
   final class Video {
     final long id;
@@ -52,6 +53,7 @@ public final class CaptureService extends Service {
 
     MediaCodec codec;
     Surface surface;
+    CaptureRenderer.Target target;
     int width, height, fps, sourceWidth, sourceHeight;
     String configuration;
     byte[] config;
@@ -176,7 +178,7 @@ public final class CaptureService extends Service {
       fail(runtime, id);
       return;
     }
-    if (previousVideo != null) {
+    if (previousVideo != null || restoringVideo) {
       fail(runtime, id);
       return;
     }
@@ -225,7 +227,6 @@ public final class CaptureService extends Service {
     next.replaced = old;
     try {
       JSONObject options = new JSONObject(json);
-      DisplayMetrics metrics = getResources().getDisplayMetrics();
       if (captureWidth <= 0 || captureHeight <= 0) updateCaptureSize();
       next.sourceWidth = captureWidth;
       next.sourceHeight = captureHeight;
@@ -271,7 +272,7 @@ public final class CaptureService extends Service {
             public void onOutputBufferAvailable(
                 MediaCodec codec, int index, MediaCodec.BufferInfo info) {
               try {
-                if (video != next && previousVideo != next) return;
+                if (next.released || (video != next && previousVideo != next)) return;
                 ByteBuffer buffer = codec.getOutputBuffer(index);
                 if (buffer == null || info.size == 0) return;
                 buffer.position(info.offset);
@@ -339,7 +340,7 @@ public final class CaptureService extends Service {
 
             @Override
             public void onOutputFormatChanged(MediaCodec codec, MediaFormat output) {
-              if (video != next && previousVideo != next) return;
+              if (next.released || (video != next && previousVideo != next)) return;
               try {
                 if (!h264) {
                   next.profile = "";
@@ -375,22 +376,6 @@ public final class CaptureService extends Service {
       next.codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
       next.surface = next.codec.createInputSurface();
       next.codec.start();
-      if (display == null)
-        display =
-            projection.createVirtualDisplay(
-                "Piik",
-                next.width,
-                next.height,
-                metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                next.surface,
-                null,
-                handler);
-      else {
-        display.resize(next.width, next.height, metrics.densityDpi);
-        display.setSurface(next.surface);
-      }
-      if (display == null) throw new IllegalStateException("Could not create captured display");
       if (!runtime.captureCurrent(id)) throw new IllegalStateException("capture retired");
       // The Go stream owner closes old on commit or next on rollback.
       video = next;
@@ -409,10 +394,43 @@ public final class CaptureService extends Service {
         next.base = old.base;
         next.last = old.last;
       } else previousVideo = old;
+      if (renderer == null) renderer = new CaptureRenderer(handler,
+          error -> {
+            android.util.Log.w("PiikCapture", "GPU capture initialization failed", error);
+            fail(runtime, id);
+            finishProjection();
+          });
+      next.target = new CaptureRenderer.Target(next.surface, next.width, next.height,
+          next.sourceWidth, next.sourceHeight,
+          error -> {
+            android.util.Log.w("PiikCapture", "GPU capture failed", error);
+            if (video == next) retryVideo(next);
+          });
+      bindVideo(next, () -> {});
     } catch (Exception error) {
       android.util.Log.w("PiikCapture", "video capture failed", error);
       retryVideo(next);
     }
+  }
+
+  void bindVideo(Video value, Runnable bound) {
+    renderer.select(value.target,
+        input -> {
+          if (retiring || stopRequested || video != value || value.released) return;
+          try {
+            int density = getResources().getDisplayMetrics().densityDpi;
+            if (display == null)
+              display = projection.createVirtualDisplay(
+                  "Piik", value.width, value.height, density,
+                  DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, input, null, handler);
+            else display.resize(value.width, value.height, density);
+            if (display == null) throw new IllegalStateException("Could not create captured display");
+            bound.run();
+          } catch (RuntimeException error) {
+            fail(value.runtime, value.id);
+            finishProjection();
+          }
+        });
   }
 
   void retryVideo(Video failed) {
@@ -423,34 +441,27 @@ public final class CaptureService extends Service {
       return;
     }
     Video old = failed.replaced;
-    boolean restored = old == null;
-    if (old != null && display != null) {
-      try {
-        display.resize(old.width, old.height, getResources().getDisplayMetrics().densityDpi);
-        display.setSurface(old.surface);
-        restored = true;
-      } catch (Exception error) {
-        /* Retire the projection when rollback is impossible. */
-      }
-    }
-    if (video == failed) video = old;
-    if (previousVideo == old) previousVideo = null;
-    releaseVideo(failed);
-    if (!restored) {
-      fail(failed.runtime, failed.id);
-      finishProjection();
-      return;
-    }
-    if (old != null) control(old.runtime, old.id, "keyframe", 0);
-    if (!failed.runtime.captureCurrent(failed.id) || failed.runtime != AppRuntimeService.runtime())
-      return;
-    beginVideo(
-        failed.runtime,
-        failed.id,
-        failed.configuration,
-        failed.candidates,
-        failed.candidateIndex + 1,
-        failed.deadline);
+    restoringVideo = true;
+    releaseVideo(failed,
+        () -> {
+          if (retiring || stopRequested) {
+            retireVideo(old);
+            return;
+          }
+          if (video == failed) video = old;
+          if (previousVideo == old) previousVideo = null;
+          Runnable retry = () -> {
+            restoringVideo = false;
+            beginVideo(failed.runtime, failed.id, failed.configuration, failed.candidates,
+                failed.candidateIndex + 1, failed.deadline);
+          };
+          if (old == null) retry.run();
+          else bindVideo(old,
+              () -> {
+                control(old.runtime, old.id, "keyframe", 0);
+                retry.run();
+              });
+        });
   }
 
   void updateCaptureSize() {
@@ -461,7 +472,8 @@ public final class CaptureService extends Service {
   }
 
   void resizeVideo() {
-    if (video == null || !video.proven || previousVideo != null || retiring || stopRequested)
+    if (video == null || !video.proven || previousVideo != null || restoringVideo
+        || retiring || stopRequested)
       return;
     if (video.sourceWidth != captureWidth || video.sourceHeight != captureHeight)
       beginVideo(video.runtime, video.id, video.configuration);
@@ -500,6 +512,7 @@ public final class CaptureService extends Service {
                 params.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, (int) value);
               else return;
               current.codec.setParameters(params);
+              if (command.equals("keyframe")) s.renderer.refresh(current.target);
             } catch (Exception error) {
               s.fail(current.runtime, id);
             }
@@ -742,18 +755,16 @@ public final class CaptureService extends Service {
               Video discarded = s.video;
               try {
                 Video restored = s.previousVideo;
-                s.display.resize(
-                    restored.width,
-                    restored.height,
-                    s.getResources().getDisplayMetrics().densityDpi);
-                s.display.setSurface(restored.surface);
                 s.video = restored;
                 s.previousVideo = null;
                 // Output queued while preparing next was discarded. Resume
                 // independently of those missing reference frames.
-                control(restored.runtime, restored.id, "keyframe", 0);
-                s.releaseVideo(discarded);
-                s.resizeVideo();
+                s.bindVideo(restored,
+                    () -> {
+                      control(restored.runtime, restored.id, "keyframe", 0);
+                      s.releaseVideo(discarded);
+                      s.resizeVideo();
+                    });
               } catch (Exception error) {
                 s.finishProjection();
               }
@@ -770,10 +781,29 @@ public final class CaptureService extends Service {
   }
 
   void releaseVideo(Video value) {
-    if (value == null || value.released) return;
+    releaseVideo(value, () -> {});
+  }
+
+  void releaseVideo(Video value, Runnable released) {
+    if (value == null || value.released) {
+      released.run();
+      return;
+    }
     value.released = true;
-    value.replaced = null;
     if (value.timeout != null) handler.removeCallbacks(value.timeout);
+    // Retire its EGL window before stopping the codec or releasing its input Surface.
+    if (value.target != null) renderer.release(value.target,
+        () -> {
+          releaseCodec(value);
+          released.run();
+        });
+    else {
+      releaseCodec(value);
+      released.run();
+    }
+  }
+
+  void releaseCodec(Video value) {
     try {
       value.codec.stop();
     } catch (Exception ignored) {
@@ -790,6 +820,7 @@ public final class CaptureService extends Service {
   void retireVideo(Video value) {
     while (value != null) {
       Video previous = value.replaced;
+      value.replaced = null;
       releaseVideo(value);
       value = previous;
     }
@@ -814,6 +845,9 @@ public final class CaptureService extends Service {
       display.release();
       display = null;
     }
+    // Unblock JNI output before waiting for the GL queue, including a pending swap.
+    if (old != null) old.runtime.captureEnded(old.id);
+    if (pendingOld != null) pendingOld.runtime.captureEnded(pendingOld.id);
     retireVideo(old);
     retireVideo(pendingOld);
     CapturedAudio.close(oldAudio);
@@ -825,10 +859,14 @@ public final class CaptureService extends Service {
       projection = null;
       oldProjection.stop();
     }
-    if (old != null) old.runtime.captureEnded(old.id);
-    if (pendingOld != null) pendingOld.runtime.captureEnded(pendingOld.id);
     stopForeground(STOP_FOREGROUND_REMOVE);
-    stopSelf();
+    Runnable closed = () -> {
+      cleanupDone = true;
+      stopSelf();
+      if (destroyed) thread.quitSafely();
+    };
+    if (renderer != null) renderer.close(closed);
+    else closed.run();
   }
 
   static void shutdown() {
@@ -842,8 +880,9 @@ public final class CaptureService extends Service {
     if (handler != null)
       handler.post(
           () -> {
+            destroyed = true;
             finishProjection();
-            thread.quitSafely();
+            if (cleanupDone) thread.quitSafely();
           });
     super.onDestroy();
   }
