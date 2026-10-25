@@ -2,7 +2,8 @@
 
 This is an Android sharing prototype for local testing.
 It targets Android 10 or later on arm64 and x86-64 devices.
-Both interface variants use Piik's existing Web UI. An Android service owns
+The default variant opens Piik's existing Web UI in the system browser; an
+embedded WebView variant remains available for comparison. An Android service owns
 the shared Go runtime until the user stops App; the Activity handles visible
 system consent. A `mediaProjection` foreground service
 owns the approved projection token, display surface, platform encoding and eligible
@@ -14,8 +15,8 @@ to Android's capture policy and excludes this app's playback.
 Phones and tablets use the existing responsive UI. Automatic capture prefers
 hardware AVC, then a Surface-capable MediaCodec VP8 encoder using the existing
 software-VP8 native path. An explicit AVC request never silently switches codec.
-Devices without either encoder can still join rooms. The embedded variant needs
-Android System WebView; the browser variant needs an installed system browser.
+Devices without either encoder can still join rooms. The browser variant needs
+an installed system browser; the embedded variant needs Android System WebView.
 TV capture depends on the system's Projection and encoder support. Physical TV
 checks are pending.
 
@@ -34,11 +35,13 @@ node scripts/build-android.mjs
 
 The entry builds the same Web assets, generates the existing icon and license
 notices, binds the Go runtime for both supported ABIs and packages the APK.
+The single mobile Go entry lives in `mobile/bridge`; this command generates its
+Android binding.
 `PIIK_GOMOBILE` may name an installed `gomobile` executable outside `PATH`.
 
-The default build produces `android/app/build/outputs/apk/embedded/debug/app-embedded-debug.apk`
-relative to `mobile/`. Add `--browser` for the system-browser prototype at
-`android/app/build/outputs/apk/browser/debug/app-browser-debug.apk`. Both use the
+The default build produces `android/app/build/outputs/apk/browser/debug/app-browser-debug.apk`
+relative to `mobile/`. Add `--embedded` for the comparison build at
+`android/app/build/outputs/apk/embedded/debug/app-embedded-debug.apk`. Both use the
 same application ID: installing one replaces the other while retaining App settings.
 Generated libraries, APKs, Gradle state and signing material stay
 ignored. The `checklinkname` flag is required by the existing Android networking
@@ -50,8 +53,10 @@ Install with `adb install -r <apk>`. The shared startup page offers Local and
 Public link. Use **+** beside the site section to enter a Piik site address;
 confirm its displayed origin before allowing and opening it. Approval, revocation
 and the starred startup site use the same management UI as desktop.
-Use the Android menu's **Manage sites** to open management without unloading a
-live Host. **Startup page** returns the main view after confirmation.
+On a connected site, use **App → Open App page** to manage saved origins.
+The embedded variant also provides **Manage sites** in its Android menu to open
+management without unloading a live Host. **Startup page** returns its main view
+after confirmation.
 
 The browser variant opens that same startup page in the default browser.
 Its ongoing notification opens Piik or stops the local backend. Screen sharing
@@ -60,8 +65,11 @@ returns to the original browser tab after the complete capture startup settles.
 Opening App while a request is pending also handles
 that request, so sites without the new shortcut can still confirm in App.
 The website's App approval still requires its displayed exact origin; waking
-App does not authorize a site. Camera and room voice use the browser's own
-permissions. The embedded variant retains its in-App page and management menu.
+App does not authorize a site. If the connection card cannot find App, choose
+**Open Piik App**, then return to the same browser page to continue discovery.
+Choose **Open App page** and confirm the displayed origin before granting access.
+Camera and room voice use the browser's own permissions. The embedded variant
+retains its in-App page and management menu.
 
 Local starts only when selected; Hosted sites use their own room service and
 the existing native App connection. Site
@@ -104,14 +112,16 @@ Android can also end projection on screen lock. Capture and optional audio use
 the existing stream replacement transaction; the foreground service owns the
 projection token and its single VirtualDisplay.
 
-The API 35 emulator has verified Local creation, pure-video consent, native Host
-preview frames, capture rotation, stop/cancel and normal exit/reopen. The installed
-APK's public-link helper completed real DNS/TLS/public HTTP access and shutdown.
+The embedded variant on the API 35 emulator has verified Local creation,
+pure-video consent, native Host preview frames, capture rotation, stop/cancel and
+normal exit/reopen. The installed APK's public-link helper completed real
+DNS/TLS/public HTTP access and shutdown.
 Management popups retain their opener; title-bar and keyboard insets leave the
 Web UI unobscured. Background new-Viewer admission/reconnect, live room voice
 and camera remain in the integrated acceptance scope. Physical microphone routing,
 background audio samples, hardware AVC and phone/tablet/TV source-audio policies
 remain device checks.
+The system-browser variant's native media path remains in acceptance.
 
 Platform references: [Projection lifecycle](https://developer.android.com/media/grow/media-projection),
 [playback audio](https://developer.android.com/media/platform/av-capture),

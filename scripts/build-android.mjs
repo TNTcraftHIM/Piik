@@ -12,7 +12,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'mobile', 'android');
 const gradleHome = process.env.GRADLE_HOME;
 const tunnelOnly = process.argv.includes('--tunnel-only');
-const flavor = process.argv.includes('--browser') ? 'browser' : 'embedded';
+const flavor = process.argv.includes('--embedded') ? 'embedded' : 'browser';
 if (!process.env.ANDROID_NDK_HOME || (!tunnelOnly && (!process.env.ANDROID_HOME || !gradleHome))) {
   throw new Error('Set ANDROID_HOME, ANDROID_NDK_HOME and GRADLE_HOME to the installed SDK, NDK and Gradle distribution.');
 }
@@ -99,7 +99,7 @@ if (!tunnelOnly) {
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
   mkdirSync(join(android, 'app', 'libs'), { recursive: true });
   run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
-    '-ldflags=-s -w -checklinkname=0', '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/androidbridge']);
+    '-ldflags=-s -w -checklinkname=0', '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/bridge']);
   const variant = flavor === 'browser' ? 'BrowserDebug' : 'EmbeddedDebug';
   // Recreate the final ZIP so replaced native libraries leave no free blocks.
   run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
