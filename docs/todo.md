@@ -41,12 +41,12 @@ own behavior; research and Git/PRs own evidence and completed history.
   adaptation, stationary-screen late join/keyframe recovery and phone/tablet/TV
   hardware acceptance, then prepare release packaging. Android uses the system
   browser and the same Web UI as desktop.
-- [ ] **iOS device acceptance.** Verify the implementation on `feat/ios-client`
-  with a signed iOS 27 device: recording consent, capture background lifetime
-  and WKWebView Host routing. Verify hosted HTTPS native linkage separately.
-
 ## Held By Owner
 
+- [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
+  implementation on `feat/ios-client`, outside the Android release candidate.
+  Apple SDK builds pass; signed-device acceptance still needs continued-session
+  admission/expiry, recording consent, background capture and hosted-site linkage.
 - [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
   Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the

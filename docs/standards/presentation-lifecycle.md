@@ -96,10 +96,9 @@ without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
 failure is required before introducing an embedded Web runtime on desktop.
-The Android candidate defaults to that same system-browser workflow, retaining
-the embedded Web UI for comparison. Recording consent and foreground services
-remain platform-owned. Both builds' startup page
-and site management reuse the shared launcher. Waking App or navigating to a site
+The Android App uses that same system-browser workflow. Recording consent and
+foreground services remain platform-owned. Its startup page and site management
+reuse the shared launcher. Waking App or navigating to a site
 never grants native permission. A pending system permission stays with its
 current native request while the user enters App and returns to the browser.
 App returns after the requested capture preparation completes, including source
