@@ -331,9 +331,9 @@ actual App/Site compatibility checks.
 ## Android Capture Bridge Assessment
 
 The [Android prototype](../../mobile/README.md) builds an APK for arm64 and
-x86-64 from the repository's single Go dependency graph. The embedded and system-
-browser variants present the same Web UI at its loopback origin or an explicitly
-approved site. `AppRuntimeService` owns the one Go runtime and pending OS requests;
+x86-64 from the repository's single Go dependency graph. The system browser
+presents the shared Web UI at its loopback origin or an explicitly approved
+site. `AppRuntimeService` owns the one Go runtime and pending OS requests;
 the Activity owns visible permission dialogs. A user-started `specialUse`
 foreground service keeps local rooms and the native companion available while
 the system browser is in front, with ordinary open/stop notification actions.
@@ -394,13 +394,12 @@ Projection does not. The Activity and service retain native capture ownership
 across rotation; runtime detachment precedes asynchronous shutdown so an old
 close cannot retire a newly opened runtime.
 
-The current integration verified Local creation, pure-video consent without
-microphone/camera prompts, live Host preview frames, portrait-to-landscape
-capture resizing, stop/cancel and normal exit/reopen. The packaged public-link
-helper established its tunnel in about six seconds; local and public health
-requests succeeded without extra DNS configuration. Background new-Viewer
-admission/reconnect, live camera/voice and physical-device audio remain in the
-Android acceptance scope in [TODO](../todo.md#next).
+Emulator checks cover Local/public startup, screen and browser-camera
+replacement, concurrent room voice, portrait-to-landscape resizing,
+cancellation/retry, background return and new-Viewer admission. The packaged
+public-link helper established its tunnel without extra DNS configuration.
+[Verification status](../verification-status.md#device-evidence-boundary) owns
+the current rate-control and physical-device acceptance boundaries.
 
 ### Android Browser Handoff
 

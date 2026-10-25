@@ -7,10 +7,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Android low-bitrate encoding.** In the emulator, software VP8 configured
-  at 100 kbps still produces about 2.3 Mbps at 1080p/24 fps, with quantization
-  saturated. The shared Go budget reaches MediaCodec correctly. Compare reduced
-  capture cadence and the encoder's frame-drop mode before accepting weak-network output.
+- [ ] **Android weak-network encoding acceptance.** Compare payload bitrate,
+  live-profile recovery and static-source late joins after the keyframe-cadence
+  correction. Baseline software VP8 exceeds even a 1 Mbps budget; the reduced-FPS
+  control and unsupported frame-drop mode are confirmed. Complete the rebuilt
+  APK comparison before accepting weak-network output.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -33,9 +34,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#500](https://github.com/TNTcraftHIM/Piik/issues/500). Compare the same window
   with source sound on and off, including native capture status. Video and source
   audio already use independent helpers; audio failure preserves video in local checks.
-- [ ] **Control loss when the Host browser is minimized (#502).** Reproduce
-  [#502](https://github.com/TNTcraftHIM/Piik/issues/502), retaining the current
-  native input grant and route while the Host preview is paused locally.
+- [ ] **Control loss when the Host browser is minimized (#502).** Follow
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) in the reporter's environment.
+  The current candidate retains the Viewer picture and native input grant while
+  the Host preview is paused locally; obtain the failing control/capture diagnostics.
 - [ ] **Intel native H.264 startup (#452).** Follow the
   [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
   fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report
