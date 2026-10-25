@@ -49,7 +49,10 @@ do not maintain a separate thanks list or manufacture empty credit commits.
 This is the default for an ordinary scoped implementation or bug fix.
 
 1. Start a new phase from clean, current canonical `main`; continue scoped work in that phase's existing worktree. Preserve unrelated user work.
-2. Inspect the affected code, current owner, and reachable evidence. Research primary sources only when the issue is non-trivial or component behavior is uncertain.
+2. Inspect the affected code, current owner, and reachable evidence. Use the
+   repository's existing tools, commands and workflow; introduce another only
+   when the requested result needs it. Research primary sources when the issue
+   is non-trivial or component behavior is uncertain.
 3. Make the smallest coherent change under the repo-tracked [`ponytail` skill](./.agents/skills/ponytail/SKILL.md).
 4. Run the focused tests or checks that exercise the changed behavior, inspect the pending diff, stage requested files, and report the result and evidence.
 

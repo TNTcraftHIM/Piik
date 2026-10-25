@@ -26,6 +26,11 @@ and [engineering](./docs/standards/engineering.md).
 - This file owns project-wide constraints; linked standards own domain rules,
   CONTRIBUTING owns delivery, and skills supply task methods. A skill, reference
   example or audit suggestion cannot override those owners or authorize extra work.
+- Do not expand scope for speculative races or security edge cases. Before
+  adding such extra mechanisms, explain the concrete failure, evidence for its
+  likelihood, and added code and maintenance cost; obtain user agreement. Do not
+  invent probabilities. Reachable defects and required authority, lifecycle and
+  resource correctness within authorized work need no extra approval.
 - Model recovery from the smallest underlying authority and connection state.
   Restart, crash, timeout, and network loss do not justify parallel states or
   case-specific fallbacks when their required action is the same.

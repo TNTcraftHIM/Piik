@@ -129,9 +129,9 @@ justify a generic plugin framework or accepting unknown commands.
 ## Runtime Lifecycles
 
 Read each runtime as acquisition, the authoritative commit that makes its work
-visible, and the retirement that ends it. Revalidate the acquiring identity
-after every await or callback; presentation derives from the committed fact
-instead of mirroring it.
+visible, and the retirement that ends it. Before committing asynchronous results
+or retiring current state or resources, revalidate the acquiring identity.
+Presentation derives from the committed fact instead of mirroring it.
 
 | Runtime | Acquire | Commit | Retire |
 | --- | --- | --- | --- |
@@ -188,9 +188,13 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   resource acquisition, replacement and retirement together. File size alone
   does not justify wrappers, a generic manager or a framework.
   Remove superseded paths in the same change; retain no unused legacy copy.
-  Keep test-only state seeding and setup in test harnesses.
-  Do not export mutable resources solely for tests; preserve the production
-  construction path when verifying defaults or restoration.
+  A platform adapter can be justified with one implementation; judge its boundary
+  and consumers before removing it.
+- Keep simple logic at its call site. Extract a helper for actual reuse, a
+  substantial boundary, or a distinct concept whose name makes the caller clearer.
+  In longer orchestration, keep the main flow readable and move substantial
+  validation and supporting details into nearby helpers. Prefer meaningful
+  boundaries over many single-use wrappers or arbitrary function-size limits.
 - Review dependency direction for source/type imports as well as runtime
   imports. Shared types belong to a common owner. A type-only cycle is an
   ownership concern; it does not by itself establish a runtime or performance
@@ -236,8 +240,12 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   Injected callbacks still execute in their caller's context. Synchronous
   authority hooks must not hide blocking I/O or release the caller's lock;
   schedule slow work at an explicit, owned effect boundary.
-- Validate input at the boundary, keep domain error meanings stable, and map
-  them into shared localized UI. [Versioning](./versioning.md) determines which
+- Validate and normalize unknown input once at each owning trust boundary, then
+  pass typed values inward. Do not repeat shape checks already guaranteed by a
+  schema, constructor or internal contract. Authorization and mutable state or
+  resource identity remain checked where they can change.
+  Keep domain error meanings stable and map them into shared localized UI.
+  [Versioning](./versioning.md) determines which
   extensions are compatible; an optional field is not automatically compatible.
   Dispatch separates protocol rejection, per-request operation failure and an
   already-satisfied teardown. Late teardown is idempotent and cannot retire a
@@ -260,12 +268,16 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 - Browser/App/Server share [visual language](./visual-language.md) and
   [status projection](./media-status.md). A new page, locale or deployment
   does not invent a new palette, status model or user-role metaphor.
-- Keep package comments about current responsibilities and invariants. Historical
+- Comment on non-obvious reasons, constraints and surprising behavior, rather
+  than narrating assignments or control flow. Package comments describe current
+  responsibilities and invariants. Historical
   migration paths belong in ADR/research unless they explain a surviving constraint.
   Support Windows, macOS and Linux; new text files use LF and new filenames use
   ASCII, with format exceptions in [`.gitattributes`](../../.gitattributes).
   Scripts use stable executable paths; physical confidence stays explicit in
   [verification status](../verification-status.md).
+- Update generated files through their source schema, template or generator and
+  the existing regeneration command; do not patch generated output by hand.
 - Retained tools declare their direct package dependencies. Documented TypeScript
   tools join the normal type-check entry point; a transitive dependency or a
   one-off manual check is not an owned toolchain contract.
@@ -314,6 +326,13 @@ repeated functions recognizable, justify shared patterns, and preserve real
 domain distinctions.
 
 ## Ablation And Review
+
+Test production implementations through their real construction paths. Replace
+external I/O or platform boundaries only where the focused test needs it; keep
+the behavior under test real instead of copying its algorithm or validator into
+the test. Keep test-only setup and state seeding in the harness, and do not export
+mutable resources solely for tests. Defaults and restoration use the production
+construction path.
 
 Judge a change by verified user value against implementation, maintenance,
 compatibility, runtime and failure cost. After a material module, remove any
