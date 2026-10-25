@@ -9,6 +9,7 @@ import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { resetBuildWorkspace } from "./build-workspace.mjs";
+import { checkWebSourceIdentity } from "./container-web-identity.mjs";
 
 const [image, revision] = process.argv.slice(2);
 if (process.argv.length !== 4 || !image || !/^[0-9a-f]{40}$/.test(revision ?? "")) {
@@ -90,10 +91,7 @@ try {
   await expectServices(false, false);
   assert.equal((await (await request("/api/site-access")).json()).required, false);
   const html = await (await request("/")).text();
-  const asset = html.match(/src="(\/assets\/index-[A-Za-z0-9_-]+\.js)"/)?.[1];
-  assert.ok(asset, "Server must embed the Web UI");
-  const script = await (await request(asset)).text();
-  assert.ok(script.includes(revision), "Web and Server must have the same source identity");
+  await checkWebSourceIdentity(html, revision, async asset => (await request(asset)).text());
   await binding(3478);
   const room = await (await request("/api/rooms", {
     method: "POST", headers: { Origin: "https://share.example.com", "Content-Type": "application/json" },
