@@ -57,6 +57,9 @@ native capture encoder. Actual recording requires a physical iOS 27 device.
 The `iOS build` workflow uses the official `xcode-27` runner and uploads only
 unsigned build artifacts. It neither publishes a release nor changes `main`.
 Generated frameworks, notice files and build output are ignored.
+The same build entry compiles the production video encoder on macOS and checks
+real VideoToolbox access units, pause/recovery and idempotent controls. Hardware
+unavailability is an explicit skip, separate from iOS device capture acceptance.
 
 ## Integration boundary
 

@@ -7,10 +7,10 @@ import { writeIOSLicenseNotices } from './package-licenses.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 if (process.platform !== 'darwin') throw new Error('The iOS build requires macOS and the Xcode 27 SDK.');
-function run(command, args) {
+function run(command, args, allowedExitCodes = [0]) {
   const result = spawnSync(command, args, { cwd: root, env: process.env, stdio: 'inherit' });
   if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`${command} failed with exit code ${result.status}`);
+  if (!allowedExitCodes.includes(result.status)) throw new Error(`${command} failed with exit code ${result.status}`);
 }
 
 run('xcrun', ['--sdk', 'iphoneos', '--show-sdk-version']);
@@ -29,4 +29,9 @@ for (const sdk of ['iphoneos', 'iphonesimulator']) {
     join(derived, 'Build', 'Products', `Debug-${sdk}`, 'Piik.app'),
     join(root, 'build', 'ios-client', `piik-${sdk}-unsigned.zip`)]);
 }
+const encoderCheck = join(root, 'build', 'ios-client', 'video-encoder-check');
+run('xcrun', ['--sdk', 'macosx', 'swiftc', '-swift-version', '5',
+  join(root, 'mobile', 'ios', 'Piik', 'VideoEncoder.swift'),
+  join(root, 'mobile', 'ios', 'checks', 'main.swift'), '-o', encoderCheck]);
+run(encoderCheck, [], [0, 77]);
 console.log(`Unsigned iOS development applications: ${join(derived, 'Build', 'Products')}`);

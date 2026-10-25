@@ -46,13 +46,13 @@ final class ScreenCapture: NSObject, SCStreamDelegate, SCStreamOutput {
     func add(id: Int64, configuration: CaptureConfiguration) {
         queue.async {
             guard self.core.captureCurrent(id) else { return }
-            self.sinks[id] = Sink(id: id, core: self.core, configuration: configuration, ready: { [weak self] retryRecovery in
+            self.sinks[id] = Sink(id: id, core: self.core, configuration: configuration, ready: { [weak self = self] retryRecovery in
                 self?.queue.async {
                     guard let self, let sink = self.sinks[id] else { return }
                     if retryRecovery { sink.encoder.requestKeyFrame(); self.recovery.insert(id) }
                     self.replay(id: id)
                 }
-            }) { [weak self] error in
+            }) { [weak self = self] error in
                 self?.queue.async { self?.fail(id: id, error: error) }
             }
             self.recovery.insert(id); self.replay(id: id)

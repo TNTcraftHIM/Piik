@@ -66,8 +66,10 @@ final class PiikRuntime: NSObject, PiikBridgePlatformProtocol {
                 let supported = false // ScreenCaptureKit is absent from the simulator SDK.
 #endif
                 let catalog = "{\"platform\":\"ios\",\"provider\":\"VideoToolbox\",\"systemAudio\":false,\"encoders\":\(supported ? "[{\"name\":\"VideoToolbox AVC\",\"codec\":\"h264\"}]" : "[]")}"
-                let candidate: PiikBridgeRuntime? = try PiikBridgeStart(self, Self.lanAddress(), catalog, data.path,
-                                                                       NSTemporaryDirectory(), "", "")
+                var startError: NSError?
+                let candidate = PiikBridgeStart(self, Self.lanAddress(), catalog, data.path,
+                                                NSTemporaryDirectory(), "", "", &startError)
+                if let startError { throw startError }
                 guard let next = candidate else {
                     throw NSError(domain: "Piik", code: 1, userInfo: [NSLocalizedDescriptionKey: "Piik runtime did not start."])
                 }
