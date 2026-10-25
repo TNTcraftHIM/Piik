@@ -64,7 +64,8 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
     discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
-    discoverNativeHealth: vi.fn(async (_options: { signal: AbortSignal }): Promise<object | null> => ({})),
+    discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
+      options.waitForPermission === false && !activated ? null : {}),
     NativeCompatibilityError: class extends Error {},
   };
   const pending = { current: null as { controller: AbortController; cancel?: () => void } | null };
@@ -98,6 +99,19 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
 }
 
 describe("App connection approval", () => {
+  it("uses fresh authorized health instead of offering approval again", async () => {
+    const page = mount();
+    page.native.discoverNativeHealth.mockResolvedValue({});
+    await page.connect();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.setState).not.toHaveBeenCalledWith("approval");
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.activateClient).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.pending.current).toBeNull();
+    page.cleanup();
+  });
+
   it("wakes Android in the original tab, then resumes discovery and explicit approval on return", async () => {
     const page = mount(false, "idle", true);
     await page.connect(true);
@@ -115,7 +129,7 @@ describe("App connection approval", () => {
     expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
     page.message();
     await settle();
-    expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledTimes(2);
     expect(page.activateClient).toHaveBeenCalledOnce();
     page.cleanup();
   });
@@ -148,7 +162,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("approval");
     expect(page.window.open).not.toHaveBeenCalled();
     page.message({ source: null });
-    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
     await page.connect();
     expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
     expect(page.setState).toHaveBeenLastCalledWith("approving");
@@ -179,7 +193,10 @@ describe("App connection approval", () => {
 
   it("opens the launcher for an already connected Site without changing approval", async () => {
     const page = mount(true, "ready");
-    await page.openApproval();
+    await page.connect();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.setState).not.toHaveBeenCalledWith("approval");
+    await page.connect();
     expect(page.window.open).toHaveBeenCalledWith("http://127.0.0.1:39721/client", "_blank");
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.pending.current).toBeNull();
@@ -214,9 +231,10 @@ describe("App connection approval", () => {
 
   it("requires the exact window, origin and site, then verifies App health once", async () => {
     const page = mount();
+    await page.openApproval();
+    page.native.discoverNativeHealth.mockClear();
     let complete!: (health: object) => void;
     page.native.discoverNativeHealth.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
-    await page.openApproval();
     await page.connect();
     expect(page.window.open).toHaveBeenCalledOnce();
     expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
@@ -244,9 +262,9 @@ describe("App connection approval", () => {
 
   it.each(["absent", "failed"])("does not activate from an approval message when health is %s", async result => {
     const page = mount();
+    await page.openApproval();
     if (result === "absent") page.native.discoverNativeHealth.mockResolvedValue(null);
     else page.native.discoverNativeHealth.mockRejectedValue(new Error("network unavailable"));
-    await page.openApproval();
     page.message();
     await settle();
     expect(page.activateClient).not.toHaveBeenCalled();
@@ -254,6 +272,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("unavailable");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
+    page.native.discoverNativeHealth.mockResolvedValue(null);
     await page.openApproval();
     expect(page.window.open).toHaveBeenCalledTimes(2);
     page.cleanup();
@@ -261,9 +280,10 @@ describe("App connection approval", () => {
 
   it("ignores a late healthy response after unmount and closes the popup", async () => {
     const page = mount();
+    await page.openApproval();
+    page.native.discoverNativeHealth.mockClear();
     let complete!: (health: object) => void;
     page.native.discoverNativeHealth.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
-    await page.openApproval();
     page.message();
     page.cleanup();
     complete({});
@@ -290,15 +310,31 @@ describe("App connection approval", () => {
     expect(page.activateClient).not.toHaveBeenCalled();
   });
 
-  it("releases a closed approval window on focus and permits retry", async () => {
+  it("verifies authorization on return even when the approval message is unavailable", async () => {
     const page = mount();
     await page.openApproval();
+    page.native.discoverNativeHealth.mockClear();
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.activateClient).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.pending.current).toBeNull();
+    page.cleanup();
+  });
+
+  it("releases an unapproved closed window on focus and permits retry", async () => {
+    const page = mount();
+    await page.openApproval();
+    page.native.discoverNativeHealth.mockResolvedValue(null);
     page.popup.closed = true;
     page.window.dispatchEvent(new Event("focus"));
+    await settle();
     expect(page.pending.current).toBeNull();
     expect(page.setState).toHaveBeenLastCalledWith("idle");
     page.message();
-    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledTimes(2);
     await page.openApproval();
     expect(page.window.open).toHaveBeenCalledTimes(2);
     page.cleanup();

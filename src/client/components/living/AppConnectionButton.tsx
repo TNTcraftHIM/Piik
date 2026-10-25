@@ -72,7 +72,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
 
   async function connect(wake = false): Promise<void> {
     if (pending.current) { pending.current.open?.(); return; }
-    const manage = state === "ready";
+    let manage = state === "ready";
     healthCheck.current?.abort();
     // Discovery and its browser permission prompt stay in the current tab.
     // A fresh click opens the real approval page without reserving a blank tab.
@@ -83,18 +83,24 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     let native: typeof import("../../native/client") | undefined;
     let approving = false;
     let waking = false;
-    const onMessage = async (event: MessageEvent) => {
-      if (approving || !attempt.popup || event.source !== attempt.popup || !approvalOrigin || event.origin !== approvalOrigin ||
-          event.data?.type !== "piik-app-approved" || event.data.site !== window.location.origin) return;
+    const verifyApproval = async (reported = false) => {
+      if (approving || signal.aborted) return;
       approving = true;
-      // The approval message only asks us to recheck the App-owned permission.
       const health = await native?.discoverNativeHealth({ signal }).catch(() => null);
       if (signal.aborted) return;
-      finish(health ? "ready" : "unavailable");
+      approving = false;
       if (health) {
+        finish("ready");
         activateClient();
         onConnected?.();
-      }
+      } else if (reported) finish("unavailable");
+      else if (attempt.popup?.closed) finish("idle");
+    };
+    const onMessage = (event: MessageEvent) => {
+      if (!attempt.popup || event.source !== attempt.popup || !approvalOrigin || event.origin !== approvalOrigin ||
+          event.data?.type !== "piik-app-approved" || event.data.site !== window.location.origin) return;
+      // A message or browser return asks us to verify App-owned permission.
+      void verifyApproval(true);
     };
     let approvalOrigin = "";
     const finish = (result: typeof state, keepPage = false) => {
@@ -113,7 +119,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     attempt.cancel = () => finish(manage ? "ready" : "idle");
     const onFocus = () => {
       if (waking) { attempt.open?.(); return; }
-      if (attempt.popup?.closed && !approving) finish("idle");
+      if (attempt.popup) void verifyApproval();
     };
     const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
     window.addEventListener("message", onMessage);
@@ -132,6 +138,15 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
         const url = await native.discoverNativeConnect(signal);
         if (signal.aborted) return;
         if (!url) { finish("unavailable"); return; }
+        const health = await native.discoverNativeHealth({ signal, waitForPermission: false });
+        if (signal.aborted) return;
+        manage = manage && health !== null;
+        if (health && !manage) {
+          finish("ready");
+          activateClient();
+          onConnected?.();
+          return;
+        }
         approvalOrigin = new URL(url).origin;
         attempt.open = () => {
           if (signal.aborted || attempt.popup) return;
@@ -143,7 +158,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
           if (manage) finish("ready", true);
           else { setState("approving"); help.current?.hidePopover(); }
         };
-        setState("approval");
+        setState(manage ? "ready" : "approval");
       } catch (error) {
         if (!signal.aborted) finish(native && error instanceof native.NativeCompatibilityError ? "incompatible" : "unavailable");
       }
@@ -192,7 +207,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
       }}>
       <div className="lr-app-connect-head">
         {state === "busy" ? <LoadingStatus label="client.connect.discovering" /> :
-          <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (state === "approval" || state === "waking" ? <HintComic kind="hint-client-site" /> :
+          <div className="lr-app-connect-scene" aria-hidden="true">{helpOpen && (state === "ready" ? <HintComic kind="hint-app-ready" /> : state === "approval" || state === "waking" ? <HintComic kind="hint-client-site" /> :
             <Comic kind={state === "incompatible" ? "warning" : "signal-failed"} theme="paper" />)}</div>}
         <button type="button" className="lr-btn is-dense is-quiet lr-app-connect-close" aria-label={t("common.close")}
           popoverTarget={helpId} popoverTargetAction="hide">
@@ -201,8 +216,8 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
       </div>
       <p id={`${helpId}-message`} className={vis ? "visually-hidden" : undefined}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
       <div className="lr-app-connect-actions">
-        {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
-          <Glyph name={state === "approval" ? "arrowRight" : "refresh"} size={16} /><span className={vis ? "visually-hidden" : undefined}>{t(state === "approval" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
+        {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
+          <Glyph name={state === "approval" || state === "ready" ? "arrowRight" : "refresh"} size={16} /><span className={vis ? "visually-hidden" : undefined}>{t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>
         </button>}
         {failed && wakeURL && <a className="lr-btn" href={wakeURL} onClick={event => { event.preventDefault(); void connect(true); }}>
           <Glyph name="window" size={16} /><span className={vis ? "visually-hidden" : undefined}>{t("client.connect.wakeApp")}</span>
