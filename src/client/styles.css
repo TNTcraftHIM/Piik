@@ -403,7 +403,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   place-content: stretch;
   justify-items: stretch;
   overflow: hidden;
-  background: linear-gradient(155deg, color-mix(in srgb, var(--wall) 88%, var(--paper)), var(--wall));
+  background: var(--wall);
   color: var(--ink);
   text-align: left;
 }
