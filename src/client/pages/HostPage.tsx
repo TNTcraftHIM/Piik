@@ -232,6 +232,7 @@ type NoticeValue = (
 };
 
 type StatusNoticeMessage = string | { key: CopyKey; vars?: Record<string, string>; failureCode?: string };
+type SourceSwitch = { replacingVideo?: MediaStreamTrack; audioOnly?: boolean; nativePending?: boolean };
 
 type ViewerQualityEvidence = Extract<
   ServerMessage,
@@ -565,7 +566,8 @@ export function HostPage({
   const copied = copiedRoomLink !== null && copiedRoomLink === roomLink;
   const copiedResetTimerRef = useRef<number | null>(null);
   const copyRoomLinkRequestRef = useRef<object | null>(null);
-  const [switchingSource, setSwitchingSource] = useState(false);
+  const [sourceSwitchState, setSourceSwitch] = useState<SourceSwitch | null>(null);
+  const switchingSource = sourceSwitchState !== null;
   const [changingQuality, setChangingQuality] = useState(false);
   const [sharingPaused, setSharingPaused] = useState(false);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
@@ -617,7 +619,7 @@ export function HostPage({
   const activeRouteRevisionRef = useRef(0);
   const generationRef = useRef(0);
   const activeGenerationRef = useRef<number | null>(null);
-  const sourceSwitchRef = useRef<{ replacingVideo?: MediaStreamTrack; audioOnly?: boolean } | null>(null);
+  const sourceSwitchRef = useRef<SourceSwitch | null>(null);
   const qualityChangeRef = useRef<object | null>(null);
   const pendingQualityChangeRef = useRef<QualitySettings | null>(null);
   const qualitySettingsRef = useRef<QualitySettings>(qualitySettings);
@@ -975,7 +977,7 @@ export function HostPage({
     setViewerQualityEvidence(viewerQualityEvidenceStore.getSnapshot());
     activeRouteRevisionRef.current = 0;
     if (!keepRoomSession) setSignalStatus("offline");
-    setSwitchingSource(false);
+    setSourceSwitch(null);
     setChangingQuality(false);
     sharingPausedRef.current = false;
     setSharingPaused(false);
@@ -1285,8 +1287,11 @@ export function HostPage({
     generation: number,
     shareGeneration: string,
     selection: Extract<ShareSourceSelection, { kind: "native" }>,
+    replacement?: SourceSwitch,
   ): Promise<MediaStream | null> {
     const { client, target, audio, excludeAudio, showCaptureBorder, path } = selection;
+    // App capture lifetime is separate from the room's unchanged publication.
+    const nativeShareId = replacement ? createOpaqueId() : shareGeneration;
     nativeSourceSelectionRef.current = selection;
     let bridge: NativeMediaBridge | null = null;
     let shareStarted = false;
@@ -1299,43 +1304,51 @@ export function HostPage({
       // Acquire the required Browser peer before starting capture. Pending
       // cancellation owns this bridge, but still closes control to abort startup.
       bridge = new NativeMediaBridge(
-        shareGeneration,
+        nativeShareId,
         client,
         () => {
           if (
             nativeMediaBridgeRef.current === bridge &&
-            isCurrentShare(generation, shareGeneration)
+            isCurrentShare(generation, shareGeneration) &&
+            (!replacement || streamRef.current === bridge?.stream)
           ) {
             endSharing({ key: "native.fail.edge", failureCode: "app/browser-media/connection" }, true, "route-failed", "bad");
           }
         },
         undefined,
         () => {
-          if (nativeMediaBridgeRef.current === bridge && isCurrentShare(generation, shareGeneration)) {
+          if (nativeMediaBridgeRef.current === bridge && isCurrentShare(generation, shareGeneration) &&
+            (!replacement || nativeModeRef.current)) {
             nativeInputRoute.setUpstream(bridge?.getRemoteInput() ?? null);
           }
         },
       );
       nativeMediaBridgeRef.current = bridge;
       nativeSourceAudioRef.current = undefined;
-      audioAvailableRef.current = false;
+      if (!replacement) audioAvailableRef.current = false;
       nativeEventCleanup = client.onEvent((event) => {
-        if (event.shareId !== shareGeneration || !isCurrentShare(generation, shareGeneration) || nativeConnection.current !== client) return;
+        if (event.shareId !== nativeShareId || !isCurrentShare(generation, shareGeneration) || nativeConnection.current !== client) return;
         if (event.type === "remote-control-state") {
+          if (replacement && !nativeModeRef.current) return;
           setRemoteControlState(event);
           signalRef.current?.setCoPlayGrants(event.coPlay ? event.requests.flatMap(request =>
             request.state !== "pending" && request.endpointId
               ? [{ endpointId: request.endpointId }] : []) : []);
         }
         if (event.type === "audio-state") {
-          setCommentary(event.microphone);
           nativeSourceAudioRef.current = event.sourceAudio;
+          if (replacement && !nativeModeRef.current) return;
+          setCommentary(event.microphone);
           audioAvailableRef.current = event.sourceAudio || event.microphone;
           signalRef.current?.setAudioAvailable(audioAvailableRef.current);
           setDetails(previous => previous ? { ...previous, hasSourceAudio: event.sourceAudio } : previous);
           if (event.failed) setNoticeValue({ kind: "key", key: "host.audioInput.stopped", target: "operation", comic: "warning", tone: "warn" });
         }
         if (event.type === "share-ended") {
+          if (replacement && streamRef.current !== bridge?.stream) {
+            bridge?.dispose();
+            return;
+          }
           endSharing(
             event.failed ? { key: "host.shareEnded", failureCode: "app/capture/failed" } : { key: "host.stopNotice" },
             true,
@@ -1346,7 +1359,7 @@ export function HostPage({
       });
       nativeEventCleanupRef.current = nativeEventCleanup;
       const started = await client.startShare({
-        shareId: shareGeneration,
+        shareId: nativeShareId,
         source: target,
         audio,
         excludeAudio: audio ? excludeAudio : undefined,
@@ -1361,33 +1374,53 @@ export function HostPage({
       if (!isCurrentShare(generation, shareGeneration)) {
         if (nativeMediaBridgeRef.current === bridge) nativeMediaBridgeRef.current = null;
         bridge.dispose();
-        await client.stopShare(shareGeneration).catch(() => nativeConnection.discard(client));
+        await client.stopShare(nativeShareId).catch(() => nativeConnection.discard(client));
         return null;
       }
       if (nativeConnection.current !== client) throw new NativeRequestError("unavailable", "start-share");
       nativeSourceAudioRef.current ??= started.sourceAudio ?? started.audio;
-      audioAvailableRef.current = nativeSourceAudioRef.current || audioAvailableRef.current;
-      videoCodecRef.current = manualVideoCodecPreference(started.codec);
+      if (!replacement) audioAvailableRef.current = nativeSourceAudioRef.current || audioAvailableRef.current;
+      if (!replacement) videoCodecRef.current = manualVideoCodecPreference(started.codec);
       // Register ownership before waiting for the local bridge. A native edge
       // may fail immediately after becoming ready.
       nativeConnection.adopt(client);
-      nativeShareGenerationRef.current = shareGeneration;
-      nativeModeRef.current = true;
-      if (client.health.nativeMedia.remoteInput) await client.setRemoteInputPeers(shareGeneration, remoteInputPeersRef.current);
-      setNativeActive(true);
+      nativeShareGenerationRef.current = nativeShareId;
+      if (replacement) {
+        replacement.nativePending = false;
+        setSourceSwitch({ ...replacement });
+      } else nativeModeRef.current = true;
+      if (client.health.nativeMedia.remoteInput) await client.setRemoteInputPeers(nativeShareId, remoteInputPeersRef.current);
+      if (!replacement) setNativeActive(true);
       const stream = await bridge.start(started.audio);
-      if (!isCurrentShare(generation, shareGeneration)) {
+      if (replacement) {
+        if (sharingPausedRef.current) await client.setPaused(nativeShareId, true);
+        if (client.health.nativeMedia.shareVolume) {
+          await client.setShareVolume(nativeShareId, shareVolume.muted ? 0 : shareVolume.level);
+        }
+      }
+      if (!isCurrentShare(generation, shareGeneration) || (replacement && sourceSwitchRef.current !== replacement)) {
         if (nativeMediaBridgeRef.current === bridge) disposeNativeShare();
         else bridge.dispose();
         return null;
       }
+      if (replacement && !stream.getVideoTracks().some(track => track.readyState === "live")) {
+        throw new NativeMediaBridgeError("Native capture ended before source replacement");
+      }
+      if (replacement) {
+        audioAvailableRef.current = !!nativeSourceAudioRef.current;
+        videoCodecRef.current = manualVideoCodecPreference(started.codec);
+        nativeModeRef.current = true;
+        setNativeActive(true);
+        nativeInputRoute.setUpstream(bridge.getRemoteInput());
+      }
       return stream;
     } catch (error) {
+      if (nativeSourceSelectionRef.current === selection) nativeSourceSelectionRef.current = null;
       nativeEventCleanup?.();
       if (nativeEventCleanupRef.current === nativeEventCleanup) nativeEventCleanupRef.current = null;
       if (
         nativeConnection.current === client &&
-        nativeShareGenerationRef.current === shareGeneration
+        nativeShareGenerationRef.current === nativeShareId
       ) {
         disposeNativeShare();
       } else {
@@ -1395,7 +1428,7 @@ export function HostPage({
         bridge?.dispose();
         if (shareStarted) {
           nativeShareCleanupRef.current = client
-            .stopShare(shareGeneration)
+            .stopShare(nativeShareId)
             .catch(() => nativeConnection.discard(client));
         } else {
           nativeConnection.discard(client);
@@ -1432,7 +1465,7 @@ export function HostPage({
   function releaseUnusedNativeClient(): void {
     // The picker may hand its connection to a starting share; only Native media
     // needs to keep it after startup. Merely visiting the page owns no session.
-    if (nativeSourceRequestRef.current || nativeShareGenerationRef.current ||
+    if (nativeSourceRequestRef.current || nativeShareGenerationRef.current || sourceSwitchRef.current ||
       (activeGenerationRef.current !== null && roomMutationRef.current !== null)) return;
     nativeConnection.release();
   }
@@ -1453,7 +1486,7 @@ export function HostPage({
     const request = {};
     nativeSourceRequestRef.current = request;
     nativeSourcePathRef.current = null;
-    if (!isClientActivated() || (phase === "live" && !nativeModeRef.current)) {
+    if (!isClientActivated()) {
       setNativeSources({ kind: "browser" });
       return;
     }
@@ -1550,17 +1583,26 @@ export function HostPage({
 
   function recoverBrowserFanout(ingress: NativeMediaIngress): void {
     if (nativeMediaIngressRef.current !== ingress) return;
+    const peerIds = retireNativeSenderPeers();
     disposeNativeShare();
-    discardPreparedHostChild();
     const generation = activeGenerationRef.current;
     if (generation === null || !streamRef.current) return;
-    for (const [peerId, peer] of peersRef.current) {
-      if (!(peer instanceof NativeSenderPeer)) continue;
-      removePeer(peerId);
+    for (const peerId of peerIds) {
       void startPeer(peerId, generation).catch((error: unknown) => {
         if (isCurrentGeneration(generation)) setNoticeError(error, "connection");
       });
     }
+  }
+
+  function retireNativeSenderPeers(): string[] {
+    discardPreparedHostChild();
+    const peerIds: string[] = [];
+    for (const [peerId, peer] of peersRef.current) {
+      if (!(peer instanceof NativeSenderPeer)) continue;
+      removePeer(peerId);
+      peerIds.push(peerId);
+    }
+    return peerIds;
   }
 
   function requestSharing(): void {
@@ -1608,8 +1650,9 @@ export function HostPage({
     const path = nativeSourcePathRef.current;
     if (!client || !path) return;
     setShowCaptureBorder(showCaptureBorder);
-    if (phase === "live" && nativeModeRef.current) {
-      void switchNativeSource(client, target, audio, path, showCaptureBorder, excludeAudio);
+    if (phase === "live") {
+      if (nativeModeRef.current) void switchNativeSource(client, target, audio, path, showCaptureBorder, excludeAudio);
+      else void switchToNativeSource({ kind: "native", client, target, audio, path, showCaptureBorder, excludeAudio });
       return;
     }
     void startSharing({ kind: "native", client, target, audio, excludeAudio, showCaptureBorder, path });
@@ -1650,7 +1693,8 @@ export function HostPage({
       return;
     }
     sourceSwitchRef.current = null;
-    setSwitchingSource(false);
+    setSourceSwitch(null);
+    releaseUnusedNativeClient();
   }
 
   function commitQuality(settings: QualitySettings): void {
@@ -2136,7 +2180,7 @@ export function HostPage({
         isCurrentGeneration(generation) && signalRef.current === signal &&
         signal.send({ type: "route-transport-connected", revision, connectionId }),
       createPeer:
-        nativeClient && nativeShareGeneration
+        nativeClient && nativeShareGeneration && (nativeModeRef.current || nativeMediaIngressRef.current)
           ? (candidate, input, events) => {
               const current = peersRef.current.get(candidate.childPeerId);
               if (
@@ -2182,7 +2226,7 @@ export function HostPage({
       profile: qualitySettingsRef.current,
       videoCodec: videoCodecRef.current,
       natPredictionEnabled: routePolicyRef.current.natPrediction,
-      videoPool: nativeClient && nativeShareGeneration ? undefined : browserVideoPool(),
+      videoPool: nativeClient && nativeShareGeneration && (nativeModeRef.current || nativeMediaIngressRef.current) ? undefined : browserVideoPool(),
     });
   }
 
@@ -2227,7 +2271,8 @@ export function HostPage({
     const activeStream = streamRef.current;
     const nativeClient = nativeConnection.current;
     const nativeShareGeneration = nativeShareGenerationRef.current;
-    const useNative = nativeClient !== null && nativeShareGeneration !== null;
+    const useNative = nativeClient !== null && nativeShareGeneration !== null &&
+      (nativeModeRef.current || nativeMediaIngressRef.current !== null);
     const iceConfig = iceConfigRef.current;
     const signal = signalRef.current;
     if ((!activeStream && !useNative) || !iceConfig || !signal) {
@@ -2851,13 +2896,7 @@ export function HostPage({
     }
     if (captured) {
       if (selection.kind === "browser") {
-        hostAudioRef.current = new HostAudio(captured, selection.source ?? "browser", available => {
-          if (!isCurrentShare(generation, shareGeneration)) return;
-          audioAvailableRef.current = available;
-          signalRef.current?.setAudioAvailable(available);
-          const source = hostAudioRef.current?.sourceStream;
-          if (source) setDetails(captureDetails(source, false, hostAudioRef.current?.sourceAudioAvailable));
-        }, enabled => { if (isCurrentShare(generation, shareGeneration)) setCommentary(enabled); });
+        hostAudioRef.current = createBrowserAudio(captured, selection.source ?? "browser", generation, shareGeneration);
         const audio = hostAudioRef.current;
         try {
           captured = await audio.start();
@@ -2985,12 +3024,12 @@ export function HostPage({
       return;
     }
     const previous = nativeSourceSelectionRef.current;
-    const token = { audioOnly: target.kind !== "picker" && !!previous &&
+    const token = { nativePending: true, audioOnly: target.kind !== "picker" && !!previous &&
       nativeCaptureTargetKey(previous.target) === nativeCaptureTargetKey(target) &&
       previous.showCaptureBorder === showCaptureBorder };
     sourceSwitchRef.current = token;
     closeCaptureSourcePicker();
-    setSwitchingSource(true);
+    setSourceSwitch(token);
     setNoticeValue(null);
     try {
       await nativePreviewTailRef.current;
@@ -3017,6 +3056,8 @@ export function HostPage({
       ) {
         return;
       }
+      token.nativePending = false;
+      setSourceSwitch({ ...token });
       nativeSourceSelectionRef.current = { kind: "native", client, target, audio, path, showCaptureBorder, excludeAudio };
       const activeStream = streamRef.current;
       if (activeStream) {
@@ -3047,6 +3088,57 @@ export function HostPage({
         sourceSwitchRef.current === token
       ) {
         setNoticeError(error, token.audioOnly ? "sourceAudio" : "source");
+      }
+    } finally {
+      finishSourceSwitch(token);
+    }
+  }
+
+  function createBrowserAudio(captured: MediaStream, source: BrowserCaptureSource, generation: number, shareGeneration: string): HostAudio {
+    const audio = new HostAudio(captured, source, available => {
+      if (!isCurrentShare(generation, shareGeneration) || hostAudioRef.current !== audio) return;
+      audioAvailableRef.current = available;
+      signalRef.current?.setAudioAvailable(available);
+      setDetails(captureDetails(audio.sourceStream, false, audio.sourceAudioAvailable));
+    }, enabled => {
+      if (isCurrentShare(generation, shareGeneration) && hostAudioRef.current === audio) setCommentary(enabled);
+    });
+    audio.setVolume(shareVolume.muted ? 0 : shareVolume.level);
+    return audio;
+  }
+
+  async function switchToNativeSource(selection: Extract<ShareSourceSelection, { kind: "native" }>): Promise<void> {
+    const generation = activeGenerationRef.current;
+    const shareGeneration = shareGenerationRef.current;
+    if (phase !== "live" || generation === null || !shareGeneration || !isCurrentGeneration(generation) ||
+      sourceSwitchRef.current || qualityChangeRef.current || nativeConnection.current !== selection.client) return;
+    const token = { nativePending: true };
+    sourceSwitchRef.current = token;
+    closeCaptureSourcePicker();
+    setSourceSwitch(token);
+    setNoticeValue(null);
+    try {
+      // The App has one source owner. Keep the Browser picture and fanout live
+      // while its optional ingress gives way to the new capture request.
+      const ingress = nativeMediaIngressRef.current;
+      if (ingress) recoverBrowserFanout(ingress);
+      const captured = await startNativeShare(generation, shareGeneration, selection, token);
+      if (!captured) return;
+      if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
+        if (nativeMediaBridgeRef.current?.stream === captured) disposeNativeShare();
+        return;
+      }
+      const previousAudio = hostAudioRef.current;
+      hostAudioRef.current = null;
+      previousAudio?.dispose();
+      setCommentary(false);
+      discardPreparedHostChild();
+      signalRef.current?.setAudioAvailable(audioAvailableRef.current);
+      setResolvedVideoCodec(videoCodecRef.current.primary);
+      await replaceBrowserStream(captured, generation, token);
+    } catch (error) {
+      if (isCurrentShare(generation, shareGeneration) && sourceSwitchRef.current === token) {
+        setNoticeError(error, "source");
       }
     } finally {
       finishSourceSwitch(token);
@@ -3106,15 +3198,13 @@ export function HostPage({
       await openCaptureSourcePicker();
       return;
     }
-    if (nativeModeRef.current) return;
-
     // Some browsers retire the old camera while opening the new one. That
     // transition belongs to this replacement, not the share-ended observer.
     const token = { replacingVideo: source === "camera" && hostAudioRef.current?.sourceKind === "camera"
       ? streamRef.current?.getVideoTracks()[0] : undefined };
     sourceSwitchRef.current = token;
     closeCaptureSourcePicker();
-    setSwitchingSource(true);
+    setSourceSwitch(token);
     setNoticeValue(null);
 
     let captured: MediaStream;
@@ -3146,8 +3236,37 @@ export function HostPage({
 
     try {
       if (source === "camera") setCameraDevice(deviceId);
-      captured = hostAudioRef.current?.attach(captured, source) ?? captured;
-      await replaceBrowserStream(captured, generation, token);
+      const reboundPeerIds: string[] = [];
+      const wasNative = nativeModeRef.current;
+      if (wasNative) {
+        const shareGeneration = shareGenerationRef.current!;
+        const audio = createBrowserAudio(captured, source, generation, shareGeneration);
+        try {
+          captured = await audio.start();
+          if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
+            captured.getTracks().forEach(track => stopUserMediaTrack(track));
+            audio.dispose();
+            return;
+          }
+        } catch (error) {
+          audio.dispose();
+          throw error;
+        }
+        // Permission and audio setup succeeded; only now retire the old source.
+        token.replacingVideo = streamRef.current?.getVideoTracks()[0];
+        reboundPeerIds.push(...retireNativeSenderPeers());
+        disposeNativeShare();
+        hostAudioRef.current = audio;
+        audioAvailableRef.current = audio.audioAvailable;
+        signalRef.current?.setAudioAvailable(audio.audioAvailable);
+        setCommentary(false);
+      } else {
+        captured = hostAudioRef.current?.attach(captured, source) ?? captured;
+      }
+      await replaceBrowserStream(captured, generation, token, reboundPeerIds);
+      if (wasNative && isCurrentGeneration(generation) && sourceSwitchRef.current === token) {
+        await startBrowserNativeIngress(generation, shareGenerationRef.current!, captured);
+      }
     } catch (error) {
       if (captured !== streamRef.current) captured.getVideoTracks().forEach(track => stopUserMediaTrack(track));
       if (isCurrentGeneration(generation)) setNoticeError(error, "source");
@@ -3168,7 +3287,7 @@ export function HostPage({
       failureCode: hostFailureCode(error, action, "camera") });
   }
 
-  async function replaceBrowserStream(captured: MediaStream, generation: number, token: object): Promise<void> {
+  async function replaceBrowserStream(captured: MediaStream, generation: number, token: object, reboundPeerIds: string[] = []): Promise<void> {
     // The caller retires its operation; this function owns only stream resources.
     const previousStream = streamRef.current;
     if (!previousStream) {
@@ -3190,12 +3309,11 @@ export function HostPage({
     setMediaPaused(captured, sharingPausedRef.current);
     streamRef.current = captured;
     setStream(captured);
-    setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? captured));
+    setDetails(captureDetails(hostAudioRef.current?.sourceStream ?? captured, nativeModeRef.current, nativeSourceAudioRef.current));
     if (videoChanged) watchCaptureEnd(captured, generation);
 
     try {
       const ingress = nativeMediaIngressRef.current;
-      const reboundPeerIds: string[] = [];
       if (ingress) {
         try {
           if (ingress.hasAudio !== (captured.getAudioTracks().length > 0)) {
@@ -3686,7 +3804,7 @@ export function HostPage({
   const nativePermissionIntent = androidAppIntent(nativeConnection.current?.health.activationURL);
   const confirmNativeCapture = Boolean(nativePermissionIntent && (
     (phase === "starting" && !nativeActive && nativeSourceSelectionRef.current) ||
-    (switchingSource && nativeActive)
+    sourceSwitchState?.nativePending
   ));
   function confirmNativePermission(): void {
     const intent = androidAppIntent(nativeConnection.current?.health.activationURL);
@@ -3765,13 +3883,11 @@ export function HostPage({
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
-                onAppConnected={phase !== "live" ? () => {
+                onAppConnected={() => {
                   if (nativeSourceRequestRef.current) void openCaptureSourcePicker();
-                } : undefined}
+                }}
                 browserSupported={!!navigator.mediaDevices?.getDisplayMedia}
                 cameraSupported={!!navigator.mediaDevices?.getUserMedia}
-                browserAvailable={!nativeActive}
-                cameraAvailable={!nativeActive}
                 selectionDisabled={roomMutating || switchingSource || changingQuality}
                 initialAudio={
                   nativeActive
@@ -4016,7 +4132,7 @@ export function HostPage({
               </div>
             </>}
             audio={<>
-              {nativePermissionIntent && nativeActive && ((commentaryBusy && !commentary) || (switchingSource && sourceSwitchRef.current?.audioOnly)) &&
+              {nativePermissionIntent && nativeActive && ((commentaryBusy && !commentary) || (sourceSwitchState?.nativePending && sourceSwitchState.audioOnly)) &&
                 <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" tone="primary"
                   hint="hint-client-site" onClick={confirmNativePermission} />}
               {phase === "live" && (!nativeActive || nativeConnection.current?.health.nativeMedia.microphone) ?

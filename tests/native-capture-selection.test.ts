@@ -45,6 +45,8 @@ describe("native capture source selection", () => {
     expect(html).toContain('data-source-tab="browser"');
     expect(html).toContain('data-source-tab="camera"');
     expect(html).toContain(t("en", "host.sourcePicker.systemAction"));
+    expect(html).toContain('class="lr-source-option is-action"');
+    expect(html).not.toContain('class="lr-source-option-preview"');
   });
 
   it("omits unsupported Browser capture while keeping the system chooser and Camera", () => {
@@ -56,7 +58,6 @@ describe("native capture source selection", () => {
     expect([...html.matchAll(/data-source-tab="([^"]+)"/g)].map(match => match[1]))
       .toEqual(["camera", "picker"]);
     expect(html).toMatch(/data-source-tab="picker"[^>]*aria-selected="true"/);
-    expect(html).not.toContain("is-browser");
   });
 
   it("shows the existing no-source result when neither Browser API nor App capture is available", () => {
@@ -66,7 +67,7 @@ describe("native capture source selection", () => {
       onBrowser() {}, onNative() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
     }));
     expect(html).not.toContain('role="tab"');
-    expect(html).not.toContain("is-browser");
+    expect(html).not.toContain("is-action");
     expect(html).toContain(t("en", "host.capture.noSource"));
   });
 
@@ -167,7 +168,7 @@ describe("native capture source selection", () => {
       expect(browserTab).toContain(`aria-label="${t(lang, "host.sourcePicker.browser")}"`);
       const browserCopy = browserTab.replaceAll("&#x27;", "'");
       expect(browserCopy).not.toContain('role="status"');
-      expect(browserTab).not.toMatch(/class="lr-source-option is-browser"[^>]*disabled=""/);
+      expect(browserTab).not.toMatch(/class="lr-source-option is-action"[^>]*disabled=""/);
     }
   });
 
@@ -259,7 +260,7 @@ describe("native capture source selection", () => {
       onBrowser: () => {}, onNative: () => {}, onPreview: async () => null,
       onRefresh: () => {}, onCancel: () => {},
     }));
-    expect(html).toMatch(/class="lr-source-option(?: is-browser)?"[^>]*disabled=""/);
+    expect(html).toMatch(/class="lr-source-option(?: is-action)?"[^>]*disabled=""/);
     expect(html).not.toMatch(/class="lr-source-picker-close"[^>]*disabled=""/);
   });
 

@@ -414,8 +414,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   width: min(720px, 100%);
   min-width: 0;
   min-height: 0;
+  height: 100%;
   max-height: 100%;
-  margin: auto;
+  margin-inline: auto;
   gap: 12px;
 }
 .lr-source-picker-head {
@@ -483,6 +484,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   flex-direction: column;
   gap: 10px;
   overflow-y: auto;
+  overscroll-behavior-y: contain;
   scrollbar-gutter: stable;
   padding: 8px;
   margin: -8px;
@@ -524,19 +526,19 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-source-option:active:not(:disabled) { transform: var(--control-press-transform); box-shadow: none; transition-duration: 80ms; }
 .lr-source-option[aria-current="true"] { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); }
-.lr-source-option:not(.is-browser) {
+.lr-source-option:not(.is-action) {
   display: grid;
   align-items: stretch;
   gap: 6px;
   padding: 8px;
 }
-.lr-source-option:not(.is-browser) .lr-source-option-copy {
+.lr-source-option:not(.is-action) .lr-source-option-copy {
   display: flex;
   min-height: 36px;
   align-items: flex-start;
   gap: 8px;
 }
-.lr-source-option:not(.is-browser) .lr-source-option-copy strong {
+.lr-source-option:not(.is-action) .lr-source-option-copy strong {
   display: -webkit-box;
   flex: 1;
   min-width: 0;
@@ -574,7 +576,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   white-space: nowrap;
   font-size: 13px;
 }
-.lr-source-picker.is-visual .lr-source-option.is-browser {
+.lr-source-option.is-action .lr-source-option-copy strong { white-space: normal; }
+.lr-source-picker.is-visual .lr-source-option.is-action {
   min-height: 90px;
   justify-content: center;
   padding: 8px;
@@ -1785,19 +1788,28 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-door-body { padding: 12px; }
   .lr-dial { width: 54px; height: 66px; font-size: 28px; }
   .lr-tv-screen.has-entry { aspect-ratio: auto; min-height: 292px; }
-  .lr-tv-screen:has(.lr-source-picker) { aspect-ratio: auto; min-height: 440px; }
+  .lr-tv-screen:has(.lr-source-picker) { aspect-ratio: auto; height: min(520px, 76svh); min-height: 300px; }
   .lr-tv-big { width: 72px; height: 72px; }
   .lr-source-picker { padding: 12px; }
   .lr-source-picker-panel { gap: 8px; }
   .lr-source-picker-mark { width: 36px; height: 36px; }
-  .lr-source-picker-list { max-height: min(320px, 48vh); }
-  .lr-source-option { min-height: 78px; padding: 6px 8px; }
+  .lr-source-picker-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr)); }
+  .lr-source-option { min-height: 58px; padding: 6px 8px; }
+  .lr-source-option-preview { height: 90px; }
   .lr-source-option-icon { width: 34px; height: 34px; }
   .lr-leds-label { display: none; }
   .lr-top-right { gap: 8px; }
   .lr-leds { gap: 4px; padding: 6px; }
   .lr-top .lr-btn.is-compact { width: var(--control-compact-size); padding: 0; }
   .lr-top .lr-btn.is-compact .lr-cap { display: none; }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .lr-room:not(.is-theater) .lr-tv:has(.lr-source-picker) { width: min(960px, 100%); }
+  .lr-tv-screen:has(.lr-source-picker) { aspect-ratio: auto; height: max(244px, 84svh); }
+  .lr-source-picker { padding: 10px 12px; }
+  .lr-source-picker-panel { gap: 8px; }
+  .lr-source-option-preview { height: 90px; }
 }
 
 .lr-stage-notices {

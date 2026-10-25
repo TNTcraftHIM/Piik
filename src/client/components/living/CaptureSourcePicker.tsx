@@ -96,6 +96,7 @@ export function CaptureSourcePicker({
   const { vis, t } = useCopy();
   const pickerId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const [tab, setTab] = useState<SourceTab | null>(null);
   const [shareAudio, setShareAudio] = useState(initialAudio);
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
@@ -114,6 +115,7 @@ export function CaptureSourcePicker({
   const activeTab = tabs.includes(preferredTab) && tabAvailable(preferredTab)
     ? preferredTab : tabs.find(tabAvailable) ?? tabs[0];
   const nativeTab = activeTab === "window" || activeTab === "display" || activeTab === "picker";
+  useEffect(() => { bodyRef.current?.scrollTo({ top: 0 }); }, [activeTab]);
   const browserCapture = activeTab === "browser";
   const cameraSources = useCameraSources(activeTab === "camera", activeCameraVideo, loadCameras);
   const supportsCaptureBorder = nativeTab && nativeSources.kind === "ready" && nativeSources.captureBorderControl === true;
@@ -281,6 +283,7 @@ export function CaptureSourcePicker({
         </div>}
 
         <div
+          ref={bodyRef}
           className="lr-source-picker-body"
           role={activeTab ? "tabpanel" : undefined}
           id={`${pickerId}-panel`}
@@ -350,7 +353,7 @@ export function CaptureSourcePicker({
             {browserCapture ? (
               <button
                 type="button"
-                className="lr-source-option is-browser"
+                className="lr-source-option is-action"
                 aria-label={t("host.sourcePicker.browser")}
                 disabled={selectionDisabled || !tabAvailable(activeTab)}
                 onClick={onBrowser}
@@ -479,6 +482,6 @@ function CaptureSourceOption({
   return <CaptureSourceCard title={title} action={action}
     icon={target.kind === "picker" ? "share" : target.kind}
     hint={target.kind === "picker" ? "hint-source-picker" : target.kind === "display" ? "hint-capture-display" : "hint-capture-window"}
-    preview={preview} nativeKey={nativeCaptureTargetKey(target)} buttonRef={buttonRef}
+    preview={target.kind === "picker" ? undefined : preview} nativeKey={nativeCaptureTargetKey(target)} buttonRef={buttonRef}
     disabled={disabled} onPreview={requestPreview} onSelect={onSelect} />;
 }
