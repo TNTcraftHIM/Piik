@@ -1035,7 +1035,7 @@ describe("Host quality ownership", () => {
       expect(selection).toMatchObject({ kind: "native", target, audio: false, showCaptureBorder: true });
       current.client.startShare.mockRejectedValue(new Error("capture unavailable"));
       await expect(current.context.startNativeShare(1, "share", selection)).rejects.toThrow("capture unavailable");
-      expect(current.client.startShare).toHaveBeenCalledWith(expect.objectContaining({ showCaptureBorder: true }));
+      expect(current.client.startShare).toHaveBeenCalledWith(expect.objectContaining({ showCaptureBorder: true }), undefined);
     }
   });
 
