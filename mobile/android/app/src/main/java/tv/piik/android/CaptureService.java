@@ -54,7 +54,7 @@ public final class CaptureService extends Service {
     MediaCodec codec;
     Surface surface;
     CaptureRenderer.Target target;
-    int width, height, fps, sourceWidth, sourceHeight;
+    int width, height, fps, bitrate, sourceWidth, sourceHeight;
     String configuration;
     byte[] config;
     long base = -1, last = -1;
@@ -255,7 +255,8 @@ public final class CaptureService extends Service {
               h264 ? "video/avc" : "video/x-vnd.on2.vp8", next.width, next.height);
       format.setInteger(
           MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-      format.setInteger(MediaFormat.KEY_BIT_RATE, options.getInt("bitrate"));
+      next.bitrate = options.getInt("bitrate");
+      format.setInteger(MediaFormat.KEY_BIT_RATE, next.bitrate);
       // CBR avoids Android's VBR quality floor overriding transport bitrate budgets.
       if (capabilities.getEncoderCapabilities()
           .isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR))
@@ -509,6 +510,7 @@ public final class CaptureService extends Service {
           () -> {
             Video current = s.video;
             if (current == null || current.id != id || current.runtime != owner) return;
+            if (command.equals("bitrate") && current.bitrate == value) return;
             try {
               Bundle params = new Bundle();
               if (command.equals("keyframe"))
@@ -517,6 +519,7 @@ public final class CaptureService extends Service {
                 params.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, (int) value);
               else return;
               current.codec.setParameters(params);
+              if (command.equals("bitrate")) current.bitrate = (int) value;
               if (command.equals("keyframe")) s.renderer.refresh(current.target);
             } catch (Exception error) {
               s.fail(current.runtime, id);
