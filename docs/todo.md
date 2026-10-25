@@ -44,9 +44,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   and stationary-screen late join/keyframe
   recovery, then prepare release packaging. The system-browser companion is the
   primary candidate; keep the embedded build for comparison until acceptance.
-- [ ] **iOS browser companion.** Connect the [Swift capture producer](../mobile/ios/README.md#integration-boundary)
-  to the shared mobile bridge. Verify Safari-to-App control and background Host
-  operation with the Apple SDK and a device before preparing an iOS test package.
+- [ ] **iOS device acceptance.** Verify the implementation on `feat/ios-client`
+  with a signed iOS 27 device: recording consent, capture background lifetime
+  and WKWebView Host routing. Verify hosted HTTPS native linkage separately.
 
 ## Held By Owner
 
