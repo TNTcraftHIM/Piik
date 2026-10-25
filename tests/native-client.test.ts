@@ -20,6 +20,7 @@ import {
 } from "../src/client/native/wire";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -33,32 +34,50 @@ describe("native App private wire", () => {
     nativeMedia: { video: true, hardwareH264: true },
   };
 
+  it("discovers with caller cancellation when AbortSignal.any is unavailable", async () => {
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1:8787/") });
+    const fetcher = vi.fn(async (url: string) => {
+      if (new URL(url).port !== String(health.port)) throw new TypeError("No listener");
+      return new Response(JSON.stringify(health));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeHealth({ signal: new AbortController().signal })).resolves.toMatchObject({ port: health.port });
+    expect(fetcher).toHaveBeenCalled();
+  });
+
   it.each(["localhost", "127.0.0.1", "[::1]"])("discovers and updates presentation from %s without an address-space hint", async hostname => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL(`http://${hostname}:8787/`) });
     const query = vi.fn().mockResolvedValue({ state: "prompt" });
     vi.stubGlobal("navigator", { permissions: { query } });
     const fetcher = vi.fn((url: string, init: RequestInit) => {
       if ("targetAddressSpace" in init) throw new TypeError("loopback is not a valid IPAddressSpace enum value");
-      return Promise.resolve(new Response(JSON.stringify(url.endsWith("connect-discovery")
-        ? { ...health, connectURL: "http://127.0.0.1:54321/client" } : health)));
+      return Promise.resolve(new Response(JSON.stringify(url.endsWith("quality-preference") ? DEFAULT_QUALITY_SETTINGS
+        : url.endsWith("connect-discovery") ? { ...health, connectURL: "http://127.0.0.1:54321/client" }
+          : { ...health, qualityPreference: true })));
     });
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
     await expect(discoverNativeConnect()).resolves.toContain("http://127.0.0.1:54321/client?");
     await notifyNativePresentation("en", new AbortController().signal);
+    const preference = await AppQualityPreference.connect(new AbortController().signal);
+    await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
     expect(query).not.toHaveBeenCalled();
-    expect(fetcher).toHaveBeenLastCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ method: "POST" }));
+    expect(fetcher).toHaveBeenCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ method: "POST" }));
     expect(fetcher.mock.calls.every(([, init]) => !("targetAddressSpace" in init))).toBe(true);
   });
 
   it("retains the address-space hint for hosted discovery and presentation without a no-hint fallback", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) } });
-    const fetcher = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify(health)));
+    const fetcher = vi.fn(async (url: string, _init: RequestInit) => new Response(JSON.stringify(
+      url.endsWith("quality-preference") ? DEFAULT_QUALITY_SETTINGS : { ...health, qualityPreference: true })));
     vi.stubGlobal("fetch", fetcher);
     await notifyNativePresentation("en", new AbortController().signal);
+    const preference = await AppQualityPreference.connect(new AbortController().signal);
+    await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
     expect(fetcher.mock.calls.every(call => (call[1] as RequestInit & { targetAddressSpace: string }).targetAddressSpace === "loopback")).toBe(true);
-    expect(fetcher).toHaveBeenLastCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ targetAddressSpace: "loopback" }));
+    expect(fetcher).toHaveBeenCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ targetAddressSpace: "loopback" }));
     fetcher.mockImplementation(() => { throw new TypeError("Unsupported IPAddressSpace"); });
     fetcher.mockClear();
     await expect(discoverNativeHealth()).resolves.toBeNull();
@@ -110,6 +129,7 @@ describe("native App private wire", () => {
   });
 
   it("cancels the whole approval scan with its caller", async () => {
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
@@ -361,6 +381,7 @@ describe("native App private wire", () => {
 
   it("bounds all silent discovery ports with one deadline", async () => {
     vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
@@ -369,7 +390,7 @@ describe("native App private wire", () => {
         options.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
       });
     }));
-    const discovery = discoverNativeHealth();
+    const discovery = discoverNativeHealth({ signal: new AbortController().signal });
     await vi.advanceTimersByTimeAsync(8_000);
     await expect(discovery).resolves.toBeNull();
     expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);

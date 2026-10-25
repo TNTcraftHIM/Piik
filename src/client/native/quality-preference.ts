@@ -1,6 +1,6 @@
 import { qualitySettingsSchema, type QualitySettings } from "../../shared/protocol";
 import { debugError } from "../lib/debug";
-import { discoverNativeHealth } from "./client";
+import { discoverNativeHealth, isLoopbackPage } from "./client";
 import type { NativeHealth } from "./wire";
 
 /** Optional App storage; never claims a media control session or delays sharing. */
@@ -21,7 +21,7 @@ export class AppQualityPreference {
   }
 
   async read(): Promise<QualitySettings | null> {
-    const value: unknown = await (await this.request()).json();
+    const value = await this.request();
     return value === null ? null : qualitySettingsSchema.parse(value);
   }
 
@@ -50,16 +50,27 @@ export class AppQualityPreference {
     }
   }
 
-  private async request(settings?: QualitySettings): Promise<Response> {
-    const response = await fetch(`http://127.0.0.1:${this.health.port}/quality-preference`, {
-      method: settings ? "PUT" : "GET",
-      headers: { "Content-Type": "application/json", "X-Piik-Instance": this.health.instanceToken },
-      ...(settings ? { body: JSON.stringify(settings) } : {}),
-      cache: "no-store",
-      signal: AbortSignal.any([this.signal, AbortSignal.timeout(4_000)]),
-      targetAddressSpace: "loopback",
-    } as RequestInit);
-    if (!response.ok) throw new Error(`Piik App preference request failed (${response.status})`);
-    return response;
+  private async request(settings?: QualitySettings): Promise<unknown> {
+    const controller = new AbortController();
+    const abort = () => controller.abort(this.signal.reason);
+    if (this.signal.aborted) abort();
+    else this.signal.addEventListener("abort", abort, { once: true });
+    const timer = setTimeout(() => controller.abort(new DOMException("Piik App preference request timed out", "TimeoutError")), 4_000);
+    try {
+      const response = await fetch(`http://127.0.0.1:${this.health.port}/quality-preference`, {
+        method: settings ? "PUT" : "GET",
+        headers: { "Content-Type": "application/json", "X-Piik-Instance": this.health.instanceToken },
+        ...(settings ? { body: JSON.stringify(settings) } : {}),
+        cache: "no-store",
+        signal: controller.signal,
+        ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
+      } as RequestInit);
+      if (!response.ok) throw new Error(`Piik App preference request failed (${response.status})`);
+      return settings ? undefined : await response.json();
+    } finally {
+      clearTimeout(timer);
+      this.signal.removeEventListener("abort", abort);
+      controller.abort();
+    }
   }
 }

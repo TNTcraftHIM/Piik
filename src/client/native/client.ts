@@ -56,7 +56,7 @@ interface NativeDiscoveryOptions {
   signal?: AbortSignal;
 }
 
-function isLoopbackPage(): boolean {
+export function isLoopbackPage(): boolean {
   return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 }
 
@@ -158,6 +158,8 @@ async function discoverNative<T>(
   }
   if (signal?.aborted) return null;
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
   // The first request may wait for browser permission. One shared deadline
   // bounds the scan; a silent port must not hide an App on another port.
   const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -168,7 +170,7 @@ async function discoverNative<T>(
       const port = NATIVE_CLIENT_PORT_START + index;
       const response = await fetch(`http://127.0.0.1:${port}/${path}`, {
         cache: "no-store",
-        signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+        signal: controller.signal,
         ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
       } as RequestInit);
       if (!response.ok) throw new Error("Piik App discovery was not accepted");
@@ -197,6 +199,7 @@ async function discoverNative<T>(
     debugEvent("native", "unavailable", { stage: "discovery", timedOut: controller.signal.aborted });
     return null;
   } finally {
+    signal?.removeEventListener("abort", abort);
     window.clearTimeout(timer);
     controller.abort();
   }
