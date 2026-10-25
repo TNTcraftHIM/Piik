@@ -9,7 +9,7 @@
   transition: opacity 180ms ease, transform 220ms var(--spring);
 }
 .lr-playback.lr-media-controls { flex-wrap: nowrap; }
-.lr-playback.lr-media-toolbar { background: var(--surface-glaze) color-mix(in srgb, var(--paper) 84%, transparent); }
+.lr-playback.lr-media-toolbar { background: var(--surface-glaze) var(--paper-translucent); }
 .lr-playback-main { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
 .lr-playback.is-hidden { opacity: 0; transform: translateY(6px); pointer-events: none; }
 .lr-playback:has([popover]:is(:popover-open, .\:popover-open)) { opacity: 1; transform: none; pointer-events: auto; }

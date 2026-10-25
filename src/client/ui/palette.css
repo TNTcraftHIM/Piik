@@ -4,7 +4,9 @@
   --person-ink: #263b43;
   --wall: #f3f5f8;
   --wall-2: #e5eaf2;
-  --paper: #fffefb;
+  --paper-rgb: 255 254 251;
+  --paper: rgb(var(--paper-rgb));
+  --paper-translucent: rgb(var(--paper-rgb) / .84);
   --ink: #29374a;
   /* Opaque sRGB roles also work in WebViews without color-mix. */
   --muted: rgb(94.5 104.75 118.25);
@@ -34,7 +36,8 @@
   --panel-shadow: inset 0 1px 0 var(--surface-rim), 0 3px 0 var(--surface-shade), 0 16px 36px rgb(var(--surface-shade-rgb) / calc(var(--surface-shade-alpha) * .55));
   --piik-dark-wall: #242a34;
   --piik-dark-wall-2: #2c3543;
-  --piik-dark-paper: #354153;
+  --piik-dark-paper-rgb: 53 65 83;
+  --piik-dark-paper: rgb(var(--piik-dark-paper-rgb));
   --piik-dark-ink: #f6f3eb;
   --piik-dark-muted: rgb(197.75 198.5 197);
   --piik-dark-line: rgb(91.6 100.6 113.4);
@@ -53,6 +56,7 @@
 :root[data-theme="dark"], :root.dark {
   --wall: var(--piik-dark-wall);
   --wall-2: var(--piik-dark-wall-2);
+  --paper-rgb: var(--piik-dark-paper-rgb);
   --paper: var(--piik-dark-paper);
   --ink: var(--piik-dark-ink);
   --muted: var(--piik-dark-muted);
