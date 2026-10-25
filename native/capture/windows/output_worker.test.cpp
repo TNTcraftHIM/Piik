@@ -104,12 +104,15 @@ class CadenceEncoder final : public VideoEncoder {
     if (!adapter_.AdaptFrameResolution(64, 64, static_cast<int64_t>(timestamp * 100),
         &crop_width, &crop_height, &width, &height)) return {timestamp, false, {}};
     if (key) ++key_requests_;
-    return {timestamp, key && key_requests_ != 2, {1, 2, 3}};
+    return {timestamp, key && key_requests_ != 2,
+      {static_cast<BYTE>(bitrate_ >> 24), static_cast<BYTE>(bitrate_ >> 16),
+       static_cast<BYTE>(bitrate_ >> 8), static_cast<BYTE>(bitrate_)}};
   }
-  void SetBitrate(UINT32) override {}
+  void SetBitrate(UINT32 bitrate) override { bitrate_ = bitrate; }
  private:
   webrtc::VideoAdapter adapter_{2};
   unsigned key_requests_ = 0;
+  UINT32 bitrate_ = 0;
 };
 
 void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
@@ -120,6 +123,7 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
   std::atomic<bool> refresh{false};
   std::atomic<UINT64> changed_at{UINT64_MAX};
   std::array<std::atomic<unsigned>, 2> delivered{}, changed{}, keys{};
+  std::array<std::atomic<UINT32>, 2> published_bitrate{};
   std::vector<std::unique_ptr<OutputWorker>> workers;
   for (int layer = 0; layer < 2; ++layer) {
     workers.push_back(std::make_unique<OutputWorker>(static_cast<UINT8>(layer), profile,
@@ -129,6 +133,9 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
           ++delivered[layer];
           if (output.access_unit.timestamp100ns >= changed_at.load()) ++changed[layer];
           if (output.access_unit.key_frame) ++keys[layer];
+          const auto& bytes = output.access_unit.bytes;
+          published_bitrate[layer].store((static_cast<UINT32>(bytes[0]) << 24) |
+              (static_cast<UINT32>(bytes[1]) << 16) | (static_cast<UINT32>(bytes[2]) << 8) | bytes[3]);
         }, [](std::exception_ptr error) { std::rethrow_exception(error); },
         [&] { refresh.store(true); }));
   }
@@ -148,6 +155,7 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
       std::this_thread::sleep_for(std::chrono::milliseconds(34));
     }
   };
+  for (auto& worker : workers) worker->SetBitrate(profile.bit_rate / 2);
   submit(input);
   wait([&] { return delivered[0] > 0 && delivered[1] > 0; });
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -165,6 +173,12 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
   workers[0]->RequestKeyFrame();
   submit(RefreshCaptureInput(*input));
   wait([&] { return keys[0] > before; });
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  assert(!refresh.load());
+  workers[0]->SetBitrate(profile.bit_rate);
+  submit(RefreshCaptureInput(*input));
+  wait([&] { return published_bitrate[0] == profile.bit_rate; });
   if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   assert(!refresh.load());

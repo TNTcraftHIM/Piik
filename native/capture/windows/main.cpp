@@ -1607,7 +1607,7 @@ class OutputWorker final {
       Check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "output-com-apartment");
       apartment = true;
       UINT64 codec_generation = 0;
-      std::optional<UINT64> delivered_content;
+      std::optional<std::pair<UINT64, UINT32>> delivered_input;
       UINT32 converted_width = 0, converted_height = 0;
       for (;;) {
         const auto work = mailbox_.Take();
@@ -1616,15 +1616,17 @@ class OutputWorker final {
           encoder.reset();
           initial.reset();
           converter.reset();
-          delivered_content.reset();
+          delivered_input.reset();
           continue;
         }
         const auto& input = work.input;
+        // Quiet pixels still need publication at a newly requested encoder budget.
+        const auto requested_input = std::pair{input->capture_timestamp, work.bitrate};
         if (codec_generation != work.generation) {
           encoder.reset();
           converter.reset();
           codec_generation = work.generation;
-          delivered_content.reset();
+          delivered_input.reset();
         }
         std::optional<AdaptiveAccessUnit> output;
         try {
@@ -1664,7 +1666,7 @@ class OutputWorker final {
           if (on_refresh_ && mailbox_.Retry(work.generation, work.recovery)) on_refresh_();
         };
         if (!output) {
-          if (delivered_content != input->capture_timestamp || work.recovery) request_refresh();
+          if (delivered_input != requested_input || work.recovery) request_refresh();
           continue;
         }
         if (!mailbox_.Accept(work.generation)) continue;
@@ -1674,7 +1676,7 @@ class OutputWorker final {
                              access_unit.bytes.data(), static_cast<DWORD>(access_unit.bytes.size()),
                              layer_, static_cast<UINT16>(output->width),
                              static_cast<UINT16>(output->height)), "capture-video-output");
-        delivered_content = input->capture_timestamp;
+        delivered_input = requested_input;
         if (on_output_) on_output_(*output);
         if (work.recovery && !access_unit.key_frame) request_refresh();
       }
