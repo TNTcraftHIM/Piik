@@ -80,6 +80,7 @@ public final class MainActivity extends Activity {
     }
     if (!BuildConfig.EXTERNAL_BROWSER && web != null && !wakeEntry()) {
       if (web.getParent() instanceof ViewGroup) ((ViewGroup) web.getParent()).removeView(web);
+      web.getContext().getTheme().rebase();
       setContentView(WindowContent.wrap(getWindow(), web));
     } else {
       TextView waiting = new TextView(this);
