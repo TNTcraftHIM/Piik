@@ -144,6 +144,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 		defer close(r.launchDone)
 		r.runLauncher(lanAddress)
 	}()
+	go r.watchServices()
 	return r, nil
 }
 
@@ -287,13 +288,29 @@ func (r *Runtime) watchRoom(server *serverapp.Server, tunnel *publictunnel.Proce
 	case <-tunnelDone:
 		reason = failure.TunnelStopped
 	}
+	r.stop(reason)
+}
+
+func (r *Runtime) watchServices() {
+	var reason failure.Reason
+	select {
+	case <-r.ctx.Done():
+		return
+	case <-r.launcher.Done():
+		reason = failure.Launcher
+	case <-r.control.Done():
+		reason = failure.NativeControl
+	}
+	r.stop(reason)
+}
+
+func (r *Runtime) stop(reason failure.Reason) {
 	if r.ctx.Err() != nil {
 		return
 	}
-	if err := r.Close(); err != nil {
-		slog.Warn("mobile room cleanup failed", "error", err)
+	if err := r.close(reason); err != nil {
+		slog.Warn("mobile runtime cleanup failed", "error", err)
 	}
-	r.capture.platform.RuntimeStopped(string(reason))
 }
 
 // Sites retain the desktop configuration and exact-origin approval owner.
@@ -393,7 +410,13 @@ func (r *Runtime) TrustedURL(value string) bool {
 }
 
 func (r *Runtime) Close() error {
+	return r.close("")
+}
+
+func (r *Runtime) close(reason failure.Reason) error {
+	closed := false
 	r.once.Do(func() {
+		closed = true
 		r.cancel()
 		if r.launchDone != nil {
 			<-r.launchDone
@@ -424,5 +447,8 @@ func (r *Runtime) Close() error {
 			r.closeErr = errors.Join(r.closeErr, s.Close())
 		}
 	})
+	if closed && reason != "" {
+		r.capture.platform.RuntimeStopped(string(reason))
+	}
 	return r.closeErr
 }
