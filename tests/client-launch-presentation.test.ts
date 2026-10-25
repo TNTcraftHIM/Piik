@@ -116,11 +116,12 @@ describe("App presentation handoff authority", () => {
     const grant = `${"a".repeat(21)}A`;
     const target = new URL(clientLaunchURL(`https://site.example/r/9527?debug=1#piik-client=1&v=${grant}`, {
       lang: "zh", vis: true, theme: "dark", explicit: ["copy", "theme"],
-    }));
+    }, undefined, 39730));
     const oldFragment = new URLSearchParams(target.hash.slice(1));
     expect(oldFragment.get("piik-lang")).toBe("zh");
     expect(oldFragment.get("piik-mode")).toBe("vis");
     expect(oldFragment.get("piik-theme")).toBe("dark");
+    expect(target.searchParams.get("piik-client-port")).toBe("39730");
     // The released reader removes only these keys before its exact #v= parser.
     for (const key of ["piik-client", "client-access", "piik-lang", "piik-mode", "piik-theme"]) oldFragment.delete(key);
     expect(oldFragment.toString()).toBe(`v=${grant}`);
@@ -128,5 +129,29 @@ describe("App presentation handoff authority", () => {
     expect(takeClientLaunchBootstrap().presentation?.explicit).toEqual(["copy", "theme"]);
     expect(env.page.location.search).toBe("?debug=1");
     expect(readViewerRoute()).toEqual({ roomId: "9527", viewerGrant: grant });
+  });
+
+  it.each(["39720", "39731", "NaN", "39721.5"])("ignores out-of-contract runtime ports: %s", async port => {
+    const env = browser();
+    env.page.location = new URL(`https://site.example/?piik-client-port=${port}#piik-client=1`);
+    const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
+    expect(takeClientLaunchBootstrap().launchedByClient).toBe(true);
+    expect(clientRuntimePort()).toBeNull();
+    expect(env.page.location.href).toBe("https://site.example/");
+    expect(env.values.get("piik:client-launch:v1")).toBe("1");
+  });
+
+  it("keeps an inline App selection when browser storage is unavailable", async () => {
+    const env = browser([], true);
+    Object.assign(env.page, { sessionStorage: {
+      getItem: () => { throw new Error("blocked"); },
+      setItem: () => { throw new Error("blocked"); },
+    } });
+    env.page.location = new URL("https://site.example/?piik-client-port=39730#piik-client=1");
+    const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/session");
+    takeClientLaunchBootstrap();
+    expect(clientRuntimePort()).toBe(39730);
+    expect(isClientActivated()).toBe(true);
+    expect(env.page.location.href).toBe("https://site.example/");
   });
 });

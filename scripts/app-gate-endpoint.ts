@@ -1,9 +1,6 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
-import {
-  NATIVE_CLIENT_PORT_END,
-  NATIVE_CLIENT_PORT_START,
-} from "../src/client/native/wire";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 import { withDeadline } from "./browser-gate-harness";
 
 const INSTANCE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;

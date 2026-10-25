@@ -43,7 +43,7 @@ const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: t
 function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
-    "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "Target", "Starting", "Sites", "StartupSite",
+    "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "ControlPort", "Target", "Starting", "Sites", "StartupSite",
     "AppDebug", "Debug", "Error", "Loading", "Update", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {

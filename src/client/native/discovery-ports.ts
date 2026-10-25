@@ -1,0 +1,2 @@
+export const NATIVE_CLIENT_PORT_START = 39_721;
+export const NATIVE_CLIENT_PORT_END = 39_730;

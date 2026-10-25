@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -452,12 +453,18 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 				t.Fatal("manual entry was not available while browser opening hung")
 			}
 			if mode == "site" || mode == "starred-site" || mode == "starred-second-site" {
-				if model.view.entry != launchURL("https://share.example") {
+				if model.view.entry != launcher.EntryURL("https://share.example", control.Endpoint().Port) {
 					t.Fatalf("App did not open the selected Site: %s", model.view.entry)
 				}
-				response, err := http.Get(model.launcher)
+				response, err := http.Get(strings.TrimSuffix(model.launcher, "/client") + "/api/client-launcher")
 				if err != nil {
 					t.Fatalf("launcher management is unavailable: %v", err)
+				}
+				var state struct {
+					ControlPort int `json:"controlPort"`
+				}
+				if err := json.NewDecoder(response.Body).Decode(&state); err != nil || state.ControlPort != control.Endpoint().Port {
+					t.Fatalf("launcher selected another App runtime: %+v, %v", state, err)
 				}
 				response.Body.Close()
 				if response.StatusCode != http.StatusOK {
@@ -658,10 +665,10 @@ func TestLocalLaunchRevalidatesTheChosenLANAddress(t *testing.T) {
 }
 
 func TestAppLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
-	value := launchURL("https://share.example/")
+	value := launcher.EntryURL("https://share.example/", loopback.DefaultPortStart)
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "share.example" ||
-		parsed.RawQuery != "" {
+		parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 		t.Fatalf("launch URL = %q, %v", value, err)
 	}
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
@@ -785,9 +792,9 @@ func TestFailedCaptureProbeRetainsItsCause(t *testing.T) {
 }
 
 func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
-	value := launchURL("http://localhost:8787/#client-access=secret")
+	value := launcher.EntryURL("http://localhost:8787/#client-access=secret", loopback.DefaultPortStart)
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.RawQuery != "" {
+	if err != nil || parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 		t.Fatalf("local native launch URL = %q, %v", value, err)
 	}
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
@@ -803,10 +810,12 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 			value := launcher.LocalEntryURL(
 				"http://localhost:8787/?retained=query#retained=a%2Bb%25&client-access=old&piik-lang=zh&piik-mode=text&piik-theme=dark",
 				password,
+				loopback.DefaultPortStart,
 			)
-			for _, target := range []string{value, launchURL(value)} {
+			for _, target := range []string{value, launcher.EntryURL(value, loopback.DefaultPortStart)} {
 				parsed, err := url.Parse(target)
-				if err != nil || parsed.RawQuery != "retained=query" {
+				if err != nil || parsed.Query().Get("retained") != "query" ||
+					parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 					t.Fatalf("local launch URL = %q, %v", target, err)
 				}
 				// location.hash stays escaped. Parsing Fragment instead would decode
@@ -822,7 +831,7 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 		})
 	}
 
-	open := launcher.LocalEntryURL("http://localhost:8787/#client-access=old", "")
+	open := launcher.LocalEntryURL("http://localhost:8787/#client-access=old", "", loopback.DefaultPortStart)
 	parsed, err := url.Parse(open)
 	if err != nil {
 		t.Fatal(err)

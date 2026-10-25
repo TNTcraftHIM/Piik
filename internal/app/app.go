@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -284,6 +285,7 @@ func runLauncher(
 				return launcher.SaveStartupSite(configPath, site)
 			},
 			Sites: config.ApprovedSites(), Version: buildVersion(), Revision: BuildRevision,
+			ControlPort:         control.Endpoint().Port,
 			LocalAccessPassword: config.LocalAccessPassword,
 			Debug:               options.Debug, LANAddress: options.LANAddress,
 			ChangeSite: func(site string, allowed bool) ([]string, error) {
@@ -339,7 +341,7 @@ func runLauncher(
 		if !automatic {
 			site = startupSite
 		}
-		openSite(site, options)
+		openSite(site, options, control.Endpoint().Port)
 	}
 	// The resident App outlives a failed interactive room. Retry only after the
 	// previous runtime has joined, leaving unrelated Site/native sessions intact.
@@ -488,9 +490,9 @@ func openDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	return diagnostics.Open(filepath.Join(cache, "Piik", "logs"), "client", BuildRevision)
 }
 
-func openSite(site string, options Options) {
+func openSite(site string, options Options, controlPort int) {
 	slog.Debug("piik-client", "event", "mode", "mode", "site")
-	targetURL := launchURL(site)
+	targetURL := launcher.EntryURL(site, controlPort)
 	view := consoleView{mode: "site", state: "ready", entry: targetURL}
 	options.console.show(view)
 	if options.console.machine {
@@ -631,6 +633,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	launchURL := launcher.LocalEntryURL(
 		fmt.Sprintf("http://127.0.0.1:%d/", options.Port),
 		config.LocalAccessPassword,
+		control.Endpoint().Port,
 	)
 	view.state, view.entry, view.invite = "ready", launchURL, publicOrigin
 	if view.invite == "" {
@@ -664,20 +667,6 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		}
 		return errors.Join(failure.TunnelStopped, errors.New("public invitation link stopped"))
 	}
-}
-
-func launchURL(raw string) string {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return raw
-	}
-	fragment, err := url.ParseQuery(parsed.EscapedFragment())
-	if err != nil {
-		return raw
-	}
-	fragment.Set("piik-client", "1")
-	parsed.Fragment, parsed.RawFragment = "", ""
-	return parsed.String() + "#" + fragment.Encode()
 }
 
 type nativeRuntime struct {

@@ -3,6 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 
 import {
   CdpConnection,
@@ -17,8 +18,6 @@ import {
   type AppEndpoint as Endpoint,
 } from "./app-gate-endpoint";
 import {
-  NATIVE_CLIENT_PORT_END,
-  NATIVE_CLIENT_PORT_START,
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_SUBPROTOCOL,
 } from "../src/client/native/wire";

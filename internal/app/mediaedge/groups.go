@@ -21,11 +21,12 @@ type groupConsumer interface {
 }
 
 type outputGroup struct {
-	slot   int
-	media  *forwarding.EncodedSource
-	budget uint32
-	active bool
-	start  time.Duration
+	slot         int
+	media        *forwarding.EncodedSource
+	budget       uint32
+	active       bool
+	start        time.Duration
+	clockPending bool
 }
 
 type outputDemand struct {
@@ -221,6 +222,9 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 			}
 		}
 		nextActive := active && source.outputBitrates[group.slot] > 0
+		if nextActive && !group.active && source.relay != nil {
+			group.clockPending = true
+		}
 		if group.active != nextActive {
 			slog.Debug("encoding-group", "event", "activity", "slot", group.slot, "active", nextActive, "sourceId", diagnostics.ID(fmt.Sprintf("%p", source)))
 		}
@@ -263,7 +267,7 @@ func (source *Source) newGroup(slot int) (*outputGroup, error) {
 		media.UseSourceClock(source.media.Source, len(source.formats)-1)
 	}
 	media.SetLowestLayerRateControlled(true)
-	group := &outputGroup{slot: slot, media: media, start: source.inputPTS}
+	group := &outputGroup{slot: slot, media: media, start: source.inputPTS, clockPending: source.relay != nil}
 	if source.hasInput {
 		if err = media.BeginFrame(source.inputPTS, source.inputAt); err != nil {
 			media.Close()

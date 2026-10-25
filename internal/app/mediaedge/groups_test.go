@@ -8,7 +8,9 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/mediatransportutil"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 )
 
 type groupTestConsumer struct{ source *forwarding.Source }
@@ -489,4 +491,88 @@ func TestLateOutputGroupKeepsSharedCaptureClock(t *testing.T) {
 	if advance := current - previous; advance != 99*90_000 {
 		t.Fatalf("replacement group RTP timestamp advanced %d ticks", advance)
 	}
+}
+
+func TestRelayGroupSharesReceivedClockAcrossWrap(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	source, err := (&Engine{}).newSource("vp8", 2, 2, &RelayOptions{}, nil)
+	check(err)
+	defer source.Close()
+	check(source.SetFormat(0, 8, 8))
+	check(source.SetFormat(1, 8, 8))
+	check(source.ConfigureOutputs([]uint32{100_000, 1_000_000, 100_000, 100_000}))
+	source.groups = make(map[int]*outputGroup)
+	source.memberships = make(map[groupConsumer]*outputGroup)
+	origin := time.Now()
+	write := func(sequence uint16, timestamp uint32, pts time.Duration) {
+		t.Helper()
+		check(source.beginGroupFrame(pts, origin.Add(pts)))
+		check(source.WriteRTP(&rtp.Packet{Header: rtp.Header{
+			Version: 2, SSRC: 99, PayloadType: 96, SequenceNumber: sequence, Timestamp: timestamp, Marker: true,
+		}, Payload: append([]byte{0x10}, sfu.VP8KeyFrame8x8...)}))
+		if group := source.groups[2]; group != nil && group.active {
+			copied := group.media.GetAllBuffers()[1].GetSenderReportData()
+			accepted := source.media.GetAllBuffers()[1].GetSenderReportData()
+			if copied == nil || copied.RtpTimestamp != accepted.RtpTimestamp || copied.NtpTimestamp != accepted.NtpTimestamp {
+				t.Fatal("first copied RTP waited for another wire report")
+			}
+		}
+		check(source.SenderReport(&rtcp.SenderReport{SSRC: 99, RTPTime: timestamp,
+			NTPTime:     uint64(mediatransportutil.ToNtpTime(origin.Add(pts))),
+			PacketCount: uint32(sequence), OctetCount: uint32(sequence) * 20}))
+	}
+	write(1, 0xffff_ff00, 0)
+	write(2, 644, 10*time.Millisecond)
+	// The original already observed the path; a later group first sees a delayed
+	// report. That internal copy must not establish another network clock.
+	time.Sleep(120 * time.Millisecond)
+	group, err := source.newGroup(2)
+	check(err)
+	group.active = true
+	earlier := &rtcp.SenderReport{SSRC: 99, RTPTime: 0xffff_ff00,
+		NTPTime: uint64(mediatransportutil.ToNtpTime(origin)), PacketCount: 1, OctetCount: 20}
+	check(source.SenderReport(earlier))
+	if group.media.GetAllBuffers()[1].GetSenderReportData() != nil {
+		t.Fatal("a group without RTP accepted a sender report")
+	}
+	write(3, 1544, 20*time.Millisecond)
+	check(source.WriteVideo(2, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
+		PTS: 20 * time.Millisecond, Duration: time.Second / 30}))
+	// A delayed older wire report is rejected by the original owner before
+	// either internal copy can adopt it.
+	check(source.SenderReport(earlier))
+	base := source.media.GetAllBuffers()[1].GetSenderReportData()
+	copied := group.media.GetAllBuffers()[1].GetSenderReportData()
+	if base == nil || copied == nil || base.RtpTimestamp != copied.RtpTimestamp ||
+		base.NtpTimestamp != copied.NtpTimestamp || base.Packets != copied.Packets || base.Octets != copied.Octets {
+		t.Fatal("copied original changed the accepted sender report")
+	}
+	if base.RtpTimestampExt-copied.RtpTimestampExt != 1<<32 {
+		t.Fatal("late group did not retain its own RTP wrap epoch")
+	}
+	for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
+		for layer, buffer := range media.GetAllBuffers() {
+			if buffer == nil || buffer.GetSenderReportData() == nil {
+				continue
+			}
+			local, ok := media.LocalTime(layer, origin.Add(20*time.Millisecond))
+			if !ok || local.UnixNano() != base.AtAdjusted {
+				t.Fatalf("layer %d split the received clock: local=%v expected=%v", layer, local, time.Unix(0, base.AtAdjusted))
+			}
+		}
+	}
+	group.active = false
+	write(4, 3344, 40*time.Millisecond)
+	consumer := &groupTestConsumer{group.media.Source}
+	_, err = source.planGroups([]outputDemand{{consumer: consumer, budget: group.budget, active: true, lower: true}})
+	check(err)
+	if !group.active {
+		t.Fatal("fixture did not reactivate the relay group")
+	}
+	write(5, 4244, 50*time.Millisecond)
 }

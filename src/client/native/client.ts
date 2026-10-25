@@ -1,6 +1,8 @@
 import type { z } from "zod";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { debugError, debugEvent } from "../lib/debug";
+import { clientRuntimePort } from "../lib/session";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "./discovery-ports";
 
 import type {
   IceConfig,
@@ -23,8 +25,6 @@ import {
   nativeDiscoveryIdentitySchema,
   nativeConnectSchema,
   nativeHealthSchema,
-  NATIVE_CLIENT_PORT_END,
-  NATIVE_CLIENT_PORT_START,
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_SUBPROTOCOL,
   pongResponseSchema,
@@ -164,10 +164,12 @@ async function discoverNative<T>(
   // bounds the scan; a silent port must not hide an App on another port.
   const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await Promise.any(Array.from({
+    // An explicit launch stays with its App even when another approved App is faster.
+    const selectedPort = clientRuntimePort();
+    const ports = selectedPort === null ? Array.from({
       length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
-    }, async (_, index) => {
-      const port = NATIVE_CLIENT_PORT_START + index;
+    }, (_, index) => NATIVE_CLIENT_PORT_START + index) : [selectedPort];
+    return await Promise.any(ports.map(async port => {
       const response = await fetch(`http://127.0.0.1:${port}/${path}`, {
         cache: "no-store",
         signal: controller.signal,

@@ -401,7 +401,12 @@ func (source *Source) WriteRTP(packet *rtp.Packet) error {
 	err := source.media.Source.WriteRTP(layer, &forwarded)
 	for slot, group := range source.groups {
 		if slot != 0 && group.active {
-			if groupErr := group.media.Source.WriteRTP(layer, &forwarded); err == nil {
+			groupErr := group.media.Source.WriteRTP(layer, &forwarded)
+			if groupErr == nil && group.clockPending {
+				groupErr = group.media.CopyCorrelation(layer, source.media.Source)
+				group.clockPending = false
+			}
+			if err == nil {
 				err = groupErr
 			}
 		}
@@ -466,7 +471,7 @@ func (source *Source) SenderReport(report *rtcp.SenderReport) error {
 	err := source.media.SenderReport(layer, &correlated)
 	for slot, group := range source.groups {
 		if slot != 0 && group.active {
-			if groupErr := group.media.SenderReport(layer, &correlated); err == nil {
+			if groupErr := group.media.CopyCorrelation(layer, source.media.Source); err == nil {
 				err = groupErr
 			}
 		}

@@ -224,10 +224,10 @@ func TestBrowserOpenFeedbackBelongsToTheCurrentEntry(t *testing.T) {
 func TestConsoleEntryKeepsAppActivationWithoutExposingCredentials(t *testing.T) {
 	model := consoleModel{width: 80, language: "en", view: consoleView{
 		mode: "link", state: "ready",
-		entry:  "http://user:private-secret@localhost:8787/?token=private-secret#client-access=private-secret&piik-client=1",
+		entry:  "http://user:private-secret@localhost:8787/?token=private-secret&piik-client-port=39730#client-access=private-secret&piik-client=1",
 		invite: "https://room.example/?token=private-secret#v=private-secret",
 	}}
-	want := []string{"http://localhost:8787/#piik-client=1", "https://room.example/"}
+	want := []string{"http://localhost:8787/?piik-client-port=39730#piik-client=1", "https://room.example/"}
 	for _, styled := range []bool{false, true} {
 		content := model.content(styled)
 		var addresses []string

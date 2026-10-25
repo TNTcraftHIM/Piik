@@ -308,6 +308,8 @@ func (r *router) handleSfuMediaEvent(event sfu.MediaEvent) {
 	if event.State != webrtc.PeerConnectionStateUnknown {
 		r.debug(participant.roomID, "sfu-transport-state",
 			"participant", r.debugPeer(participant.roomID, participant.peerID),
+			"connectionId", diagnostics.ID(event.ConnectionID),
+			"publicationGeneration", diagnostics.ID(event.Fence.PublicationGeneration),
 			"role", role, "phase", phase, "revision", revision, "state", event.State.String())
 		if event.State == webrtc.PeerConnectionStateFailed {
 			r.failSfuConnection(participant, message)

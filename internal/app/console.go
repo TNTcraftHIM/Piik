@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,6 +18,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/TNTcraftHIM/Piik/internal/app/browser"
 	"github.com/TNTcraftHIM/Piik/internal/app/failure"
+	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -413,7 +415,11 @@ func (model consoleModel) content(styled bool) string {
 		}
 		address := consoleAddress(item[1])
 		if item[0] == "entry" {
-			address = launchURL(address)
+			port := 0
+			if source, err := url.Parse(item[1]); err == nil {
+				port, _ = strconv.Atoi(source.Query().Get("piik-client-port"))
+			}
+			address = launcher.EntryURL(address, port)
 		}
 		style := link
 		if styled {

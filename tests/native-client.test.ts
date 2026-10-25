@@ -4,14 +4,13 @@ import { z } from "zod";
 import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { AppQualityPreference } from "../src/client/native/quality-preference";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 
 import {
   nativeEventSchema,
   nativeHealthSchema,
   nativeRelayCapacity,
   NATIVE_CLIENT_PROTOCOL,
-  NATIVE_CLIENT_PORT_START,
-  NATIVE_CLIENT_PORT_END,
   nativeCaptureTargetSchema,
   shareSourceReplacedResponseSchema,
   shareStartedResponseSchema,

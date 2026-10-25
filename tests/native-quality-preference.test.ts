@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { AppQualityPreference } from "../src/client/native/quality-preference";
 import { discoverNativeHealth } from "../src/client/native/client";
-import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL, NATIVE_CLIENT_PORT_START } from "../src/client/native/wire";
+import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL } from "../src/client/native/wire";
+import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
 vi.mock("../src/client/native/client", () => ({ discoverNativeHealth: vi.fn(), isLoopbackPage: () => false }));
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });

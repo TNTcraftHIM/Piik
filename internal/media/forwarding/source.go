@@ -26,8 +26,8 @@ type LayerFormat struct {
 	Width, Height, Bitrate uint32
 }
 
-// Internal encoders already know the local time of their source RTP/NTP
-// correlation. Received reports still need the buffer's remote clock estimate.
+// Internal encoders and RTP copies already know the local time of their source
+// RTP/NTP correlation. Received reports still need the remote clock estimate.
 type sourceBuffer struct {
 	*buffer.Buffer
 	knownInputClock atomic.Bool
@@ -114,6 +114,7 @@ func (source *Source) TrackInfo() *livekit.TrackInfo {
 // ReceiverBase reads initial metadata before registering the subscriber. A
 // concurrent discovery notification can fall into that gap. Refresh after
 // registration; DownTrack's seen-layer setters retain the highest observation.
+// Replay accepted clocks so a new forwarder need not await another wire report.
 func (source *Source) AddDownTrack(track sfu.TrackSender) error {
 	if err := source.ReceiverBase.AddDownTrack(track); err != nil {
 		return err
@@ -121,7 +122,22 @@ func (source *Source) AddDownTrack(track sfu.TrackSender) error {
 	tracker := source.StreamTrackerManager()
 	track.UpTrackMaxPublishedLayerChange(tracker.GetMaxPublishedLayer())
 	track.UpTrackMaxTemporalLayerSeenChange(tracker.GetMaxTemporalLayerSeen())
+	for layer, input := range source.ReceiverBase.GetAllBuffers() {
+		if input != nil {
+			if report := input.GetSenderReportData(); report != nil {
+				_ = track.HandleRTCPSenderReportData(source.Codec().PayloadType, int32(layer), report)
+			}
+		}
+	}
 	return nil
+}
+
+func (source *Source) currentSenderReport(layer int32) *livekit.RTCPSenderReportState {
+	inputs := source.ReceiverBase.GetAllBuffers()
+	if layer < 0 || int(layer) >= len(inputs) || inputs[layer] == nil {
+		return nil
+	}
+	return inputs[layer].GetSenderReportData()
 }
 
 func canonicalHeaderExtensions(extensions []webrtc.RTPHeaderExtensionParameter) []webrtc.RTPHeaderExtensionParameter {
@@ -323,6 +339,22 @@ func (source *Source) LocalTime(layer int, sourceTime time.Time) (time.Time, boo
 	}
 	delta := sourceTime.Sub(mediatransportutil.NtpTime(report.NtpTimestamp).Time())
 	return time.Unix(0, report.AtAdjusted).Add(delta), true
+}
+
+// CopyCorrelation shares an already received clock with an internal RTP copy.
+// The original owns network-delay estimation; this buffer still extends and
+// orders its own RTP timestamps, including when it starts after a wrap.
+func (source *Source) CopyCorrelation(layer int, original *Source) error {
+	input, err := original.layerBuffer(layer)
+	if err != nil {
+		return err
+	}
+	report := input.GetSenderReportData()
+	if report == nil {
+		return nil
+	}
+	report.At = report.AtAdjusted
+	return source.SetCorrelation(layer, report)
 }
 
 // SetCorrelation receives the source owner's RTP/NTP mapping and its known

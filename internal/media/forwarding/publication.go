@@ -399,7 +399,9 @@ func (layer *publicationLayer) AddDownTrack(sender sfu.TrackSender) error {
 	}
 	filtered.registering.Store(true)
 	err := layer.Source.AddDownTrack(filtered)
+	filtered.reportMu.Lock()
 	filtered.registering.Store(false)
+	filtered.reportMu.Unlock()
 	return err
 }
 
@@ -428,6 +430,7 @@ type publicationLayerSender struct {
 	layer       int32
 	receiver    *publicationLayer
 	registering atomic.Bool
+	reportMu    sync.Mutex
 }
 
 func (sender *publicationLayerSender) UpTrackBitrateReport(available []int32, rates sfu.Bitrates) {
@@ -482,13 +485,26 @@ func (sender *publicationLayerSender) UpTrackMaxTemporalLayerSeenChange(layer in
 	sender.withReceiver(func() { sender.DownTrack.UpTrackMaxTemporalLayerSeenChange(layer) })
 }
 
-func (sender *publicationLayerSender) HandleRTCPSenderReportData(payloadType webrtc.PayloadType, layer int32, report *livekit.RTCPSenderReportState) error {
+func (sender *publicationLayerSender) HandleRTCPSenderReportData(payloadType webrtc.PayloadType, layer int32, _ *livekit.RTCPSenderReportState) error {
+	apply := func() error {
+		if sender.Receiver() != sender.receiver {
+			return nil
+		}
+		current := sender.receiver.currentSenderReport(layer)
+		if current == nil {
+			return nil
+		}
+		return sender.DownTrack.HandleRTCPSenderReportData(payloadType, layer, current)
+	}
+	sender.reportMu.Lock()
+	if sender.registering.Load() {
+		defer sender.reportMu.Unlock()
+		return apply()
+	}
+	sender.reportMu.Unlock()
 	sender.receiver.publication.writeMu.Lock()
 	defer sender.receiver.publication.writeMu.Unlock()
-	if sender.Receiver() != sender.receiver {
-		return nil
-	}
-	return sender.DownTrack.HandleRTCPSenderReportData(payloadType, layer, report)
+	return apply()
 }
 
 type publicationTrack struct {

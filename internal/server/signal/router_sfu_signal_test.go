@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	diagnostic "github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 	livekitsfu "github.com/livekit/livekit-server/pkg/sfu"
@@ -264,8 +265,12 @@ func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
 	if !waitFor(t, time.Second, func() bool {
 		return diagnostics.calledWith(h.room.RoomID, "sfu-transport-state", map[string]any{
 			"role": "host", "phase": "prepare", "revision": int64(hostConfig.Revision), "state": "connected",
+			"connectionId":          diagnostic.ID(hostConfig.ConnectionID),
+			"publicationGeneration": diagnostic.ID(hostConfig.PublicationGeneration),
 		}) && diagnostics.calledWith(h.room.RoomID, "sfu-transport-state", map[string]any{
 			"role": "viewer", "phase": "prepare", "revision": int64(viewerConfig.Revision), "state": "connected",
+			"connectionId":          diagnostic.ID(viewerConfig.ConnectionID),
+			"publicationGeneration": diagnostic.ID(viewerConfig.PublicationGeneration),
 		})
 	}) {
 		t.Fatal("SFU diagnostics did not distinguish connected ingress and egress before route commit")

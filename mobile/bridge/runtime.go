@@ -114,7 +114,8 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 		modes = append(modes, launcher.ModeLink)
 	}
 	r.launcher, err = launcher.Start(ctx, webassets.FS(), launcher.Options{
-		Modes: modes, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: launcher.ModeLocal, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
+		ControlPort: r.control.Endpoint().Port,
+		Modes:       modes, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: launcher.ModeLocal, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
 		ChangeSite: func(site string, allowed bool) ([]string, error) {
 			var err error
 			if allowed {
@@ -247,7 +248,7 @@ func (r *Runtime) startLocal(selection launcher.Selection, address string) (targ
 	if _, err = server.Listen(r.ctx); err != nil {
 		return "", err
 	}
-	target = launcher.LocalEntryURL("http://127.0.0.1:"+strconv.Itoa(port)+"/", selection.LocalAccessPassword)
+	target = launcher.LocalEntryURL("http://127.0.0.1:"+strconv.Itoa(port)+"/", selection.LocalAccessPassword, r.control.Endpoint().Port)
 	targetURL, _ := url.Parse(target)
 	r.configMu.Lock()
 	if r.ctx.Err() != nil {
