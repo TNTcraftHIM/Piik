@@ -47,6 +47,7 @@ export function LauncherForm({
   siteError,
   target,
   onOpen,
+  entryURL = target => target,
   localAccessPassword,
   onLocalAccessPasswordChange,
   lan,
@@ -67,6 +68,7 @@ export function LauncherForm({
   siteError?: string;
   target?: string;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  entryURL?: (target: string) => string;
   localAccessPassword: string;
   onLocalAccessPasswordChange: (password: string) => void;
   lan?: {
@@ -149,7 +151,7 @@ export function LauncherForm({
         </div>
         {siteError && <p role="alert">{siteError}</p>}
         {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
-          <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
+          <a href={entryURL(`${site}/#piik-client=1`)} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
           <div className="lr-client-site-actions">
             <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site}
               hint="hint-client-site" disabled={siteBusy} onClick={() => onToggleStartupSite(site)} />
@@ -163,7 +165,7 @@ export function LauncherForm({
       </section>
 
       {roomError}
-      {target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
+      {target ? <a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>

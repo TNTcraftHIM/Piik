@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { z } from "zod";
 
 import { BrandMark } from "../components/living/BrandMark";
@@ -11,7 +11,7 @@ import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
-import { currentThemePreference } from "../ui/theme";
+import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
 import {
   checkReleaseUpdate,
@@ -43,6 +43,8 @@ const launcherErrorSchema = z.object({ reason: z.string().optional(), detail: z.
 
 export function AppLauncherPage() {
   const { lang, vis, t } = useCopy();
+  // Rendered entry URLs follow theme changes before any browser link action.
+  useSyncExternalStore(subscribeTheme, currentThemePreference);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
@@ -368,7 +370,7 @@ export function AppLauncherPage() {
             siteBusy={siteBusy}
             siteError={siteError}
             target={target}
-            onOpen={(event) => { event.currentTarget.href = launchURL(event.currentTarget.href); }}
+            entryURL={launchURL}
             onLocalAccessPasswordChange={setLocalAccessPassword}
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}

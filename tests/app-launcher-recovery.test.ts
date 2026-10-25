@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LauncherForm } from "../src/client/components/living/LauncherForm";
 import { siteEntryOrigin } from "../src/client/components/living/SiteAddressEntry";
+import { clientLaunchURL } from "../src/client/lib/session";
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.
 const source = ts.createSourceFile("AppLauncherPage.tsx", readFileSync(
@@ -117,6 +118,27 @@ describe("App launcher state recovery", () => {
     expect(html).toContain('href="http://127.0.0.1:8787/#piik-client=1"');
     expect(html).not.toContain('role="radiogroup"');
     expect(html).not.toContain('type="password"');
+  });
+
+  it("renders complete App entries for saved sites and the existing room before any click", () => {
+    const html = renderToStaticMarkup(createElement(LauncherForm, {
+      mode: "local", sites: saved.sites, startupSite: saved.sites[0]!, localAccessPassword: "",
+      target: "http://127.0.0.1:8787/#piik-client=1",
+      entryURL: target => clientLaunchURL(target, { lang: "en", vis: false, theme: "light", explicit: ["theme"] }, false, 39729),
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+    }));
+    const entries = [...html.matchAll(/href="([^"]+)"/g)]
+      .map(match => new URL(match[1]!.replaceAll("&amp;", "&")));
+    expect(entries).toHaveLength(2);
+    for (const entry of entries) {
+      expect(entry.searchParams.get("piik-client-port")).toBe("39729");
+      expect(entry.searchParams.get("piik-preferences")).toBe("theme");
+      const fragment = new URLSearchParams(entry.hash.slice(1));
+      expect(fragment.get("piik-client")).toBe("1");
+      expect(fragment.get("piik-lang")).toBe("en");
+      expect(fragment.get("piik-theme")).toBe("light");
+    }
+    expect(entries.map(entry => entry.origin)).toEqual([saved.sites[0], "http://127.0.0.1:8787"]);
   });
 
   it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {
