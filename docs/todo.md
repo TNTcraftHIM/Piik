@@ -21,6 +21,17 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture work. The latest report selects VP8 and connects the preview transport.
   Obtain the App capture status and encode counters, or compare
   the existing Intel/NVIDIA adapter choices with VP8 fixed on that device.
+- [ ] **Linux capture ends after selection (#499).** Follow
+  [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
+  GStreamer NVENC. The Browser report records capture ending before connection
+  cleanup; obtain the native capture failure to distinguish the encoder and Portal.
+- [ ] **macOS window capture with sound (#500).** Follow
+  [#500](https://github.com/TNTcraftHIM/Piik/issues/500). Compare the same window
+  with source sound on and off, including native capture status. Video and source
+  audio already use independent helpers; audio failure preserves video in local checks.
+- [ ] **Control loss when the Host browser is minimized (#502).** Reproduce
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502), retaining the current
+  native input grant and route while the Host preview is paused locally.
 - [ ] **Intel native H.264 startup (#452).** Follow the
   [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
   fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report
