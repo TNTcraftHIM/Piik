@@ -23,7 +23,7 @@ phases, including NAT and Auto codec behavior.
 
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
-- Android embedded and system-browser APKs passed emulator screen/camera sharing
+- Android's system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source
   replacement, cancellation and background return preserve the share. Local/public
   startup and launcher reentry also have emulator evidence. Phone/tablet/TV

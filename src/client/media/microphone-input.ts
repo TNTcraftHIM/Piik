@@ -1,4 +1,3 @@
-import { stopUserMediaTrack } from "./user-media";
 // A single microphone capture owns its device, gain and output. Transports
 // borrow the output track; replacing a device never changes room authority.
 export class MicrophoneInput {
@@ -31,8 +30,8 @@ export class MicrophoneInput {
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.captured.getTracks().forEach(track => { track.onended = null; stopUserMediaTrack(track); });
-    this.stream.getTracks().forEach(track => stopUserMediaTrack(track));
+    this.captured.getTracks().forEach(track => { track.onended = null; track.stop(); });
+    this.stream.getTracks().forEach(track => track.stop());
     void this.context.close().catch(() => {});
   }
 }

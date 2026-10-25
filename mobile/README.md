@@ -2,8 +2,7 @@
 
 This is an Android sharing prototype for local testing.
 It targets Android 10 or later on arm64 and x86-64 devices.
-The default variant opens Piik's existing Web UI in the system browser; an
-embedded WebView variant remains available for comparison. An Android service owns
+Piik opens its existing Web UI in the system browser. An Android service owns
 the shared Go runtime until the user stops App; the Activity handles visible
 system consent. A `mediaProjection` foreground service
 owns the approved projection token, display surface, platform encoding and eligible
@@ -17,8 +16,8 @@ hardware AVC, then a Surface-capable MediaCodec VP8 encoder using the existing
 software-VP8 native path. An explicit AVC request never silently switches codec.
 Quality settings use the shared capture limits; the selected MediaCodec admits
 each requested profile during startup.
-Devices without either encoder can still join rooms. The browser variant needs
-an installed system browser; the embedded variant needs Android System WebView.
+Devices without either encoder can still join rooms. Piik needs an installed
+system browser.
 TV capture depends on the system's Projection and encoder support. Physical TV
 checks are pending.
 
@@ -48,10 +47,9 @@ The single mobile Go entry lives in `mobile/bridge`; this command generates its
 Android binding.
 `PIIK_GOMOBILE` may name an installed `gomobile` executable outside `PATH`.
 
-The default build produces `android/app/build/outputs/apk/browser/debug/app-browser-debug.apk`
-relative to `mobile/`. Add `--embedded` for the comparison build at
-`android/app/build/outputs/apk/embedded/debug/app-embedded-debug.apk`. Both use the
-same application ID: installing one replaces the other while retaining App settings.
+The build produces `android/app/build/outputs/apk/debug/app-debug.apk`
+relative to `mobile/`. The application ID remains `tv.piik.android`, so an update
+replaces the previous candidate while retaining App settings.
 Generated libraries, APKs, Gradle state and signing material stay
 ignored. The `checklinkname` flag is required by the existing Android networking
 dependency [anet on Go 1.23+](https://github.com/wlynxg/anet); it is confined to
@@ -63,12 +61,8 @@ Public link. Use **+** beside the site section to enter a Piik site address;
 confirm its displayed origin before allowing and opening it. Approval, revocation
 and the starred startup site use the same management UI as desktop.
 On a connected site, use **App → Open App page** to manage saved origins.
-The embedded variant also provides **Manage sites** in its Android menu to open
-management without unloading a live Host. **Startup page** returns its main view
-after confirmation.
 
-The browser variant opens that same startup page in the default browser.
-Its ongoing notification opens Piik or stops the local backend. Starting screen
+The ongoing notification opens Piik or stops the local backend. Starting screen
 sharing opens App for system recording consent when the browser permits the
 handoff; **Confirm in App** remains available when another click is needed.
 Replacing an active native source reuses recording consent without opening App.
@@ -79,8 +73,7 @@ The website's App approval still requires its displayed exact origin; waking
 App does not authorize a site. If the connection card cannot find App, choose
 **Open Piik App**, then return to the same browser page to continue discovery.
 Choose **Open App page** and confirm the displayed origin before granting access.
-Camera and room voice use the browser's own permissions. The embedded variant
-retains its in-App page and management menu.
+Camera and room voice use the browser's own permissions.
 
 Local starts only when selected; Hosted sites use their own room service and
 the existing native App connection. Site
@@ -94,21 +87,14 @@ creates a fresh attempt.
 
 Create a room and select Android screen capture in the ordinary source picker.
 Approve the Android projection prompt. Pure video does not request microphone
-or camera access. Selecting camera or opening the room-voice microphone requests
-only the corresponding Android permission, for the current approved top-level
-site. Native playback audio and native commentary request recording permission only
+or camera access. Camera sharing and room voice request their permissions in the
+browser. Native playback audio and native commentary request recording permission only
 when enabled. Commentary uses the OS-default microphone or an input from the
 existing device selector; it joins the same Go mixer and stable shared audio
 track as source sound. The capture service adds microphone foreground eligibility
 only for that input lifetime. Room voice keeps its independent Browser input.
-In the embedded variant, background camera and room voice require a site that
-supplies Browser track lifetime notifications; older sites retain ordinary foreground capture.
-A document-bound MessagePort supplies demand to a short-lived camera/microphone
-foreground service. It records no media and releases its types when the last
-track or page ends. Revoking the currently approved site returns to management,
-ending that page's media; other sites are unaffected.
-The Activity exposes no JavaScript interface. WebView fullscreen uses Android's
-custom-view window; Back exits fullscreen before ordinary page navigation.
+The browser owns navigation, fullscreen and camera/microphone capture lifetimes;
+Piik owns the native screen and source-audio resources.
 
 Screen capture and device sound do not turn on the microphone. Native commentary
 is enabled separately and uses Android's voice-communication capture mode for

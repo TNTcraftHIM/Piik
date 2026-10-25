@@ -361,7 +361,7 @@ the shared display; desktop admission remains two.
 Capture prefers hardware AVC and otherwise uses an available Surface-capable
 MediaCodec VP8 encoder. Device capabilities bound the existing quality controls.
 The APK uses the ordinary responsive UI for phones and tablets; TV availability
-depends on WebView, Projection and encoder support.
+depends on an installed browser, Projection and encoder support.
 
 [MediaProjection](https://developer.android.com/media/grow/media-projection)
 requires consent for each capture session; Android 14 permits one VirtualDisplay
@@ -388,25 +388,15 @@ with measurable tone energy. The lab Browser used explicit local candidates
 because mDNS does not cross the emulator's isolated network. Physical-device
 acceptance and distribution remain in [TODO](../todo.md#next).
 
-The embedded integration requests camera and room-voice permissions only for
-actual WebView requests from the current approved top-level origin. Native
-playback audio requests recording permission separately; pure-video Projection
-does not. A main-document MessagePort reports pending and live Browser tracks
-to a separate short-lived camera/microphone foreground service. The service
-provides Android eligibility, not another capture or signaling implementation.
-A real permission request waits for service admission; a port synchronization
-barrier hands preparation demand to the current track snapshot. Navigation and
-current-site revocation end the page and its service ownership; Activity
-backgrounding or recreation alone does not. Sites without track notifications
-retain standard foreground capture. No JavaScript interface is exposed.
-The Activity and service retain
-capture ownership across rotation; runtime detachment precedes asynchronous
-shutdown so an old close cannot retire a newly opened runtime.
+The system browser owns camera, room voice, page permissions and fullscreen.
+Native playback audio requests recording permission separately; pure-video
+Projection does not. The Activity and service retain native capture ownership
+across rotation; runtime detachment precedes asynchronous shutdown so an old
+close cannot retire a newly opened runtime.
 
 The current integration verified Local creation, pure-video consent without
 microphone/camera prompts, live Host preview frames, portrait-to-landscape
-capture resizing, stop/cancel and normal exit/reopen. Native title-bar and
-keyboard insets leave the shared Web UI unobscured. The packaged public-link
+capture resizing, stop/cancel and normal exit/reopen. The packaged public-link
 helper established its tunnel in about six seconds; local and public health
 requests succeeded without extra DNS configuration. Background new-Viewer
 admission/reconnect, live camera/voice and physical-device audio remain in the
@@ -414,7 +404,7 @@ Android acceptance scope in [TODO](../todo.md#next).
 
 ### Android Browser Handoff
 
-The system-browser variant reuses the same Go room, authorization and media code.
+The Android App uses the system browser with the same Go room, authorization and media code.
 [Chrome Intents](https://developer.chrome.com/docs/android/intents) allow an
 explicit gesture to wake App, then return to the current browser tab. Waking is
 not authorization: the exact site still needs approval and an authorized-health
@@ -429,11 +419,27 @@ prevent the Go callback from simply opening that UI behind the browser.
 Outside recording, the runtime service keeps Local/public rooms alive rather
 than relying on a background Activity's static runtime. Android can suspend or
 kill [cached processes](https://developer.android.com/guide/components/activities/process-lifecycle).
-The external browser owns camera, voice and local-network permission; the
-WebView permission adapter belongs only to the embedded variant. The optional
-native activation description adds a foreground action without changing native
+The external browser owns camera, voice and local-network permission. The
+optional native activation description adds a foreground action without changing native
 commands or the published control version. A normal App open also processes a
 current pending request, independently of whether its site has the shortcut.
+
+### iOS External-Browser Assessment
+
+An explicit native session can use iOS 26's `BGContinuedProcessingTask` before
+opening the local Web UI in Safari. [Apple DTS](https://developer.apple.com/forums/thread/840384)
+describes user-controlled sessions without a fixed duration ceiling; admission,
+progress, cancellation and retirement remain part of that session's lifecycle.
+[Synctrain](https://github.com/pixelspark/sushitrain/blob/main/Sushitrain/BackgroundManager.swift)
+provides an existing Go/gomobile implementation to reference.
+
+The next implementation gate is one background-task owner bound to Piik's Go
+runtime, with explicit Start/Stop and shutdown on expiration. Exercise local
+HTTP/WebSocket, idle room, voice, native capture and return to Safari on a device.
+Hosted HTTPS access to insecure loopback remains a separate
+[WebKit boundary](https://bugs.webkit.org/show_bug.cgi?id=171934).
+`SFSafariViewController` is a system-managed in-App browser alternative; it is
+distinct from the requested standalone-browser workflow.
 
 ## Current Follow-up
 

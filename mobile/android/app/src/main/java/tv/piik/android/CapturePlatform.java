@@ -59,13 +59,8 @@ final class CapturePlatform implements Platform {
     MainActivity.main.post(() -> AppRuntimeService.preparationDone(runtime, id));
   }
 
-  public void siteAccessChanged() {
-    Runtime runtime = owner.get();
-    MainActivity.main.post(
-        () -> {
-          if (runtime == AppRuntimeService.runtime()) MainActivity.refreshBrowserMedia();
-        });
-  }
+  // Site revocation is enforced by the shared control service; Android owns no page.
+  public void siteAccessChanged() {}
 
   public void runtimeStopped(String reason) {
     Runtime runtime = owner.get();

@@ -150,7 +150,7 @@ public final class AppRuntimeService extends Service {
                         getCacheDir().getAbsolutePath(),
                         new java.io.File(getApplicationInfo().nativeLibraryDir, "libcloudflared.so")
                             .getAbsolutePath(),
-                        BuildConfig.EXTERNAL_BROWSER ? "piik://media" : "");
+                        "piik://media");
                 platform.owner = new java.lang.ref.WeakReference<>(started);
                 return started;
               } catch (Exception error) {
@@ -353,7 +353,6 @@ public final class AppRuntimeService extends Service {
     service.active = null;
     service.preparing = null;
     service.refreshNotification();
-    MainActivity.retireDocument();
     CaptureService.shutdown();
     service.notifyActivity();
   }
@@ -366,7 +365,6 @@ public final class AppRuntimeService extends Service {
   public void onDestroy() {
     if (instance == this) {
       instance = null;
-      MainActivity.retireDocument();
       CaptureService.shutdown();
     }
     CompletableFuture<Runtime> pending = startup;

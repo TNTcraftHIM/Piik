@@ -1,10 +1,7 @@
-import { installUserMediaPort } from "./media/user-media";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./styles.css";
-
-installUserMediaPort();
 
 async function main() {
   // Room controls share the Popover API; install it before any component mounts.

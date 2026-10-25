@@ -12,7 +12,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'mobile', 'android');
 const gradleHome = process.env.GRADLE_HOME;
 const tunnelOnly = process.argv.includes('--tunnel-only');
-const flavor = process.argv.includes('--embedded') ? 'embedded' : 'browser';
+for (const option of process.argv.slice(2)) {
+  if (option !== '--tunnel-only') throw new Error(`Unknown Android build option: ${option}`);
+}
 if (!process.env.ANDROID_NDK_HOME || (!tunnelOnly && (!process.env.ANDROID_HOME || !gradleHome))) {
   throw new Error('Set ANDROID_HOME, ANDROID_NDK_HOME and GRADLE_HOME to the installed SDK, NDK and Gradle distribution.');
 }
@@ -100,12 +102,11 @@ if (!tunnelOnly) {
   mkdirSync(join(android, 'app', 'libs'), { recursive: true });
   run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
     '-ldflags=-s -w -checklinkname=0', '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/bridge']);
-  const variant = flavor === 'browser' ? 'BrowserDebug' : 'EmbeddedDebug';
   // Recreate the final ZIP so replaced native libraries leave no free blocks.
   run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
-    '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android,
-    `:app:package${variant}`, '--rerun', `:app:assemble${variant}`, '--console=plain']);
-  const apk = join(android, 'app', 'build', 'outputs', 'apk', flavor, 'debug', `app-${flavor}-debug.apk`);
+    '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android, '--no-daemon',
+    ':app:packageDebug', '--rerun', ':app:assembleDebug', '--console=plain']);
+  const apk = join(android, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   if (!existsSync(apk)) throw new Error('The Android build did not produce its APK.');
-  console.log(`Android ${flavor} development APK: ${apk}`);
+  console.log(`Piik Android development APK: ${apk}`);
 }

@@ -8,7 +8,7 @@ import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 
-// The native window owns system/keyboard space; Web pages keep their own layout.
+// Native consent and runtime status content stays within system and keyboard space.
 final class WindowContent {
   static View wrap(Window window, View content) {
     window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);

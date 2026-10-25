@@ -1,4 +1,3 @@
-import { acquireUserMedia, stopUserMediaTrack } from "../media/user-media";
 import type { ClientMessage, IceConfig, RoomVoiceCommand, RoomVoiceState, ServerMessage } from "../../shared/protocol";
 import { audioInputConstraints } from "../media/audio-capture";
 import { debugError } from "../lib/debug";
@@ -171,7 +170,7 @@ export class RoomVoiceSession {
       const context = request.context = new AudioContext();
       const resumed = context.resume().then(() => true, () => false);
       // Device permission must never block the serialized SDP/authority queue.
-      stream = await acquireUserMedia({ audio: { ...audioInputConstraints(settings.voiceProcessing),
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { ...audioInputConstraints(settings.voiceProcessing),
         channelCount: 1, ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false });
       if (this.capture !== request) return;
       const track = stream.getAudioTracks()[0];
@@ -196,7 +195,7 @@ export class RoomVoiceSession {
         this.update({ error: name === "NotAllowedError" ? "microphoneDenied" : name === "NotFoundError" ? "microphoneMissing" : "microphoneFailed" });
       }
     } finally {
-      if (!request.input) stream?.getTracks().forEach(track => stopUserMediaTrack(track));
+      if (!request.input) stream?.getTracks().forEach(track => track.stop());
       this.refresh();
     }
   }

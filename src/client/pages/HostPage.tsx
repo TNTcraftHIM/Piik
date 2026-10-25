@@ -1,4 +1,3 @@
-import { stopUserMediaTrack } from "../media/user-media";
 import {
   useCallback,
   useEffect,
@@ -781,8 +780,8 @@ export function HostPage({
       nativeConnection.release();
       hostAudioRef.current?.dispose();
       hostAudioRef.current = null;
-      streamRef.current?.getTracks().forEach((track) => stopUserMediaTrack(track));
-      retiringStreamRef.current?.getTracks().forEach((track) => stopUserMediaTrack(track));
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
       retiringStreamRef.current = null;
     },
@@ -963,8 +962,8 @@ export function HostPage({
     setCommentaryInput({ deviceId: "", volume: 1, voiceProcessing: true });
     shareVolumeChangeRef.current = null;
     setShareVolume({ level: 1, muted: false });
-    streamRef.current?.getTracks().forEach((track) => stopUserMediaTrack(track));
-    retiringStreamRef.current?.getTracks().forEach((track) => stopUserMediaTrack(track));
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    retiringStreamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     retiringStreamRef.current = null;
     if (!keepRoomSession) iceConfigRef.current = null;
@@ -2896,7 +2895,7 @@ export function HostPage({
     }
 
     if (!isCurrentShare(generation, shareGeneration)) {
-      captured?.getTracks().forEach((track) => stopUserMediaTrack(track));
+      captured?.getTracks().forEach((track) => track.stop());
       if (nativeStarted) disposeNativeShare(shareGeneration);
       return;
     }
@@ -2907,10 +2906,10 @@ export function HostPage({
         try {
           captured = await audio.start();
           if (!isCurrentShare(generation, shareGeneration)) {
-            audio.sourceStream.getTracks().forEach(track => stopUserMediaTrack(track)); audio.dispose(); return;
+            audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose(); return;
           }
         } catch (error) {
-          audio.sourceStream.getTracks().forEach(track => stopUserMediaTrack(track)); audio.dispose();
+          audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose();
           if (isCurrentShare(generation, shareGeneration)) {
             activeGenerationRef.current = null;
             disposeResources(false); setNoticeError(error, "sourceAudio"); setPhase("error");
@@ -2938,7 +2937,7 @@ export function HostPage({
       }
     }
     if (!isCurrentShare(generation, shareGeneration)) {
-      captured?.getTracks().forEach((track) => stopUserMediaTrack(track));
+      captured?.getTracks().forEach((track) => track.stop());
       if (nativeStarted) disposeNativeShare(shareGeneration);
       return;
     }
@@ -2958,7 +2957,7 @@ export function HostPage({
         );
         createdRoom = hostRoomFromCreated(response);
         if (!isCurrentShare(generation, shareGeneration)) {
-          captured?.getTracks().forEach((track) => stopUserMediaTrack(track));
+          captured?.getTracks().forEach((track) => track.stop());
           if (nativeStarted) disposeNativeShare(shareGeneration);
           closeAbandonedRoom(createdRoom);
           return;
@@ -2983,7 +2982,7 @@ export function HostPage({
       signal.start();
     } catch (error) {
       if (!isCurrentShare(generation, shareGeneration)) {
-        captured?.getTracks().forEach((track) => stopUserMediaTrack(track));
+        captured?.getTracks().forEach((track) => track.stop());
         if (nativeStarted) disposeNativeShare(shareGeneration);
         if (createdRoom && !claimedRoom) {
           closeAbandonedRoom(createdRoom);
@@ -3236,7 +3235,7 @@ export function HostPage({
       !isCurrentGeneration(generation) ||
       sourceSwitchRef.current !== token
     ) {
-      captured.getTracks().forEach((track) => stopUserMediaTrack(track));
+      captured.getTracks().forEach((track) => track.stop());
       return;
     }
 
@@ -3250,7 +3249,7 @@ export function HostPage({
         try {
           captured = await audio.start();
           if (!isCurrentShare(generation, shareGeneration) || sourceSwitchRef.current !== token) {
-            captured.getTracks().forEach(track => stopUserMediaTrack(track));
+            captured.getTracks().forEach(track => track.stop());
             audio.dispose();
             return;
           }
@@ -3274,7 +3273,7 @@ export function HostPage({
         await startBrowserNativeIngress(generation, shareGenerationRef.current!, captured);
       }
     } catch (error) {
-      if (captured !== streamRef.current) captured.getVideoTracks().forEach(track => stopUserMediaTrack(track));
+      if (captured !== streamRef.current) captured.getVideoTracks().forEach(track => track.stop());
       if (isCurrentGeneration(generation)) setNoticeError(error, "source");
     } finally {
       finishSourceSwitch(token);
@@ -3297,7 +3296,7 @@ export function HostPage({
     // The caller retires its operation; this function owns only stream resources.
     const previousStream = streamRef.current;
     if (!previousStream) {
-      captured.getTracks().forEach((track) => stopUserMediaTrack(track));
+      captured.getTracks().forEach((track) => track.stop());
       setStatusNotice({ key: "host.shareEnded" }, "share-ended", "off");
       return;
     }
@@ -3306,7 +3305,7 @@ export function HostPage({
     const videoChanged = captured.getVideoTracks()[0] !== previousStream.getVideoTracks()[0];
     // HostAudio retires source audio; this operation retires replaced video.
     const retirePrevious = () => previousStream.getVideoTracks().forEach((track) => {
-      if (!captured.getTracks().includes(track)) stopUserMediaTrack(track);
+      if (!captured.getTracks().includes(track)) track.stop();
     });
     if (videoChanged) invalidateSenderQualityEvidence();
     if (videoChanged && routePolicyRef.current.topologyOptimization) {
@@ -3363,7 +3362,7 @@ export function HostPage({
         }
       }
       if (!isCurrentGeneration(generation) || sourceSwitchRef.current !== token) {
-        captured.getTracks().forEach((track) => stopUserMediaTrack(track));
+        captured.getTracks().forEach((track) => track.stop());
         return;
       }
       const activeSfuRoute = hostSfuRouteRef.current;
@@ -3390,7 +3389,7 @@ export function HostPage({
         !isCurrentGeneration(generation) ||
         sourceSwitchRef.current !== token
       ) {
-        captured.getTracks().forEach((track) => stopUserMediaTrack(track));
+        captured.getTracks().forEach((track) => track.stop());
         return;
       }
 

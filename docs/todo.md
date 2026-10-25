@@ -39,9 +39,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   the existing [headline contract](./standards/versioning.md#release-notes).
 - [ ] **Android App release scope.** Complete native demand-driven quality
   adaptation, stationary-screen late join/keyframe recovery and phone/tablet/TV
-  hardware acceptance, then prepare release packaging. The system-browser
-  companion is the primary candidate; keep the embedded build for comparison
-  until acceptance.
+  hardware acceptance, then prepare release packaging. Android uses the system
+  browser and the same Web UI as desktop.
 - [ ] **iOS device acceptance.** Verify the implementation on `feat/ios-client`
   with a signed iOS 27 device: recording consent, capture background lifetime
   and WKWebView Host routing. Verify hosted HTTPS native linkage separately.
