@@ -1406,7 +1406,7 @@ describe("Host quality ownership", () => {
     current.client.sources.mockReturnValueOnce(enumeration.promise);
     const refresh = current.openPicker();
     await vi.waitFor(() => expect(current.client.sources).toHaveBeenCalledTimes(2));
-    expect(sources).toEqual({ kind: "loading", appDetected: true });
+    expect(sources).toEqual({ kind: "loading", appDetected: true, sources: [] });
     enumeration.resolve([]);
     await refresh;
     expect(sources).toMatchObject({ kind: "ready", sources: [] });

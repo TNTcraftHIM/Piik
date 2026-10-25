@@ -228,7 +228,7 @@ export const en: Record<CopyKey, string> = {
   "client.connect.continue": "Continue",
   "client.connect.openSite": "Open site",
   "client.connect.approveAndOpen": "Allow and open",
-  "client.connect.standbyHint": "Click App at the top right of a Piik site, then choose Allow access.",
+  "client.connect.standbyHint": "Click App at the top right of a Piik site, choose Open App page, then confirm Allow access.",
   "client.connect.remove": "Revoke this Site's App access",
   "client.connect.openOnStart": "Open this site when App starts",
   "client.connect.manage": "App is ready. Manage App.",

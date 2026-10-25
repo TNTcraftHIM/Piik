@@ -85,6 +85,8 @@ export function ControlsPreview() {
   const [systemSourcePicker, setSystemSourcePicker] = useState(false);
   const [browserCaptureSupported, setBrowserCaptureSupported] = useState(true);
   const [nativePermissionPreview, setNativePermissionPreview] = useState(false);
+  const sourceTargets: NativeCaptureTarget[] = systemSourcePicker
+    ? [{ kind: "picker", sourceId: "1", title: "System chooser" }] : SOURCES.sources;
   const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "refreshing" | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
@@ -302,9 +304,9 @@ export function ControlsPreview() {
         <img className="cp-poster" src={POSTER} alt="" />
         {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
           : sourceState === "ready" ? systemSourcePicker
-            ? { ...SOURCES, sources: [{ kind: "picker", sourceId: "1", title: "System chooser" }], processAudio: false, processAudioExclusion: false, captureBorderControl: false }
+            ? { ...SOURCES, sources: sourceTargets, processAudio: false, processAudioExclusion: false, captureBorderControl: false }
             : { ...SOURCES, captureBorderControl: captureBorderAvailable }
-          : sourceState === "refreshing" ? { kind: "loading", appDetected: true } : { kind: sourceState }}
+          : sourceState === "refreshing" ? { kind: "loading", appDetected: true, sources: sourceTargets } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
           browserSupported={browserCaptureSupported}
           initialTab={displayPreview ? "display" : "window"}

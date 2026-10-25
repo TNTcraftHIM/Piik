@@ -26,7 +26,7 @@ const SOURCE_ICONS = {
 
 export type NativeSourceList =
   | { kind: "browser" }
-  | { kind: "loading"; appDetected?: boolean }
+  | { kind: "loading"; appDetected?: boolean; sources?: NativeCaptureTarget[] }
   | { kind: "unavailable" }
   | { kind: "incompatible" }
   | { kind: "unsupported" }
@@ -102,7 +102,8 @@ export function CaptureSourcePicker({
   const [showCaptureBorder, setShowCaptureBorder] = useState(initialShowCaptureBorder);
   const [excludeAudio, setExcludeAudio] = useState(initialExcludeAudio);
   const appDetected = nativeAppDetected(nativeSources);
-  const pickerOnly = nativeSources.kind === "ready" && nativeSources.sources.length > 0 &&
+  // Retained targets classify tabs during refresh; only ready targets are selectable.
+  const pickerOnly = (nativeSources.kind === "ready" || nativeSources.kind === "loading") && !!nativeSources.sources?.length &&
     nativeSources.sources.every(target => target.kind === "picker");
   const tabs = SOURCE_TABS.filter(value => value === "browser" ? browserSupported
     : value === "camera" ? cameraSupported

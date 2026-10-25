@@ -1494,7 +1494,9 @@ export function HostPage({
       setNativeSources({ kind: "browser" });
       return;
     }
-    setNativeSources(previous => ({ kind: "loading", appDetected: nativeAppDetected(previous) }));
+    setNativeSources(previous => ({ kind: "loading", appDetected: nativeAppDetected(previous),
+      sources: previous?.kind === "ready" || previous?.kind === "loading" ? previous.sources : undefined,
+    }));
 
     let client: NativeClient | null;
     try {

@@ -60,6 +60,22 @@ describe("native capture source selection", () => {
     expect(html).toMatch(/data-source-tab="picker"[^>]*aria-selected="true"/);
   });
 
+  it("keeps an explicitly selected system chooser while refreshing without offering stale sources", () => {
+    setCopy({ lang: "en", vis: false });
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "loading", appDetected: true,
+        sources: [{ kind: "picker", sourceId: "1", title: "Choose on device" }] },
+      initialTab: "picker", browserSupported: false,
+      onBrowser() {}, onNative() {}, onCamera() {}, onPreview: async () => null, onRefresh() {}, onCancel() {},
+    }));
+    expect([...html.matchAll(/data-source-tab="([^"]+)"/g)].map(match => match[1]))
+      .toEqual(["camera", "picker"]);
+    expect(html).toMatch(/data-source-tab="picker"[^>]*aria-selected="true"/);
+    expect(html).toContain(`role="status" aria-label="${t("en", "host.sourcePicker.loading")}"`);
+    expect(html).not.toContain('class="lr-source-option is-action"');
+    expect(html).not.toContain('data-camera-source=');
+  });
+
   it("shows the existing no-source result when neither Browser API nor App capture is available", () => {
     setCopy({ lang: "en", vis: false });
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {

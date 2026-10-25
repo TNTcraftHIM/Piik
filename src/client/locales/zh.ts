@@ -228,7 +228,7 @@ export const zh = {
   "client.connect.continue": "继续",
   "client.connect.openSite": "打开站点",
   "client.connect.approveAndOpen": "允许并打开",
-  "client.connect.standbyHint": "在 Piik 站点右上角点击 App，再选择「允许使用」。",
+  "client.connect.standbyHint": "在 Piik 站点右上角点击 App，选择「打开 App 页面」，再确认「允许使用」。",
   "client.connect.remove": "取消此站点的 App 授权",
   "client.connect.openOnStart": "启动 App 时打开此站点",
   "client.connect.manage": "App 已就绪，点击管理。",

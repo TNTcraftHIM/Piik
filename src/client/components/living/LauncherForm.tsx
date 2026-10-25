@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
@@ -169,7 +169,7 @@ export function LauncherForm({
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
         className="lr-client-modes"
-        style={{ gridTemplateColumns: `repeat(${choices.length}, minmax(0, 1fr))` }}
+        style={{ "--launcher-columns": choices.length } as CSSProperties}
         role="radiogroup"
         aria-label={t("client.launch.title")}
         onKeyDown={(event) => {

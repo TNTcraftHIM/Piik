@@ -1561,7 +1561,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-client-modes {
   display: grid;
   width: 100%;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--launcher-columns, 2), minmax(0, 1fr));
   gap: 10px;
 }
 .lr-client-modes > .lr-comic-tip-wrap {
@@ -1731,7 +1731,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 @media (max-width: 640px) {
   .lr-client-launch { padding: 16px 14px 48px; }
   .lr-client-launch-panel { gap: 16px; }
-  .lr-client-modes { grid-template-columns: 1fr; gap: 8px; }
+  .lr-client-modes { gap: 8px; }
   .lr-client-mode {
     min-height: 58px;
     grid-template-columns: 34px 1fr;
@@ -1951,6 +1951,7 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
   .lr-top:has(.lr-leds) .lr-header-controls { grid-column: 1 / -1; justify-self: end; }
 }
 @media (max-width: 360px) {
+  .lr-client-modes { grid-template-columns: 1fr; }
   .lr-lcd { gap: 4px; padding-inline: 6px; font-size: 18px; }
   .lr-top { column-gap: 4px; padding-inline: 10px; }
   .lr-top-right { gap: 4px; }
