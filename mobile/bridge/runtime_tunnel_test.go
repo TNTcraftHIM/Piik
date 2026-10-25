@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -18,8 +19,11 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
+	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
+	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
 )
 
 // Run the real supervised process path without contacting Cloudflare.
@@ -278,7 +282,7 @@ func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
 	}
 	select {
 	case reason := <-platform.terminated:
-		if reason != "public-link-stopped" {
+		if reason != string(failure.TunnelStopped) {
 			t.Fatalf("wrong terminal cause: %q", reason)
 		}
 	case <-time.After(5 * time.Second):
@@ -295,6 +299,43 @@ func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
 	configs, err := filepath.Glob(filepath.Join(r.temporaryDirectory, "piik-cloudflared-*.yml"))
 	if err != nil || len(configs) != 0 {
 		t.Fatalf("dependency retained temporary config: %v, %v", configs, err)
+	}
+}
+
+func TestRoomListenerFailureRetiresRuntime(t *testing.T) {
+	r, platform := tunnelRuntime(t)
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	port := listener.Addr().(*net.TCPAddr).Port
+	configuration, err := serverconfig.Local(serverconfig.LocalOptions{Port: port, PublicOrigin: "https://fixture.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := serverapp.New(serverapp.Options{Config: configuration, Listeners: []net.Listener{listener}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.server = server
+	if _, err := server.Listen(r.ctx); err != nil {
+		t.Fatal(err)
+	}
+	go r.watchRoom(server, nil)
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case reason := <-platform.terminated:
+		if reason != string(failure.LocalServer) {
+			t.Fatalf("wrong terminal cause: %q", reason)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("listener failure left the mobile runtime ready")
+	}
+	if r.ctx.Err() == nil {
+		t.Fatal("listener failure did not retire the runtime")
 	}
 }
 

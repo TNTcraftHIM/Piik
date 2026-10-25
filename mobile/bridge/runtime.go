@@ -16,6 +16,7 @@ import (
 	"time"
 
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
@@ -259,9 +260,7 @@ func (r *Runtime) startLocal(selection launcher.Selection, address string) (targ
 	r.server, r.tunnel, r.url = server, tunnel, target
 	committed = true
 	r.configMu.Unlock()
-	if tunnel != nil {
-		go r.watchTunnel(tunnel)
-	}
+	go r.watchRoom(server, tunnel)
 	return target, nil
 }
 
@@ -275,19 +274,26 @@ func endRuntimeServer(server *serverapp.Server) error {
 	return err
 }
 
-func (r *Runtime) watchTunnel(tunnel *publictunnel.Process) {
+func (r *Runtime) watchRoom(server *serverapp.Server, tunnel *publictunnel.Process) {
+	var tunnelDone <-chan struct{}
+	if tunnel != nil {
+		tunnelDone = tunnel.Done()
+	}
+	reason := failure.LocalServer
 	select {
 	case <-r.ctx.Done():
 		return
-	case <-tunnel.Done():
-		if r.ctx.Err() != nil {
-			return
-		}
-		if err := r.Close(); err != nil {
-			slog.Warn("mobile public-link cleanup failed", "error", err)
-		}
-		r.capture.platform.RuntimeStopped("public-link-stopped")
+	case <-server.Done():
+	case <-tunnelDone:
+		reason = failure.TunnelStopped
 	}
+	if r.ctx.Err() != nil {
+		return
+	}
+	if err := r.Close(); err != nil {
+		slog.Warn("mobile room cleanup failed", "error", err)
+	}
+	r.capture.platform.RuntimeStopped(string(reason))
 }
 
 // Sites retain the desktop configuration and exact-origin approval owner.

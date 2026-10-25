@@ -82,7 +82,7 @@ Public link uses the same shared room service and supervised official cloudflare
 helper as desktop. Android executes the helper from the installed APK native
 library directory and writes its temporary configuration into the app cache.
 Failed room startup can retry from the same page after the failed attempt has
-retired. An unexpected helper exit after startup ends this runtime; Restart Piik
+retired. An unexpected room-service or helper exit ends this runtime; Restart Piik
 creates a fresh attempt.
 
 Create a room and select Android screen capture in the ordinary source picker.

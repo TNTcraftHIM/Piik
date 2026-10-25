@@ -7,6 +7,12 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Android browser reentry.** First Public-link entry works; reopening App
+  returns to the existing launcher, but entering Piik again stalls. Locate the
+  stalled navigation or room HTTP response while preserving the running runtime.
+- [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
+  title appears and the page never loads. Static compression reduces transfer
+  size; capture the stalled document/script response to locate this failure.
 - [ ] **Remote-control end-to-end latency.** Measure input-to-visible-response
   on an attended target, covering OS execution, Native capture/encoding, remote
   transport and display in the same trial. The

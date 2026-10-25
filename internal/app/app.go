@@ -651,6 +651,8 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	select {
 	case <-ctx.Done():
 		return nil
+	case err = <-localServer.Done():
+		return errors.Join(failure.LocalServer, err)
 	case err = <-control.Done():
 		if err != nil {
 			return errors.Join(failure.NativeControl, fmt.Errorf("Piik App native control stopped unexpectedly: %w", err))
