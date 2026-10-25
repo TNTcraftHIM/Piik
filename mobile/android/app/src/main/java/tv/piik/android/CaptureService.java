@@ -264,7 +264,8 @@ public final class CaptureService extends Service {
             MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR);
       format.setInteger(MediaFormat.KEY_FRAME_RATE, next.fps);
       format.setFloat(MediaFormat.KEY_MAX_FPS_TO_ENCODER, next.fps);
-      format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1);
+      // Recovery requests keyframes on demand; some encoders reject -1 to disable the period.
+      format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 3600);
       if (h264)
         format.setInteger(
             MediaFormat.KEY_PROFILE,
