@@ -7,9 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Android browser reentry.** First Public-link entry works; reopening App
-  returns to the existing launcher, but entering Piik again stalls. Locate the
-  stalled navigation or room HTTP response while preserving the running runtime.
+- [ ] **HyperOS browser reentry.** Confirm Chrome/Edge can reenter a running
+  Public-link room after returning through the App icon. If it still stalls,
+  locate the blocked HTTP request in that device's background-service state.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
