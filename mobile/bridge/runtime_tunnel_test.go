@@ -173,6 +173,74 @@ type runtimePlatform struct {
 
 func (platform *runtimePlatform) RuntimeStopped(reason string) { platform.terminated <- reason }
 
+func TestEssentialServicesRetireTheMobileRuntime(t *testing.T) {
+	for _, component := range []string{"launcher", "control", "room-and-control", "owner-close"} {
+		t.Run(component, func(t *testing.T) {
+			platform := &runtimePlatform{terminated: make(chan string, 4)}
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			r, err := Start(platform, "", `{"platform":"android","provider":"Android MediaCodec","encoders":[]}`, t.TempDir(), t.TempDir(), executable, "piik://media")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = r.Close() })
+			want := failure.Launcher
+			switch component {
+			case "launcher":
+				err = r.launcher.Close()
+			case "control":
+				want = failure.NativeControl
+				err = r.control.Close()
+			case "room-and-control":
+				t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+				trigger := filepath.Join(t.TempDir(), "exit")
+				t.Setenv("PIIK_ANDROID_TUNNEL_EXIT", trigger)
+				if _, err = r.startLocal(launcher.Selection{Mode: launcher.ModeLink}, ""); err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(trigger, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				err = r.control.Close()
+			case "owner-close":
+				err = r.Close()
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if component != "owner-close" {
+				select {
+				case reason := <-platform.terminated:
+					if component == "room-and-control" {
+						if reason != string(failure.NativeControl) && reason != string(failure.TunnelStopped) {
+							t.Fatalf("unexpected competing failure: %q", reason)
+						}
+					} else if reason != string(want) {
+						t.Fatalf("wrong service failure: %q", reason)
+					}
+				case <-time.After(5 * time.Second):
+					t.Fatal("essential listener ended but mobile Runtime remained live")
+				}
+			}
+			if r.ctx.Err() == nil {
+				t.Fatal("service exit did not retire the Runtime")
+			}
+			if component == "room-and-control" {
+				<-r.tunnel.Done()
+				r.watchRoom(r.server, r.tunnel)
+			}
+			r.watchServices()
+			select {
+			case reason := <-platform.terminated:
+				t.Fatalf("normal close or repeated completion reported an extra failure: %q", reason)
+			default:
+			}
+		})
+	}
+}
+
 func tunnelRuntime(t *testing.T) (*Runtime, *runtimePlatform) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
