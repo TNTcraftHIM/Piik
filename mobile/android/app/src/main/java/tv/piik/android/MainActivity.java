@@ -225,6 +225,7 @@ public final class MainActivity extends Activity {
   }
 
   void showWeb(String url) {
+    WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
     web = new WebView(getApplicationContext());
     WebSettings settings = web.getSettings();
     settings.setJavaScriptEnabled(true);
