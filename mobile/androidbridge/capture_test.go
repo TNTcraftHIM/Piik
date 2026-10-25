@@ -4,14 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
 )
 
@@ -447,5 +450,140 @@ func TestRejectedRotationProfileLeavesCommittedSourceUntouched(t *testing.T) {
 	}
 	if !r.VideoReady(s.id, "h264", 360, 640, "42e01f") {
 		t.Fatal("legal same-codec rotation rejected")
+	}
+}
+
+func TestSourceCancellationRequiresTheActualRequestOptIn(t *testing.T) {
+	for _, kind := range []string{"start-share", "replace-share-source"} {
+		for _, optedIn := range []bool{false, true} {
+			t.Run(fmt.Sprint(kind, "/", optedIn), func(t *testing.T) {
+				p := &testPlatform{}
+				c := &capture{platform: p, encoders: []encoderCapability{{Codec: "vp8"}}, streams: make(map[int64]*captureStream)}
+				r := &Runtime{capture: c}
+				p.videoStarted = func(id int64, configuration string) {
+					if kind == "start-share" || id > 1 {
+						r.CaptureCanceled(id)
+						return
+					}
+					var output nativecapture.OutputProfile
+					if err := json.Unmarshal([]byte(configuration), &output); err != nil {
+						t.Error(err)
+						return
+					}
+					r.VideoReady(id, "vp8", int64(output.Width), int64(output.Height), "")
+				}
+				control := nativecontrol.NewWithCapture(nativecapture.Capabilities{SoftwareVP8: true}, false, nil, c)
+				defer control.Close()
+				handle := func(payload string) map[string]any {
+					t.Helper()
+					value, err := control.Handle(t.Context(), []byte(payload))
+					if err != nil {
+						t.Fatal(err)
+					}
+					var request struct{ ID string }
+					if err := json.Unmarshal([]byte(payload), &request); err != nil {
+						t.Fatal(err)
+					}
+					deadline := time.NewTimer(3 * time.Second)
+					defer deadline.Stop()
+					for {
+						if value == nil {
+							select {
+							case value = <-control.Events():
+							case <-deadline.C:
+								t.Fatal("control response did not complete")
+							}
+						}
+						if event, ok := value.(loopback.ControlEvent); ok {
+							if event.Current != nil && !event.Current() {
+								value = nil
+								continue
+							}
+							if event.BeforeWrite != nil {
+								event.BeforeWrite()
+							}
+							value = event.Value
+						}
+						data, err := json.Marshal(value)
+						if err != nil {
+							t.Fatal(err)
+						}
+						var result map[string]any
+						if err = json.Unmarshal(data, &result); err != nil {
+							t.Fatal(err)
+						}
+						if result["id"] == request.ID {
+							return result
+						}
+						value = nil
+					}
+				}
+				start := `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Fixture"},"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":640,"height":360},"maxFramerate":30,"maxBitrate":1000000,"degradationPreference":"balanced"}}`
+				payload := start
+				if kind == "replace-share-source" {
+					if result := handle(start); result["type"] != "share-started" {
+						t.Fatalf("initial share: %v", result)
+					}
+					payload = `{"version":10,"id":"request_replace","type":"replace-share-source","shareId":"share_123456","source":{"kind":"picker","sourceId":"1","title":"Fixture"},"audio":false}`
+				}
+				if optedIn {
+					payload = strings.TrimSuffix(payload, "}") + `,"reportSourceCancellation":true}`
+				}
+				result := handle(payload)
+				want := "operation-failed"
+				if optedIn {
+					want = "source-canceled"
+				}
+				if result["type"] != "request-failed" || result["code"] != want {
+					t.Fatalf("request opt-in lost: %v", result)
+				}
+			})
+		}
+	}
+}
+
+func TestProjectionDismissalPreservesCancellationAndCurrentCapture(t *testing.T) {
+	for _, canceled := range []bool{true, false} {
+		t.Run(fmt.Sprint(canceled), func(t *testing.T) {
+			p := &testPlatform{}
+			c := &capture{platform: p, encoders: []encoderCapability{{Codec: "vp8"}}, streams: make(map[int64]*captureStream)}
+			r := &Runtime{capture: c}
+			p.videoStarted = func(id int64, configuration string) {
+				if id > 1 {
+					if canceled {
+						r.CaptureCanceled(id)
+					} else {
+						r.CaptureEnded(id)
+					}
+					return
+				}
+				var output nativecapture.OutputProfile
+				if err := json.Unmarshal([]byte(configuration), &output); err != nil {
+					t.Error(err)
+					return
+				}
+				r.VideoReady(id, "vp8", int64(output.Width), int64(output.Height), "")
+			}
+			video := nativecapture.VideoOptions{Codec: "vp8", Target: nativecapture.CaptureTarget{Kind: "picker"}, Profile: nativecapture.VideoProfile{Width: 640, Height: 360, Framerate: 30, Bitrate: 1_000_000, Preference: "balanced"}}
+			session, err := nativehost.Start(t.Context(), nativehost.Options{ShareID: "projection-cancel", Capture: c, Video: video, Profile: nativehost.QualityProfile{Video: video.Profile, AudioBitrate: 64_000}, EdgeCapacity: 1, BindAddress: "127.0.0.1:0"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			err = session.ReplaceSource(video, false, nil)
+			if err == nil || errors.Is(err, nativecapture.ErrSourceCanceled) != canceled {
+				t.Fatalf("replacement classification: %v", err)
+			}
+			if !r.CaptureCurrent(1) || r.CaptureCurrent(2) {
+				t.Fatal("failed replacement retired the current capture or retained the candidate")
+			}
+			if canceled {
+				p.videoStarted = func(id int64, _ string) { r.CaptureCanceled(id) }
+				pending, err := nativehost.Start(t.Context(), nativehost.Options{ShareID: "projection-start-cancel", Capture: c, Video: video, Profile: nativehost.QualityProfile{Video: video.Profile, AudioBitrate: 64_000}, EdgeCapacity: 1, BindAddress: "127.0.0.1:0"})
+				if pending != nil || !errors.Is(err, nativecapture.ErrSourceCanceled) {
+					t.Fatalf("initial picker cancellation: %v", err)
+				}
+			}
+		})
 	}
 }

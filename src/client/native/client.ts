@@ -351,6 +351,7 @@ export class NativeClient {
         ...(this.health.nativeMedia.microphone || this.health.nativeMedia.shareVolume ? { microphoneMixing: true } : {}),
         ...(this.health.nativeMedia.remoteInput ? { remoteInput: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
+        ...(this.health.nativeMedia.sourceCancellation ? { reportSourceCancellation: true } : {}),
       },
       shareStartedResponseSchema,
       input.source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
@@ -398,6 +399,7 @@ export class NativeClient {
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
+        ...(this.health.nativeMedia.sourceCancellation ? { reportSourceCancellation: true } : {}),
       },
       shareSourceReplacedResponseSchema,
       source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
@@ -838,6 +840,10 @@ export class NativeClient {
       if (pending.timer !== null) window.clearTimeout(pending.timer);
       const failure = requestFailedResponseSchema.safeParse(value);
       if (failure.success) {
+        if (failure.data.code === "source-canceled") {
+          pending.reject(new DOMException("Source selection canceled", "NotAllowedError"));
+          return;
+        }
         pending.reject(new NativeRequestError("rejected", pending.operation, { cause: { code: failure.data.code } }));
         return;
       }

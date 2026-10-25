@@ -53,6 +53,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       processAudioExclusion: z.boolean().default(false),
       microphone: z.boolean().default(false),
       shareVolume: z.boolean().optional(),
+      sourceCancellation: z.boolean().optional(),
       // API availability, not Windows approval or observed border visibility.
       captureBorderControl: z.boolean().default(false),
       hardwareH264: z.boolean().default(false),
@@ -153,7 +154,7 @@ export const requestFailedResponseSchema = z
   .object({
     ...responseBase,
     type: z.literal("request-failed"),
-    code: z.literal("operation-failed"),
+    code: z.enum(["operation-failed", "source-canceled"]),
   })
   .strict();
 export const captureOptionsResponseSchema = z

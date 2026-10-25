@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
@@ -17,6 +18,7 @@ import {
   shareUpdatedResponseSchema,
   sourcePreviewResponseSchema,
   receiveAnswerResponseSchema,
+  requestFailedResponseSchema,
 } from "../src/client/native/wire";
 
 afterEach(() => {
@@ -26,6 +28,15 @@ afterEach(() => {
 });
 
 describe("native App private wire", () => {
+  it("preserves the published strict failure reader for requests without cancellation opt-in", () => {
+    const published = z.object({ version: z.literal(10), id: z.string(), type: z.literal("request-failed"), code: z.literal("operation-failed") }).strict();
+    const legacy = { version: 10, id: "request_start", type: "request-failed", code: "operation-failed" };
+    expect(published.safeParse(legacy).success).toBe(true);
+    expect(requestFailedResponseSchema.safeParse(legacy).success).toBe(true);
+    const optedIn = { ...legacy, code: "source-canceled" };
+    expect(published.safeParse(optedIn).success).toBe(false);
+    expect(requestFailedResponseSchema.safeParse(optedIn).success).toBe(true);
+  });
   const health = {
     protocol: NATIVE_CLIENT_PROTOCOL,
     service: "piik-client",
@@ -458,6 +469,7 @@ describe("native App private wire", () => {
   it("notifies the owner once on an unexpected close and stays silent on cleanup", async () => {
     const sockets: FakeWebSocket[] = [];
     const token = "a".repeat(43);
+    let failureCode = "operation-failed";
     class FakeWebSocket extends EventTarget {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
@@ -484,7 +496,7 @@ describe("native App private wire", () => {
               version: 10,
               id: request.id,
               type: request.type === "hello" ? "ready" : request.type === "ping" ? "pong" : "request-failed",
-              ...(request.type === "update-share" ? { code: "operation-failed" } : {}),
+              ...(request.type === "update-share" ? { code: failureCode } : {}),
             }),
           });
           this.dispatchEvent(event);
@@ -524,6 +536,9 @@ describe("native App private wire", () => {
     client!.onClose(unexpected);
     await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
       .rejects.toMatchObject({ name: "NativeRequestError", reason: "rejected", operation: "update-share" });
+    failureCode = "source-canceled";
+    await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
+      .rejects.toMatchObject({ name: "NotAllowedError" });
     await client!.ping();
     expect(sockets[0]!.close).not.toHaveBeenCalled();
     expect(unexpected).not.toHaveBeenCalled();
@@ -633,7 +648,7 @@ describe("native App private wire", () => {
     vi.stubGlobal("WebSocket", CaptureSocket);
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported },
+      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported, sourceCancellation: supported },
     }))));
     const client = await NativeClient.connect();
     expect(client).not.toBeNull();
@@ -647,7 +662,7 @@ describe("native App private wire", () => {
       for (const showCaptureBorder of [undefined, false, true]) {
         await client!.startShare({ ...input, showCaptureBorder });
         await client!.replaceShareSource(input.shareId, input.source, input.audio, input, showCaptureBorder);
-        const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false } : {};
+        const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false, reportSourceCancellation: true } : {};
         expect(requests.at(-2)).toEqual({
           version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "start-share", ...input, ...extension,
           ...(supported ? { remoteInput: true } : {}),

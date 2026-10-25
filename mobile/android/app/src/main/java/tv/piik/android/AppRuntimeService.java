@@ -227,6 +227,8 @@ public final class AppRuntimeService extends Service {
     if (instance != this || request == null || active != request || !request.kind.equals("video"))
       return;
     request.awaitingResult = false;
+    if (result == Activity.RESULT_CANCELED && request.current())
+      request.owner.captureCanceled(request.id);
     if (result != Activity.RESULT_OK || data == null || !request.current()) {
       complete(request, false);
       return;

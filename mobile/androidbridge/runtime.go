@@ -90,6 +90,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	}
 	mediaCapabilities := catalog.mediaCapabilities()
 	mediaCapabilities.Microphone = capabilities.Microphone
+	mediaCapabilities.SourceCancellation = true
 	r.control, err = loopback.Start(ctx, loopback.Options{
 		ActivationURL:      activationURL,
 		MaxControlSessions: 1,

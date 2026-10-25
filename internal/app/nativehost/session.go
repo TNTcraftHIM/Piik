@@ -946,6 +946,9 @@ func (session *Session) runVideo() error {
 			}
 			slog.DebugContext(session.ctx, "piik-client", "event", "capture-video-read-ended",
 				"share", diagnostics.ID(session.shareID), "canceled", session.ctx.Err() != nil, "eof", errors.Is(err, io.EOF), diagnostics.Error(err))
+			if errors.Is(err, nativecapture.ErrSourceCanceled) {
+				return fail(err)
+			}
 			return fail(errors.New("native capture stopped unexpectedly"))
 		}
 		if next := session.currentStream(); next != current {
@@ -1171,7 +1174,10 @@ func waitForCaptureProfile(
 		for {
 			frame, err := stream.Read()
 			if err != nil {
-				send(result{stage: "process-ended", err: errors.New("native capture profile did not become ready")})
+				if !errors.Is(err, nativecapture.ErrSourceCanceled) {
+					err = errors.New("native capture profile did not become ready")
+				}
+				send(result{stage: "process-ended", err: err})
 				return
 			}
 			if frame.Kind == nativecapture.FrameLayerUnavailable {

@@ -215,6 +215,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
 			"sourceKind", request.Source.Kind, "adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
+		envelope.reportSourceCancellation = request.ReportSourceCancellation
 		result = session.beginShare(ctx, envelope, request, complete)
 		asynchronous = result == nil
 		return result, nil
@@ -373,6 +374,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			!validIdentities(request.ShareID) || !request.Source.Valid() {
 			return nil, protocolViolation("native replace-share-source request is invalid")
 		}
+		envelope.reportSourceCancellation = request.ReportSourceCancellation
 		if err := session.validateAudioExclusion(request.Source, request.Audio, request.ExcludeAudio); err != nil {
 			return nil, err
 		}
@@ -1231,9 +1233,13 @@ func operationFailure(request requestEnvelope, causes ...error) requestFailedRes
 		slog.Debug("piik-client", "event", "native-operation-failed", "requestId", request.ID,
 			"requestType", diagnostics.SafeText(request.Type), diagnostics.Error(causes[0]))
 	}
+	code := "operation-failed"
+	if request.reportSourceCancellation && len(causes) > 0 && errors.Is(causes[0], nativecapture.ErrSourceCanceled) {
+		code = "source-canceled"
+	}
 	return requestFailedResponse{
 		responseEnvelope: response(request, "request-failed"),
-		Code:             "operation-failed",
+		Code:             code,
 	}
 }
 

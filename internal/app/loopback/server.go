@@ -94,6 +94,7 @@ type NativeMediaCapabilities struct {
 	Video                        bool                       `json:"video"`
 	CaptureBorderControl         bool                       `json:"captureBorderControl,omitempty"`
 	Microphone                   bool                       `json:"microphone,omitempty"`
+	SourceCancellation           bool                       `json:"sourceCancellation,omitempty"`
 	ShareVolume                  bool                       `json:"shareVolume,omitempty"`
 	ProcessAudio                 bool                       `json:"processAudio"`
 	ProcessAudioExclusion        bool                       `json:"processAudioExclusion,omitempty"`

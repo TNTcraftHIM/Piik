@@ -10,6 +10,9 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 )
 
+// ErrSourceCanceled means the user dismissed the system source-selection dialog.
+var ErrSourceCanceled = errors.New("capture source selection canceled")
+
 const (
 	envelopeHeaderBytes          = 32
 	maxMediaBytes                = encoded.MaxAccessUnitBytes

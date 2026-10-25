@@ -42,7 +42,7 @@ type captureStream struct {
 	owner     *capture
 	id        int64
 	ctx       context.Context
-	cancel    context.CancelFunc
+	cancel    context.CancelCauseFunc
 	frames    chan nativecapture.Frame
 	outputs   []nativecapture.OutputProfile
 	once      sync.Once
@@ -57,7 +57,7 @@ func (c *capture) stream(ctx context.Context, outputs []nativecapture.OutputProf
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.next++
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	s := &captureStream{owner: c, id: c.next, ctx: ctx, cancel: cancel, frames: make(chan nativecapture.Frame, 8), outputs: outputs, ready: make(chan struct{})}
 	c.streams[s.id] = s
 	go func() { <-ctx.Done(); _ = s.Close() }()
@@ -135,6 +135,9 @@ func (c *capture) ListMicrophones(context.Context) ([]nativecapture.Microphone, 
 func (s *captureStream) Read() (nativecapture.Frame, error) {
 	select {
 	case <-s.ctx.Done():
+		if errors.Is(context.Cause(s.ctx), nativecapture.ErrSourceCanceled) {
+			return nativecapture.Frame{}, nativecapture.ErrSourceCanceled
+		}
 		return nativecapture.Frame{}, io.EOF
 	case frame := <-s.frames:
 		return frame, nil
@@ -149,7 +152,7 @@ func (s *captureStream) PreparationDone() {
 
 func (s *captureStream) Close() error {
 	s.once.Do(func() {
-		s.cancel()
+		s.cancel(nil)
 		s.owner.mu.Lock()
 		delete(s.owner.streams, s.id)
 		s.owner.mu.Unlock()
@@ -256,6 +259,15 @@ func (r *Runtime) AudioReady(id int64) {
 		s.readyOnce.Do(func() { close(s.ready) })
 	}
 }
+
+// CaptureCanceled is only for an explicit dismissal of system source selection.
+func (r *Runtime) CaptureCanceled(id int64) {
+	if s := r.capture.get(id); s != nil {
+		s.cancel(nativecapture.ErrSourceCanceled)
+		_ = s.Close()
+	}
+}
+
 func (r *Runtime) CaptureEnded(id int64) {
 	if s := r.capture.get(id); s != nil {
 		_ = s.Close()
