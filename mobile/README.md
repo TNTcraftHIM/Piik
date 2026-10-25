@@ -16,6 +16,8 @@ hardware AVC, then a Surface-capable MediaCodec VP8 encoder using the existing
 software-VP8 native path. An explicit AVC request never silently switches codec.
 Quality settings use the shared capture limits; the selected MediaCodec admits
 each requested profile during startup.
+When supported by that encoder, constant-bitrate mode keeps Android's quality
+floor from overriding the network allocation.
 Devices without either encoder can still join rooms. Piik needs an installed
 system browser.
 TV capture depends on the system's Projection and encoder support. Physical TV
@@ -24,6 +26,8 @@ checks are pending.
 Native Android capture currently provides one encoded rendition. It reuses the
 shared P2P/SFU transports and can forward received media, but does not yet derive
 lower renditions for individual viewers as the desktop capture backend does.
+Live bitrate follows the shared [media-quality contract](../docs/standards/media-quality.md):
+remote allocations reach the encoder without the local preview holding it at its ceiling.
 Android can control a desktop through the shared browser controls; it does not
 accept remote keyboard, mouse or virtual-gamepad input itself. Detached tool
 windows depend on the browser's Document Picture-in-Picture support.
@@ -122,4 +126,5 @@ Release acceptance and remaining platform checks are tracked in the
 Platform references: [Projection lifecycle](https://developer.android.com/media/grow/media-projection),
 [playback audio](https://developer.android.com/media/platform/av-capture),
 [foreground service](https://developer.android.com/develop/background-work/services/fgs/service-types#media-projection),
+[encoder rate control](https://developer.android.com/reference/android/media/MediaCodec#minimum-quality-floor-for-video-encoding),
 [Go bindings](https://pkg.go.dev/golang.org/x/mobile/cmd/gomobile).

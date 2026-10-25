@@ -48,10 +48,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
-- [ ] **Android App release scope.** Complete native demand-driven quality
-  adaptation, stationary-screen late join/keyframe recovery and phone/tablet/TV
-  hardware acceptance, then prepare release packaging. Android uses the system
-  browser and the same Web UI as desktop.
+- [ ] **Android App release scope.** Complete phone/tablet/TV hardware acceptance
+  and release packaging. The current system-browser build shares the desktop Web
+  UI and adapts the bitrate of one native rendition. Per-viewer lower renditions
+  remain a separate capture-backend extension.
 ## Held By Owner
 
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser

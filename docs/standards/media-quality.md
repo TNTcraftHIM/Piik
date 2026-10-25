@@ -383,6 +383,10 @@ directly and does not re-encode that preview through a Browser publisher.
 
 Native parents and the SFU share the media forwarding adapter. Each Native
 parent considers only its direct children and its admitted SFU publication.
+A Native source with one rendition shares that encoding across its consumers.
+Its encoder budget follows the largest active remote allocation within the source
+ceiling. Local preview alone can use the ceiling, but cannot mask remote demand.
+One shared rendition cannot provide different encoded qualities to its children.
 Recovery-probe traffic is exploration, not a reduction of committed media
 capacity. Allocation and encoder consumers retain the same budget through probe
 settling. A locally rate-controlled output has unmet demand within its current
