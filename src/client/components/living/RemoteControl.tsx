@@ -40,13 +40,14 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const surface = useRef<HTMLDivElement | null>(null);
   const cursor = useRef<SVGSVGElement | null>(null);
   const touchpad = useRef<RemoteTouchpad | null>(null);
+  const mouseButtons = useRef(new Set<number>());
   const viewport = useRef<RemoteViewport | null>(null);
   const canControl = available && presentation === "playing";
   const active = state?.state === "active" && canControl && channel?.readyState === "open";
   const controlled = (state?.state === "active" || state?.state === "suspended") && canControl && channel?.readyState === "open";
   const gamepadAvailable = state !== null && remoteGamepadAvailable(state) && typeof navigator.getGamepads === "function";
   const input = useCallback((event: RemoteInputEvent) => session.current?.input(event), []);
-  const reset = useCallback(() => { touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
+  const reset = useCallback(() => { mouseButtons.current.clear(); touchpad.current?.reset(); session.current?.input({ type: "reset" }); }, []);
   const closeKeyboard = () => {
     reset(); setKeyboardOpen(false); setKeyboardDocument(null); surface.current?.focus({ preventScroll: true });
   };
@@ -154,9 +155,11 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     element?.focus({ preventScroll: true });
     const wheel = (event: WheelEvent) => { event.preventDefault(); session.current?.scroll(event.deltaY, event.deltaMode); };
     element?.addEventListener("wheel", wheel, { passive: false });
-    // Release can land outside the picture after a drag. Observe it for this
-    // grant only; the native owner ignores buttons it never pressed.
-    const mouseUp = (event: MouseEvent) => session.current?.input({ type: "button", button: event.button, down: false });
+    // Release a physical press even outside the picture. Virtual tools own
+    // their presses; clicking one must not release another finger's button.
+    const mouseUp = (event: MouseEvent) => {
+      if (mouseButtons.current.delete(event.button)) session.current?.input({ type: "button", button: event.button, down: false });
+    };
     window.addEventListener("mouseup", mouseUp, true);
     const lockChanged = () => {
       reset(); setLocked(document.pointerLockElement === element);
@@ -165,6 +168,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     window.addEventListener("blur", reset);
     document.addEventListener("pointerlockchange", lockChanged);
     return () => {
+      mouseButtons.current.clear();
       element?.removeEventListener("wheel", wheel);
       window.removeEventListener("mouseup", mouseUp, true);
       window.removeEventListener("blur", reset);
@@ -232,8 +236,8 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           <span className={vis ? "visually-hidden" : undefined}>{t(feedback)}</span>
         </span>}
       </span>
-      <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.keyboard"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
-        hintText={!active ? "remote.keyboardRequiresControl" : touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
+      <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.inputTools"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
+        hintText={!active ? "remote.inputToolsRequiresControl" : touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
         onClick={() => {
           if (keyboardDetached) keyboardDocument?.defaultView?.focus();
           else if (keyboardOpen) closeKeyboard();
@@ -308,9 +312,9 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onMouseDown={event => {
           if (event.button > 4) return;
           event.preventDefault(); surface.current?.focus({ preventScroll: true });
-          if (document.pointerLockElement === surface.current) { input({ type: "button", button: event.button, down: true }); return; }
+          if (document.pointerLockElement === surface.current) { mouseButtons.current.add(event.button); input({ type: "button", button: event.button, down: true }); return; }
           const position = point(event.clientX, event.clientY);
-          if (position) { input({ type: "move", ...position }); input({ type: "button", button: event.button, down: true }); }
+          if (position) { mouseButtons.current.add(event.button); input({ type: "move", ...position }); input({ type: "button", button: event.button, down: true }); }
         }}
         onPointerCancel={reset}
         onLostPointerCapture={event => {
@@ -329,7 +333,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
         </svg>
       </div>}
-      {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
+      {active && keyboardOpen && <RemoteKeyboard input={input} pointer={touchpad.current ?? undefined} touch={touchControls} platform={state.platform}
         allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}

@@ -14,6 +14,9 @@ import { useCopy } from "../ui/copy";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { PreviewInput } from "./preview-input";
 import { HostAudio } from "../media/host-audio";
+import { relayVolunteerLimit } from "../media/relay-capability";
+import { DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY } from "../../shared/media-copy-accounting";
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../../shared/protocol";
 
 type PreviewRole = "host" | "viewer";
 
@@ -121,6 +124,9 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
   const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
+  const [relayVolunteer, setRelayVolunteer] = useState(false);
+  const [relayCapacity, setRelayCapacity] = useState(DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY + 1);
+  const relayLimits = relayVolunteerLimit(relayCapacity, DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY, MAX_VIEWERS_PER_ROOM_LIMIT);
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(true);
   const [audioAvailable, setAudioAvailable] = useState(false);
@@ -218,7 +224,9 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
                 setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
               } },
               route: viewer ? { preference: viewerRoute, onChange: setViewerRoute,
-              sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } : undefined }}
+              sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } : undefined,
+              relayVolunteer: viewer ? { ...relayLimits, enabled: relayVolunteer, pending: false, disabled: false,
+                onChange: setRelayVolunteer, onCapacityChange: setRelayCapacity } : undefined }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
             canPlay={Boolean(stream) && !waiting && !previewPlayback.suspended} theaterMode={theaterMode}
             onPlay={viewer ? play : previewPlayback.onPlay} onPause={viewer ? undefined : previewPlayback.onPause}

@@ -8,15 +8,15 @@ import { describe, expect, it, vi } from "vitest";
 import { VideoRateControls } from "../src/client/components/living/QualityPresets";
 import { QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS } from "../src/client/media/quality";
 
-// Exercise the private draft owner without adding a DOM runtime to unit tests.
+// Exercise the shared draft owner without adding a DOM runtime to unit tests.
 // Real pointer/focus ordering is also checked in the existing Browser preview.
-const source = ts.createSourceFile("QualityPresets.tsx", readFileSync(
-  new URL("../src/client/components/living/QualityPresets.tsx", import.meta.url), "utf8",
+const source = ts.createSourceFile("NumberControl.tsx", readFileSync(
+  new URL("../src/client/components/living/NumberControl.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const owner = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "QualityNumberControl");
+const owner = source.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "NumberControl");
 if (!owner) throw new Error("Missing numeric quality draft owner");
-const executable = ts.transpileModule(`${owner.getText(source)}\nQualityNumberControl;`, {
-  fileName: "QualityPresets.tsx",
+const executable = ts.transpileModule(`${owner.getText(source)}\nNumberControl;`, {
+  fileName: "NumberControl.tsx",
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
 }).outputText;
 

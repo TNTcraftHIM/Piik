@@ -14,6 +14,7 @@ export class RemoteTouchpad {
   private fingers = 0;
   private moved = false;
   private dragging = false;
+  private held = new Set<number>();
   private started = 0;
   private pair: { center: Point; distance: number } | null = null;
   private gesture: "pending" | "scroll" | "view" = "pending";
@@ -31,19 +32,19 @@ export class RemoteTouchpad {
     if (!this.contacts.size) {
       this.started = performance.now();
       this.fingers = 0;
-      this.moved = false;
+      this.moved = this.held.size > 0;
       this.gesture = "pending";
       this.changed(this.position);
     }
     this.contacts.set(id, { x, y, start: { x, y } });
     this.fingers = Math.max(this.fingers, this.contacts.size);
     this.clearHold();
-    if (this.fingers === 1) {
+    if (this.fingers === 1 && !this.moved) {
       this.hold = setTimeout(() => {
         this.hold = null;
         this.dragging = true;
         this.input({ type: "move", ...this.position });
-        this.input({ type: "button", button: 0, down: true });
+        if (!this.held.has(0)) this.input({ type: "button", button: 0, down: true });
       }, 500);
     } else {
       this.endDrag();
@@ -124,8 +125,23 @@ export class RemoteTouchpad {
   }
 
   private endDrag(): void {
-    if (this.dragging) this.input({ type: "button", button: 0, down: false });
+    if (this.dragging && !this.held.has(0)) this.input({ type: "button", button: 0, down: false });
     this.dragging = false;
+  }
+
+  button(button: number, down: boolean): void {
+    if (this.held.has(button) === down) return;
+    this.clearHold();
+    this.moved = true;
+    if (down) {
+      this.held.add(button);
+      this.input({ type: "move", ...this.position });
+    } else this.held.delete(button);
+    if (button !== 0 || !this.dragging) this.input({ type: "button", button, down });
+  }
+
+  wheel(deltaY: number): void {
+    this.scroll(deltaY);
   }
 
   cancel(id: number): void {
@@ -139,5 +155,6 @@ export class RemoteTouchpad {
     this.clearHold();
     this.endDrag();
     this.contacts.clear();
+    for (const button of [...this.held]) this.button(button, false);
   }
 }

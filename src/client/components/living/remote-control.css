@@ -122,3 +122,9 @@
   display: grid; place-items: center; min-width: 24px; height: 24px;
   border: 1px solid var(--line); border-radius: 5px; font: 600 14px var(--mono);
 }
+.lr-remote-mouse { display: grid; grid-template-columns: repeat(3, minmax(44px, 1fr)) minmax(72px, 1.3fr); gap: 8px; padding-block: 8px; }
+.lr-remote-mouse > .lr-chip { justify-content: center; min-height: 64px; font-weight: 650; touch-action: none; user-select: none; -webkit-user-select: none; }
+.lr-remote-mouse > button { padding: 8px 4px; white-space: nowrap; }
+.lr-remote-mouse-wheel { display: flex; align-items: center; gap: 6px; padding: 8px; cursor: ns-resize; }
+.lr-remote-mouse-wheel > span:first-child { font-size: 24px; }
+.lr-remote-mouse-wheel > span + span { font-size: 12px; word-break: keep-all; }

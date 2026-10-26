@@ -20,12 +20,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   transport and display in the same trial. The
   [input assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns completed local component measurements.
-- [ ] **Windows window-sharing black screen (#495).** Investigate
-  [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
-  Piik v2.3.0; native Chrome/Edge window sharing fails while QQ and Browser
-  capture work. The latest report selects VP8 and connects the preview transport.
-  Obtain the App capture status and encode counters, or compare
-  the existing Intel/NVIDIA adapter choices with VP8 fixed on that device.
 - [ ] **Linux capture ends after selection (#499).** Follow
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
@@ -64,8 +58,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session
   admission/expiry, recording consent, background capture and hosted-site linkage.
-- [ ] **Relay-volunteer capacity choice.** Deferred until playback and Android
-  acceptance finish. Review the existing cap before changing the control or protocol.
 - [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
   Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the

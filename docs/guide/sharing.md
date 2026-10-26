@@ -111,5 +111,6 @@ Leave the connection setting on **Auto** for ordinary use. To compare routes,
 select one of the alternatives offered by the Host and site.
 
 On supporting sites, **Playback settings → Connection → Help relay to more
-viewers** lets a Viewer volunteer more upload for the current visit. It remains
-an ordinary P2P relay; enable it on a stable connection with upload to spare.
+viewers** lets a Viewer volunteer more upload for the current visit. It starts
+with one extra Viewer; adjust **Maximum relay viewers** to set your limit.
+It remains an ordinary P2P relay; enable it on a stable connection with upload to spare.

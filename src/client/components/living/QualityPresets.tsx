@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { MIN_AUDIO_BITRATE } from "../../../shared/protocol";
 import {
   QUALITY_PROFILES, QUALITY_PROFILE_KEYS, QUALITY_RESOLUTIONS, DEGRADATION_PREFERENCE_KEYS, qualityResolutionEqual,
@@ -10,6 +10,7 @@ import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Cap, Chip } from "./primitives";
 import { QualityTileGlyph } from "./QualityTileGlyph";
+import { NumberControl } from "./NumberControl";
 import { Tooltip } from "./Tooltip";
 
 const PRESET_LABELS: Record<QualityProfileId, CopyKey> = {
@@ -150,58 +151,6 @@ const VOICE_QUALITY_CAPTIONS: Record<ScreenAudioPreset, CopyKey> = {
   saver: "voice.quality.saver", music: "voice.quality.standard", "very-high": "voice.quality.clear",
 };
 
-function QualityNumberControl({ value, min, max, step, unit, name, label, disabled, onChange, className, children }: {
-  value: number;
-  min: number;
-  max: number;
-  step: number;
-  unit: string;
-  name: string;
-  label: string;
-  disabled: boolean;
-  onChange: (value: number) => void;
-  className: string;
-  children: (input: ReactNode, select: (value: number) => void) => ReactNode;
-}) {
-  const { t } = useCopy();
-  const [invalid, setInvalid] = useState(false);
-  const errorId = useId();
-  const input = useRef<HTMLInputElement>(null);
-  useEffect(() => setInvalid(false), [value, min, max, step]);
-  const reset = () => { input.current!.value = String(value); setInvalid(false); };
-  const select = (next: number) => {
-    // A preset or slider replaces the draft, including a choice of the current value.
-    reset();
-    if (next !== value) onChange(next);
-  };
-  const number = <label className="lr-input lr-quality-number">
-    <input ref={input} type="number" inputMode={step < 1 ? "decimal" : "numeric"} name={name} key={value}
-      defaultValue={value} min={min} max={max} step={step} disabled={disabled} required aria-label={label}
-      aria-invalid={invalid || undefined} aria-describedby={invalid ? errorId : undefined}
-      onInput={() => setInvalid(false)}
-      onKeyDown={event => {
-        if (event.defaultPrevented || event.nativeEvent.isComposing ||
-            (event.key !== "Enter" && event.key !== "Escape")) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (event.key === "Escape") reset();
-        event.currentTarget.blur();
-      }} />
-    <span>{unit}</span>
-  </label>;
-  return <div className={className} onBlur={event => {
-    if (event.currentTarget.contains(event.relatedTarget)) return;
-    const field = input.current!;
-    const valid = field.validity.valid && Number.isFinite(field.valueAsNumber);
-    setInvalid(!valid);
-    if (valid && field.valueAsNumber !== value) onChange(field.valueAsNumber);
-  }}>{children(number, select)}
-    {invalid && <small id={errorId} className="lr-quality-validation" role="alert">{t("host.quality.invalidNumber", {
-      min: String(min), max: String(max), step: String(step), unit,
-    })}</small>}
-  </div>;
-}
-
 export function VideoRateControls({ value, limits, disabled, onChange }: {
   value: QualityProfile;
   limits: VideoCaptureLimits;
@@ -229,7 +178,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
       const commonValue = Math.min(sliderMax, Math.max(control.sliderMin,
         Math.round(control.value / control.sliderStep) * control.sliderStep));
       const custom = !hasCommonRange || control.value !== commonValue;
-      return <QualityNumberControl key={control.name} {...control}
+      return <NumberControl key={control.name} {...control}
         className="lr-quality-rate" label={t(control.label)}
         disabled={disabled || control.max < control.min} onChange={control.change}>
         {(input, select) => <>
@@ -273,7 +222,7 @@ export function VideoRateControls({ value, limits, disabled, onChange }: {
             </div>
           </>}
         </>}
-      </QualityNumberControl>;
+      </NumberControl>;
     })}
   </div>;
 }
@@ -289,7 +238,7 @@ export function AudioBitrateControl({ value, max, disabled, onChange, purpose = 
   const title = purpose === "voice" ? "voice.bitrate" : "host.advanced.audio";
   const presets = purpose === "voice" ? { saver: 32_000, music: 64_000, "very-high": 96_000 } : SCREEN_AUDIO_BITRATES;
   const captions = purpose === "voice" ? VOICE_QUALITY_CAPTIONS : AUDIO_QUALITY_CAPTIONS;
-  return <QualityNumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
+  return <NumberControl value={value / 1_000} min={MIN_AUDIO_BITRATE / 1_000} max={max / 1_000} step={1}
     name="audioBitrate" unit="kbps" label={t(purpose === "voice" ? "voice.bitrate" : "host.advanced.audioBitrate")} className="lr-door-group lr-audio-quality"
     disabled={disabled} onChange={kbps => onChange(kbps * 1_000)}>
     {(input, select) => <>
@@ -310,7 +259,7 @@ export function AudioBitrateControl({ value, max, disabled, onChange, purpose = 
         })}
       </div>
     </>}
-  </QualityNumberControl>;
+  </NumberControl>;
 }
 
 export function PicturePreferenceControl({ value, disabled, onChange }: {

@@ -38,7 +38,7 @@ function fixture(role: "host" | "viewer" = "host") {
 }
 
 describe("room authentication and site admission", () => {
-  it("replays only this page's relay intent after the authenticated page's ordinary capacity report", async () => {
+  it.each([3, 8, 20])("replays this page's relay limit %s after its ordinary capacity report", async (capacity) => {
     const { signal, sockets, events } = fixture("viewer");
     const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
     const authenticated = JSON.parse(wire.serverMessages.find(
@@ -49,14 +49,14 @@ describe("room authentication and site admission", () => {
     sockets[0]!.receive(authenticated);
     expect(signal.relayVolunteerRequest).toBeNull();
     expect(sockets[0]!.send.mock.calls.map(([raw]) => JSON.parse(raw).type)).not.toContain("set-relay-volunteer");
-    expect(signal.setRelayVolunteer(true, 20)).toBe(true);
-    sockets[0]!.receive({ type: "relay-volunteer", enabled: true, capacity: 20 });
+    expect(signal.setRelayVolunteer(true, capacity)).toBe(true);
+    sockets[0]!.receive({ type: "relay-volunteer", enabled: true, capacity });
     for (const enabled of [true, false]) {
       if (!enabled) {
-        signal.setRelayVolunteer(false, 20);
+        signal.setRelayVolunteer(false, capacity);
         // An earlier enabled acknowledgement must not restore consent while
         // the newer withdrawal is in flight or replay it after socket loss.
-        sockets.at(-1)!.receive({ type: "relay-volunteer", enabled: true, capacity: 20 });
+        sockets.at(-1)!.receive({ type: "relay-volunteer", enabled: true, capacity });
         expect(signal.relayVolunteerRequest?.enabled).toBe(false);
         sockets.at(-1)!.receive({ type: "relay-volunteer", enabled: false, capacity: 2 });
       }
@@ -69,7 +69,7 @@ describe("room authentication and site admission", () => {
         message.type === "relay-capacity" || message.type === "set-relay-volunteer");
       expect(reports).toEqual([
         { type: "relay-capacity", downstreamEdges: 3 },
-        { type: "set-relay-volunteer", enabled, capacity: 20 },
+        { type: "set-relay-volunteer", enabled, capacity },
       ]);
     }
     signal.stop();

@@ -85,7 +85,7 @@ permissions and window chrome are verified in the actual platform, not imitated.
 | Choose a short, fixed mode | Shared `.lr-toggle` sliding selection; option chips/cards when individual choices need explanations, richer previews or wrapping |
 | Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, including capture categories, and `navigateTabs` for Arrow/Home/End navigation |
 | Pick a device or an item from a variable list | Existing named selector/menu; use source thumbnails when appearance helps identify the item |
-| Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `QualityNumberControl` when exact entry or a wider accepted range is useful |
+| Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `NumberControl` when exact entry or a wider accepted range is useful |
 | Return within a room tool | Shared `BackButton`: left arrow and **Back**, with the same quiet dense treatment in settings and expanded reactions |
 | Apply several settings together | A named preset tile/chip; allow no preset to be selected when the current values are custom |
 

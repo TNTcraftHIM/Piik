@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import type { RemoteInputEvent } from "../../remote-control/input-session";
 import { REMOTE_TEXT_BYTES, type RemoteInputPlatform } from "../../remote-control/protocol";
 import { RemoteKeyboardPresses } from "../../remote-control/keyboard";
+import type { RemoteTouchpad } from "../../remote-control/touchpad";
 import { readRoomPreferences, saveRoomPreferences, REMOTE_KEYBOARD_PAGES, type RoomPreferences } from "../../lib/room-preferences";
 import { isCopyKey, useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -11,6 +12,7 @@ import { navigateTabs } from "../../ui/tab-navigation";
 import { Btn, Chip } from "./primitives";
 import { Tooltip } from "./Tooltip";
 import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
+import { RemoteMouse } from "./RemoteMouse";
 import "./floating-panel.css";
 
 type Key = readonly [label: string, code: string, shifted?: string];
@@ -28,14 +30,15 @@ const ROWS = {
 const NAVIGATION: Key[] = [["Esc", "Escape"], ["Tab", "Tab"]];
 const EDITING: Key[] = [["Ins", "Insert"], ["Home", "Home"], ["PgUp", "PageUp"], ["Del", "Delete"], ["End", "End"], ["PgDn", "PageDown"]];
 const ARROWS: Key[] = [["↑", "ArrowUp"], ["←", "ArrowLeft"], ["↓", "ArrowDown"], ["→", "ArrowRight"]];
-type Page = RoomPreferences["keyboardPage"];
+type Page = RoomPreferences["keyboardPage"] | "mouse";
 const PAGES = REMOTE_KEYBOARD_PAGES;
 
 // The local input owns IME composition. Committed text and physical keys use
 // their existing input operations, without clipboard access or another channel.
-export function RemoteKeyboard({ input, close, mouseControl, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true }: {
+export function RemoteKeyboard({ input, close, mouseControl, pointer, touch, platform, onSurfaceChange, releaseKey, onReleaseKeyChange, allowText = true }: {
   input: (event: RemoteInputEvent) => void; close: () => void;
   mouseControl?: ReactNode; touch: boolean;
+  pointer?: RemoteTouchpad;
   platform: RemoteInputPlatform;
   onSurfaceChange?: (owner: Document) => void;
   releaseKey: number; onReleaseKeyChange: (key: number) => void;
@@ -56,8 +59,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       : mac ? [["Ctrl+Space", "InputLanguage", ["ControlLeft", "Space"]], ["Cmd+`", "SwitchWindow", ["MetaLeft", "Backquote"]]] as const : []),
     [`${mac ? "Cmd" : "Alt"}+Tab`, mac ? "SwitchApp" : "SwitchWindow", [mac ? "MetaLeft" : "AltLeft", "Tab"]],
   ] as const;
-  const [page, setPage] = useState<Page>(() => readRoomPreferences().keyboardPage);
-  const pages = PAGES;
+  const [page, setPage] = useState<Page>(() => pointer && touch ? "mouse" : readRoomPreferences().keyboardPage);
+  const pages: readonly Page[] = pointer ? ["mouse", ...PAGES] : PAGES;
+  const title = pointer ? "remote.inputTools" : "remote.keyboard";
   const [text, setText] = useState("");
   const [modifiers, setModifiers] = useState<string[]>([]);
   const [combineKeys, setCombineKeys] = useState(() => readRoomPreferences().combineKeys);
@@ -82,9 +86,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     };
   }, [presses, owner]);
   useEffect(() => {
-    if (owner !== document) owner.title = `${t("remote.keyboard")} · Piik`;
-  }, [owner, t]);
-  const rows = page === "text" ? [] : mac && page === "functions"
+    if (owner !== document) owner.title = `${t(title)} · Piik`;
+  }, [owner, t, title]);
+  const rows = page === "text" || page === "mouse" ? [] : mac && page === "functions"
     ? ROWS.functions.slice(0, 2)
     : ROWS[page];
 
@@ -130,7 +134,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     <div className="lr-remote-key-row lr-remote-arrows">{ARROWS.map(key)}</div>
   </div>;
 
-  const keyboard = <SurfaceDocument.Provider value={owner}><section ref={panel} tabIndex={-1} className="lr-remote-keyboard" aria-label={t("remote.keyboard")}
+  const keyboard = <SurfaceDocument.Provider value={owner}><section ref={panel} tabIndex={-1} className="lr-remote-keyboard" aria-label={t(title)}
     onContextMenu={event => { if ((event.target as Element).closest("button")) event.preventDefault(); }}
     onKeyDown={event => {
       event.stopPropagation();
@@ -140,7 +144,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       }
     }} onKeyUp={event => event.stopPropagation()}>
     <div className="lr-remote-panel-header">
-      <strong><Glyph name="keyboard" size={18} />{vis ? null : t("remote.keyboard")}</strong>
+      <strong><Glyph name="keyboard" size={18} />{vis ? null : t(title)}</strong>
       {!panelWindow.detached && <>
         {panelWindowAPI(window) && <Tooltip kind="hint-window-detach" place="below" text={vis ? undefined : t("floating.detach")}>
           <button type="button" className="lr-btn is-dense is-quiet lr-popover-close" aria-label={t("floating.detach")} disabled={panelWindow.opening}
@@ -150,20 +154,21 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </>}
     </div>
     {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
-    <div className="lr-toggle lr-remote-key-pages" role="tablist" aria-label={t("remote.keyPages")}
+    <div className="lr-toggle lr-remote-key-pages" role="tablist" aria-label={t("remote.inputPages")}
       style={{ "--lr-segments": pages.length, "--lr-selected-index": pages.indexOf(page) } as CSSProperties}
       onKeyDown={navigateTabs}>
       {pages.map(value => <button key={value} type="button" role="tab" id={`${id}-${value}`}
         className={page === value ? "is-selected" : undefined} aria-selected={page === value}
         aria-controls={`${id}-panel`} tabIndex={page === value ? 0 : -1}
-        aria-label={t(`remote.keys.${value}`)} onClick={() => {
-          presses.reset(); setModifiers([]); setPage(value); saveRoomPreferences({ keyboardPage: value });
+        aria-label={t(value === "mouse" ? "remote.mouse" : `remote.keys.${value}`)} onClick={() => {
+          presses.reset(); pointer?.reset(); setModifiers([]); setPage(value);
+          if (value !== "mouse") saveRoomPreferences({ keyboardPage: value });
         }}>
-        {value === "letters" ? "ABC" : value === "symbols" ? "123" : value === "functions" ? "Fn" : vis ? <Glyph name="pencil" size={16} /> : t("remote.keys.text")}
+        {value === "mouse" ? <Glyph name="mouse" size={17} /> : value === "letters" ? "ABC" : value === "symbols" ? "123" : value === "functions" ? "Fn" : vis ? <Glyph name="pencil" size={16} /> : t("remote.keys.text")}
       </button>)}
     </div>
     <div id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-${page}`}>
-    {page !== "text" ? <>
+    {page === "mouse" && pointer ? <RemoteMouse pointer={pointer} /> : page !== "text" ? <>
       <div className={`lr-remote-key-layout is-${page}`}>
         {rows.map((row, index) => <div className="lr-remote-key-row" key={index}>
           {index === 2 && page !== "functions" && modifier(modifiersKeys[3], 3)}{row.map(key)}{index === 2 && page !== "functions" && key(["⌫", "Backspace"])}
@@ -212,9 +217,9 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
       </div>
     </>}
     </div>
-    <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />
-    {!panelWindow.detached && mouseControl}
-    {!vis && touch && <p>{t("remote.touchHelp")}</p>}
+    {page !== "mouse" && <RemoteShortcutSelect value={releaseKey} onChange={onReleaseKeyChange} mac={navigator.platform.startsWith("Mac")} />}
+    {!panelWindow.detached && (!pointer || page === "mouse") && mouseControl}
+    {!vis && touch && page !== "mouse" && <p>{t("remote.touchHelp")}</p>}
   </section></SurfaceDocument.Provider>;
   return <span ref={panelWindow.slot} style={{ display: "contents" }}>
     {panelWindow.container && createPortal(keyboard, panelWindow.container)}

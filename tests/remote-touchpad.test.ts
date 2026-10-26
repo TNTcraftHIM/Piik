@@ -3,6 +3,40 @@ import { RemoteTouchpad } from "../src/client/remote-control/touchpad";
 import type { RemoteInputEvent } from "../src/client/remote-control/input-session";
 import type { VideoRotation } from "../src/client/media/video-geometry";
 
+it("shares virtual buttons with picture gestures until their final owner releases", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  try {
+    const events: RemoteInputEvent[] = [];
+    const pad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: 0 }), event => events.push(event),
+      () => {}, () => {}, { scale: 1, transform: () => {}, visiblePosition: position => position });
+    const buttons = () => events.filter(event => event.type === "button");
+    pad.button(0, true);
+    pad.down(1, 20, 20); pad.move(1, 24, 22); pad.up(1);
+    pad.down(2, 20, 20); vi.advanceTimersByTime(600); pad.move(2, 70, 45); pad.up(2);
+    expect(buttons()).toEqual([{ type: "button", button: 0, down: true }]);
+    expect(events.at(-1)).toEqual({ type: "move", x: .77, y: .77 });
+    pad.button(0, false);
+    expect(buttons().at(-1)).toEqual({ type: "button", button: 0, down: false });
+
+    events.length = 0;
+    pad.down(3, 20, 20); vi.advanceTimersByTime(500);
+    pad.button(0, true); pad.up(3);
+    expect(buttons()).toEqual([{ type: "button", button: 0, down: true }]);
+    pad.button(0, false);
+    expect(buttons()).toHaveLength(2);
+
+    events.length = 0;
+    pad.down(4, 20, 20); pad.button(2, true); pad.button(2, false);
+    vi.advanceTimersByTime(600); pad.up(4);
+    expect(buttons()).toEqual([{ type: "button", button: 2, down: true }, { type: "button", button: 2, down: false }]);
+    pad.down(5, 20, 20); vi.advanceTimersByTime(500); pad.button(0, true); pad.button(1, true);
+    events.length = 0;
+    pad.reset(); pad.up(5); pad.button(0, false); pad.button(1, false); vi.advanceTimersByTime(600);
+    expect(buttons()).toEqual([{ type: "button", button: 0, down: false }, { type: "button", button: 1, down: false }]);
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
 it("keeps taps, dragging, two-finger gestures and grant retirement distinct", () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
   try {
