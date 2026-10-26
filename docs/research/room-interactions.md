@@ -492,6 +492,23 @@ uses Axum/Tokio for a real WebSocket chat authority and reuses the existing
 React visual primitives. It does not change the accepted 2.x protocol or prove
 Rust media, native capture, permissions or automatic routing compatibility.
 
+Mature references support separating these responsibilities. Public
+[channel permission definitions](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx)
+distinguish viewing, connecting, speaking and publishing; Piik can begin with
+explicit channel-scoped capabilities instead of adopting their complete role
+hierarchy. The separate [voice connection lifecycle](https://github.com/discord/discord-api-docs/blob/main/developers/topics/voice-connections.mdx)
+supports keeping browsing and joined voice distinct. The public
+[channel file-storage configuration](https://github.com/teamspeak/teamspeak6-server/blob/main/CONFIG.md)
+uses a separate transfer/storage path, including optional presigned object URLs;
+file bytes need not travel through chat signaling or the media route controller.
+
+The open [Spacebar server](https://github.com/spacebarchat/server) and
+[Mumble implementation](https://github.com/mumble-voip/mumble) are comparative
+references for channel authority and voice, respectively. Their existence does
+not supply Piik's P2P-first controller or justify importing an entire product
+stack. This prototype uses existing platform controls and its own small channel
+authority; no implementation code was copied from these references.
+
 Channel browsing, conversation, joined voice and picture publication have
 different lifetimes. The prototype retains per-channel drafts/history while
 browsing, and keeps local voice/picture capture in their originating channels.
