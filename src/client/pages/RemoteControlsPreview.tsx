@@ -6,6 +6,7 @@ import { StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { RemoteKeyboard } from "../components/living/RemoteKeyboard";
+import { RemoteMouse, placeRemoteMouse } from "../components/living/RemoteMouse";
 import { Couch } from "../components/living/Couch";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
@@ -30,8 +31,10 @@ export function RemoteControlsPreview() {
   const [mode, setMode] = useState<RemoteControlMode>("off");
   const [simultaneous, setSimultaneous] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
-  const [keyboardOpen, setKeyboardOpen] = useState(true);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [lastInput, setLastInput] = useState("");
+  const mouseVideo = useRef<HTMLVideoElement>(null);
+  const mouseLayer = useRef<HTMLDivElement>(null);
   const [releaseKey, setReleaseKey] = useState(10);
   const [stopKey, setStopKey] = useState(10);
   const shortcut = useCallback(async (key?: number) => {
@@ -39,12 +42,43 @@ export function RemoteControlsPreview() {
     return { key: key ?? stopKey, available: true };
   }, [stopKey]);
   const input = useCallback((event: RemoteInputEvent) => setLastInput(JSON.stringify(event)), []);
-  const [pointer] = useState(() => new RemoteTouchpad(() => null, input,
-    deltaY => setLastInput(JSON.stringify({ type: "wheel", deltaY })), () => {},
+  const placePointer = useCallback((position: { x: number; y: number }) => {
+    const layer = mouseLayer.current;
+    if (!layer) return;
+    const rect = layer.getBoundingClientRect();
+    placeRemoteMouse(layer, position.x * rect.width, position.y * rect.height);
+  }, []);
+  const [pointer] = useState(() => new RemoteTouchpad(() => {
+    const rect = mouseLayer.current?.getBoundingClientRect();
+    return rect ? { width: rect.width, height: rect.height, rotation: 0 } : null;
+  }, input,
+    deltaY => setLastInput(JSON.stringify({ type: "wheel", deltaY })), placePointer,
     { scale: 1, transform: () => {}, visiblePosition: position => position }));
-  useEffect(() => () => pointer.reset(), [pointer]);
+  useEffect(() => {
+    const element = mouseVideo.current!;
+    const layer = mouseLayer.current!;
+    const sample = testMedia(false, false);
+    element.srcObject = sample.stream;
+    void element.play().catch(() => {});
+    const surface = element.parentElement!;
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      pointer.wheel(event.deltaY);
+    };
+    surface.addEventListener("wheel", wheel, { passive: false });
+    const position = () => placePointer(pointer.position);
+    const resize = new ResizeObserver(position);
+    resize.observe(layer);
+    position();
+    return () => {
+      resize.disconnect();
+      surface.removeEventListener("wheel", wheel);
+      pointer.reset();
+      element.srcObject = null;
+      sample.stop();
+    };
+  }, [pointer, placePointer]);
   const closeKeyboard = () => {
-    pointer.reset();
     setKeyboardOpen(false);
     document.getElementById("preview-remote-keyboard-toggle")?.focus();
   };
@@ -52,25 +86,32 @@ export function RemoteControlsPreview() {
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Try the mouse buttons, scroll wheel and keyboard here. Input only appears below; it does not control your computer. The permission flow is shown above."
-        : "在这里直接试用鼠标按钮、滚轮和键盘。输入只在下方显示，不会操作电脑；完整授权流程在上方演示。"}</p>
+      <p>{en ? "Tap the little mouse to expand it. Drag its body, use its buttons or scroll wheel, or open the keyboard below. Input only appears in the local log; it does not control your computer."
+        : "轻点画面中的小鼠标展开，拖动本体移动光标，试用按键与滚轮，也可在下方打开键盘。输入只记录在本地，不会操作电脑。"}</p>
     </div></header>
+    <div className="cp-stage" style={{ maxWidth: 480 }}>
+      <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
+        <video ref={mouseVideo} muted playsInline style={{ objectFit: "cover" }}
+          aria-label={en ? "Local sample picture" : "本地示例画面"} />
+        <RemoteMouse pointer={pointer} positionRef={mouseLayer} />
+      </StageTv>
+    </div>
     <div className="cp-tools">
       <label className="lr-input"><span>{en ? "Host platform" : "房主平台"}</span>
         <select value={platform} onChange={event => setPlatform(event.target.value as RemoteInputPlatform)}>
           <option value="windows">Windows</option><option value="darwin">macOS</option><option value="linux">Linux</option>
         </select>
       </label>
-      <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.inputTools" cap="remote.inputTools" hint="hint-remote-keyboard"
+      <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.keyboard" cap="remote.keyboard" hint="hint-remote-keyboard"
         expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
     </div>
     <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
-      {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} pointer={pointer} touch input={input} close={closeKeyboard}
+      {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch input={input} close={closeKeyboard}
         allowText={requests.filter(request => request.state !== "pending").length < 2}
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
-      <output>{lastInput || (en ? "Press a mouse button or drag the scroll wheel to try it." : "轻点鼠标按钮或拖动滚轮即可试用。")}</output>
+      <output>{lastInput || (en ? "Tap the little mouse in the picture to try it." : "轻点画面中的小鼠标即可试用。")}</output>
     </p>
     <div className="cp-tools">
       <HostRemoteControl mode={mode} platform={platform} requests={requests}

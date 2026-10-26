@@ -31,7 +31,9 @@ it("shares virtual buttons with picture gestures until their final owner release
     expect(buttons()).toEqual([{ type: "button", button: 2, down: true }, { type: "button", button: 2, down: false }]);
     pad.down(5, 20, 20); vi.advanceTimersByTime(500); pad.button(0, true); pad.button(1, true);
     events.length = 0;
-    pad.reset(); pad.up(5); pad.button(0, false); pad.button(1, false); vi.advanceTimersByTime(600);
+    pad.moveBy(20, 10);
+    expect(events).toEqual([{ type: "move", ...pad.position }]);
+    pad.cancel(5); pad.reset(); pad.up(5); pad.button(0, false); pad.button(1, false); vi.advanceTimersByTime(600);
     expect(buttons()).toEqual([{ type: "button", button: 0, down: false }, { type: "button", button: 1, down: false }]);
     expect(vi.getTimerCount()).toBe(0);
   } finally { vi.useRealTimers(); }
@@ -122,9 +124,37 @@ it("keeps pinch/pan local and never turns the remaining finger into a remote cli
   } finally { vi.useRealTimers(); vi.unstubAllGlobals(); }
 });
 
+it("moves the widget through the rendered picture and visible viewport without a delayed click", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+  try {
+    const events: RemoteInputEvent[] = [];
+    const changed = vi.fn(), scroll = vi.fn(), transform = vi.fn();
+    const visiblePosition = vi.fn((position: { x: number; y: number }) => ({
+      x: Math.max(.3, Math.min(.6, position.x)), y: Math.max(.2, Math.min(.7, position.y)),
+    }));
+    // pictureRect already includes the local zoom; do not divide by scale again.
+    const pad = new RemoteTouchpad(() => ({ width: 400, height: 200, rotation: 0 }),
+      event => events.push(event), scroll, changed, { scale: 2, transform, visiblePosition });
+    pad.down(1, 20, 20);
+    pad.moveBy(100, 50);
+    expect(visiblePosition).toHaveBeenLastCalledWith({ x: .75, y: .75 });
+    expect(pad.position).toEqual({ x: .6, y: .7 });
+    expect(changed).toHaveBeenLastCalledWith(pad.position);
+    expect(events).toEqual([{ type: "move", x: .6, y: .7 }]);
+    vi.advanceTimersByTime(600); pad.up(1);
+    expect(events).toHaveLength(1);
+    pad.moveBy(400, 200);
+    expect(visiblePosition).toHaveBeenLastCalledWith({ x: 1, y: 1 });
+    expect(events.at(-1)).toEqual({ type: "move", x: .6, y: .7 });
+    expect(scroll).not.toHaveBeenCalled();
+    expect(transform).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally { vi.useRealTimers(); }
+});
+
 it.each([
   [0, .75, .5], [90, .5, .25], [180, .25, .5], [270, .5, .75],
-] as const)("keeps touch motion aligned with the rotated picture and releases a held drag (%s°)", (rotation, x, y) => {
+] as const)("aligns picture and widget motion with rotation and releases a held drag (%s°)", (rotation, x, y) => {
   vi.useFakeTimers();
   try {
     const events: RemoteInputEvent[] = [];
@@ -138,5 +168,10 @@ it.each([
     expect(events.at(-1)).toEqual({ type: "button", button: 0, down: false });
     pad.up(1);
     expect(events.filter(event => event.type === "button")).toHaveLength(2);
+    events.length = 0;
+    pad.position = { x: .5, y: .5 };
+    pad.moveBy(50, 0);
+    vi.advanceTimersByTime(600);
+    expect(events).toEqual([{ type: "move", x, y }]);
   } finally { vi.useRealTimers(); }
 });

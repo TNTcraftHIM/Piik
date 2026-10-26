@@ -330,6 +330,9 @@ change local display only, separate from the Host's picture settings.
 Persistent interaction and remote-permission tools may use the shared floating
 window; the remote keyboard docks outside the picture and can detach on capable
 browsers. One-step actions and brief adjustments do not need movable windows.
+On touch controllers, the local pointer expands into a mouse-shaped control on
+the picture. Its buttons, scroll area and draggable shell use the existing input
+grant and pointer geometry; the keyboard keeps its separate docked surface.
 
 Visual source choices (windows, screens and cameras) share named thumbnail cards,
 including their focus, hover and refresh treatment. Thumbnails fit the whole frame

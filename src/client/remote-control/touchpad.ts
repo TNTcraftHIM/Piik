@@ -71,6 +71,12 @@ export class RemoteTouchpad {
     // Keep the initial displacement while deciding tap versus motion. Updating
     // the origin before this threshold loses the start of every small swipe.
     contact.x = x; contact.y = y;
+    this.moveBy(dx, dy);
+  }
+
+  moveBy(dx: number, dy: number): void {
+    this.moved = true;
+    this.clearHold();
     const picture = this.picture();
     if (!picture?.width || !picture.height) return;
     const delta = rotatePictureDelta({ x: dx / picture.width, y: dy / picture.height }, picture.rotation, true);

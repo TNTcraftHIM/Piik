@@ -94,7 +94,7 @@ remain available without the gamepad driver.
 Either person can choose **End control**. The Host can stop all remote input with
 **Ctrl+Alt+F10** on Windows or **Control+Option+F10** on macOS. Change the function
 key in the Host's **Remote control** panel if it conflicts with another app.
-The Viewer can set a separate **Exit control shortcut** on a keyboard page in **Input tools**.
+The Viewer can set a separate **Exit control shortcut** in **Remote keyboard**.
 Shortcut choices are saved per site in this browser.
 
 Changing the source or stopping sharing turns control off. After a connection
@@ -106,10 +106,10 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 
 On a phone, swipe to move the pointer, tap to click and hold to drag. Two-finger
 tap is right-click; two-finger swipe scrolls. Pinch to zoom, then use two fingers
-to move around the enlarged picture. Open **Input tools → Mouse** for left,
-middle and right buttons and a draggable scroll wheel. Hold a button with one
-finger and move over the picture with another to drag. The wheel also works
-while zoomed in. The other input pages provide keys, shortcuts and text entry.
+to move around the enlarged picture. Tap the little mouse at the pointer to
+expand its left, middle and right buttons and scroll area. Drag its lower shell
+to move the pointer; hold a button while moving to drag an item. The scroll area
+also works while zoomed in. **Remote keyboard** provides keys, shortcuts and text entry.
 On a computer, **Game mouse** captures continuous mouse movement;
 press **Esc** to release it.
 

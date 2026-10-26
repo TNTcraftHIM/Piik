@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -10,6 +10,7 @@ import { RemoteGamepad } from "../../remote-control/gamepad";
 import { matchesRemoteShortcut, remoteTextAvailable, remoteGamepadAvailable } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
+import { RemoteMouse, placeRemoteMouse } from "./RemoteMouse";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import { picturePoint, pictureRect, rotatePicturePoint, rotatePictureDelta, videoRotation, type VideoFit, type VideoRotation } from "../../media/video-geometry";
@@ -34,11 +35,12 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   const [keyboardDocument, setKeyboardDocument] = useState<Document | null>(null);
   const keyboardDetached = Boolean(keyboardDocument && keyboardDocument !== document);
-  const [touch, setTouch] = useState(false);
+  const [touchPointer, setTouchPointer] = useState<RemoteTouchpad | null>(null);
+  const touch = touchPointer !== null;
   const [releaseKey, setReleaseKey] = useState(() => readRoomPreferences().remoteReleaseKey);
   const session = useRef<RemoteInputSession | null>(null);
   const surface = useRef<HTMLDivElement | null>(null);
-  const cursor = useRef<SVGSVGElement | null>(null);
+  const cursor = useRef<HTMLDivElement | null>(null);
   const touchpad = useRef<RemoteTouchpad | null>(null);
   const mouseButtons = useRef(new Set<number>());
   const viewport = useRef<RemoteViewport | null>(null);
@@ -87,17 +89,19 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     const current = new RemoteGamepad(input, setGamepadConnected);
     return () => current.dispose();
   }, [controlled, gamepadAvailable, state?.grant, channel, input]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const video = videoRef.current;
     const element = surface.current;
-    if (!controlled || !video || !element) { setTouch(false); return; }
+    setTouchPointer(null);
+    if (!controlled || !video || !element) return;
     const updateCursor = () => {
       const picture = pictureRect(video);
       const rect = surface.current?.getBoundingClientRect();
       if (!picture || !rect || !cursor.current) return;
       const position = rotatePicturePoint(current.position, videoRotation(video));
-      cursor.current.style.left = `${picture.left - rect.left + position.x * picture.width}px`;
-      cursor.current.style.top = `${picture.top - rect.top + position.y * picture.height}px`;
+      placeRemoteMouse(cursor.current,
+        picture.left - rect.left + position.x * picture.width,
+        picture.top - rect.top + position.y * picture.height);
     };
     const view = new RemoteViewport(video, element, () => {
       current.position = view.visiblePosition(current.position);
@@ -115,6 +119,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       view,
     );
     touchpad.current = current;
+    setTouchPointer(matchMedia("(pointer: coarse)").matches ? current : null);
     // Layout changes and decoded aspect-ratio changes share the input geometry.
     const refresh = () => view.refresh();
     const observer = new ResizeObserver(refresh);
@@ -122,9 +127,11 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     video.addEventListener("resize", refresh);
     return () => {
       observer.disconnect(); video.removeEventListener("resize", refresh);
+      mouseButtons.current.clear();
       current.reset(); view.reset(); touchpad.current = null; viewport.current = null;
     };
-  }, [controlled, channel, videoRef]);
+  }, [controlled, state?.grant, channel, videoRef]);
+  useLayoutEffect(() => { if (touchPointer) viewport.current?.refresh(); }, [touchPointer]);
   useEffect(() => { viewport.current?.refresh(); }, [pictureFit]);
   useEffect(() => {
     reset(); viewport.current?.reset(); viewport.current?.refresh();
@@ -236,8 +243,8 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           <span className={vis ? "visually-hidden" : undefined}>{t(feedback)}</span>
         </span>}
       </span>
-      <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.inputTools"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
-        hintText={!active ? "remote.inputToolsRequiresControl" : touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
+      <Btn icon="keyboard" title={keyboardDetached ? "floating.focus" : "remote.keyboard"} hint={keyboardDetached ? "hint-window-detach" : "hint-remote-keyboard"}
+        hintText={!active ? "remote.keyboardRequiresControl" : touchControls ? "remote.touchHelp" : undefined} expanded={keyboardOpen} disabled={!active}
         onClick={() => {
           if (keyboardDetached) keyboardDocument?.defaultView?.focus();
           else if (keyboardOpen) closeKeyboard();
@@ -280,7 +287,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
             event.preventDefault(); event.stopPropagation();
             touchpad.current?.move(event.pointerId, event.clientX, event.clientY); return;
           }
-          setTouch(false);
+          setTouchPointer(null);
           if (document.pointerLockElement === surface.current) {
             const delta = rotatePictureDelta({ x: event.movementX, y: event.movementY }, pictureRotation, true);
             input({ type: "relative", dx: delta.x, dy: delta.y });
@@ -295,7 +302,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         onPointerDown={event => {
           if (document.pointerLockElement !== surface.current) event.currentTarget.setPointerCapture(event.pointerId);
           if (event.pointerType === "touch") {
-            event.preventDefault(); event.stopPropagation(); setTouch(true);
+            event.preventDefault(); event.stopPropagation(); setTouchPointer(touchpad.current);
             surface.current?.focus({ preventScroll: true });
             touchpad.current?.down(event.pointerId, event.clientX, event.clientY);
           }
@@ -329,11 +336,9 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
-        <svg ref={cursor} className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true" style={{ display: touch ? undefined : "none" }}>
-          <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
-        </svg>
+        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} />}
       </div>}
-      {active && keyboardOpen && <RemoteKeyboard input={input} pointer={touchpad.current ?? undefined} touch={touchControls} platform={state.platform}
+      {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
         allowText={remoteTextAvailable(state)}
         releaseKey={releaseKey} onReleaseKeyChange={key => { setReleaseKey(key); saveRoomPreferences({ remoteReleaseKey: key }); }}
         onSurfaceChange={keyboardSurfaceChanged}
