@@ -82,7 +82,7 @@ Piik App 可创建本地房间或临时公网邀请，也能在后台为已授�
 
 <p><a href="./docs/operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik"></a></p>
 
-Piik Server 是一个内置网页界面的独立程序。
+Piik Server 是内置网页界面的独立程序，支持 Windows x64 和 Linux x64／ARM64。
 根据服务器架构下载 Linux x64 的 `piik-<revision>-runtime.tar.gz` 或 ARM64 的
 `piik-<revision>-linux-arm64-runtime.tar.gz`，解压后运行：
 

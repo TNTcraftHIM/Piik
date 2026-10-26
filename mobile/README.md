@@ -1,6 +1,6 @@
 # Android development build
 
-This is an Android sharing prototype for local testing.
+This directory contains the Android App candidate for local acceptance.
 It targets Android 10 or later on arm64 and x86-64 devices.
 Piik opens its existing Web UI in the system browser. An Android service owns
 the shared Go runtime until the user stops App; the Activity handles visible

@@ -90,7 +90,7 @@ Deploy Piik Server to run a site for your group.
 
 <p><a href="./docs/operations/self-hosting.md#docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="Deploy Piik with Docker Compose"></a></p>
 
-Piik Server is a standalone binary with the web interface built in.
+Piik Server runs on Windows x64 and Linux x64/ARM64, with the web interface built in.
 Download the Server package for Linux x64 (`piik-<revision>-runtime.tar.gz`)
 or ARM64 (`piik-<revision>-linux-arm64-runtime.tar.gz`),
 extract it, and run:

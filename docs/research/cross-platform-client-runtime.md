@@ -330,7 +330,7 @@ actual App/Site compatibility checks.
 
 ## Android Capture Bridge Assessment
 
-The [Android prototype](../../mobile/README.md) builds an APK for arm64 and
+The [Android App candidate](../../mobile/README.md) builds an APK for arm64 and
 x86-64 from the repository's single Go dependency graph. The system browser
 presents the shared Web UI at its loopback origin or an explicitly approved
 site. `AppRuntimeService` owns the one Go runtime and pending OS requests;

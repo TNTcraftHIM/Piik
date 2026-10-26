@@ -36,7 +36,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 `site/` introduces Piik; `src/client/` is Piik's interactive application.
 `internal/app/nativecapture` owns the desktop helper process and frame contract;
 `native/capture/` implements its platform APIs. `nativehost` consumes a capture
-stream; the Android prototype supplies that stream in-process through `mobile/`.
+stream; the Android App supplies that stream in-process through `mobile/`.
 `scripts/` prepares and verifies artifacts;
 `deploy/` operates them. Move files with their actual consumers, and update paths
 and checks together; a smaller root alone does not justify another abstraction.
@@ -165,7 +165,7 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 | SFU endpoints | [src/client/sfu/publisher.ts](../../src/client/sfu/publisher.ts), [src/client/sfu/subscriber.ts](../../src/client/sfu/subscriber.ts), [src/client/sfu/peer.ts](../../src/client/sfu/peer.ts), [internal/server/sfu](../../internal/server/sfu) |
 | Localized copy and failure facts | [src/client/locales](../../src/client/locales), [src/client/ui/copy.ts](../../src/client/ui/copy.ts), [src/client/ui/media-failure.ts](../../src/client/ui/media-failure.ts) |
 | Native control connection and media adapters | [src/client/native/client-connection.ts](../../src/client/native/client-connection.ts), [src/client/native](../../src/client/native), [internal/app/loopback](../../internal/app/loopback), [internal/app/nativecontrol](../../internal/app/nativecontrol), [internal/app/nativehost](../../internal/app/nativehost), [internal/app/nativeviewer](../../internal/app/nativeviewer), [internal/app/nativecapture](../../internal/app/nativecapture) |
-| Android prototype and platform lifecycle | [mobile/README.md](../../mobile/README.md), [mobile/bridge](../../mobile/bridge), [mobile/android/app/src/main](../../mobile/android/app/src/main) |
+| Android App and platform lifecycle | [mobile/README.md](../../mobile/README.md), [mobile/bridge](../../mobile/bridge), [mobile/android/app/src/main](../../mobile/android/app/src/main) |
 | Room authority, persistence and graph | [internal/server/signal](../../internal/server/signal), [internal/server/room](../../internal/server/room), [internal/server/route](../../internal/server/route) |
 | Room signaling intent and interaction delivery | [src/client/lib/signaling.ts](../../src/client/lib/signaling.ts), [src/client/lib/room-interactions.ts](../../src/client/lib/room-interactions.ts); admission and transient delivery follow [rooms and access](./rooms-access.md) |
 | Shared wire contract | [src/shared/protocol.ts](../../src/shared/protocol.ts), [internal/server/protocol](../../internal/server/protocol), [tests/fixtures/wire-samples.json](../../tests/fixtures/wire-samples.json) |
