@@ -35,8 +35,8 @@ button, select, summary { cursor: pointer; }
 button { background: none; }
 button, a, select, summary { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
 :focus-visible { outline: 3px solid var(--action); outline-offset: 5px; }
-h1, h2, h3, p { margin: 0; }
-h1, h2, h3 { text-wrap: balance; }
+h1, h2, h3, h4, p { margin: 0; }
+h1, h2, h3, h4 { text-wrap: balance; }
 .phrase { display: inline-block; }
 h1, h2 { font-weight: 750; letter-spacing: -.055em; }
 p { text-wrap: pretty; }

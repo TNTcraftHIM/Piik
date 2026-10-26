@@ -48,6 +48,12 @@
           stroke-linejoin="round"
         />
       </symbol>
+      <symbol id="phone-mark" viewBox="0 0 32 32">
+        <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="8" y="2" width="16" height="28" rx="4" />
+          <path d="M14 6h4m-4 20h4" />
+        </g>
+      </symbol>
     </svg>
 
     <header class="site-header wrap">
@@ -710,11 +716,11 @@
             </summary>
             <p>
               <span lang="en"
-                >Yes. Share an app window or screen through Piik App, then enable <strong>Remote control</strong> and approve your friends.
+                >Yes. Share an app window or screen through Piik App on a computer, then enable <strong>Remote control</strong> and approve your friends.
                 Turn on <strong>Allow simultaneous control</strong> to share the keyboard and mouse with several friends.
                 Games need to support local multiplayer; see the <a href="./docs/remote-control.html?lang=en">co-play guide</a> for setup and optional gamepads.</span
               ><span lang="zh-CN"
-                >可以。用 Piik App 分享程序窗口或屏幕，开启<strong>远程控制</strong>并授权朋友即可。
+                >可以。用电脑上的 Piik App 分享程序窗口或屏幕，开启<strong>远程控制</strong>并授权朋友即可。
                 打开<strong>允许多人同时控制</strong>，还能和多位朋友共用键鼠，一起玩支持本地多人模式的游戏。
                 操作步骤和可选手柄配置见<a href="./docs/zh/remote-control.html">远控与多人同乐指南</a>。</span
               >
@@ -867,10 +873,7 @@
           <div class="download-cards download-cards--mobile">
           <article class="download-card" aria-labelledby="download-android">
             <div class="platform-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="8" y="2" width="16" height="28" rx="4" />
-                <path d="M14 6h4m-4 20h4" />
-              </svg>
+              <svg aria-hidden="true"><use href="#phone-mark" /></svg>
             </div>
             <h4 id="download-android">Android</h4>
             <p class="download-variant">ARM64 / x64</p>
@@ -882,10 +885,7 @@
           </article>
           <article class="download-card" aria-labelledby="download-ios">
             <div class="platform-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="8" y="2" width="16" height="28" rx="4" />
-                <path d="M14 6h4m1 20h2" />
-              </svg>
+              <svg aria-hidden="true"><use href="#phone-mark" /></svg>
             </div>
             <h4 id="download-ios">iOS</h4>
             <p class="download-variant">iPhone / iPad</p>

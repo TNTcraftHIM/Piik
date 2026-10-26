@@ -119,7 +119,7 @@ builds use code 1 and include the short revision in `versionName`. The shared
 product version remains the only release ordering input; no Android counter is
 maintained separately.
 
-App archive names are fixed per target: `piik-app-{target}.zip`. Each published
+Desktop App archive names are fixed per target: `piik-app-{target}.zip`. Each published
 tag owns its archive bytes; the full source SHA remains in `REVISION` and the
 release descriptor. Fixed names allow GitHub's native latest-asset links;
 [website operations](../operations/website.md#preview) owns download presentation
