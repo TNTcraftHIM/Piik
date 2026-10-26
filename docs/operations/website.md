@@ -129,6 +129,8 @@ Open `http://127.0.0.1:18890`. Rebuild after editing source. The homepage loads
 film A when opened and unloads it when closed. Update its authored artwork when
 product changes affect the scenes. The separate real-component fixture at
 `/film/ui/index.html` supplies README screenshots.
+Preview the built output, not `site/index.html`: the source is a template whose
+shared theme controls and welcome text are filled in by the website build.
 Publish the static `build/site/` output. Vite preview supports HTTP byte ranges
 for seeking the soundtrack. Keep asset links relative so both a custom
 domain and GitHub's `/Piik/` project path work. For a nested deployment, set
