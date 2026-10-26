@@ -304,7 +304,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           if (event.pointerType === "touch") {
             event.preventDefault(); event.stopPropagation(); setTouchPointer(touchpad.current);
             surface.current?.focus({ preventScroll: true });
-            touchpad.current?.down(event.pointerId, event.clientX, event.clientY);
+            touchpad.current?.down(event.pointerId, event.clientX, event.clientY, point(event.clientX, event.clientY));
           }
         }}
         onPointerUp={event => {
@@ -336,7 +336,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
-        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} />}
+        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} pointAt={point} />}
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
         allowText={remoteTextAvailable(state)}

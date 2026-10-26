@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
-
-// Matches Media Chrome's default: hide playing-video controls after 2s idle.
-const CONTROLS_IDLE_MS = 2000;
+import { PLAYER_CONTROLS_IDLE_MS } from "../../ui/control-timing";
 
 export function usePlaybackControlsVisibility(
   videoRef: RefObject<HTMLVideoElement | null>,
@@ -40,7 +38,7 @@ export function usePlaybackControlsVisibility(
       timer = window.setTimeout(() => {
         timer = undefined;
         if (!held()) setHidden(true);
-      }, CONTROLS_IDLE_MS);
+      }, PLAYER_CONTROLS_IDLE_MS);
     };
     const show = () => {
       setHidden(false);

@@ -330,11 +330,13 @@ change local display only, separate from the Host's picture settings.
 Persistent interaction and remote-permission tools may use the shared floating
 window; the remote keyboard docks outside the picture and can detach on capable
 browsers. One-step actions and brief adjustments do not need movable windows.
-Touch controllers keep the local pointer and picture gestures available. A
-draggable mini mouse expands on tap, with a separate button to minimize it.
-Only the mini mouse tucks away after resting at a picture edge. Expanded buttons,
-scroll area and pointer movement share the existing input
-grant and pointer geometry; the keyboard keeps its separate docked surface.
+Touch controllers default to direct touch without a cursor. A draggable mini
+mouse expands on tap, with its cursor fixed at the upper-left corner; one pointer
+position drives both. A separate button minimizes it and restores direct touch.
+Only the mini mouse tucks away after resting at a picture edge, using the player
+controls' idle delay. Expanded buttons, scrolling and pointer movement share
+the existing input grant and pointer geometry; the keyboard keeps its separate
+docked surface.
 
 Visual source choices (windows, screens and cameras) share named thumbnail cards,
 including their focus, hover and refresh treatment. Thumbnails fit the whole frame

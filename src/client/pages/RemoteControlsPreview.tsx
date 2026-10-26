@@ -12,6 +12,7 @@ import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
 import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
+import { picturePoint, pictureRect, rotatePicturePoint, videoRotation } from "../media/video-geometry";
 import { RemoteTouchpad } from "../remote-control/touchpad";
 import type { RemoteControlMode, RemoteInputPlatform } from "../remote-control/protocol";
 import { useCopy } from "../ui/copy";
@@ -43,14 +44,19 @@ export function RemoteControlsPreview() {
   }, [stopKey]);
   const input = useCallback((event: RemoteInputEvent) => setLastInput(JSON.stringify(event)), []);
   const placePointer = useCallback((position: { x: number; y: number }) => {
-    const layer = mouseLayer.current;
-    if (!layer) return;
+    const layer = mouseLayer.current, video = mouseVideo.current;
+    if (!layer || !video) return;
+    const picture = pictureRect(video);
+    if (!picture) return;
     const rect = layer.getBoundingClientRect();
-    placeRemotePointer(layer, position.x * rect.width, position.y * rect.height);
+    const point = rotatePicturePoint(position, videoRotation(video));
+    placeRemotePointer(layer, picture.left - rect.left + point.x * picture.width, picture.top - rect.top + point.y * picture.height);
   }, []);
   const [pointer] = useState(() => new RemoteTouchpad(() => {
-    const rect = mouseLayer.current?.getBoundingClientRect();
-    return rect ? { width: rect.width, height: rect.height, rotation: 0 } : null;
+    const video = mouseVideo.current;
+    if (!video) return null;
+    const rect = pictureRect(video);
+    return rect ? { ...rect, rotation: videoRotation(video) } : null;
   }, input,
     deltaY => setLastInput(JSON.stringify({ type: "wheel", deltaY })), placePointer,
     { scale: 1, transform: () => {}, visiblePosition: position => position }));
@@ -86,8 +92,8 @@ export function RemoteControlsPreview() {
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Drag the mini mouse to place it, or tap to expand. Leave it at an edge for two seconds to tuck it away. The expanded mouse has a separate minimize button. Input stays in the local log; it does not control your computer."
-        : "迷你鼠标可以拖动，轻点展开；贴边停留两秒后自动收纳。展开后点击独立按钮缩回迷你状态。输入只记录在本地，不会操作电脑。"}</p>
+      <p>{en ? "Touch the picture directly, or expand the mini mouse for precise control. Its upper-left cursor moves with the mouse. Minimize to return to touch; leave the mini mouse at an edge to tuck it away after the player's idle delay. Input stays in the local log."
+        : "默认直接触摸画面；展开迷你鼠标可精细操作，光标固定在鼠标左上角一起移动。缩小后恢复触摸，迷你鼠标贴边闲置后按播控相同的时长收纳。输入只记录在本地，不会操作电脑。"}</p>
     </div></header>
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
@@ -97,14 +103,16 @@ export function RemoteControlsPreview() {
           onPointerDown={event => {
             if (event.button !== 0) return;
             event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
-            pointer.down(event.pointerId, event.clientX, event.clientY);
+            pointer.down(event.pointerId, event.clientX, event.clientY,
+              mouseVideo.current && picturePoint(mouseVideo.current, event.clientX, event.clientY));
           }}
           onPointerMove={event => pointer.move(event.pointerId, event.clientX, event.clientY)}
           onPointerUp={event => pointer.up(event.pointerId)}
           onPointerCancel={event => pointer.cancel(event.pointerId)}
           onLostPointerCapture={event => pointer.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
-          <RemoteMouse pointer={pointer} positionRef={mouseLayer} />
+          <RemoteMouse pointer={pointer} positionRef={mouseLayer}
+            pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />
         </div>
       </StageTv>
     </div>
@@ -123,7 +131,7 @@ export function RemoteControlsPreview() {
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
-      <output>{lastInput || (en ? "Tap the mini mouse to expand it, or drag it to an edge." : "轻点迷你鼠标展开，或拖到边缘试试自动收纳。")}</output>
+      <output>{lastInput || (en ? "Touch the picture directly, or tap the mini mouse for pointer controls." : "直接触摸画面，或轻点迷你鼠标展开光标控制。")}</output>
     </p>
     <div className="cp-tools">
       <HostRemoteControl mode={mode} platform={platform} requests={requests}

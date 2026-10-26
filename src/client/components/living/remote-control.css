@@ -121,10 +121,10 @@
   border: 1px solid var(--line); border-radius: 5px; font: 600 14px var(--mono);
 }
 .lr-remote-mouse { position: absolute; inset: 0; z-index: 1; container-type: size; pointer-events: none; }
-.lr-remote-touch-cursor { position: absolute; left: var(--remote-x, 50%); top: var(--remote-y, 50%); width: 22px; height: 28px; pointer-events: none; filter: drop-shadow(0 1px 2px var(--surface-shade)); }
+.lr-remote-touch-cursor { position: absolute; left: var(--remote-x, 50%); top: var(--remote-y, 50%); z-index: 2; width: 22px; height: 28px; pointer-events: none; filter: drop-shadow(0 1px 2px var(--surface-shade)); }
 .lr-remote-touch-cursor path { fill: var(--piik-dark-ink); stroke: var(--piik-dark-wall); stroke-width: 1.5; stroke-linejoin: round; }
 .lr-remote-mouse-widget { --mouse-width: 44px; --mouse-height: 56px; position: absolute; left: clamp(6px, calc(var(--mouse-x, 78%) - var(--mouse-width) / 2), max(6px, calc(100% - var(--mouse-width) - 6px))); top: clamp(6px, calc(var(--mouse-y, 65%) - var(--mouse-height) / 2), max(6px, calc(100% - var(--mouse-height) - 6px))); width: min(var(--mouse-width), calc(100% - 12px)); height: min(var(--mouse-height), calc(100% - 12px)); transition: transform 180ms ease-out; pointer-events: none; }
-.lr-remote-mouse-widget.is-expanded { --mouse-width: 180px; --mouse-height: 180px; }
+.lr-remote-mouse-widget.is-expanded { --mouse-width: 180px; --mouse-height: 180px; left: var(--remote-x, 50%); top: var(--remote-y, 50%); }
 .lr-remote-mouse-widget:not(.is-expanded)[data-docked="left"] { transform: translateX(calc(-50% - 6px)); }
 .lr-remote-mouse-widget:not(.is-expanded)[data-docked="right"] { transform: translateX(calc(50% + 6px)); }
 .lr-remote-mouse-widget:not(.is-expanded)[data-docked="top"] { transform: translateY(calc(-50% - 6px)); }
@@ -139,10 +139,10 @@
 /* Keep expanded bounds stable while its miniature changes the widget size. */
 .lr-remote-mouse-shell { position: absolute; left: 0; top: 0; width: min(136px, calc(100cqw - 56px)); height: min(180px, calc(100cqh - 12px)); display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: minmax(0, 1fr) max(44px, 32%); border: 1px solid var(--control-edge); border-radius: 48% 48% 44% 44% / 34% 34% 46% 46%; background: var(--surface-glaze) var(--paper); box-shadow: inset 0 1px 0 var(--surface-rim), 0 2px 8px var(--surface-shade); overflow: hidden; opacity: 0; visibility: hidden; transform: scale(.32, .31); transform-origin: top left; transition: transform 160ms ease-out, opacity 140ms ease, visibility 0s 160ms; pointer-events: none; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 .lr-remote-mouse-widget.is-expanded .lr-remote-mouse-shell { opacity: 1; visibility: visible; transform: none; transition-delay: 0s; pointer-events: auto; }
-.lr-remote-mouse-minimize { position: absolute; right: 0; bottom: 0; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--control-edge); border-radius: 50%; background: var(--surface-glaze) var(--paper); color: var(--action-text); box-shadow: 0 2px 5px var(--surface-shade); opacity: 0; visibility: hidden; transform: scale(.9); transition: transform 160ms ease-out, opacity 140ms ease; pointer-events: none; touch-action: manipulation; }
+.lr-remote-mouse-minimize { position: absolute; left: clamp(6px, calc(var(--remote-x, 50%) + 136px), max(6px, calc(100% - 44px - 6px))); top: clamp(6px, calc(var(--remote-y, 50%) + 136px), max(6px, calc(100% - 44px - 6px))); z-index: 3; display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 1px solid var(--control-edge); border-radius: 50%; background: var(--surface-glaze) var(--paper); color: var(--action-text); box-shadow: 0 2px 5px var(--surface-shade); opacity: 0; visibility: hidden; transform: scale(.9); transition: transform 160ms ease-out, opacity 140ms ease; pointer-events: none; touch-action: manipulation; }
 .lr-remote-mouse-minimize > svg { width: 18px; height: 18px; }
 .lr-remote-mouse-minimize:hover { background: var(--control-hover); }
-.lr-remote-mouse-widget.is-expanded .lr-remote-mouse-minimize { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
+.lr-remote-mouse.has-virtual-mouse > .lr-remote-mouse-minimize { opacity: 1; visibility: visible; transform: none; pointer-events: auto; }
 .lr-remote-mouse-widget[data-dragging], .lr-remote-mouse-widget[data-dragging] > * { transition: none; }
 .lr-remote-mouse-shell button { display: grid; place-items: center; min-width: 0; padding: 0; border: 0; background: transparent; color: var(--ink); font: 600 11px var(--font); touch-action: none; }
 .lr-remote-mouse-shell button:is(:hover, :focus-visible) { background: var(--control-hover); }
@@ -158,7 +158,8 @@
 .lr-remote-mouse-wheel { flex: 1 1 44px; min-height: 16px; border: 1px solid var(--control-edge); border-radius: 9px; background: repeating-linear-gradient(to bottom, transparent 0 4px, var(--line) 4px 5px) var(--wall-2); box-shadow: inset 0 2px 3px var(--surface-shade); cursor: ns-resize; touch-action: none; }
 .lr-remote-mouse-shell .lr-remote-mouse-middle { flex: 0 1 44px; min-height: 24px; border: 1px solid var(--control-edge); border-radius: 8px; background: var(--paper); }
 @media (prefers-reduced-motion: reduce) {
-  .lr-remote-mouse-widget, .lr-remote-mouse-widget > * { transition: none; }
+  .lr-remote-mouse-widget, .lr-remote-mouse-widget > *, .lr-remote-mouse > .lr-remote-mouse-minimize { transition: none; }
 }
 :is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget,
-:is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget > * { transition: none; }
+:is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse-widget > *,
+:is([data-reduced-motion], [data-comic-reduced-motion]) .lr-remote-mouse > .lr-remote-mouse-minimize { transition: none; }

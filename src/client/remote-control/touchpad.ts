@@ -14,6 +14,7 @@ export class RemoteTouchpad {
   private fingers = 0;
   private moved = false;
   private dragging = false;
+  private virtualMouse = false;
   private held = new Set<number>();
   private started = 0;
   private pair: { center: Point; distance: number } | null = null;
@@ -28,8 +29,23 @@ export class RemoteTouchpad {
     private readonly viewport: Pick<RemoteViewport, "scale" | "transform" | "visiblePosition">,
   ) {}
 
-  down(id: number, x: number, y: number): void {
+  setVirtualMouse(enabled: boolean, position?: Point | null): void {
+    if (this.virtualMouse === enabled) return;
+    this.reset();
+    this.virtualMouse = enabled;
+    if (enabled) {
+      this.position = this.viewport.visiblePosition(position ?? this.position);
+      this.input({ type: "move", ...this.position });
+      this.changed(this.position);
+    }
+  }
+
+  down(id: number, x: number, y: number, position: Point | null): void {
     if (!this.contacts.size) {
+      if (!this.virtualMouse) {
+        if (!position) return;
+        this.position = position;
+      }
       this.started = performance.now();
       this.fingers = 0;
       this.moved = this.held.size > 0;

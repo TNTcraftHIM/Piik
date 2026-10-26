@@ -3,6 +3,7 @@ import { runInNewContext } from "node:vm";
 import * as jsxRuntime from "react/jsx-runtime";
 import ts from "typescript";
 import { expect, it, vi } from "vitest";
+import { PLAYER_CONTROLS_IDLE_MS } from "../src/client/ui/control-timing";
 
 // Exercise the actual component callbacks without adding a DOM runtime. Native
 // click generation and pointer capture ordering still require Browser acceptance.
@@ -29,9 +30,10 @@ function mouse(left = 100) {
   const layer = { clientWidth: 400, clientHeight: 300 };
   const positionRef = { current: layer };
   const widget = { offsetLeft: left, offsetTop: 100, offsetWidth: 44, offsetHeight: 56,
+    getBoundingClientRect: () => ({ left, top: 100 }),
     style: { setProperty: vi.fn() }, setAttribute: vi.fn(), removeAttribute: vi.fn(), contains: () => false };
   const mini = { matches: () => false, focus: vi.fn() };
-  const pointer = { button: vi.fn(), moveBy: vi.fn(), wheel: vi.fn() };
+  const pointer = { button: vi.fn(), moveBy: vi.fn(), wheel: vi.fn(), setVirtualMouse: vi.fn() };
   const slot = () => slots[index++] ?? (slots[index - 1] = {});
   const changed = (previous: readonly unknown[] | undefined, next: readonly unknown[]) =>
     !previous || previous.length !== next.length || next.some((value, i) => !Object.is(value, previous[i]));
@@ -42,7 +44,7 @@ function mouse(left = 100) {
     effects.push(() => { current.cleanup?.(); current.cleanup = callback() || undefined; });
   };
   const renderComponent = runInNewContext(executable, {
-    exports: {}, require: () => jsxRuntime, setTimeout, clearTimeout,
+    exports: {}, require: () => jsxRuntime, setTimeout, clearTimeout, PLAYER_CONTROLS_IDLE_MS,
     useCopy: () => ({ t: (key: string) => key }), useSurfaceDocument: () => owner, useId: () => "mouse",
     useState: (initial: unknown) => {
       const current = slot();
@@ -62,7 +64,7 @@ function mouse(left = 100) {
   const find = (name: string) => nodes(tree).find(node => node.props.className?.split(" ").includes(name))!;
   const render = () => {
     index = 0;
-    tree = renderComponent({ pointer, positionRef });
+    tree = renderComponent({ pointer, positionRef, pointAt: () => ({ x: .25, y: .3 }) });
     find("lr-remote-mouse-widget").props.ref.current = widget;
     find("lr-remote-mouse-mini").props.ref.current = mini;
     effects.splice(0).forEach(callback => callback());
@@ -79,6 +81,7 @@ function mouse(left = 100) {
 it("moves only the mini widget and suppresses its following pointer click after capture ends", () => {
   const view = mouse();
   try {
+    expect(view.find("lr-remote-touch-cursor")).toBeUndefined();
     view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
     view.find("lr-remote-mouse").props.onPointerMove(view.event(20, 12));
     view.find("lr-remote-mouse").props.onPointerUp(view.event(20, 12));
@@ -90,6 +93,8 @@ it("moves only the mini widget and suppresses its following pointer click after 
     expect(view.expanded()).toBe(false);
     view.find("lr-remote-mouse-mini").props.onClick({ detail: 0 }); view.render();
     expect(view.expanded()).toBe(true);
+    expect(view.find("lr-remote-touch-cursor")).toBeDefined();
+    expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(true, { x: .25, y: .3 });
   } finally { view.dispose(); }
 });
 
@@ -109,6 +114,8 @@ it("opens with a mini tap and minimizes explicitly while releasing held remote i
     view.find("lr-remote-mouse-minimize").props.onClick(); view.render();
     view.find("lr-remote-mouse").props.onLostPointerCapture(view.event());
     expect(view.expanded()).toBe(false);
+    expect(view.find("lr-remote-touch-cursor")).toBeUndefined();
+    expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(false);
     expect(view.pointer.button.mock.calls).toEqual([[0, true], [0, false]]);
   } finally { view.dispose(); }
 });
@@ -117,14 +124,14 @@ it("tucks only an idle edge mini and cancels the timer on interaction, expansion
   vi.useFakeTimers();
   const view = mouse(0);
   try {
-    vi.advanceTimersByTime(1999); view.render(); expect(view.docked()).toBeUndefined();
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS - 1); view.render(); expect(view.docked()).toBeUndefined();
     view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
     expect(vi.getTimerCount()).toBe(0);
     view.find("lr-remote-mouse").props.onPointerUp(view.event());
     view.find("lr-remote-mouse-mini").props.onClick({ detail: 1 }); view.render();
     expect(view.expanded()).toBe(true); expect(vi.getTimerCount()).toBe(0);
     view.find("lr-remote-mouse-minimize").props.onClick(); view.render();
-    vi.advanceTimersByTime(2000); view.render(); expect(view.docked()).toBe("left");
+    vi.advanceTimersByTime(PLAYER_CONTROLS_IDLE_MS); view.render(); expect(view.docked()).toBe("left");
     view.find("lr-remote-mouse-mini").props.onPointerDown(view.event());
     view.find("lr-remote-mouse").props.onPointerMove(view.event(10, 0));
     view.find("lr-remote-mouse").props.onPointerUp(view.event(10, 0)); view.render();

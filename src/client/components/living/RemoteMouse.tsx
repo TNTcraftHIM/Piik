@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type PointerEvent, type RefObject } from "react";
 import type { RemoteTouchpad } from "../../remote-control/touchpad";
+import type { PicturePoint } from "../../media/video-geometry";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { useSurfaceDocument } from "../../ui/panel-window";
+import { PLAYER_CONTROLS_IDLE_MS } from "../../ui/control-timing";
 
 export function placeRemotePointer(layer: HTMLDivElement, x: number, y: number): void {
   layer.style.setProperty("--remote-x", `${x}px`);
@@ -12,8 +14,9 @@ export function placeRemotePointer(layer: HTMLDivElement, x: number, y: number):
 type MouseMode = "mini" | "expanded" | "left" | "right" | "top" | "bottom";
 type MouseDrag = { id: number; x: number; y: number; moved: boolean; kind: "widget" | "pointer" };
 
-export function RemoteMouse({ pointer, positionRef }: {
+export function RemoteMouse({ pointer, positionRef, pointAt }: {
   pointer: RemoteTouchpad; positionRef: RefObject<HTMLDivElement | null>;
+  pointAt: (clientX: number, clientY: number) => PicturePoint | null;
 }) {
   const { t } = useCopy();
   const owner = useSurfaceDocument();
@@ -26,6 +29,7 @@ export function RemoteMouse({ pointer, positionRef }: {
   const wheel = useRef<{ id: number; y: number } | null>(null);
   const widget = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLButtonElement>(null);
+  const focusMini = useRef(false);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressClick = useRef(false);
   const clearIdle = useCallback(() => {
@@ -45,7 +49,7 @@ export function RemoteMouse({ pointer, positionRef }: {
       element.style.setProperty(side === "left" || side === "right" ? "--mouse-x" : "--mouse-y",
         side === "left" || side === "top" ? "0%" : "100%");
       setMode(side);
-    }, 2000);
+    }, PLAYER_CONTROLS_IDLE_MS);
   }, [clearIdle, positionRef]);
   const moveWidget = (dx: number, dy: number) => {
     const layer = positionRef.current, element = widget.current;
@@ -62,9 +66,10 @@ export function RemoteMouse({ pointer, positionRef }: {
     widget.current?.removeAttribute("data-dragging");
     contacts.current.clear(); drag.current = null; wheel.current = null; setHeld([]);
   }, [pointer, clearIdle]);
+  useLayoutEffect(() => () => pointer.setVirtualMouse(false), [pointer]);
   useLayoutEffect(() => {
     if (mode === "mini") {
-      if (widget.current?.contains(owner?.activeElement ?? null)) mini.current?.focus({ preventScroll: true });
+      if (focusMini.current) { mini.current?.focus({ preventScroll: true }); focusMini.current = false; }
       park();
     }
     return clearIdle;
@@ -80,8 +85,19 @@ export function RemoteMouse({ pointer, positionRef }: {
       release();
     };
   }, [release, owner]);
+  const expand = () => {
+    const bounds = widget.current?.getBoundingClientRect();
+    release();
+    pointer.setVirtualMouse(true, bounds ? pointAt(bounds.left, bounds.top) : null);
+    setMode("expanded");
+  };
   const minimize = () => {
-    release(); setMode("mini");
+    const layer = positionRef.current, element = widget.current;
+    if (layer && element) {
+      element.style.setProperty("--mouse-x", `${element.offsetLeft / layer.clientWidth * 100}%`);
+      element.style.setProperty("--mouse-y", `${element.offsetTop / layer.clientHeight * 100}%`);
+    }
+    release(); pointer.setVirtualMouse(false); focusMini.current = true; setMode("mini");
   };
   const finish = (id: number, cancelled = false) => {
     const button = contacts.current.get(id);
@@ -119,7 +135,7 @@ export function RemoteMouse({ pointer, positionRef }: {
         pointer.button(value, true); pointer.button(value, false);
       }
     }}><span aria-hidden="true">{["L", "M", "R"][value]}</span></button>;
-  return <div ref={positionRef} className="lr-remote-mouse" role="group" aria-label={t("remote.mouse")}
+  return <div ref={positionRef} className={`lr-remote-mouse${expanded ? " has-virtual-mouse" : ""}`} role="group" aria-label={t("remote.mouse")}
     onPointerDown={event => event.stopPropagation()}
     onPointerMove={event => {
       event.stopPropagation();
@@ -154,9 +170,9 @@ export function RemoteMouse({ pointer, positionRef }: {
       event.stopPropagation();
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) release();
     }}>
-    <svg className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true">
+    {expanded && <svg className="lr-remote-touch-cursor" viewBox="0 0 24 28" aria-hidden="true">
       <path d="M2 2v21l6-6 5 9 4-2-5-9h9Z" />
-    </svg>
+    </svg>}
     <div ref={widget} className={`lr-remote-mouse-widget${expanded ? " is-expanded" : ""}`}
       data-docked={mode !== "mini" && !expanded ? mode : undefined}>
       <button ref={mini} type="button" className="lr-remote-mouse-mini" aria-expanded={expanded}
@@ -170,7 +186,7 @@ export function RemoteMouse({ pointer, positionRef }: {
         }}
         onClick={event => {
           if (suppressClick.current && event.detail > 0) { suppressClick.current = false; return; }
-          release(); setMode("expanded");
+          expand();
         }}
         onKeyDown={event => {
           const dx = event.key === "ArrowLeft" ? -10 : event.key === "ArrowRight" ? 10 : 0;
@@ -206,10 +222,10 @@ export function RemoteMouse({ pointer, positionRef }: {
           <Glyph name="grip" size={18} />
         </div>
       </div>
-      <button type="button" className="lr-remote-mouse-minimize" aria-label={t("remote.mouseCollapse")}
-        onClick={minimize} inert={!expanded} aria-hidden={!expanded}>
-        <Glyph name="chevron" size={18} />
-      </button>
     </div>
+    <button type="button" className="lr-remote-mouse-minimize" aria-label={t("remote.mouseCollapse")}
+      onClick={minimize} inert={!expanded} aria-hidden={!expanded}>
+      <Glyph name="chevron" size={18} />
+    </button>
   </div>;
 }
