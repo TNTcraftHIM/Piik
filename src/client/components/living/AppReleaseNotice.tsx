@@ -15,9 +15,11 @@ export function AppReleaseNotice({ update }: { update: ReleaseUpdateNotice }) {
   const { vis, t } = useCopy();
   const warningId = useId();
   const major = update.kind === "major-update";
-  const label = `${t(labels[update.kind])} · ${update.version}`;
+  const label = `${t(labels[update.kind])} ${update.version}${update.extractAPK ? " (ZIP)" : ""}`;
+  const updateHint = major ? t("client.update.majorHint") : vis ? update.version : label;
+  const hint = update.extractAPK ? `${updateHint} ${t("client.update.extractAPK")}` : updateHint;
   return <div className="lr-client-release">
-    <Tooltip kind="update-available" text={major ? t("client.update.majorHint") : vis ? update.version : label}>
+    <Tooltip kind="update-available" text={hint}>
       <a className="lr-btn lr-client-update" href={update.url} target="_blank" rel="noopener noreferrer"
         aria-label={label} aria-describedby={major ? warningId : undefined}>
         <Glyph name={major ? "alert" : "arrowUp"} size={17} />

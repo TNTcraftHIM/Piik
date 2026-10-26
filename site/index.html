@@ -50,8 +50,16 @@
       </symbol>
       <symbol id="phone-mark" viewBox="0 0 32 32">
         <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="8" y="2" width="16" height="28" rx="4" />
-          <path d="M14 6h4m-4 20h4" />
+          <rect x="6" y="2" width="20" height="28" rx="4" />
+          <path d="M13 6h6M14 26h4" />
+        </g>
+      </symbol>
+      <symbol id="mobile-devices-mark" viewBox="0 0 32 32">
+        <g stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="20" height="24" rx="3" fill="none" />
+          <path d="M11 24h4" />
+          <rect x="17" y="10" width="12" height="19" rx="3" fill="var(--wall)" />
+          <path d="M22 25h2" />
         </g>
       </symbol>
     </svg>
@@ -879,13 +887,13 @@
               <p class="download-variant">ARM64 / x64</p>
               <a class="lr-btn button download-button" href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-android-universal.apk"
                 ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span><span lang="zh-CN">GitHub 下载</span></a
-              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-android-universal.apk"
-                ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a>
+              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-android-universal.zip"
+                ><span lang="en">Gitee ZIP (extract to install)</span><span lang="zh-CN">Gitee 国内镜像（ZIP，解压安装）</span></a>
               <p class="download-note"><span lang="en">Android 10 or later.</span><span lang="zh-CN">Android 10 及以上。</span></p>
             </article>
             <article class="download-card" aria-labelledby="download-ios">
               <div class="platform-mark" aria-hidden="true">
-                <svg aria-hidden="true"><use href="#phone-mark" /></svg>
+                <svg aria-hidden="true"><use href="#mobile-devices-mark" /></svg>
               </div>
               <h4 id="download-ios">iOS</h4>
               <p class="download-variant">iPhone / iPad</p>
