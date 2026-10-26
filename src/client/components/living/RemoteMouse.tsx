@@ -23,7 +23,7 @@ export function remotePointerRoom(layer: HTMLDivElement | null): { right: number
 }
 
 type MouseMode = "mini" | "expanded" | "left" | "right" | "top" | "bottom";
-type MouseDrag = { id: number; x: number; y: number; moved: boolean; kind: "widget" | "pointer" };
+type MouseContact = { x: number; y: number; moved: boolean; kind: "widget" | "pointer"; button?: 0 | 2 };
 type MouseWheel = { id: number; x: number; y: number; phase: "pending" | "scroll" | "middle"; timer: ReturnType<typeof setTimeout> | null };
 
 export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
@@ -37,15 +37,15 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
   const [mode, setMode] = useState<MouseMode>("mini");
   const expanded = mode === "expanded";
   const [held, setHeld] = useState<number[]>([]);
-  const contacts = useRef(new Map<number, number>());
-  const drag = useRef<MouseDrag | null>(null);
+  const contacts = useRef(new Map<number, MouseContact>());
   const wheel = useRef<MouseWheel | null>(null);
   const widget = useRef<HTMLDivElement>(null);
   const mini = useRef<HTMLButtonElement>(null);
   const focusMini = useRef(false);
   const idle = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suppressClick = useRef(false);
-  const syncHeld = () => setHeld([...contacts.current.values(), ...(wheel.current?.phase === "middle" ? [1] : [])]);
+  const heldButtons = () => [...contacts.current.values()].flatMap(contact => contact.button === undefined ? [] : [contact.button]);
+  const syncHeld = () => setHeld([...heldButtons(), ...(wheel.current?.phase === "middle" ? [1] : [])]);
   const finishWheel = useCallback((cancelled: boolean) => {
     const current = wheel.current;
     if (!current) return;
@@ -63,7 +63,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
   const park = useCallback(() => {
     clearIdle();
     const layer = positionRef.current, element = widget.current;
-    if (!layer || !element || drag.current || mini.current?.matches(":focus-visible")) return;
+    if (!layer || !element || contacts.current.size || mini.current?.matches(":focus-visible")) return;
     const side = element.offsetLeft <= 14 ? "left"
       : element.offsetLeft + element.offsetWidth >= layer.clientWidth - 14 ? "right"
       : element.offsetTop <= 14 ? "top"
@@ -85,11 +85,13 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
   };
   const release = useCallback(() => {
     clearIdle();
-    if (drag.current?.kind === "widget" && drag.current.moved) suppressClick.current = true;
-    for (const button of new Set(contacts.current.values())) pointer.button(button, false);
+    for (const contact of contacts.current.values()) {
+      if (contact.kind === "widget" && contact.moved) suppressClick.current = true;
+    }
+    for (const button of new Set(heldButtons())) pointer.button(button, false);
     finishWheel(true);
     widget.current?.removeAttribute("data-dragging");
-    contacts.current.clear(); drag.current = null; wheel.current = null; setHeld([]);
+    contacts.current.clear(); wheel.current = null; setHeld([]);
   }, [pointer, clearIdle, finishWheel]);
   useLayoutEffect(() => () => pointer.setVirtualMouse(false), [pointer]);
   useLayoutEffect(() => {
@@ -129,21 +131,17 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
     release(); pointer.setVirtualMouse(touchMode === "trackpad"); focusMini.current = true; setMode("mini");
   };
   const finish = (id: number, cancelled = false) => {
-    const button = contacts.current.get(id);
-    if (button !== undefined) {
+    const current = contacts.current.get(id);
+    if (current) {
       contacts.current.delete(id);
-      if (![...contacts.current.values()].includes(button)) pointer.button(button, false);
-    }
-    if (wheel.current?.id === id) finishWheel(cancelled);
-    if (drag.current?.id === id) {
-      const current = drag.current;
-      drag.current = null;
-      widget.current?.removeAttribute("data-dragging");
+      if (current.button !== undefined && !heldButtons().includes(current.button)) pointer.button(current.button, false);
       if (current.kind === "widget") {
+        widget.current?.removeAttribute("data-dragging");
         suppressClick.current = current.moved || cancelled;
         if (current.moved && !cancelled) park();
       }
     }
+    if (wheel.current?.id === id) finishWheel(cancelled);
     syncHeld();
   };
   const capture = (event: PointerEvent<HTMLElement>) => {
@@ -156,7 +154,9 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
     aria-pressed={held.includes(value)}
     onPointerDown={event => {
       if (!capture(event)) return;
-      contacts.current.set(event.pointerId, value); pointer.button(value, true);
+      const alreadyHeld = heldButtons().includes(value);
+      contacts.current.set(event.pointerId, { x: event.clientX, y: event.clientY, moved: false, kind: "pointer", button: value });
+      if (!alreadyHeld) pointer.button(value, true);
       syncHeld();
     }}
     onClick={event => {
@@ -168,8 +168,8 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
     onPointerDown={event => event.stopPropagation()}
     onPointerMove={event => {
       event.stopPropagation();
-      const current = drag.current;
-      if (current?.id === event.pointerId) {
+      const current = contacts.current.get(event.pointerId);
+      if (current) {
         const dx = event.clientX - current.x, dy = event.clientY - current.y;
         if (!current.moved && Math.hypot(dx, dy) <= 4) return;
         current.moved = true; current.x = event.clientX; current.y = event.clientY;
@@ -215,9 +215,9 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
         aria-controls={id} aria-label={t("remote.mouseExpand")} aria-description={t("remote.mouseReposition")}
         inert={expanded} aria-hidden={expanded}
         onPointerDown={event => {
-          if (drag.current || !capture(event)) return;
+          if (contacts.current.size || !capture(event)) return;
           clearIdle(); suppressClick.current = false; setMode("mini");
-          drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, kind: "widget" };
+          contacts.current.set(event.pointerId, { x: event.clientX, y: event.clientY, moved: false, kind: "widget" });
           widget.current?.setAttribute("data-dragging", "");
         }}
         onClick={event => {
@@ -251,8 +251,8 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
           }} />
         <div className="lr-remote-mouse-body" role="group" tabIndex={0} aria-label={t("remote.mouseMove")}
           onPointerDown={event => {
-            if (!drag.current && capture(event)) {
-              drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false, kind: "pointer" };
+            if (capture(event)) {
+              contacts.current.set(event.pointerId, { x: event.clientX, y: event.clientY, moved: false, kind: "pointer" });
             }
           }}
           onKeyDown={event => {

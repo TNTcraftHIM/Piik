@@ -130,6 +130,10 @@ it("opens with a mini tap and minimizes explicitly while releasing held remote i
     view.find("lr-remote-mouse-body").props.onPointerDown({ ...view.event(), pointerId: 2 });
     view.find("lr-remote-mouse").props.onPointerMove({ ...view.event(20, 12), pointerId: 2 });
     expect(view.pointer.moveBy).toHaveBeenCalledWith(20, 12);
+    view.find("lr-remote-mouse").props.onPointerUp({ ...view.event(20, 12), pointerId: 2 });
+    expect(view.pointer.button.mock.calls).toEqual([[0, true]]);
+    view.find("lr-remote-mouse").props.onPointerMove(view.event(10, 8));
+    expect(view.pointer.moveBy).toHaveBeenLastCalledWith(10, 8);
     expect(view.widget.style.setProperty).not.toHaveBeenCalled();
     view.find("lr-remote-mouse-minimize").props.onClick(); view.render();
     view.find("lr-remote-mouse").props.onLostPointerCapture(view.event());
@@ -137,6 +141,43 @@ it("opens with a mini tap and minimizes explicitly while releasing held remote i
     expect(view.find("lr-remote-touch-cursor")).toBeUndefined();
     expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(false);
     expect(view.pointer.button.mock.calls).toEqual([[0, true], [0, false]]);
+  } finally { view.dispose(); }
+});
+
+it.each([["left", 0], ["right", 2]] as const)("drags while holding %s and releases once on cancellation", (name, button) => {
+  const view = mouse();
+  try {
+    view.find("lr-remote-mouse-mini").props.onClick({ detail: 0 }); view.render();
+    const surface = () => view.find("lr-remote-mouse").props;
+    view.find(`lr-remote-mouse-${name}`).props.onPointerDown(view.event(30, 20));
+    surface().onPointerMove(view.event(32, 21));
+    expect(view.pointer.moveBy).not.toHaveBeenCalled();
+    surface().onPointerMove(view.event(40, 28));
+    surface().onPointerMove(view.event(44, 30));
+    expect(view.pointer.button.mock.calls).toEqual([[button, true]]);
+    expect(view.pointer.moveBy.mock.calls).toEqual([[10, 8], [4, 2]]);
+    expect(view.widget.style.setProperty).not.toHaveBeenCalled();
+    surface().onPointerCancel(view.event(44, 30));
+    surface().onLostPointerCapture(view.event(44, 30));
+    surface().onPointerMove(view.event(60, 60));
+    view.dispose();
+    expect(view.pointer.button.mock.calls).toEqual([[button, true], [button, false]]);
+    expect(view.pointer.moveBy).toHaveBeenCalledTimes(2);
+  } finally { view.dispose(); }
+});
+
+it("retains a shared button until its final contact ends and releases remaining buttons on disposal", () => {
+  const view = mouse();
+  try {
+    view.find("lr-remote-mouse-mini").props.onClick({ detail: 0 }); view.render();
+    view.find("lr-remote-mouse-left").props.onPointerDown(view.event());
+    view.find("lr-remote-mouse-left").props.onPointerDown({ ...view.event(), pointerId: 2 });
+    view.find("lr-remote-mouse-right").props.onPointerDown({ ...view.event(), pointerId: 3 });
+    view.find("lr-remote-mouse").props.onPointerUp(view.event());
+    expect(view.pointer.button.mock.calls).toEqual([[0, true], [2, true]]);
+    view.find("lr-remote-mouse").props.onPointerUp({ ...view.event(), pointerId: 2 });
+    view.dispose();
+    expect(view.pointer.button.mock.calls).toEqual([[0, true], [2, true], [0, false], [2, false]]);
   } finally { view.dispose(); }
 });
 

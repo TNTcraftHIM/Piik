@@ -41,7 +41,7 @@ export class RemoteViewport {
     const limitY = limit(picture.height * this.scale, height, this.room?.bottom ?? 0);
     const x = this.offset.x = Math.max(-limitX, Math.min(limitX, this.offset.x));
     const y = this.offset.y = Math.max(-limitY, Math.min(limitY, this.offset.y));
-    style.transform = this.scale !== 1 || x !== 0 || y !== 0 ? `translate(${x}px, ${y}px) scale(${this.scale}) var(--picture-transform)` : "";
+    style.transform = this.scale !== 1 || x !== 0 || y !== 0 ? `translate(${x}px, ${y}px) scale(${this.scale}) var(--picture-transform, rotate(0deg))` : "";
     // Clip to the original video cell, including when a keyboard occupies the
     // next grid cell. Inverse-transform its edges into the video's local space.
     const bounds = this.video.getBoundingClientRect(), surface = this.surface.getBoundingClientRect();

@@ -100,8 +100,8 @@ export function RemoteControlsPreview() {
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Expand the mini mouse and drag its lower shell; the picture pans at the edges to leave room. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
-        : "展开迷你鼠标，拖动下半部；到达边缘时画面会平移留黑。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
+      <p>{en ? "Expand the mini mouse and drag its lower half to move the pointer. Hold and move L or R to drag, or hold a button with one finger and move the lower half with another. The picture pans at the edges to leave room. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
+        : "展开迷你鼠标，拖动下半部移动光标。按住 L 或 R 后移动即可拖拽，也可用一指按住按钮、另一指拖动下半部。到达边缘时画面会平移留黑。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
     </div></header>
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
