@@ -218,6 +218,14 @@ func DecodeClientMessage(data []byte) (ClientMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "subscribe-room-control":
+		return decodeEmptyClientMessage(data, SubscribeRoomControlMessage{Type: messageType})
+	case "room-control-command":
+		return decodeRoomControlCommand(data)
+	case "claim-presentation":
+		return decodeClaimPresentation(data)
+	case "authenticate-member":
+		return decodeAuthenticateMember(data)
 	case "set-relay-volunteer":
 		return decodeSetRelayVolunteer(data)
 	case "subscribe-room-voice":

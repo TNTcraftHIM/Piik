@@ -22,6 +22,7 @@ func viewerKey(roomID, peerID string) string { return roomID + ":" + peerID }
 // the opted-in host first, then opted-in viewers in store order, deduped by
 // connection.
 func (s *Server) sendViewerPresence(roomID string) {
+	defer s.broadcastRoomControl(roomID)
 	if _, deferred := s.deferredViewerPresenceRooms[roomID]; deferred {
 		return
 	}
@@ -185,6 +186,7 @@ func (s *Server) handleDisconnect(sess *session) {
 // stopSharing sends sharing-stopped then host-status to each viewer.
 // The share generation deliberately survives.
 func (s *Server) stopSharing(roomID string) {
+	defer s.broadcastRoomControl(roomID)
 	if current, ok := s.shares[roomID]; ok {
 		if host, connected := s.store.GetConnectedHost(roomID); connected {
 			if sess := s.sessionsByID[host.SessionID]; sess != nil && sess.authenticated != nil &&
@@ -224,6 +226,7 @@ func (s *Server) abandonRoom(roomID string) error {
 // closeRoom closes the host session first, then
 // viewers in store order, each told room-closed then closed with 1000.
 func (s *Server) closeRoom(closed room.ClosedRoom) {
+	s.cancelOwnershipOffer(closed.RoomID)
 	s.closeRoomVoice(closed.RoomID)
 	s.clearRoomGraceTimers(closed.RoomID)
 	s.clearRoomViewerEvidence(closed.RoomID)
@@ -244,6 +247,19 @@ func (s *Server) closeRoom(closed room.ClosedRoom) {
 func (s *Server) revokeGrantViewers(roomID string, update room.ViewerGrantUpdate) {
 	if len(update.RevokedViewers) == 0 {
 		return
+	}
+	for _, revoked := range update.RevokedViewers {
+		if sess := s.sessionsByID[revoked.SessionID]; sess != nil && sess.authenticated != nil && sess.authenticated.role == protocol.RoleHost {
+			s.stopSharing(roomID)
+		}
+	}
+	if host, ok := s.store.GetConnectedHost(roomID); ok {
+		if target := s.sessionsByID[host.SessionID]; target != nil && target.authenticated != nil && target.authenticated.role != protocol.RoleHost {
+			target.authenticated.role, target.authenticated.shareGeneration = protocol.RoleHost, ""
+			member, _ := s.store.ConnectedMember(roomID, host.PeerID, host.SessionID)
+			s.send(target, protocol.RoomRoleChangedMessage{Type: "room-role-changed", State: s.authenticationMessage(member, hybridAuthenticationState{routeAssignment: emptyAssignment()}, "", false)})
+			s.router.connectParticipant(routeParticipant(target, target.authenticated))
+		}
 	}
 	// The store has already removed their admission. Retire input identity as
 	// well; a shared relay's media connection may survive this Viewer leaving.

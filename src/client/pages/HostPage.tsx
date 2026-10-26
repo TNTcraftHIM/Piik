@@ -1,3 +1,7 @@
+import { RoomAdmissionControls } from "../components/living/RoomAdmissionControls";
+import type { RoomHandoff } from "../lib/room-handoff";
+import { RoomControls } from "../components/living/RoomControls";
+import { type RoomControlSession, useRoomControl } from "../lib/room-control";
 import {
   useCallback,
   useEffect,
@@ -82,7 +86,6 @@ import {
   NameTag,
   Pill,
   Row,
-  RowGroup,
   SwitchItem,
 } from "../components/living/primitives";
 import { hasPeerRouteEvidence } from "../components/status-badge-model";
@@ -120,7 +123,6 @@ import {
   isClientActivated,
   type HostRoomIdentity,
   type HostRoomState,
-  mergeAuthenticatedHostRoom,
   readHostRoom,
   releaseHostRoom,
   readPreferredRoomId,
@@ -335,7 +337,10 @@ function hostTerminationKey(reason: SignalingTerminationReason): CopyKey {
   }
 }
 
+type PresentationRoom = Omit<HostRoomState, "hostToken"> & { hostToken: string | null };
+
 interface HostPageProps {
+  handoff?: RoomHandoff;
   roomInteractionsAvailable?: boolean;
   roomReactionIds?: readonly string[];
   hostRoomSessionAvailable?: boolean;
@@ -359,6 +364,7 @@ type ShareSourceSelection =
     };
 
 export function HostPage({
+  handoff,
   roomInteractionsAvailable = false,
   roomReactionIds,
   hostRoomSessionAvailable = false,
@@ -451,11 +457,17 @@ export function HostPage({
     target?.focus({ preventScroll: true });
   }, [sourcePickerOpen, phase]);
   const [details, setDetails] = useState<CaptureDetails | null>(null);
-  const [room, setRoom] = useState<HostRoomState | null>(null);
+  const [roomControl, setRoomControl] = useState<RoomControlSession | null>(handoff?.signal.roomControl ?? null);
+  const controlState = useRoomControl(roomControl);
+  const [room, setRoom] = useState<PresentationRoom | null>(() => handoff ? {
+    roomId: handoff.signal.roomId, hostToken: handoff.signal.ownerToken, canonicalUrl: handoff.signal.roomControl?.canonicalUrl ?? new URL(`/r/${handoff.signal.roomId}`, location.href).href,
+    codeEntryPolicy: handoff.state.codeEntryPolicy, inviteUrl: null,
+  } : null);
   const roomRef = useRef(room);
   const roomInitializationRef = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     let mounted = true;
+    if (handoff) return;
     roomInitializationRef.current = readHostRoom().then((stored) => {
       if (!mounted || roomRef.current !== null) return;
       const restored = hostRoomFromStored(stored);
@@ -464,7 +476,7 @@ export function HostPage({
     });
     return () => {
       mounted = false;
-      releaseHostRoom();
+      if (!signalRef.current?.switchingMedia) releaseHostRoom();
     };
   }, []);
   useEffect(() => {
@@ -472,11 +484,14 @@ export function HostPage({
   }, [room]);
   useEffect(() => {
     let active = true;
-    if (hostRoomSessionAvailable && room) void roomInitializationRef.current.then(() => {
+    if (!handoff && hostRoomSessionAvailable && room) void roomInitializationRef.current.then(() => {
       if (active && isCurrentRoomAuthority(room)) connectRoomSignal(room).start();
     });
     return () => { active = false; };
   }, [hostRoomSessionAvailable, room?.roomId, room?.hostToken]);
+  useEffect(() => {
+    if (controlState.state && roomControl) setRoom(current => current ? { ...current, hostToken: roomControl.ownerToken } : current);
+  }, [controlState.state?.ownerPeerId, roomControl]);
   const [creationProfile, setCreationProfile] =
     useState<HostCreationProfile>(readCreationProfile);
   const creationProfileRef = useRef(creationProfile);
@@ -778,7 +793,7 @@ export function HostPage({
       pendingQualityChangeRef.current = null;
       codecProbeAbortRef.current?.abort();
       codecProbeAbortRef.current = null;
-      signalRef.current?.stop();
+      signalRef.current?.releaseMedia();
       peersRef.current.forEach((peer) => peer.dispose());
       peersRef.current.clear();
       hostProvisionalChildRef.current?.discard();
@@ -1007,7 +1022,7 @@ export function HostPage({
     setSharingPaused(false);
   }
 
-  function isCurrentRoomAuthority(expected: HostRoomState): boolean {
+  function isCurrentRoomAuthority(expected: PresentationRoom): boolean {
     const current = roomRef.current;
     return (
       current?.roomId === expected.roomId &&
@@ -1015,7 +1030,7 @@ export function HostPage({
     );
   }
 
-  function forgetRoom(expected?: HostRoomState, keepResumeHint = false): boolean {
+  function forgetRoom(expected?: PresentationRoom, keepResumeHint = false): boolean {
     if (expected && !isCurrentRoomAuthority(expected)) {
       return false;
     }
@@ -1118,7 +1133,7 @@ export function HostPage({
 
   async function replaceCurrentRoom(): Promise<void> {
     const activeRoom = roomRef.current;
-    if (!activeRoom || roomMutationRef.current || phase === "starting") {
+    if (!activeRoom?.hostToken || roomMutationRef.current || phase === "starting") {
       return;
     }
     const mutation = beginRoomMutation("replacement");
@@ -2598,7 +2613,7 @@ export function HostPage({
     }
   }
 
-  function connectRoomSignal(activeRoom: HostRoomState, shareGeneration?: string, allowReplacement = true): SignalingClient {
+  function connectRoomSignal(activeRoom: PresentationRoom, shareGeneration?: string, allowReplacement = true): SignalingClient {
     const previous = signalRef.current;
     if (hostRoomSessionAvailable && previous?.ownsHostRoom(activeRoom.roomId, activeRoom.hostToken)) {
       previous.setAudioAvailable(audioAvailableRef.current);
@@ -2606,15 +2621,17 @@ export function HostPage({
     }
     previous?.stop();
     let authenticated = false;
-    const hostClientId = getStableClientId("host", activeRoom.roomId);
+    const hostClientId = handoff?.signal.clientId ?? getStableClientId("host", activeRoom.roomId);
     hostClientIdRef.current = hostClientId;
     const hostFallback = defaultHostDisplayName(visRef.current);
-    const initialDisplayName = readDisplayName(hostFallback);
+    const initialDisplayName = handoff?.signal.displayName ?? readDisplayName(hostFallback);
     displayNameRef.current = initialDisplayName;
     setDisplayName(initialDisplayName);
     setDisplayNameDraft(initialDisplayName);
     setDisplayNameError(false);
-    const signal = new SignalingClient(
+    const ownsMediaSession = () => signalRef.current === signal && roomRef.current?.roomId === activeRoom.roomId;
+    const makeSignal = (...args: ConstructorParameters<typeof SignalingClient>) => handoff?.signal.switchingMedia && handoff.signal.roomId === activeRoom.roomId ? handoff.signal.attach(args[1]) : new SignalingClient(...args);
+    const signal = makeSignal(
       {
         roomId: activeRoom.roomId,
         role: "host",
@@ -2629,7 +2646,7 @@ export function HostPage({
       },
       {
         onStatus: (status) => {
-          if (signalRef.current === signal && isCurrentRoomAuthority(activeRoom)) {
+          if (ownsMediaSession()) {
             setSignalStatus(status);
             if (status === "connected") {
               setNoticeValue(current => current?.kind === "key" && current.key === "host.pause.signalRecovering" ? null : current);
@@ -2637,17 +2654,21 @@ export function HostPage({
           }
         },
         onTerminated: (reason) => {
-          if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
+          if (!ownsMediaSession()) return;
           endRoomSession({ key: hostTerminationKey(reason) }, "signal-failed");
           if (reason === "SESSION_REPLACED") forgetRoom(activeRoom, true);
         },
         onAccessRequired: () => {
-          if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
+          if (!ownsMediaSession()) return;
           endRoomSession({ key: "gate.expired" }, "access-denied");
           onAuthorizationRequired?.();
         },
         onMessage: (message) => {
-          if (signalRef.current !== signal || !isCurrentRoomAuthority(activeRoom)) return;
+          if (!ownsMediaSession()) return;
+          if (message.type === "presentation-revoked") {
+            if (message.shareGeneration === shareGenerationRef.current) endSharing({ key: "room.control.sharingRevoked" }, false);
+            return;
+          }
           if (message.type === "remote-input-peers") {
             remoteInputPeersRef.current = message.peers;
             const client = nativeConnection.current, shareId = nativeShareGenerationRef.current;
@@ -2664,14 +2685,14 @@ export function HostPage({
             !authenticated &&
             message.type === "error" &&
             message.code === "INVALID_TOKEN" &&
-            allowReplacement
+            allowReplacement && signal.ownerToken !== null
           ) {
             if (!localShareActive || !signal.wantsHostPublication(currentShareGeneration!)) {
               signalRef.current = null;
               signal.stop();
               setInteractionSession(null);
               setSignalStatus("offline");
-              forgetRoom(activeRoom);
+              forgetRoom(roomRef.current ?? activeRoom);
               // Capture may still be awaiting permission. Its ready path owns
               // creation/publication; room recovery must not start it early.
               if (!localShareActive) {
@@ -2682,16 +2703,16 @@ export function HostPage({
             signalRef.current = null;
             signal.stop();
             setSignalStatus("offline");
-            roomInitializationRef.current = createReplacementRoom(activeRoom, currentGeneration!, currentShareGeneration!);
+            roomInitializationRef.current = createReplacementRoom(roomRef.current ?? activeRoom, currentGeneration!, currentShareGeneration!);
             return;
           }
           if (message.type === "error" && message.code === "INVALID_TOKEN") {
-            forgetRoom(activeRoom);
+            forgetRoom(roomRef.current ?? activeRoom);
             endRoomSession({ key: "host.roomInvalid" }, "room-not-found");
             return;
           }
           if (message.type === "room-closed") {
-            if (!forgetRoom(activeRoom)) return;
+            if (!forgetRoom(roomRef.current ?? activeRoom)) return;
             endRoomSession({ key: "host.roomClosed" }, "room-closed", "off", "ended");
             return;
           }
@@ -2719,13 +2740,14 @@ export function HostPage({
             setViewerPasswordEnabled(message.viewerPasswordEnabled);
             setViewerPasswordDraft(profile.roomPassword ?? "");
             setViewerPasswordVisible(false);
-            setRoom(current => mergeAuthenticatedHostRoom(current, activeRoom.roomId, message.codeEntryPolicy));
+            setRoom(current => current?.roomId === activeRoom.roomId ? { ...current, codeEntryPolicy: message.codeEntryPolicy } : current);
             peersRef.current.forEach((peer) =>
               peer.updateIceConfig(message.iceConfig),
             );
-            void writeHostRoom(
-              activeRoom,
-              () => signalRef.current === signal && isCurrentRoomAuthority(activeRoom),
+            const ownerToken = signal.ownerToken;
+            if (ownerToken) void writeHostRoom(
+              { ...activeRoom, hostToken: ownerToken },
+              () => ownsMediaSession() && signal.ownerToken === ownerToken,
             );
             writePreferredRoom(activeRoom.roomId);
           }
@@ -2776,6 +2798,8 @@ export function HostPage({
     signal.setAudioAvailable(audioAvailableRef.current);
     remoteInputPeersRef.current = [];
     void getRuntimeCapabilities().then(capabilities => {
+      if (signalRef.current === signal) signal.runtimeCapabilities = capabilities;
+      if (signalRef.current === signal && capabilities.roomControl) setRoomControl(signal.enableRoomControl());
       if (signalRef.current === signal && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
       if (signalRef.current === signal && capabilities.roomVoice) setRoomVoiceSession(signal.enableRoomVoice({ listeningPresence: capabilities.roomVoiceListeningPresence, bitrate: capabilities.roomVoiceBitrate }));
       if (signalRef.current === signal && capabilities.remoteInput) signal.enableRemoteInput();
@@ -2783,10 +2807,12 @@ export function HostPage({
       if (signalRef.current === signal && capabilities.audioPresence) signal.enableAudioPresence();
     }).catch(() => { /* Optional input does not block sharing. */ });
     setInteractionSession(signal.interactions);
+    setRoomVoiceSession(signal.roomVoice);
+    setRoomControl(signal.roomControl);
     return signal;
   }
 
-  async function createReplacementRoom(activeRoom: HostRoomState, generation: number, shareGeneration: string): Promise<void> {
+  async function createReplacementRoom(activeRoom: PresentationRoom, generation: number, shareGeneration: string): Promise<void> {
     try {
       const response = await createRoom(
         creationProfileRef.current.codeEntryPolicy,
@@ -2821,6 +2847,7 @@ export function HostPage({
   }
 
   async function startSharing(selection: ShareSourceSelection): Promise<void> {
+    if (controlState.state && !controlState.state.members.some(member => member.peerId === controlState.peerId && member.sharingAllowed)) return;
     if (
       phase === "starting" ||
       phase === "live" ||
@@ -2925,7 +2952,7 @@ export function HostPage({
     }
     if (captured) setResolvedVideoCodec(videoCodecRef.current.primary);
 
-    let createdRoom: HostRoomState | null = null;
+    let createdRoom: PresentationRoom | null = null;
     let claimedRoom = false;
     try {
       await roomInitializationRef.current;
@@ -2941,11 +2968,11 @@ export function HostPage({
         if (!isCurrentShare(generation, shareGeneration)) {
           captured?.getTracks().forEach((track) => track.stop());
           if (nativeStarted) disposeNativeShare(shareGeneration);
-          closeAbandonedRoom(createdRoom);
+          if (createdRoom.hostToken) closeAbandonedRoom({ ...createdRoom, hostToken: createdRoom.hostToken });
           return;
         }
         if (!(await writeHostRoom(
-          createdRoom,
+          { ...createdRoom, hostToken: response.hostToken },
           () => isCurrentShare(generation, shareGeneration),
         ))) {
           throw new Error("Host room is already open in another tab");
@@ -2967,7 +2994,7 @@ export function HostPage({
         captured?.getTracks().forEach((track) => track.stop());
         if (nativeStarted) disposeNativeShare(shareGeneration);
         if (createdRoom && !claimedRoom) {
-          closeAbandonedRoom(createdRoom);
+          if (createdRoom.hostToken) closeAbandonedRoom({ ...createdRoom, hostToken: createdRoom.hostToken });
         }
         return;
       }
@@ -3388,7 +3415,7 @@ export function HostPage({
 
   function handleRoomAccessFailure(
     error: unknown,
-    activeRoom: HostRoomState,
+    activeRoom: PresentationRoom,
   ): void {
     if (error instanceof ApiError && error.status === 401) {
       onAuthorizationRequired?.();
@@ -3409,7 +3436,7 @@ export function HostPage({
 
   async function changeCodeEntryPolicy(policy: CodeEntryPolicy): Promise<void> {
     const activeRoom = roomRef.current;
-    if (!activeRoom) {
+    if (!activeRoom?.hostToken) {
       return;
     }
     if (activeRoom.codeEntryPolicy === policy) {
@@ -3465,7 +3492,7 @@ export function HostPage({
 
   async function changeViewerGrant(action: "rotate" | "revoke"): Promise<void> {
     const activeRoom = roomRef.current;
-    if (!activeRoom) {
+    if (!activeRoom?.hostToken) {
       return;
     }
     const mutation = beginRoomMutation("access");
@@ -3518,7 +3545,7 @@ export function HostPage({
       return;
     }
     const activeRoom = roomRef.current;
-    if (!activeRoom) {
+    if (!activeRoom?.hostToken) {
       return;
     }
     const hadPassword = viewerPasswordEnabled;
@@ -3710,6 +3737,36 @@ export function HostPage({
     : MAX_AUDIO_SEND_BITRATE);
   const videoLimits = videoCaptureLimits(nativeActive ? nativeConnection.current?.health.nativeMedia : undefined);
 
+  useEffect(() => {
+    if (!handoff || !roomRef.current) return;
+    let active = true;
+    // React may replay mount effects. Acquire the retained media only after
+    // that cleanup, so a replay cannot stop the user's selected source.
+    queueMicrotask(() => {
+    if (!active || !roomRef.current) return;
+    const prepared = handoff.prepared;
+    if (prepared && handoff.state.shareGeneration) {
+      const generation = ++generationRef.current;
+      activeGenerationRef.current = generation;
+      shareGenerationRef.current = handoff.state.shareGeneration;
+      qualitySettingsRef.current = handoff.state.qualitySettings;
+      routePolicyRef.current = handoff.state.routePolicy;
+      hostAudioRef.current = prepared.audio;
+      prepared.audio.setListeners(available => { audioAvailableRef.current = available; signalRef.current?.setAudioAvailable(available); }, setCommentary);
+      audioAvailableRef.current = prepared.audio.audioAvailable;
+      streamRef.current = prepared.stream;
+      videoCodecRef.current = prepared.codec;
+      setStream(prepared.stream);
+      setDetails(captureDetails(prepared.audio.sourceStream));
+      setResolvedVideoCodec(prepared.codec.primary);
+      setPhase("starting");
+      watchCaptureEnd(prepared.stream, generation);
+    }
+    connectRoomSignal(roomRef.current).start();
+    });
+    return () => { active = false; };
+  }, []);
+
   return (
     <div className="lr-app">
       <AppHeader
@@ -3725,6 +3782,7 @@ export function HostPage({
       />
 
       <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
+        <RoomControls session={roomControl} participants={participantPresence} />
         <h1 className="visually-hidden">
           {t("host.title", { name: hostPresence?.displayName ?? displayName })}
         </h1>
@@ -3808,7 +3866,7 @@ export function HostPage({
                         type="button"
                         className="lr-tv-big is-action is-ripple"
                         aria-label={t("host.start")}
-                        disabled={roomMutating}
+                        disabled={roomMutating || Boolean(controlState.state && !controlState.state.members.some(member => member.peerId === controlState.peerId && member.sharingAllowed))}
                         onClick={requestSharing}
                       >
                         <Glyph name="cast" size={34} draw="entry-cast" />
@@ -4094,7 +4152,7 @@ export function HostPage({
               </div>
             }
           />
-          <RoomInteractions session={room ? interactionSession : null}
+          <RoomInteractions session={room ? interactionSession : null} roomControl={roomControl}
             voiceState={roomVoice}
             voice={room && roomVoiceSession ? {
               content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
@@ -4140,7 +4198,7 @@ export function HostPage({
               {room ? <>
                 <RoomChip
                   roomId={room.roomId}
-                  onReplace={replaceCurrentRoom}
+                  onReplace={room.hostToken ? replaceCurrentRoom : undefined}
                   replaceDisabled={phase === "starting" || roomMutating}
                 />
                 {activeCodeEntryPolicy ? (
@@ -4265,226 +4323,24 @@ export function HostPage({
             </div>
           </div>
 
-          {room ? (
-            <Row label={t("host.policy")}>
-              <RowGroup actions>
-                <Btn
-                  icon={copied ? "check" : "link"}
-                  cap="common.copy"
-                  title={copied ? "common.copied" : roomLinkBlocked ? "host.invite.credentialRequired"
-                    : includeInviteCredential ? "host.invite.copy" : "host.invite.copyAddress"}
-                  hint={roomLinkBlocked ? "hint-policy-private" : "hint-copy-invite"}
-                  hintTone={copied ? "live" : roomLinkBlocked ? "warn" : undefined}
-                  hintMotion={copied ? "still" : undefined}
-                  disabled={!roomLink || roomMutating || roomLinkBlocked}
-                  onClick={() => void copyRoomLink()}
-                />
-                <Btn
-                  icon="refresh"
-                  cap="host.invite.rotateShort"
-                  title="host.invite.rotate"
-                  hint="hint-rotate-invite"
-                  disabled={roomMutating}
-                  onClick={() => void changeViewerGrant("rotate")}
-                />
-                <Btn
-                  icon="linkOff"
-                  tone="danger"
-                  cap="host.invite.revokeShort"
-                  title="host.invite.revoke"
-                  hint="hint-revoke-invite"
-                  disabled={!room.inviteUrl || roomMutating}
-                  onClick={() => void changeViewerGrant("revoke")}
-                />
-              </RowGroup>
-              <div className="lr-invite-field">
-                {roomLink ? (
-                  <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
-                    <input
-                      className="lr-invite-url"
-                      type="text"
-                      dir="ltr"
-                      value={roomLink}
-                      readOnly
-                      spellCheck={false}
-                      aria-label={t(includeInviteCredential ? "host.invite" : "host.invite.address")}
-                      onFocus={(event) => event.currentTarget.select()}
-                    />
-                  </Tooltip>
-                ) : null}
-                <span className="lr-row-group">
-                  <Glyph name="key" size={17} />
-                  <SwitchItem checked={includeInviteCredential} disabled={roomMutating}
-                    label={t("host.invite.includeCredential")} hint="hint-invite-link"
-                    note={t("host.invite.credentialHint")}
-                    onChange={checked => {
-                      copyRoomLinkRequestRef.current = null;
-                      setCopiedRoomLink(null);
-                      setIncludeInviteCredential(checked);
-                    }} />
-                </span>
-              </div>
-              {roomLinkBlocked ? <Pill icon="lock" tone="warn" comic="hint-policy-private"
-                label={t("host.invite.credentialRequired")} /> : null}
-              <span className="lr-divider" aria-hidden="true" />
-              <RowGroup>
-                <span
-                  className="lr-toggle"
-                  role="group"
-                  aria-label={t("host.policy")}
-                >
-                  <Tooltip kind="hint-admission-code"
-                    text={vis ? undefined : `${t("host.policy.open")}\n${t("host.policy.openHint")}`}>
-                    <button
-                      type="button"
-                      className={
-                        activeCodeEntryPolicy === "open" ? "is-selected" : undefined
-                      }
-                      aria-label={t("host.policy.open")}
-                      aria-pressed={activeCodeEntryPolicy === "open"}
-                      disabled={roomMutating}
-                      onClick={() => void changeCodeEntryPolicy("open")}
-                    >
-                      <Glyph name="globe" size={19} />
-                      <Cap k="host.policy.open" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip kind="hint-policy-private"
-                    text={vis ? undefined : `${t("host.policy.private")}\n${t(viewerPasswordEnabled ? "host.policy.privatePasswordHint" : "host.policy.privateHint")}`}>
-                    <button
-                      type="button"
-                      className={
-                        activeCodeEntryPolicy === "private"
-                          ? "is-selected"
-                          : undefined
-                      }
-                      aria-label={t("host.policy.private")}
-                      aria-pressed={activeCodeEntryPolicy === "private"}
-                      disabled={roomMutating}
-                      onClick={() => void changeCodeEntryPolicy("private")}
-                    >
-                      <Glyph name="lock" size={19} />
-                      <Cap k="host.policy.private" />
-                    </button>
-                  </Tooltip>
-                </span>
-                {activeCodeEntryPolicy === "private" ? (
-                  <Tooltip kind={passwordOpen ? "hint-collapse" : "hint-password"} align="end"
-                    text={vis ? undefined : `${t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")}\n${t(viewerPasswordEnabled ? "host.password.set" : "host.password.unset")}`}>
-                    <button
-                      type="button"
-                      className="lr-btn"
-                      aria-label={t(passwordOpen ? "host.password.settingsHide" : "host.password.setAction")}
-                      aria-expanded={passwordOpen}
-                      aria-controls="host-password-form"
-                      onClick={() => setPasswordOpen((current) => !current)}
-                    >
-                      <Glyph name="key" size={19} />
-                      {viewerPasswordEnabled ? (
-                        <i className="lr-chip-dot" aria-hidden="true" />
-                      ) : null}
-                      <Cap k="join.password" />
-                    </button>
-                  </Tooltip>
-                ) : null}
-                {!room.inviteUrl && activeCodeEntryPolicy !== null ? (
-                  <Pill
-                    icon="link"
-                    label={t(
-                      activeCodeEntryPolicy === "open"
-                        ? "host.invite.emptyOpen"
-                        : viewerPasswordEnabled
-                          ? "host.invite.emptyPassword"
-                          : "host.invite.emptyPrivate",
-                    )}
-                    comic="hint-invite-link"
-                    tone="off"
-                  />
-                ) : null}
-              </RowGroup>
-              {activeCodeEntryPolicy === "private" && passwordOpen ? (
-                <RowGroup>
-                  <form
-                    id="host-password-form"
-                    style={{ display: "contents" }}
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void changeViewerPassword(viewerPasswordDraft);
-                    }}
-                  >
-                    <span
-                      className="lr-input is-password"
-                      style={{ flex: 1 }}
-                    >
-                      <Glyph name="key" size={17} />
-                      <input
-                        id="viewer-password"
-                        type={viewerPasswordVisible ? "text" : "password"}
-                        value={viewerPasswordDraft}
-                        maxLength={MAX_VIEWER_PASSWORD_LENGTH}
-                        autoComplete="new-password"
-                        placeholder={
-                          vis
-                            ? ""
-                            : viewerPasswordEnabled
-                              ? t("host.password.inputPlaceholder")
-                              : t("host.password.placeholder")
-                        }
-                        aria-label={t("join.password")}
-                        autoFocus={!viewerPasswordEnabled}
-                        disabled={roomMutating}
-                        onChange={(event) =>
-                          setViewerPasswordDraft(event.target.value)
-                        }
-                      />
-                    </span>
-                    {viewerPasswordEnabled && viewerPasswordDraft.length > 0 ? (
-                      <Btn
-                        icon={viewerPasswordVisible ? "eyeOff" : "eye"}
-                        hint={viewerPasswordVisible ? "hint-password-hide" : "hint-password-show"}
-                        title={
-                          viewerPasswordVisible
-                            ? "host.password.hide"
-                            : "host.password.show"
-                        }
-                        draw="host-password-eye"
-                        pressed={viewerPasswordVisible}
-                        disabled={roomMutating}
-                        onClick={() =>
-                          setViewerPasswordVisible((current) => !current)
-                        }
-                      />
-                    ) : null}
-                    <Btn
-                      icon="check"
-                      type="submit"
-                      title={
-                        viewerPasswordEnabled
-                          ? "host.password.changeAction"
-                          : "host.password.setAction"
-                      }
-                      hint="hint-password"
-                      disabled={
-                        roomMutating ||
-                        viewerPasswordDraft.length === 0 ||
-                        (viewerPasswordEnabled &&
-                          viewerPasswordDraft === creationProfile.roomPassword)
-                      }
-                    />
-                    {viewerPasswordEnabled ? (
-                      <Btn
-                        icon="x"
-                        tone="danger"
-                        title="host.password.remove"
-                        hint="hint-password-remove"
-                        disabled={roomMutating}
-                        onClick={() => void changeViewerPassword(null)}
-                      />
-                    ) : null}
-                  </form>
-                </RowGroup>
-              ) : null}
-            </Row>
+          {room?.hostToken ? (
+            <RoomAdmissionControls
+              roomLink={roomLink} inviteAvailable={!!room.inviteUrl}
+              roomLinkBlocked={roomLinkBlocked} copied={copied}
+              includeInviteCredential={includeInviteCredential} roomMutating={roomMutating}
+              activeCodeEntryPolicy={activeCodeEntryPolicy} viewerPasswordEnabled={viewerPasswordEnabled}
+              passwordOpen={passwordOpen} viewerPasswordDraft={viewerPasswordDraft}
+              viewerPasswordVisible={viewerPasswordVisible} savedPassword={creationProfile.roomPassword}
+              copyRoomLink={copyRoomLink} changeViewerGrant={changeViewerGrant}
+              changeCodeEntryPolicy={changeCodeEntryPolicy} changeViewerPassword={changeViewerPassword}
+              setIncludeInviteCredential={checked => {
+                copyRoomLinkRequestRef.current = null;
+                setCopiedRoomLink(null);
+                setIncludeInviteCredential(checked);
+              }}
+              setPasswordOpen={setPasswordOpen} setViewerPasswordDraft={setViewerPasswordDraft}
+              setViewerPasswordVisible={setViewerPasswordVisible}
+            />
           ) : null}
 
           {showConnectionDetails && (details && (stream || nativeActive) || ownVoiceConnection) ? (

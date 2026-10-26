@@ -51,8 +51,10 @@ invocation; follow their relevant guidance without importing unrelated workflows
 
 ## Product Contract
 
-- Piik is private screen sharing for one Host and up to 20 authenticated
-  Viewers, with Web Host/Viewer/relay as the current product surface.
+- Piik is private screen sharing for one room owner and up to 20 other
+  authenticated members, with one active shared picture at a time. Room
+  ownership and picture publication are separate authorities; Web
+  Host/Viewer/relay remain the current media surfaces.
 - Current product truth is split by owner:
   [rooms/access](./docs/standards/rooms-access.md),
   [routing/transport](./docs/standards/routing-transport.md),
@@ -113,6 +115,11 @@ invocation; follow their relevant guidance without importing unrelated workflows
   one owned [contextual contract](./docs/standards/engineering.md#contextual-consistency).
   Check related producers and consumers before adding another local rule;
   preserve differences justified by authority, scope or user intent.
+- When authority or media roles change, trace the original and transitioned
+  user flows through access controls, sharing, voice and cleanup. Reuse the same
+  production controls for the same capability across pages; page identity must
+  not become a second permission owner. Verify the transition as well as the
+  initial view, including current settings, focus and retained room state.
 - UI changes must follow the shared [visual language](./docs/standards/visual-language.md):
   cast, semantic colours, result panels and motion have one owner. Extend the
   existing preview when adding a new meaning; do not invent scene-local rules.

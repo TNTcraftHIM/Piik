@@ -95,7 +95,7 @@ export class RoomVoiceSession {
       if (message.revision < (this.state.room?.revision ?? 0)) return true;
       const me = message.members.find(member => member.peerId === this.state.peerId);
       if (!message.enabled || !me?.joined) { this.cancelCapture(); this.publishing = null; }
-      this.update({ room: message, ...(!message.enabled || this.state.error === "closed" ? { error: null } : {}) });
+      this.update({ room: message, role: message.hostPeerId === this.state.peerId ? "host" : "viewer", ...(!message.enabled || this.state.error === "closed" ? { error: null } : {}) });
       // Authority retirement is synchronous even if an SDP operation is pending.
       this.endpoint.setAuthority(message, this.state.peerId);
       const publication = message.publications.find(pub => pub.peerId === this.state.peerId);

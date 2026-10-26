@@ -1392,6 +1392,54 @@
       "schema": "client",
       "json": "{\"type\":\"set-co-play-presence\",\"shareGeneration\":\"share_coplay_generation\",\"grants\":[{\"endpointId\":\"11111111111111111111111111111111\",\"extra\":true}]}",
       "valid": false
+    },
+    {
+      "name": "subscribe-room-control",
+      "schema": "client",
+      "json": "{\"type\":\"subscribe-room-control\"}",
+      "valid": true
+    },
+    {
+      "name": "grant-room-sharing",
+      "schema": "client",
+      "json": "{\"type\":\"room-control-command\",\"command\":{\"action\":\"grant-sharing\",\"peerId\":\"member_peer_12345678\",\"allowed\":true}}",
+      "valid": true
+    },
+    {
+      "name": "transfer-room-owner",
+      "schema": "client",
+      "json": "{\"type\":\"room-control-command\",\"command\":{\"action\":\"transfer-owner\",\"peerId\":\"member_peer_12345678\"}}",
+      "valid": true
+    },
+    {
+      "name": "accept-room-owner",
+      "schema": "client",
+      "json": "{\"type\":\"room-control-command\",\"command\":{\"action\":\"accept-transfer\",\"offerId\":\"ownership_offer_12345678\"}}",
+      "valid": true
+    },
+    {
+      "name": "claim-room-presentation",
+      "schema": "client",
+      "json": "{\"type\":\"claim-presentation\",\"requestId\":\"presentation_request_12345678\",\"previousGeneration\":null,\"shareGeneration\":\"share_generation_12345678\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false}}",
+      "valid": true
+    },
+    {
+      "name": "authenticate-room-member",
+      "schema": "client",
+      "json": "{\"type\":\"authenticate-member\",\"protocol\":\"piik-v24\",\"roomId\":\"9527\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"clientId\":\"member_client_12345678\",\"displayName\":\"Member\",\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false}}",
+      "valid": true
+    },
+    {
+      "name": "control-command-extra-field",
+      "schema": "client",
+      "json": "{\"type\":\"room-control-command\",\"command\":{\"action\":\"grant-sharing\",\"peerId\":\"member_peer_12345678\",\"allowed\":true,\"token\":\"unexpected\"}}",
+      "valid": false
+    },
+    {
+      "name": "presentation-generation-missing",
+      "schema": "client",
+      "json": "{\"type\":\"claim-presentation\",\"requestId\":\"presentation_request_12345678\",\"shareGeneration\":\"share_generation_12345678\",\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":30,\"maxBitrate\":5000000,\"degradationPreference\":\"balanced\",\"maxAudioBitrate\":128000},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false}}",
+      "valid": false
     }
   ],
   "serverMessages": [
@@ -1562,6 +1610,30 @@
     {
       "name": "room-relay-video-attachment-diagnostic",
       "json": "{\"type\":\"route-diagnostic-snapshot\",\"snapshot\":{\"children\":[{\"ordinal\":1,\"parent\":{\"kind\":\"host\"},\"effectiveCapacity\":20,\"childCount\":4,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":2,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":3,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":4,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null},{\"ordinal\":5,\"parent\":{\"kind\":\"viewer\",\"ordinal\":1},\"effectiveCapacity\":0,\"childCount\":0,\"demandAgeMs\":null,\"queueWaitMs\":null,\"candidateStartMs\":null,\"firstDecodedFrameMs\":null,\"finalMs\":null,\"finalRoute\":\"direct\",\"rejectionBucket\":\"none\",\"quality\":null}],\"operation\":{\"childOrdinal\":1,\"reason\":\"publication-attach\",\"stage\":\"admission\",\"cursor\":0,\"candidateCount\":1}}}"
+    },
+    {
+      "name": "room-control-state",
+      "json": "{\"type\":\"room-control-state\",\"codeEntryPolicy\":\"open\",\"viewerPasswordEnabled\":false,\"ownerPeerId\":\"owner_peer_12345678\",\"presenterPeerId\":\"member_peer_12345678\",\"shareGeneration\":\"share_generation_12345678\",\"members\":[{\"peerId\":\"member_peer_12345678\",\"sharingAllowed\":true,\"supported\":true}],\"transfer\":{\"id\":\"ownership_offer_12345678\",\"fromPeerId\":\"owner_peer_12345678\",\"targetPeerId\":\"member_peer_12345678\"}}"
+    },
+    {
+      "name": "room-control-ready",
+      "json": "{\"type\":\"room-control-ready\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"canonicalUrl\":\"https://share.test/r/9527\"}"
+    },
+    {
+      "name": "room-ownership-offer",
+      "json": "{\"type\":\"room-ownership-offer\",\"offerId\":\"ownership_offer_12345678\",\"token\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"}"
+    },
+    {
+      "name": "room-role-changed",
+      "json": "{\"type\":\"room-role-changed\",\"state\":{\"type\":\"authenticated\",\"protocol\":\"piik-v24\",\"peerId\":\"host_12345678\",\"maxViewers\":8,\"endpointMediaCopyCapacity\":2,\"hostOnline\":true,\"connectionId\":null,\"iceConfig\":{\"iceServers\":[],\"natPredictionStunUrls\":[]},\"routePolicy\":{\"peerOnly\":false,\"topologyOptimization\":true,\"natPrediction\":false},\"codeEntryPolicy\":\"open\",\"viewerAuthorizationGeneration\":\"viewer_generation_12345678\",\"mediaMode\":\"peer-assisted\",\"shareGeneration\":\"share_generation_12345678\",\"routeRevision\":0,\"routeAssignment\":{\"upstream\":{\"kind\":\"none\"},\"childPeerIds\":[],\"sfuPublicationGeneration\":null},\"qualitySettings\":{\"resolution\":{\"width\":1920,\"height\":1080},\"maxFramerate\":60,\"maxBitrate\":8000000,\"degradationPreference\":\"maintain-resolution\",\"maxAudioBitrate\":128000},\"role\":\"host\",\"viewerPasswordEnabled\":false}}"
+    },
+    {
+      "name": "room-control-error",
+      "json": "{\"type\":\"room-control-error\",\"code\":\"changed\",\"requestId\":\"presentation_request_12345678\"}"
+    },
+    {
+      "name": "presentation-revoked",
+      "json": "{\"type\":\"presentation-revoked\",\"shareGeneration\":\"share_generation_12345678\"}"
     }
   ]
 }

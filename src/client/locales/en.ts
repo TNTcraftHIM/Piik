@@ -2,6 +2,26 @@ import type { CopyKey, PlayfulCatalog, TitleFrameCatalog } from "./zh";
 
 // Community translations are data-only and type-checked against zh.
 export const en: Record<CopyKey, string> = {
+  "room.control.saved": "Room settings updated.",
+
+  "room.control.sharingRevoked": "The owner revoked your sharing permission.",
+  "room.control.share": "Share your screen",
+  "room.control.shareHint": "Choose a source to replace the current picture. Canceling keeps it playing.",
+  "room.control.offer": "{name} invited you to become the room owner.",
+  "room.control.waiting": "Waiting for {name} to accept ownership…",
+  "room.control.offerHint": "Accept to manage the room and sharing permissions. The current picture and voice call continue.",
+  "room.control.accept": "Accept ownership",
+  "room.control.decline": "Decline",
+  "room.control.grant": "Allow sharing",
+  "room.control.revoke": "Revoke sharing",
+  "room.control.transfer": "Transfer ownership",
+  "room.control.updateRequired": "This member needs to refresh their page to use this feature.",
+  "room.control.captureFailed": "Could not start sharing. Please choose a source again.",
+  "room.control.error.not-allowed": "You do not have permission for this action.",
+  "room.control.error.member-unavailable": "This member is unavailable. Try again after they reconnect.",
+  "room.control.error.changed": "The room changed. Please try again.",
+  "room.control.error.storage-failed": "Could not save ownership. The owner is unchanged. Check browser storage and try again.",
+
   "state.peer.present": "In the room",
   "state.peer.voiceConnected": "Voice connected",
   "host.topology.idle": "In the room. No active media routes.",

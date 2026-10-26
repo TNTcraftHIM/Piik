@@ -237,6 +237,7 @@ export const runtimeCapabilitiesSchema = z.object({
   roomVoice: z.boolean().default(false),
   roomVoiceListeningPresence: z.boolean().default(false),
   roomVoiceBitrate: z.boolean().optional(),
+  roomControl: z.boolean().optional(),
   relayVolunteer: z.boolean().default(false),
   roomReactionIds: z.array(z.string().max(32).regex(/^[a-z][a-z0-9-]*$/)).max(64).optional(),
   hostRoomSession: z.boolean().default(false),
@@ -932,7 +933,39 @@ const signalingChallengeSequenceSchema = z
   .min(0)
   .max(Number.MAX_SAFE_INTEGER);
 
+export const roomControlCommandSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("grant-sharing"), peerId: opaqueIdSchema, allowed: z.boolean() }).strict(),
+  z.object({ action: z.literal("transfer-owner"), peerId: opaqueIdSchema }).strict(),
+  z.object({ action: z.literal("cancel-transfer"), offerId: opaqueIdSchema }).strict(),
+  z.object({ action: z.literal("accept-transfer"), offerId: opaqueIdSchema }).strict(),
+  z.object({ action: z.literal("decline-transfer"), offerId: opaqueIdSchema }).strict(),
+]);
+export type RoomControlCommand = z.infer<typeof roomControlCommandSchema>;
+
+export const roomControlStateSchema = z.object({
+  type: z.literal("room-control-state"),
+  codeEntryPolicy: codeEntryPolicySchema,
+  viewerPasswordEnabled: z.boolean(),
+  ownerPeerId: opaqueIdSchema.nullable(),
+  presenterPeerId: opaqueIdSchema.nullable(),
+  shareGeneration: opaqueIdSchema.nullable(),
+  members: z.array(z.object({ peerId: opaqueIdSchema, sharingAllowed: z.boolean(), supported: z.boolean() }).strict())
+    .max(MAX_PARTICIPANTS_PER_ROOM_LIMIT),
+  transfer: z.object({ id: opaqueIdSchema, fromPeerId: opaqueIdSchema, targetPeerId: opaqueIdSchema }).strict().nullable(),
+}).strict();
+export type RoomControlState = z.infer<typeof roomControlStateSchema>;
+
 export const clientMessageSchema = z.union([
+  z.object({ type: z.literal("subscribe-room-control") }).strict(),
+  z.object({ type: z.literal("room-control-command"), command: roomControlCommandSchema }).strict(),
+  z.object({ type: z.literal("claim-presentation"), requestId: opaqueIdSchema,
+    previousGeneration: opaqueIdSchema.nullable(), shareGeneration: opaqueIdSchema,
+    qualitySettings: qualitySettingsSchema, routePolicy: routePolicySchema }).strict(),
+  z.object({ type: z.literal("authenticate-member"), protocol: z.literal(SIGNALING_PROTOCOL),
+    roomId: roomCodeSchema, token: tokenSchema, clientId: opaqueIdSchema, displayName: displayNameSchema,
+    shareGeneration: opaqueIdSchema.optional(), sharingPaused: z.boolean().optional(),
+    qualitySettings: qualitySettingsSchema.optional(), routePolicy: routePolicySchema,
+    routePreference: viewerRoutePreferenceSchema.optional() }).strict(),
   z.object({ type: z.literal("set-relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
   z.object({ type: z.literal("subscribe-room-voice"), deafened: z.boolean().optional(), bitrate: z.literal(true).optional() }).strict(),
   z.object({ type: z.literal("room-voice-command"), command: roomVoiceCommandSchema }).strict(),
@@ -1126,6 +1159,14 @@ const authenticatedMessageSchema = z.union([
 ]);
 
 export const serverMessageSchema = z.union([
+  z.strictObject({ type: z.literal("presentation-revoked"), shareGeneration: opaqueIdSchema }),
+  roomControlStateSchema,
+  z.object({ type: z.literal("room-control-ready"), token: tokenSchema, canonicalUrl: z.url() }).strict(),
+  z.object({ type: z.literal("room-ownership-offer"), offerId: opaqueIdSchema, token: tokenSchema }).strict(),
+  z.object({ type: z.literal("room-role-changed"), state: authenticatedMessageSchema }).strict(),
+  z.object({ type: z.literal("room-control-error"),
+    code: z.enum(["not-allowed", "member-unavailable", "changed", "storage-failed"]),
+    requestId: opaqueIdSchema.optional() }).strict(),
   z.object({ type: z.literal("relay-volunteer"), enabled: z.boolean(), capacity: z.number().int().min(0).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
   roomVoiceStateSchema,
   z.object({ type: z.literal("room-voice-signal"), ...voiceSignalShape }).strict()

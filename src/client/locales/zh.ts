@@ -2,6 +2,26 @@ import type { GlyphName } from "../ui/icons";
 
 // Canonical catalog: add keys here first; every other locale must match it.
 export const zh = {
+  "room.control.saved": "房间设置已更新。",
+
+  "room.control.sharingRevoked": "房主已撤销你的共享权限。",
+  "room.control.share": "接替共享",
+  "room.control.shareHint": "选好来源后接替当前画面，取消选择不会影响正在播放的内容。",
+  "room.control.offer": "{name} 邀请你成为房主。",
+  "room.control.waiting": "等待 {name} 接受房主转让…",
+  "room.control.offerHint": "接受后可管理房间和成员共享权限，当前画面与语音保持不变。",
+  "room.control.accept": "接受房主",
+  "room.control.decline": "暂不接受",
+  "room.control.grant": "允许共享",
+  "room.control.revoke": "撤销共享权限",
+  "room.control.transfer": "转让房主",
+  "room.control.updateRequired": "该成员需要刷新页面后才能使用此功能。",
+  "room.control.captureFailed": "无法开始共享，请重新选择来源。",
+  "room.control.error.not-allowed": "你没有执行此操作的权限。",
+  "room.control.error.member-unavailable": "成员暂不可用，请在对方重新连接后重试。",
+  "room.control.error.changed": "房间状态已改变，请重试。",
+  "room.control.error.storage-failed": "未能保存房主身份，房主保持不变。请检查浏览器存储后重试。",
+
   "state.peer.present": "已在房间",
   "state.peer.voiceConnected": "语音已连接",
   "host.topology.idle": "已在房间，暂无媒体线路。",

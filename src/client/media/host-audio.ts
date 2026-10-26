@@ -21,6 +21,9 @@ export class HostAudio {
     private microphoneChanged: (enabled: boolean) => void = () => {}) {
     this.watchSource();
   }
+  setListeners(availabilityChanged: (available: boolean) => void, microphoneChanged: (enabled: boolean) => void): void {
+    this.availabilityChanged = availabilityChanged; this.microphoneChanged = microphoneChanged;
+  }
   get sourceStream(): MediaStream { return this.source; }
   get sourceKind(): BrowserCaptureSource { return this.kind; }
   get sourceAudioAvailable(): boolean { return this.source.getAudioTracks().some(track => track.readyState === "live"); }

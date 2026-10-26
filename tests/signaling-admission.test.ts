@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SignalingClient } from "../src/client/lib/signaling";
 import { DEFAULT_ROUTE_POLICY } from "../src/shared/protocol";
+import { roomHandoffSnapshot } from "../src/client/lib/room-handoff";
+import type { PreparedPresentation } from "../src/client/lib/room-handoff";
 
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
@@ -38,6 +40,89 @@ function fixture(role: "host" | "viewer" = "host") {
 }
 
 describe("room authentication and site admission", () => {
+  it("releases a selected source when the receiving media page cannot mount", () => {
+    const { signal, sockets } = fixture("viewer");
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const auth = (role: string) => JSON.parse(wire.serverMessages.find((sample: { name: string }) => sample.name === `authenticated-${role}-minimal`).json);
+    sockets[0]!.receive(auth("viewer"));
+    signal.enableRoomControl();
+    const stop = vi.fn(), dispose = vi.fn();
+    const stream = { getTracks: () => [{ stop }] };
+    const prepared = { stream, audio: { sourceStream: stream, dispose }, codec: { primary: "vp8" } } as unknown as PreparedPresentation;
+    expect(signal.claimPresentation(prepared, auth("host").qualitySettings, DEFAULT_ROUTE_POLICY)).toBe(true);
+    const request = JSON.parse(sockets[0]!.send.mock.calls.at(-1)![0]);
+    sockets[0]!.receive({ type: "room-role-changed", state: { ...auth("host"), shareGeneration: request.shareGeneration } });
+    signal.stop();
+    expect(stop).toHaveBeenCalled();
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("updates management authority without replacing the current publisher's connection", () => {
+    const { signal, sockets } = fixture();
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const authenticated = JSON.parse(wire.serverMessages.find((sample: { name: string }) => sample.name === "authenticated-host-minimal").json);
+    sockets[0]!.receive(authenticated);
+    signal.enableRoomControl();
+    const state = { type: "room-control-state", codeEntryPolicy: "open", viewerPasswordEnabled: false, ownerPeerId: authenticated.peerId, presenterPeerId: authenticated.peerId,
+      shareGeneration: "share_generation_12345678", members: [], transfer: null };
+    sockets[0]!.receive(state);
+    sockets[0]!.receive({ ...state, ownerPeerId: "new_owner_peer_12345678" });
+    expect(signal.ownerToken).toBeNull();
+    expect(signal.ownsHostRoom("9527", null)).toBe(true);
+    expect(signal.wantsHostPublication("share_generation_12345678")).toBe(true);
+    expect(sockets[0]!.close).not.toHaveBeenCalled();
+    signal.stop();
+  });
+
+  it("retains the room session and draft while handing queued media to a new endpoint", () => {
+    const { signal, sockets, events } = fixture();
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const auth = (role: string) => JSON.parse(wire.serverMessages.find(
+      (sample: { name: string }) => sample.name === `authenticated-${role}-minimal`).json);
+    sockets[0]!.receive(auth("host"));
+    sockets[0]!.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+    const interactions = signal.interactions!;
+    interactions.setDraft("keep this draft");
+    const next = { ...auth("viewer"), peerId: auth("host").peerId };
+    sockets[0]!.receive({ type: "room-role-changed", state: next });
+    expect(roomHandoffSnapshot()?.signal).toBe(signal);
+    expect(signal.mediaRole).toBe("viewer");
+    events.onMessage.mockClear();
+    signal.releaseMedia();
+    expect(sockets[0]!.close).not.toHaveBeenCalled();
+    sockets[0]!.receive({ type: "host-status", online: true, paused: false });
+    expect(events.onMessage).not.toHaveBeenCalled();
+    const successor = { onMessage: vi.fn(), onStatus: vi.fn(), onAccessRequired: vi.fn(), onTerminated: vi.fn() };
+    signal.attach(successor).start();
+    expect(successor.onMessage.mock.calls.map(([message]) => message.type)).toEqual(["authenticated", "host-status"]);
+    expect(signal.interactions).toBe(interactions);
+    expect(interactions.getSnapshot().draft).toBe("keep this draft");
+    expect(interactions.getSnapshot().ready).toBe(true);
+    signal.releaseMedia();
+    expect(sockets[0]!.close).toHaveBeenCalledOnce();
+  });
+
+  it("falls back from an expired member credential to the saved owner credential after a server restart", async () => {
+    const { signal, sockets } = fixture("viewer");
+    const storage = new Map<string, string>();
+    vi.stubGlobal("sessionStorage", { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
+    const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));
+    const auth = JSON.parse(wire.serverMessages.find((sample: { name: string }) => sample.name === "authenticated-viewer-minimal").json);
+    sockets[0]!.receive(auth);
+    const control = signal.enableRoomControl()!;
+    control.ownerToken = "n".repeat(43);
+    sockets[0]!.receive({ type: "room-control-ready", token: "m".repeat(43), canonicalUrl: "https://share.test/r/9527" });
+    sockets[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1012 }));
+    await vi.advanceTimersByTimeAsync(800);
+    sockets[1]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(sockets[1]!.send.mock.calls[0]![0]).type).toBe("authenticate-member");
+    sockets[1]!.receive({ type: "error", code: "INVALID_TOKEN", message: "Membership expired" });
+    sockets[1]!.dispatchEvent(Object.assign(new Event("close"), { code: 4003 }));
+    await vi.advanceTimersByTimeAsync(1500);
+    sockets[2]!.dispatchEvent(new Event("open"));
+    expect(JSON.parse(sockets[2]!.send.mock.calls[0]![0])).toMatchObject({ type: "authenticate", role: "host", token: "n".repeat(43), roomOnly: true });
+    signal.stop();
+  });
   it("replays only this page's relay intent after the authenticated page's ordinary capacity report", async () => {
     const { signal, sockets, events } = fixture("viewer");
     const wire = JSON.parse(readFileSync(new URL("./fixtures/wire-samples.json", import.meta.url), "utf8"));

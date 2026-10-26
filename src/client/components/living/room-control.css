@@ -1,0 +1,8 @@
+.lr-room-control { width: 100%; }
+.lr-room-control:empty { display: none; }
+.lr-room-control-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.lr-room-control-note { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.lr-room-control-offer { padding: 16px; margin-block: 12px; border: 1px solid var(--control-edge); border-radius: 16px; background: var(--panel); }
+.lr-room-control-offer p { margin: 0 0 12px; overflow-wrap: anywhere; }
+.lr-member-control { display: flex; flex-direction: column; align-items: stretch; gap: 8px; border-top: 1px solid var(--control-edge); padding-top: 12px; margin-top: 12px; }
+.lr-room-control-error { color: var(--danger); font-size: 13px; }

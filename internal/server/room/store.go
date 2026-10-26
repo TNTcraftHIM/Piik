@@ -56,14 +56,17 @@ func hasCode(err error, code ErrorCode) bool {
 const (
 	admittedByGrant = "grant"
 	admittedByCode  = "code"
+	admittedByOwner = "owner"
 )
 
 type participant struct {
 	clientID string
 	peerID   string
 	// An empty sessionID means offline; validated wire IDs are never empty.
-	sessionID  string
-	admittedBy string
+	sessionID         string
+	admittedBy        string
+	memberTokenDigest []byte
+	sharingAllowed    bool
 }
 
 // Room is one room's authority plus its participants. It has no exported
@@ -77,6 +80,8 @@ type Room struct {
 	viewerAuthorizationGeneration string
 	codeEntryPolicy               protocol.CodeEntryPolicy
 	host                          *participant
+	// host is the single media root. Ownership can move independently of it.
+	owner *participant
 	// Process-local: restored rooms receive a fresh reconnect window. Only the
 	// last authenticated departure updates this; failed admission cannot renew it.
 	emptySinceMs int64
@@ -512,6 +517,9 @@ func (s *Store) SetViewerGrant(
 	}
 
 	var revokedViewers []RevokedViewer
+	if room.host != nil && room.host.admittedBy == admittedByGrant {
+		revokedViewers = append(revokedViewers, RevokedViewer{PeerID: room.host.peerID, SessionID: room.host.sessionID})
+	}
 	for _, viewer := range room.viewers.Values() {
 		if viewer.admittedBy == admittedByGrant {
 			revokedViewers = append(revokedViewers, RevokedViewer{
@@ -546,6 +554,12 @@ func (s *Store) SetViewerGrant(
 	for clientID, viewer := range room.viewers.All() {
 		if viewer.admittedBy == admittedByGrant {
 			room.viewers.Delete(clientID)
+		}
+	}
+	if room.host != nil && room.host.admittedBy == admittedByGrant {
+		room.host = room.owner
+		if room.owner != nil {
+			room.viewers.Delete(room.owner.clientID)
 		}
 	}
 	if wasOccupied && !roomOccupied(room) {
@@ -714,7 +728,7 @@ func (s *Store) RemoveDisconnectedViewer(roomID, peerID string) bool {
 		return false
 	}
 	viewer := findViewerByPeerID(room, peerID)
-	if viewer == nil || viewer.sessionID != "" {
+	if viewer == nil || viewer.sessionID != "" || viewer == room.owner {
 		return false
 	}
 	return room.viewers.Delete(viewer.clientID)
@@ -818,7 +832,7 @@ func (s *Store) AbandonAllRooms() ([]ClosedRoom, error) {
 func (s *Store) connectHost(
 	room *Room, input ConnectParticipantInput,
 ) (ConnectedParticipant, error) {
-	current := room.host
+	current := room.owner
 	if current != nil && current.sessionID != "" && current.clientID != input.ClientID {
 		return ConnectedParticipant{}, codeError(CodeHostAlreadyConnected)
 	}
@@ -834,16 +848,26 @@ func (s *Store) connectHost(
 	}
 	replacedSessionID := joining.sessionID
 	joining.sessionID = input.SessionID
-	room.host = joining
+	if room.owner == nil || room.owner == room.host {
+		room.host = joining
+	} else if current != joining {
+		room.viewers.Delete(current.clientID)
+		room.viewers.Set(joining.clientID, joining)
+	}
+	room.owner = joining
+	joining.admittedBy = admittedByOwner
 
 	return connectedParticipant(
-		room, joining.peerID, protocol.RoleHost, replacedSessionID, input.SessionID), nil
+		room, joining.peerID, participantRole(room, joining), replacedSessionID, input.SessionID), nil
 }
 
 func (s *Store) connectViewer(
 	room *Room, clientID, sessionID, admittedBy string,
 ) (ConnectedParticipant, error) {
 	joining, ok := room.viewers.Get(clientID)
+	if (ok && joining == room.owner) || (room.host != nil && room.host.clientID == clientID) {
+		return ConnectedParticipant{}, codeError(CodeInvalidToken)
+	}
 	if !ok && room.viewers.Len() >= s.maxViewersPerRoom {
 		return ConnectedParticipant{}, codeError(CodeRoomFull)
 	}

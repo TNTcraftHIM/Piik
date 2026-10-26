@@ -9,12 +9,18 @@ owns ports and [self-hosting](../operations/self-hosting.md) owns service setup.
 
 - Media defaults to automatic P2P-first routing. Viewers may constrain their own
   incoming hop; parent selection, transport and adaptation remain automatic.
-- The Host is the only shared-picture source. Every Viewer has at most one active upstream, and
+- One authorized publisher is the shared-picture source. Every receiver has at most one active upstream, and
   the committed media graph is acyclic and source-reachable.
 - A Viewer may relay its received Browser track to bounded peer children. This
   is standard WebRTC receive, decode, and per-child re-encode, not shared encode.
 - SFU-fed and peer-fed Viewers may both serve as ordinary peer parents.
 - A route ends in usable media, explicit bounded waiting, or clear failure.
+
+Transport code and the existing wire roles call the current media root `host`
+and its receivers `viewer`; these roles do not grant room ownership. A member
+takeover retires the old picture before rebinding this controller's root, while
+retaining room identities, chat and voice membership. There is no parallel
+publication graph. Changing room ownership alone does not change the media root.
 
 Every deployment uses this controller. Leaving embedded SFU disabled keeps the
 same bounded P2P graph without its SFU fallback and fixes Privacy mode on for all

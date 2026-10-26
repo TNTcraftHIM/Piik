@@ -45,10 +45,11 @@ export function RoomVoiceControls({ session }: Props) {
   const joined = Boolean(me?.joined);
   const host = state.role === "host";
   const voiceClosed = !host && state.room?.enabled === false;
-  const actionTitle = host ? joined ? "voice.close" : "voice.open" : joined ? "voice.leave" : "voice.join";
-  const actionHint = host ? joined ? "hint-voice-close" : "hint-voice-open"
+  const canClose = host && Boolean(state.room?.enabled);
+  const actionTitle = host ? canClose ? "voice.close" : "voice.open" : joined ? "voice.leave" : "voice.join";
+  const actionHint = host ? canClose ? "hint-voice-close" : "hint-voice-open"
     : joined ? "hint-voice-leave" : voiceClosed ? "hint-voice-closed" : "hint-voice-join";
-  const actionExplanation = host ? joined ? "voice.closeHint" : "voice.openHint" : voiceClosed ? "voice.closedHint" : undefined;
+  const actionExplanation = host ? canClose ? "voice.closeHint" : "voice.openHint" : voiceClosed ? "voice.closedHint" : undefined;
   return <>
     <div className="lr-voice-toolbar lr-media-controls" role="group" aria-label={t("interaction.voice")}>
       {joined && <div className="lr-voice-quick-controls">
@@ -72,11 +73,13 @@ export function RoomVoiceControls({ session }: Props) {
           pressed={!state.deafened} onClick={() => session.deafen(!state.deafened)} />
         </AudioVolumeMenu>
       </div>}
-      <Btn icon={!joined ? "headphones" : host ? "stop" : "door"}
-        title={actionTitle} cap={actionTitle} tone={joined && host ? "danger" : undefined} size="compact" draw="voice-membership"
+      {canClose && !joined && <Btn icon="headphones" cap="voice.join" title="voice.join" size="compact" disabled={!state.connected}
+        onClick={() => { session.resumeAudio(); session.command({ action: "join" }); }} />}
+      <Btn icon={canClose ? "stop" : !joined ? "headphones" : "door"}
+        title={actionTitle} cap={actionTitle} tone={canClose ? "danger" : undefined} size="compact" draw="voice-membership"
         hint={actionHint} hintText={actionExplanation}
         disabled={!state.connected || !state.room || !joined && !host && !state.room.enabled}
-        onClick={() => { if (!joined) session.resumeAudio(); session.command({ action: joined ? "leave" : "join" }); }} />
+        onClick={() => { if (!joined) session.resumeAudio(); session.command({ action: joined || canClose ? "leave" : "join" }); }} />
     </div>
     {state.autoplayBlocked && <Btn icon="play" title="voice.play" cap="voice.play" size="compact" hint="hint-local-play" onClick={() => session.resumeAudio()} />}
     {state.error && <p className="lr-voice-control-error" role="alert"><Glyph name="alert" size={16} />

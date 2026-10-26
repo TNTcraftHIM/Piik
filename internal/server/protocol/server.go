@@ -249,6 +249,18 @@ func DecodeServerMessage(data []byte) (ServerMessage, error) {
 		return nil, err
 	}
 	switch messageType {
+	case "room-control-state":
+		return decodeRoomControlState(data)
+	case "room-control-ready":
+		return decodeRoomControlReady(data)
+	case "room-ownership-offer":
+		return decodeRoomOwnershipOffer(data)
+	case "room-role-changed":
+		return decodeRoomRoleChanged(data)
+	case "room-control-error":
+		return decodeRoomControlError(data)
+	case "presentation-revoked":
+		return decodePresentationRevoked(data)
 	case "relay-volunteer":
 		return decodeRelayVolunteer(data)
 	case "room-voice-state":

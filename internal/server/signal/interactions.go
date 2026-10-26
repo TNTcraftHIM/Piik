@@ -36,10 +36,14 @@ func (s *Server) handleRoomInteraction(sess *session, actor *authenticatedSessio
 		reject("busy")
 		return
 	}
+	role := protocol.RoleViewer
+	if s.store.IsRoomOwner(actor.roomID, actor.peerID, sess.sessionID) {
+		role = protocol.RoleHost
+	}
 	event := protocol.RoomInteractionMessage{
 		Type: "room-interaction", ID: opaqueID(), RequestID: message.RequestID,
 		OccurredAt: protocol.Int(now),
-		Sender:     protocol.InteractionSender{PeerID: actor.peerID, Role: actor.role, DisplayName: protocol.DisplayName(*actor.displayName)},
+		Sender:     protocol.InteractionSender{PeerID: actor.peerID, Role: role, DisplayName: protocol.DisplayName(*actor.displayName)},
 		Payload:    message.Payload,
 	}
 	encoded, err := protocol.EncodeServerMessage(event)

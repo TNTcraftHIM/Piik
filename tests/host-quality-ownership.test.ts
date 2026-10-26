@@ -81,6 +81,7 @@ function fixture(launchedByClient = true, nativeConnected = true) {
   const route = { updateProfile: vi.fn(async () => true), resyncAuthoritative: vi.fn(async (): Promise<void> => undefined) };
   let context: ReturnType<typeof createContext>;
   const state = {
+    handoff: undefined, controlState: { state: null }, setRoomVoiceSession: vi.fn(), setRoomControl: vi.fn(),
     debugError, debugEvent, debugOperation, NativeCompatibilityError, NativeRequestError, NativeMediaBridgeError, isCapturePermissionFailure, hostFailureCode, hostActionErrorKey, hostServerErrorKey, DOMException, AbortController,
     launchedByClient, isClientActivated: vi.fn(() => launchedByClient), hostRoomSessionAvailable: false,
     NativeClient: { connect: vi.fn(async (_options?: { signal: AbortSignal }): Promise<typeof client | null> => null) },
@@ -350,6 +351,7 @@ describe("Host room ownership", () => {
           onTerminated(reason: "SIGNAL_TERMINATED"): void;
           onAccessRequired(): void;
         }) { signals.push(this); }
+      get ownerToken() { return this.identity.token; }
       ownsHostRoom(roomId: string, token: string) { return this.identity.roomId === roomId && this.identity.token === token; }
       wantsHostPublication(generation: string) { return this.identity.shareGeneration === generation && this.identity.roomOnly !== true; }
     }

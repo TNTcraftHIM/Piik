@@ -6,7 +6,9 @@ the storage decision; implementation detail belongs in code and tests.
 
 ## Room Authority
 
-- A room has one Host and at most 20 authenticated Viewers.
+- A room has one owner and at most 20 other authenticated members. The owner
+  manages room access, voice availability and permission to share. Exactly one
+  member supplies the shared picture at a time.
 - Room codes are random free four-digit values from `1000..9999`. A code locates
   a room within its site authority; it is not globally unique, a secret or a
   permanent identity. App public-link rooms belong to that App's local authority.
@@ -21,7 +23,7 @@ the storage decision; implementation detail belongs in code and tests.
   claim; losing Host authority clears that tab without erasing another tab's
   resume hint.
 - Room identity and credentials have no inactivity expiry by default. The exact
-  Host token resumes the room until explicit replacement or deletion, including
+  Host token resumes the room until ownership transfer, explicit replacement or deletion, including
   the optional empty-room policy below. Grant rotation or revocation ends an
   invitation without changing the room code.
 - The Host may replace its room code. Replacement atomically creates a different
@@ -32,6 +34,29 @@ the storage decision; implementation detail belongs in code and tests.
   authority and allocates another code when that code is unavailable. The store
   remains bounded by 9,000 codes; full allocation rejects new rooms when no
   empty room may be reclaimed under the deployment's retention policy.
+
+### Ownership and permission to share
+
+The owner may offer ownership to a connected member. The recipient must accept;
+the offer expires after one minute or when either participating session is replaced
+or leaves. The recipient saves its replacement credential before accepting. The
+server commits the new token digest before changing live ownership; the old token
+then loses all management authority. Ownership transfer preserves the active
+picture, chat and voice membership. The former owner retains permission to share,
+which the new owner may revoke.
+
+Sharing permission is separate from ownership. An authorized member selects a
+screen, window, tab or camera before replacing the current picture. Canceling
+selection leaves the current source untouched. The server serializes takeover
+against the current publication generation and retires the old media routes and
+capture. Revoking sharing permission stops that member's active publication.
+It does not remove room admission or authorize management, microphone capture,
+or remote control. Live permissions end with membership or server restart.
+
+Opted-in clients keep a room-scoped member credential in tab storage to reconnect
+the same participant after media-role changes. It cannot authorize another room,
+client identity, or management action. Legacy clients may continue watching;
+only clients supporting room control can receive ownership or sharing permission.
 
 ### Optional empty-room retention
 
@@ -85,8 +110,10 @@ Three independent authorities exist:
    handshake. The Host checks the site-access authority before entering the
    password gate; an allowed or unavailable check retains ordinary connection
    recovery. Explicit room credential rejection remains terminal.
-2. **Host ownership.** The exact Host token authorizes that room's Host and
-   access-management operations. It cannot authorize another room.
+2. **Host ownership.** The exact Host token authorizes resuming and managing
+   that room, including for an invited member who accepts ownership without a
+   site-access cookie. It cannot authorize another room. Creating or replacing
+   a room still requires site admission.
 3. **Viewer invitation.** Every room creates a 128-bit, 22-character base64url
    Viewer grant. It authorizes only the Viewer role for that exact room
    incarnation and bypasses site access and code-entry policy.
@@ -167,8 +194,9 @@ compatibility and design rationale.
 ## Room Voice
 
 Optional room voice uses the same authenticated room.
-The Host joining opens room voice; leaving closes it for everyone. Channel
-availability is derived from that membership, not a separate switch. Authenticated
+The owner joining opens room voice; the owner's close action ends it for everyone.
+Ownership transfer keeps an open channel and existing memberships. A new owner
+who has not joined may join without opening a microphone, or close the channel. Authenticated
 room members can join an open channel without another approval. Joining never
 opens a microphone. Closing clears everyone's voice membership and publications;
 reopening does not rejoin Viewers or restart microphones. Each speaker explicitly
@@ -177,7 +205,7 @@ session replacement retire that publication. Local mute changes
 only the listener's playback, including when that listener relays for others.
 Pausing listening mutes all local room-voice playback without changing the
 microphone, membership or forwarding. Microphone and listening are independent.
-The Host owns one room-wide voice bitrate ceiling. Changing it does not open
+The room owner controls one room-wide voice bitrate ceiling. Changing it does not open
 voice, activate microphones or replace routes. It is live room state, not App
 configuration; [media quality](./media-quality.md#capture-and-controls) owns its bounds.
 

@@ -219,7 +219,8 @@ export function clearHostRoom(keepResumeHint = false): void {
   releaseHostRoom();
 }
 
-export function releaseHostRoom(): void {
+export function releaseHostRoom(expected?: Pick<HostRoomIdentity, "roomId" | "hostToken">): void {
+  if (expected && (hostRoomClaim?.room.roomId !== expected.roomId || hostRoomClaim.room.hostToken !== expected.hostToken)) return;
   if (hostRoomClaim) {
     hostRoomClaim.release();
     hostRoomRelease = hostRoomClaim.done;

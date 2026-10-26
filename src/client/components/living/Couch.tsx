@@ -33,6 +33,7 @@ export interface CouchHostEntry {
 
 export interface CouchProps {
   view: "host" | "viewer";
+  ownerPeerId?: string;
   host?: CouchHostEntry | null;
   entries: CouchEntry[];
   voiceState?: RoomVoiceState | null;
@@ -48,6 +49,7 @@ export interface CouchProps {
 
 export function Couch({
   view,
+  ownerPeerId,
   host,
   entries,
   voiceState,
@@ -74,9 +76,10 @@ export function Couch({
     return state.appearance ? state : undefined;
   };
   const voiceLabel = (voice: VoicePresentation) => [t(voice.label), voice.appearance?.deafened && t("voice.listeningPaused")].filter(Boolean).join(comma);
+  const isOwner = (key: string) => key === (ownerPeerId ?? host?.key);
   const hostVoice = host ? voiceFor(host.key) : undefined;
   const hostLabel = host
-    ? [host.name, host.name === t("common.host") ? null : t("common.host"),
+    ? [host.name, !isOwner(host.key) || host.name === t("common.host") ? null : t("common.host"),
         host.you ? t("common.you") : null, hostVoice ? voiceLabel(hostVoice) : null].filter(Boolean).join(comma)
     : undefined;
   const collaborationLabel = () => t("remote.participant.control");
@@ -123,7 +126,7 @@ export function Couch({
                     aria-controls={participantAction?.controls ?? host.controls}
                     onClick={event => participantAction ? participantAction.open(host.key, event.currentTarget) : host.onSelect?.()}
                   >
-                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance} />
+                    <PawnSvg color={participantColor(host.key)} identity={host.key} host={isOwner(host.key)} voice={hostVoice?.appearance} />
                     <span className="lr-pawn-name">{host.name}</span>
                   </button>
                 ) : (
@@ -132,7 +135,7 @@ export function Couch({
                     role="img"
                     aria-label={hostLabel}
                   >
-                    <PawnSvg color={participantColor(host.key)} identity={host.key} host voice={hostVoice?.appearance} />
+                    <PawnSvg color={participantColor(host.key)} identity={host.key} host={isOwner(host.key)} voice={hostVoice?.appearance} />
                     <span className="lr-pawn-name">{host.name}</span>
                   </span>
                 )}
@@ -141,11 +144,11 @@ export function Couch({
           {entries.map((entry, index) => {
             const stateLabel = t(entry.status.labelKey);
             const voice = voiceFor(entry.key);
-            const label = [entry.name, entry.you && t("common.you"), stateLabel,
+            const label = [entry.name, isOwner(entry.key) && t("common.host"), entry.you && t("common.you"), stateLabel,
               voice && voiceLabel(voice), entry.collaboration && collaborationLabel()].filter(Boolean).join(comma);
             const inner = (
               <>
-                <PawnSvg color={participantColor(entry.key)} identity={entry.key} voice={voice?.appearance} collaboration={entry.collaboration} />
+                <PawnSvg color={participantColor(entry.key)} identity={entry.key} host={isOwner(entry.key)} voice={voice?.appearance} collaboration={entry.collaboration} />
                 {view === "host" ? <i className="lr-pawn-led" data-tone={entry.status.tone}
                   data-pulse={entry.status.pulse || undefined} aria-hidden="true" /> : null}
                 <span className="lr-pawn-name">

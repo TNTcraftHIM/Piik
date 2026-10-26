@@ -2198,7 +2198,8 @@ func TestSignalRequiresSiteAccessForCodeOnlyViewersWhileAcceptingRoomGrants(t *t
 		"token":    h.room.HostToken,
 		"clientId": "host-client-without-admission",
 	})
-	expectMatch(t, unauthorizedHost.next("error").raw, `{"code":"AUTH_REQUIRED"}`)
+	unauthorizedHost.next("authenticated")
+	h.closeClient(unauthorizedHost)
 
 	viewerWithHostCookie := openClientWithCookie(t, h, siteAccessCookie)
 	admitted := authenticate(t, viewerWithHostCookie, h.room, protocol.RoleViewer, "viewer-with-host-cookie", 1, "",

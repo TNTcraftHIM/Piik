@@ -16,6 +16,10 @@ import { qualitySettingsEqual } from "../media/quality";
 import { debugEvent } from "./debug";
 import { RoomInteractionSession } from "./room-interactions";
 import { RoomVoiceSession } from "../room-voice/session";
+import { RoomControlSession, readMemberCredential, saveMemberCredential } from "./room-control";
+import { handOffRoom, disposePreparedPresentation, type PreparedPresentation } from "./room-handoff";
+import { createOpaqueId } from "./opaque-id";
+import { DEFAULT_ROUTE_POLICY } from "../../shared/protocol";
 import { getSiteAccess } from "./api";
 
 type WithoutProtocolEnvelope<T> = T extends {
@@ -24,11 +28,13 @@ type WithoutProtocolEnvelope<T> = T extends {
 }
   ? Omit<T, "type" | "protocol">
   : never;
-type SignalingIdentity = WithoutProtocolEnvelope<
+type AdmissionIdentity = WithoutProtocolEnvelope<
   Extract<ClientMessage, { type: "authenticate" }>
 >;
 
-interface SignalingEvents {
+type SignalingIdentity = Exclude<AdmissionIdentity, { role: "host" }> | (Omit<Extract<AdmissionIdentity, { role: "host" }>, "token"> & { token: string | null });
+
+export interface SignalingEvents {
   onMessage: (message: ServerMessage) => void;
   onStatus: (status: SignalConnectionState) => void;
   onTerminated: (reason: SignalingTerminationReason) => void;
@@ -81,6 +87,67 @@ function signalUrl(): string {
 }
 
 export class SignalingClient {
+  runtimeCapabilities: import("../../shared/protocol").RuntimeCapabilities | null = null;
+  roomControl: RoomControlSession | null = null;
+  private memberToken: string | null = null;
+  private recoveryOwnerToken: string | null = null;
+  private recoveringOwner = false;
+  private baselineIdentity: SignalingIdentity;
+  private handoffPending = false;
+  private unclaimedPresentation: PreparedPresentation | null = null;
+  private mediaMessages: ServerMessage[] = [];
+  private preparedPresentation: { value: PreparedPresentation; requestId: string; timer: number } | null = null;
+  get roomId() { return this.identity.roomId; }
+  get clientId() { return this.identity.clientId; }
+  get displayName() { return this.identity.displayName; }
+  get mediaRole() { return this.identity.role; }
+  get ownerToken() { return this.roomControl ? this.roomControl.ownerToken : (this.identity.role === "host" ? this.identity.token : this.recoveryOwnerToken); }
+  get switchingMedia() { return this.handoffPending; }
+  attach(events: SignalingEvents): SignalingClient { this.events = events; return this; }
+  releaseMedia(): void { if (!this.handoffPending) this.stop(); }
+  enableRoomControl(): RoomControlSession | null {
+    if (this.stopped) return null;
+    if (!this.roomControl) {
+      this.roomControl = new RoomControlSession(this.roomId, message => this.send(message), this.ownerToken);
+      if (this.authenticatedPeerId) this.roomControl.authenticated(this.authenticatedPeerId);
+    }
+    return this.roomControl;
+  }
+  claimPresentation(prepared: PreparedPresentation, qualitySettings: QualitySettings, routePolicy: RoutePolicy): boolean {
+    if (this.preparedPresentation || !this.roomControl?.getSnapshot().connected) return false;
+    const requestId = createOpaqueId(), shareGeneration = createOpaqueId();
+    this.preparedPresentation = { value: prepared, requestId, timer: window.setTimeout(() => { this.retirePreparedPresentation(); this.roomControl?.reportChanged(); }, 15_000) };
+    if (!this.send({ type: "claim-presentation", requestId, shareGeneration, previousGeneration: this.roomControl.getSnapshot().state?.shareGeneration ?? null, qualitySettings, routePolicy })) { this.retirePreparedPresentation(); return false; }
+    return true;
+  }
+  private retirePreparedPresentation() {
+    const prepared = this.preparedPresentation;
+    this.preparedPresentation = null;
+    if (!prepared) return;
+    window.clearTimeout(prepared.timer);
+    disposePreparedPresentation(prepared.value);
+  }
+  private changeMediaRole(state: Extract<ServerMessage, { type: "authenticated" }>) {
+    const prepared = this.preparedPresentation;
+    if (prepared) window.clearTimeout(prepared.timer);
+    this.preparedPresentation = null;
+    if (state.role === "host" && state.shareGeneration && !prepared) {
+      this.send({ type: "stop-sharing", shareGeneration: state.shareGeneration });
+      state = { ...state, shareGeneration: null, routeAssignment: { upstream: { kind: "none" }, childPeerIds: [], sfuPublicationGeneration: null } };
+    }
+    const previous = this.identity;
+    const common = { roomId: previous.roomId, clientId: previous.clientId, displayName: previous.displayName, viewerPresence: true as const };
+    this.identity = state.role === "host" ? { ...common, role: "host", token: this.ownerToken, roomSession: true, roomOnly: state.shareGeneration === null ? true : undefined,
+      shareGeneration: state.shareGeneration ?? undefined, sharingPaused: false, qualitySettings: state.qualitySettings, routePolicy: state.routePolicy }
+      : { ...common, role: "viewer" };
+    this.hostQualityIntent = null;
+    this.pendingShareGeneration = null;
+    this.relayVolunteerIntent = null;
+    this.handoffPending = true;
+    this.unclaimedPresentation = prepared?.value ?? null;
+    this.mediaMessages = [state];
+    handOffRoom(this, state, prepared?.value ?? null);
+  }
   private remoteInputEnabled = false;
   private audioPresenceEnabled = false;
   private hostAudioAvailable: boolean | null = null;
@@ -110,11 +177,14 @@ export class SignalingClient {
   private relayVolunteerIntent: { enabled: boolean; capacity: number } | null = null;
 
   constructor(
-    private readonly identity: SignalingIdentity,
-    private readonly events: SignalingEvents,
+    private identity: SignalingIdentity,
+    private events: SignalingEvents,
     private readonly now: () => number = Date.now,
     capabilities: { roomInteractions?: boolean; roomReactionIds?: readonly string[] } = {},
   ) {
+    this.baselineIdentity = { ...identity };
+    const saved = readMemberCredential(identity.roomId);
+    if (saved) { this.memberToken = saved.token; this.recoveryOwnerToken = saved.ownerToken ?? null; this.identity.clientId = saved.clientId; }
     if (capabilities.roomInteractions) this.enableRoomInteractions(capabilities.roomReactionIds);
   }
 
@@ -219,6 +289,15 @@ export class SignalingClient {
   }
 
   start(): void {
+    if (this.handoffPending) {
+      this.handoffPending = false;
+      this.unclaimedPresentation = null;
+      this.events.onStatus(this.authenticatedPeerId ? "connected" : "reconnecting");
+      const queued = this.mediaMessages; this.mediaMessages = [];
+      queued.forEach(message => this.events.onMessage(message));
+      this.flushAudioPresence(); this.flushCoPlayPresence();
+      return;
+    }
     if (this.socket || this.stopped) {
       return;
     }
@@ -229,6 +308,10 @@ export class SignalingClient {
   }
 
   stop(): void {
+    this.retirePreparedPresentation();
+    if (this.unclaimedPresentation) disposePreparedPresentation(this.unclaimedPresentation);
+    this.unclaimedPresentation = null;
+    this.roomControl?.close();
     this.interactions?.close();
     this.roomVoice?.close();
     this.stopped = true;
@@ -293,8 +376,8 @@ export class SignalingClient {
     }
   }
 
-  ownsHostRoom(roomId: string, hostToken: string): boolean {
-    return this.identity.role === "host" && this.identity.roomId === roomId && this.identity.token === hostToken;
+  ownsHostRoom(roomId: string, hostToken: string | null): boolean {
+    return !this.stopped && this.identity.role === "host" && this.identity.roomId === roomId && this.identity.token === hostToken;
   }
 
   wantsHostPublication(shareGeneration: string): boolean {
@@ -403,6 +486,7 @@ export class SignalingClient {
     const socket = new WebSocket(signalUrl());
     this.socket = socket;
     let routeSelectionRequestedAtAuth = false;
+    let membershipExpired = false;
 
     socket.addEventListener("open", () => {
       if (
@@ -412,12 +496,15 @@ export class SignalingClient {
       ) {
         return;
       }
-      const authenticate: ClientMessage = {
-        type: "authenticate",
-        protocol: SIGNALING_PROTOCOL,
-        ...this.identity,
-      };
-      routeSelectionRequestedAtAuth = authenticate.role === "viewer" && authenticate.routePreference !== undefined;
+      const identity = this.identity;
+      const authenticate: ClientMessage = this.memberToken ? {
+        type: "authenticate-member", protocol: SIGNALING_PROTOCOL, roomId: identity.roomId, token: this.memberToken,
+        clientId: identity.clientId, displayName: identity.displayName ?? "Member",
+        routePolicy: identity.role === "host" ? identity.routePolicy : DEFAULT_ROUTE_POLICY,
+        ...(identity.role === "host" ? { shareGeneration: identity.shareGeneration, sharingPaused: identity.sharingPaused, qualitySettings: identity.qualitySettings }
+          : { routePreference: identity.routePreference }),
+      } : { type: "authenticate", protocol: SIGNALING_PROTOCOL, ...identity } as ClientMessage;
+      routeSelectionRequestedAtAuth = "routePreference" in authenticate && authenticate.routePreference !== undefined;
       socket.send(JSON.stringify(authenticate));
       this.authenticationTimer = window.setTimeout(() => {
         if (!this.authenticatedPeerId && this.socket === socket) {
@@ -469,6 +556,39 @@ export class SignalingClient {
         return;
       }
 
+      if (message.type === "error" && message.code === "INVALID_TOKEN" && this.memberToken && !this.authenticatedPeerId) {
+        this.memberToken = null;
+        membershipExpired = true;
+        const ownerToken = this.ownerToken;
+        this.recoveringOwner = ownerToken !== null;
+        this.identity = ownerToken ? { roomId: this.roomId, clientId: this.clientId, displayName: this.identity.displayName, viewerPresence: true,
+          role: "host", token: ownerToken, roomSession: true, roomOnly: true, routePolicy: DEFAULT_ROUTE_POLICY } : { ...this.baselineIdentity };
+        socket.close(4000, "membership expired");
+        return;
+      }
+      if (message.type === "error" && message.code === "INVALID_TOKEN" && this.recoveringOwner && this.baselineIdentity.role === "viewer" && !this.authenticatedPeerId) {
+        // An ownership offer may have been saved just before the server exited,
+        // without committing. Re-enter through the original invitation once.
+        this.recoveringOwner = false;
+        this.recoveryOwnerToken = null;
+        if (this.roomControl) this.roomControl.ownerToken = null;
+        this.identity = { ...this.baselineIdentity };
+        membershipExpired = true;
+        socket.close(4000, "ownership expired");
+        return;
+      }
+      if (message.type === "room-control-ready") {
+        this.memberToken = message.token;
+        try { saveMemberCredential(this.roomId, { clientId: this.clientId, token: message.token, ...(this.ownerToken ? { ownerToken: this.ownerToken } : {}) }); } catch { /* The live connection remains usable without reload recovery. */ }
+        if (this.roomControl) this.roomControl.canonicalUrl = message.canonicalUrl;
+        return;
+      }
+      if (message.type === "room-role-changed") { this.changeMediaRole(message.state); return; }
+      if (message.type === "room-control-error" && message.requestId === this.preparedPresentation?.requestId) this.retirePreparedPresentation();
+      if (this.roomControl?.receive(message)) {
+        if (message.type === "room-control-state" && this.identity.role === "host") this.identity.token = this.roomControl.ownerToken;
+        return;
+      }
       if (message.type === "error" && FATAL_SIGNAL_ERRORS.has(message.code)) {
         this.stop();
         this.events.onMessage(message);
@@ -476,6 +596,7 @@ export class SignalingClient {
       }
 
       if (message.type === "authenticated") {
+        this.recoveringOwner = false;
         this.authenticatedPeerId = message.peerId;
         this.reconnectAttempt = 0;
         this.clearAuthenticationTimer();
@@ -491,6 +612,7 @@ export class SignalingClient {
         debugEvent("signal", "authenticated", { role: this.identity.role, generation });
         this.refreshSignalingWatchdog();
         this.interactions?.authenticated(message.peerId);
+        this.roomControl?.authenticated(message.peerId);
         this.voiceIceConfig = message.iceConfig;
         if (this.roomVoice) {
           this.roomVoice.updateIceConfig(message.iceConfig);
@@ -531,7 +653,12 @@ export class SignalingClient {
       ) {
         this.identity.sharingPaused = false;
       }
-      this.events.onMessage(message);
+      if (message.type === "authenticated" && message.role !== this.identity.role) { this.changeMediaRole(message); return; }
+      if (this.handoffPending) {
+        // Only the media endpoint is changing; chat and voice keep consuming live messages above.
+        if (this.mediaMessages.length >= 256) { this.stop(); return; }
+        this.mediaMessages.push(message);
+      } else this.events.onMessage(message);
       if (message.type === "authenticated") {
         // The page first sends its ordinary relay report. Restore only this
         // page's explicit intent after that legacy report, in wire order.
@@ -550,12 +677,13 @@ export class SignalingClient {
       this.socket = null;
       this.authenticatedPeerId = null;
       this.interactions?.disconnected();
+      this.roomControl?.disconnected();
       this.roomVoice?.disconnected();
       debugEvent("signal", "closed", { role: this.identity.role, code: event.code,
         reconnecting: !this.stopped && shouldReconnectSignaling(event.code) });
       this.clearSignalingWatchdog();
       this.clearAuthenticationTimer();
-      if (!this.stopped && shouldReconnectSignaling(event.code)) {
+      if (!this.stopped && (membershipExpired || shouldReconnectSignaling(event.code))) {
         this.scheduleReconnect();
       } else if (!this.stopped) {
         this.stop();
@@ -859,6 +987,7 @@ export class SignalingClient {
     this.socket = null;
     this.authenticatedPeerId = null;
     this.interactions?.disconnected();
+      this.roomControl?.disconnected();
     this.roomVoice?.disconnected();
     this.clearAuthenticationTimer();
     this.clearSignalingWatchdog();

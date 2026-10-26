@@ -1,3 +1,5 @@
+import { RoomAdmissionControls } from "../components/living/RoomAdmissionControls";
+import { RoomControls } from "../components/living/RoomControls";
 import { useRef, useState } from "react";
 import type { VideoFit, VideoRotation } from "../media/video-geometry";
 import { BackButton, Btn, Chip, NameTag, Pill, SwitchItem } from "../components/living/primitives";
@@ -25,7 +27,6 @@ import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, 
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import { MAX_AUDIO_SEND_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
-import { Tooltip } from "../components/living/Tooltip";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { deriveParticipantStatus, STATUS_CATALOG } from "../ui/media-status";
 import { Glyph } from "../ui/icons";
@@ -73,9 +74,13 @@ export function ControlsPreview() {
   const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
-  const [roomPassword, setRoomPassword] = useState(false);
+  const [roomPassword, setRoomPassword] = useState<string | null>(null);
+  const [admissionPasswordOpen, setAdmissionPasswordOpen] = useState(false);
+  const [admissionDraft, setAdmissionDraft] = useState("");
+  const [admissionVisible, setAdmissionVisible] = useState(false);
+  const [inviteAvailable, setInviteAvailable] = useState(true);
   const [includeCredential, setIncludeCredential] = useState(true);
-  const roomLink = `https://piik.example/r/9527${includeCredential ? "#v=preview" : ""}`;
+  const roomLink = includeCredential && !inviteAvailable ? null : `https://piik.example/r/9527${includeCredential ? "#v=preview" : ""}`;
   const [paused, setPaused] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [name, setName] = useState("Piik friend");
@@ -199,34 +204,25 @@ export function ControlsPreview() {
           <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.sfuOnly")}
             note={t("host.advanced.route.sfuOnlyHint")} hint="hint-route-sfu" />
         </div>
-        <div className="cp-tools" id="admission-preview">
-          <span className="lr-toggle" role="group" aria-label={t("host.policy")}>
-            {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-admission-code" : "hint-policy-private"}
-              text={vis ? undefined : `${t(`host.policy.${value}`)}\n${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
-              <button type="button" className={policy === value ? "is-selected" : undefined} aria-pressed={policy === value}
-                aria-label={t(`host.policy.${value}`)} onClick={() => setPolicy(value)}>
-                <Glyph name={value === "open" ? "globe" : "lock"} size={19} />{vis ? null : <span className="lr-cap">{t(`host.policy.${value}`)}</span>}
-              </button></Tooltip>)}
-          </span>
-          <SwitchItem checked={roomPassword} onChange={setRoomPassword} label={t("host.password.set")} />
+        <div id="admission-preview">
+          <RoomAdmissionControls roomLink={roomLink} inviteAvailable={inviteAvailable}
+            roomLinkBlocked={!includeCredential && policy === "private" && !roomPassword}
+            copied={false} includeInviteCredential={includeCredential} roomMutating={false}
+            activeCodeEntryPolicy={policy} viewerPasswordEnabled={!!roomPassword}
+            passwordOpen={admissionPasswordOpen} viewerPasswordDraft={admissionDraft}
+            viewerPasswordVisible={admissionVisible} savedPassword={roomPassword}
+            copyRoomLink={async () => notify()}
+            changeViewerGrant={async action => setInviteAvailable(action === "rotate")}
+            changeCodeEntryPolicy={async value => setPolicy(value)}
+            changeViewerPassword={async value => { setRoomPassword(value); setAdmissionDraft(value ?? ""); }}
+            setIncludeInviteCredential={setIncludeCredential} setPasswordOpen={setAdmissionPasswordOpen}
+            setViewerPasswordDraft={setAdmissionDraft} setViewerPasswordVisible={setAdmissionVisible} />
         </div>
         <div className="cp-tools">
           <RoomAdmissionBadge policy="open" passwordEnabled={false} />
           <RoomAdmissionBadge policy="private" passwordEnabled />
           <RoomAdmissionBadge policy="private" passwordEnabled={false} />
         </div>
-        <div className="lr-invite-field">
-          <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
-            <input className="lr-invite-url" readOnly dir="ltr" value={roomLink}
-              aria-label={t(includeCredential ? "host.invite" : "host.invite.address")} />
-          </Tooltip>
-          <span className="lr-row-group"><Glyph name="key" size={17} />
-            <SwitchItem checked={includeCredential} onChange={setIncludeCredential}
-              label={t("host.invite.includeCredential")} note={t("host.invite.credentialHint")} hint="hint-invite-link" />
-          </span>
-        </div>
-        {!includeCredential && policy === "private" && !roomPassword ? <Pill icon="lock" tone="warn"
-          comic="hint-policy-private" label={t("host.invite.credentialRequired")} /> : null}
         <p>{en ? "The website's architecture picker uses the same sliding style with native radio buttons. Arrow keys change the choice."
           : "官网的架构选择也复用滑动样式，使用原生单选项；聚焦后可用方向键切换。"}</p>
         <fieldset className="lr-toggle">
@@ -367,7 +363,7 @@ export function ControlsPreview() {
 
 function InteractionControlsPreview() {
   const [viewer, setViewer] = useState(false);
-  const { session, receiveSample } = usePreviewInteractions(viewer);
+  const { session, control, receiveSample } = usePreviewInteractions(viewer);
   const voice = useRoomVoicePreview(viewer);
   const [crowded, setCrowded] = useState(false);
   const [reaction, setReaction] = useState<ReactionId>("heart");
@@ -396,7 +392,7 @@ function InteractionControlsPreview() {
       theaterMode={theater} onToggleTheater={() => setTheater(value => !value)} onReconnect={() => {}} reconnectAvailable={false}
       overlayAction={<RoomChatToggle session={session} />}
       overlaySettings={session && <RoomChatOverlaySettings session={session} />} />
-  </StageTv><RoomInteractions session={session} voice={voice} voiceState={voice.room}
+  </StageTv><RoomControls session={control} participants={[{ role: "host", peerId: "preview-host", displayName: "Piik", upstream: { kind: "none" } }]} /><RoomInteractions roomControl={control} session={session} voice={voice} voiceState={voice.room}
     view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
       Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({
         key: index ? `preview-friend-${index}` : "preview-friend", name: index ? `Friend ${index + 1}` : "Piik friend",

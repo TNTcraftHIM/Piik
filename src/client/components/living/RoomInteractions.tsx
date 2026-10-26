@@ -1,3 +1,5 @@
+import { type RoomControlSession, useRoomControl } from "../../lib/room-control";
+import { MemberRoomControls } from "./RoomControls";
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { normalizeChatText, MAX_CHAT_CODE_POINTS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { RoomInteractionSession } from "../../lib/room-interactions";
@@ -21,6 +23,7 @@ import "./room-interactions.css";
 
 type Props = CouchProps & {
   session: RoomInteractionSession | null;
+  roomControl?: RoomControlSession | null;
   /** The room voice owner supplies controls; moving the panel never moves capture ownership. */
   voice?: {
     content: (onSelect: (peerId: string, trigger: HTMLButtonElement) => void) => ReactNode;
@@ -40,10 +43,12 @@ function ConnectedRoomInteractions(props: ConnectedProps) {
   return state.peerId ? <InteractionPanel {...props} state={state} /> : <Couch {...props} />;
 }
 
-function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & {
+function InteractionPanel({ session, state, voice, roomControl = null, ...couch }: ConnectedProps & {
   state: ReturnType<RoomInteractionSession["getSnapshot"]>;
 }) {
   const { t, vis } = useCopy();
+  const control = useRoomControl(roomControl);
+  const ownerPeerId = control.state?.ownerPeerId ?? couch.host?.key;
   const [chatOpen, setChatOpen] = useState(false);
   const [chatDocument, setChatDocument] = useState<Document | null>(null);
   const detached = Boolean(chatDocument && chatDocument !== document);
@@ -51,7 +56,8 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
   const [page, setPage] = useState<"chat" | "voice">("chat");
   const [target, setTarget] = useState<string | null>(null);
   const [panelTarget, setPanelTarget] = useState<{ peerId: string; trigger: HTMLElement } | null>(null);
-  const [draft, setDraft] = useState("");
+  const draft = state.draft;
+  const setDraft = (value: string | ((current: string) => string)) => session.setDraft(value);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [visible, setVisible] = useState(false);
   const [following, setFollowing] = useState(true);
@@ -175,7 +181,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
       {settingsOpen && <div className="lr-interaction-back"><BackButton onClick={() => setSettingsOpen(null)} /></div>}
       {settingsOpen && (settingsOpen === "voice" ? voice?.settings : <RoomChatSettings session={session} />)}
       {panelTarget && panelPerson && <RoomQuickReactions key={panelTarget.peerId} id={`${id}-reactions`}
-        trigger={panelTarget.trigger} person={panelPerson} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
+        trigger={panelTarget.trigger} person={panelPerson} selfPeerId={state.peerId} hostPeerId={ownerPeerId}
         reactionIds={state.reactionIds} canSend={canSend} onSend={sendReaction}
         onClose={() => setPanelTarget(current => current === panelTarget ? null : current)} />}
       <div className="lr-interaction-page" id={`${id}-chat-page`} role={voice ? "tabpanel" : undefined}
@@ -217,7 +223,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
         {unread ? t("interaction.unread", { count: String(unread) }) : t("interaction.latest")}</span></button>}
       {chatOpen && showChat && latestReaction &&
         <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
-          hostPeerId={couch.host?.key} now={session.now} />}
+          hostPeerId={ownerPeerId} now={session.now} />}
       </div>
       </div>
       <form className="lr-chat-compose" onSubmit={event => {
@@ -251,7 +257,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
             <div className="lr-floating-scroll lr-voice-history">{chatOpen && showVoice && !settingsOpen && voice.content(openPanelReactions)}</div>
             {chatOpen && showVoice && latestReaction &&
               <RoomReactionActivity key={latestReaction.id} reaction={latestReaction} participants={participants}
-                hostPeerId={couch.host?.key} now={session.now} />}
+                hostPeerId={ownerPeerId} now={session.now} />}
           </div>
         </div>
         <div className="lr-interaction-voice-controls">{voice.controls}</div>
@@ -262,7 +268,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
       </div>}
     </FloatingPanel>
     <div className="lr-interaction-couch" ref={area}>
-      <Couch {...couch} participantAction={{ open: openReactions, target, controls: menuId }}
+      <Couch {...couch} ownerPeerId={ownerPeerId} participantAction={{ open: openReactions, target, controls: menuId }}
         footerAction={<span className="lr-interaction-chat-toggle">
           <Btn id={`${id}-toggle`} icon="chat" title={detached ? "interaction.focus" : chatOpen ? "interaction.close" : "interaction.open"}
             cap="interaction.open" expanded={chatOpen} controls={detached ? undefined : id}
@@ -276,12 +282,13 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
     <FloatingPanel id={menuId} trigger={anchor} compact anchorOnOpen icon="smile" className="lr-person-menu"
       title={t("interaction.express")} onOpenChange={open => { if (!open) setTarget(null); }}>
       <div className="lr-floating-scroll lr-person-menu-body">
-      <RoomReactionPicker person={person} selfPeerId={state.peerId} hostPeerId={couch.host?.key}
+      <RoomReactionPicker person={person} selfPeerId={state.peerId} hostPeerId={ownerPeerId}
         reactionIds={state.reactionIds} canSend={canSend} onSend={sendReaction} />
       {state.error || !state.ready ? <div className="lr-interaction-status" role="status">
         <Glyph name={state.error ? "alert" : "network"} size={14} />
         <span className={vis ? "visually-hidden" : undefined}>{t(state.error ? `interaction.error.${state.error}` : "interaction.reconnecting")}</span>
       </div> : null}
+      <MemberRoomControls session={roomControl} peerId={person?.peerId} />
       {inspect && <Tooltip className="lr-person-menu-details-hint" kind="hint-details" text={vis ? undefined : t("host.details")}>
       <button type="button" className="lr-person-menu-details" onClick={() => { document.getElementById(menuId)?.hidePopover(); inspect(); }}>
         <Glyph name="gauge" size={16} />{!vis && t("host.details")}

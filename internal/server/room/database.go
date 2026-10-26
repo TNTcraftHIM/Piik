@@ -190,6 +190,23 @@ func (d *Database) InsertRoom(room StoredRoomAuthority) error {
 	})
 }
 
+// SetHostToken replaces ownership without changing room or invitation identity.
+func (d *Database) SetHostToken(roomID string, previousDigest, nextDigest []byte) error {
+	if err := assertRoomIdentity(roomID, previousDigest); err != nil {
+		return err
+	}
+	if err := assertDigest(nextDigest, "Host token"); err != nil {
+		return err
+	}
+	return d.transaction(func() error {
+		changes, err := d.exec(`UPDATE rooms SET host_token_digest = ? WHERE room_id = ? AND host_token_digest = ?`, nextDigest, roomID, previousDigest)
+		if err != nil {
+			return err
+		}
+		return assertSingleChange(changes, "ownership transfer")
+	})
+}
+
 // SetViewerPassword updates the exact Host's room; nil material clears the password.
 func (d *Database) SetViewerPassword(
 	roomID string, hostTokenDigest, viewerPasswordMaterial []byte,

@@ -543,8 +543,9 @@ func (c *Controller) RebindHostIdentity(peerID, sessionID string, nowMs *int64) 
 			EffectiveDownstreamCapacity: c.endpointMediaCopyCapacity,
 		}, nowMs)
 	}
-	if c.participants.Has(peerID) {
-		panic(errors.New("Route Host identity collides with another participant"))
+	nextHost, _ := c.participants.Get(peerID)
+	if nextHost != nil && (nextHost.role != protocol.RoleViewer || !nextHost.sessionIs(sessionID)) {
+		panic(errors.New("Route Host identity collides with another session"))
 	}
 	host, _ := c.participants.Get(previousPeerID)
 	if host == nil || host.role != protocol.RoleHost {
@@ -592,7 +593,19 @@ func (c *Controller) RebindHostIdentity(peerID, sessionID string, nowMs *int64) 
 
 	// Delete + set moves the Host to the tail of the
 	// insertion order while it keeps its joinOrder.
-	c.participants.Delete(previousPeerID)
+	if nextHost == nil {
+		c.participants.Delete(previousPeerID)
+	} else {
+		// An admitted member taking over changes the media root without changing
+		// either participant's room identity or voice publication.
+		host.role = protocol.RoleViewer
+		host.relayVolunteer = false
+		host.reportedDownstreamCapacity = 0
+		host.effectiveDownstreamCapacity = 0
+		host = nextHost
+		host.role = protocol.RoleHost
+		host.reportedDownstreamCapacity = c.endpointMediaCopyCapacity
+	}
 	host.peerID = peerID
 	host.sessionID = sessionID
 	host.relayVolunteer = false

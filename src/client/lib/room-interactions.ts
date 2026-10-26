@@ -14,6 +14,7 @@ export const CHAT_HISTORY_LIMIT = 1000;
 type OverlayAppearance = RoomPreferences["overlayAppearance"];
 const CHAT_OVERLAY_LANES = 3;
 interface InteractionState {
+  draft: string;
   reactionIds: readonly ReactionId[];
   ready: boolean;
   peerId: string | null;
@@ -27,7 +28,7 @@ interface InteractionState {
   coolingDown: boolean;
   error: InteractionError | null;
 }
-const initialState = (): InteractionState => ({ reactionIds: BASELINE_REACTION_IDS, ready: false, peerId: null, messages: [], reactions: [],
+const initialState = (): InteractionState => ({ draft: "", reactionIds: BASELINE_REACTION_IDS, ready: false, peerId: null, messages: [], reactions: [],
   overlayEnabled: false, overlayAppearance: CHAT_OVERLAY_DEFAULTS, overlayMessages: [],
   pending: null, confirmed: null, coolingDown: false, error: null });
 
@@ -57,6 +58,7 @@ export class RoomInteractionSession {
     if (this.closed) return;
     this.update({ reactionIds: REACTION_IDS.filter(id => reactionIds.includes(id)) });
   }
+  setDraft(value: string | ((current: string) => string)) { this.update({ draft: typeof value === "function" ? value(this.state.draft) : value }); }
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);

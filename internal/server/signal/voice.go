@@ -17,6 +17,7 @@ type voiceMember struct {
 // are physical facets of router.controller's graph, never another topology.
 type roomVoice struct {
 	hostPeerID  string
+	active      bool
 	bitrate     protocol.Int
 	revision    int64
 	members     map[string]*voiceMember
@@ -24,11 +25,11 @@ type roomVoice struct {
 }
 
 func (v *roomVoice) enabled() bool {
-	host := v.members[v.hostPeerID]
-	return host != nil && host.joined
+	return v.active
 }
 
 func (v *roomVoice) leaveAll() {
+	v.active = false
 	for _, member := range v.members {
 		member.joined, member.publicationID = false, ""
 	}
@@ -59,7 +60,7 @@ func (s *Server) voiceRoom(roomID string) *roomVoice {
 		v = &roomVoice{bitrate: 64_000, members: make(map[string]*voiceMember), connections: make(map[string]*voiceEdge)}
 		s.voices[roomID] = v
 	}
-	if host, ok := s.store.GetConnectedHost(roomID); ok {
+	if host, ok := s.store.GetConnectedOwner(roomID); ok {
 		if v.hostPeerID != "" && v.hostPeerID != host.PeerID {
 			v.leaveAll()
 			delete(v.members, v.hostPeerID)
@@ -121,7 +122,7 @@ func (s *Server) handleRoomVoiceCommand(sess *session, auth *authenticatedSessio
 	}
 	switch command.Action {
 	case "bitrate":
-		if auth.role != protocol.RoleHost || !sess.roomVoiceBitrate {
+		if !s.store.IsRoomOwner(auth.roomID, auth.peerID, sess.sessionID) || !sess.roomVoiceBitrate {
 			s.voiceError(sess, "not-allowed")
 			return
 		}
@@ -137,13 +138,16 @@ func (s *Server) handleRoomVoiceCommand(sess *session, auth *authenticatedSessio
 		s.syncRoomVoice(auth.roomID)
 		return
 	case "join":
-		if auth.role != protocol.RoleHost && !v.enabled() {
+		if !s.store.IsRoomOwner(auth.roomID, auth.peerID, sess.sessionID) && !v.enabled() {
 			s.voiceError(sess, "not-enabled")
 			return
 		}
 		m.joined = true
+		if s.store.IsRoomOwner(auth.roomID, auth.peerID, sess.sessionID) {
+			v.active = true
+		}
 	case "leave":
-		if auth.role == protocol.RoleHost {
+		if s.store.IsRoomOwner(auth.roomID, auth.peerID, sess.sessionID) {
 			v.leaveAll()
 		} else {
 			m.joined, m.publicationID = false, ""

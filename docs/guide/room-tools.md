@@ -43,6 +43,19 @@ To keep a copy, use **Chat settings → Export chat** to save the latest message
 retained on this page (up to 1,000) as a text file.
 Chat travels through the room's server and is **not end-to-end encrypted**.
 
+## Transfer ownership and take turns sharing
+
+The owner selects a member on the couch and chooses **Allow sharing**. That member
+can choose **Share your screen** and select a source to replace the current picture.
+Canceling source selection keeps the current share playing. Only one source plays
+at a time. **Revoke sharing** also stops that member's current publication.
+
+Choose **Transfer ownership** to invite a member to become the owner. They must
+choose **Accept ownership**. The picture and voice call continue; the new owner can
+manage sharing permissions and room access. The former owner keeps permission to
+share until the new owner revokes it. An offer lasts one minute and may be declined
+or canceled.
+
 ## Room voice
 
 1. The Host creates a room and sends its invitation; no picture share is needed.

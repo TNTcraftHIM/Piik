@@ -1,3 +1,7 @@
+import { RoomOwnerTools } from "../components/living/RoomOwnerTools";
+import type { RoomHandoff } from "../lib/room-handoff";
+import { useRoomControl, type RoomControlSession } from "../lib/room-control";
+import { RoomControls } from "../components/living/RoomControls";
 import type { VideoFit } from "../media/video-geometry";
 import {
   useEffect,
@@ -138,6 +142,7 @@ import { NativeSenderPeer } from "../native/native-sender-peer";
 import { nativeRelayCapacity } from "../native/wire";
 
 interface ViewerPageProps {
+  handoff?: RoomHandoff;
   roomId: string;
   viewerGrant?: string;
   invalidGrant?: boolean;
@@ -167,16 +172,20 @@ interface PendingPeerRoute {
 }
 
 export function ViewerPage({
+  handoff,
   roomId,
   viewerGrant,
   invalidGrant = false,
   launchedByClient = false,
 }: ViewerPageProps) {
   const { lang, t, vis, titleFrames } = useCopy();
+  const takeoverStageRef = useRef<HTMLDivElement | null>(null);
+  const [roomControl, setRoomControl] = useState<RoomControlSession | null>(handoff?.signal.roomControl ?? null);
+  const controlState = useRoomControl(roomControl);
   const clientActivationRef = useRef(launchedByClient);
   clientActivationRef.current = launchedByClient;
   const viewerClientId = useMemo(
-    () => getStableClientId("viewer", roomId),
+    () => handoff?.signal.clientId ?? getStableClientId("viewer", roomId),
     [roomId],
   );
   const [presentationState, dispatchPresentationState] = useReducer(
@@ -574,7 +583,8 @@ export function ViewerPage({
     window.addEventListener("pagehide", suspendForPageLifecycle);
     window.addEventListener("pageshow", recoverFromPageLifecycle);
 
-    const signal = new SignalingClient(
+    const makeSignal = (...args: ConstructorParameters<typeof SignalingClient>) => handoff?.signal.switchingMedia ? handoff.signal.attach(args[1]) : new SignalingClient(...args);
+    const signal = makeSignal(
       {
         roomId,
         role: "viewer",
@@ -612,7 +622,9 @@ export function ViewerPage({
         },
       },
     );
-    setInteractionSession(null);
+    setInteractionSession(signal.interactions);
+    setRoomVoiceSession(signal.roomVoice);
+    setRoomControl(signal.roomControl);
     setRouteOptions(null);
     setRelayVolunteerSupported(false);
     setRelayVolunteerEnabled(false);
@@ -636,6 +648,8 @@ export function ViewerPage({
     };
     setAudioAvailable(null);
     void getRuntimeCapabilities().then(capabilities => {
+      if (active) signal.runtimeCapabilities = capabilities;
+      if (active && capabilities.roomControl) setRoomControl(signal.enableRoomControl());
       if (active && capabilities.audioPresence) signal.enableAudioPresence();
       if (active && capabilities.coPlayPresence) signal.enableCoPlayPresence();
       if (active && capabilities.roomInteractions) setInteractionSession(signal.enableRoomInteractions(capabilities.roomReactionIds));
@@ -1903,7 +1917,8 @@ export function ViewerPage({
       }
     }
 
-    signal.start();
+    if (handoff) queueMicrotask(() => { if (active) signal.start(); });
+    else signal.start();
     return () => {
       active = false;
       requestRelayVolunteerRef.current = null;
@@ -1918,7 +1933,7 @@ export function ViewerPage({
         qualityEvidenceReporterRef.current = null;
       }
       relayChildEvidenceStore.clear();
-      signal.stop();
+      signal.releaseMedia();
       inputRoute.dispose();
       clearParticipantPresence();
       if (signalRef.current === signal) {
@@ -2280,6 +2295,7 @@ export function ViewerPage({
         }
       />
       <main className={`lr-room${theaterMode ? " is-theater" : ""}`}>
+        <RoomControls session={roomControl} stage={takeoverStageRef} signal={signalRef.current} participants={participantPresence ?? []} />
         <h1 className="visually-hidden">
           {hostDisplayName
             ? t("viewer.title", { name: hostDisplayName })
@@ -2399,6 +2415,7 @@ export function ViewerPage({
                   waiting={viewerStatus.overlay?.waiting}
                 />
               )}
+            <div ref={takeoverStageRef} style={{ display: "contents" }} />
           </StageTv>
           <div className="lr-stage-notices" role="status" aria-live="polite">
             {viewerStatus.notice && (
@@ -2411,7 +2428,7 @@ export function ViewerPage({
               />
             )}
           </div>
-          <RoomInteractions session={interactionSession}
+          <RoomInteractions session={interactionSession} roomControl={roomControl}
             voiceState={roomVoice}
             voice={roomVoiceSession ? {
               content: onSelect => <RoomVoicePanel session={roomVoiceSession} onSelectParticipant={onSelect}
@@ -2574,6 +2591,7 @@ export function ViewerPage({
               </div>
             </div>
           </div>
+          {roomControl && controlState.state?.ownerPeerId === controlState.peerId && <RoomOwnerTools session={roomControl} />}
           {showConnectionDetails && (routePresentation.route || ownVoiceConnection || relaySnapshot || freshRelayChildEvidence.length > 0) ? (
             <Row sub>
               <ConnectionDetails id="viewer-details-panel" rows={[

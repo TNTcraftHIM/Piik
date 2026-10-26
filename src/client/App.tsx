@@ -15,6 +15,7 @@ import {
   getSiteAccess,
   type SiteAccessStatus,
 } from "./lib/api";
+import { roomHandoffSnapshot, subscribeRoomHandoff } from "./lib/room-handoff";
 import type { RuntimeCapabilities } from "../shared/protocol";
 import {
   parseAppRoute,
@@ -136,6 +137,7 @@ class RouteBoundary extends Component<
   }
 
   componentDidCatch(error: Error): void {
+    roomHandoffSnapshot()?.signal.stop();
     debugError("app", "route-failed", error);
   }
 
@@ -153,10 +155,15 @@ class RouteBoundary extends Component<
 }
 
 function AppRoute() {
+  const handoff = useSyncExternalStore(subscribeRoomHandoff, roomHandoffSnapshot);
   const [viewerRoute, setViewerRoute] = useState(initialViewerRoute);
   useEffect(() => {
     if (appRoute.kind === "viewer") return watchViewerInvites(setViewerRoute);
   }, []);
+  if (handoff) return handoff.state.role === "host"
+    ? <HostPage key={handoff.key} handoff={handoff} hostRoomSessionAvailable roomInteractionsAvailable
+        sfuAvailable={handoff.signal.runtimeCapabilities?.sfu} sfuOnly={handoff.signal.runtimeCapabilities?.sfuOnly} natPredictionAvailable={handoff.signal.runtimeCapabilities?.natPrediction} />
+    : <ViewerPage key={handoff.key} handoff={handoff} roomId={handoff.signal.roomId} />;
   if (PlaybackPreviewPage && window.location.pathname === "/__playback-preview") {
     return <PlaybackPreviewPage />;
   }

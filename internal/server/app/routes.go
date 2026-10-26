@@ -80,6 +80,7 @@ func (s *Server) route(
 			Sfu:                        s.config.SFU != nil,
 			SfuOnly:                    s.config.SFU != nil && s.config.SFU.Only,
 			NatPrediction:              s.config.NATPredictionEnabled && !(s.config.SFU != nil && s.config.SFU.Only),
+			RoomControl:                true,
 			RoomInteractions:           true,
 			RoomVoice:                  true,
 			RoomVoiceListeningPresence: true,
@@ -220,6 +221,10 @@ func (s *Server) handleRoomReplacement(
 	if !authorized {
 		return
 	}
+	if !s.roomCreationAuthorized(request) {
+		sendJSON(writer, http.StatusUnauthorized, errorBody{"Unauthorized"})
+		return
+	}
 	body, err := readJSONBody(request)
 	var parsed protocol.ReplaceRoomRequest
 	if err == nil {
@@ -335,18 +340,14 @@ func (s *Server) handleRoomCreation(
 	sendJSON(writer, http.StatusCreated, s.createRoomResponse(created))
 }
 
-// authorizedRoomHostToken checks origin, site access and the bearer Host token
-// in that order, each with its own terminal response.
+// Room ownership is a scoped capability, including ownership transferred to an
+// invited member. Creating an unrelated room still requires site admission.
 func (s *Server) authorizedRoomHostToken(
 	writer http.ResponseWriter,
 	request *http.Request,
 ) (string, bool) {
 	if !s.allowedRequestOrigin(request) {
 		sendJSON(writer, http.StatusForbidden, errorBody{"Origin not allowed"})
-		return "", false
-	}
-	if !s.roomCreationAuthorized(request) {
-		sendJSON(writer, http.StatusUnauthorized, errorBody{"Unauthorized"})
 		return "", false
 	}
 	hostToken := bearerToken(request)

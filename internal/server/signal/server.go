@@ -186,6 +186,7 @@ type Server struct {
 	// shares keeps generation, settings, route policy and pause intent together.
 	shares                      map[string]roomShare
 	voices                      map[string]*roomVoice
+	ownershipOffers             map[string]*ownershipOffer
 	deferredViewerPresenceRooms map[string]struct{}
 
 	heartbeatStop func() bool
@@ -427,6 +428,9 @@ func (s *Server) hasConnectionCapacity() bool {
 func (s *Server) Close(ctx context.Context) error {
 	s.mu.Lock()
 	s.closing = true
+	for roomID := range s.ownershipOffers {
+		s.cancelOwnershipOffer(roomID)
+	}
 	for roomID := range s.voices {
 		s.closeRoomVoice(roomID)
 	}
@@ -526,6 +530,7 @@ func (s *Server) UpdateRoomAccess(
 		if err != nil {
 			return nil, err
 		}
+		s.broadcastRoomControl(roomID)
 		return protocol.CodeEntryPolicyUpdatedResponse{
 			Type:                  "code-entry-policy-updated",
 			CodeEntryPolicy:       update.CodeEntryPolicy,
@@ -541,6 +546,7 @@ func (s *Server) UpdateRoomAccess(
 		if err != nil {
 			return nil, err
 		}
+		s.broadcastRoomControl(roomID)
 		return protocol.ViewerPasswordUpdatedResponse{Type: "viewer-password-updated", Enabled: enabled}, nil
 	case protocol.RotateViewerGrantRequest, protocol.RevokeViewerGrantRequest:
 		verb := "revoke"
@@ -552,6 +558,7 @@ func (s *Server) UpdateRoomAccess(
 			return nil, err
 		}
 		s.revokeGrantViewers(roomID, update)
+		s.broadcastRoomControl(roomID)
 		var inviteURL *string
 		if verb == "rotate" {
 			invite := InviteURL(s.publicBaseURL, roomID, update.ViewerGrant)
@@ -688,6 +695,15 @@ func (s *Server) handleMessage(sess *session, encoded []byte) {
 	}
 
 	if sess.authenticated == nil {
+		if member, ok := message.(protocol.AuthenticateMemberMessage); ok {
+			if sess.authenticating {
+				s.rejectInvalidMessage(sess)
+				return
+			}
+			sess.authenticating = true
+			s.authenticateMember(sess, member)
+			return
+		}
 		request, isAuthenticate := authRequestOf(message)
 		if !isAuthenticate {
 			s.sendError(sess, "AUTH_REQUIRED", "Authenticate before sending messages")
@@ -787,12 +803,6 @@ func (s *Server) authenticate(sess *session, request authRequest) {
 	if request.role == protocol.RoleHost && !request.roomOnly && s.router.sfuOnly && request.routePolicy.PeerOnly {
 		s.sendError(sess, "FORBIDDEN", "This site requires server media; turn off Privacy mode or use another site")
 		sess.close(websocket.StatusCode(protocol.SignalCloseAuthenticationFailed), "Route policy conflict")
-		s.finishAuthenticating(sess)
-		return
-	}
-	if request.role == protocol.RoleHost && !sess.siteAccessAuthenticated {
-		s.sendError(sess, "AUTH_REQUIRED", "Site access is required")
-		sess.close(websocket.StatusCode(protocol.SignalCloseAuthenticationFailed), "Authentication failed")
 		s.finishAuthenticating(sess)
 		return
 	}
@@ -948,80 +958,12 @@ func (s *Server) completeAuthentication(sess *session, request authRequest, part
 			return
 		}
 	}
-	// The viewer's media identity is derived from the committed edge, never
-	// stored beside it; connectParticipant has just settled the graph.
-	var connectionID *string
-	if participant.Role == protocol.RoleViewer {
-		if edge, ok := s.router.resolveActiveViewerMediaEdge(roomID, participant.PeerID); ok {
-			current := edge.connectionID
-			connectionID = &current
-		}
-	}
 	// The host-status fan-out below uses this pre-router snapshot.
 	var connectedViewers []room.ConnectedPeer
 	if participant.Role == protocol.RoleHost {
 		connectedViewers = s.store.GetConnectedViewers(roomID)
 	}
-	share := s.shares[roomID]
-	routePolicy := s.routePolicyOf(roomID)
-
-	qualitySettings := protocol.DefaultQualitySettings
-	if share.qualitySettings != nil {
-		qualitySettings = *share.qualitySettings
-	}
-	var roomShareGeneration *string
-	if participant.Role == protocol.RoleHost && mediaActive {
-		generation := shareGeneration
-		roomShareGeneration = &generation
-	} else if participant.Role == protocol.RoleViewer && mediaActive {
-		generation := s.activeHostShareGeneration(roomID)
-		roomShareGeneration = &generation
-	}
-	if participant.Role == protocol.RoleHost {
-		s.send(sess, protocol.AuthenticatedHostMessage{
-			Type:                          "authenticated",
-			Protocol:                      protocol.SignalingProtocol,
-			PeerID:                        participant.PeerID,
-			MaxViewers:                    protocol.Int(s.store.MaxViewersPerRoom()),
-			EndpointMediaCopyCapacity:     protocol.Int(s.endpointMediaCopyCapacity),
-			HostOnline:                    participant.HostOnline,
-			ConnectionID:                  connectionID,
-			IceConfig:                     s.ice,
-			RoutePolicy:                   routePolicy,
-			CodeEntryPolicy:               participant.CodeEntryPolicy,
-			ViewerAuthorizationGeneration: participant.ViewerAuthorizationGeneration,
-			MediaMode:                     "peer-assisted",
-			ShareGeneration:               roomShareGeneration,
-			RouteRevision:                 protocol.Int(hybridState.routeRevision),
-			RouteAssignment:               hybridState.routeAssignment,
-			QualitySettings:               qualitySettings,
-			Role:                          protocol.RoleHost,
-			ViewerPasswordEnabled:         participant.ViewerPasswordEnabled,
-		})
-	} else {
-		hostOnline := participant.HostOnline && mediaActive
-		hostPaused := hostOnline && share.pausedGeneration == share.generation
-		s.send(sess, protocol.AuthenticatedViewerMessage{
-			Type:                          "authenticated",
-			Protocol:                      protocol.SignalingProtocol,
-			PeerID:                        participant.PeerID,
-			MaxViewers:                    protocol.Int(s.store.MaxViewersPerRoom()),
-			EndpointMediaCopyCapacity:     protocol.Int(s.endpointMediaCopyCapacity),
-			HostOnline:                    hostOnline,
-			HostPaused:                    &hostPaused,
-			ConnectionID:                  connectionID,
-			IceConfig:                     s.ice,
-			RoutePolicy:                   routePolicy,
-			CodeEntryPolicy:               participant.CodeEntryPolicy,
-			ViewerAuthorizationGeneration: participant.ViewerAuthorizationGeneration,
-			MediaMode:                     "peer-assisted",
-			ShareGeneration:               roomShareGeneration,
-			RouteRevision:                 protocol.Int(hybridState.routeRevision),
-			RouteAssignment:               hybridState.routeAssignment,
-			QualitySettings:               qualitySettings,
-			Role:                          protocol.RoleViewer,
-		})
-	}
+	s.send(sess, s.authenticationMessage(participant, hybridState, shareGeneration, mediaActive))
 	if participant.Role == protocol.RoleViewer && request.routePreference != nil {
 		s.router.sendViewerRoutePreference(roomID, participant.PeerID, true)
 	}
@@ -1238,6 +1180,12 @@ func routeParticipant(sess *session, authenticated *authenticatedSession) authen
 
 func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authenticatedSession, message protocol.ClientMessage) {
 	switch m := message.(type) {
+	case protocol.SubscribeRoomControlMessage:
+		s.subscribeRoomControl(sess, authenticated)
+	case protocol.RoomControlCommandMessage:
+		s.handleRoomControl(sess, authenticated, m.Command)
+	case protocol.ClaimPresentationMessage:
+		s.claimPresentation(sess, authenticated, m)
 	case protocol.SetRelayVolunteerMessage:
 		s.setRelayVolunteer(sess, authenticated, m)
 	case protocol.SubscribeRoomVoiceMessage:
@@ -1427,7 +1375,7 @@ func (s *Server) handleAuthenticatedMessage(sess *session, authenticated *authen
 		s.stopSharing(authenticated.roomID)
 		s.sendViewerPresence(authenticated.roomID)
 	case protocol.AbandonRoomMessage:
-		if authenticated.role != protocol.RoleHost {
+		if !s.store.IsRoomOwner(authenticated.roomID, authenticated.peerID, sess.sessionID) {
 			s.sendError(sess, "FORBIDDEN", "Only the host may abandon the room")
 			return
 		}
@@ -1448,6 +1396,10 @@ func (s *Server) startSharing(sess *session, authenticated *authenticatedSession
 	}
 	if !authenticated.roomSession {
 		s.sendError(sess, "FORBIDDEN", "Persistent room session is not enabled")
+		return
+	}
+	if !s.store.MayShare(authenticated.roomID, authenticated.peerID, sess.sessionID) {
+		s.send(sess, protocol.SharingStartFailedMessage{Type: "sharing-start-failed", ShareGeneration: message.ShareGeneration, Code: "FORBIDDEN"})
 		return
 	}
 	if !s.sessions.Has(sess) || sess.authenticated != authenticated ||
@@ -1864,4 +1816,78 @@ func authenticationErrorCode(request authRequest, err error) string {
 		return "INVALID_TOKEN"
 	}
 	return string(roomError.Code)
+}
+
+// authenticationMessage is shared by admission and an in-room media role change.
+func (s *Server) authenticationMessage(participant room.ConnectedParticipant, hybridState hybridAuthenticationState, shareGeneration string, mediaActive bool) protocol.ServerMessage {
+	roomID := participant.RoomID
+	// The viewer's media identity is derived from the committed edge, never
+	// stored beside it; connectParticipant has just settled the graph.
+	var connectionID *string
+	if participant.Role == protocol.RoleViewer {
+		if edge, ok := s.router.resolveActiveViewerMediaEdge(roomID, participant.PeerID); ok {
+			current := edge.connectionID
+			connectionID = &current
+		}
+	}
+	share := s.shares[roomID]
+	routePolicy := s.routePolicyOf(roomID)
+
+	qualitySettings := protocol.DefaultQualitySettings
+	if share.qualitySettings != nil {
+		qualitySettings = *share.qualitySettings
+	}
+	var roomShareGeneration *string
+	if participant.Role == protocol.RoleHost && mediaActive {
+		generation := shareGeneration
+		roomShareGeneration = &generation
+	} else if participant.Role == protocol.RoleViewer && mediaActive {
+		generation := s.activeHostShareGeneration(roomID)
+		roomShareGeneration = &generation
+	}
+	if participant.Role == protocol.RoleHost {
+		return protocol.AuthenticatedHostMessage{
+			Type:                          "authenticated",
+			Protocol:                      protocol.SignalingProtocol,
+			PeerID:                        participant.PeerID,
+			MaxViewers:                    protocol.Int(s.store.MaxViewersPerRoom()),
+			EndpointMediaCopyCapacity:     protocol.Int(s.endpointMediaCopyCapacity),
+			HostOnline:                    participant.HostOnline,
+			ConnectionID:                  connectionID,
+			IceConfig:                     s.ice,
+			RoutePolicy:                   routePolicy,
+			CodeEntryPolicy:               participant.CodeEntryPolicy,
+			ViewerAuthorizationGeneration: participant.ViewerAuthorizationGeneration,
+			MediaMode:                     "peer-assisted",
+			ShareGeneration:               roomShareGeneration,
+			RouteRevision:                 protocol.Int(hybridState.routeRevision),
+			RouteAssignment:               hybridState.routeAssignment,
+			QualitySettings:               qualitySettings,
+			Role:                          protocol.RoleHost,
+			ViewerPasswordEnabled:         participant.ViewerPasswordEnabled,
+		}
+	} else {
+		hostOnline := participant.HostOnline && mediaActive
+		hostPaused := hostOnline && share.pausedGeneration == share.generation
+		return protocol.AuthenticatedViewerMessage{
+			Type:                          "authenticated",
+			Protocol:                      protocol.SignalingProtocol,
+			PeerID:                        participant.PeerID,
+			MaxViewers:                    protocol.Int(s.store.MaxViewersPerRoom()),
+			EndpointMediaCopyCapacity:     protocol.Int(s.endpointMediaCopyCapacity),
+			HostOnline:                    hostOnline,
+			HostPaused:                    &hostPaused,
+			ConnectionID:                  connectionID,
+			IceConfig:                     s.ice,
+			RoutePolicy:                   routePolicy,
+			CodeEntryPolicy:               participant.CodeEntryPolicy,
+			ViewerAuthorizationGeneration: participant.ViewerAuthorizationGeneration,
+			MediaMode:                     "peer-assisted",
+			ShareGeneration:               roomShareGeneration,
+			RouteRevision:                 protocol.Int(hybridState.routeRevision),
+			RouteAssignment:               hybridState.routeAssignment,
+			QualitySettings:               qualitySettings,
+			Role:                          protocol.RoleViewer,
+		}
+	}
 }

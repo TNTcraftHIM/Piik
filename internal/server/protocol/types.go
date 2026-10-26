@@ -188,6 +188,7 @@ type RuntimeCapabilities struct {
 	Sfu                        bool     `json:"sfu"`
 	SfuOnly                    bool     `json:"sfuOnly,omitempty"`
 	NatPrediction              bool     `json:"natPrediction"`
+	RoomControl                bool     `json:"roomControl,omitempty"`
 	RoomInteractions           bool     `json:"roomInteractions,omitempty"`
 	RoomVoice                  bool     `json:"roomVoice,omitempty"`
 	RoomVoiceListeningPresence bool     `json:"roomVoiceListeningPresence,omitempty"`
@@ -211,13 +212,13 @@ func (v *RuntimeCapabilities) UnmarshalJSON(data []byte) error {
 	if present == nil {
 		return errors.New("runtime capabilities must be an object")
 	}
-	if err := present.optional("sfu", "sfuOnly", "roomInteractions", "roomVoice", "roomVoiceListeningPresence", "roomVoiceBitrate", "relayVolunteer", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "coPlayPresence", "roomReactionIds"); err != nil {
+	if err := present.optional("sfu", "sfuOnly", "roomControl", "roomInteractions", "roomVoice", "roomVoiceListeningPresence", "roomVoiceBitrate", "relayVolunteer", "hostRoomSession", "natPrediction", "remoteInput", "viewerRouteSelection", "audioPresence", "coPlayPresence", "roomReactionIds"); err != nil {
 
 		return err
 	}
 	for key, target := range map[string]*bool{
 		"sfu": &v.Sfu, "sfuOnly": &v.SfuOnly, "natPrediction": &v.NatPrediction,
-		"roomInteractions": &v.RoomInteractions, "hostRoomSession": &v.HostRoomSession,
+		"roomControl": &v.RoomControl, "roomInteractions": &v.RoomInteractions, "hostRoomSession": &v.HostRoomSession,
 		"roomVoice":                  &v.RoomVoice,
 		"roomVoiceListeningPresence": &v.RoomVoiceListeningPresence,
 		"roomVoiceBitrate":           &v.RoomVoiceBitrate,
