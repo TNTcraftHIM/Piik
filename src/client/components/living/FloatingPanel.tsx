@@ -189,8 +189,9 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
         onOpenChange?.(open, owner);
         if (open) {
           event.currentTarget.dataset.openedAt = String(performance.now());
-          // Opening to read must not summon a phone's keyboard.
-          event.currentTarget.focus({ preventScroll: true });
+          // Opening to read must not summon a phone's keyboard. The queued
+          // toggle must also preserve focus already placed inside the panel.
+          if (!event.currentTarget.contains(owner.activeElement)) event.currentTarget.focus({ preventScroll: true });
         } else {
           panelWindow.close();
           if (event.currentTarget.contains(document.activeElement)) focusTrigger();
