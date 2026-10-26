@@ -315,8 +315,21 @@ func parseSFU(env map[string]string) (*SFUConfig, error) {
 	}
 	publicIP := strings.TrimSpace(env["SFU_PUBLIC_IP"])
 	if publicIP != "" {
-		if address, err := netip.ParseAddr(publicIP); err != nil || !address.Is4() {
-			return nil, errors.New("SFU_PUBLIC_IP must be an IPv4 address")
+		if address, err := netip.ParseAddr(publicIP); err == nil {
+			if !address.Is4() {
+				return nil, errors.New("SFU_PUBLIC_IP must be an IPv4 address or DNS hostname")
+			}
+			publicIP = address.String()
+		} else {
+			host, err := url.Parse("http://" + publicIP)
+			if err == nil && host.Host == publicIP && !strings.Contains(publicIP, ":") {
+				publicIP = normalizedHost(host)
+			} else {
+				publicIP = ""
+			}
+			if publicIP == "" {
+				return nil, errors.New("SFU_PUBLIC_IP must be an IPv4 address or DNS hostname")
+			}
 		}
 	}
 	return &SFUConfig{

@@ -25,17 +25,13 @@ own behavior; research and Git/PRs own evidence and completed history.
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
 - [ ] **macOS window capture with sound (#500).** Follow
   [#500](https://github.com/TNTcraftHIM/Piik/issues/500). Compare the same window
-  with source sound on and off, including native capture status. Video and source
-  audio already use independent helpers; audio failure preserves video in local checks.
+  with source sound on and off in the candidate that waits for video `active`
+  before starting source audio. Obtain the App diagnostic if the window stays black.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
-  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) with Chrome's default
-  background policy. Record the control channel and grant as the Host minimizes
-  the browser while the Viewer picture continues.
-- [ ] **Intel native H.264 startup (#452).** Follow the
-  [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
-  fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report
-  records App startup rejection. Compare v2.4.1, which removes the mandatory
-  low-latency encoder property, and obtain the App diagnostic if rejection persists.
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502). Default-policy minimized
+  Chromium forwarding and the Windows input component pass local checks. Collect
+  the Host App diagnostic ZIP and mobile Viewer report from the same failure;
+  current diagnostics distinguish input execution from Viewer send failure.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
