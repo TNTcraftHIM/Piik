@@ -35,6 +35,13 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **Duplicate audio in a detached player.** Investigate the rare report of
+  both the original page and floating player playing sound. Trace playback
+  ownership through detach, attach, reconnection and source replacement.
+- [ ] **Lean Linux CI dependencies.** Separate the headless build/test packages
+  from desktop capture plugins and omit unnecessary APT recommendations. Verify
+  packaging on both Linux architectures before changing the installation list;
+  keep users' documented capture dependencies intact.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
