@@ -7,10 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Android weak-network and multi-output acceptance.** Compare payload
-  bitrate, live-profile recovery, static-source late joins and concurrent
-  original/lower outputs in the rebuilt App on a device. Include both lower
-  allocation and recovery through the shared capture and media route.
+- [ ] **Android and touch-control release.** Finish the same-revision CI package
+  rehearsal and owner review of the website, then publish the shared App/Server
+  update and associate resolved issues. Android uses the existing publication
+  pipeline and a dedicated signing key; iOS remains outside this release.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -43,9 +43,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
-- [ ] **Android App release scope.** Complete phone/tablet/TV hardware acceptance
-  and release packaging. The current system-browser build shares the desktop Web
-  UI and native screen-share output plan.
+
 ## Held By Owner
 
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser

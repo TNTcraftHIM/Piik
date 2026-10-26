@@ -424,6 +424,24 @@ comparisons, not a full-App capture or network result. Android reuses that same
 component at each encoder's Surface input, with one capture clock and existing
 demand-driven lower outputs.
 
+A full-App API 35 emulator trial of candidate `e933633f` on the same date
+exercised Projection, the shared Go media route and Browser decoding together.
+Android reported concurrent 1920x1080 and 960x540 software encoders. A changing
+source delivered about 4.8–5.6 Mbps at a 5 Mbps live profile; lowering that
+profile to 100 kbps retained the same Viewer connection and produced about
+140–244 kbps in sampled two-second windows, at 1–2 fps. Restoring 5 Mbps
+restored about 5.0–5.6 Mbps. These RTP payload observations retain the stock
+FrameDropper saturation boundary; they are not a strict byte-ceiling guarantee
+or an independent network-shaping measurement.
+
+With a stationary captured source, a fresh Browser subscription decoded the
+960x540 rendition and new keyframes. Viewer departure retired the lower
+encoder while the original preview continued decoding. Pause/resume, stopping
+and consenting to a fresh capture also passed: each final stop removed the
+Projection, capture service and active codec resources, while the independent
+launcher runtime remained available. These are bounded emulator observations;
+physical-device codec capacity and audio remain separate acceptance targets.
+
 ### Android Browser Handoff
 
 The Android App uses the system browser with the same Go room, authorization and media code.

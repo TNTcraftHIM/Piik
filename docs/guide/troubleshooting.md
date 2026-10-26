@@ -30,7 +30,7 @@ symptom's simple checks have failed. Change one thing at a time.
 
 ## Opening App and joining a room
 
-[Startup](#app-startup-fails-or-no-page-opens) · [macOS](#macos-blocks-first-launch) ·
+[Startup](#app-startup-fails-or-no-page-opens) · [Android installation](#android-apk-will-not-install) · [macOS](#macos-blocks-first-launch) ·
 [Public invite / 1033](#public-invitation-fails-or-shows-1033) · [Local invitation](#local-invitation-will-not-open) ·
 [Local certificate](#local-https-certificate-warning) · [Room code](#room-code-does-not-work) · [Room creation 403](#room-creation-returns-403)
 
@@ -42,6 +42,18 @@ symptom's simple checks have failed. Change one thing at a time.
    can reach. See [Local invitation checks](#local-invitation-will-not-open).
 3. If startup still fails, retry with **Debug launch** enabled and save the complete
    error and an [App report](#reporting-a-problem).
+
+### Android APK will not install
+
+Download the APK from the [App installation steps](./getting-started.md#share-with-piik-app).
+If Android asks, allow this browser or file manager to install the downloaded APK.
+
+If installation reports a conflicting package or signature and you previously
+installed a test build, uninstall that test App before installing the official
+APK. The test build and official release use different signing keys. Uninstalling
+clears App settings, including approved sites and the starred startup site;
+browser settings are stored separately. Later official updates can be installed
+over the existing official App.
 
 ### macOS blocks first launch
 
@@ -457,8 +469,10 @@ window audio. Piik's microphone mute does not mute that separate source.
    URL scheme does not enable HTTPS; `localhost` means the current device.
 2. For a microphone, review this site's browser permission and selected input.
 3. For remote control, update the Host's App and the site, then refresh the Viewer
-   page. The Host must use App window/screen capture and enable control; Browser
-   and camera capture cannot receive remote input. Follow the
+   page. The Host must use desktop App window/screen capture and enable control;
+   Browser and camera capture cannot receive remote input. Android can share its
+   screen and control a desktop as a Viewer, but cannot receive remote control;
+   its Host page therefore has no enable-control action. Follow the
    [authorization steps](./room-tools.md#let-a-friend-control-your-shared-screen).
 
 If your browser cannot accept the local certificate, use a reachable **Public

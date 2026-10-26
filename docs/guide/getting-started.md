@@ -41,12 +41,12 @@ restrictive networks may load the page but block video.
 
 ## Share with Piik App
 
-1. Download a **`piik-app`** archive for your platform from
+1. Download **Piik App** for your platform from
    [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
-   [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases). Extract the whole
-   archive and keep its directory structure intact.
+   [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases). On phones and tablets,
+   install the app. On a computer, extract the whole archive and keep its directory structure intact.
 2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
-   The launcher opens in your system browser.
+   On phones and tablets, open Piik after installation. The launcher opens in your system browser.
 3. Choose **Public invite** for friends outside your local network, then select
    **Open Piik**. Other modes are explained below.
 4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
@@ -68,6 +68,7 @@ If macOS blocks the first launch, follow the [Mac opening steps](./troubleshooti
 | `darwin-amd64` | Intel Mac; native capture requires macOS 13+ |
 | `linux-amd64` | Linux x64 |
 | `linux-arm64` | Linux ARM64 |
+| `android-universal` | Android 10+; ARM64 and x64 in one APK |
 
 Linux native capture also needs [system components](../../native/capture/linux/README.md).
 See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.

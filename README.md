@@ -59,7 +59,7 @@ you can also create a room in the online version.
 | Start here | What you need to do |
 | --- | --- |
 | [Use Piik online](https://demo.piik.tv) | Share from a desktop browser, or choose Camera on a phone with browser camera support. |
-| [Download Piik App](https://piik.tv/#download) | Extract and open the App, choose **Public invite**, then **Open Piik** to create a temporary room. |
+| [Download Piik App](https://piik.tv/#download) | Extract the desktop package or install the mobile app, open Piik, choose **Public invite**, then **Open Piik**. |
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="Choose a screen, send an invitation, watch together."></p>
 

@@ -26,14 +26,12 @@ phases, including NAT and Auto codec behavior.
 - Android's system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source
   replacement, cancellation and background return preserve the share. Local/public
-  startup and launcher reentry also have emulator evidence. Phone/tablet/TV
-  hardware and physical audio remain in the [Android acceptance scope](./todo.md#next).
-  Demand-driven original/lower encoding and retirement pass the shared Go bridge,
-  actual-owner CPU checks and Android SDK compilation. A standalone MediaCodec
-  probe validates the pinned WebRTC FrameDropper's rate correction and recovery;
-  the [capture assessment](./research/cross-platform-client-runtime.md#android-encoder-budget)
-  owns its measured bounds. Concurrent App output still needs a device comparison;
-  [weak-network encoding acceptance](./todo.md#now) remains open.
+  startup and launcher reentry also have emulator evidence. Full-App checks now
+  cover concurrent original/lower encoding, live-budget reduction and recovery,
+  static-source late joins, lower-output retirement, capture stop and restart.
+  The [capture assessment](./research/cross-platform-client-runtime.md#android-encoder-budget)
+  owns measured bitrate bounds and the stock FrameDropper's saturation limit.
+  Phone/tablet/TV hardware coverage and physical audio remain limited.
 - The separate iOS system-browser implementation passes Apple SDK device and
   simulator builds and its session/encoder checks. Physical capture, background
   lifetime and hosted-site linkage remain in the [held iOS scope](./todo.md#held-by-owner).

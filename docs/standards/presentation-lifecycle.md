@@ -405,8 +405,9 @@ ordinary connection details do not collect or expose that report.
 
 Current scope includes Web Host, Web Viewer, Browser relay, and optional Native
 Host/Viewer media beneath those same pages. Desktop and mobile Browsers are
-Viewer targets; mobile screen capture, reliable background relay, App-owned SFU,
-and physical non-Windows native acceptance remain later platform work.
+Viewer targets. Android screen capture is implemented in the system-browser App
+candidate; public delivery awaits its platform acceptance. Reliable background
+relay, App-owned SFU and physical non-Windows native acceptance remain later work.
 
 ## Primary References
 
