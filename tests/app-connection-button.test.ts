@@ -26,11 +26,12 @@ describe("shared App connection entry", () => {
     const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
       nativeSources: { kind: "browser" },
       onBrowser: () => {}, onNative: () => {}, onCamera: () => {},
-      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {}, onAppConnected: () => {},
+      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
     }));
     expect(html).toContain('data-source-tab="browser"');
     expect(html).toContain('data-source-tab="camera"');
-    expect(html).toContain("lr-source-app-connection");
+    expect(html).not.toContain("lr-source-app-connection");
+    expect(html).not.toContain("lr-app-connect");
   });
 });
 
@@ -78,7 +79,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const operation = runInNewContext(executable, {
     window, document, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
-    sourcePicker: false, state, isClientActivated: () => activated,
+    state, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
       return () => window.removeEventListener("activation", changed);

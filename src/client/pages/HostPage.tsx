@@ -3828,7 +3828,9 @@ export function HostPage({
     <div className="lr-app">
       <AppHeader
         atHome
-        showAppConnection={!sourcePickerOpen}
+        onAppConnected={() => {
+          if (nativeSourceRequestRef.current) void openCaptureSourcePicker();
+        }}
         led={
           <LedStrip
             state={hostStatus.connection.tone}
@@ -3896,9 +3898,6 @@ export function HostPage({
                 onPreview={loadNativeSourcePreview}
                 onRefresh={openCaptureSourcePicker}
                 onCancel={closeCaptureSourcePicker}
-                onAppConnected={() => {
-                  if (nativeSourceRequestRef.current) void openCaptureSourcePicker();
-                }}
                 browserSupported={!!navigator.mediaDevices?.getDisplayMedia}
                 cameraSupported={!!navigator.mediaDevices?.getUserMedia}
                 selectionDisabled={roomMutating || switchingSource || changingQuality}

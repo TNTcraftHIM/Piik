@@ -490,8 +490,6 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   margin: -8px;
 }
 .lr-source-picker-body > [role="status"] { text-align: center; }
-.lr-source-app-connection { display: flex; justify-content: flex-end; margin-top: 12px; }
-.lr-source-app-connect { display: flex; gap: 8px; width: auto; padding: 0 12px; margin: 0; border-radius: 999px; }
 .lr-source-picker-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));

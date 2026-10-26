@@ -162,13 +162,13 @@ export function AppHeader({
   led,
   homeHref = "/",
   diagnosticControl,
-  showAppConnection = true,
+  onAppConnected,
   atHome = false,
 }: {
   led?: React.ReactNode;
   homeHref?: string;
   diagnosticControl?: React.ReactNode;
-  showAppConnection?: boolean;
+  onAppConnected?: () => void;
   atHome?: boolean;
 }) {
   const { t } = useCopy();
@@ -186,7 +186,7 @@ export function AppHeader({
       <span className="lr-top-right">
         {led}
         <HeaderControls diagnosticControl={diagnosticControl}
-          appControl={homeHref !== "/client" && showAppConnection ? <AppConnectionButton /> : undefined} />
+          appControl={homeHref !== "/client" ? <AppConnectionButton onConnected={onAppConnected} /> : undefined} />
       </span>
     </header>
   );

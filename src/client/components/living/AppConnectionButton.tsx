@@ -11,7 +11,6 @@ import { useAnchoredPopover } from "./use-anchored-popover";
 import { androidAppIntent } from "../../native/activation";
 
 interface AppConnectionProps {
-  sourcePicker?: boolean;
   onConnected?: () => void;
 }
 
@@ -22,12 +21,7 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton(props: AppConnectionProps) {
-  const button = <AppConnectionControl {...props} />;
-  return props.sourcePicker ? <div className="lr-source-app-connection">{button}</div> : button;
-}
-
-function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected }: AppConnectionProps) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
   const wakeURL = androidAppIntent("piik://app");
@@ -40,7 +34,6 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
   const pending = useRef<ConnectionAttempt | null>(null);
   const healthCheck = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (sourcePicker) return;
     const refresh = async () => {
       if (pending.current || help.current?.matches(":popover-open") || !isClientActivated()) return;
       healthCheck.current?.abort();
@@ -63,7 +56,7 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     window.addEventListener("focus", onFocus);
     const unwatch = watchClientActivation(onFocus);
     return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); unwatch(); };
-  }, [sourcePicker]);
+  }, []);
   useEffect(() => () => { pending.current?.controller.abort(); pending.current?.popup?.close(); }, []);
 
   function showHelp(): void {
@@ -182,10 +175,10 @@ function AppConnectionControl({ sourcePicker = false, onConnected }: AppConnecti
     state === "unavailable" ? "client.connect.unavailable" : "client.connect.action");
   const failed = state === "unavailable" || state === "incompatible";
   return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
-    text={vis ? undefined : state === "idle" && !sourcePicker ? t("client.connect.hint") : label} disabled={helpOpen}
-    place={sourcePicker ? "above" : "below"} align="end">
-    <button ref={trigger} type="button" className={`${sourcePicker ? "lr-btn is-dense lr-source-picker-refresh lr-source-app-connect" : "lr-btn is-compact lr-app-connect"}${state === "ready" ? " is-ready" : ""}`}
-      aria-label={sourcePicker ? t("client.connect.action") : label} aria-busy={busy || undefined}
+    text={vis ? undefined : state === "idle" ? t("client.connect.hint") : label} disabled={helpOpen}
+    place="below" align="end">
+    <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${state === "ready" ? " is-ready" : ""}`}
+      aria-label={label} aria-busy={busy || undefined}
       popoverTarget={failed || state === "approval" ? helpId : undefined} aria-haspopup="dialog"
       onClick={failed || state === "approval" ? undefined : event => {
         // Failure may attach popoverTarget during this click; do not toggle the

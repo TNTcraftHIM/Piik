@@ -80,10 +80,10 @@ unavailable, discovery stays with it; a new explicit launch selects another App.
 Endpoint selection does not grant Site access or capture permission.
 Activating a page supplies
 native capability without restarting its room or healthy media session.
-The source selector exposes that same connection action before sharing; a
-successful connection refreshes its current list. An already approved exact
+The shared App entry stays in the header while selecting a source; a successful
+connection refreshes the open selector's list. An already approved exact
 origin needs no repeat confirmation, but the page still verifies authorized App
-health. Closing the selector cancels its pending connection action. Existing
+health. Closing the selector does not cancel the separate site approval. Existing
 Browser shares stay unchanged when App connects; explicit source replacement
 uses the current share's source transaction.
 App-created Local/public-invite Host pages open at their automatically approved
