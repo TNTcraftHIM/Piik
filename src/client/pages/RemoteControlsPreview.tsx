@@ -11,6 +11,7 @@ import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
 import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
+import { RemoteTouchpad } from "../remote-control/touchpad";
 import type { RemoteControlMode, RemoteInputPlatform } from "../remote-control/protocol";
 import { useCopy } from "../ui/copy";
 import { testMedia } from "./PlaybackPreviewPage";
@@ -29,7 +30,7 @@ export function RemoteControlsPreview() {
   const [mode, setMode] = useState<RemoteControlMode>("off");
   const [simultaneous, setSimultaneous] = useState(false);
   const [requests, setRequests] = useState<(RemoteControlRequest & { name: string })[]>([]);
-  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [keyboardOpen, setKeyboardOpen] = useState(true);
   const [lastInput, setLastInput] = useState("");
   const [releaseKey, setReleaseKey] = useState(10);
   const [stopKey, setStopKey] = useState(10);
@@ -38,16 +39,21 @@ export function RemoteControlsPreview() {
     return { key: key ?? stopKey, available: true };
   }, [stopKey]);
   const input = useCallback((event: RemoteInputEvent) => setLastInput(JSON.stringify(event)), []);
+  const [pointer] = useState(() => new RemoteTouchpad(() => null, input,
+    deltaY => setLastInput(JSON.stringify({ type: "wheel", deltaY })), () => {},
+    { scale: 1, transform: () => {}, visiblePosition: position => position }));
+  useEffect(() => () => pointer.reset(), [pointer]);
   const closeKeyboard = () => {
+    pointer.reset();
     setKeyboardOpen(false);
     document.getElementById("preview-remote-keyboard-toggle")?.focus();
   };
 
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
-      <h2>{t("remote.title")}</h2>
-      <p>{en ? "Actual permission panel and keyboard, with local sample state. Key presses only appear below; they are not sent to an App or operating system."
-        : "正式的授权浮窗与虚拟键盘，使用本地示例状态。按键只在下方显示，不发送到 App 或操作系统。"}</p>
+      <h2>{t("remote.inputTools")}</h2>
+      <p>{en ? "Try the mouse buttons, scroll wheel and keyboard here. Input only appears below; it does not control your computer. The permission flow is shown above."
+        : "在这里直接试用鼠标按钮、滚轮和键盘。输入只在下方显示，不会操作电脑；完整授权流程在上方演示。"}</p>
     </div></header>
     <div className="cp-tools">
       <label className="lr-input"><span>{en ? "Host platform" : "房主平台"}</span>
@@ -55,6 +61,18 @@ export function RemoteControlsPreview() {
           <option value="windows">Windows</option><option value="darwin">macOS</option><option value="linux">Linux</option>
         </select>
       </label>
+      <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.inputTools" cap="remote.inputTools" hint="hint-remote-keyboard"
+        expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
+    </div>
+    <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
+      {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} pointer={pointer} touch input={input} close={closeKeyboard}
+        allowText={requests.filter(request => request.state !== "pending").length < 2}
+        releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
+    </div>
+    <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
+      <output>{lastInput || (en ? "Press a mouse button or drag the scroll wheel to try it." : "轻点鼠标按钮或拖动滚轮即可试用。")}</output>
+    </p>
+    <div className="cp-tools">
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
         gamepad={platform !== "darwin"}
         simultaneous={simultaneous}
@@ -77,8 +95,6 @@ export function RemoteControlsPreview() {
           { id: "preview-gamepad", peerId: "preview-gamepad", state: "pending", name: "Player 3" },
         ]);
       }}>{en ? "Simulate multiple controllers" : "模拟多人控制"}</button>
-      <Btn id="preview-remote-keyboard-toggle" icon="keyboard" title="remote.keyboard" cap="remote.keyboard" hint="hint-remote-keyboard"
-        expanded={keyboardOpen} controls="preview-remote-keyboard" onClick={() => setKeyboardOpen(value => !value)} />
     </div>
     <Couch view="host" host={{ key: "preview-host", name: "Piik", you: true }}
       entries={participants.map(person => {
@@ -86,14 +102,6 @@ export function RemoteControlsPreview() {
         return { key: person.peerId, name: person.name, status: STATUS_CATALOG.connected, selectable: false,
           collaboration: Boolean(grant) };
       })} />
-    <div id="preview-remote-keyboard" className="cp-keyboard" hidden={!keyboardOpen}>
-      {keyboardOpen && <RemoteKeyboard key={platform} platform={platform} touch={false} input={input} close={closeKeyboard}
-        allowText={requests.filter(request => request.state !== "pending").length < 2}
-        releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
-    </div>
-    <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
-      <output>{lastInput || (en ? "Open the keyboard to try it." : "打开键盘即可试用。")}</output>
-    </p>
   </section></>;
 }
 

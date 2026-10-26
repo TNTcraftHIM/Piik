@@ -19,7 +19,7 @@ export const zh = {
   "remote.mouseMiddle": "中键",
   "remote.mouseRight": "右键",
   "remote.mouseWheel": "滚轮",
-  "remote.mouseHelp": "在画面上滑动移动光标。按住鼠标键可拖动，滑动滚轮可滚动页面。",
+  "remote.mouseHelp": "滑动控制光标，按住鼠标键拖动，滑动滚轮滚动。",
   "remote.inputPages": "输入分区",
   "remote.keys.letters": "字母键",
   "remote.keys.symbols": "数字与符号",
