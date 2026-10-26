@@ -304,6 +304,12 @@ func (session *Session) prepareEdge(
 		return webrtc.SessionDescription{}, errors.New("native media edge is unavailable")
 	}
 	session.mu.Unlock()
+	var edge *mediaedge.Edge
+	current := func() bool {
+		session.mu.Lock()
+		defer session.mu.Unlock()
+		return !session.closed && edge != nil && session.edges[connectionID] == edge
+	}
 	created, err := session.engine.NewEdge(session.source, mediaedge.EdgeOptions{
 		ConnectionID: connectionID,
 		ICEServers:   iceServers,
@@ -313,22 +319,23 @@ func (session *Session) prepareEdge(
 		Events: mediaedge.EdgeEvents{
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit) {
 				session.emit(Event{
-					Type: "edge-candidate", ShareID: session.shareID,
+					Current: current,
+					Type:    "edge-candidate", ShareID: session.shareID,
 					ConnectionID: connectionID, Candidate: candidate,
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
-				if state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
+				if current() && isCurrentState(state) && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
 					session.remoteInput.RevokeEdge(connectionID)
 				}
 				session.emit(Event{
-					Current: func() bool { return isCurrentState(state) },
+					Current: func() bool { return current() && isCurrentState(state) },
 					Type:    "edge-state", ShareID: session.shareID,
 					ConnectionID: connectionID, State: state.String(),
 				})
 				if pair != nil {
 					session.emit(Event{
-						Current: func() bool { return isCurrentState(state) },
+						Current: func() bool { return current() && isCurrentState(state) },
 						Type:    "edge-path", ShareID: session.shareID,
 						ConnectionID:     connectionID,
 						LocalType:        pair.Local.String(),
@@ -342,13 +349,13 @@ func (session *Session) prepareEdge(
 	if err != nil {
 		return webrtc.SessionDescription{}, err
 	}
-	edge := created
 	session.mu.Lock()
 	if session.closed || session.edges[connectionID] != nil {
 		session.mu.Unlock()
-		_ = edge.Close()
+		_ = created.Close()
 		return webrtc.SessionDescription{}, errors.New("native media edge is unavailable")
 	}
+	edge = created
 	session.edges[connectionID] = edge
 	session.mu.Unlock()
 	var offer webrtc.SessionDescription

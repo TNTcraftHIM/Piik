@@ -46,6 +46,72 @@ func TestMain(tests *testing.M) {
 	os.Exit(tests.Run())
 }
 
+func TestEdgeReplacementFencesNativeControl(t *testing.T) {
+	engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 1, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if err = source.SetFormat(0, 320, 180); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.ConfigureOutputs([]uint32{300_000}); err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan Event, 64)
+	session := &Session{shareID: "share_12345678", engine: engine, source: source, ctx: t.Context(),
+		edges: make(map[string]*mediaedge.Edge), events: func(ctx context.Context, event Event) {
+			select {
+			case events <- event:
+			case <-ctx.Done():
+			}
+		}}
+	const connectionID = "connection_12345678"
+	if _, err = session.PrepareEdge(connectionID, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	old := session.edge(connectionID)
+	if err = old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var closed Event
+	var observations []Event
+	deadline := time.NewTimer(3 * time.Second)
+	defer deadline.Stop()
+	for closed.Current == nil {
+		select {
+		case event := <-events:
+			observations = append(observations, event)
+			if event.Type == "edge-state" && event.State == "closed" {
+				if event.Current == nil || !event.Current() {
+					t.Fatal("current transport failure lost its delivery authority")
+				}
+				closed = event
+			}
+		case <-deadline.C:
+			t.Fatal("edge did not emit its terminal state")
+		}
+	}
+	session.CloseEdge(connectionID)
+	if _, err = session.PrepareEdge(connectionID, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	defer session.CloseEdge(connectionID)
+	if session.edge(connectionID) == old {
+		t.Fatal("replacement reused the retired edge")
+	}
+	for _, event := range observations {
+		if event.Current == nil || event.Current() {
+			t.Fatal("same-ID replacement accepted a retired edge observation", event.Type)
+		}
+	}
+}
+
 func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "1")
 	executable, err := os.Executable()
