@@ -12,6 +12,7 @@ export function readReleaseArtifacts(directory, version, revision) {
   const root = resolve(directory);
   const files = new Map();
   const packages = [];
+  const mirrorFiles = [];
   const servers = [];
   const targets = new Set();
   function asset(name) {
@@ -38,6 +39,19 @@ export function readReleaseArtifacts(directory, version, revision) {
       throw new Error(`Release artifact checksum mismatch: ${name}`);
     }
     packages.push(archive);
+    let mirror = archive;
+    if (descriptor.mirrorArtifact !== undefined || descriptor.mirrorArtifactSha256 !== undefined) {
+      if (target !== ANDROID_APP_PACKAGE_TARGET.id || descriptor.mirrorArtifact !== ANDROID_APP_PACKAGE_TARGET.mirrorArtifact) {
+        throw new Error(`Release mirror artifact is invalid: ${target}`);
+      }
+      mirror = asset(descriptor.mirrorArtifact);
+      if (mirror.sha256 !== descriptor.mirrorArtifactSha256 ||
+          readFileSync(asset(`${mirror.name}.sha256`).path, "utf8").trim() !== `${mirror.sha256}  ${mirror.name}`) {
+        throw new Error(`Release mirror artifact checksum mismatch: ${target}`);
+      }
+      packages.push(mirror);
+    }
+    mirrorFiles.push(mirror);
     const serverTarget = SERVER_PACKAGE_TARGETS.find(candidate => candidate.id === target);
     if (serverTarget) {
       if (asset(descriptor.manifest).sha256 !== descriptor.manifestSha256) {
@@ -53,6 +67,6 @@ export function readReleaseArtifacts(directory, version, revision) {
   if (targets.size !== expected.length || expected.some((target) => !targets.has(target))) {
     throw new Error("Publication requires every registered Server and App target");
   }
-  // Sidecars prove the local build; only installable packages are public assets.
-  return { files: packages, servers, targets: [...targets] };
+  // Sidecars prove the local build; only distribution packages are public assets.
+  return { files: packages, mirrorFiles, servers, targets: [...targets] };
 }

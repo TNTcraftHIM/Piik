@@ -5,6 +5,7 @@ export const CLOUDFLARED_SOURCE_SHA256 = "6c6901ae333508e1c529184bf90cb87ff59592
 export const ANDROID_APP_PACKAGE_TARGET = {
   id: "android-universal",
   artifact: "piik-app-android-universal.apk",
+  mirrorArtifact: "piik-app-android-universal.zip",
 };
 
 export function androidVersionCode(version) {

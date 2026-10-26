@@ -19,10 +19,16 @@ for (const target of ["server", "server-linux-arm64", "server-windows-amd64", "w
   // The Windows Server package ships a ZIP; the Linux Server packages keep tar.gz.
   const archive = target === "android-universal" ? "apk" : target === "server-windows-amd64" ? "zip" : server ? "tar.gz" : "zip";
   const artifact = `${target}.${archive}`;
+  const mirrorArtifact = target === "android-universal" ? "piik-app-android-universal.zip" : undefined;
+  if (mirrorArtifact) {
+    writeFileSync(join(directory, mirrorArtifact), "wrapped APK");
+    writeFileSync(join(directory, `${mirrorArtifact}.sha256`), `${hash("wrapped APK")}  ${mirrorArtifact}\n`);
+  }
   writeFileSync(join(directory, artifact), target);
   writeFileSync(join(directory, `${target}.release.json`), JSON.stringify({
     schema: 2, version, revision, artifact, artifactSha256: hash(target),
     target, ...(server ? { manifest: `${target}.manifest.tsv`, manifestSha256: hash("manifest") } : {}),
+    ...(mirrorArtifact ? { mirrorArtifact, mirrorArtifactSha256: hash("wrapped APK") } : {}),
   }));
   if (server) writeFileSync(join(directory, `${target}.manifest.tsv`), "manifest");
   else writeFileSync(join(directory, `${artifact}.sha256`), `${hash(target)}  ${artifact}\n`);
@@ -58,7 +64,8 @@ describe("Gitee mirror publication", () => {
       } }));
     };
     const mutations: string[] = [];
-    const attachments = sourceAssets.map(({ name, size }) => ({ name, size, browser_download_url: download + name }));
+    const attachments = sourceAssets.filter(asset => !asset.name.endsWith(".apk"))
+      .map(({ name, size }) => ({ name, size, browser_download_url: download + name }));
     const present = options.existing === "pending" ? attachments.slice(0, 1) : options.missing ? [] : attachments;
     const source = {
       ...release(false), html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${version}`,
@@ -79,6 +86,7 @@ describe("Gitee mirror publication", () => {
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
       if (url.startsWith(download)) {
+        expect(url).not.toMatch(/\.apk$/);
         expect(init?.headers).toBeUndefined();
         const file = url.slice(download.length);
         if (options.downloadFault && options.downloadFault.remaining > 0) {
@@ -148,13 +156,13 @@ describe("Gitee mirror publication", () => {
     expect(result.failure).toBeUndefined();
     expect(result.mutations[0]).toBe("POST /releases");
     expect(result.mutations.at(-1)).toBe("PATCH /releases/42");
-    expect(result.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length);
+    expect(result.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length - 1);
   });
 
   it("resumes pending uploads and leaves complete stable releases unchanged", async () => {
     const pending = await mirror({ existing: "pending" });
     expect(pending.failure).toBeUndefined();
-    expect(pending.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length - 1);
+    expect(pending.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length - 2);
     expect(await mirror({ existing: "published" })).toEqual({ mutations: [], failure: undefined });
   });
 

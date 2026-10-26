@@ -49,17 +49,31 @@ describe("App release update notice", () => {
       .toBe(current.browser_download_url);
   });
 
-  it("selects the Android APK from either release provider", () => {
+  it("selects the GitHub Android APK and the mirror ZIP with installation guidance", async () => {
     const name = "piik-app-android-universal.apk";
     const asset = { name, size: 1024, state: "uploaded",
       browser_download_url: `https://github.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
-    expect(parseReleaseMetadata({ ...release, assets: [asset] }, "android-universal")?.url)
-      .toBe(asset.browser_download_url);
-    const mirrorAsset = { name,
-      browser_download_url: `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
-    expect(parseMirrorReleaseMetadata({ tag_name: release.tag_name, prerelease: false,
-      body: `<!-- piik-source: ${latestRevision} -->`, assets: [mirrorAsset] }, "android-universal")?.url)
-      .toBe(mirrorAsset.browser_download_url);
+    const zipName = name.replace(".apk", ".zip");
+    const zip = { ...asset, name: zipName, browser_download_url: asset.browser_download_url.replace(".apk", ".zip") };
+    const primary = parseReleaseMetadata({ ...release, assets: [zip, asset] }, "android-universal");
+    expect(primary?.url).toBe(asset.browser_download_url);
+    expect(primary?.extractAPK).toBeUndefined();
+    const mirrorAsset = { name: zipName,
+      browser_download_url: `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${zipName}` };
+    const mirror = { tag_name: release.tag_name, prerelease: false,
+      body: `<!-- piik-source: ${latestRevision} -->`, assets: [mirrorAsset] };
+    const fetchImpl = vi.fn<typeof fetch>(async input => String(input) === DEFAULT_RELEASE_API_URL
+      ? new Response(null, { status: 503 }) : Response.json([mirror]));
+    await expect(checkReleaseUpdate({ version: "v1.1.0", revision: currentRevision },
+      { fetchImpl, packageTarget: "android-universal" })).resolves.toMatchObject({
+        url: mirrorAsset.browser_download_url, extractAPK: true,
+      });
+    for (const assets of [[], [{ ...mirrorAsset, name }], [mirrorAsset, mirrorAsset],
+      [{ ...mirrorAsset, browser_download_url: mirrorAsset.browser_download_url.replace("gitee.com", "evil.example") }]]) {
+      const legacy = parseMirrorReleaseMetadata({ ...mirror, assets }, "android-universal");
+      expect(legacy?.url).toBe(`https://gitee.com/TNTcraftHIM/Piik/releases/tag/${release.tag_name}`);
+      expect(legacy?.extractAPK).toBeUndefined();
+    }
   });
 
   it("keeps the release page when a matching safe ZIP is missing, without trying another provider", async () => {

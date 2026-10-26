@@ -16,6 +16,7 @@ interface PublishedRelease {
   url: string;
   releaseURL: string;
   publishedAt?: string;
+  extractAPK?: boolean;
 }
 export interface ReleaseUpdateNotice extends PublishedRelease {
   kind: "update-available" | "major-update" | "different-build" | "official-release";
@@ -31,21 +32,25 @@ function normalizeVersion(value: unknown): string | null {
   return version ? `v${version}` : null;
 }
 
-function packageDownloadURL(release: PublishedRelease, assets: unknown, target?: string): string {
-  if (!target || !/^[a-z0-9]+-[a-z0-9]+$/.test(target) || !Array.isArray(assets)) return release.url;
-  const extension = target === "android-universal" ? "apk" : "zip";
+function packageDownload(release: PublishedRelease, assets: unknown, target?: string): Pick<PublishedRelease, "url" | "extractAPK"> {
+  if (!target || !/^[a-z0-9]+-[a-z0-9]+$/.test(target) || !Array.isArray(assets)) return { url: release.url };
+  const android = target === "android-universal";
+  const mirror = release.url.startsWith(MIRROR_RELEASE_PAGE);
+  const extension = android && !mirror ? "apk" : "zip";
   const names = [`piik-app-${target}.${extension}`];
-  if (release.revision && extension === "zip") names.push(`piik-app-${target}-${release.revision.slice(0, 7)}.zip`);
+  if (release.revision && !android) names.push(`piik-app-${target}-${release.revision.slice(0, 7)}.zip`);
   for (const name of names) {
     const matches = assets.filter(asset => asset?.name === name);
     if (!matches.length) continue;
     const asset = matches[0];
     const expectedURL = `${release.url.replace("/releases/tag/", "/releases/download/")}/${name}`;
-    return matches.length === 1 && (release.url.startsWith(MIRROR_RELEASE_PAGE) ||
+    return matches.length === 1 && (mirror ||
       (Number.isSafeInteger(asset.size) && asset.size > 0 && asset.state === "uploaded")) &&
-      asset.browser_download_url === expectedURL ? asset.browser_download_url : release.url;
+      asset.browser_download_url === expectedURL
+      ? { url: asset.browser_download_url, ...(android && mirror ? { extractAPK: true } : {}) }
+      : { url: release.url };
   }
-  return release.url;
+  return { url: release.url };
 }
 
 export function parseReleaseMetadata(value: unknown, packageTarget?: string): PublishedRelease | null {
@@ -66,7 +71,7 @@ export function parseReleaseMetadata(value: unknown, packageTarget?: string): Pu
     releaseURL: RELEASE_PAGE + version,
     ...(Number.isFinite(publishedTime) ? { publishedAt: new Date(publishedTime).toISOString() } : {}),
   };
-  return { ...normalized, url: packageDownloadURL(normalized, release.assets, packageTarget) };
+  return { ...normalized, ...packageDownload(normalized, release.assets, packageTarget) };
 }
 
 export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: string): PublishedRelease | null {
@@ -83,7 +88,7 @@ export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: strin
   if (!normalized) return null;
   const mirror = { ...normalized, url: MIRROR_RELEASE_PAGE + normalized.version,
     releaseURL: MIRROR_RELEASE_PAGE + normalized.version };
-  return { ...mirror, url: packageDownloadURL(mirror, release.assets, packageTarget) };
+  return { ...mirror, ...packageDownload(mirror, release.assets, packageTarget) };
 }
 
 export function releaseUpdateNotice(
