@@ -93,9 +93,9 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
     widget.current?.removeAttribute("data-dragging");
     contacts.current.clear(); wheel.current = null; setHeld([]);
   }, [pointer, clearIdle, finishWheel]);
-  useLayoutEffect(() => () => pointer.setVirtualMouse(false), [pointer]);
+  useLayoutEffect(() => () => pointer.setMode("direct"), [pointer]);
   useLayoutEffect(() => {
-    if (!expanded) pointer.setVirtualMouse(touchMode === "trackpad");
+    if (!expanded) pointer.setMode(touchMode);
     pointer.refresh();
   }, [pointer, expanded, touchMode]);
   useLayoutEffect(() => {
@@ -119,7 +119,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
   const expand = () => {
     const bounds = widget.current?.getBoundingClientRect();
     release();
-    pointer.setVirtualMouse(true, bounds ? pointAt(bounds.left, bounds.top) : null);
+    pointer.setMode("mouse", bounds ? pointAt(bounds.left, bounds.top) : null);
     setMode("expanded");
   };
   const minimize = () => {
@@ -128,7 +128,7 @@ export function RemoteMouse({ pointer, positionRef, pointAt, touchMode }: {
       element.style.setProperty("--mouse-x", `${element.offsetLeft / layer.clientWidth * 100}%`);
       element.style.setProperty("--mouse-y", `${element.offsetTop / layer.clientHeight * 100}%`);
     }
-    release(); pointer.setVirtualMouse(touchMode === "trackpad"); focusMini.current = true; setMode("mini");
+    release(); pointer.setMode(touchMode); focusMini.current = true; setMode("mini");
   };
   const finish = (id: number, cancelled = false) => {
     const current = contacts.current.get(id);

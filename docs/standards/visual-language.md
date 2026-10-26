@@ -338,7 +338,11 @@ browsers. One-step actions and brief adjustments do not need movable windows.
 Touch controllers default to direct touch without a cursor. A draggable mini
 mouse expands on tap, with its cursor spaced above and to the left; one pointer
 position drives both. The existing viewport pans the picture to leave room for
-the mouse at its edges and permits blank space during local zoom and pan.
+the mouse at its edges. Added blank space is bounded by the tool's footprint,
+and the cursor stops at the source picture's edges. Two-finger pinch and pan
+move the picture beneath the full mouse, reanchoring its local source target
+without remote input. The compact trackpad retains its two-finger scrolling
+at normal scale.
 A separate button minimizes it and restores the selected touch mode; the
 compact trackpad cursor remains an optional local preference in playback settings.
 Only the mini mouse tucks away after resting at a picture edge, using the player

@@ -1,14 +1,15 @@
 import type { RemoteInputEvent } from "./input-session";
 import type { RemoteViewport } from "./viewport";
-import { rotatePictureDelta, type VideoRotation } from "../media/video-geometry";
+import { rotatePictureDelta, rotatePicturePoint, type VideoRotation } from "../media/video-geometry";
 
 export const REMOTE_TOUCH_HOLD_MS = 500;
 
 type Point = { x: number; y: number };
+type PointerMode = "direct" | "trackpad" | "mouse";
 type Contact = Point & { start: Point };
 
-// Gesture lifetime belongs to the current input grant. Pointer coordinates
-// belong to the source picture; the viewport pans locally without changing them.
+// Gesture lifetime belongs to the current input grant. One source target drives
+// the pointer and tool; local view gestures reanchor it without remote input.
 export class RemoteTouchpad {
   position: Point = { x: 0.5, y: 0.5 };
   private contacts = new Map<number, Contact>();
@@ -16,7 +17,7 @@ export class RemoteTouchpad {
   private fingers = 0;
   private moved = false;
   private dragging = false;
-  private virtualMouse = false;
+  private mode: PointerMode = "direct";
   private held = new Set<number>();
   private started = 0;
   private pair: { center: Point; distance: number } | null = null;
@@ -24,18 +25,18 @@ export class RemoteTouchpad {
   private frame: number | null = null;
 
   constructor(
-    private readonly picture: () => { width: number; height: number; rotation: VideoRotation } | null,
+    private readonly picture: () => { left: number; top: number; width: number; height: number; rotation: VideoRotation } | null,
     private readonly input: (event: RemoteInputEvent) => void,
     private readonly scroll: (deltaY: number) => void,
     private readonly changed: (position: Point) => void,
     private readonly viewport: Pick<RemoteViewport, "scale" | "transform">,
   ) {}
 
-  setVirtualMouse(enabled: boolean, position?: Point | null): void {
-    if (this.virtualMouse === enabled && (!enabled || !position)) return;
+  setMode(mode: PointerMode, position?: Point | null): void {
+    if (this.mode === mode && (mode === "direct" || !position)) return;
     this.reset();
-    this.virtualMouse = enabled;
-    if (enabled) {
+    this.mode = mode;
+    if (mode !== "direct") {
       const next = position ?? this.position;
       this.position = { x: Math.max(0, Math.min(1, next.x)), y: Math.max(0, Math.min(1, next.y)) };
       this.input({ type: "move", ...this.position });
@@ -49,15 +50,15 @@ export class RemoteTouchpad {
 
   down(id: number, x: number, y: number, position: Point | null): void {
     if (!this.contacts.size) {
-      if (!this.virtualMouse) {
+      if (this.mode === "direct") {
         if (!position) return;
         this.position = position;
+        this.changed(this.position);
       }
       this.started = performance.now();
       this.fingers = 0;
       this.moved = this.held.size > 0;
       this.gesture = "pending";
-      this.changed(this.position);
     }
     this.contacts.set(id, { x, y, start: { x, y } });
     this.fingers = Math.max(this.fingers, this.contacts.size);
@@ -126,11 +127,24 @@ export class RemoteTouchpad {
       const pinch = Math.abs(next.distance - previous.distance) > Math.max(8, previous.distance * .08);
       const pan = Math.hypot(next.center.x - previous.center.x, next.center.y - previous.center.y) > 8;
       if (!pinch && !pan) return;
-      this.gesture = pinch || this.viewport.scale !== 1 ? "view" : "scroll";
+      this.gesture = this.mode === "mouse" || pinch || this.viewport.scale !== 1 ? "view" : "scroll";
       this.moved = true;
     }
-    if (this.gesture === "view") this.viewport.transform(previous.center, next.center, next.distance / previous.distance);
-    else this.scroll(previous.center.y - next.center.y);
+    if (this.gesture === "view") {
+      const before = this.mode === "mouse" ? this.picture() : null;
+      const point = before && rotatePicturePoint(this.position, before.rotation);
+      this.viewport.transform(previous.center, next.center, next.distance / previous.distance);
+      const after = point && this.picture();
+      if (before && point && after?.width && after.height) {
+        // The picture slides under the tool; only its local source target changes.
+        const target = rotatePicturePoint({
+          x: (before.left + point.x * before.width - after.left) / after.width,
+          y: (before.top + point.y * before.height - after.top) / after.height,
+        }, after.rotation, true);
+        this.position = { x: Math.max(0, Math.min(1, target.x)), y: Math.max(0, Math.min(1, target.y)) };
+        this.changed(this.position);
+      }
+    } else this.scroll(previous.center.y - next.center.y);
     this.pair = next;
   }
 

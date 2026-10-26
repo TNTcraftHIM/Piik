@@ -34,7 +34,7 @@ function mouse(left = 100, touchMode: "direct" | "trackpad" = "direct") {
     getBoundingClientRect: () => ({ left, top: 100 }),
     style: { setProperty: vi.fn() }, setAttribute: vi.fn(), removeAttribute: vi.fn(), contains: () => false };
   const mini = { matches: () => false, focus: vi.fn() };
-  const pointer = { button: vi.fn(), moveBy: vi.fn(), wheel: vi.fn(), setVirtualMouse: vi.fn(), refresh: vi.fn() };
+  const pointer = { button: vi.fn(), moveBy: vi.fn(), wheel: vi.fn(), setMode: vi.fn(), refresh: vi.fn() };
   const slot = () => slots[index++] ?? (slots[index - 1] = {});
   const changed = (previous: readonly unknown[] | undefined, next: readonly unknown[]) =>
     !previous || previous.length !== next.length || next.some((value, i) => !Object.is(value, previous[i]));
@@ -85,16 +85,16 @@ it("retains the compact trackpad option while the full mouse is minimized", () =
   try {
     expect(view.find("lr-remote-touch-cursor")).toBeDefined();
     expect(view.expanded()).toBe(false);
-    expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(true);
+    expect(view.pointer.setMode).toHaveBeenLastCalledWith("trackpad");
     view.find("lr-remote-mouse-mini").props.onClick({ detail: 0 }); view.render();
     expect(view.expanded()).toBe(true);
     view.find("lr-remote-mouse-minimize").props.onClick(); view.render();
     expect(view.expanded()).toBe(false);
     expect(view.find("lr-remote-touch-cursor")).toBeDefined();
-    expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(true);
+    expect(view.pointer.setMode).toHaveBeenLastCalledWith("trackpad");
     view.setTouchMode("direct");
     expect(view.find("lr-remote-touch-cursor")).toBeUndefined();
-    expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(false);
+    expect(view.pointer.setMode).toHaveBeenLastCalledWith("direct");
   } finally { view.dispose(); }
 });
 
@@ -114,7 +114,7 @@ it("moves only the mini widget and suppresses its following pointer click after 
     view.find("lr-remote-mouse-mini").props.onClick({ detail: 0 }); view.render();
     expect(view.expanded()).toBe(true);
     expect(view.find("lr-remote-touch-cursor")).toBeDefined();
-    expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(true, { x: .25, y: .3 });
+    expect(view.pointer.setMode).toHaveBeenLastCalledWith("mouse", { x: .25, y: .3 });
   } finally { view.dispose(); }
 });
 
@@ -139,7 +139,7 @@ it("opens with a mini tap and minimizes explicitly while releasing held remote i
     view.find("lr-remote-mouse").props.onLostPointerCapture(view.event());
     expect(view.expanded()).toBe(false);
     expect(view.find("lr-remote-touch-cursor")).toBeUndefined();
-    expect(view.pointer.setVirtualMouse).toHaveBeenLastCalledWith(false);
+    expect(view.pointer.setMode).toHaveBeenLastCalledWith("direct");
     expect(view.pointer.button.mock.calls).toEqual([[0, true], [0, false]]);
   } finally { view.dispose(); }
 });

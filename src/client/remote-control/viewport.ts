@@ -33,10 +33,10 @@ export class RemoteViewport {
     const { width, height } = this.surface.getBoundingClientRect();
     if (!videoWidth || !videoHeight || !width || !height) return;
     const picture = videoPictureSize(this.video, width, height);
-    // Manual panning retains half the smaller picture/frame. Pointer tools can
-    // request more gutter, bounded by their actual size and a remaining pixel.
-    const limit = (size: number, frame: number, room: number) => Math.min((size + frame) / 2 - 1,
-      Math.max(Math.max(size, frame) / 2, Math.max(0, (size - frame) / 2) + Math.min(room, frame - 1)));
+    // Pan across the picture, adding only the visible tool's footprint at its
+    // edges. Zooming out keeps the natural gutters; the picture remains reachable.
+    const limit = (size: number, frame: number, room: number) => Math.max(0, Math.min((size + frame) / 2 - 1,
+      Math.abs(size - frame) / 2 + Math.min(room, frame - 1)));
     const limitX = limit(picture.width * this.scale, width, this.room?.right ?? 0);
     const limitY = limit(picture.height * this.scale, height, this.room?.bottom ?? 0);
     const x = this.offset.x = Math.max(-limitX, Math.min(limitX, this.offset.x));
@@ -57,15 +57,19 @@ export class RemoteViewport {
   }
 
   follow(position: Point, room: { right: number; bottom: number } | null): void {
+    const resized = this.room?.right !== room?.right || this.room?.bottom !== room?.bottom;
     this.room = room;
-    if (!room) return;
+    if (!room) {
+      if (resized) this.refresh();
+      return;
+    }
     const picture = pictureRect(this.video), rect = this.surface.getBoundingClientRect();
     if (!picture) return;
     const rotated = rotatePicturePoint(position, videoRotation(this.video));
     const x = picture.left + rotated.x * picture.width, y = picture.top + rotated.y * picture.height;
     const dx = Math.max(rect.left, Math.min(rect.right - Math.min(room.right, rect.width - 1), x)) - x;
     const dy = Math.max(rect.top, Math.min(rect.bottom - Math.min(room.bottom, rect.height - 1), y)) - y;
-    if (!dx && !dy) return;
+    if (!dx && !dy && !resized) return;
     this.offset.x += dx; this.offset.y += dy;
     this.refresh();
   }

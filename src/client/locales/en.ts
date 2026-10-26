@@ -514,7 +514,7 @@ export const en: Record<CopyKey, string> = {
   "native.fail.captureStart": "App capture failed; try another source.",
   "native.fail.edgePrepare": "Piik App could not prepare the media connection. Enable diagnostics and try again.",
   "shareHelp.title": "Sharing troubleshooting",
-  "shareHelp.open": "Select for troubleshooting",
+  "shareHelp.open": "Select the status light for troubleshooting",
   "shareHelp.source": "Try another ordinary window or screen. Keep the source open and allow screen recording when your system asks.",
   "shareHelp.compare": "Compare with the Browser source picker. On Windows, also try Auto or VP8 with the same source.",
   "shareHelp.report": "If it still fails, enable diagnostics, try again and save reports from that attempt. Include the failure message, Piik version and what you were doing.",

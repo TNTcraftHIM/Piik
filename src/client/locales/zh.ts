@@ -514,7 +514,7 @@ export const zh = {
   "native.fail.captureStart": "App 未能采集所选来源，请换一个来源重试。",
   "native.fail.edgePrepare": "Piik App 未能准备媒体连接。请开启诊断后重试。",
   "shareHelp.title": "分享排查",
-  "shareHelp.open": "点按查看排查方法",
+  "shareHelp.open": "点击状态灯查看排查方法",
   "shareHelp.source": "先换一个普通窗口或屏幕重试，确认来源仍然打开，并允许系统请求的录屏权限。",
   "shareHelp.compare": "对照试一次「浏览器」选源。Windows 上也可将编码器改为「自动」或 VP8，再试同一来源。",
   "shareHelp.report": "仍然失败时，开启诊断后再试一次，并保存同一次尝试的报告。请附上失败提示、Piik 版本和当时的操作。",

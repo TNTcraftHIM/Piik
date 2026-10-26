@@ -30,7 +30,7 @@ function viewport(width = 400, height = 200, rotation: VideoRotation = 0) {
   return { frame, video, surface, style, changed, view, point };
 }
 
-it("zooms out with black gutters, pans at unit scale and restores the original cell", () => {
+it("zooms out with black gutters, bounds panning by the tool and restores the original cell", () => {
   const { view, video, style, surface, point } = viewport();
   const center = { x: 220, y: 130 };
   view.transform(center, center, .1);
@@ -44,13 +44,21 @@ it("zooms out with black gutters, pans at unit scale and restores the original c
   view.transform(center, center, 20);
   expect(view.scale).toBe(4);
   view.reset();
+  view.follow({ x: .5, y: .5 }, { right: 120, bottom: 80 });
   view.transform(center, { x: 10000, y: 10000 }, 1);
   const picture = pictureRect(video)!, frame = surface.getBoundingClientRect();
   expect(view.scale).toBe(1);
   expect(style.transform).toContain("translate(");
   expect(style.clipPath).not.toBe("");
-  expect(frame.right - picture.left).toBeGreaterThanOrEqual(200);
-  expect(frame.bottom - picture.top).toBeGreaterThanOrEqual(100);
+  expect(picture.left).toBe(frame.left + 120);
+  expect(picture.top).toBe(frame.top + 80);
+  view.transform(center, { x: -10000, y: -10000 }, 1);
+  const opposite = pictureRect(video)!;
+  expect(opposite.left + opposite.width).toBe(frame.right - 120);
+  expect(opposite.top + opposite.height).toBe(frame.bottom - 80);
+  view.reset();
+  view.transform(center, { x: 10000, y: 10000 }, 1);
+  expect(pictureRect(video)).toEqual({ left: frame.left, top: frame.top, width: frame.width, height: frame.height });
   view.reset();
   expect(style.transform).toBe(""); expect(style.clipPath).toBe("");
 });
@@ -87,7 +95,7 @@ it("republishes geometry on resize and reaches the full remote source beyond the
   const events: RemoteInputEvent[] = [], room = { right: 128, bottom: 172 };
   const pad = new RemoteTouchpad(() => ({ ...pictureRect(video)!, rotation: 0 }), event => events.push(event),
     () => {}, position => view.follow(position, room), view);
-  pad.setVirtualMouse(true);
+  pad.setMode("mouse");
   pad.button(0, true);
   pad.moveBy(400, 200);
   const position = pad.position;
@@ -103,7 +111,8 @@ it("republishes geometry on resize and reaches the full remote source beyond the
   expect(point(position).y + room.bottom).toBe(frame.top + frame.height);
   pad.reset();
   expect(events.at(-1)).toEqual({ type: "button", button: 0, down: false });
-  view.reset();
+  view.follow(position, { right: 22, bottom: 28 });
+  expect(point(position)).toEqual({ x: frame.left + frame.width - 22, y: frame.top + frame.height - 28 });
   view.follow(position, null);
   expect(video.style.transform).toBe("");
 });
