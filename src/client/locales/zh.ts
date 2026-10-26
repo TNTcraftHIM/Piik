@@ -56,7 +56,7 @@ export const zh = {
   "remote.typeText": "输入到对方",
   "remote.textHelp": "回车可换行；点击按钮后输入到对方当前选中的位置。",
   "remote.textTooLong": "内容较长，请分段输入（每次最多 2 KB）。",
-  "remote.touchHelp": "双指轻点右击、滑动滚动；捏合缩放，缩放后双指移动画面。展开虚拟鼠标可使用鼠标按键与滚轮。",
+  "remote.touchHelp": "双指轻点右击，捏合缩放。双指滑动默认滚动；缩放后或展开虚拟鼠标时改为平移画面。",
   "remote.resetZoom": "还原画面大小",
   "remote.key.Escape": "退出键",
   "remote.key.Tab": "制表键",

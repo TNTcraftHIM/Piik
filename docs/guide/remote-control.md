@@ -113,7 +113,9 @@ mode available.
 Drag the mini mouse to reposition it; tap to expand its left and right buttons
 and combined scroll wheel / middle button. The cursor stays above and to the
 left of the mouse and moves with it. The picture pans at the edges to leave room
-for the mouse. Drag the lower shell to move; hold a mouse button while moving
+for the tool, and the cursor stops at the source picture's edges. With the mouse
+expanded, use two fingers on the picture to pan or zoom while the mouse stays
+in reach. Use its wheel to scroll the Host. Drag the lower shell to move; hold a mouse button while moving
 to drag an item. Tap the wheel to middle-click, swipe it to scroll, or hold then
 move for a middle-button drag. The separate minimize button returns it to the mini
 mouse and your selected touch mode. Leave the mini mouse at an edge to tuck it away

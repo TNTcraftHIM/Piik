@@ -56,7 +56,7 @@ export const en: Record<CopyKey, string> = {
   "remote.typeText": "Type remotely",
   "remote.textHelp": "Enter adds a new line. The button types at the remote cursor.",
   "remote.textTooLong": "Split this into smaller sections (up to 2 KB each).",
-  "remote.touchHelp": "Two-finger tap right-clicks; swipe scrolls or pans when zoomed. Pinch to zoom. Expand the virtual mouse for its buttons and wheel.",
+  "remote.touchHelp": "Two-finger tap right-clicks; pinch to zoom. Two-finger swipes scroll normally, or pan when zoomed or the virtual mouse is expanded.",
   "remote.resetZoom": "Reset picture zoom",
   "remote.key.Escape": "Escape",
   "remote.key.Tab": "Tab",
