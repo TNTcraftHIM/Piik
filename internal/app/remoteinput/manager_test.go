@@ -1,6 +1,7 @@
 package remoteinput
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/base64"
@@ -8,12 +9,14 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
@@ -26,6 +29,8 @@ type recordedInput struct {
 	target    bounds
 	geometry  bounds
 	focused   bool
+	targetErr error
+	applyErr  error
 }
 
 func setTestPolicy(s *Session, mode, password string) error {
@@ -307,15 +312,61 @@ func TestPreparedPolicyFollowsTheCommittedSourceAndHostIntent(t *testing.T) {
 }
 
 func (s *recordedInput) Target(nativecapture.CaptureTarget, *nativecapture.Stream) (bounds, bool, error) {
-	return s.geometry, s.focused, nil
+	return s.geometry, s.focused, s.targetErr
 }
 
 func (s *recordedInput) Apply(target bounds, event inputEvent) error {
+	if s.applyErr != nil {
+		return s.applyErr
+	}
 	s.target = target
 	s.events <- event
 	return nil
 }
 func (s *recordedInput) Reset() error { s.resets <- struct{}{}; return nil }
+
+func TestInputFailureDiagnosticsReleaseGrantWithoutRecordingInput(t *testing.T) {
+	for _, stage := range []string{"target", "apply"} {
+		t.Run(stage, func(t *testing.T) {
+			var logs bytes.Buffer
+			previous := slog.Default()
+			slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+			t.Cleanup(func() { slog.SetDefault(previous) })
+			sink := &recordedInput{events: make(chan inputEvent, 8), resets: make(chan struct{}, 8), focused: true}
+			m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+			_, peers := coPlaySession(t, m, true)
+			c := peers[0]
+			sendTestInput(m, c, inputEvent{Type: "request", Intent: strings.Repeat("f", 32)})
+			grant := c.grant
+			if grant == "" {
+				t.Fatal("control was not granted")
+			}
+			sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true, Grant: grant})
+			failure := errors.New("platform input failed")
+			if stage == "target" {
+				sink.targetErr = failure
+			} else {
+				sink.applyErr = failure
+			}
+			sendTestInput(m, c, inputEvent{Type: "text", Text: "private committed text", Grant: grant})
+			if m.owner != nil || c.grant != "" || len(c.keys) != 0 || len(sink.resets) == 0 {
+				t.Fatal("platform failure retained grant or held input")
+			}
+			var record map[string]any
+			if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
+				t.Fatalf("expected one failure record: %v", err)
+			}
+			if record["event"] != stage+"-failed" || record["connectionId"] != diagnostics.ID(c.edgeID) || record["inputGeneration"] != diagnostics.ID(c.epoch) {
+				t.Fatalf("failure stage or generation missing: %v", record)
+			}
+			for _, private := range []string{grant, c.intent, c.edgeID, c.epoch, "KeyA", "private committed text"} {
+				if strings.Contains(logs.String(), private) {
+					t.Fatal("failure diagnostic recorded private input or authority")
+				}
+			}
+		})
+	}
+}
 
 func TestCommittedMultilineText(t *testing.T) {
 	sink := &recordedInput{events: make(chan inputEvent, 16), resets: make(chan struct{}, 8)}

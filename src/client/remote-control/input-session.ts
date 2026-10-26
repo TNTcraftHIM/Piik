@@ -1,4 +1,5 @@
 import type { InputTransport } from "./input-route";
+import { debugError, debugEvent } from "../lib/debug";
 import { remoteInputStateSchema, remoteTextAvailable, remoteGamepadAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
 export type { RemoteInputState } from "./protocol";
 export type RemoteInputEvent =
@@ -82,6 +83,7 @@ export class RemoteInputSession {
       return;
     }
     if (state.state !== "pending" && state.state !== "active" && state.state !== "suspended") this.intent = null;
+    if (state.state === "failed") debugEvent("remote-input", "host-failed", { previousState: this.state?.state, mode: state.mode });
     this.set(state);
   };
 
@@ -94,7 +96,8 @@ export class RemoteInputSession {
       if (this.channel.bufferedAmount > 8192) throw new Error("input queue stalled");
       this.channel.send(JSON.stringify(event));
       return true;
-    } catch {
+    } catch (error) {
+      debugError("remote-input", "send-failed", error, { state: this.state?.state, readyState: this.channel.readyState, bufferedAmount: this.channel.bufferedAmount });
       this.intent = null;
       this.set(this.state && { ...this.state, state: "failed", grant: undefined });
       this.channel.close();

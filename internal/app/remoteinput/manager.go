@@ -11,12 +11,14 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"runtime"
 	"sort"
 	"sync"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
@@ -381,6 +383,8 @@ func (m *Manager) refreshActive() (bounds, bool) {
 		var failed []*connection
 		for _, c := range m.connections {
 			if c.owner == s && c.grant != "" {
+				slog.Debug("remote-input", "event", "target-failed", "sourceKind", s.target.Kind,
+					"connectionId", diagnostics.ID(c.edgeID), "inputGeneration", diagnostics.ID(c.epoch), diagnostics.Error(err))
 				failed = append(failed, c)
 			}
 		}
@@ -669,6 +673,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 			err = m.sink.Apply(b, event)
 		}
 		if err != nil {
+			slog.Debug("remote-input", "event", "apply-failed", "connectionId", diagnostics.ID(c.edgeID), "inputGeneration", diagnostics.ID(c.epoch), diagnostics.Error(err))
 			m.release()
 			m.send(c, "failed")
 		}

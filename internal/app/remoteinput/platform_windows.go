@@ -5,6 +5,7 @@ package remoteinput
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"runtime"
 	"unicode/utf16"
@@ -49,9 +50,14 @@ func newPlatformSink(bool) (inputSink, error) {
 func (*windowsSink) Authorize() error { return nil }
 
 func inject(inputs ...winInput) error {
-	n, _, _ := sendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(inputs[0]))
+	n, _, err := sendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(inputs[0]))
 	if n != uintptr(len(inputs)) {
-		return errors.New("Windows did not accept input")
+		// Windows does not identify UIPI blocking through GetLastError. Preserve
+		// the accepted count and any reported code without inventing that cause.
+		if err != windows.ERROR_SUCCESS {
+			return fmt.Errorf("Windows accepted %d of %d input events: %w", n, len(inputs), err)
+		}
+		return fmt.Errorf("Windows accepted %d of %d input events", n, len(inputs))
 	}
 	return nil
 }
