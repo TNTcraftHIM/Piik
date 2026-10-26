@@ -40,7 +40,8 @@ Piik 支持一位房主分享屏幕，最多 20 位受邀观众观看。先选�
 
 1. 从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
    [Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载以 **`piik-app`** 开头、
-   对应平台的程序包。手机或平板安装 App，电脑上完整解压并保留目录结构。
+   对应平台的程序包。手机或平板安装 App；Gitee ZIP 需先解压，再安装其中的 APK。
+   桌面端完整解压并保留目录结构。
 2. Windows 打开 `piik-app.exe`，macOS 打开 `Piik App.app`，Linux 运行 `./piik-app`。
    手机或平板安装后打开 Piik。启动页会在系统浏览器里打开。
 3. 邀请不在同一局域网的朋友时，选择 **公网邀请**，再点击 **进入 Piik**。

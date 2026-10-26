@@ -126,8 +126,11 @@ release descriptor. Fixed names allow GitHub's native latest-asset links;
 and verification of the matching Gitee mirror.
 
 Android uses the installable `piik-app-android-universal.apk` for both ARM64 and
-x64. It follows the same release identity, checksum, complete-target and
-mirror rules. [Android build instructions](../../mobile/README.md#signed-release-apk)
+x64. The same build also produces `piik-app-android-universal.zip`, containing
+only that unchanged signed APK. GitHub keeps both originals; Gitee distributes
+the ZIP, and its download links explain extraction before installation.
+Both follow the same release identity, checksum and complete-target rules.
+[Android build instructions](../../mobile/README.md#signed-release-apk)
 own signing input and installation details.
 
 Public Release attachments contain the App ZIPs/APK and Server runtime archives
@@ -140,7 +143,7 @@ archives are separate from Piik's uploaded packages. Retain original build
 metadata with operator deployment records as described in [deployment](../deployment.md).
 
 Update checks compare actual release precedence. The App reports its compiled
-OS/architecture and links to that platform's ZIP in the selected release metadata;
+OS/architecture and links to that platform's package in the selected release metadata;
 the release page remains the fallback when no matching attachment is available.
 Fixed archive names and published names with that release's SHA suffix are
 accepted only with the provider's exact release download URL. Downloads start on
@@ -344,8 +347,12 @@ GitHub Releases is the primary publication; Gitee is an optional official mirror
 for domestic access, with a minimal README pointing development and documentation
 back to GitHub. The Gitee repository need not copy the source tree. Its README/tag
 commit is not the Piik source revision; release metadata retains the original
-GitHub SHA. Build each target once and copy the same archives, notices,
-version, full source SHA and artifact hashes to both. A Git repository mirror
+GitHub SHA. Build each target once and copy the selected original archives,
+notices, version, full source SHA and artifact hashes to both. Android's ZIP
+wrapper is a build artifact, not a mirror-side rebuild. Gitee's
+[official response](https://gitee.com/oschina/git-osc/issues/IB93ZJ) states that it
+cannot distribute APK downloads; do not work around its response type in the Browser.
+A Git repository mirror
 alone does not synchronize Release attachments. Keep one release description.
 Update detection reads each provider's API metadata; it does not parse the public
 changelog or download build descriptors. The existing pipeline owns local
