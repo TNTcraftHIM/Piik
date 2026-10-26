@@ -331,10 +331,16 @@ export class BrowserVoiceEndpoint {
   private async configureSenders(connection: Connection): Promise<void> {
     const bitrate = this.state?.bitrate ?? 32_000;
     for (const sender of connection.senders.values()) {
-      const parameters = sender.getParameters();
-      if (!parameters.encodings.length || !parameters.codecs?.length) continue;
-      if (parameters.encodings[0]?.maxBitrate !== audioSenderCeiling(parameters, bitrate)) {
-        await this.wait(connection, () => configureAudioSender(sender, bitrate));
+      try {
+        const parameters = sender.getParameters();
+        if (!parameters.encodings.length || !parameters.codecs?.length) continue;
+        if (parameters.encodings[0]?.maxBitrate !== audioSenderCeiling(parameters, bitrate)) {
+          await this.wait(connection, () => configureAudioSender(sender, bitrate));
+        }
+      } catch (error) {
+        if (!this.current(connection)) throw error;
+        // A rejected tuning request leaves the negotiated transport usable.
+        // Readback on the next explicit reconcile retries an unapplied ceiling.
       }
     }
   }
