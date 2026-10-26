@@ -280,8 +280,10 @@ jobs:
             runner: macos-15
           - target: darwin-amd64
             runner: macos-15-intel
+          - target: android-universal
+            runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 20
+    timeout-minutes: ${{ matrix.target == 'android-universal' && 45 || 20 }}
     env:
       PIIK_BUILD_VERSION: ${{ needs.validate.outputs.version }}
     steps:
@@ -315,16 +317,70 @@ jobs:
           gstreamer1.0-plugins-bad
           gstreamer1.0-pulseaudio
       - name: Download Server release
+        if: matrix.target != 'android-universal'
         uses: actions/download-artifact@v8
         with:
           name: piik-server-${{ github.sha }}
           path: ${{ runner.temp }}/server-release
       - name: Build and verify App candidate
+        if: matrix.target != 'android-universal'
         run: >-
           node scripts/package-app-candidate.mjs
           "${{ runner.temp }}/server-release"
           "${{ matrix.target }}"
           "${{ runner.temp }}/app-release"
+      - name: Set up Android Java
+        if: matrix.target == 'android-universal'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android Gradle
+        if: matrix.target == 'android-universal'
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.11.1'
+          cache-provider: basic
+      - name: Install pinned Android build tools
+        if: matrix.target == 'android-universal'
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;30.0.16248370'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+          echo "GRADLE_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v gradle)")")")" >> "$GITHUB_ENV"
+          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20261011034528-197770444867
+          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20261011034528-197770444867
+      - name: Prepare Android signing
+        if: matrix.target == 'android-universal'
+        env:
+          PIIK_PUBLISH: ${{ needs.validate.outputs.publish }}
+          PIIK_ANDROID_KEYSTORE_BASE64: ${{ secrets.PIIK_ANDROID_KEYSTORE_BASE64 }}
+          PIIK_ANDROID_STORE_PASSWORD: ${{ secrets.PIIK_ANDROID_STORE_PASSWORD }}
+          PIIK_ANDROID_KEY_ALIAS: ${{ secrets.PIIK_ANDROID_KEY_ALIAS }}
+          PIIK_ANDROID_KEY_PASSWORD: ${{ secrets.PIIK_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "$PIIK_PUBLISH" = true ]; then
+            for name in PIIK_ANDROID_KEYSTORE_BASE64 PIIK_ANDROID_STORE_PASSWORD PIIK_ANDROID_KEY_ALIAS PIIK_ANDROID_KEY_PASSWORD; do
+              if [ -z "${!name}" ]; then echo "Android publication requires $name" >&2; exit 1; fi
+            done
+            umask 077
+            printf '%s' "$PIIK_ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/piik-android.keystore"
+          else
+            # Manual candidates exercise the same release variant with a disposable key.
+            keytool -genkeypair -keystore "$RUNNER_TEMP/piik-android.keystore" -storetype PKCS12 \
+              -storepass candidate-password -keypass candidate-password -alias piik-candidate \
+              -keyalg RSA -keysize 3072 -validity 2 -dname 'CN=Piik CI candidate' -noprompt
+          fi
+      - name: Build and verify Android release APK
+        if: matrix.target == 'android-universal'
+        env:
+          PIIK_ANDROID_KEYSTORE: ${{ runner.temp }}/piik-android.keystore
+          PIIK_ANDROID_STORE_PASSWORD: ${{ needs.validate.outputs.publish == 'true' && secrets.PIIK_ANDROID_STORE_PASSWORD || 'candidate-password' }}
+          PIIK_ANDROID_KEY_ALIAS: ${{ needs.validate.outputs.publish == 'true' && secrets.PIIK_ANDROID_KEY_ALIAS || 'piik-candidate' }}
+          PIIK_ANDROID_KEY_PASSWORD: ${{ needs.validate.outputs.publish == 'true' && secrets.PIIK_ANDROID_KEY_PASSWORD || 'candidate-password' }}
+        run: node scripts/build-android.mjs --release --output "$RUNNER_TEMP/app-release"
+      - name: Remove temporary Android signing material
+        if: always() && matrix.target == 'android-universal'
+        run: rm -f -- "$RUNNER_TEMP/piik-android.keystore"
       - name: Upload App release candidate
         uses: actions/upload-artifact@v7
         with:

@@ -31,13 +31,16 @@ const (
 )
 
 type Options struct {
-	PortStart         int
-	PortEnd           int
-	AllowedOrigins    []string
-	NativeMedia       NativeMediaCapabilities
-	NewControl        func() ControlSession
-	Presentation      func(language string)
-	QualityPreference *appconfig.QualityPreference
+	PortStart int
+	PortEnd   int
+	// Zero keeps the desktop default. Single-source platforms may admit one.
+	MaxControlSessions int
+	AllowedOrigins     []string
+	ActivationURL      string
+	NativeMedia        NativeMediaCapabilities
+	NewControl         func() ControlSession
+	Presentation       func(language string)
+	QualityPreference  *appconfig.QualityPreference
 }
 
 type ControlSession interface {
@@ -73,6 +76,7 @@ type Health struct {
 	InstanceToken     string                  `json:"instanceToken"`
 	NativeMedia       NativeMediaCapabilities `json:"nativeMedia"`
 	QualityPreference bool                    `json:"qualityPreference,omitempty"`
+	ActivationURL     string                  `json:"activationURL,omitempty"`
 }
 
 type NativeMediaCapabilities struct {
@@ -90,6 +94,7 @@ type NativeMediaCapabilities struct {
 	Video                        bool                       `json:"video"`
 	CaptureBorderControl         bool                       `json:"captureBorderControl,omitempty"`
 	Microphone                   bool                       `json:"microphone,omitempty"`
+	SourceCancellation           bool                       `json:"sourceCancellation,omitempty"`
 	ShareVolume                  bool                       `json:"shareVolume,omitempty"`
 	ProcessAudio                 bool                       `json:"processAudio"`
 	ProcessAudioExclusion        bool                       `json:"processAudioExclusion,omitempty"`
@@ -106,7 +111,9 @@ type Server struct {
 	endpoint          Endpoint
 	allowedOrigins    []string
 	nativeMedia       NativeMediaCapabilities
+	activationURL     string
 	newControl        func() ControlSession
+	maxSessions       int
 	presentation      func(string)
 	qualityPreference *appconfig.QualityPreference
 	connectURL        string
@@ -134,6 +141,13 @@ func Start(parent context.Context, options Options) (*Server, error) {
 	if parent == nil {
 		parent = context.Background()
 	}
+	sessionLimit := options.MaxControlSessions
+	if sessionLimit == 0 {
+		sessionLimit = maxControlSessions
+	}
+	if sessionLimit < 1 || sessionLimit > maxControlSessions {
+		return nil, errors.New("native control session limit is invalid")
+	}
 	portStart, portEnd := normalizePortRange(options.PortStart, options.PortEnd)
 	listener, err := listenInRange(defaultBindAddress, portStart, portEnd)
 	if err != nil {
@@ -160,7 +174,9 @@ func Start(parent context.Context, options Options) (*Server, error) {
 		},
 		allowedOrigins:    normalizedOrigins(options.AllowedOrigins),
 		nativeMedia:       options.NativeMedia,
+		activationURL:     options.ActivationURL,
 		newControl:        options.NewControl,
+		maxSessions:       sessionLimit,
 		presentation:      options.Presentation,
 		qualityPreference: options.QualityPreference,
 		done:              make(chan error, 1),
@@ -189,6 +205,26 @@ func (server *Server) Done() <-chan error {
 
 func (server *Server) SetAllowedOrigins(origins []string) error {
 	server.mu.Lock()
+	retired := server.setAllowedOriginsLocked(origins)
+	server.mu.Unlock()
+	return server.retireConnections(retired)
+}
+
+// RemoveAllowedOrigin retires one authority without replaying other origins.
+func (server *Server) RemoveAllowedOrigin(origin string) error {
+	server.mu.Lock()
+	origins := make([]string, 0, len(server.allowedOrigins))
+	for _, allowed := range server.allowedOrigins {
+		if !sameOrigin(allowed, origin) {
+			origins = append(origins, allowed)
+		}
+	}
+	retired := server.setAllowedOriginsLocked(origins)
+	server.mu.Unlock()
+	return server.retireConnections(retired)
+}
+
+func (server *Server) setAllowedOriginsLocked(origins []string) []*controlConnection {
 	server.allowedOrigins = normalizedOrigins(origins)
 	var retired []*controlConnection
 	for connection := range server.connections {
@@ -197,7 +233,10 @@ func (server *Server) SetAllowedOrigins(origins []string) error {
 			retired = append(retired, connection)
 		}
 	}
-	server.mu.Unlock()
+	return retired
+}
+
+func (server *Server) retireConnections(retired []*controlConnection) error {
 	ctx, cancel := context.WithTimeout(server.ctx, shutdownTimeout)
 	defer cancel()
 	for _, connection := range retired {
@@ -383,6 +422,7 @@ func (server *Server) handleHealth(response http.ResponseWriter, request *http.R
 		InstanceToken:     server.endpoint.InstanceToken,
 		NativeMedia:       server.nativeMedia,
 		QualityPreference: server.qualityPreference != nil,
+		ActivationURL:     server.activationURL,
 	})
 }
 
@@ -631,7 +671,7 @@ func (server *Server) localOrigin(origin string) bool {
 func (server *Server) claimConnection(origin string) *controlConnection {
 	server.mu.Lock()
 	defer server.mu.Unlock()
-	if server.closed || len(server.connections) >= maxControlSessions || !server.originAllowedLocked(origin) {
+	if server.closed || len(server.connections) >= server.maxSessions || !server.originAllowedLocked(origin) {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(server.ctx)

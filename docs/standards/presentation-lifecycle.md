@@ -58,26 +58,34 @@ Closing the window returns it to the page; room retirement or opener teardown
 closes it, including a late asynchronous open. Browser window support does not
 promise game-overlay transparency, click-through or exclusive-fullscreen coverage.
 
-Piik App opens this same application in the system Browser. Its startup surface
+Desktop Piik App opens this same application in the system Browser. Its startup surface
 offers Local and temporary public invitation; the running App is already
-available to its approved Sites before either mode starts. The desktop App entry
-is omitted on known mobile platforms; Browser and camera actions retain their
-own capability checks. A Site's explicit App action discovers the local approval
+available to its approved Sites before either mode starts. Browser pages share
+one App entry across platforms; discovery and authorized health determine its
+connection state. Android adds an explicit wake action. Browser and camera
+actions retain their own capability checks.
+A Site's explicit App action discovers the local approval
 page, where the user confirms its exact origin. The launcher lists approvals and
 revokes each independently. Starring one approved Site makes an ordinary App launch open it;
 without a star, the launcher opens. This preference grants no access and starts
 no room. Revoking that Site clears its star; other approvals leave it intact. Explicit CLI entry keeps
 precedence. The ready App button and terminal launcher address return to its
-management page in every mode. Local/public room startup is one selection per
-App run; reopening the launcher does not stop or replace that room. Changing
-between those modes requires restarting App.
+management page in every mode. A pending or healthy Local/public room keeps its
+startup selection; reopening the launcher does not stop or replace that room.
+After a failed attempt has fully retired, the launcher can retry or select the
+other mode in the same App run. Changing a healthy room's mode requires restarting App.
+An App-launched tab selects that process's control endpoint and retains the
+selection through reloads in its Browser session. If that endpoint becomes
+unavailable, discovery stays with it; a new explicit launch selects another App.
+Endpoint selection does not grant Site access or capture permission.
 Activating a page supplies
 native capability without restarting its room or healthy media session.
-The source selector exposes that same connection action before sharing; a
-successful connection refreshes its current list. An already approved exact
+The shared App entry stays in the header while selecting a source; a successful
+connection refreshes the open selector's list. An already approved exact
 origin needs no repeat confirmation, but the page still verifies authorized App
-health. Closing the selector cancels its pending connection action. Existing
-Browser shares retain their capture implementation until sharing ends.
+health. Closing the selector does not cancel the separate site approval. Existing
+Browser shares stay unchanged when App connects; explicit source replacement
+uses the current share's source transaction.
 App-created Local/public-invite Host pages open at their automatically approved
 loopback origin. The shared App button reflects verified authorized health,
 including activation through another entry and return to an activated page;
@@ -87,7 +95,14 @@ Viewer links opened at that activated origin may use the same running App
 without changing the Viewer UI. Starting a share offers the
 Browser picker and any exact App-owned native windows. It never chooses a
 window automatically. A reproduced Browser-window, capture, or background
-failure is required before introducing an embedded Web runtime.
+failure is required before introducing an embedded Web runtime on desktop.
+The Android App uses that same system-browser workflow. Recording consent and
+foreground services remain platform-owned. Its startup page and site management
+reuse the shared launcher. Waking App or navigating to a site
+never grants native permission. A pending system permission stays with its
+current native request while the user enters App and returns to the browser.
+App returns after the requested capture preparation completes, including source
+audio; video readiness alone does not complete that operation.
 
 Opening the system Browser is an asynchronous convenience action. One pending
 OS handoff is allowed; a slow or failed handler cannot block readiness or App
@@ -104,9 +119,12 @@ versions of the product UI.
 A remembered App activation permits discovery when choosing a source or
 receiving media; it does not make App a prerequisite for sharing. Idle Host
 pages hold no App control session. The shared source selector orders Browser,
-Camera, Window and Screen, defaulting to Window after App detection. Without an
-App it shows only Browser and Camera, defaulting to Browser. Discovery never
-blocks Browser selection or overrides an explicitly chosen tab. Refresh remains
+Camera, Window and Screen, defaulting to Window after App detection. An App that
+provides only a system picker gets one combined choice in place of Window and
+Screen. Browser and Camera choices require their respective Browser APIs;
+temporary restrictions keep a supported choice disabled. Without an App,
+the selector defaults to the first supported Browser or Camera choice. Discovery
+never blocks Browser selection or overrides an explicitly chosen tab. Refresh remains
 reachable after failed App discovery; pending attempts are shared, completed failures
 do not suppress later discovery. Cancelling the selector or ending a share
 releases its unused control session; an obsolete operation cannot install or
@@ -123,9 +141,10 @@ share ownership and required audio tracks come from the accepted App response.
 Browser initialization failure remains distinct from capture permission failure.
 
 A reachable Piik App with an incompatible control protocol is distinct from an
-absent App. Discovery continues looking for a compatible process before reporting
-the mismatch; the source selector retains Browser operation and offers update/
-refresh guidance. Discovery metadata may grow, while known identity and capability
+absent App. Without an explicitly selected endpoint, discovery continues looking
+for a compatible process before reporting the mismatch. The source selector
+retains Browser operation and offers update/refresh guidance. Discovery metadata
+may grow, while known identity and capability
 types remain validated. Missing optional capabilities are unavailable; control
 commands and responses retain their strict protocol contract.
 An empty source list means enumeration succeeded for the selected category.
@@ -200,12 +219,12 @@ input, viewing options, and window actions; on-screen chat belongs with viewing
 options. Keep PiP, theater and fullscreen together at the trailing edge.
 Frequent viewing actions stay directly
 reachable; on-screen chat appearance and connection preferences stay in playback
-settings, while chat settings own records. Picture fit has one direct cycling control.
+settings, while chat settings own records. Picture fit uses one cycling control.
 Narrow players keep volume, PiP, theater and fullscreen directly available.
-Keep one capsule at the lower edge. Shorten the volume slider and hide its
-percentage before wrapping: narrow players put playback/sound and remote input
-on the first row, with viewing and window actions on the second. Both rows retain
-one visibility owner and 44px control height; none becomes a distant toolbar.
+Keep one translucent capsule at the lower edge. Narrow players shorten the
+volume slider, hide its percentage and move picture fit/rotation into the
+attached settings, reusing those controls. Playback, sound, remote input and
+window actions stay on one row under the same visibility owner.
 Playing video hides the bar
 after two idle seconds, following [Media Chrome's default](https://github.com/muxinc/media-chrome/blob/main/docs/src/pages/docs/en/components/media-controller.md#autohide).
 Pause or unavailable playback keeps it visible. Control hover, keyboard focus,
@@ -264,9 +283,11 @@ the picture controls and starts muted. Local pause, fit, rotation,
 theater and fullscreen affect only that preview; the separately labelled sharing
 controls own authoritative pause and stop. Its speaker control adjusts the shared
 output for Viewers, as defined by [source audio](./media-quality.md#screen-audio);
-it does not enable local monitoring. A hidden or unfocused Host page still
-suspends local preview, except while its video is in Picture-in-Picture. Returning
-to the page preserves an explicit local pause.
+it does not enable local monitoring. By default, a hidden or unfocused Host page
+suspends local preview, except while its video is in Picture-in-Picture. The Host
+can disable this in playback settings to keep watching on another monitor;
+the choice is remembered at the same Browser origin. Returning to the page or
+changing this preference preserves an explicit local pause.
 
 Autoplay rejection exposes the play action. A connection, track object,
 or `playing` event alone is not proof that the current route is visible. The
@@ -384,8 +405,9 @@ ordinary connection details do not collect or expose that report.
 
 Current scope includes Web Host, Web Viewer, Browser relay, and optional Native
 Host/Viewer media beneath those same pages. Desktop and mobile Browsers are
-Viewer targets; mobile screen capture, reliable background relay, App-owned SFU,
-and physical non-Windows native acceptance remain later platform work.
+Viewer targets. Android screen capture is implemented in the system-browser App
+candidate; public delivery awaits its platform acceptance. Reliable background
+relay, App-owned SFU and physical non-Windows native acceptance remain later work.
 
 ## Primary References
 

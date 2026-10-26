@@ -290,6 +290,13 @@ separate facts. Congestion must not turn a temporary reduced output into a new
 requested ceiling. Recovery demand must survive lower-layer selection and reach
 the existing encoder or dormant-output owner without recreating the connection.
 
+Native outputs share one source presentation timeline across encoder groups,
+dormancy and capture replacement. Capture and refresh timestamps express elapsed
+source time; encoder completion and pipe arrival do not establish another clock.
+Internal RTP copies reuse the original ingress's accepted remote-to-local clock
+mapping. Only that ingress estimates network delay; outgoing sender reports
+project the source timeline onto the media core's local clock at emission.
+
 Each Browser direct, relay, or SFU video sender owns a separate track. The original
 track remains a source and local presentation track; it is never attached directly
 to an outbound sender. Display capture with raw-frame stream support forwards a
@@ -376,6 +383,10 @@ directly and does not re-encode that preview through a Browser publisher.
 
 Native parents and the SFU share the media forwarding adapter. Each Native
 parent considers only its direct children and its admitted SFU publication.
+A Native source with one rendition shares that encoding across its consumers.
+Its encoder budget follows the largest active remote allocation within the source
+ceiling. Local preview alone can use the ceiling, but cannot mask remote demand.
+One shared rendition cannot provide different encoded qualities to its children.
 Recovery-probe traffic is exploration, not a reduction of committed media
 capacity. Allocation and encoder consumers retain the same budget through probe
 settling. A locally rate-controlled output has unmet demand within its current
@@ -417,6 +428,12 @@ VP8 uses the library encoder. Windows tunes the stock QP history and sampling
 for brief interruptions and low-frame-rate recovery; codec thresholds and the
 adaptation controller remain WebRTC-owned. Other platform producers retain their
 current fixed-output implementation pending equivalent physical acceptance.
+Android shares one Projection and captured texture across demand-driven
+MediaCodec outputs. Each output uses the pinned WebRTC FrameDropper before
+encoder submission, with encoded-byte feedback and the current allocation;
+dropping an output frame never stops the shared capture clock. Unsupported
+optional encoders leave the original usable. Its fixed spatial outputs and
+platform codec still bound extremely low-bandwidth delivery.
 Each source groups compatible effective direct-child requests and keeps
 incompatible weak budgets independent. Per-group rates change in place; joining
 another group's output waits for accepted recovery and keeps the existing

@@ -1,28 +1,32 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-24
+Last reviewed: 2026-10-26
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
+  title appears and the page never loads. Static compression reduces transfer
+  size; capture the stalled document/script response to locate this failure.
 - [ ] **Remote-control end-to-end latency.** Measure input-to-visible-response
   on an attended target, covering OS execution, Native capture/encoding, remote
   transport and display in the same trial. The
   [input assessment](./research/room-interactions.md#window-capture-and-game-input)
   owns completed local component measurements.
-- [ ] **Windows window-sharing black screen (#495).** Investigate
-  [#495](https://github.com/TNTcraftHIM/Piik/issues/495): Windows 10, Chrome 155,
-  Piik v2.3.0; native Chrome/Edge window sharing fails while QQ and Browser
-  capture work. The latest report uses VP8: transport connects, but capture
-  remains `starting` with no video frames. Obtain the App failure stage or compare
-  the existing Intel/NVIDIA adapter choices with VP8 fixed on that device.
-- [ ] **Intel native H.264 startup (#452).** Follow the
-  [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
-  fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report
-  records App startup rejection; an App diagnostic is needed to identify its
-  native failure stage.
+- [ ] **Linux capture ends after selection (#499).** Follow
+  [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
+  GStreamer NVENC. The Browser report records capture ending before connection
+  cleanup; obtain the native capture failure to distinguish the encoder and Portal.
+- [ ] **macOS window capture with sound (#500).** Follow
+  [#500](https://github.com/TNTcraftHIM/Piik/issues/500). Compare the same window
+  with source sound on and off in the App that waits for video `active`
+  before starting source audio. Obtain the App diagnostic if the window stays black.
+- [ ] **Control loss when the Host browser is minimized (#502).** Follow
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) with the corrected
+  Windows App. If minimizing still prevents input, obtain its Host App
+  diagnostic ZIP to identify the rejected system operation.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -32,16 +36,17 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Next
 
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
-  implementation on the feature branch for a later feature release. It consumes
+  implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
-- [ ] **Android App release scope.** Keep the Local-sharing APK prototype on
-  the feature branch. Complete phone, tablet and TV acceptance, hosted-site
-  integration and release packaging before including Android in a public release.
 
 ## Held By Owner
 
+- [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
+  implementation on `feat/ios-client`, outside the Android release candidate.
+  Apple SDK builds pass; signed-device acceptance still needs continued-session
+  admission/expiry, recording consent, background capture and hosted-site linkage.
 - [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
-  Keep the local QR implementation on the feature branch for later acceptance.
+  Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
   shared system mouse; do not add multi-cursor or pointer-ownership visualization.
 - [ ] **Persistent-loss estimator replacement.** Deferred on 2026-10-18.
@@ -59,6 +64,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
+- **Piik 3.0 scope.** Explore independent room, chat, voice and screen-share
+  lifecycles, with optional image/file exchange, retaining the current topology
+  and route controller. Compare continued Go with scoped Rust components before
+  choosing implementation scope. The [hosting and subscription assessment](./research/room-interactions.md#multi-room-and-distributed-hosting-assessment)
+  distinguishes per-room hosting, federation and replicated room authority.
 - **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The

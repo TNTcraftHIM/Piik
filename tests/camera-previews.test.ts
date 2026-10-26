@@ -7,7 +7,8 @@ function setup({ permission = true, frames = true } = {}) {
   const devices = ["front", "rear"].map(id => ({ kind: "videoinput", deviceId: id, label: `${id} camera` }));
   const enumerateDevices = vi.fn(async () => permission ? devices : []);
   const stream = (id: string) => {
-    const track = { id, kind: "video", label: `${id} camera`, readyState: "live",
+    const events = new EventTarget();
+    const track = { addEventListener: events.addEventListener.bind(events), removeEventListener: events.removeEventListener.bind(events), id, kind: "video", label: `${id} camera`, readyState: "live",
       getSettings: () => ({ deviceId: id }), stop: vi.fn(() => { track.readyState = "ended"; }) };
     tracks.push(track);
     return { getTracks: () => [track], getVideoTracks: () => [track] } as unknown as MediaStream;

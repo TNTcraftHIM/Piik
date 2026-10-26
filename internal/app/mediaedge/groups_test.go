@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -8,7 +9,9 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/mediatransportutil"
 	"github.com/pion/rtcp"
+	"github.com/pion/rtp"
 )
 
 type groupTestConsumer struct{ source *forwarding.Source }
@@ -441,11 +444,208 @@ func TestOutputGroupGenerationRefreshesMetadataAndClock(t *testing.T) {
 		t.Fatal(err)
 	}
 	report := group.media.GetAllBuffers()[0].GetSenderReportData()
-	if report == nil || report.RtpTimestamp-previousTimestamp < 2999 || report.RtpTimestamp-previousTimestamp > 3001 {
+	if report == nil || report.RtpTimestamp-previousTimestamp != 100*90_000 {
 		t.Fatal("new capture generation broke the group RTP clock")
 	}
 	correlated, ok := group.media.ReferenceTime(0, report.RtpTimestamp)
 	if !ok || correlated.Sub(at) < -time.Microsecond || correlated.Sub(at) > time.Microsecond {
 		t.Fatalf("new generation correlation = %v, available=%v", correlated, ok)
 	}
+}
+
+func TestLateOutputGroupKeepsSharedCaptureClock(t *testing.T) {
+	source, _, _, _ := newGroupLifecycleFixture(t)
+	// The capture clock advances one second while input-pipe latency grows.
+	if err := source.beginGroupFrame(11*time.Second, time.Unix(101, 500_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	group, err := source.newGroup(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(pts time.Duration, expected time.Time) uint32 {
+		t.Helper()
+		var timestamp uint32
+		for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
+			if err := media.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
+				PTS: pts, Duration: time.Second / 30}); err != nil {
+				t.Fatal(err)
+			}
+			report := media.GetAllBuffers()[0].GetSenderReportData()
+			if report == nil {
+				t.Fatal("output did not establish its capture clock")
+			}
+			at, ok := media.ReferenceTime(0, report.RtpTimestamp)
+			if !ok || at.Sub(expected).Abs() > time.Microsecond {
+				t.Fatalf("output capture clock = %v, expected %v", at, expected)
+			}
+			timestamp = report.RtpTimestamp
+		}
+		return timestamp
+	}
+	previous := write(11*time.Second, time.Unix(101, 0))
+	source.BeginGeneration()
+	if err := source.beginGroupFrame(time.Second, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	current := write(time.Second, time.Unix(200, 0))
+	if advance := current - previous; advance != 99*90_000 {
+		t.Fatalf("replacement group RTP timestamp advanced %d ticks", advance)
+	}
+}
+
+func TestCaptureGenerationNormalizesOneSharedClock(t *testing.T) {
+	source, err := (&Engine{}).NewSource("vp8", 2, 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if err = source.ConfigureOutputs([]uint32{500_000, 2_000_000, 500_000, 500_000}); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.beginGroupFrame(10*time.Second, time.Unix(100, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = source.planGroups(nil); err != nil {
+		t.Fatal(err)
+	}
+	group, err := source.newGroup(2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write := func(media *forwarding.EncodedSource, layer int, pts time.Duration, expected time.Time) {
+		t.Helper()
+		if err := media.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
+			PTS: pts, Duration: time.Second / 30, Recovery: true}); err != nil {
+			t.Fatal(err)
+		}
+		report := media.GetAllBuffers()[layer].GetSenderReportData()
+		at, ok := media.ReferenceTime(layer, report.RtpTimestamp)
+		if !ok || at.Sub(expected).Abs() > time.Microsecond {
+			t.Fatalf("output clock = %v, expected %v", at, expected)
+		}
+	}
+	for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
+		for layer := range 2 {
+			write(media, layer, 10*time.Second, time.Unix(100, 0))
+		}
+	}
+	// Later input completes faster than the first one. Its capture timeline
+	// advances to 101 even though the input arrives at 100.1.
+	if err := source.beginGroupFrame(11*time.Second, time.Unix(100, 100_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	write(source.media, 0, 11*time.Second, time.Unix(101, 0))
+	source.BeginGeneration()
+	if err := source.beginGroupFrame(0, time.Unix(100, 200_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	origin := time.Unix(101, 0).Add(time.Second/videoClockRate + time.Nanosecond)
+	write(source.media, 0, 0, origin)
+	late, err := source.newGroup(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Original and derived outputs resume after different dormant intervals;
+	// the newly created group inherits the same normalized generation origin.
+	if err = source.beginGroupFrame(5*time.Second, time.Unix(100, 300_000_000)); err != nil {
+		t.Fatal(err)
+	}
+	for _, media := range []*forwarding.EncodedSource{source.media, group.media, late.media} {
+		for layer := range 2 {
+			write(media, layer, 5*time.Second, origin.Add(5*time.Second))
+		}
+	}
+	if err = source.beginGroupFrame(4*time.Second, time.Unix(200, 0)); !errors.Is(err, encoded.ErrInvalidTimestamp) {
+		t.Fatalf("same-generation reverse PTS = %v", err)
+	}
+	source.BeginGeneration()
+	if err = source.beginGroupFrame(0, time.Unix(200, 0)); err != nil {
+		t.Fatal(err)
+	}
+	write(source.media, 0, 0, time.Unix(200, 0))
+}
+
+func TestRelayGroupSharesReceivedClockAcrossWrap(t *testing.T) {
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	source, err := (&Engine{}).newSource("vp8", 2, 2, &RelayOptions{}, nil)
+	check(err)
+	defer source.Close()
+	check(source.SetFormat(0, 8, 8))
+	check(source.SetFormat(1, 8, 8))
+	check(source.ConfigureOutputs([]uint32{100_000, 1_000_000, 100_000, 100_000}))
+	source.groups = make(map[int]*outputGroup)
+	source.memberships = make(map[groupConsumer]*outputGroup)
+	origin := time.Now()
+	write := func(sequence uint16, timestamp uint32, pts time.Duration) {
+		t.Helper()
+		check(source.beginGroupFrame(pts, origin.Add(pts)))
+		check(source.WriteRTP(&rtp.Packet{Header: rtp.Header{
+			Version: 2, SSRC: 99, PayloadType: 96, SequenceNumber: sequence, Timestamp: timestamp, Marker: true,
+		}, Payload: append([]byte{0x10}, sfu.VP8KeyFrame8x8...)}))
+		if group := source.groups[2]; group != nil && group.active {
+			copied := group.media.GetAllBuffers()[1].GetSenderReportData()
+			accepted := source.media.GetAllBuffers()[1].GetSenderReportData()
+			if copied == nil || copied.RtpTimestamp != accepted.RtpTimestamp || copied.NtpTimestamp != accepted.NtpTimestamp {
+				t.Fatal("first copied RTP waited for another wire report")
+			}
+		}
+		check(source.SenderReport(&rtcp.SenderReport{SSRC: 99, RTPTime: timestamp,
+			NTPTime:     uint64(mediatransportutil.ToNtpTime(origin.Add(pts))),
+			PacketCount: uint32(sequence), OctetCount: uint32(sequence) * 20}))
+	}
+	write(1, 0xffff_ff00, 0)
+	write(2, 644, 10*time.Millisecond)
+	// The original already observed the path; a later group first sees a delayed
+	// report. That internal copy must not establish another network clock.
+	time.Sleep(120 * time.Millisecond)
+	group, err := source.newGroup(2)
+	check(err)
+	group.active = true
+	earlier := &rtcp.SenderReport{SSRC: 99, RTPTime: 0xffff_ff00,
+		NTPTime: uint64(mediatransportutil.ToNtpTime(origin)), PacketCount: 1, OctetCount: 20}
+	check(source.SenderReport(earlier))
+	if group.media.GetAllBuffers()[1].GetSenderReportData() != nil {
+		t.Fatal("a group without RTP accepted a sender report")
+	}
+	write(3, 1544, 20*time.Millisecond)
+	check(source.WriteVideo(2, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
+		PTS: 20 * time.Millisecond, Duration: time.Second / 30}))
+	// A delayed older wire report is rejected by the original owner before
+	// either internal copy can adopt it.
+	check(source.SenderReport(earlier))
+	base := source.media.GetAllBuffers()[1].GetSenderReportData()
+	copied := group.media.GetAllBuffers()[1].GetSenderReportData()
+	if base == nil || copied == nil || base.RtpTimestamp != copied.RtpTimestamp ||
+		base.NtpTimestamp != copied.NtpTimestamp || base.Packets != copied.Packets || base.Octets != copied.Octets {
+		t.Fatal("copied original changed the accepted sender report")
+	}
+	if base.RtpTimestampExt-copied.RtpTimestampExt != 1<<32 {
+		t.Fatal("late group did not retain its own RTP wrap epoch")
+	}
+	for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
+		for layer, buffer := range media.GetAllBuffers() {
+			if buffer == nil || buffer.GetSenderReportData() == nil {
+				continue
+			}
+			local, ok := media.LocalTime(layer, origin.Add(20*time.Millisecond))
+			if !ok || local.UnixNano() != base.AtAdjusted {
+				t.Fatalf("layer %d split the received clock: local=%v expected=%v", layer, local, time.Unix(0, base.AtAdjusted))
+			}
+		}
+	}
+	group.active = false
+	write(4, 3344, 40*time.Millisecond)
+	consumer := &groupTestConsumer{group.media.Source}
+	_, err = source.planGroups([]outputDemand{{consumer: consumer, budget: group.budget, active: true, lower: true}})
+	check(err)
+	if !group.active {
+		t.Fatal("fixture did not reactivate the relay group")
+	}
+	write(5, 4244, 50*time.Millisecond)
 }

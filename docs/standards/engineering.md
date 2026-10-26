@@ -24,6 +24,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `internal/thirdparty/` | Scoped Go dependency repairs with pinned upstream provenance, licenses and tests; removal criteria live beside the source |
 | `native/capture`, `native/fixtures`, `native/probes` | Platform capture implementations, synthetic workloads and standalone capability probes |
 | `site/` | Independently published static introduction; its assets do not implement product behavior |
+| `mobile/` | Android platform shell and in-process capture bridge over the shared Go core |
 | `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |
 | `tests/` | TypeScript/tooling tests and cross-language fixtures; Go tests stay beside their packages |
 | `deploy/` | Operator scripts and container, proxy, service and certificate templates |
@@ -33,8 +34,10 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `build/`, `node_modules/`, `coverage/` | Ignored local output and dependencies; never current product truth |
 
 `site/` introduces Piik; `src/client/` is Piik's interactive application.
-`internal/app/nativecapture` adapts the capture contract in Go; `native/capture/`
-implements it using platform APIs. `scripts/` prepares and verifies artifacts;
+`internal/app/nativecapture` owns the desktop helper process and frame contract;
+`native/capture/` implements its platform APIs. `nativehost` consumes a capture
+stream; the Android App supplies that stream in-process through `mobile/`.
+`scripts/` prepares and verifies artifacts;
 `deploy/` operates them. Move files with their actual consumers, and update paths
 and checks together; a smaller root alone does not justify another abstraction.
 
@@ -49,7 +52,8 @@ and checks together; a smaller root alone does not justify another abstraction.
 | `internal/server/route` | Synchronous room graph and single-operation decisions; returns resource effects to `signal`, owns no locks or timers, and calls its optional diagnostic sink synchronously |
 | `internal/server/sfu`, `internal/app/mediaedge` | Server forwarding and native peer adapters over the shared `internal/media/forwarding`; Pion/LiveKit own transport and adaptation |
 | `internal/app` | Local/public-link/Site composition, loopback service, native sessions and App lifecycle; never a second room backend |
-| `internal/app/nativecapture`, `native/capture/*` | App-side capture contract and minimal platform adapters; platform-specific capture/encoding stays here |
+| `internal/app/nativecapture`, `native/capture/*` | Desktop capture process, frame contract and platform capture/encoding adapters |
+| `internal/app/nativehost/capture.go`, `mobile/bridge`, `mobile/android` | Capture producer contract, shared mobile frame bridge and Android-owned consent/codec resources; reuse room control and media routes |
 | `src/client/pages`, `lib`, `media`, `native` | Browser orchestration and endpoint adapters; bind current media and retire owned resources |
 | `src/client/media/viewer-presentation.ts`, `ui/media-status.ts` | Playback facts and their derived status projection; UI indicators do not create recovery or quality policy |
 | `src/client/components`, `locales`, `ui` | Shared interaction, visual primitives and localized copy; same product interface for Server and App |
@@ -78,6 +82,7 @@ Keep this check outside room startup, authorization and media lifecycles.
 | Browser/App discovery and control | `src/client/native/wire.ts`, `internal/app/loopback/protocol.go`, `internal/app/nativecontrol/wire.go` |
 | Remote input data channel | [Browser input protocol](../../src/client/remote-control/protocol.ts), [native input validation](../../internal/app/remoteinput/manager.go) and [channel routing](../../internal/media/inputroute); admission remains with the existing room and native control owners |
 | App/capture sidecar | `internal/app/nativecapture` and each platform capture adapter; probe/commands and encoded-frame envelope are distinct formats |
+| In-process capture producer | `internal/app/nativehost/capture.go`; the platform supplies frames and retires its own resources, without another control or routing protocol |
 | Configuration and persistence | `internal/server/config`, `internal/app/config`, `internal/server/room/database.go`; operator semantics in [configuration](./configuration.md) |
 | Release and update metadata | Existing packaging scripts, `src/client/lib/release-update.ts`, `cmd/piik-server/release.go`; identity/compatibility in [versioning](./versioning.md), operations in [deployment](../deployment.md) |
 
@@ -124,9 +129,9 @@ justify a generic plugin framework or accepting unknown commands.
 ## Runtime Lifecycles
 
 Read each runtime as acquisition, the authoritative commit that makes its work
-visible, and the retirement that ends it. Revalidate the acquiring identity
-after every await or callback; presentation derives from the committed fact
-instead of mirroring it.
+visible, and the retirement that ends it. Before committing asynchronous results
+or retiring current state or resources, revalidate the acquiring identity.
+Presentation derives from the committed fact instead of mirroring it.
 
 | Runtime | Acquire | Commit | Retire |
 | --- | --- | --- | --- |
@@ -138,6 +143,7 @@ instead of mirroring it.
 | Room voice | `room-voice/session.ts` binds the admitted room session and its Browser endpoint | authoritative membership and the current publication/connection identity under [room media](./routing-transport.md#room-media) | leave, room retirement or session close releases owned audio; closing the interaction window does not leave voice |
 | Floating room tool | `FloatingPanel.tsx` presents the tool; `ui/panel-window.ts` opens a supported detached window | the current window request and document own presentation, not the room session | close returns the tool to the page; opener/session retirement closes even a late open under [presentation lifecycle](./presentation-lifecycle.md) |
 | App native session | the loopback service admits native control sessions and the Web UI selects the native path | session identity plus the explicit media-path choice | session end, share end or process exit retires that edge and its capture sidecar |
+| Android runtime | the user starts `AppRuntimeService`, which creates the shared Go core | one service/runtime instance; pending OS results retain their original media request | user Stop or service retirement joins startup and closes its own runtime; Activity navigation does not stop it |
 | Native ICE gathering | one gathering observes addresses on its connection's retained socket | candidates retain their source ICE generation; one collector joins Pion, STUN and gateway completion | ICE restart retires previous observations and excludes stale queued output; connection close retires the socket |
 | Server room authority | `signal` authenticates one Host or Viewer command | `room` writes durably before the in-memory commit; the signaling lock serializes mutations | explicit replacement or deletion, grant rotation or revocation, or process exit for memory-mode rooms |
 | Server route and SFU | `signal` feeds `route` one serial child operation; `sfu/admission.go` accepts one bounded publication | one committed graph per controller and the forwarding publication | superseded assignments retire inside the same operation; deactivate retires the publication |
@@ -159,6 +165,7 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 | SFU endpoints | [src/client/sfu/publisher.ts](../../src/client/sfu/publisher.ts), [src/client/sfu/subscriber.ts](../../src/client/sfu/subscriber.ts), [src/client/sfu/peer.ts](../../src/client/sfu/peer.ts), [internal/server/sfu](../../internal/server/sfu) |
 | Localized copy and failure facts | [src/client/locales](../../src/client/locales), [src/client/ui/copy.ts](../../src/client/ui/copy.ts), [src/client/ui/media-failure.ts](../../src/client/ui/media-failure.ts) |
 | Native control connection and media adapters | [src/client/native/client-connection.ts](../../src/client/native/client-connection.ts), [src/client/native](../../src/client/native), [internal/app/loopback](../../internal/app/loopback), [internal/app/nativecontrol](../../internal/app/nativecontrol), [internal/app/nativehost](../../internal/app/nativehost), [internal/app/nativeviewer](../../internal/app/nativeviewer), [internal/app/nativecapture](../../internal/app/nativecapture) |
+| Android App and platform lifecycle | [mobile/README.md](../../mobile/README.md), [mobile/bridge](../../mobile/bridge), [mobile/android/app/src/main](../../mobile/android/app/src/main) |
 | Room authority, persistence and graph | [internal/server/signal](../../internal/server/signal), [internal/server/room](../../internal/server/room), [internal/server/route](../../internal/server/route) |
 | Room signaling intent and interaction delivery | [src/client/lib/signaling.ts](../../src/client/lib/signaling.ts), [src/client/lib/room-interactions.ts](../../src/client/lib/room-interactions.ts); admission and transient delivery follow [rooms and access](./rooms-access.md) |
 | Shared wire contract | [src/shared/protocol.ts](../../src/shared/protocol.ts), [internal/server/protocol](../../internal/server/protocol), [tests/fixtures/wire-samples.json](../../tests/fixtures/wire-samples.json) |
@@ -181,9 +188,13 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   resource acquisition, replacement and retirement together. File size alone
   does not justify wrappers, a generic manager or a framework.
   Remove superseded paths in the same change; retain no unused legacy copy.
-  Keep test-only state seeding and setup in test harnesses.
-  Do not export mutable resources solely for tests; preserve the production
-  construction path when verifying defaults or restoration.
+  A platform adapter can be justified with one implementation; judge its boundary
+  and consumers before removing it.
+- Keep simple logic at its call site. Extract a helper for actual reuse, a
+  substantial boundary, or a distinct concept whose name makes the caller clearer.
+  In longer orchestration, keep the main flow readable and move substantial
+  validation and supporting details into nearby helpers. Prefer meaningful
+  boundaries over many single-use wrappers or arbitrary function-size limits.
 - Review dependency direction for source/type imports as well as runtime
   imports. Shared types belong to a common owner. A type-only cycle is an
   ownership concern; it does not by itself establish a runtime or performance
@@ -229,8 +240,12 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   Injected callbacks still execute in their caller's context. Synchronous
   authority hooks must not hide blocking I/O or release the caller's lock;
   schedule slow work at an explicit, owned effect boundary.
-- Validate input at the boundary, keep domain error meanings stable, and map
-  them into shared localized UI. [Versioning](./versioning.md) determines which
+- Validate and normalize unknown input once at each owning trust boundary, then
+  pass typed values inward. Do not repeat shape checks already guaranteed by a
+  schema, constructor or internal contract. Authorization and mutable state or
+  resource identity remain checked where they can change.
+  Keep domain error meanings stable and map them into shared localized UI.
+  [Versioning](./versioning.md) determines which
   extensions are compatible; an optional field is not automatically compatible.
   Dispatch separates protocol rejection, per-request operation failure and an
   already-satisfied teardown. Late teardown is idempotent and cannot retire a
@@ -253,12 +268,16 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 - Browser/App/Server share [visual language](./visual-language.md) and
   [status projection](./media-status.md). A new page, locale or deployment
   does not invent a new palette, status model or user-role metaphor.
-- Keep package comments about current responsibilities and invariants. Historical
+- Comment on non-obvious reasons, constraints and surprising behavior, rather
+  than narrating assignments or control flow. Package comments describe current
+  responsibilities and invariants. Historical
   migration paths belong in ADR/research unless they explain a surviving constraint.
   Support Windows, macOS and Linux; new text files use LF and new filenames use
   ASCII, with format exceptions in [`.gitattributes`](../../.gitattributes).
   Scripts use stable executable paths; physical confidence stays explicit in
   [verification status](../verification-status.md).
+- Update generated files through their source schema, template or generator and
+  the existing regeneration command; do not patch generated output by hand.
 - Retained tools declare their direct package dependencies. Documented TypeScript
   tools join the normal type-check entry point; a transitive dependency or a
   one-off manual check is not an owned toolchain contract.
@@ -307,6 +326,13 @@ repeated functions recognizable, justify shared patterns, and preserve real
 domain distinctions.
 
 ## Ablation And Review
+
+Test production implementations through their real construction paths. Replace
+external I/O or platform boundaries only where the focused test needs it; keep
+the behavior under test real instead of copying its algorithm or validator into
+the test. Keep test-only setup and state seeding in the harness, and do not export
+mutable resources solely for tests. Defaults and restoration use the production
+construction path.
 
 Judge a change by verified user value against implementation, maintenance,
 compatibility, runtime and failure cost. After a material module, remove any

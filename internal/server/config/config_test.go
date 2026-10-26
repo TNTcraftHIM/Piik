@@ -165,6 +165,19 @@ func TestLoadSFU(t *testing.T) {
 	}
 }
 
+func TestLoadSFUPublicHostnameWithoutResolving(t *testing.T) {
+	for input, want := range map[string]string{
+		" Media.Example.COM ": "media.example.com",
+		"home.example.com.":   "home.example.com.",
+		"例子.example":          "xn--fsqu00a.example",
+	} {
+		configuration := mustLoad(t, map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": input})
+		if configuration.SFU.PublicIP != want {
+			t.Fatalf("advertised host %q = %q, want %q", input, configuration.SFU.PublicIP, want)
+		}
+	}
+}
+
 func TestLoadSFUOptional(t *testing.T) {
 	for _, values := range []map[string]string{
 		nil,
@@ -369,12 +382,18 @@ func TestLoadRejects(t *testing.T) {
 			"SFU_LISTEN_HOST must be an IPv4 address"},
 		{"SFU bind mapped IPv6", map[string]string{"SFU_UDP_PORT": "7882", "SFU_LISTEN_HOST": "::ffff:192.0.2.5"},
 			"SFU_LISTEN_HOST must be an IPv4 address"},
-		{"SFU public hostname", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "sfu.test"},
-			"SFU_PUBLIC_IP must be an IPv4 address"},
+		{"SFU public URL", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "https://sfu.test"},
+			"SFU_PUBLIC_IP must be an IPv4 address or DNS hostname"},
+		{"SFU public port", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "sfu.test:7882"},
+			"SFU_PUBLIC_IP must be an IPv4 address or DNS hostname"},
+		{"SFU public userinfo", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "user@sfu.test"},
+			"SFU_PUBLIC_IP must be an IPv4 address or DNS hostname"},
+		{"SFU public path", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "sfu.test/path"},
+			"SFU_PUBLIC_IP must be an IPv4 address or DNS hostname"},
 		{"SFU public IPv6", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "2001:db8::5"},
-			"SFU_PUBLIC_IP must be an IPv4 address"},
+			"SFU_PUBLIC_IP must be an IPv4 address or DNS hostname"},
 		{"SFU public mapped IPv6", map[string]string{"SFU_UDP_PORT": "7882", "SFU_PUBLIC_IP": "::ffff:198.51.100.5"},
-			"SFU_PUBLIC_IP must be an IPv4 address"},
+			"SFU_PUBLIC_IP must be an IPv4 address or DNS hostname"},
 
 		// Bounded integers.
 		{"viewer limit above ceiling",

@@ -351,7 +351,7 @@ func (c *voiceConnection) signal(signal VoiceSignal) error {
 	if signal.Candidate != nil {
 		if c.pc.RemoteDescription() == nil {
 			if len(c.candidates) >= 64 {
-				return errors.New("too many pending voice candidates")
+				return nil
 			}
 			c.candidates = append(c.candidates, *signal.Candidate)
 			return nil

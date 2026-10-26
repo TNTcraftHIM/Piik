@@ -176,7 +176,7 @@ export class BrowserVoiceEndpoint {
       releaseDebug: observeDebugConnection(pc, { connectionId: config.connectionId, role: "room-voice" }),
       candidates: new NatPredictionCandidateEmitter(prediction, candidate => {
         if (!candidate || !this.current(connection) || /\sTCP\s/i.test(candidate.candidate)) return;
-        if (connection.localCandidates.length >= 64) { this.report(connection, "failed"); return; }
+        if (connection.localCandidates.length >= 64) return;
         connection.localCandidates.push(candidate); this.flushCandidates(connection);
       }, natPredictionSurveyUrls(this.iceConfig.iceServers, this.iceConfig.natPredictionStunUrls)),
       queuedCandidates: [], localCandidates: [], senders: new Map(), remote: new Map(), dirty: this.isOfferer(config),
@@ -377,7 +377,6 @@ export class BrowserVoiceEndpoint {
     if (message.candidate) {
       if (connection.pc.remoteDescription) await this.wait(connection, () => addRemoteIceCandidate(connection.pc, message.candidate!));
       else if (connection.queuedCandidates.length < 64) connection.queuedCandidates.push(message.candidate);
-      else throw new Error("Too many voice ICE candidates");
       return;
     }
     const description = message.description;

@@ -1,11 +1,10 @@
 import { z } from "zod";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "./discovery-ports";
 import { remoteControlModeSchema, remoteInputPlatformSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 import { iceCandidateSchema, sfuMediaSchema, positiveUint32Schema, qualityResolutionSchema, punchPredictionSchema,
   nullableSafeEvidenceNumber, nullableSafeEvidenceInteger } from "../../shared/protocol";
 
 export const NATIVE_CLIENT_PROTOCOL = 10;
-export const NATIVE_CLIENT_PORT_START = 39_721;
-export const NATIVE_CLIENT_PORT_END = 39_730;
 export const NATIVE_CLIENT_SUBPROTOCOL = "piik-client-v10";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
@@ -29,6 +28,7 @@ export const nativeDiscoveryIdentitySchema = z.object({
 export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
   protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
   qualityPreference: z.boolean().optional(),
+  activationURL: z.literal("piik://media").optional(),
   instanceToken: z
     .string()
     .length(43)
@@ -52,6 +52,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       processAudioExclusion: z.boolean().default(false),
       microphone: z.boolean().default(false),
       shareVolume: z.boolean().optional(),
+      sourceCancellation: z.boolean().optional(),
       // API availability, not Windows approval or observed border visibility.
       captureBorderControl: z.boolean().default(false),
       hardwareH264: z.boolean().default(false),
@@ -152,7 +153,7 @@ export const requestFailedResponseSchema = z
   .object({
     ...responseBase,
     type: z.literal("request-failed"),
-    code: z.literal("operation-failed"),
+    code: z.enum(["operation-failed", "source-canceled"]),
   })
   .strict();
 export const captureOptionsResponseSchema = z

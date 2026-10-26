@@ -6,6 +6,8 @@ import (
 	"net"
 	"sort"
 	"strings"
+
+	"github.com/wlynxg/anet"
 )
 
 type Address struct {
@@ -16,7 +18,7 @@ type Address struct {
 // List describes invitation addresses. It does not choose or constrain the
 // media interfaces, which remain owned by ICE and the operating system.
 func List() ([]Address, error) {
-	interfaces, err := net.Interfaces()
+	interfaces, err := anet.Interfaces()
 	if err != nil {
 		return nil, fmt.Errorf("list network interfaces: %w", err)
 	}
@@ -25,7 +27,7 @@ func List() ([]Address, error) {
 		if networkInterface.Flags&net.FlagUp == 0 || networkInterface.Flags&net.FlagLoopback != 0 {
 			continue
 		}
-		addresses, addressErr := networkInterface.Addrs()
+		addresses, addressErr := anet.InterfaceAddrsByInterface(&networkInterface)
 		if addressErr != nil {
 			continue
 		}

@@ -32,7 +32,8 @@ func (s *windowsSink) Target(target nativecapture.CaptureTarget, _ *nativecaptur
 		info.size = uint32(unsafe.Sizeof(info))
 		ok, _, _ := user32.NewProc("GetMonitorInfoW").Call(uintptr(id), uintptr(unsafe.Pointer(&info)))
 		if ok == 0 {
-			return bounds{}, false, errors.New("shared display is unavailable")
+			// A failed monitor observation does not prove the capture was retired.
+			return bounds{}, false, nil
 		}
 		area = info.monitor
 	case "window":
@@ -41,22 +42,28 @@ func (s *windowsSink) Target(target nativecapture.CaptureTarget, _ *nativecaptur
 		if pid == 0 || pid != target.PID {
 			return bounds{}, false, errors.New("shared window is unavailable")
 		}
+		creation, parseErr := strconv.ParseUint(target.CreationTime, 10, 64)
+		if parseErr != nil || creation == 0 {
+			return bounds{}, false, errors.New("shared window identity is invalid")
+		}
 		// Match the capture target's process incarnation, not a recycled HWND/PID.
 		process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 		if err != nil {
-			return bounds{}, false, err
+			return bounds{}, false, nil
 		}
 		var created, exited, kernel, user windows.Filetime
 		err = windows.GetProcessTimes(process, &created, &exited, &kernel, &user)
 		windows.CloseHandle(process)
-		creation, parseErr := strconv.ParseUint(target.CreationTime, 10, 64)
-		if err != nil || parseErr != nil || creation != uint64(created.HighDateTime)<<32|uint64(created.LowDateTime) {
+		if err != nil {
+			return bounds{}, false, nil
+		}
+		if creation != uint64(created.HighDateTime)<<32|uint64(created.LowDateTime) {
 			return bounds{}, false, errors.New("shared window was replaced")
 		}
 		if hr, _, _ := extendedFrameBounds.Call(uintptr(id), 9, uintptr(unsafe.Pointer(&area)), unsafe.Sizeof(area)); int32(hr) < 0 {
 			ok, _, _ := user32.NewProc("GetWindowRect").Call(uintptr(id), uintptr(unsafe.Pointer(&area)))
 			if ok == 0 {
-				return bounds{}, false, errors.New("shared window geometry is unavailable")
+				return bounds{}, false, nil
 			}
 		}
 		foreground, _, _ := user32.NewProc("GetForegroundWindow").Call()
@@ -67,7 +74,7 @@ func (s *windowsSink) Target(target nativecapture.CaptureTarget, _ *nativecaptur
 		return bounds{}, false, errors.New("source cannot accept input")
 	}
 	if area.right <= area.left || area.bottom <= area.top {
-		return bounds{}, false, errors.New("shared source has no area")
+		return bounds{}, false, nil
 	}
 	return bounds{area.left, area.top, area.right - area.left, area.bottom - area.top}, focused, nil
 }

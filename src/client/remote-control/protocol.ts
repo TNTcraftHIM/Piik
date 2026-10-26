@@ -24,6 +24,7 @@ export const remoteInputStateSchema = z.object({
   reason: z.enum(["password", "retry", "busy", "gamepad"]).optional(),
   capabilities: z.array(z.string().min(1).max(32)).max(16).optional(),
   coPlay: z.boolean().optional(),
+  inputFailed: z.boolean().optional(),
 }).strict();
 export type RemoteInputState = z.infer<typeof remoteInputStateSchema>;
 

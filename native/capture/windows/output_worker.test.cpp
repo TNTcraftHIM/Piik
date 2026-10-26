@@ -10,6 +10,11 @@
 #include <future>
 #include <iterator>
 
+#define WEBRTC_WIN 1
+#define NDEBUG
+#include "api/video/video_adapter.h"
+#undef NDEBUG
+
 namespace piik::capture::windows {
 class AdaptiveEncoder::Impl final {
  public:
@@ -27,22 +32,24 @@ std::optional<AdaptiveAccessUnit> AdaptiveEncoder::Encode(FrameProducer,
     UINT32 width, UINT32 height, UINT64 timestamp, bool key, UINT32 bitrate,
     EncoderClock::time_point deadline) {
   impl_->encoder->SetBitrate(bitrate);
-  return AdaptiveAccessUnit{impl_->encoder->Encode(nullptr, timestamp, key, deadline),
-                            width, height, 333'333};
+  auto output = impl_->encoder->Encode(nullptr, timestamp, key, deadline);
+  if (output.bytes.empty()) return std::nullopt;
+  return AdaptiveAccessUnit{std::move(output), width, height, 333'333};
 }
 }  // namespace piik::capture::windows
 
 class FixtureEncoder final : public VideoEncoder {
  public:
-  FixtureEncoder(std::promise<void>* entered, std::shared_future<void> released)
+  FixtureEncoder(std::promise<void>* entered, std::shared_future<void> released, bool drop = false)
       : VideoEncoder(OutputKind::h264, "fixture", "fixture"),
-        entered_(entered), released_(std::move(released)) {}
+        entered_(entered), released_(std::move(released)), drop_(drop) {}
 
   EncodedAccessUnit Encode(ID3D11Texture2D*, UINT64 timestamp, bool key,
       EncoderClock::time_point) override {
     if (entered_) {
       entered_->set_value();
       released_.wait();
+      if (drop_) return {timestamp, false, {}};
       throw GateFailure("fixture-encode", "synthetic encoder failed", E_FAIL);
     }
     return {timestamp, key, {1, 2, 3}};
@@ -52,7 +59,177 @@ class FixtureEncoder final : public VideoEncoder {
  private:
   std::promise<void>* entered_;
   std::shared_future<void> released_;
+  bool drop_;
 };
+
+void CheckQuietCaptureRefresh() {
+  CaptureInput latest;
+  latest.width = 1280;
+  latest.height = 720;
+  latest.presentation = {1280, 720};
+  latest.timestamp = static_cast<UINT64>(MFGetSystemTime()) - 50'000'000;
+  latest.capture_timestamp = latest.timestamp;
+  const auto previous = latest.timestamp;
+  const auto before = static_cast<UINT64>(MFGetSystemTime());
+  const auto refreshed = RefreshCaptureInput(latest);
+  const auto after = static_cast<UINT64>(MFGetSystemTime());
+  assert(refreshed->timestamp >= before && refreshed->timestamp <= after);
+  assert(refreshed->timestamp - previous >= 50'000'000);
+  assert(latest.timestamp == previous);
+  assert(refreshed->capture_timestamp == latest.capture_timestamp);
+  assert(refreshed->width == latest.width && refreshed->height == latest.height &&
+         refreshed->presentation.cx == latest.presentation.cx &&
+         refreshed->presentation.cy == latest.presentation.cy &&
+         refreshed->color_space == latest.color_space && refreshed->texture.Get() == latest.texture.Get());
+  // The compositor changed the picture just before the refresh, but its frame
+  // callback arrives afterwards. It is new capture input, not a stale still.
+  const auto delayed_capture = before - 1;
+  const auto following = CapturePresentationTimestamp(delayed_capture, previous, refreshed->timestamp, 0);
+  assert(following && *following > refreshed->timestamp);
+  assert((*following - refreshed->timestamp) * 90'000 >= 10'000'000);
+  assert(!CapturePresentationTimestamp(previous, previous, refreshed->timestamp, 0));
+  const auto current_capture = after + 10'000'000;
+  const auto current = CapturePresentationTimestamp(current_capture, delayed_capture, *following, 0);
+  assert(current && *current == current_capture);
+  // Minimized title-bar frames can arrive after restore. Their timestamps are
+  // newer than the last real picture, but older than the observed restoration.
+  const auto restored_at = current_capture + 10'000'000;
+  assert(!CapturePresentationTimestamp(restored_at - 1, current_capture, *current, restored_at));
+  const auto restored = CapturePresentationTimestamp(restored_at + 1, current_capture, *current, restored_at);
+  assert(restored && *restored == restored_at + 1);
+}
+
+class CadenceEncoder final : public VideoEncoder {
+ public:
+  explicit CadenceEncoder(int fps) : VideoEncoder(OutputKind::h264, "cadence", "cadence") {
+    adapter_.OnOutputFormatRequest(std::nullopt, 64 * 64, fps);
+  }
+  EncodedAccessUnit Encode(ID3D11Texture2D*, UINT64 timestamp, bool key,
+      EncoderClock::time_point) override {
+    int crop_width, crop_height, width, height;
+    if (!adapter_.AdaptFrameResolution(64, 64, static_cast<int64_t>(timestamp * 100),
+        &crop_width, &crop_height, &width, &height)) return {timestamp, false, {}};
+    if (key) ++key_requests_;
+    return {timestamp, key && key_requests_ != 2,
+      {static_cast<BYTE>(bitrate_ >> 24), static_cast<BYTE>(bitrate_ >> 16),
+       static_cast<BYTE>(bitrate_ >> 8), static_cast<BYTE>(bitrate_)}};
+  }
+  void SetBitrate(UINT32 bitrate) override { bitrate_ = bitrate; }
+ private:
+  webrtc::VideoAdapter adapter_{2};
+  unsigned key_requests_ = 0;
+  UINT32 bitrate_ = 0;
+};
+
+void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
+  HANDLE sink = CreateFileW(L"NUL", GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+  assert(sink != INVALID_HANDLE_VALUE);
+  ProtocolWriter writer(sink);
+  const VideoProfile profile{64, 64, 30, 300'000};
+  std::atomic<bool> refresh{false};
+  std::atomic<UINT64> changed_at{UINT64_MAX};
+  std::array<std::atomic<unsigned>, 2> delivered{}, changed{}, keys{};
+  std::array<std::atomic<UINT32>, 2> published_bitrate{};
+  std::vector<std::unique_ptr<OutputWorker>> workers;
+  for (int layer = 0; layer < 2; ++layer) {
+    workers.push_back(std::make_unique<OutputWorker>(static_cast<UINT8>(layer), profile,
+        OutputKind::h264, device, writer, [layer](const VideoProfile&) {
+          return std::make_unique<CadenceEncoder>(layer == 0 ? 3 : 11);
+        }, nullptr, true, [&, layer](const AdaptiveAccessUnit& output) {
+          ++delivered[layer];
+          if (output.access_unit.timestamp100ns >= changed_at.load()) ++changed[layer];
+          if (output.access_unit.key_frame) ++keys[layer];
+          const auto& bytes = output.access_unit.bytes;
+          published_bitrate[layer].store((static_cast<UINT32>(bytes[0]) << 24) |
+              (static_cast<UINT32>(bytes[1]) << 16) | (static_cast<UINT32>(bytes[2]) << 8) | bytes[3]);
+        }, [](std::exception_ptr error) { std::rethrow_exception(error); },
+        [&] { refresh.store(true); }));
+  }
+  auto input = std::make_shared<CaptureInput>();
+  input->width = input->height = 64;
+  input->presentation = {64, 64};
+  input->timestamp = static_cast<UINT64>(MFGetSystemTime());
+  input->capture_timestamp = input->timestamp;
+  auto submit = [&](std::shared_ptr<const CaptureInput> next) {
+    for (auto& worker : workers) worker->Submit(next);
+  };
+  const auto deadline = EncoderClock::now() + std::chrono::seconds(3);
+  auto wait = [&](auto done) {
+    while (!done()) {
+      assert(EncoderClock::now() < deadline);
+      if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+      std::this_thread::sleep_for(std::chrono::milliseconds(34));
+    }
+  };
+  for (auto& worker : workers) worker->SetBitrate(profile.bit_rate / 2);
+  submit(input);
+  wait([&] { return delivered[0] > 0 && delivered[1] > 0; });
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  input = std::make_shared<CaptureInput>(*input);
+  input->timestamp = static_cast<UINT64>(MFGetSystemTime());
+  input->capture_timestamp = input->timestamp;
+  changed_at.store(input->timestamp);
+  submit(input);
+  wait([&] { return changed[0] > 0 && changed[1] > 0; });
+  // One rendition's drop must not reopen the other rendition's delivered content.
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  assert(!refresh.load());
+  const auto before = keys[0].load();
+  workers[0]->RequestKeyFrame();
+  submit(RefreshCaptureInput(*input));
+  wait([&] { return keys[0] > before; });
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  assert(!refresh.load());
+  workers[0]->SetBitrate(profile.bit_rate);
+  submit(RefreshCaptureInput(*input));
+  wait([&] { return published_bitrate[0] == profile.bit_rate; });
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  assert(!refresh.load());
+  for (auto& worker : workers) worker->Stop();
+  for (auto& worker : workers) worker->Join();
+  CloseHandle(sink);
+}
+
+void CheckRetiredDropCannotRequestRefresh(ID3D11Device* device, bool stop) {
+  std::promise<void> entered, release, output;
+  auto began = entered.get_future();
+  auto released = release.get_future().share();
+  auto delivered = output.get_future();
+  std::atomic<bool> refresh{false};
+  std::atomic<unsigned> created{0};
+  HANDLE sink = CreateFileW(L"NUL", GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr);
+  assert(sink != INVALID_HANDLE_VALUE);
+  ProtocolWriter writer(sink);
+  OutputWorker worker(0, VideoProfile{}, OutputKind::h264, device, writer,
+      [&](const VideoProfile&) {
+        return std::make_unique<FixtureEncoder>(created++ == 0 ? &entered : nullptr, released, true);
+      },
+      nullptr, true, [&](const AdaptiveAccessUnit&) { output.set_value(); },
+      [](std::exception_ptr error) { std::rethrow_exception(error); },
+      [&] { refresh.store(true); });
+  auto input = std::make_shared<CaptureInput>();
+  input->width = 1280;
+  input->height = 720;
+  input->presentation = {1280, 720};
+  input->timestamp = input->capture_timestamp = static_cast<UINT64>(MFGetSystemTime());
+  worker.Submit(input);
+  assert(began.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+  if (stop) worker.Stop();
+  else {
+    worker.SetActive(false);
+    assert(worker.SetActive(true));
+    worker.Submit(input);
+  }
+  release.set_value();
+  if (!stop) assert(delivered.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+  worker.Stop();
+  worker.Join();
+  assert(!refresh.load());
+  CloseHandle(sink);
+}
 
 void CheckWorkerFailureGeneration(ID3D11Device* device, bool replace, bool active = true) {
   std::promise<void> entered, release, output, failure;
@@ -568,6 +745,7 @@ int main() {
   assert(!piik::capture::ValidCodedVideoSize(3840, 3840));
   assert(!piik::capture::ValidCodedVideoSize(UINT32_MAX, UINT32_MAX));
   CheckEncoderCandidates();
+  CheckQuietCaptureRefresh();
   CheckH264ProfileCompatibility();
   CheckPrimaryFailureDetails();
   CheckAudioCapabilityIsolation();
@@ -584,4 +762,7 @@ int main() {
   CheckWorkerDimensions(device.Get(), {1080, 1920}, {404, 720});
   CheckWorkerDimensions(device.Get(), {3440, 1440}, {1280, 534});
   CheckWorkerDimensions(device.Get(), {640, 480}, {640, 480});
+  CheckRetainedContentAtAdaptedCadence(device.Get());
+  CheckRetiredDropCannotRequestRefresh(device.Get(), false);
+  CheckRetiredDropCannotRequestRefresh(device.Get(), true);
 }

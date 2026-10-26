@@ -2,10 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { AppQualityPreference } from "../src/client/native/quality-preference";
 import { discoverNativeHealth } from "../src/client/native/client";
-import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL, NATIVE_CLIENT_PORT_START } from "../src/client/native/wire";
+import { nativeHealthSchema, NATIVE_CLIENT_PROTOCOL } from "../src/client/native/wire";
+import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
-vi.mock("../src/client/native/client", () => ({ discoverNativeHealth: vi.fn() }));
-afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+vi.mock("../src/client/native/client", () => ({ discoverNativeHealth: vi.fn(), isLoopbackPage: () => false }));
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 const health = nativeHealthSchema.parse({
   protocol: NATIVE_CLIENT_PROTOCOL, service: "piik-client", port: NATIVE_CLIENT_PORT_START,
@@ -13,6 +14,48 @@ const health = nativeHealthSchema.parse({
 });
 
 describe("App quality preference transport", () => {
+  it.each(["caller", "deadline"])("cancels a pending response body through its %s", async cause => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
+    vi.mocked(discoverNativeHealth).mockResolvedValue(health);
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => new Response(new ReadableStream({
+      start(body) { init.signal!.addEventListener("abort", () => body.error(init.signal!.reason), { once: true }); },
+    }))));
+    const owner = new AbortController();
+    const preference = (await AppQualityPreference.connect(owner.signal))!;
+    const rejected = expect(preference.read()).rejects.toMatchObject({ name: cause === "caller" ? "AbortError" : "TimeoutError" });
+    await Promise.resolve();
+    if (cause === "caller") owner.abort();
+    else await vi.advanceTimersByTimeAsync(4_000);
+    await rejected;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("reads a delayed body without AbortSignal.any and releases its deadline afterward", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
+    vi.mocked(discoverNativeHealth).mockResolvedValue(health);
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    let requestSignal!: AbortSignal;
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      requestSignal = init.signal!;
+      return new Response(new ReadableStream<Uint8Array>({ start(controller) {
+        body = controller;
+        requestSignal.addEventListener("abort", () => controller.error(requestSignal.reason), { once: true });
+      } }));
+    }));
+    const preference = (await AppQualityPreference.connect(new AbortController().signal))!;
+    const reading = preference.read();
+    void reading.catch(() => undefined);
+    await Promise.resolve();
+    expect(requestSignal).toBeDefined();
+    expect(requestSignal.aborted).toBe(false);
+    body.enqueue(new TextEncoder().encode(JSON.stringify(DEFAULT_QUALITY_SETTINGS)));
+    body.close();
+    await expect(reading).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("leaves older Apps alone and does not discover after retirement", async () => {
     const fetcher = vi.fn();
     vi.stubGlobal("fetch", fetcher);

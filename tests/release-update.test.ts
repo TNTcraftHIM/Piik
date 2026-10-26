@@ -49,6 +49,19 @@ describe("App release update notice", () => {
       .toBe(current.browser_download_url);
   });
 
+  it("selects the Android APK from either release provider", () => {
+    const name = "piik-app-android-universal.apk";
+    const asset = { name, size: 1024, state: "uploaded",
+      browser_download_url: `https://github.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
+    expect(parseReleaseMetadata({ ...release, assets: [asset] }, "android-universal")?.url)
+      .toBe(asset.browser_download_url);
+    const mirrorAsset = { name,
+      browser_download_url: `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
+    expect(parseMirrorReleaseMetadata({ tag_name: release.tag_name, prerelease: false,
+      body: `<!-- piik-source: ${latestRevision} -->`, assets: [mirrorAsset] }, "android-universal")?.url)
+      .toBe(mirrorAsset.browser_download_url);
+  });
+
   it("keeps the release page when a matching safe ZIP is missing, without trying another provider", async () => {
     const asset = packageAsset("windows-amd64");
     for (const assets of [[], [packageAsset("linux-amd64")], [packageAsset("windows-amd64", "-aaaaaaa")],

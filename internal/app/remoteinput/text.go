@@ -11,7 +11,12 @@ const maxInputBytes = maxTextBytes*2 + 256 // JSON escaping and grant fields.
 
 // Text is one explicit submission. Newlines and tabs use real keys on every
 // platform; Unicode events handle the remaining text independently of layout.
-func applyText(sink inputSink, target bounds, text string) error {
+type textSink interface {
+	Reset() error
+	Apply(bounds, inputEvent) error
+}
+
+func applyText(sink textSink, target bounds, text string) error {
 	if text == "" || len(text) > maxTextBytes || !utf8.ValidString(text) {
 		return errors.New("invalid input text")
 	}

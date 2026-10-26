@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-24
+Last updated: 2026-10-26
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -41,6 +41,12 @@ The maintenance line preserves published protocols, compatibility and route
 ownership. [TODO](./todo.md) is the only unfinished-work ledger; Git and PRs own
 completed fixes. [Verification status](./verification-status.md) owns material
 acceptance and platform boundaries.
+
+The Android system-browser App shares the desktop Web UI and Go core,
+including Local/public-link rooms, Site approval, native screen capture and room
+voice. Its universal APK covers ARM64 and x64 through the shared release pipeline;
+[device evidence](./verification-status.md#device-evidence-boundary) and
+[remaining work](./todo.md) retain their existing owners. iOS remains separate.
 
 Room voice, shared keyboard/mouse and optional Windows virtual gamepads use the
 normal App/Web interfaces. App packages contain no optional input SDK or driver.

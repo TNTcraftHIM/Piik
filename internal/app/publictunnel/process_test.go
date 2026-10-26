@@ -21,6 +21,13 @@ import (
 
 func TestMain(tests *testing.M) {
 	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
+		if mode == "deadline-detail" {
+			fmt.Fprintln(os.Stderr, `{"level":"error","message":"edge discovery failed","error":"DNS lookup failed token=fixture-secret"}`)
+			fmt.Fprintln(os.Stderr, `{"level":"info","message":"retrying"}`)
+			for {
+				time.Sleep(time.Hour)
+			}
+		}
 		if mode == "plain-exit" {
 			fmt.Fprintln(os.Stderr, "failed to request quick Tunnel: connect timeout token=fixture-secret")
 			fmt.Fprintln(os.Stdout, "trailing ordinary output")
@@ -99,7 +106,8 @@ func TestStartupRetainsPlainDependencyFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PIIK_TUNNEL_FIXTURE", "plain-exit")
-	process, err := startAttempt(t.Context(), executable, "http://127.0.0.1:8787")
+	directory := t.TempDir()
+	process, err := startAttempt(t.Context(), executable, "http://127.0.0.1:8787", directory)
 	var failure *exec.ExitError
 	if process != nil || !errors.Is(err, errStartupExited) || !errors.As(err, &failure) || failure.ExitCode() != 7 {
 		t.Fatalf("plain dependency failure lost its exit status: %v, %v", process, err)
@@ -107,6 +115,33 @@ func TestStartupRetainsPlainDependencyFailure(t *testing.T) {
 	if !strings.Contains(err.Error(), "failed to request quick Tunnel: connect timeout token=[redacted]") ||
 		strings.Contains(err.Error(), "fixture-secret") || strings.Contains(err.Error(), "ordinary output") {
 		t.Fatalf("plain dependency failure was omitted, unsafe or overwritten: %v", err)
+	}
+	entries, readErr := os.ReadDir(directory)
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("failed child retained caller config: %v, %v", entries, readErr)
+	}
+}
+
+func TestStartupDeadlineRetainsSanitizedDependencyCause(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PIIK_TUNNEL_FIXTURE", "deadline-detail")
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
+	defer cancel()
+	directory := t.TempDir()
+	process, err := startAttempt(ctx, executable, "http://127.0.0.1:8787", directory)
+	if process != nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("startup deadline was lost: %v, %v", process, err)
+	}
+	if !strings.Contains(err.Error(), "edge discovery failed\nDNS lookup failed token=[redacted]") ||
+		strings.Contains(err.Error(), "fixture-secret") || strings.Contains(err.Error(), "retrying") {
+		t.Fatalf("startup deadline lost or exposed dependency cause: %v", err)
+	}
+	entries, readErr := os.ReadDir(directory)
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("timed-out child retained temporary config: %v, %v", entries, readErr)
 	}
 }
 
@@ -130,7 +165,7 @@ func TestStartupRetriesOnlyRetiredPreReadyChildren(t *testing.T) {
 			t.Setenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS", record)
 			t.Setenv("PIIK_TUNNEL_FIXTURE_FAILURES", strconv.Itoa(sample.failures))
 			t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE", strconv.Itoa(sample.exitCode))
-			process, err := Start(t.Context(), executable, "http://127.0.0.1:8787")
+			process, err := Start(t.Context(), executable, "http://127.0.0.1:8787", "")
 			if sample.ready {
 				if err != nil || process == nil {
 					t.Fatalf("fourth attempt: %v, %v", process, err)
@@ -205,7 +240,7 @@ func TestStartupRetriesShareCancellationAndDeadline(t *testing.T) {
 				key:     sample.key, value: sample.value, cancel: cancel,
 			}))
 			defer slog.SetDefault(previous)
-			process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+			process, err := Start(ctx, executable, "http://127.0.0.1:8787", "")
 			if process != nil || err != context.Canceled {
 				t.Fatalf("startup cancellation: %v, %v", process, err)
 			}
@@ -222,7 +257,7 @@ func TestStartupRetriesShareCancellationAndDeadline(t *testing.T) {
 		ctx, cancel := context.WithTimeout(t.Context(), timeout)
 		defer cancel()
 		started := time.Now()
-		process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+		process, err := Start(ctx, executable, "http://127.0.0.1:8787", "")
 		if process != nil || !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("startup deadline: %v, %v", process, err)
 		}
@@ -266,7 +301,7 @@ func TestStartupEnablesCloudflaredProtocolFallback(t *testing.T) {
 	t.Setenv("PIIK_TUNNEL_FIXTURE", "tcp-only")
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
-	process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+	process, err := Start(ctx, executable, "http://127.0.0.1:8787", "")
 	if err != nil {
 		t.Fatalf("tunnel with TCP available: %v", err)
 	}
@@ -311,7 +346,7 @@ func TestCloseKeepsAnObservedFailureWhileLogsDrain(t *testing.T) {
 	}))
 	defer slog.SetDefault(previous)
 	defer resume()
-	process, err := Start(t.Context(), executable, "http://127.0.0.1:8787")
+	process, err := Start(t.Context(), executable, "http://127.0.0.1:8787", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +401,7 @@ func TestReadyTunnelWaitsForItsExplicitOrderedClose(t *testing.T) {
 	t.Setenv("PIIK_TUNNEL_FIXTURE", "ready")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+	process, err := Start(ctx, executable, "http://127.0.0.1:8787", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +434,7 @@ func TestStartupCancellationStillRetiresTheTunnel(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	process, err := Start(ctx, executable, "http://127.0.0.1:8787")
+	process, err := Start(ctx, executable, "http://127.0.0.1:8787", "")
 	if process != nil || !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("cancelled startup: %v, %v", process, err)
 	}
@@ -409,7 +444,7 @@ func TestStartupCancellationStillRetiresTheTunnel(t *testing.T) {
 }
 
 func TestMissingTunnelExplainsHowToRestoreThePackage(t *testing.T) {
-	_, err := Start(t.Context(), filepath.Join(t.TempDir(), "missing-tunnel"), "http://127.0.0.1:8787")
+	_, err := Start(t.Context(), filepath.Join(t.TempDir(), "missing-tunnel"), "http://127.0.0.1:8787", "")
 	var cause *os.PathError
 	if !errors.As(err, &cause) || appfailure.Of(err) != appfailure.TunnelUnavailable || !strings.Contains(err.Error(), "extract the complete Piik archive") {
 		t.Fatalf("missing tunnel lost its cause or recovery instruction: %v", err)
@@ -470,11 +505,15 @@ func TestLocalOriginMustBeLoopbackHTTP(t *testing.T) {
 }
 
 func TestTemporaryConfigIsMinimal(t *testing.T) {
-	path, err := writeTemporaryConfig()
+	directory := t.TempDir()
+	path, err := writeTemporaryConfig(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Remove(path) })
+	if filepath.Dir(path) != directory {
+		t.Fatalf("temporary config escaped caller directory: %s", path)
+	}
 	payload, err := os.ReadFile(path)
 	if err != nil || string(payload) != "metrics: 127.0.0.1:0\n" {
 		t.Fatalf("temporary config = %q, %v", payload, err)

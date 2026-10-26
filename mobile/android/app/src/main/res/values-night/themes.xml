@@ -1,0 +1,8 @@
+<resources>
+ <style name="PiikTheme" parent="android:style/Theme.Material">
+  <item name="android:windowLightStatusBar">false</item>
+  <item name="android:windowLightNavigationBar">false</item>
+  <item name="android:statusBarColor">?android:attr/colorBackground</item>
+  <item name="android:navigationBarColor">?android:attr/colorBackground</item>
+ </style>
+</resources>

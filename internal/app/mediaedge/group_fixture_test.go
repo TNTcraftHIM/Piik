@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"math"
 	"os"
 	"testing"
 	"time"
@@ -187,9 +188,11 @@ func TestEncodedGroupVP8Fixture(t *testing.T) {
 					firstTS = packet.Timestamp
 					if previous[child] != nil {
 						delta := packet.Timestamp - previous[child].Timestamp
-						want := (row.PTS - previousPTS[child]).Seconds() * videoClockRate
+						// SMED PTS uses 100 ns units; compare whole 90 kHz ticks
+						// before allowing the SR projection's one-tick rounding.
+						want := math.Round((row.PTS - previousPTS[child]).Seconds() * videoClockRate)
 						if float64(delta) < want-1 || float64(delta) > want+1 {
-							t.Fatal("layer switch changed source time mapping")
+							t.Fatalf("frame %d child %d layer %d: source clock advanced %d RTP ticks, expected %.0f", row.FrameIndex, child, row.Layer, delta, want)
 						}
 					}
 				} else if packet.Timestamp != firstTS {

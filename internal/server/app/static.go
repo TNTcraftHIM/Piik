@@ -7,6 +7,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/TNTcraftHIM/Piik/internal/httpassets"
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 )
 
@@ -45,7 +46,7 @@ var staticContentTypes = map[string]string{
 // staticHandler serves embedded assets and falls back to index.html for SPA
 // routes. Missing files use the application's JSON 404 handler.
 func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
-	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	return httpassets.Compress(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		// API and health routes have already been handled by ServeHTTP.
 		cleaned := path.Clean("/" + request.URL.Path)
 		name := strings.TrimPrefix(cleaned, "/")
@@ -89,7 +90,7 @@ func staticHandler(assets fs.FS, notFound http.Handler) http.Handler {
 			}
 		}
 		notFound.ServeHTTP(writer, request)
-	})
+	}))
 }
 
 // hasDotSegment excludes hidden assets, with the published .well-known exemption.

@@ -20,6 +20,46 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it("distinguishes Host input failure from a local stalled queue without exporting input authority or text", async () => {
+    browser();
+    const debug = await import("../src/client/lib/debug");
+    const { RemoteInputSession } = await import("../src/client/remote-control/input-session");
+    class Channel extends EventTarget {
+      readyState = "open";
+      bufferedAmount = 0;
+      sent: Record<string, unknown>[] = [];
+      send(data: string) { this.sent.push(JSON.parse(data)); }
+      close() { this.readyState = "closed"; }
+      receive(data: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(data) })); }
+    }
+    const channel = new Channel();
+    const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+    const grant = "b".repeat(64);
+    const activate = () => {
+      channel.receive({ platform: "windows", mode: "room", state: "ready" });
+      session.request();
+      const intent = channel.sent.at(-1)!.intent;
+      channel.receive({ platform: "windows", mode: "room", state: "active", grant, intent });
+      return intent;
+    };
+    const first = activate();
+    channel.receive({ platform: "windows", mode: "room", state: "failed", intent: first });
+    expect(session.state?.state).toBe("failed");
+    const second = activate();
+    channel.bufferedAmount = 8193;
+    session.input({ type: "text", text: "private input content" });
+    expect(session.state?.state).toBe("failed");
+    expect(channel.readyState).toBe("closed");
+    const exported = await debug.exportBrowserDebug();
+    const report = JSON.parse(exported);
+    expect(report.events).toEqual([
+      expect.objectContaining({ scope: "remote-input", event: "host-failed", details: { previousState: "active", mode: "room" } }),
+      expect.objectContaining({ scope: "remote-input", event: "send-failed", details: expect.objectContaining({ state: "active", readyState: "open", bufferedAmount: 8193 }) }),
+    ]);
+    for (const value of [grant, first, second, "private input content"]) expect(exported).not.toContain(value);
+    session.dispose();
+  });
+
   it("collects current preview receive and playback evidence only at export, until owner retirement", async () => {
     browser();
     const debug = await import("../src/client/lib/debug");

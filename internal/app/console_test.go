@@ -15,6 +15,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/charmbracelet/x/ansi"
@@ -224,10 +225,10 @@ func TestBrowserOpenFeedbackBelongsToTheCurrentEntry(t *testing.T) {
 func TestConsoleEntryKeepsAppActivationWithoutExposingCredentials(t *testing.T) {
 	model := consoleModel{width: 80, language: "en", view: consoleView{
 		mode: "link", state: "ready",
-		entry:  "http://user:private-secret@localhost:8787/?token=private-secret#client-access=private-secret&piik-client=1",
+		entry:  "http://user:private-secret@localhost:8787/?token=private-secret&piik-client-port=39730#client-access=private-secret&piik-client=1",
 		invite: "https://room.example/?token=private-secret#v=private-secret",
 	}}
-	want := []string{"http://localhost:8787/#piik-client=1", "https://room.example/"}
+	want := []string{"http://localhost:8787/?piik-client-port=39730#piik-client=1", "https://room.example/"}
 	for _, styled := range []bool{false, true} {
 		content := model.content(styled)
 		var addresses []string
@@ -373,9 +374,9 @@ func TestConsolePresentationAndShutdown(t *testing.T) {
 }
 
 func TestConsoleBuildVersionAndRevision(t *testing.T) {
-	previousVersion, previousRevision := BuildVersion, BuildRevision
-	t.Cleanup(func() { BuildVersion, BuildRevision = previousVersion, previousRevision })
-	BuildRevision = strings.Repeat("a", 40)
+	previousVersion, previousRevision := buildinfo.Release, buildinfo.Revision
+	t.Cleanup(func() { buildinfo.Release, buildinfo.Revision = previousVersion, previousRevision })
+	buildinfo.Revision = strings.Repeat("a", 40)
 	for _, test := range []struct{ version, want string }{
 		{"v1.2.3", "v1.2.3"},
 		{"development", "development"},
@@ -385,9 +386,9 @@ func TestConsoleBuildVersionAndRevision(t *testing.T) {
 		{"v1.2.3-preview.1", "development"},
 		{"v1.2.3+build", "development"},
 	} {
-		BuildVersion = test.version
+		buildinfo.Release = test.version
 		content := (consoleModel{width: 80, language: "en", view: consoleView{state: "ready"}}).content(false)
-		if !strings.Contains(content, test.want) || !strings.Contains(content, "aaaaaaa") || strings.Contains(content, BuildRevision) {
+		if !strings.Contains(content, test.want) || !strings.Contains(content, "aaaaaaa") || strings.Contains(content, buildinfo.Revision) {
 			t.Fatalf("console identity for %q: %s", test.version, content)
 		}
 	}

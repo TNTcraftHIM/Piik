@@ -3,15 +3,30 @@ package forwarding
 import (
 	"context"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/livekit-server/pkg/sfu/buffer"
+	"github.com/livekit/protocol/livekit"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 )
+
+type heldSourceClose struct {
+	buffer.BufferProvider
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (input *heldSourceClose) CloseWithReason(reason string) (*livekit.RTPStats, error) {
+	close(input.entered)
+	<-input.release
+	return input.BufferProvider.CloseWithReason(reason)
+}
 
 func TestSourceRetargetPreservesTransportAndPublication(t *testing.T) {
 	for _, simulcast := range []bool{false, true} {
@@ -192,6 +207,37 @@ func TestSourceRetargetPreservesTransportAndPublication(t *testing.T) {
 				if publication.PC != pc || counters.Frames[0] < 6 || counters.Frames[1] < 6 {
 					t.Fatal("retarget lost per-RID forwarding or counters")
 				}
+			}
+			queued := next.GetDownTracks()
+			var snapshots [2]*livekit.RTCPSenderReportState
+			for layer := range snapshots {
+				snapshots[layer] = next.GetAllBuffers()[layer].GetSenderReportData()
+			}
+			blocked := &heldSourceClose{BufferProvider: next.GetAllBuffers()[0],
+				entered: make(chan struct{}), release: make(chan struct{})}
+			next.ReceiverBase.AddBuffer(blocked, 0)
+			var release sync.Once
+			unblock := func() { release.Do(func() { close(blocked.release) }) }
+			defer unblock()
+			retired := make(chan struct{})
+			go func() { next.Close(); close(retired) }()
+			select {
+			case <-blocked.entered:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+			// ClearAllBuffers runs before DownTrack retirement. A queued SR still
+			// has the same receiver, but its current clock has already disappeared.
+			for _, sender := range queued {
+				for layer, snapshot := range snapshots {
+					check(sender.HandleRTCPSenderReportData(codec.PayloadType, int32(layer), snapshot))
+				}
+			}
+			unblock()
+			select {
+			case <-retired:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
 			}
 			check(closeTransport())
 			if len(next.GetDownTracks()) != 0 || replace(old.Source) == nil {

@@ -7,6 +7,10 @@ interface in your system Browser.
 
 ## Run A Package
 
+For Android APK installation and the shared browser workflow, follow
+[Getting started](../../docs/guide/getting-started.md#share-with-piik-app).
+The package, terminal and command-line instructions below apply to desktop App.
+
 Extract the matching platform bundle in full. On Windows and Linux, keep
 `runtime` beside the App executable and run `piik-app.exe` or `./piik-app`.
 On macOS, open `Piik App.app`; you can move the whole `.app` to Applications.

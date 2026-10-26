@@ -103,6 +103,8 @@ type Server struct {
 	// startupDone is closed when listen settles, which is what shutdown awaits
 	// so the listener stays owned until an in-flight startup finishes.
 	startupDone chan struct{}
+	serveErr    error
+	done        chan error
 
 	shutdownOnce sync.Once
 	shutdownErr  error
@@ -142,6 +144,7 @@ func New(options Options) (*Server, error) {
 		siteAccess:  siteAccess,
 		logger:      logger,
 		startupDone: make(chan struct{}),
+		done:        make(chan error, 1),
 	}
 	server.listeners = append([]net.Listener(nil), options.Listeners...)
 	if options.Assets != nil {
@@ -204,6 +207,10 @@ func newRoomStore(options Options) (*room.Store, error) {
 	})
 }
 
+// Done reports the first unexpected HTTP listener failure. Normal Close/End
+// leave it silent; owners also observe their own cancellation/lifetime signal.
+func (s *Server) Done() <-chan error { return s.done }
+
 // Listen binds application sockets before recovering room authority and accepting traffic.
 func (s *Server) Listen(ctx context.Context) (int, error) {
 	s.mu.Lock()
@@ -225,6 +232,15 @@ func (s *Server) Listen(ctx context.Context) (int, error) {
 }
 
 func (s *Server) start(ctx context.Context) (int, error) {
+	var publicIP string
+	if s.config.SFU != nil {
+		var err error
+		publicIP, err = resolveSFUPublicIP(ctx, s.config.SFU.PublicIP)
+		if err != nil {
+			_ = s.stopServing(ctx)
+			return 0, err
+		}
+	}
 	// Bind first. A listener owned by another process must fail before
 	// the room database is opened.
 	var err error
@@ -260,8 +276,8 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 		settings.SetICEUDPMux(s.mediaMux)
 		settings.SetIncludeLoopbackCandidate(net.ParseIP(configuration.ListenHost).IsLoopback())
-		if configuration.PublicIP != "" {
-			settings.SetNAT1To1IPs([]string{configuration.PublicIP}, webrtc.ICECandidateTypeHost)
+		if publicIP != "" {
+			settings.SetNAT1To1IPs([]string{publicIP}, webrtc.ICECandidateTypeHost)
 		}
 		s.media = sfu.NewMedia(sfu.MediaOptions{Settings: settings, Events: func(event sfu.MediaEvent) {
 			if signaling := s.signaling.Load(); signaling != nil {
@@ -277,6 +293,13 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			// Report permanent accept failures so an unexpectedly stopped HTTP
 			// listener is visible to the operator.
 			if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
+				s.mu.Lock()
+				if !s.closing && s.serveErr == nil {
+					s.serveErr = fmt.Errorf("Piik HTTP listener stopped unexpectedly: %w", err)
+					s.acceptingTraffic.Store(false)
+					s.done <- s.serveErr
+				}
+				s.mu.Unlock()
 				s.logger.Error("Piik HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
 				s.logger.Debug("http-listener-failed", diagnostics.Error(err))
 			}
@@ -339,6 +362,9 @@ func (s *Server) reconcile() error {
 	defer s.mu.Unlock()
 	if s.closing {
 		return nil
+	}
+	if s.serveErr != nil {
+		return s.serveErr
 	}
 	signaling, err := signal.New(s.signalOptions)
 	if err != nil {

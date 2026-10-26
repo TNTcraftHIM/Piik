@@ -21,11 +21,12 @@ type groupConsumer interface {
 }
 
 type outputGroup struct {
-	slot   int
-	media  *forwarding.EncodedSource
-	budget uint32
-	active bool
-	start  time.Duration
+	slot         int
+	media        *forwarding.EncodedSource
+	budget       uint32
+	active       bool
+	start        time.Duration
+	clockPending bool
 }
 
 type outputDemand struct {
@@ -221,6 +222,9 @@ func (source *Source) planGroups(demands []outputDemand) (OutputPlan, error) {
 			}
 		}
 		nextActive := active && source.outputBitrates[group.slot] > 0
+		if nextActive && !group.active && source.relay != nil {
+			group.clockPending = true
+		}
 		if group.active != nextActive {
 			slog.Debug("encoding-group", "event", "activity", "slot", group.slot, "active", nextActive, "sourceId", diagnostics.ID(fmt.Sprintf("%p", source)))
 		}
@@ -259,8 +263,11 @@ func (source *Source) newGroup(slot int) (*outputGroup, error) {
 	if err != nil {
 		return nil, err
 	}
+	if source.relay != nil {
+		media.UseSourceClock(source.media.Source, len(source.formats)-1)
+	}
 	media.SetLowestLayerRateControlled(true)
-	group := &outputGroup{slot: slot, media: media, start: source.inputPTS}
+	group := &outputGroup{slot: slot, media: media, start: source.inputPTS, clockPending: source.relay != nil}
 	if source.hasInput {
 		if err = media.BeginFrame(source.inputPTS, source.inputAt); err != nil {
 			media.Close()
@@ -302,6 +309,19 @@ func groupConsumerID(consumer groupConsumer) string {
 }
 
 func (source *Source) beginGroupFrame(pts time.Duration, at time.Time) error {
+	if source.hasInput {
+		// New groups inherit the established capture clock. Pipe arrival time
+		// can change independently of the input timestamps.
+		at = source.inputAt.Add(pts - source.inputPTS)
+	} else if source.relay == nil && !source.inputAt.IsZero() && !at.IsZero() {
+		// Capture generations can reset PTS while first-arrival latency changes.
+		// Normalize their common origin beyond the last input by one RTP tick;
+		// relay input already supplies its authoritative upstream clock.
+		earliest := source.inputAt.Add(time.Second/videoClockRate + time.Nanosecond)
+		if at.Before(earliest) {
+			at = earliest
+		}
+	}
 	if err := source.media.BeginFrame(pts, at); err != nil {
 		return err
 	}

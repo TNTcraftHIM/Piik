@@ -275,7 +275,9 @@ func (receiver *outputReceiver) AddDownTrack(sfu.TrackSender) error {
 	sender := &outputSourceSender{Output: receiver.output, receiver: receiver}
 	sender.registering.Store(true)
 	err := receiver.Source.AddDownTrack(sender)
+	sender.reportMu.Lock()
 	sender.registering.Store(false)
+	sender.reportMu.Unlock()
 	return err
 }
 
@@ -283,6 +285,7 @@ type outputSourceSender struct {
 	*Output
 	receiver    *outputReceiver
 	registering atomic.Bool
+	reportMu    sync.Mutex
 }
 
 func (sender *outputSourceSender) WriteRTP(packet *buffer.ExtPacket, layer int32) int32 {
@@ -329,13 +332,28 @@ func (sender *outputSourceSender) UpTrackBitrateReport(layers []int32, rates sfu
 	sender.withReceiver(func() { sender.Output.UpTrackBitrateReport(layers, rates) })
 }
 
-func (sender *outputSourceSender) HandleRTCPSenderReportData(payloadType webrtc.PayloadType, layer int32, report *livekit.RTCPSenderReportState) error {
+func (sender *outputSourceSender) HandleRTCPSenderReportData(payloadType webrtc.PayloadType, layer int32, _ *livekit.RTCPSenderReportState) error {
+	// Registration already owns writeMu. Serialize bootstrap callbacks and
+	// read accepted state so a queued older snapshot cannot replace a live SR.
+	apply := func() error {
+		if sender.Output.Receiver() != sender.receiver {
+			return nil
+		}
+		current := sender.receiver.currentSenderReport(layer)
+		if current == nil {
+			return nil
+		}
+		return sender.Output.HandleRTCPSenderReportData(payloadType, layer, current)
+	}
+	sender.reportMu.Lock()
+	if sender.registering.Load() {
+		defer sender.reportMu.Unlock()
+		return apply()
+	}
+	sender.reportMu.Unlock()
 	sender.Output.writeMu.Lock()
 	defer sender.Output.writeMu.Unlock()
-	if sender.Output.Receiver() != sender.receiver {
-		return nil
-	}
-	return sender.Output.HandleRTCPSenderReportData(payloadType, layer, report)
+	return apply()
 }
 
 func (output *Output) replaceReceiver(receiver *outputReceiver) error {

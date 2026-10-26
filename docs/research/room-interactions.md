@@ -440,13 +440,47 @@ independent, with room administration separate from publication ownership.
 The existing one-Host workflow would remain the default.
 
 This is a model change: the current route controller owns one Host and one
-publication. Each new publication would need its own source generation and
+picture publication. Each new publication would need its own source generation and
 subscription lifecycle, while endpoint upload limits remain shared across all
 publications. Creating a controller per source must not multiply that endpoint's
 outbound allowance. Switching pictures should replace the selected subscription,
 preserving room membership and chat. One selected picture is the initial scope;
 camera conferencing and room voice are separate features. No implementation or
 protocol change is accepted by this assessment.
+
+### Multi-room And Distributed Hosting Assessment
+
+Reviewed 2026-10-24. The proposed 3.0 direction separates room administration,
+service hosting and media publication. Chat, voice and screen sharing would have
+independent lifetimes; image/file exchange is a separate finite transfer concern.
+
+Distributed hosting has different implementation costs:
+
+| Model | Responsibility and tradeoff |
+| --- | --- |
+| Different instances host different rooms | Each room keeps one authority and route controller; clients join rooms across instances. An App can host a temporary room, while a self-hosted service can keep rooms available. |
+| Cross-instance identity and room admission | Users reach a room's owning service through their own provider. This adds inter-service authentication and admission without requiring replicated room authority. |
+| One room replicated across instances | Membership, permissions and history need conflict resolution, revocation and partition behavior. This is a substantially larger distributed-state design. |
+
+[XMPP multi-user chat](https://xmpp.org/extensions/xep-0045.html) provides a reference
+for service-owned rooms; [Matrix](https://spec.matrix.org/latest/#architecture)
+replicates room events across participating homeservers. These are alternatives,
+not a requirement to adopt either protocol. Direct joins across separately hosted
+rooms do not by themselves constitute federation.
+
+P2P-first media is independent of that hosting choice. Multiple publishers need
+explicit publication/subscription identities and an aggregate endpoint bandwidth
+budget. Reuse of traversal, recovery and forwarding does not make the current
+single-picture route planner a finished multi-source implementation.
+[Selective subscription](https://docs.livekit.io/transport/media/subscribe/#selective-subscription)
+separates available publications from the streams actually delivered. Multiple
+publishers with one selected primary picture is a smaller first UI than a live
+grid; the data model should represent subscriptions rather than hard-code one
+room-wide current publisher.
+
+The proposed starting point is one authority per room, many rooms per instance,
+and existing Go/media components. Automatic room migration, replicated authority
+and a language rewrite are separate decisions, not prerequisites.
 
 ## Attended Remote-Control Prototype
 
@@ -822,12 +856,19 @@ grant, rather than desktop pointer coordinates.
 For window keyboard/mouse control, the captured region must map to the current
 native window geometry, including movement, resizing and DPI. The input owner
 reads the current geometry and process identity. It suspends input and releases
-held state when the target loses focus, and revokes control if the source
-disappears. Both pages display that same suspension; the Host is asked to focus
-the shared window to resume. This reduces
+held state when the target loses focus or its current geometry cannot be read,
+and revokes control when the source identity is confirmed invalid. Both pages
+display the suspension; restoring the shared window resumes the existing grant. This reduces
 accidental input after switching away; it is not an OS window sandbox.
 `SendInput` has no target-window parameter, and shortcuts can change focus.
 Window selection must never imply that remote input is confined to that window.
+
+Input execution and authorization have separate lifetimes. A failed system input
+call drops that operation, while the existing grant accepts subsequent input.
+Failed releases remain with the input owner until cleanup succeeds; actions and
+partially inserted text are never replayed. This follows the failure scope used by
+[Sunshine's Windows input sink](https://github.com/LizardByte/Sunshine/blob/v2025.923.33222/src/platform/windows/input.cpp#L435),
+where an unsuccessful system call does not revoke the user's control session.
 
 The Windows sink uses physical-key mapping through
 [scan codes](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),

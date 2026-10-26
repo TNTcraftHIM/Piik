@@ -424,6 +424,8 @@ async function main(): Promise<void> {
     await button(host, "Hide sharing settings");
     check("source commentary defaults off, sends shared audio alongside room voice, and can stop independently");
     await cdp.call("Page.bringToFront", {}, host.sessionId, Date.now() + 3000);
+    // A stationary hover does not wake idle playback controls.
+    await ui(host, "hover", ".lr-top-right");
     await ui(host, "hover", ".lr-tv video");
     await waitForSample(() => evaluate<boolean>(cdp!, host, "!!document.querySelector('.lr-tv video')&&!document.querySelector('.lr-tv video').paused", Date.now() + 3000), Boolean, 5000);
     if (!await evaluate<boolean>(cdp, host, "document.querySelector('.lr-tv video').muted", Date.now() + 3000)) throw new Error("Host preview started with sound");

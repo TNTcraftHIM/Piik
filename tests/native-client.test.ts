@@ -1,30 +1,41 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { AppQualityPreference } from "../src/client/native/quality-preference";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 
 import {
   nativeEventSchema,
   nativeHealthSchema,
   nativeRelayCapacity,
   NATIVE_CLIENT_PROTOCOL,
-  NATIVE_CLIENT_PORT_START,
-  NATIVE_CLIENT_PORT_END,
   nativeCaptureTargetSchema,
   shareSourceReplacedResponseSchema,
   shareStartedResponseSchema,
   shareUpdatedResponseSchema,
   sourcePreviewResponseSchema,
   receiveAnswerResponseSchema,
+  requestFailedResponseSchema,
 } from "../src/client/native/wire";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
 describe("native App private wire", () => {
+  it("preserves the published strict failure reader for requests without cancellation opt-in", () => {
+    const published = z.object({ version: z.literal(10), id: z.string(), type: z.literal("request-failed"), code: z.literal("operation-failed") }).strict();
+    const legacy = { version: 10, id: "request_start", type: "request-failed", code: "operation-failed" };
+    expect(published.safeParse(legacy).success).toBe(true);
+    expect(requestFailedResponseSchema.safeParse(legacy).success).toBe(true);
+    const optedIn = { ...legacy, code: "source-canceled" };
+    expect(published.safeParse(optedIn).success).toBe(false);
+    expect(requestFailedResponseSchema.safeParse(optedIn).success).toBe(true);
+  });
   const health = {
     protocol: NATIVE_CLIENT_PROTOCOL,
     service: "piik-client",
@@ -33,32 +44,50 @@ describe("native App private wire", () => {
     nativeMedia: { video: true, hardwareH264: true },
   };
 
+  it("discovers with caller cancellation when AbortSignal.any is unavailable", async () => {
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1:8787/") });
+    const fetcher = vi.fn(async (url: string) => {
+      if (new URL(url).port !== String(health.port)) throw new TypeError("No listener");
+      return new Response(JSON.stringify(health));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverNativeHealth({ signal: new AbortController().signal })).resolves.toMatchObject({ port: health.port });
+    expect(fetcher).toHaveBeenCalled();
+  });
+
   it.each(["localhost", "127.0.0.1", "[::1]"])("discovers and updates presentation from %s without an address-space hint", async hostname => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL(`http://${hostname}:8787/`) });
     const query = vi.fn().mockResolvedValue({ state: "prompt" });
     vi.stubGlobal("navigator", { permissions: { query } });
     const fetcher = vi.fn((url: string, init: RequestInit) => {
       if ("targetAddressSpace" in init) throw new TypeError("loopback is not a valid IPAddressSpace enum value");
-      return Promise.resolve(new Response(JSON.stringify(url.endsWith("connect-discovery")
-        ? { ...health, connectURL: "http://127.0.0.1:54321/client" } : health)));
+      return Promise.resolve(new Response(JSON.stringify(url.endsWith("quality-preference") ? DEFAULT_QUALITY_SETTINGS
+        : url.endsWith("connect-discovery") ? { ...health, connectURL: "http://127.0.0.1:54321/client" }
+          : { ...health, qualityPreference: true })));
     });
     vi.stubGlobal("fetch", fetcher);
     await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
     await expect(discoverNativeConnect()).resolves.toContain("http://127.0.0.1:54321/client?");
     await notifyNativePresentation("en", new AbortController().signal);
+    const preference = await AppQualityPreference.connect(new AbortController().signal);
+    await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
     expect(query).not.toHaveBeenCalled();
-    expect(fetcher).toHaveBeenLastCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ method: "POST" }));
+    expect(fetcher).toHaveBeenCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ method: "POST" }));
     expect(fetcher.mock.calls.every(([, init]) => !("targetAddressSpace" in init))).toBe(true);
   });
 
   it("retains the address-space hint for hosted discovery and presentation without a no-hint fallback", async () => {
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) } });
-    const fetcher = vi.fn(async (_url: string, _init: RequestInit) => new Response(JSON.stringify(health)));
+    const fetcher = vi.fn(async (url: string, _init: RequestInit) => new Response(JSON.stringify(
+      url.endsWith("quality-preference") ? DEFAULT_QUALITY_SETTINGS : { ...health, qualityPreference: true })));
     vi.stubGlobal("fetch", fetcher);
     await notifyNativePresentation("en", new AbortController().signal);
+    const preference = await AppQualityPreference.connect(new AbortController().signal);
+    await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
     expect(fetcher.mock.calls.every(call => (call[1] as RequestInit & { targetAddressSpace: string }).targetAddressSpace === "loopback")).toBe(true);
-    expect(fetcher).toHaveBeenLastCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ targetAddressSpace: "loopback" }));
+    expect(fetcher).toHaveBeenCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ targetAddressSpace: "loopback" }));
     fetcher.mockImplementation(() => { throw new TypeError("Unsupported IPAddressSpace"); });
     fetcher.mockClear();
     await expect(discoverNativeHealth()).resolves.toBeNull();
@@ -110,6 +139,7 @@ describe("native App private wire", () => {
   });
 
   it("cancels the whole approval scan with its caller", async () => {
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
@@ -361,6 +391,7 @@ describe("native App private wire", () => {
 
   it("bounds all silent discovery ports with one deadline", async () => {
     vi.useFakeTimers();
+    vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
@@ -369,7 +400,7 @@ describe("native App private wire", () => {
         options.signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true });
       });
     }));
-    const discovery = discoverNativeHealth();
+    const discovery = discoverNativeHealth({ signal: new AbortController().signal });
     await vi.advanceTimersByTimeAsync(8_000);
     await expect(discovery).resolves.toBeNull();
     expect(signals).toHaveLength(NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1);
@@ -437,6 +468,7 @@ describe("native App private wire", () => {
   it("notifies the owner once on an unexpected close and stays silent on cleanup", async () => {
     const sockets: FakeWebSocket[] = [];
     const token = "a".repeat(43);
+    let failureCode = "operation-failed";
     class FakeWebSocket extends EventTarget {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
@@ -463,7 +495,7 @@ describe("native App private wire", () => {
               version: 10,
               id: request.id,
               type: request.type === "hello" ? "ready" : request.type === "ping" ? "pong" : "request-failed",
-              ...(request.type === "update-share" ? { code: "operation-failed" } : {}),
+              ...(request.type === "update-share" ? { code: failureCode } : {}),
             }),
           });
           this.dispatchEvent(event);
@@ -503,6 +535,9 @@ describe("native App private wire", () => {
     client!.onClose(unexpected);
     await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
       .rejects.toMatchObject({ name: "NativeRequestError", reason: "rejected", operation: "update-share" });
+    failureCode = "source-canceled";
+    await expect(client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS))
+      .rejects.toMatchObject({ name: "NotAllowedError" });
     await client!.ping();
     expect(sockets[0]!.close).not.toHaveBeenCalled();
     expect(unexpected).not.toHaveBeenCalled();
@@ -612,7 +647,7 @@ describe("native App private wire", () => {
     vi.stubGlobal("WebSocket", CaptureSocket);
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported },
+      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported, sourceCancellation: supported },
     }))));
     const client = await NativeClient.connect();
     expect(client).not.toBeNull();
@@ -624,9 +659,15 @@ describe("native App private wire", () => {
     };
     try {
       for (const showCaptureBorder of [undefined, false, true]) {
-        await client!.startShare({ ...input, showCaptureBorder });
+        const onRequested = vi.fn(() => expect(requests.at(-1)?.type).toBe("start-share"));
+        let acknowledged = false;
+        const starting = client!.startShare({ ...input, showCaptureBorder }, onRequested);
+        void starting.then(() => { acknowledged = true; });
+        expect(onRequested).toHaveBeenCalledOnce();
+        expect(acknowledged).toBe(false);
+        await starting;
         await client!.replaceShareSource(input.shareId, input.source, input.audio, input, showCaptureBorder);
-        const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false } : {};
+        const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false, reportSourceCancellation: true } : {};
         expect(requests.at(-2)).toEqual({
           version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "start-share", ...input, ...extension,
           ...(supported ? { remoteInput: true } : {}),
@@ -636,6 +677,13 @@ describe("native App private wire", () => {
           shareId: input.shareId, source: input.source, audio: true, adapterIndex: 0, encoderIndex: 0, ...extension,
         });
       }
+      const unsent = vi.fn();
+      vi.spyOn(CaptureSocket.prototype, "send").mockImplementationOnce(() => { throw new Error("send failed"); });
+      await expect(client!.startShare(input, unsent)).rejects.toMatchObject({ reason: "send-failed" });
+      expect(unsent).not.toHaveBeenCalled();
+      client!.close();
+      await expect(client!.startShare(input, unsent)).rejects.toMatchObject({ reason: "unavailable" });
+      expect(unsent).not.toHaveBeenCalled();
     } finally { client!.close(); }
   });
 

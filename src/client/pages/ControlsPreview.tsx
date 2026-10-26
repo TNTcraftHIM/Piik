@@ -82,6 +82,11 @@ export function ControlsPreview() {
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
+  const [systemSourcePicker, setSystemSourcePicker] = useState(false);
+  const [browserCaptureSupported, setBrowserCaptureSupported] = useState(true);
+  const [nativePermissionPreview, setNativePermissionPreview] = useState(false);
+  const sourceTargets: NativeCaptureTarget[] = systemSourcePicker
+    ? [{ kind: "picker", sourceId: "1", title: "System chooser" }] : SOURCES.sources;
   const [sourceState, setSourceState] = useState<NativeSourceList["kind"] | "refreshing" | "empty">("ready");
   const [captureBorderAvailable, setCaptureBorderAvailable] = useState(true);
   const [showCaptureBorder, setShowCaptureBorder] = useState(false);
@@ -284,6 +289,10 @@ export function ControlsPreview() {
         {en ? ["Available", "Loading", "Refreshing", "App unavailable", "Update needed", "Capture unavailable", "Read failed", "Empty list"][index] : ["正常", "读取中", "刷新中", "App 未连接", "需要更新", "无法采集", "读取失败", "空列表"][index]}</Chip>)}
         <SwitchItem checked={captureBorderAvailable} onChange={setCaptureBorderAvailable}
           label={en ? "Windows border control" : "Windows 边框控制"} />
+        <SwitchItem checked={systemSourcePicker} onChange={value => { setSystemSourcePicker(value); setSourceOpen(true); setSourceRevision(value => value + 1); }}
+          label={t("host.sourcePicker.tab.picker")} />
+        <SwitchItem checked={browserCaptureSupported} onChange={setBrowserCaptureSupported}
+          label={en ? "Browser screen capture" : "浏览器录屏"} />
         <a className="lr-btn" href="/__tooltip-preview?source=display#source-preview" onClick={() => {
           // The same URL does not remount the picker or reset its selected tab.
           setSourceState("ready"); setSourceOpen(true); setSourceRevision(value => value + 1);
@@ -294,14 +303,16 @@ export function ControlsPreview() {
       <div className="cp-stage"><StageTv hasEntry label={t("host.sourcePicker.title")}>
         <img className="cp-poster" src={POSTER} alt="" />
         {sourceOpen ? <CaptureSourcePicker key={sourceRevision} nativeSources={sourceState === "empty" ? { ...SOURCES, sources: [], captureBorderControl: captureBorderAvailable }
-          : sourceState === "ready" ? { ...SOURCES, captureBorderControl: captureBorderAvailable }
-          : sourceState === "refreshing" ? { kind: "loading", appDetected: true } : { kind: sourceState }}
+          : sourceState === "ready" ? systemSourcePicker
+            ? { ...SOURCES, sources: sourceTargets, processAudio: false, processAudioExclusion: false, captureBorderControl: false }
+            : { ...SOURCES, captureBorderControl: captureBorderAvailable }
+          : sourceState === "refreshing" ? { kind: "loading", appDetected: true, sources: sourceTargets } : { kind: sourceState }}
           initialShowCaptureBorder={showCaptureBorder}
+          browserSupported={browserCaptureSupported}
           initialTab={displayPreview ? "display" : "window"}
           onBrowser={() => { setSourceOpen(false); notify(); }}
           onCamera={() => { setSourceOpen(false); notify(); }}
           loadCameras={previewCameras}
-          onAppConnected={() => setSourceState("ready")}
           onNative={(_target, _audio, showBorder) => { setShowCaptureBorder(showBorder); setSourceOpen(false); notify(); }}
           onPreview={previewSource} onRefresh={() => setSourceState("refreshing")} onCancel={() => setSourceOpen(false)} />
           : <div className="cp-stage-action"><Btn icon="cast" tone="primary" title="host.start" cap="host.start" hint="hint-share-start" onClick={() => setSourceOpen(true)} /></div>}
@@ -319,6 +330,12 @@ export function ControlsPreview() {
           onToggleTheater={() => setTheater(!theater)} onReconnect={notify} reconnectAvailable />
       </StageTv></div></div>
       <p><a href="/__playback-preview">{en ? "Open the full playback preview" : "进入完整播放预览"} →</a></p>
+      <SwitchItem checked={nativePermissionPreview} onChange={setNativePermissionPreview}
+        label={t("native.confirmInApp")} />
+      {nativePermissionPreview && <div className="cp-stage"><StageTv label={t("native.confirmInApp")}>
+        <StageOverlay icon="window" comic="source-starting" tone="busy" message={t("native.confirmInApp")}
+          onActivate={() => { setNativePermissionPreview(false); notify(); }} />
+      </StageTv></div>}
     </section>
     <section id="launcher-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">08</span><h2>{t("client.launch.title")}</h2></header>
@@ -328,11 +345,14 @@ export function ControlsPreview() {
         </button>
         <SwitchItem checked={launchSites.length > 1} label={en ? "Many approved sites" : "多个已授权站点"}
           onChange={many => { setLaunchSites(many ? ["https://demo.piik.tv", "https://friends.example.org", "https://screen-sharing-with-friends.preview.example.org:8443", "https://movie-night.example.net", "https://192.0.2.10:8787", "https://weekend-games.example.org"] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
+        <SwitchItem checked={launchSites.length === 0} label={en ? "No approved sites" : "尚未授权站点"}
+          onChange={empty => { setLaunchSites(empty ? [] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
           startupSite={startupSite} onToggleStartupSite={site => setStartupSite(value => value === site ? "" : site)}
-          sites={launchSites} onRemoveSite={site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
+          sites={launchSites} onSelectSite={notify} onOpen={event => { event.preventDefault(); notify(); }}
+          onRemoveSite={site => { setLaunchSites(sites => sites.filter(value => value !== site)); if (startupSite === site) setStartupSite(""); }}
           lan={{ selected: launchLan, onChange: setLaunchLan, addresses: [
             { address: "192.0.2.10", name: "Wi-Fi" },
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
@@ -368,8 +388,8 @@ export function ControlsPreview() {
 function InteractionControlsPreview() {
   const [viewer, setViewer] = useState(false);
   const { session, receiveSample } = usePreviewInteractions(viewer);
-  const voice = useRoomVoicePreview(viewer);
   const [crowded, setCrowded] = useState(false);
+  const voice = useRoomVoicePreview(viewer, crowded);
   const [reaction, setReaction] = useState<ReactionId>("heart");
   const [theater, setTheater] = useTheaterMode();
   const video = useRef<HTMLVideoElement>(null);

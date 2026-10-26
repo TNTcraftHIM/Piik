@@ -1293,6 +1293,40 @@ describe("HostPeer source replacement", () => {
     peer.dispose();
   });
 
+  it("keeps the negotiated edge after an audio ceiling rejection and retries the same explicit profile", async () => {
+    const video = createTrack("video", "video"), sourceAudio = createTrack("audio", "audio");
+    const profile = { ...QUALITY_PROFILES["720p30"], maxAudioBitrate: 320_000 };
+    const peer = createPeer(createStream(video, sourceAudio), undefined, undefined, profile);
+    try {
+      await peer.start();
+      const connection = FakePeerConnection.latest!;
+      const videoCalls = connection.senders[0]!.setParameters.mock.calls.length;
+      const audio = connection.senders[1]!;
+      const previous = peer.getSnapshot().audioSenderParameters;
+      audio.getParameters().codecs = [{ mimeType: "audio/opus", clockRate: 48000, payloadType: 111,
+        sdpFmtpLine: "stereo=1;maxaveragebitrate=192000" }];
+      audio.failNextSetParameters = true;
+      await peer.acceptSignal({ kind: "description", connectionId: peer.connectionId,
+        description: { type: "answer", sdp: "test-answer" } });
+      await vi.waitFor(() => expect(audio.setParameters).toHaveBeenCalledTimes(2));
+      expect(connection.connectionState).not.toBe("closed");
+      expect(connection.senders[0]!.setParameters).toHaveBeenCalledTimes(videoCalls);
+      expect(audio.getParameters().encodings[0]?.maxBitrate).toBe(320_000);
+      expect(peer.getSnapshot().audioSenderParameters).toEqual(previous);
+      expect(video.stop).not.toHaveBeenCalled();
+      expect(sourceAudio.stop).not.toHaveBeenCalled();
+      expect(connection.senders[0]!.track!.stop).not.toHaveBeenCalled();
+
+      connection.connectionState = "connected";
+      await expect(peer.updateProfile(profile)).resolves.toBe(true);
+      expect(audio.getParameters().encodings[0]?.maxBitrate).toBe(192_000);
+      expect(peer.getSnapshot().audioSenderParameters).toMatchObject({
+        requestedMaxBitrate: 320_000, appliedMaxBitrate: 192_000, mismatch: true,
+      });
+      expect(connection.connectionState).toBe("connected");
+    } finally { peer.dispose(); }
+  });
+
   it("updates quality parameters without replacing media tracks", async () => {
     const video = createTrack("video", "video");
     const audio = createTrack("audio", "audio");

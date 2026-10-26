@@ -108,7 +108,7 @@ export async function endpointWorker(): Promise<void> {
             `Boolean(document.querySelector('.lr-source-picker-refresh:not(:disabled)')) && networkLab.sample().then(value => value.controlOpen)`,
             deadline), Boolean, 10_000);
           await click('button[data-source-tab="browser"]');
-          await click(".lr-source-option.is-browser");
+          await click('button.lr-source-option[aria-label="Choose what to share"]');
           await waitForSample(sample, value => value.sharing && value.width > 0 &&
             (request.prediction === undefined || value.natPrediction === request.prediction), 30_000);
           result = await evaluate<string>(cdp!, page!, "document.querySelector('.lr-invite-url').value", Date.now() + 5000);

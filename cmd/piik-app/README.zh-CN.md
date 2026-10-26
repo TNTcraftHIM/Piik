@@ -6,6 +6,9 @@ Piik App 通过系统浏览器中的 Piik 网页界面，提供本地房间与�
 
 ## 运行程序包
 
+安卓 APK 安装与共用的浏览器操作流程见[上手指南](../../docs/guide/getting-started.zh-CN.md#用-piik-app-分享)。
+下方程序包、终端与命令行说明适用于桌面 App。
+
 完整解压对应平台的程序包。Windows 和 Linux 保留 App 程序旁的 `runtime` 目录，
 分别运行 `piik-app.exe` 或 `./piik-app`。
 macOS 打开 `Piik App.app`，也可以将整个 `.app` 移到「应用程序」。

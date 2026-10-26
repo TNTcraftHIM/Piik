@@ -221,8 +221,10 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
           panelRef.current?.hidePopover(); focusTrigger();
         }}><Glyph name="x" size={16} /></button>}
       </header>
-      {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
-      {children}
+      <div className="lr-floating-body lr-floating-scroll">
+        {panelWindow.failed && <p className="lr-floating-error" role="status">{t("floating.detachFailed")}</p>}
+        {children}
+      </div>
       {!detached && (["nw", "se"] as const).map(corner => <span key={corner} className={`lr-floating-resize is-${corner}`}
         role="group" tabIndex={0} aria-label={t("floating.resize")} aria-describedby={`${id}-resize-hint`}
         onPointerDown={event => startGesture(event, corner)} onKeyDown={event => {

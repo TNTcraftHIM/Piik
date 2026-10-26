@@ -341,7 +341,7 @@ func TestAudioNotificationBackpressureDoesNotBlockPauseOrGain(t *testing.T) {
 	go func() {
 		mix.setPaused(true)
 		gain := 1.5
-		if err := mix.setMicrophone("", nil, &gain, nil); err != nil {
+		if err := mix.setMicrophone(processCapture{}, nil, &gain, nil); err != nil {
 			t.Error(err)
 		}
 		close(controlled)

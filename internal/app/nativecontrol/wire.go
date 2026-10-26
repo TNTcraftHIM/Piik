@@ -9,9 +9,10 @@ import (
 )
 
 type requestEnvelope struct {
-	Version int    `json:"version"`
-	ID      string `json:"id"`
-	Type    string `json:"type"`
+	reportSourceCancellation bool
+	Version                  int    `json:"version"`
+	ID                       string `json:"id"`
+	Type                     string `json:"type"`
 }
 
 type responseEnvelope struct {
@@ -38,21 +39,22 @@ type sourcePreviewRequest struct {
 type qualitySettings = protocol.QualitySettings
 
 type startShareRequest struct {
-	Version           int                          `json:"version"`
-	ID                string                       `json:"id"`
-	Type              string                       `json:"type"`
-	ShareID           string                       `json:"shareId"`
-	Source            nativecapture.CaptureTarget  `json:"source"`
-	Audio             bool                         `json:"audio"`
-	MicrophoneMixing  bool                         `json:"microphoneMixing,omitempty"`
-	RemoteInput       bool                         `json:"remoteInput,omitempty"`
-	ExcludeAudio      *nativecapture.CaptureTarget `json:"excludeAudio,omitempty"`
-	ShowCaptureBorder bool                         `json:"showCaptureBorder,omitempty"`
-	AdapterIndex      uint32                       `json:"adapterIndex"`
-	EncoderIndex      uint32                       `json:"encoderIndex"`
-	EdgeCapacity      int                          `json:"edgeCapacity"`
-	Profile           qualitySettings              `json:"profile"`
-	Codec             string                       `json:"codec"`
+	ReportSourceCancellation bool                         `json:"reportSourceCancellation,omitempty"`
+	Version                  int                          `json:"version"`
+	ID                       string                       `json:"id"`
+	Type                     string                       `json:"type"`
+	ShareID                  string                       `json:"shareId"`
+	Source                   nativecapture.CaptureTarget  `json:"source"`
+	Audio                    bool                         `json:"audio"`
+	MicrophoneMixing         bool                         `json:"microphoneMixing,omitempty"`
+	RemoteInput              bool                         `json:"remoteInput,omitempty"`
+	ExcludeAudio             *nativecapture.CaptureTarget `json:"excludeAudio,omitempty"`
+	ShowCaptureBorder        bool                         `json:"showCaptureBorder,omitempty"`
+	AdapterIndex             uint32                       `json:"adapterIndex"`
+	EncoderIndex             uint32                       `json:"encoderIndex"`
+	EdgeCapacity             int                          `json:"edgeCapacity"`
+	Profile                  qualitySettings              `json:"profile"`
+	Codec                    string                       `json:"codec"`
 }
 
 type microphoneRequest struct {
@@ -128,16 +130,17 @@ type updateShareRequest struct {
 }
 
 type replaceShareSourceRequest struct {
-	Version           int                          `json:"version"`
-	ID                string                       `json:"id"`
-	Type              string                       `json:"type"`
-	ShareID           string                       `json:"shareId"`
-	Source            nativecapture.CaptureTarget  `json:"source"`
-	Audio             bool                         `json:"audio"`
-	ExcludeAudio      *nativecapture.CaptureTarget `json:"excludeAudio,omitempty"`
-	ShowCaptureBorder bool                         `json:"showCaptureBorder,omitempty"`
-	AdapterIndex      uint32                       `json:"adapterIndex"`
-	EncoderIndex      uint32                       `json:"encoderIndex"`
+	ReportSourceCancellation bool                         `json:"reportSourceCancellation,omitempty"`
+	Version                  int                          `json:"version"`
+	ID                       string                       `json:"id"`
+	Type                     string                       `json:"type"`
+	ShareID                  string                       `json:"shareId"`
+	Source                   nativecapture.CaptureTarget  `json:"source"`
+	Audio                    bool                         `json:"audio"`
+	ExcludeAudio             *nativecapture.CaptureTarget `json:"excludeAudio,omitempty"`
+	ShowCaptureBorder        bool                         `json:"showCaptureBorder,omitempty"`
+	AdapterIndex             uint32                       `json:"adapterIndex"`
+	EncoderIndex             uint32                       `json:"encoderIndex"`
 }
 
 type stopShareRequest struct {

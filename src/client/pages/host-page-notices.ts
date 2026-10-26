@@ -137,11 +137,3 @@ export function sourceSwitchNotice({
     ? say("host.notice.sourceSwitch.partial", { warning: peerWarning })
     : say("host.notice.sourceSwitch.ok");
 }
-
-export function shouldPauseLocalPreview(
-  visibilityState: DocumentVisibilityState,
-  hasFocus: boolean,
-  pictureInPicture = false,
-): boolean {
-  return !pictureInPicture && (visibilityState !== "visible" || !hasFocus);
-}

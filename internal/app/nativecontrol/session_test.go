@@ -112,7 +112,7 @@ func TestRemoteStopShortcutRequiresAnOwnedShare(t *testing.T) {
 		if command == "set-remote-stop-shortcut" {
 			key = 9
 		}
-		request := remoteStopShortcutRequest{requestEnvelope: requestEnvelope{10, "request_shortcut", command}, ShareID: "retired_share", Key: key}
+		request := remoteStopShortcutRequest{requestEnvelope: requestEnvelope{Version: 10, ID: "request_shortcut", Type: command}, ShareID: "retired_share", Key: key}
 		payload, _ := json.Marshal(request)
 		result, err := session.Handle(t.Context(), payload)
 		if _, ok := result.(requestFailedResponse); !ok || err != nil {

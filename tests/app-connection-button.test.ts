@@ -7,38 +7,31 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConnectionButton } from "../src/client/components/living/AppConnectionButton";
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
 
-describe("desktop App connection entry", () => {
+describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it.each([
-    ["Android phone", "Mozilla/5.0 (Linux; Android 16) Mobile", "Linux armv8l", 5],
-    ["Android tablet", "Mozilla/5.0 (Linux; Android 16)", "Linux armv8l", 5],
     ["iPhone", "Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X)", "iPhone", 5],
     ["iPad", "Mozilla/5.0 (iPad; CPU OS 26_0 like Mac OS X)", "iPad", 5],
     ["desktop-mode iPad", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 5],
-  ])("omits the desktop workflow on %s, retaining Browser and camera choices", (_, userAgent, platform, maxTouchPoints) => {
-    vi.stubGlobal("navigator", { userAgent, platform, maxTouchPoints });
-    expect(renderToStaticMarkup(createElement(AppConnectionButton))).toBe("");
-    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
-      nativeSources: { kind: "browser" },
-      onBrowser: () => {}, onNative: () => {}, onCamera: () => {},
-      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {}, onAppConnected: () => {},
-    }));
-    expect(html).toContain('data-source-tab="browser"');
-    expect(html).toContain('data-source-tab="camera"');
-    expect(html).not.toContain("lr-source-app-connection");
-  });
-
-  it.each([
+    ["Android phone", "Mozilla/5.0 (Linux; Android 16) Mobile", "Linux armv8l", 5],
+    ["Android tablet", "Mozilla/5.0 (Linux; Android 16)", "Linux armv8l", 5],
     ["touch Windows", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)", "Win32", 10],
     ["Mac", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15)", "MacIntel", 0],
     ["Linux", "Mozilla/5.0 (X11; Linux x86_64)", "Linux x86_64", 0],
     ["unknown", "", "", 0],
-  ])("retains the shared connection entry on %s", (_, userAgent, platform, maxTouchPoints) => {
+  ])("offers the same connection entry on %s without hiding Browser capture", (_, userAgent, platform, maxTouchPoints) => {
     vi.stubGlobal("navigator", { userAgent, platform, maxTouchPoints });
     expect(renderToStaticMarkup(createElement(AppConnectionButton))).toContain("lr-app-connect");
-    expect(renderToStaticMarkup(createElement(AppConnectionButton, { sourcePicker: true })))
-      .toContain("lr-source-app-connection");
+    const html = renderToStaticMarkup(createElement(CaptureSourcePicker, {
+      nativeSources: { kind: "browser" },
+      onBrowser: () => {}, onNative: () => {}, onCamera: () => {},
+      onPreview: async () => null, onRefresh: () => {}, onCancel: () => {},
+    }));
+    expect(html).toContain('data-source-tab="browser"');
+    expect(html).toContain('data-source-tab="camera"');
+    expect(html).not.toContain("lr-source-app-connection");
+    expect(html).not.toContain("lr-app-connect");
   });
 });
 
@@ -66,12 +59,14 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle") {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
-  const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site } });
+  const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
+  const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
   const native = {
     discoverNativeConnect: vi.fn(async (_signal: AbortSignal): Promise<string | null> => approval),
-    discoverNativeHealth: vi.fn(async (_options: { signal: AbortSignal }): Promise<object | null> => ({})),
+    discoverNativeHealth: vi.fn(async (options: { signal: AbortSignal; waitForPermission?: boolean }): Promise<object | null> =>
+      options.waitForPermission === false && !activated ? null : {}),
     NativeCompatibilityError: class extends Error {},
   };
   const pending = { current: null as { controller: AbortController; cancel?: () => void } | null };
@@ -82,8 +77,9 @@ function mount(activated = false, state: "idle" | "ready" = "idle") {
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    window, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
-    sourcePicker: false, state, isClientActivated: () => activated,
+    window, document, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
+    wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
+    state, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
       return () => window.removeEventListener("activation", changed);
@@ -92,7 +88,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle") {
       if (path !== "../../native/client") throw new Error(`Unexpected dependency: ${path}`);
       return native;
     },
-  }) as { connect: () => Promise<void>; cleanup: () => void };
+  }) as { connect: (wake?: boolean) => Promise<void>; cleanup: () => void };
   function message(overrides: Record<string, unknown> = {}) {
     window.dispatchEvent(Object.assign(new Event("message"), {
       source: popup, origin: new URL(approval).origin, data: { type: "piik-app-approved", site }, ...overrides,
@@ -100,10 +96,59 @@ function mount(activated = false, state: "idle" | "ready" = "idle") {
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
   const openApproval = async () => { await operation.connect(); await operation.connect(); };
-  return { ...operation, openApproval, popup, window, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
+  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
 }
 
 describe("App connection approval", () => {
+  it("uses fresh authorized health instead of offering approval again", async () => {
+    const page = mount();
+    page.native.discoverNativeHealth.mockResolvedValue({});
+    await page.connect();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.setState).not.toHaveBeenCalledWith("approval");
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.activateClient).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.pending.current).toBeNull();
+    page.cleanup();
+  });
+
+  it("wakes Android in the original tab, then resumes discovery and explicit approval on return", async () => {
+    const page = mount(false, "idle", true);
+    await page.connect(true);
+    expect(page.window.location.assign).toHaveBeenCalledWith("intent://app#Intent;scheme=piik;package=tv.piik.android;end");
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    page.window.dispatchEvent(new Event("focus"));
+    page.document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(page.native.discoverNativeConnect).toHaveBeenCalledOnce();
+    expect(page.setState).toHaveBeenLastCalledWith("approval");
+    expect(page.window.open).not.toHaveBeenCalled();
+    await page.connect();
+    expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
+    page.message();
+    await settle();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledTimes(2);
+    expect(page.activateClient).toHaveBeenCalledOnce();
+    page.cleanup();
+  });
+
+  it("cancels a cold wake without reviving discovery after a late App return", async () => {
+    const page = mount(false, "idle", true);
+    await page.connect(true);
+    page.pending.current!.cancel!();
+    page.window.dispatchEvent(new Event("focus"));
+    page.document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+    expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    expect(page.pending.current).toBeNull();
+    page.cleanup();
+  });
+
   it("keeps permission discovery in the original tab and opens only on a later click", async () => {
     const page = mount();
     let complete!: (url: string) => void;
@@ -118,7 +163,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("approval");
     expect(page.window.open).not.toHaveBeenCalled();
     page.message({ source: null });
-    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
     await page.connect();
     expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
     expect(page.setState).toHaveBeenLastCalledWith("approving");
@@ -149,7 +194,10 @@ describe("App connection approval", () => {
 
   it("opens the launcher for an already connected Site without changing approval", async () => {
     const page = mount(true, "ready");
-    await page.openApproval();
+    await page.connect();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.setState).not.toHaveBeenCalledWith("approval");
+    await page.connect();
     expect(page.window.open).toHaveBeenCalledWith("http://127.0.0.1:39721/client", "_blank");
     expect(page.setState).toHaveBeenLastCalledWith("ready");
     expect(page.pending.current).toBeNull();
@@ -184,9 +232,10 @@ describe("App connection approval", () => {
 
   it("requires the exact window, origin and site, then verifies App health once", async () => {
     const page = mount();
+    await page.openApproval();
+    page.native.discoverNativeHealth.mockClear();
     let complete!: (health: object) => void;
     page.native.discoverNativeHealth.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
-    await page.openApproval();
     await page.connect();
     expect(page.window.open).toHaveBeenCalledOnce();
     expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
@@ -214,9 +263,9 @@ describe("App connection approval", () => {
 
   it.each(["absent", "failed"])("does not activate from an approval message when health is %s", async result => {
     const page = mount();
+    await page.openApproval();
     if (result === "absent") page.native.discoverNativeHealth.mockResolvedValue(null);
     else page.native.discoverNativeHealth.mockRejectedValue(new Error("network unavailable"));
-    await page.openApproval();
     page.message();
     await settle();
     expect(page.activateClient).not.toHaveBeenCalled();
@@ -224,6 +273,7 @@ describe("App connection approval", () => {
     expect(page.setState).toHaveBeenLastCalledWith("unavailable");
     expect(page.popup.closed).toBe(true);
     expect(page.pending.current).toBeNull();
+    page.native.discoverNativeHealth.mockResolvedValue(null);
     await page.openApproval();
     expect(page.window.open).toHaveBeenCalledTimes(2);
     page.cleanup();
@@ -231,9 +281,10 @@ describe("App connection approval", () => {
 
   it("ignores a late healthy response after unmount and closes the popup", async () => {
     const page = mount();
+    await page.openApproval();
+    page.native.discoverNativeHealth.mockClear();
     let complete!: (health: object) => void;
     page.native.discoverNativeHealth.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
-    await page.openApproval();
     page.message();
     page.cleanup();
     complete({});
@@ -260,15 +311,31 @@ describe("App connection approval", () => {
     expect(page.activateClient).not.toHaveBeenCalled();
   });
 
-  it("releases a closed approval window on focus and permits retry", async () => {
+  it("verifies authorization on return even when the approval message is unavailable", async () => {
     const page = mount();
     await page.openApproval();
+    page.native.discoverNativeHealth.mockClear();
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledOnce();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.activateClient).toHaveBeenCalledOnce();
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.pending.current).toBeNull();
+    page.cleanup();
+  });
+
+  it("releases an unapproved closed window on focus and permits retry", async () => {
+    const page = mount();
+    await page.openApproval();
+    page.native.discoverNativeHealth.mockResolvedValue(null);
     page.popup.closed = true;
     page.window.dispatchEvent(new Event("focus"));
+    await settle();
     expect(page.pending.current).toBeNull();
     expect(page.setState).toHaveBeenLastCalledWith("idle");
     page.message();
-    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledTimes(2);
     await page.openApproval();
     expect(page.window.open).toHaveBeenCalledTimes(2);
     page.cleanup();

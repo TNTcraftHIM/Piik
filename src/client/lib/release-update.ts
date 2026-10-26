@@ -33,8 +33,9 @@ function normalizeVersion(value: unknown): string | null {
 
 function packageDownloadURL(release: PublishedRelease, assets: unknown, target?: string): string {
   if (!target || !/^[a-z0-9]+-[a-z0-9]+$/.test(target) || !Array.isArray(assets)) return release.url;
-  const names = [`piik-app-${target}.zip`];
-  if (release.revision) names.push(`piik-app-${target}-${release.revision.slice(0, 7)}.zip`);
+  const extension = target === "android-universal" ? "apk" : "zip";
+  const names = [`piik-app-${target}.${extension}`];
+  if (release.revision && extension === "zip") names.push(`piik-app-${target}-${release.revision.slice(0, 7)}.zip`);
   for (const name of names) {
     const matches = assets.filter(asset => asset?.name === name);
     if (!matches.length) continue;

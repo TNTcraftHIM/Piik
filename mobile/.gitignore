@@ -1,0 +1,10 @@
+android/.gradle/
+android/build/
+android/local.properties
+android/app/build/
+android/app/libs/*.aar
+android/app/libs/*-sources.jar
+android/app/src/main/jniLibs/
+android/app/src/main/assets/THIRD-PARTY-NOTICES.txt
+android/app/src/main/res/drawable-nodpi/piik.png
+*.keystore

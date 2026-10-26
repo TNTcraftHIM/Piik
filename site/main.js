@@ -10,7 +10,7 @@ function syncDownloadLinks(picker) {
   const selected = picker.querySelector('input:checked');
   for (const link of picker.closest('.download-card').querySelectorAll('a')) {
     const target = new URL(link.href);
-    target.pathname = target.pathname.replace(/piik-app-[a-z0-9]+-[a-z0-9]+\.zip$/, `piik-app-${selected.value}.zip`);
+    target.pathname = target.pathname.replace(/piik-app-[a-z0-9]+-[a-z0-9]+(\.zip|\.apk)$/, `piik-app-${selected.value}$1`);
     link.href = target.href;
   }
 }

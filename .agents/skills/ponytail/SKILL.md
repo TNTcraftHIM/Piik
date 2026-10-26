@@ -42,16 +42,10 @@ count. A larger correction is justified when it removes competing writers or
 finishes the affected flow. Keep readable code and clear boundaries rather than
 compressing logic into a one-liner or one oversized file.
 
-Add an abstraction, setting or extension point only for a current responsibility,
-real consumer or accepted contract. Do not build scaffolding for hypothetical
-features. Preserve necessary platform adapters; a single implementation alone
-does not prove an interface is wasteful. Inspect existing protections before
-removing them, and preserve authorization, data integrity, accessibility and
-published compatibility.
-
-Comment non-obvious constraints and reasons at their owner. Avoid slogans,
-restated code or speculative upgrade plans in comments. Remove replaced private
-paths within scope; keep useful provenance and required license notices.
+Apply the shared [implementation rules](../../../docs/standards/engineering.md#implementation-rules)
+for helper boundaries, typed validation, comments and generated sources rather
+than maintaining separate coding rules in this skill. Preserve useful provenance
+and required license notices when removing replaced paths.
 
 ## Verify And Finish
 

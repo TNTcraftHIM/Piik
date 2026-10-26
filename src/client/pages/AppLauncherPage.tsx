@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { z } from "zod";
 
 import { BrandMark } from "../components/living/BrandMark";
@@ -11,7 +11,7 @@ import { Btn, Pill } from "../components/living/primitives";
 import { hasCopyPreference, isCopyKey, useCopy } from "../ui/copy";
 import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
-import { currentThemePreference } from "../ui/theme";
+import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
 import {
   checkReleaseUpdate,
@@ -23,6 +23,7 @@ const launcherStateSchema = z.object({
   startupSite: z.string(),
   localAccessPassword: z.string(),
   defaultMode: z.enum(["local", "link"]),
+  modes: z.array(z.enum(["local", "link"])).default(["local", "link"]),
   target: z.string().optional(),
   starting: z.boolean().optional(),
   reason: z.string().optional(),
@@ -30,6 +31,7 @@ const launcherStateSchema = z.object({
   revision: z.string(),
   version: z.string().default("development"),
   packageTarget: z.string().optional(),
+  controlPort: z.number().int().optional(),
   debug: z.boolean().optional(),
   lan: z.object({
     addresses: z.array(z.object({ address: z.string(), name: z.string() })),
@@ -41,9 +43,12 @@ const launcherErrorSchema = z.object({ reason: z.string().optional(), detail: z.
 
 export function AppLauncherPage() {
   const { lang, vis, t } = useCopy();
+  // Rendered entry URLs follow theme changes before any browser link action.
+  useSyncExternalStore(subscribeTheme, currentThemePreference);
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(false);
   const [mode, setMode] = useState<AppMode>("link");
+  const [modes, setModes] = useState<readonly AppMode[]>(["local", "link"]);
   const [sites, setSites] = useState<string[]>([]);
   const [startupSite, setStartupSite] = useState("");
   const [openOnApproval, setOpenOnApproval] = useState(false);
@@ -58,11 +63,15 @@ export function AppLauncherPage() {
   const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
   const [version, setVersion] = useState<string>();
   const [target, setTarget] = useState<string>();
+  const [controlPort, setControlPort] = useState<number>();
   const [siteBusy, setSiteBusy] = useState(false);
   const [siteError, setSiteError] = useState<string>();
+  const [siteEntry, setSiteEntry] = useState({ origin: "", confirming: false });
   // Background reads cannot replace a newer command's result or optimistic state.
   const stateChanges = useRef({ revision: 0, pending: 0 });
-  const requestedSite = new URLSearchParams(window.location.search).get("site");
+  const externalSite = new URLSearchParams(window.location.search).get("site");
+  const manualSite = externalSite === null && siteEntry.confirming;
+  const requestedSite = externalSite ?? (manualSite ? siteEntry.origin : null);
   const validSite = requestedSite && (() => {
     try {
       const url = new URL(requestedSite);
@@ -77,8 +86,8 @@ export function AppLauncherPage() {
     // The requesting page still verifies authorized health before using App.
     // The opener closes this page. Finish an explicitly selected startup
     // preference first, and leave a failed save visible for correction.
-    if (approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
-  }, [approvalCurrent, requestedSite, siteBusy, siteError]);
+    if (!manualSite && approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
+  }, [manualSite, approvalCurrent, requestedSite, siteBusy, siteError]);
 
   useEffect(() => {
     let current = true;
@@ -105,11 +114,14 @@ export function AppLauncherPage() {
         if (!fresh()) return;
         if (!restoredSettings) {
           setMode(state.defaultMode);
+          setModes(state.modes);
           setLocalAccessPassword(state.localAccessPassword);
           setLan(state.lan);
           restoredSettings = true;
         }
-        setVersion(state.version);
+        setVersion(state.version === "development" && /^[a-f0-9]{40}$/i.test(state.revision)
+          ? `${state.version} (${state.revision.slice(0, 7)})` : state.version);
+        setControlPort(state.controlPort);
         setTarget(state.target);
         setStarting(state.starting === true);
         setSites(state.sites);
@@ -182,7 +194,7 @@ export function AppLauncherPage() {
         ...(theme !== null ? ["theme" as const] : []),
       ],
     };
-    return clientLaunchURL(target, presentation, debug);
+    return clientLaunchURL(target, presentation, debug, controlPort);
   }
 
   async function launch(event: FormEvent<HTMLFormElement>): Promise<void> {
@@ -223,8 +235,8 @@ export function AppLauncherPage() {
     } finally { finish(); }
   }
 
-  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false, allowed = true): Promise<void> {
-    if (siteBusy) return;
+  async function changeSite(nextSite: string, setting: "site" | "startup-site" = "site", starAfterApproval = false, allowed = true): Promise<boolean> {
+    if (siteBusy) return false;
     const finish = beginStateChange();
     setSiteBusy(true);
     setSiteError(undefined);
@@ -246,10 +258,17 @@ export function AppLauncherPage() {
       return true;
     }
     try {
-      if (await save(setting) && starAfterApproval) await save("startup-site");
+      return await save(setting) && (!starAfterApproval || await save("startup-site"));
     } catch {
       setSiteError(t("client.connect.saveFailed"));
+      return false;
     } finally { finish(); setSiteBusy(false); }
+  }
+
+  async function approveSite(site: string): Promise<void> {
+    if (await changeSite(site, "site", openOnApproval) && manualSite) {
+      window.location.replace(launchURL(`${site}/#piik-client=1`));
+    }
   }
 
   const errorKey = `client.launch.failure.${error?.reason}`;
@@ -258,7 +277,7 @@ export function AppLauncherPage() {
       <AppHeader homeHref="/client" diagnosticControl={appDebug === undefined ? null : (
         <Btn icon="cpu" title="client.launch.debugHint" size="compact"
           pressed={debug} tone={debug ? "on" : undefined} hint="debug-start"
-          disabled={appDebug || debugBusy || loading || starting || !!target || error !== null}
+          disabled={appDebug || debugBusy || loading || starting || !!target || error?.kind === "load"}
           onClick={() => void enableDebug()} />
       )} />
       <main className="lr-client-launch">
@@ -308,10 +327,21 @@ export function AppLauncherPage() {
               <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.openOnStart")}</span>
             </label>}
             <div className="lr-client-approval-actions">
-              <Btn icon="x" title={approvalCurrent ? "client.connect.close" : "common.cancel"} cap={approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
-                onClick={() => window.close()} />
-              {!approvalCurrent && <Btn icon="check" title="client.connect.approve" cap="client.connect.approve" tone="primary"
-                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void changeSite(requestedSite, "site", openOnApproval)} />}
+              <Btn icon="x" title={!manualSite && approvalCurrent ? "client.connect.close" : "common.cancel"} cap={!manualSite && approvalCurrent ? "client.connect.close" : "common.cancel"} hint="hint-close"
+                disabled={manualSite && siteBusy} onClick={() => {
+                  if (manualSite) {
+                    setSiteEntry(entry => ({ ...entry, confirming: false }));
+                    setSiteError(undefined);
+                    setOpenOnApproval(false);
+                  } else window.close();
+                }} />
+              {(!approvalCurrent || (manualSite && siteBusy)) && <Btn icon="check" title={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"}
+                cap={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"} tone="primary"
+                hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void approveSite(requestedSite)} />}
+              {manualSite && approvalCurrent && !siteBusy && <a className="lr-btn is-primary" href={launchURL(`${requestedSite}/#piik-client=1`)}>
+                <Glyph name="arrowRight" size={19} />
+                <span className={vis ? "visually-hidden" : "lr-cap"}>{t("client.connect.openSite")}</span>
+              </a>}
             </div>
           </section>
         ) : (
@@ -319,14 +349,20 @@ export function AppLauncherPage() {
             roomError={error?.kind === "launch" ? <>
               <Pill icon="alert" tone="bad" label={t("client.launch.error")} alert comic="signal-failed" />
               {isCopyKey(errorKey) && <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t(errorKey)}</p>}
-              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.reopen")}</p>
+              <p className={vis ? "visually-hidden" : "lr-client-launch-status"}>{t("client.launch.retryHint")}</p>
               {error.detail && <details className="lr-client-launch-technical">
                 <summary>{t("client.launch.errorDetails")}</summary>
                 <p className="lr-client-launch-detail">{error.detail}</p>
               </details>}
             </> : undefined}
             mode={mode}
+            modes={modes}
             sites={sites}
+            siteAddress={siteEntry.origin}
+            onSelectSite={origin => {
+              setSiteEntry({ origin, confirming: true });
+              setSiteError(undefined);
+            }}
             startupSite={startupSite}
             onToggleStartupSite={site => void changeSite(startupSite === site ? "" : site, "startup-site")}
             localAccessPassword={localAccessPassword}
@@ -335,7 +371,7 @@ export function AppLauncherPage() {
             siteBusy={siteBusy}
             siteError={siteError}
             target={target}
-            onOpen={(event) => { event.currentTarget.href = launchURL(event.currentTarget.href); }}
+            entryURL={launchURL}
             onLocalAccessPasswordChange={setLocalAccessPassword}
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}

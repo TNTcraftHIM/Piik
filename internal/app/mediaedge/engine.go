@@ -211,6 +211,9 @@ func (engine *Engine) newSource(codec string, capacity, layers int, relay *Relay
 		return nil, err
 	}
 	source.media = media
+	if relay != nil {
+		media.UseSourceClock(media.Source, layers-1)
+	}
 	if requestKeyFrame != nil {
 		go source.runRecovery()
 	}

@@ -9,11 +9,22 @@ import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 import { isLang, type Lang } from "../locales";
 import { withBrowserDebug } from "./debug";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../native/discovery-ports";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
+const CLIENT_RUNTIME_STORAGE_KEY = "piik:client-runtime-port";
 const CLIENT_ACTIVATION_EVENT = "piik-client-activation";
-let clientActivatedInPage = false;
+// Keep the selected App through this tab's reloads, without copying it into invites.
+let clientPortInPage = parseClientRuntimePort(readSessionValue(CLIENT_RUNTIME_STORAGE_KEY));
+let clientActivatedInPage = clientPortInPage !== null;
+
+export function clientRuntimePort(): number | null { return clientPortInPage; }
+
+function parseClientRuntimePort(value: string | null): number | null {
+  const port = Number(value);
+  return Number.isInteger(port) && port >= NATIVE_CLIENT_PORT_START && port <= NATIVE_CLIENT_PORT_END ? port : null;
+}
 
 export function isClientActivated(): boolean {
   try { return clientActivatedInPage || window.localStorage.getItem(CLIENT_LAUNCH_STORAGE_KEY) === "1"; }
@@ -135,9 +146,10 @@ export interface ClientLaunchPresentation {
   explicit?: readonly ("copy" | "theme")[];
 }
 
-export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation, debug?: boolean): string {
+export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation, debug?: boolean, controlPort?: number): string {
   const url = new URL(target);
   const params = new URLSearchParams(url.hash.slice(1));
+  if (controlPort !== undefined) url.searchParams.set("piik-client-port", String(controlPort));
   params.set("piik-lang", presentation.lang);
   params.set("piik-mode", presentation.vis ? "vis" : "text");
   params.set("piik-theme", presentation.theme ?? "system");
@@ -161,10 +173,15 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
     "piik-theme",
   ] as const;
   const query = new URLSearchParams(window.location.search);
-  const present = keys.some((key) => params.has(key)) || query.has("piik-preferences");
+  const present = keys.some((key) => params.has(key)) || query.has("piik-preferences") || query.has("piik-client-port");
   const accessValue = params.get("client-access");
   const launchedFromFragment = params.get("piik-client") === "1";
-  if (launchedFromFragment) clientActivatedInPage = true;
+  if (launchedFromFragment) {
+    clientActivatedInPage = true;
+    clientPortInPage = parseClientRuntimePort(query.get("piik-client-port"));
+    if (clientPortInPage !== null) writeSessionValue(CLIENT_RUNTIME_STORAGE_KEY, String(clientPortInPage));
+    else try { window.sessionStorage.removeItem(CLIENT_RUNTIME_STORAGE_KEY); } catch { /* Storage is optional. */ }
+  }
   const lang = params.get("piik-lang");
   const mode = params.get("piik-mode");
   const theme = params.get("piik-theme");
@@ -199,6 +216,7 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   if (present) {
     for (const key of keys) params.delete(key);
     query.delete("piik-preferences");
+    query.delete("piik-client-port");
     const search = query.toString();
     const remaining = params.toString();
     window.history.replaceState(

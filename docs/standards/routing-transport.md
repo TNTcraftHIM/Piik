@@ -99,9 +99,12 @@ Every non-server endpoint has one server-authoritative steady outbound media-
 copy cap `C`, default `2` and configurable only as `1`, `2`, or `3`.
 
 A Viewer can also volunteer to relay to more participants
-for the current visit. That explicit intent raises its permitted fanout only to
-the endpoint's reported capability, at most the room's 20-Viewer limit. Ordinary
-participants keep the configured cap. Withdrawing consent schedules affected
+for the current visit. It starts with one extra child above the ordinary cap;
+the Viewer may select a higher maximum within the endpoint's reported capability,
+at most the room's 20-Viewer limit. The requested maximum survives backend
+rediscovery within that visit; a smaller available capability limits the applied
+value without replacing the choice. Ordinary participants keep the configured
+cap. Withdrawing consent schedules affected
 children through the same operation; it does not abruptly drop the subtree.
 This remains an ordinary Peer relay, with no separate SFU service or authority.
 
@@ -217,6 +220,8 @@ first request.
 The budget belongs to the current parent and survives physical connection or
 Browser/Native backend replacement. Only a connected transport or a new parent
 resets it; replacing an unconnected backend cannot renew recovery indefinitely.
+Host signaling status is not transport-failure evidence. Its offline status alone
+does not cancel current-edge recovery or retire a relay's downstream connections.
 Capable Native receivers also renegotiate that connection while retaining the
 encoded source, local playback and downstream edges when its codec/audio shape
 is unchanged. Pion owns ICE restart; each actual gathering owns fresh supplemental

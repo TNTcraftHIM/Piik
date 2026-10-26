@@ -328,6 +328,161 @@ link and inline major-upgrade guidance. The accepted behavior belongs to
 clients still follow their released behavior; a notice cannot substitute for
 actual App/Site compatibility checks.
 
+## Android Capture Bridge Assessment
+
+The [Android App](../../mobile/README.md) builds an APK for arm64 and
+x86-64 from the repository's single Go dependency graph. The system browser
+presents the shared Web UI at its loopback origin or an explicitly approved
+site. `AppRuntimeService` owns the one Go runtime and pending OS requests;
+the Activity owns visible permission dialogs. A user-started `specialUse`
+foreground service keeps local rooms and the native companion available while
+the system browser is in front, with ordinary open/stop notification actions.
+The shared launcher's add-site action displays the exact origin for explicit
+approval before opening it. Its management popup preserves the opener, so the
+existing approval notification and close return to the original live Host.
+The App management page owns approval, revocation and the starred startup site.
+Local mode starts the Go room and LAN HTTPS invitation only when
+selected; Hosted mode uses that site's room service. Room signaling stays with
+the same Web UI. Public-link mode reuses the desktop supervised cloudflared
+process and the same room server. Its Android PIE executable is installed in
+the APK native-library directory; temporary configuration uses the Android
+cache directory rather than a process-wide temporary-path override. Runtime
+shutdown joins startup work, ends the room server, then joins the sidecar.
+A room-server or sidecar failure retires that local room and returns its launcher
+to retry. The resident capability service and approved external Site sessions
+continue independently; failure of the launcher or capability service ends the runtime.
+
+A `mediaProjection` foreground service owns the approved Projection, VirtualDisplay,
+MediaCodec and AudioRecord. A narrow
+[gomobile AAR](https://pkg.go.dev/golang.org/x/mobile/cmd/gomobile) bridge supplies
+frames and controls through `nativehost.CaptureProvider`; desktop capture keeps
+its supervised process adapter. Both use the same Host, packetization and route
+owners. Android admits one native control session because one Projection owns
+the shared display; desktop admission remains two.
+
+Capture prefers hardware AVC and otherwise uses an available Surface-capable
+MediaCodec VP8 encoder. Device capabilities bound the existing quality controls.
+The APK uses the ordinary responsive UI for phones and tablets; TV availability
+depends on an installed browser, Projection and encoder support.
+
+[MediaProjection](https://developer.android.com/media/grow/media-projection)
+requires consent for each capture session; Android 14 permits one VirtualDisplay
+per consent token. System `onStop` retires the capture resources. Source audio
+uses [playback capture](https://developer.android.com/media/platform/av-capture)
+from Android 10, subject to `RECORD_AUDIO` permission, the same user profile and the
+source application's capture policy.
+
+Native commentary uses AudioRecord VOICE_COMMUNICATION with the same per-share stream/ready
+handshake and existing Go audio mixer. Its input and replacement stay independent
+of playback capture; the Projection service holds microphone eligibility until
+the last commentary reader joins. Mono PCM is adapted to the existing PCM48
+stereo contract. Device preferences use AudioManager input identities and verify
+the actual recording route; the empty choice follows Android's default. This is
+separate from room voice's Browser microphone and does not add a mixer or route.
+Android's [audio-input sharing policy](https://developer.android.com/media/platform/sharing-audio-input)
+limits concurrent microphone input across separate apps. System echo processing
+does not make the two microphone paths share one capture or eliminate that limit.
+
+The earlier prototype API 35 emulator run delivered a live 480-by-800 VP8 picture
+to an independent Windows Browser Viewer. Sharing continued after switching to another
+App. A separate allowed-capture AudioTrack source reached that Viewer as Opus
+with measurable tone energy. The lab Browser used explicit local candidates
+because mDNS does not cross the emulator's isolated network. Physical-device
+acceptance and distribution remain in [TODO](../todo.md#next).
+
+The system browser owns camera, room voice, page permissions and fullscreen.
+Native playback audio requests recording permission separately; pure-video
+Projection does not. The Activity and service retain native capture ownership
+across rotation; runtime detachment precedes asynchronous shutdown so an old
+close cannot retire a newly opened runtime.
+
+Emulator checks cover Local/public startup, screen and browser-camera
+replacement, concurrent room voice, portrait-to-landscape resizing,
+cancellation/retry, background return and new-Viewer admission. The packaged
+public-link helper established its tunnel without extra DNS configuration.
+[Verification status](../verification-status.md#device-evidence-boundary) owns
+the current rate-control and physical-device acceptance boundaries.
+
+### Android Encoder Budget
+
+A 2026-10-26 standalone API 35 emulator probe isolated the software
+`OMX.google.vp8.encoder` from Piik's room and transport. A changing 1080p30
+Surface produced about 2.65 Mbps at either a 1 Mbps or 100 kbps CBR request.
+Extending the keyframe interval reduced keyframes, but not that output rate.
+The [AOSP software VPX implementation](https://android.googlesource.com/platform/frameworks/av/+/ffede69924118c5454484164fd590b3474cc716a/media/libstagefright/codecs/on2/enc/SoftVPXEncoder.cpp)
+disables frame dropping and CBR resizing; reaching its compression limit can
+therefore exceed the budget even when bitrate updates succeed.
+
+The same probe reused the unmodified
+[WebRTC FrameDropper](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/frame_dropper.cc)
+from the existing native SDK pin, with the
+[VideoStreamEncoder call sequence](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/video_stream_encoder.cc).
+The 960x540 lower output at 100 kbps averaged 99.1 kbps over the final 20 seconds;
+1080p at 1 Mbps reached about 1.03 Mbps over the final three seconds. Restoring
+3 Mbps restored full frame submission. At 1080p and 100 kbps, output remained
+about 175 kbps: the stock component bounds frame suppression rather than
+promising an arbitrary hard byte ceiling. These are synthetic platform/component
+comparisons, not a full-App capture or network result. Android reuses that same
+component at each encoder's Surface input, with one capture clock and existing
+demand-driven lower outputs.
+
+A full-App API 35 emulator trial of candidate `e933633f` on the same date
+exercised Projection, the shared Go media route and Browser decoding together.
+Android reported concurrent 1920x1080 and 960x540 software encoders. A changing
+source delivered about 4.8–5.6 Mbps at a 5 Mbps live profile; lowering that
+profile to 100 kbps retained the same Viewer connection and produced about
+140–244 kbps in sampled two-second windows, at 1–2 fps. Restoring 5 Mbps
+restored about 5.0–5.6 Mbps. These RTP payload observations retain the stock
+FrameDropper saturation boundary; they are not a strict byte-ceiling guarantee
+or an independent network-shaping measurement.
+
+With a stationary captured source, a fresh Browser subscription decoded the
+960x540 rendition and new keyframes. Viewer departure retired the lower
+encoder while the original preview continued decoding. Pause/resume, stopping
+and consenting to a fresh capture also passed: each final stop removed the
+Projection, capture service and active codec resources, while the independent
+launcher runtime remained available. These are bounded emulator observations;
+physical-device codec capacity and audio remain separate acceptance targets.
+
+### Android Browser Handoff
+
+The Android App uses the system browser with the same Go room, authorization and media code.
+[Chrome Intents](https://developer.chrome.com/docs/android/intents) allow an
+explicit gesture to wake App, then return to the current browser tab. Waking is
+not authorization: the exact site still needs approval and an authorized-health
+recheck. The browser's existing approval popup retains its real opener.
+[Verified App Links](https://developer.android.com/training/app-links/verify-applinks)
+require domain association, so they cannot be the universal entry for arbitrary
+self-hosted sites.
+
+Each new recording uses a user-visible return to App for system consent;
+[background activity restrictions](https://developer.android.com/guide/components/activities/secure-bal)
+prevent the Go callback from simply opening that UI behind the browser.
+Outside recording, the runtime service keeps Local/public rooms alive rather
+than relying on a background Activity's static runtime. Android can suspend or
+kill [cached processes](https://developer.android.com/guide/components/activities/process-lifecycle).
+The external browser owns camera, voice and local-network permission. The
+optional native activation description adds a foreground action without changing native
+commands or the published control version. A normal App open also processes a
+current pending request, independently of whether its site has the shortcut.
+
+### iOS External-Browser Assessment
+
+An explicit native session can use iOS 26's `BGContinuedProcessingTask` before
+opening the local Web UI in Safari. [Apple DTS](https://developer.apple.com/forums/thread/840384)
+describes user-controlled sessions without a fixed duration ceiling; admission,
+progress, cancellation and retirement remain part of that session's lifecycle.
+[Synctrain](https://github.com/pixelspark/sushitrain/blob/main/Sushitrain/BackgroundManager.swift)
+provides an existing Go/gomobile implementation to reference.
+
+The next implementation gate is one background-task owner bound to Piik's Go
+runtime, with explicit Start/Stop and shutdown on expiration. Exercise local
+HTTP/WebSocket, idle room, voice, native capture and return to Safari on a device.
+Hosted HTTPS access to insecure loopback remains a separate
+[WebKit boundary](https://bugs.webkit.org/show_bug.cgi?id=171934).
+`SFSafariViewController` is a system-managed in-App browser alternative; it is
+distinct from the requested standalone-browser workflow.
+
 ## Current Follow-up
 
 [TODO](../todo.md) owns remaining work; [verification status](../verification-status.md)

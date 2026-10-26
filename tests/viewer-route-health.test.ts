@@ -9,7 +9,7 @@ import type { ViewerPeerEvents } from "../src/client/webrtc/viewer-peer";
 const source = ts.createSourceFile("ViewerPage.tsx", readFileSync(
   new URL("../src/client/pages/ViewerPage.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-const owners = new Set(["ensurePeer", "reportActivePeerFailure", "noteReceiveFailure"]);
+const owners = new Set(["ensurePeer", "reportActivePeerFailure", "noteReceiveFailure", "clearPeerState"]);
 const functions: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name && owners.delete(node.name.text)) {
@@ -23,19 +23,23 @@ const executable = ts.transpile(functions.join("\n"), { target: ts.ScriptTarget.
 
 afterEach(() => vi.useRealTimers());
 
-it("retains a connected route through quiet video and still reports actual recovery exhaustion", () => {
+it.each([true, false])("retains quiet media and edge recovery while Host signaling is online=%s", (hostOnline) => {
   vi.useFakeTimers();
   let events!: ViewerPeerEvents;
+  let recovering = false;
   const peer = {
-    isRecovering: () => false,
+    isRecovering: () => recovering,
     getConnectionIdentity: () => ({ parentPeerId: "host", connectionId: "edge" }),
     hasConnectionId: (id: string) => id === "edge",
+    dispose: vi.fn(),
   };
   const send = vi.fn();
   const reportPeerFailure = vi.fn(() => true);
   const setPeerSnapshot = vi.fn();
+  const stopRelay = vi.fn();
+  const dispatchPresentation = vi.fn();
   const context = createContext({
-    Date, active: true, currentHostOnline: true,
+    Date, active: true, currentHostOnline: hostOnline,
     currentIceConfig: { iceServers: [] }, currentRoutePolicy: { natPrediction: false },
     currentRouteRevision: 1, currentRouteAssignment: { upstream: { kind: "peer", peerId: "host" } },
     activePeerMetrics: null, peerRef: { current: null },
@@ -43,7 +47,9 @@ it("retains a connected route through quiet video and still reports actual recov
     createViewerMediaPeer: (_config: unknown, callbacks: ViewerPeerEvents) => { events = callbacks; return peer; },
     createOwnedViewerRestartSender: () => vi.fn(),
     offerPeerQualityEvidence: vi.fn(), setPeerSnapshot,
-    dispatchPresentation: vi.fn(), connectionFact: (state: string) => state,
+    clearUpstreamState: () => peer.dispose(), relayChildEvidenceStore: { clear: vi.fn() },
+    viewerRelay: { stop: stopRelay }, invalidatePresentedMedia: vi.fn(),
+    dispatchPresentation, connectionFact: (state: string) => state,
   });
   runInContext(executable + "\nensurePeer();", context);
   const snapshot = {
@@ -62,6 +68,16 @@ it("retains a connected route through quiet video and still reports actual recov
   expect(setPeerSnapshot).toHaveBeenLastCalledWith(expect.objectContaining({
     metrics: expect.objectContaining({ intervalFramesDecoded: 30 }),
   }));
+  // Recovery has already begun before the media peer publishes its failed
+  // snapshot. A signaling outage must not dispose it or healthy descendants.
+  recovering = true;
+  events.onUpdate({ ...snapshot, connectionState: "failed" } as Parameters<ViewerPeerEvents["onUpdate"]>[0]);
+  expect(peer.dispose).not.toHaveBeenCalled();
+  expect(stopRelay).not.toHaveBeenCalled();
+  expect(dispatchPresentation).toHaveBeenLastCalledWith({ type: "connection", revision: 1, connection: "reconnecting" });
+  recovering = false;
+  events.onUpdate(snapshot as Parameters<ViewerPeerEvents["onUpdate"]>[0]);
+  expect(dispatchPresentation).toHaveBeenLastCalledWith({ type: "connection", revision: 1, connection: "connected" });
   events.onRecoveryExhausted?.("host", "edge");
   expect(reportPeerFailure).toHaveBeenCalledExactlyOnceWith("host", "edge");
 });

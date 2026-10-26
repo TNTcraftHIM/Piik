@@ -1,4 +1,4 @@
-//go:build !linux && (!windows || !amd64) && (!darwin || !cgo)
+//go:build !linux && (!windows || !amd64) && (!darwin || ios || !cgo)
 
 package remoteinput
 

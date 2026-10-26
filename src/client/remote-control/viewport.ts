@@ -7,6 +7,7 @@ type Point = { x: number; y: number };
 export class RemoteViewport {
   scale = 1;
   private offset: Point = { x: 0, y: 0 };
+  private room: { right: number; bottom: number } | null = null;
 
   constructor(
     private readonly video: HTMLVideoElement,
@@ -16,7 +17,7 @@ export class RemoteViewport {
 
   transform(from: Point, to: Point, ratio: number): void {
     const rect = this.surface.getBoundingClientRect();
-    const next = Math.max(1, Math.min(4, this.scale * ratio));
+    const next = Math.max(.5, Math.min(4, this.scale * ratio));
     const factor = next / this.scale;
     const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     this.offset = {
@@ -32,11 +33,15 @@ export class RemoteViewport {
     const { width, height } = this.surface.getBoundingClientRect();
     if (!videoWidth || !videoHeight || !width || !height) return;
     const picture = videoPictureSize(this.video, width, height);
-    const limitX = Math.max(0, (picture.width * this.scale - width) / 2);
-    const limitY = Math.max(0, (picture.height * this.scale - height) / 2);
+    // Pan across the picture, adding only the visible tool's footprint at its
+    // edges. Zooming out keeps the natural gutters; the picture remains reachable.
+    const limit = (size: number, frame: number, room: number) => Math.max(0, Math.min((size + frame) / 2 - 1,
+      Math.abs(size - frame) / 2 + Math.min(room, frame - 1)));
+    const limitX = limit(picture.width * this.scale, width, this.room?.right ?? 0);
+    const limitY = limit(picture.height * this.scale, height, this.room?.bottom ?? 0);
     const x = this.offset.x = Math.max(-limitX, Math.min(limitX, this.offset.x));
     const y = this.offset.y = Math.max(-limitY, Math.min(limitY, this.offset.y));
-    style.transform = this.scale > 1 ? `translate(${x}px, ${y}px) scale(${this.scale}) var(--picture-transform)` : "";
+    style.transform = this.scale !== 1 || x !== 0 || y !== 0 ? `translate(${x}px, ${y}px) scale(${this.scale}) var(--picture-transform, rotate(0deg))` : "";
     // Clip to the original video cell, including when a keyboard occupies the
     // next grid cell. Inverse-transform its edges into the video's local space.
     const bounds = this.video.getBoundingClientRect(), surface = this.surface.getBoundingClientRect();
@@ -51,23 +56,28 @@ export class RemoteViewport {
     this.changed();
   }
 
-  visiblePosition(position: Point): Point {
+  follow(position: Point, room: { right: number; bottom: number } | null): void {
+    const resized = this.room?.right !== room?.right || this.room?.bottom !== room?.bottom;
+    this.room = room;
+    if (!room) {
+      if (resized) this.refresh();
+      return;
+    }
     const picture = pictureRect(this.video), rect = this.surface.getBoundingClientRect();
-    if (!picture) return position;
-    // Keep the local touch cursor in view while panning. No remote input is
-    // emitted until the user next moves or clicks, at this visible position.
+    if (!picture) return;
     const rotated = rotatePicturePoint(position, videoRotation(this.video));
-    return rotatePicturePoint({
-      x: Math.max(0, Math.min(1, Math.max((rect.left - picture.left) / picture.width,
-        Math.min((rect.right - picture.left) / picture.width, rotated.x)))),
-      y: Math.max(0, Math.min(1, Math.max((rect.top - picture.top) / picture.height,
-        Math.min((rect.bottom - picture.top) / picture.height, rotated.y)))),
-    }, videoRotation(this.video), true);
+    const x = picture.left + rotated.x * picture.width, y = picture.top + rotated.y * picture.height;
+    const dx = Math.max(rect.left, Math.min(rect.right - Math.min(room.right, rect.width - 1), x)) - x;
+    const dy = Math.max(rect.top, Math.min(rect.bottom - Math.min(room.bottom, rect.height - 1), y)) - y;
+    if (!dx && !dy && !resized) return;
+    this.offset.x += dx; this.offset.y += dy;
+    this.refresh();
   }
 
   reset(): void {
     this.scale = 1;
     this.offset = { x: 0, y: 0 };
+    this.room = null;
     this.video.style.transform = "";
     this.video.style.clipPath = "";
     this.changed();

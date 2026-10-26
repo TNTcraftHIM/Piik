@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFi
 import { createRequire } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { goBuildEnvironment } from "./app-package-targets.mjs";
+import { CLOUDFLARED_VERSION, goBuildEnvironment } from "./app-package-targets.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const pinned = JSON.parse(readFileSync(join(root, "licenses", "upstream.json"), "utf8"));
@@ -114,6 +114,31 @@ export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand,
   const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-server");
   writeFileSync(outputFile, "Piik Server third-party software notices\n" +
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
+}
+
+export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand) {
+  const mobileRoot = join(repositoryRoot, "mobile");
+  const target = { goos: "android", goarch: "arm64", cgo: false };
+  const notices = goNotices(mobileRoot, goCommand, target, "./bridge");
+  // gomobile adds the JNI binding runtime when generating the AAR. It is not
+  // imported by the bridge package before generation, and has its own notice.
+  const runtime = JSON.parse(execFileSync(goCommand, ["list", "-m", "-json", "golang.org/x/mobile"], {
+    cwd: mobileRoot, encoding: "utf8", windowsHide: true,
+  }));
+  const files = new Map(noticesIn(runtime.Dir).map((file) => [file, readFileSync(join(runtime.Dir, file), "utf8")]));
+  if (!files.size) throw new Error("Missing Go mobile runtime license");
+  notices.modules.set(`${runtime.Path}@${runtime.Version}`, files);
+  mkdirSync(dirname(outputFile), { recursive: true });
+  writeFileSync(outputFile, "Piik Android third-party software notices\n" +
+    section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
+    WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules) +
+    section("WebRTC FrameDropper (BSD-3-Clause)",
+      ["LICENSE", "PATENTS"].map(file => readFileSync(join(repositoryRoot,
+        "native", "third_party", "webrtc-frame-dropper", file), "utf8")).join("\n")) +
+    section("Android NDK libc++ (Apache-2.0 WITH LLVM-exception)", pinnedNotice("libc++@ndk-30.0.16248370")) +
+    section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)) +
+    section("Piik Android cloudflared changes (MIT)",
+      "Android system DNS adapter and exhausted-QUIC-dial fallback. Source and provenance: mobile/cloudflared/."));
 }
 
 export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, target, tunnelVersion) {

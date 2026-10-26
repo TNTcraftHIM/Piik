@@ -2579,9 +2579,9 @@ async function startHost(
       return true;
     })()`,
   );
-  await waitForPage(cdp, page, "document.querySelector('.lr-source-option.is-browser')",
+  await waitForPage(cdp, page, `document.querySelector('button.lr-source-option[aria-label="Choose what to share"]')`,
     5_000, "Browser capture choice", signal);
-  await evaluate(cdp, page, "document.querySelector('.lr-source-option.is-browser').click()");
+  await evaluate(cdp, page, `document.querySelector('button.lr-source-option[aria-label="Choose what to share"]').click()`);
   await waitForPage(
     cdp,
     page,

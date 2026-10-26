@@ -1,7 +1,8 @@
-import { useId, useLayoutEffect, useRef, type FormEvent, type MouseEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useRef, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
 import { BrandMark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
+import { SiteAddressEntry } from "./SiteAddressEntry";
 import { Btn, Pill } from "./primitives";
 import { HintComic, type HintKind } from "./hints";
 import { Glyph, type GlyphName } from "../../ui/icons";
@@ -34,15 +35,19 @@ const MODES: Array<{
 // The product and film share this form; requests and navigation stay in the page.
 export function LauncherForm({
   mode,
+  modes,
   onModeChange,
   sites,
   startupSite,
   onToggleStartupSite,
   onRemoveSite,
+  onSelectSite,
+  siteAddress,
   siteBusy,
   siteError,
   target,
   onOpen,
+  entryURL = target => target,
   localAccessPassword,
   onLocalAccessPasswordChange,
   lan,
@@ -51,15 +56,19 @@ export function LauncherForm({
   roomError,
 }: {
   mode: AppMode;
+  modes?: readonly AppMode[];
   onModeChange: (mode: AppMode) => void;
   sites: readonly string[];
   startupSite: string;
   onToggleStartupSite: (site: string) => void;
   onRemoveSite: (site: string) => void;
+  onSelectSite?: (site: string) => void;
+  siteAddress?: string;
   siteBusy?: boolean;
   siteError?: string;
   target?: string;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
+  entryURL?: (target: string) => string;
   localAccessPassword: string;
   onLocalAccessPasswordChange: (password: string) => void;
   lan?: {
@@ -72,6 +81,7 @@ export function LauncherForm({
   roomError?: ReactNode;
 }) {
   const { vis, t } = useCopy();
+  const choices = modes ? MODES.filter(choice => modes.includes(choice.mode)) : MODES;
   const accessHintId = useId();
   const standbyRef = useRef<HTMLElement>(null);
   const removalFocus = useRef<{ site: string; index: number } | null>(null);
@@ -119,26 +129,29 @@ export function LauncherForm({
       {children}
 
       <section ref={standbyRef} className="lr-client-standby" aria-label={t("client.connect.standby")}>
-        <details className="lr-client-connect-guide">
-          <summary>
-            <span className="lr-client-standby-state">
-              <Glyph name="check" size={18} />
-              <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
-            </span>
-            <span className="lr-client-connect-toggle">
-              {vis && <Glyph name="window" size={17} />}
-              <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.guide")}</span>
-              <Glyph name="chevron" size={14} />
-            </span>
-          </summary>
-          <div className="lr-client-connect-steps">
-            {vis && <HintComic kind="hint-client-site" />}
-            <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>
-          </div>
-        </details>
+        <div className="lr-client-standby-heading">
+          <details className="lr-client-connect-guide">
+            <summary>
+              <span className="lr-client-standby-state">
+                <Glyph name="check" size={18} />
+                <strong className={vis ? "visually-hidden" : undefined}>{t("client.connect.standby")}</strong>
+              </span>
+              <span className="lr-client-connect-toggle">
+                {vis && <Glyph name="window" size={17} />}
+                <span className={vis ? "visually-hidden" : undefined}>{t("client.connect.guide")}</span>
+                <Glyph name="chevron" size={14} />
+              </span>
+            </summary>
+            <div className="lr-client-connect-steps">
+              {vis && <HintComic kind="hint-client-site" />}
+              <p className={vis ? "visually-hidden" : undefined}>{t("client.connect.standbyHint")}</p>
+            </div>
+          </details>
+        {onSelectSite && <SiteAddressEntry initialAddress={siteAddress} onSelect={onSelectSite} />}
+        </div>
         {siteError && <p role="alert">{siteError}</p>}
         {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
-          <a href={`${site}/#piik-client=1`} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
+          <a href={entryURL(`${site}/#piik-client=1`)} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
           <div className="lr-client-site-actions">
             <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site}
               hint="hint-client-site" disabled={siteBusy} onClick={() => onToggleStartupSite(site)} />
@@ -151,24 +164,26 @@ export function LauncherForm({
         </div>)}</div>}
       </section>
 
-      {roomError ?? (target ? <a className="lr-btn is-primary" href={target} onClick={onOpen} aria-label={t("client.launch.go")}>
+      {roomError}
+      {target ? <a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
       <div
         className="lr-client-modes"
+        style={{ "--launcher-columns": choices.length } as CSSProperties}
         role="radiogroup"
         aria-label={t("client.launch.title")}
         onKeyDown={(event) => {
           if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
           event.preventDefault();
           const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
-          const index = (MODES.findIndex((choice) => choice.mode === mode) + direction + MODES.length) % MODES.length;
-          onModeChange(MODES[index]!.mode);
+          const index = (choices.findIndex((choice) => choice.mode === mode) + direction + choices.length) % choices.length;
+          onModeChange(choices[index]!.mode);
           event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]?.focus();
         }}
       >
-        {MODES.map((choice) => {
+        {choices.map((choice) => {
           const button = (
             <button
               key={choice.mode}
@@ -246,15 +261,15 @@ export function LauncherForm({
         {t("client.launch.localHTTPS")}
       </p>}
       <Btn
-        icon="arrowRight"
-        title="client.launch.go"
-        cap="client.launch.go"
+        icon={roomError ? "refresh" : "arrowRight"}
+        title={roomError ? "common.retry" : "client.launch.go"}
+        cap={roomError ? "common.retry" : "client.launch.go"}
         tone="primary"
         type="submit"
         hint={MODES.find((choice) => choice.mode === mode)?.comic}
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
-      </>)}
+      </>}
     </form>
   );
 }

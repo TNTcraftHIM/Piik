@@ -1,4 +1,5 @@
 import type { InputTransport } from "./input-route";
+import { debugError, debugEvent } from "../lib/debug";
 import { remoteInputStateSchema, remoteTextAvailable, remoteGamepadAvailable, type RemoteInputState, type RemoteGamepadReport } from "./protocol";
 export type { RemoteInputState } from "./protocol";
 export type RemoteInputEvent =
@@ -22,6 +23,7 @@ export class RemoteInputSession {
   private intent: string | null = null;
   private disposed = false;
   private capabilitiesRequested = false;
+  private inputFeedbackRequested = false;
   private pointer: PointerInput | null = null;
   private pointerTimer: ReturnType<typeof setTimeout> | null = null;
   private nextPointerAt = 0;
@@ -73,6 +75,10 @@ export class RemoteInputSession {
       this.capabilitiesRequested = true;
       if (!state.capabilities && !this.send({ type: "capabilities" })) return;
     }
+    if (!this.inputFeedbackRequested && state.capabilities?.includes("inputFeedback")) {
+      this.inputFeedbackRequested = true;
+      if (!this.send({ type: "capabilities", inputFeedback: true })) return;
+    }
     // Source availability is authoritative for every request. Pause/off may
     // reach us before the Host receives our new intent; it still ends it.
     if (state.state === "unavailable") this.intent = null;
@@ -82,6 +88,7 @@ export class RemoteInputSession {
       return;
     }
     if (state.state !== "pending" && state.state !== "active" && state.state !== "suspended") this.intent = null;
+    if (state.state === "failed") debugEvent("remote-input", "host-failed", { previousState: this.state?.state, mode: state.mode });
     this.set(state);
   };
 
@@ -94,7 +101,8 @@ export class RemoteInputSession {
       if (this.channel.bufferedAmount > 8192) throw new Error("input queue stalled");
       this.channel.send(JSON.stringify(event));
       return true;
-    } catch {
+    } catch (error) {
+      debugError("remote-input", "send-failed", error, { state: this.state?.state, readyState: this.channel.readyState, bufferedAmount: this.channel.bufferedAmount });
       this.intent = null;
       this.set(this.state && { ...this.state, state: "failed", grant: undefined });
       this.channel.close();
@@ -108,7 +116,7 @@ export class RemoteInputSession {
     if (!state) return;
     this.intent = crypto.randomUUID().replaceAll("-", "");
     if (this.send({ type: "request", intent: this.intent, ...(password !== undefined ? { password } : {}) }))
-      this.set({ ...state, state: "pending", grant: undefined, reason: undefined, intent: this.intent });
+      this.set({ ...state, state: "pending", grant: undefined, reason: undefined, inputFailed: undefined, intent: this.intent });
   }
 
   release(): void {
@@ -119,7 +127,7 @@ export class RemoteInputSession {
     const intent = this.intent;
     const state = this.state;
     this.intent = null;
-    if (this.send({ type: "release", intent })) this.set({ ...state, state: "ready", grant: undefined, intent: undefined });
+    if (this.send({ type: "release", intent })) this.set({ ...state, state: "ready", grant: undefined, intent: undefined, inputFailed: undefined });
   }
 
   input(event: RemoteInputEvent): void {

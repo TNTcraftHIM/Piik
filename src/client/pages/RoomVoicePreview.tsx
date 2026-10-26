@@ -3,8 +3,9 @@ import { RoomVoiceControls, RoomVoicePanel, RoomVoiceSettings, type RoomVoiceVie
 import type { RoomVoiceSnapshot } from "../room-voice/session";
 import type { RoomVoiceCommand } from "../../shared/protocol";
 
-const names = new Map([["preview-host", "Piik"], ["preview-friend", "Piik friend"]]);
-function initialState(viewer: boolean): RoomVoiceSnapshot {
+const names = new Map([["preview-host", "Piik"], ["preview-friend", "Piik friend"],
+  ...Array.from({ length: 19 }, (_, index): [string, string] => [`preview-friend-${index + 1}`, `Friend ${index + 2}`])]);
+function initialState(viewer: boolean, crowded: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,
     microphone: false, capturePending: false, deafened: false, listeningVolume: 1, peerVolumes: new Map(), autoplayBlocked: false, error: null, muted: new Set(),
     input: { deviceId: "", volume: 1, voiceProcessing: true },
@@ -12,16 +13,19 @@ function initialState(viewer: boolean): RoomVoiceSnapshot {
       members: [
         { peerId: "preview-host", connected: true, joined: true,
           publicationId: viewer ? "preview-host-publication" : undefined, upstream: { kind: "none" } },
-        { peerId: "preview-friend", connected: true, joined: true,
-          publicationId: viewer ? undefined : "preview-friend-publication", upstream: { kind: "peer", peerId: "preview-host" } },
+        ...Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({
+          peerId: index ? `preview-friend-${index}` : "preview-friend", connected: true, joined: true,
+          publicationId: viewer && index === 0 ? undefined : `preview-friend-publication-${index}`,
+          upstream: { kind: "peer" as const, peerId: "preview-host" },
+        })),
       ] },
   };
 }
 
 // The catalogue stages the real view without opening a microphone or transport.
-export function useRoomVoicePreview(viewer: boolean) {
-  const [state, setState] = useState(() => initialState(viewer));
-  useEffect(() => setState(initialState(viewer)), [viewer]);
+export function useRoomVoicePreview(viewer: boolean, crowded = false) {
+  const [state, setState] = useState(() => initialState(viewer, crowded));
+  useEffect(() => setState(initialState(viewer, crowded)), [viewer, crowded]);
   const session = useMemo<RoomVoiceView>(() => {
     const snapshot: RoomVoiceSnapshot = { ...state, room: state.room && { ...state.room,
       members: state.room.members.map(member => member.peerId === state.peerId

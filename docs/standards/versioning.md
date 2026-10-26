@@ -25,8 +25,9 @@ Keep those internal values at the first public release: resetting schema or
 authorization counters for visual consistency can invalidate data or stale-work
 fences. A room number is a user-facing address, not a software version.
 The private tooling-only npm package carries no independent product version.
-The App launcher displays its installed version from the existing launcher state;
-the Web help menu displays its bundled build version without a network lookup.
+The shared App launcher displays its installed version from the existing launcher
+state; development builds also show their short source revision.
+The Web help menu displays its bundled build version without a network lookup.
 Server startup logs retain the running version and revision. The website may
 display GitHub's latest stable tag and `published_at` as optional metadata, never
 a manually maintained version or the installed App's identity. Publication time
@@ -111,13 +112,25 @@ revision. Do not maintain independent hand-edited App/Server/Web version files.
 Archive layout and checks stay in the
 existing packagers; a new build never replaces an already-published package.
 
-App archive names are fixed per target: `piik-app-{target}.zip`. Each published
+Android `versionName` uses the product version. Its `versionCode` is generated as
+`major * 1000000 + minor * 1000 + patch`; minor and patch must each be at most
+999, and the result must be in Android's `1..2100000000` range. Development
+builds use code 1 and include the short revision in `versionName`. The shared
+product version remains the only release ordering input; no Android counter is
+maintained separately.
+
+Desktop App archive names are fixed per target: `piik-app-{target}.zip`. Each published
 tag owns its archive bytes; the full source SHA remains in `REVISION` and the
 release descriptor. Fixed names allow GitHub's native latest-asset links;
 [website operations](../operations/website.md#preview) owns download presentation
 and verification of the matching Gitee mirror.
 
-Public Release attachments contain the App ZIPs and Server runtime archives
+Android uses the installable `piik-app-android-universal.apk` for both ARM64 and
+x64. It follows the same release identity, checksum, complete-target and
+mirror rules. [Android build instructions](../../mobile/README.md#signed-release-apk)
+own signing input and installation details.
+
+Public Release attachments contain the App ZIPs/APK and Server runtime archives
 for the registered package targets. Package descriptors (`.release.json`), file manifests (`.manifest.tsv`)
 and standalone `.sha256` files remain build/deployment inputs in the local output
 and CI artifacts; publishers validate them but do not upload them to GitHub or

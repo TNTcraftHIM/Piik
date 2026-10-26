@@ -2,12 +2,14 @@
 .lr-interaction-navigation { display: flex; flex: none; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 .lr-interaction-tabs { flex: 1; min-width: 0; }
 .lr-interaction-navigation > .lr-comic-tip-wrap { flex: none; }
-.lr-interaction-page { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.lr-interaction-page { display: flex; flex: 1; flex-direction: column; min-height: min-content; }
 .lr-interaction-page[hidden] { display: none; }
 .lr-voice-history { position: relative; flex: 1; }
 .lr-interaction-voice-controls { display: flex; flex: none; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--control-edge); }
 .lr-interaction-couch { position: relative; }
-.lr-interaction-conversation { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+/* Keep one usable history row and the composer's intrinsic size. The panel body
+   scrolls when the on-screen keyboard leaves less room. */
+.lr-interaction-conversation { position: relative; display: flex; flex: 1; flex-direction: column; min-height: calc(var(--control-compact-size) + 32px); contain: size; }
 .lr-interaction-conversation[hidden] { display: none; }
 .lr-interaction-conversation .lr-reaction-flight { overflow: hidden; }
 .lr-interaction-back { flex: none; padding: 8px 0 0; }
@@ -23,7 +25,7 @@
 .lr-interaction-chat-toggle { display: flex; position: relative; }
 .lr-interaction-unread { align-self: flex-start; margin: -4px 0 0 -8px; z-index: 1; min-width: 22px; padding: 2px 6px; border-radius: 20px; color: var(--action-ink); background: var(--action-deep); font: 700 11px var(--mono); text-align: center; }
 .lr-chat-compose { flex-shrink: 0; }
-.lr-chat-history { position: relative; flex: 1; min-height: 0; }
+.lr-chat-history { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 .lr-chat-log { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-gutter: stable; padding: 16px 2px; }
 .lr-chat-latest { position: absolute; z-index: 6; bottom: 8px; left: 50%; translate: -50% 0; display: flex; align-items: center; gap: 6px; min-height: 36px; max-width: calc(100% - 16px); padding: 6px 12px; border: 1px solid var(--control-edge); border-radius: 18px; background: var(--paper); color: var(--ink); box-shadow: var(--control-shadow); font-size: 12px; white-space: nowrap; }
 .lr-chat-latest:is(:hover, :focus-visible) { background: var(--control-hover); }

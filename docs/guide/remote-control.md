@@ -104,10 +104,26 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 
 ## Mouse, touch and permissions
 
-On a phone, swipe to move the pointer, tap to click and hold to drag. Two-finger
-tap is right-click; two-finger swipe scrolls. Pinch to zoom, then use two fingers
-to move around the enlarged picture. **Remote keyboard** provides keys and
-shortcuts. On a computer, **Game mouse** captures continuous mouse movement;
+On a phone, touch the picture directly to click and hold to drag, without a
+cursor. Two-finger tap is right-click; two-finger swipe scrolls. Pinch to zoom in
+or out, then use two fingers to pan, including into the blank space around the
+picture. **Playback settings → Default touch mode → Trackpad** keeps the simpler cursor
+mode available.
+
+Drag the mini mouse to reposition it; tap to expand its left and right buttons
+and combined scroll wheel / middle button. The cursor stays above and to the
+left of the mouse and moves with it. The picture pans at the edges to leave room
+for the tool, and the cursor stops at the source picture's edges. With the mouse
+expanded, use two fingers on the picture to pan or zoom while the mouse stays
+in reach. Use its wheel to scroll the Host. Drag the lower shell to move; hold a
+mouse button while moving to drag an item. Tap the wheel to middle-click, swipe
+it to scroll, or hold then
+move for a middle-button drag. The separate minimize button returns it to the mini
+mouse and your selected touch mode. Leave the mini mouse at an edge to tuck it away
+after the same idle delay as the player controls; tap the visible part to expand
+it again. **Remote keyboard** provides keys,
+shortcuts and text entry.
+On a computer, **Game mouse** captures continuous mouse movement;
 press **Esc** to release it.
 
 **Room Viewers** lets authenticated room members take available control without

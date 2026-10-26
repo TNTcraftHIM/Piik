@@ -194,7 +194,6 @@ function Screen({ shot }: { shot: Shot }) {
       <AppHeader
         homeHref={launcher ? "/client" : "/"}
         atHome={!viewer}
-        showAppConnection={shot !== "picker"}
         led={
           launcher ? undefined : (
             <LedStrip
@@ -213,6 +212,7 @@ function Screen({ shot }: { shot: Shot }) {
             onModeChange={noop}
             sites={[]}
             onRemoveSite={noop}
+            onSelectSite={noop}
             localAccessPassword=""
             onLocalAccessPasswordChange={noop}
             onSubmit={(event) => event.preventDefault()}

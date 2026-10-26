@@ -67,7 +67,7 @@ Sources:
 
 ### Instructions And Skills
 
-Reviewed: 2026-10-17. These are source-derived design considerations, not a
+Reviewed: 2026-10-24. These are source-derived design considerations, not a
 benchmark of agent reliability or another set of mandatory instructions.
 
 OpenAI's current guidance favors task-scoped references, short skill descriptions
@@ -93,8 +93,22 @@ remains in the skill's [provenance](../../.agents/skills/ponytail/UPSTREAM.md).
 New mechanisms still need relevant end-to-end evidence. Required design thinking
 does not imply a separate design document, review agent or approval for each edit.
 
+OpenCode's instructions make several of these decisions concrete: validate at
+the owning boundary, extract helpers for real concepts or reuse, test production
+code, and use existing generation and delivery commands. Piik consolidates these
+in its existing rule owners rather than adding another rule catalog. Its Bun,
+Effect, import and loop preferences remain specific to that repository.
+
+The public X discussion, read through linked mirrors, particularly recommends
+the speculative-complexity rule and its companion about single-use helpers.
+Replies also distinguish retry correctness from speculative hardening and question
+unsupported probability estimates. Piik therefore asks for agreement on extra
+speculative scope, while authorized, reachable defects remain ordinary fixes.
+
 Sources:
 
+- [OpenCode AGENTS.md, reviewed revision](https://github.com/anomalyco/opencode/blob/84578e123ffd31e31a174457e7350961da4fabbc/AGENTS.md).
+- [Dave Kiss's X discussion](https://x.com/davekiss/status/2113363042247512161), [public mirror](https://xitter.cf/davekiss/status/2113363042247512161); [helper-rule reply](https://xitter.cf/gol_tiro/status/2113433555749744872), [retry-correctness reply](https://xitter.cf/sebuzdugan/status/2113569699703517539) and [probability-estimate reply](https://xitter.cf/feng25591/status/2113689613659410615).
 - [OpenAI: Rethinking skills and prompts](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)
 - [OpenAI: Using skills for OSS maintenance](https://developers.openai.com/blog/skills-agents-sdk)
 - [Codex instruction discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md) and [skill loading](https://learn.chatgpt.com/docs/build-skills)

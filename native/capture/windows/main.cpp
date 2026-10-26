@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include <windows.h>
+#include <dwmapi.h>
 
 #include <codecapi.h>
 #include <d3d10_1.h>
@@ -1535,8 +1536,28 @@ struct CaptureInput final {
   UINT32 width = 0;
   UINT32 height = 0;
   SIZE presentation{};
+  // Presentation advances on still refresh; content identity does not.
   UINT64 timestamp = 0;
+  UINT64 capture_timestamp = 0;
 };
+
+std::shared_ptr<const CaptureInput> RefreshCaptureInput(const CaptureInput& latest) {
+  auto input = std::make_shared<CaptureInput>(latest);
+  // WGC SystemRelativeTime and MFGetSystemTime share the 100 ns QPC clock.
+  // A requested still frame is presented now, including after a quiet gap.
+  input->timestamp = static_cast<UINT64>(MFGetSystemTime());
+  return input;
+}
+
+std::optional<UINT64> CapturePresentationTimestamp(
+    UINT64 captured, UINT64 previous_capture, UINT64 previous_presentation,
+    UINT64 minimum_capture) {
+  if (captured <= previous_capture || captured < minimum_capture) return std::nullopt;
+  // A real frame can have been captured before a requested still was presented.
+  // Retain its new pixels and keep separate access units at least one RTP tick apart.
+  constexpr UINT64 rtp_tick_100ns = (10'000'000 + 90'000 - 1) / 90'000;
+  return std::max(captured, previous_presentation + rtp_tick_100ns);
+}
 
 class OutputWorker final {
  public:
@@ -1545,10 +1566,12 @@ class OutputWorker final {
                ProtocolWriter& writer, Factory create,
                std::unique_ptr<VideoEncoder> initial, bool active,
                std::function<void(const AdaptiveAccessUnit&)> on_output,
-               std::function<void(std::exception_ptr)> on_failure)
+               std::function<void(std::exception_ptr)> on_failure,
+               std::function<void()> on_refresh = {})
       : layer_(layer), profile_(profile), kind_(kind), device_(device), writer_(writer),
         create_(std::move(create)), initial_(std::move(initial)),
         on_output_(std::move(on_output)), on_failure_(std::move(on_failure)),
+        on_refresh_(std::move(on_refresh)),
         mailbox_(profile.bit_rate, active), thread_([this]() { Run(); }) {}
 
   ~OutputWorker() { Stop(); Join(); }
@@ -1586,6 +1609,7 @@ class OutputWorker final {
       Check(CoInitializeEx(nullptr, COINIT_MULTITHREADED), "output-com-apartment");
       apartment = true;
       UINT64 codec_generation = 0;
+      std::optional<std::pair<UINT64, UINT32>> delivered_input;
       UINT32 converted_width = 0, converted_height = 0;
       for (;;) {
         const auto work = mailbox_.Take();
@@ -1594,13 +1618,17 @@ class OutputWorker final {
           encoder.reset();
           initial.reset();
           converter.reset();
+          delivered_input.reset();
           continue;
         }
         const auto& input = work.input;
+        // Quiet pixels still need publication at a newly requested encoder budget.
+        const auto requested_input = std::pair{input->capture_timestamp, work.bitrate};
         if (codec_generation != work.generation) {
           encoder.reset();
           converter.reset();
           codec_generation = work.generation;
+          delivered_input.reset();
         }
         std::optional<AdaptiveAccessUnit> output;
         try {
@@ -1636,7 +1664,13 @@ class OutputWorker final {
           converter.reset();
           continue;
         }
-        if (!output) continue;
+        auto request_refresh = [&] {
+          if (on_refresh_ && mailbox_.Retry(work.generation, work.recovery)) on_refresh_();
+        };
+        if (!output) {
+          if (delivered_input != requested_input || work.recovery) request_refresh();
+          continue;
+        }
         if (!mailbox_.Accept(work.generation)) continue;
         const auto& access_unit = output->access_unit;
         Check(writer_.Write(kind_, access_unit.key_frame ? 1 : 0,
@@ -1644,7 +1678,9 @@ class OutputWorker final {
                              access_unit.bytes.data(), static_cast<DWORD>(access_unit.bytes.size()),
                              layer_, static_cast<UINT16>(output->width),
                              static_cast<UINT16>(output->height)), "capture-video-output");
+        delivered_input = requested_input;
         if (on_output_) on_output_(*output);
+        if (work.recovery && !access_unit.key_frame) request_refresh();
       }
     } catch (...) {
       if (mailbox_.Fail()) on_failure_(std::current_exception());
@@ -1664,6 +1700,7 @@ class OutputWorker final {
   std::unique_ptr<VideoEncoder> initial_;
   std::function<void(const AdaptiveAccessUnit&)> on_output_;
   std::function<void(std::exception_ptr)> on_failure_;
+  std::function<void()> on_refresh_;
   using Mailbox = piik::capture::OutputMailbox<CaptureInput>;
   Mailbox mailbox_;
   std::thread thread_;
@@ -1719,7 +1756,8 @@ std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
     const ProductArguments& arguments, const Adapter& adapter, const DeviceContext& device,
     ProtocolWriter& writer, VideoEncoderSelection encoder,
     const std::function<void(const AdaptiveAccessUnit&)>& on_active,
-    const std::function<void(size_t, std::exception_ptr)>& on_failure) {
+    const std::function<void(size_t, std::exception_ptr)>& on_failure,
+    const std::function<void()>& on_refresh = {}) {
   const bool hardware = encoder.kind == OutputKind::h264;
   const UINT encoder_index = arguments.mft_index;
   const bool capture = arguments.mode == ProductArguments::Mode::video;
@@ -1740,7 +1778,7 @@ std::vector<std::unique_ptr<OutputWorker>> CreateOutputWorkers(
         static_cast<UINT8>(layer), profile, encoder.kind, device.device.Get(), writer,
         std::move(create), original ? std::move(encoder.initial) : nullptr, capture && layer < 2,
         [original, on_active](const AdaptiveAccessUnit& output) { if (original) on_active(output); },
-        [layer, on_failure](std::exception_ptr error) { on_failure(layer, error); }));
+        [layer, on_failure](std::exception_ptr error) { on_failure(layer, error); }, on_refresh));
   }
   return workers;
 }
@@ -1909,6 +1947,7 @@ void RunEncodedVideo(ProductArguments arguments) {
       input->height = height;
       input->presentation = {static_cast<LONG>(width), static_cast<LONG>(height)};
       input->timestamp = timestamp;
+      input->capture_timestamp = timestamp;
       Check(writer.WriteBegin(timestamp, duration), "decoded-frame-begin");
       for (auto& worker : workers) worker->Submit(input);
       began = true;
@@ -1984,6 +2023,17 @@ void RunVideoCapture(ProductArguments arguments) {
                   arguments.source_id, arguments.pid, arguments.creation_time)
             : piik::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-before-capture");
+  if (window_target) {
+    DWORD affinity = 0;
+    const bool available = GetWindowDisplayAffinity(
+        reinterpret_cast<HWND>(static_cast<UINT_PTR>(arguments.source_id)), &affinity);
+    const DWORD error = available ? ERROR_SUCCESS : GetLastError();
+    std::osyncstream diagnostic(std::cerr);
+    diagnostic << "result=capture-window-policy";
+    if (available) diagnostic << " display-affinity=0x" << std::hex << affinity;
+    else diagnostic << " display-affinity=unknown error=" << error;
+    diagnostic << '\n';
+  }
   auto capture_device = CreateCaptureDevice(device.device.Get());
   GraphicsCaptureItem item = window_target
                                  ? CreateCaptureItem(reinterpret_cast<HWND>(
@@ -2021,6 +2071,7 @@ void RunVideoCapture(ProductArguments arguments) {
       piik::capture::CaptureEventHandler(frame_ready));
   auto closed_token = item.Closed(piik::capture::CaptureEventHandler(shutdown));
   std::vector<std::unique_ptr<OutputWorker>> workers;
+  std::atomic<bool> refresh_requested{false};
   std::atomic<bool> active_status_written{false};
   std::mutex failure_mutex;
   std::exception_ptr failure;
@@ -2070,11 +2121,17 @@ void RunVideoCapture(ProductArguments arguments) {
           return;
         }
         if (FAILED(writer.WriteUnavailable(static_cast<UINT8>(layer), OutputFailureDetail(layer, error)))) fail_capture(error);
+      }, [&] {
+        refresh_requested.store(true);
+        SetEvent(frame_ready->get());
       });
     if (!arguments.show_capture_border) border.Start(capture_session);
     capture_session.StartCapture();
 
     UINT64 previous_timestamp = 0;
+    UINT64 previous_capture_timestamp = 0;
+    UINT64 minimum_capture_timestamp = 0;
+    bool window_minimized = false;
     UINT64 next_output_timestamp = 0;
     UINT64 source_frames = 0;
     auto pool_size = initial_size;
@@ -2092,6 +2149,7 @@ void RunVideoCapture(ProductArguments arguments) {
         process.get(), shutdown->get(), frame_ready->get()};
     const HANDLE display_waits[] = {shutdown->get(), frame_ready->get()};
     for (;;) {
+      refresh_input = refresh_requested.exchange(false) || refresh_input;
       for (const auto& control : controls.Read()) {
         if (control.kind == 'Q') {
           cleanup();
@@ -2105,6 +2163,18 @@ void RunVideoCapture(ProductArguments arguments) {
         refresh_input = true;
       }
       border.Apply(capture_session);
+      if (window_target && !IsWindow(reinterpret_cast<HWND>(
+              static_cast<UINT_PTR>(arguments.source_id)))) {
+        Fail("capture-closed", "selected source stopped capture");
+      }
+      // WGC can deliver a minimized title-bar frame after the window is restored.
+      // Fence that suspended content by capture time, not current window geometry.
+      const bool minimized = window_target && IsIconic(reinterpret_cast<HWND>(
+          static_cast<UINT_PTR>(arguments.source_id)));
+      if (window_minimized && !minimized) {
+        minimum_capture_timestamp = static_cast<UINT64>(MFGetSystemTime());
+      }
+      window_minimized = minimized;
       DWORD wait = window_target
                        ? WaitForMultipleObjects(3, window_waits, FALSE, control_wait_ms)
                        : WaitForMultipleObjects(2, display_waits, FALSE, control_wait_ms);
@@ -2126,9 +2196,7 @@ void RunVideoCapture(ProductArguments arguments) {
       if (wait == WAIT_TIMEOUT) {
         // An explicit output/control request may reuse a quiet source; silence is not EOF.
         if (refresh_input && latest_input) {
-          auto input = std::make_shared<CaptureInput>(*latest_input);
-          input->timestamp = previous_timestamp + frame_duration;
-          submit(input);
+          submit(RefreshCaptureInput(*latest_input));
         }
         continue;
       }
@@ -2154,23 +2222,14 @@ void RunVideoCapture(ProductArguments arguments) {
         Fail("capture-timestamp", "captured frame has no QPC timestamp");
       }
       UINT64 timestamp = static_cast<UINT64>(signed_timestamp);
-      if (previous_timestamp != 0 && timestamp <= previous_timestamp) continue;
-      const UINT64 timing_tolerance = frame_duration / 20;
-      if (next_output_timestamp != 0 && timestamp < next_output_timestamp &&
-          next_output_timestamp - timestamp > timing_tolerance) {
-        continue;
-      }
+      const auto presentation_timestamp = CapturePresentationTimestamp(
+          timestamp, previous_capture_timestamp, previous_timestamp,
+          minimum_capture_timestamp);
+      if (!presentation_timestamp) continue;
       auto content_size = latest.ContentSize();
       if (content_size.Width <= 0 || content_size.Height <= 0) continue;
-      // ContentSize belongs to the rendered frame; Size belongs to the current
-      // target. Queued minimize/resize frames must not reconfigure the encoder
-      // after the target has already changed again.
-      const auto target_size = item.Size();
-      if (content_size.Width != target_size.Width ||
-          content_size.Height != target_size.Height) {
-        latest.Close();
-        continue;
-      }
+      // ContentSize owns this rendered frame's geometry. Item/window bounds can
+      // differ on Windows 10; comparing them would discard every valid frame.
       const auto color = display_color.Resolve();
       if (content_size.Width != pool_size.Width ||
           content_size.Height != pool_size.Height || color.Format() != pool_format) {
@@ -2195,11 +2254,20 @@ void RunVideoCapture(ProductArguments arguments) {
       input->texture = sdr.Convert(source.Get(), color);
       input->width = content_width;
       input->height = content_height;
-      input->timestamp = timestamp;
+      input->timestamp = *presentation_timestamp;
+      input->capture_timestamp = timestamp;
       input->presentation = presentation.Resolve(content_width, content_height,
           source_frames % arguments.profile.gop_frames() == 0);
       latest.Close();
       latest = nullptr;
+      previous_capture_timestamp = timestamp;
+      latest_input = input;
+      const UINT64 timing_tolerance = frame_duration / 20;
+      if (next_output_timestamp != 0 && timestamp < next_output_timestamp &&
+          next_output_timestamp - timestamp > timing_tolerance) {
+        refresh_input = true;
+        continue;
+      }
       if (next_output_timestamp == 0) {
         next_output_timestamp = timestamp + frame_duration;
       } else {
@@ -2209,7 +2277,6 @@ void RunVideoCapture(ProductArguments arguments) {
         next_output_timestamp +=
             (elapsed / frame_duration + 1) * frame_duration;
       }
-      latest_input = input;
       submit(input);
     }
   } catch (...) {

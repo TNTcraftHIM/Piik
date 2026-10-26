@@ -23,6 +23,11 @@ The browser picker names a capture method, not a browser-tab-only source. Its
 short explanation includes screens, application windows and tabs; available
 choices remain owned by the browser and operating system.
 
+Public architecture labels use `x64` and `ARM64`. Keep package and ABI identifiers
+such as `amd64`, `x86_64` and `arm64-v8a` unchanged in filenames and technical
+instructions. Present package format (APK/ZIP) and system requirements separately
+from architecture; a universal APK contains multiple supported architectures.
+
 Write each language for its own audience. Chinese headings and welcomes may
 sound like friends inviting each other: “叫朋友来一起看。” or “沙发给你留着呢。”
 Do not translate English sentence structure or possessive screen metaphors

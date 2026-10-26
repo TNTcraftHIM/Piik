@@ -7,11 +7,16 @@ import { RoomChatOverlay, RoomChatOverlaySettings, RoomChatToggle } from "../com
 import { StageOverlay, StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { useTheaterMode } from "../components/living/use-theater-mode";
+import { useHostPreviewPlayback } from "../components/living/use-host-preview-playback";
+import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { useCopy } from "../ui/copy";
 import { usePreviewInteractions } from "./use-preview-interactions";
 import { PreviewInput } from "./preview-input";
 import { HostAudio } from "../media/host-audio";
+import { relayVolunteerLimit } from "../media/relay-capability";
+import { DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY } from "../../shared/media-copy-accounting";
+import { MAX_VIEWERS_PER_ROOM_LIMIT } from "../../shared/protocol";
 
 type PreviewRole = "host" | "viewer";
 
@@ -117,7 +122,11 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
   const [theaterMode, setTheaterMode] = useTheaterMode();
   const [pictureFit, setPictureFit] = useState<VideoFit>("contain");
   const [pictureRotation, setPictureRotation] = useState<VideoRotation>(0);
+  const [previewAutoPause, setPreviewAutoPause] = useState(() => readRoomPreferences().previewAutoPause);
   const [viewerRoute, setViewerRoute] = useState<"auto" | "p2p" | "sfu">("auto");
+  const [relayVolunteer, setRelayVolunteer] = useState(false);
+  const [relayCapacity, setRelayCapacity] = useState(DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY + 1);
+  const relayLimits = relayVolunteerLimit(relayCapacity, DEFAULT_ENDPOINT_MEDIA_COPY_CAPACITY, MAX_VIEWERS_PER_ROOM_LIMIT);
   const [error, setError] = useState("");
   const [waiting, setWaiting] = useState(true);
   const [audioAvailable, setAudioAvailable] = useState(false);
@@ -154,6 +163,7 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
     video.srcObject = stream;
     if (stream) play();
   }, [stream]);
+  const previewPlayback = useHostPreviewPlayback(videoRef, viewer ? null : stream, previewAutoPause);
   useEffect(() => () => { sourceAudio.current?.dispose(); mediaRef.current?.stop(); }, []);
   useEffect(() => {
     const input = new PreviewInput();
@@ -202,16 +212,24 @@ function PlaybackSample({ role }: { role: PreviewRole }) {
           indicator={<StatusIndicator status={waiting ? STATUS_CATALOG.joining : stream ? STATUS_CATALOG.connected : STATUS_CATALOG.idle} />}>
           <video ref={videoRef} playsInline muted={!viewer} tabIndex={0} inert={!stream} style={{ objectFit: pictureFit }}
             aria-label={english ? "Local test video" : "本机测试视频"} />
-          {waiting && <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />}
-          <RoomChatOverlay session={session} visible={Boolean(stream) && !waiting} />
+          {waiting ? <StageOverlay dim waiting icon={STATUS_CATALOG.joining.icon} message={t(STATUS_CATALOG.joining.labelKey)} comic={STATUS_CATALOG.joining.comic} />
+            : previewPlayback.suspended && <StageOverlay dim icon="pause" message={t("host.localPreviewPaused")} comic="preview-paused" />}
+          <RoomChatOverlay session={session} visible={Boolean(stream) && !waiting && !previewPlayback.suspended} />
           <PlaybackControls videoRef={videoRef} stream={stream} audioAvailable={audioAvailable}
             sharingAudio={viewer ? undefined : { ...shareVolume, available: true, onChange: (level, muted) => {
               sourceAudio.current?.setVolume(muted ? 0 : level); setShareVolume({ level, muted });
             } }}
-            settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation, route: viewer ? { preference: viewerRoute, onChange: setViewerRoute,
-              sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } : undefined }}
+            settings={{ pictureFit, setPictureFit, pictureRotation, setPictureRotation,
+              preview: viewer ? undefined : { autoPause: previewAutoPause, onChange: autoPause => {
+                setPreviewAutoPause(autoPause); saveRoomPreferences({ previewAutoPause: autoPause });
+              } },
+              route: viewer ? { preference: viewerRoute, onChange: setViewerRoute,
+              sfuAvailable: true, sfuOnly: false, peerOnly: false, disabled: false, rejected: false } : undefined,
+              relayVolunteer: viewer ? { ...relayLimits, enabled: relayVolunteer, pending: false, disabled: false,
+                onChange: setRelayVolunteer, onCapacityChange: setRelayCapacity } : undefined }}
             audioTrackKey={stream?.getAudioTracks().map((track) => track.id).join(",")}
-            canPlay={Boolean(stream) && !waiting} theaterMode={theaterMode} onPlay={play}
+            canPlay={Boolean(stream) && !waiting && !previewPlayback.suspended} theaterMode={theaterMode}
+            onPlay={viewer ? play : previewPlayback.onPlay} onPause={viewer ? undefined : previewPlayback.onPause}
             onToggleTheater={() => setTheaterMode((value) => !value)}
             overlayAction={<RoomChatToggle session={session} />}
             overlaySettings={session && <RoomChatOverlaySettings session={session} />}

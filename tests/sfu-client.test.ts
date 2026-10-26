@@ -690,7 +690,7 @@ describe("embedded SFU browser transport", () => {
     expect(onDisconnected).toHaveBeenCalledOnce();
   });
 
-  it("bounds pending ICE and reports one terminal failure", async () => {
+  it("bounds pending remote ICE without retiring the publication and flushes retained candidates", async () => {
     const { publisher: host, pc, onDisconnected } = await publisher();
     for (let index = 0; index < 65; index++) {
       await host.acceptSignal(
@@ -700,9 +700,33 @@ describe("embedded SFU browser transport", () => {
         }),
       );
     }
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    await host.acceptSignal(signal({ description: { type: "answer", sdp: "answer" } }));
+    expect(pc.addIceCandidate.mock.calls.map(([candidate]) => candidate.candidate))
+      .toEqual(Array.from({ length: 64 }, (_, index) => `candidate:${index}`));
+    pc.state("failed");
     expect(pc.close).toHaveBeenCalledOnce();
     expect(onDisconnected).toHaveBeenCalledOnce();
-    expect(host.getFailureStage()).toBe("transport");
+  });
+
+  it("bounds local ICE during signaling loss and flushes retained candidates on return", async () => {
+    const { publisher: host, pc, send, onDisconnected } = await publisher();
+    pc.state("connected");
+    send.mockReturnValue(false);
+    for (let index = 0; index < 65; index++) {
+      const value = { candidate: `candidate:${index}` };
+      pc.onicecandidate?.({ candidate: { ...value, protocol: "udp", toJSON: () => value } });
+    }
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    send.mockClear().mockReturnValue(true);
+    host.updateConfig({ ...config, revision: 5 });
+    expect(send.mock.calls.map(([message]) => message.candidate?.candidate))
+      .toEqual(Array.from({ length: 64 }, (_, index) => `candidate:${index}`));
+    pc.state("failed");
+    expect(pc.close).toHaveBeenCalledOnce();
+    expect(onDisconnected).toHaveBeenCalledOnce();
   });
 
   it("changes audio ceilings without touching video capture or sender parameters", async () => {

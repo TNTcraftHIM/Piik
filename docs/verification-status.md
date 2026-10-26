@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-21
+Last updated: 2026-10-26
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -23,6 +23,18 @@ phases, including NAT and Auto codec behavior.
 
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
+- Android's system-browser App passed emulator screen/camera sharing
+  with concurrent room voice. Browser consent returns to the same tab; source
+  replacement, cancellation and background return preserve the share. Local/public
+  startup and launcher reentry also have emulator evidence. Full-App checks now
+  cover concurrent original/lower encoding, live-budget reduction and recovery,
+  static-source late joins, lower-output retirement, capture stop and restart.
+  The [capture assessment](./research/cross-platform-client-runtime.md#android-encoder-budget)
+  owns measured bitrate bounds and the stock FrameDropper's saturation limit.
+  Phone/tablet/TV hardware coverage and physical audio remain limited.
+- The separate iOS system-browser implementation passes Apple SDK device and
+  simulator builds and its session/encoder checks. Physical capture, background
+  lifetime and hosted-site linkage remain in the [held iOS scope](./todo.md#held-by-owner).
 - Windows HDR-to-SDR has synthetic GPU and decoded-video evidence; it does not
   establish Browser-capture HDR conversion or end-to-end HDR. The
   [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns that boundary.

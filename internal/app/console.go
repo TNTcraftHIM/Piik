@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,7 +17,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/TNTcraftHIM/Piik/internal/app/browser"
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	"github.com/TNTcraftHIM/Piik/internal/app/failure"
+	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
@@ -365,12 +368,12 @@ func (model consoleModel) content(styled bool) string {
 			stateStyle = stateStyle.Foreground(lipgloss.Color("9"))
 		}
 	}
-	revision := BuildRevision
+	revision := buildinfo.Revision
 	if len(revision) == 40 {
 		revision = revision[:7]
 	}
 	var out strings.Builder
-	version := buildVersion()
+	version := buildinfo.Version()
 	heading := accent.Render("Piik App") + "\n" + muted.Render(version)
 	if revision != "" && revision != version {
 		heading += "\n" + muted.Render(revision)
@@ -413,7 +416,11 @@ func (model consoleModel) content(styled bool) string {
 		}
 		address := consoleAddress(item[1])
 		if item[0] == "entry" {
-			address = launchURL(address)
+			port := 0
+			if source, err := url.Parse(item[1]); err == nil {
+				port, _ = strconv.Atoi(source.Query().Get("piik-client-port"))
+			}
+			address = launcher.EntryURL(address, port)
 		}
 		style := link
 		if styled {

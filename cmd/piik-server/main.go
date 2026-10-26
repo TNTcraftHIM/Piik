@@ -158,10 +158,14 @@ func serve(debug bool) (returnedErr error) {
 		stop()
 		<-releaseChecked
 	}()
-	<-ctx.Done()
+	var serveErr error
+	select {
+	case <-ctx.Done():
+	case serveErr = <-server.Done():
+	}
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
-	return server.Close(shutdownCtx)
+	return errors.Join(serveErr, server.Close(shutdownCtx))
 }
 
 func serverDebugEnabled(value string) bool {

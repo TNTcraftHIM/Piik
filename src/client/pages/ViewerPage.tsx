@@ -79,7 +79,7 @@ import {
   type CandidateQualityProbeResult,
 } from "../media/candidate-quality-probe";
 import type { QualitySettings } from "../media/quality";
-import { relayCapacityMessageForBrowser } from "../media/relay-capability";
+import { relayCapacityMessageForBrowser, relayVolunteerLimit } from "../media/relay-capability";
 import {
   invalidateSenderQualityEvidence,
   senderQualityEvidenceFromSnapshot,
@@ -272,6 +272,7 @@ export function ViewerPage({
   const voiceMetrics = useRoomVoiceMetrics(roomVoiceSession, showConnectionDetails || selectedPawn !== null, roomVoice);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
+  const [remoteTouchMode, setRemoteTouchMode] = useState(() => readRoomPreferences().remoteTouchMode);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
   const [routePreference, setRoutePreference] = useState<ViewerRoutePreference>("auto");
   const [routePreferencePending, setRoutePreferencePending] = useState(false);
@@ -279,7 +280,8 @@ export function ViewerPage({
   const [relayVolunteerSupported, setRelayVolunteerSupported] = useState(false);
   const [relayVolunteerEnabled, setRelayVolunteerEnabled] = useState(false);
   const [relayVolunteerPending, setRelayVolunteerPending] = useState(false);
-  const requestRelayVolunteerRef = useRef<((enabled: boolean) => void) | null>(null);
+  const [relayVolunteerLimits, setRelayVolunteerLimits] = useState(() => relayVolunteerLimit(null, MAX_ENDPOINT_MEDIA_CHILDREN, MAX_VIEWERS_PER_ROOM_LIMIT));
+  const requestRelayVolunteerRef = useRef<((enabled: boolean, capacity?: number) => void) | null>(null);
   const [peerOnly, setPeerOnly] = useState(false);
   useEffect(() => {
     if (signalStatus !== "connected") {
@@ -469,7 +471,6 @@ export function ViewerPage({
   useEffect(() => {
     let active = true;
     let currentIceConfig: IceConfig | null = null;
-    let currentHostOnline = false;
     let currentHostPaused = false;
     let currentPeerId: string | null = null;
     let currentRouteRevision = 0;
@@ -482,6 +483,8 @@ export function ViewerPage({
     } | null = null;
     let endpointMediaCopyCapacity = MAX_ENDPOINT_MEDIA_CHILDREN;
     let relayBackendCapacity: number | null = null;
+    let ordinaryRelayCapacity = MAX_ENDPOINT_MEDIA_CHILDREN;
+    let requestedRelayCapacity: number | null = null;
     let relayVolunteerAvailable = false;
     let viewerAuthorizationGeneration: string | null = null;
     let currentQualitySettings: QualitySettings = DEFAULT_QUALITY_SETTINGS;
@@ -617,21 +620,27 @@ export function ViewerPage({
     setRelayVolunteerSupported(false);
     setRelayVolunteerEnabled(false);
     setRelayVolunteerPending(false);
-    requestRelayVolunteerRef.current = enabled => {
-      setRelayVolunteerPending(true);
+    function updateRelayVolunteer(enabled = signal.relayVolunteerRequest?.enabled ?? false, capacity?: number, send = true): void {
+      if (capacity !== undefined) requestedRelayCapacity = capacity;
       // Keep consent in the signaling owner before asynchronous App discovery.
       // Until its backend is known, an App gets only the legacy physical bound.
-      const capacity = relayBackendCapacity ?? (clientActivationRef.current ? MAX_ENDPOINT_MEDIA_CHILDREN : MAX_VIEWERS_PER_ROOM_LIMIT);
-      if (!signal.setRelayVolunteer(enabled, capacity)) setRelayVolunteerPending(false);
+      const backend = relayBackendCapacity ?? (clientActivationRef.current ? MAX_ENDPOINT_MEDIA_CHILDREN : MAX_VIEWERS_PER_ROOM_LIMIT);
+      const limits = relayVolunteerLimit(requestedRelayCapacity, ordinaryRelayCapacity, backend);
+      setRelayVolunteerLimits({ ...limits, available: relayBackendCapacity === null || limits.available });
+      if (!send || !relayVolunteerAvailable) return;
+      const effective = enabled ? limits.capacity : backend;
+      const intent = signal.relayVolunteerRequest;
+      if (intent?.enabled === enabled && intent.capacity === effective) return;
+      setRelayVolunteerPending(true);
+      if (!signal.setRelayVolunteer(enabled, effective)) setRelayVolunteerPending(false);
+    }
+    requestRelayVolunteerRef.current = (enabled, capacity) => {
+      updateRelayVolunteer(enabled, capacity);
       void acquireNativeClient().then(client => {
         if (!active || relayBackendCapacity !== null) return;
-        const actualCapacity = client
+        relayBackendCapacity = client
           ? nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, client.health) : MAX_VIEWERS_PER_ROOM_LIMIT;
-        const intent = signal.relayVolunteerRequest;
-        if (intent && intent.capacity !== actualCapacity) {
-          setRelayVolunteerPending(true);
-          signal.setRelayVolunteer(intent.enabled, actualCapacity);
-        }
+        updateRelayVolunteer();
       });
     };
     setAudioAvailable(null);
@@ -643,10 +652,7 @@ export function ViewerPage({
       if (active) {
         relayVolunteerAvailable = capabilities.relayVolunteer && !capabilities.sfuOnly;
         setRelayVolunteerSupported(relayVolunteerAvailable);
-        if (relayVolunteerAvailable && relayBackendCapacity !== null) {
-          setRelayVolunteerPending(true);
-          signal.setRelayVolunteer(signal.relayVolunteerRequest?.enabled ?? false, relayBackendCapacity);
-        }
+        updateRelayVolunteer(undefined, undefined, relayBackendCapacity !== null);
       }
       if (active && capabilities.remoteInput) inputRoute.enable(identity => signal.send({ type: "subscribe-remote-input", ...identity }));
       if (active && capabilities.viewerRouteSelection) {
@@ -770,10 +776,7 @@ export function ViewerPage({
         ? nativeRelayCapacity(MAX_VIEWERS_PER_ROOM_LIMIT, source.client.health) : MAX_VIEWERS_PER_ROOM_LIMIT;
       if (relayBackendCapacity !== capacity) {
         relayBackendCapacity = capacity;
-        if (relayVolunteerAvailable) {
-          setRelayVolunteerPending(true);
-          signal.setRelayVolunteer(signal.relayVolunteerRequest?.enabled ?? false, capacity);
-        }
+        updateRelayVolunteer();
       }
       const sourceKey = source
         ? `native:${source.sessionId}:${source.connectionId}:${source.generation}`
@@ -1478,15 +1481,8 @@ export function ViewerPage({
               noteReceiveFailure(snapshot, currentRouteRevision);
               activePeerMetrics = snapshot.metrics;
               offerPeerQualityEvidence(snapshot, peer);
-              if (
-                !currentHostOnline &&
-                (snapshot.connectionState === "failed" ||
-                  snapshot.connectionState === "closed")
-              ) {
-                clearPeerState();
-                invalidatePresentedMedia();
-                return;
-              }
+              // Host signaling presence does not retire this edge's recovery
+              // or the relay's downstream connections.
               setPeerSnapshot(snapshot);
               dispatchPresentation({
                 type: "connection",
@@ -1555,6 +1551,7 @@ export function ViewerPage({
         setViewerPasswordDraft("");
         setViewerPasswordError(null);
         relayChildEvidenceStore.clear();
+        ordinaryRelayCapacity = message.endpointMediaCopyCapacity;
         endpointMediaCopyCapacity = currentPeerId === null ? message.endpointMediaCopyCapacity
           : Math.max(endpointMediaCopyCapacity, message.endpointMediaCopyCapacity);
         currentPeerId = message.peerId;
@@ -1587,8 +1584,9 @@ export function ViewerPage({
           true,
         );
         signal.send(relayCapacityMessageForBrowser());
+        // Normalize this visit's limit before signaling replays its intent.
+        updateRelayVolunteer();
         currentIceConfig = message.iceConfig;
-        currentHostOnline = message.hostOnline;
         const sharingPaused = message.hostPaused ?? false;
         if (currentHostPaused !== sharingPaused && sharingPaused) {
           invalidatePresentedMedia();
@@ -1819,7 +1817,6 @@ export function ViewerPage({
       }
       if (message.type === "host-status") {
         if (!message.online) setCoPlayParticipants([]);
-        currentHostOnline = message.online;
         if (currentHostPaused !== message.paused && message.paused) {
           invalidatePresentedMedia();
         }
@@ -1852,7 +1849,6 @@ export function ViewerPage({
         currentShareGeneration = null;
         currentRoutePolicy = DEFAULT_ROUTE_POLICY;
         setAssignedRoute(null);
-        currentHostOnline = false;
         currentHostPaused = false;
         clearViewerSfuRoute();
         clearPeerState(true);
@@ -2318,13 +2314,17 @@ export function ViewerPage({
               overlayAction={<RoomChatToggle session={interactionSession} />}
               overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
-                  pictureFit={pictureFit} pictureRotation={pictureRotation}
+                  pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
               settings={{ pictureFit, pictureRotation, setPictureRotation: rotation => {
                 setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation });
               }, setPictureFit: fit => {
                 setPictureFit(fit); saveRoomPreferences({ pictureFit: fit });
               },
+                remoteTouch: inputRoute.current ? {
+                  mode: remoteTouchMode,
+                  onChange: mode => { setRemoteTouchMode(mode); saveRoomPreferences({ remoteTouchMode: mode }); },
+                } : undefined,
                 route: routeOptions ? {
                   preference: routePreference, sfuAvailable: routeOptions.sfu && !peerOnly,
                   sfuOnly: routeOptions.sfuOnly, peerOnly,
@@ -2339,8 +2339,10 @@ export function ViewerPage({
                 } : undefined,
                 relayVolunteer: relayVolunteerSupported ? {
                   enabled: relayVolunteerEnabled, pending: relayVolunteerPending,
-                  disabled: signalStatus !== "connected" || relayVolunteerPending,
+                  ...relayVolunteerLimits,
+                  disabled: signalStatus !== "connected" || relayVolunteerPending || (!relayVolunteerLimits.available && !relayVolunteerEnabled),
                   onChange: enabled => requestRelayVolunteerRef.current?.(enabled),
+                  onCapacityChange: capacity => requestRelayVolunteerRef.current?.(true, capacity),
                 } : undefined,
               }}
               videoRef={videoRef}

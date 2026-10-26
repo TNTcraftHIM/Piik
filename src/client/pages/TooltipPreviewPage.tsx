@@ -82,7 +82,7 @@ export function TooltipPreviewPage() {
           <a href="#playback-preview">{en ? "Playback" : "播放栏"}</a><a href="#comic-preview">{en ? "Tooltips & comics" : "提示与漫画"}</a>
           <a href="#launcher-preview">{en ? "App launcher" : "模式选择"}</a>
           <a href="#interaction-preview">{en ? "Chat & reactions" : "聊天与互动"}</a>
-          <a href="#remote-control-preview">{en ? "Remote control & keyboard" : "远程控制与键盘"}</a>
+          <a href="#remote-control-preview">{t("remote.inputTools")}</a>
           <a href="#remote-permission-preview">{en ? "Input access requests" : "权限申请"}</a>
           <a href="#brand-preview">{en ? "Brand motion" : "Mascot 动画"}</a>
 

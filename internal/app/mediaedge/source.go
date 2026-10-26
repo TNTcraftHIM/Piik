@@ -164,16 +164,33 @@ func (source *Source) beginFrame(timestamp time.Duration, at time.Time) (OutputP
 	}
 	plan := OutputPlan{Active: make([]bool, len(source.outputBitrates)), Bitrates: append([]uint32(nil), source.outputBitrates...)}
 	count := 0
+	var sharedBudget int64
+	remoteDemand := false
 	for _, edge := range edges {
 		if edge.State() == webrtc.PeerConnectionStateConnected {
-			count = max(count, edge.transport.RequiredActiveCount())
+			required := edge.transport.RequiredActiveCount()
+			count = max(count, required)
+			if !edge.local && required > 0 {
+				remoteDemand = true
+				sharedBudget = max(sharedBudget, edge.transport.Output.State().VideoBudget)
+			}
 		}
 	}
 	for _, publication := range publications {
-		count = max(count, publication.RequiredActiveCount())
+		required := publication.RequiredActiveCount()
+		count = max(count, required)
+		if required > 0 {
+			remoteDemand = true
+			sharedBudget = max(sharedBudget, publication.LowestLayerBudget())
+		}
 	}
 	for slot := 0; slot < min(count, len(plan.Active)); slot++ {
 		plan.Active[slot] = true
+	}
+	if len(source.formats) == 1 && len(plan.Bitrates) == 1 && plan.Bitrates[0] > 0 && remoteDemand {
+		// One shared rendition follows the largest child demand. Local preview
+		// does not hold it at the ceiling or reduce a healthy child's quality.
+		plan.Bitrates[0] = uint32(max(1000, min(source.media.CodecBudget(0, sharedBudget), int64(plan.Bitrates[0]))))
 	}
 	return plan, nil
 }
@@ -401,7 +418,12 @@ func (source *Source) WriteRTP(packet *rtp.Packet) error {
 	err := source.media.Source.WriteRTP(layer, &forwarded)
 	for slot, group := range source.groups {
 		if slot != 0 && group.active {
-			if groupErr := group.media.Source.WriteRTP(layer, &forwarded); err == nil {
+			groupErr := group.media.Source.WriteRTP(layer, &forwarded)
+			if groupErr == nil && group.clockPending {
+				groupErr = group.media.CopyCorrelation(layer, source.media.Source)
+				group.clockPending = false
+			}
+			if err == nil {
 				err = groupErr
 			}
 		}
@@ -466,7 +488,7 @@ func (source *Source) SenderReport(report *rtcp.SenderReport) error {
 	err := source.media.SenderReport(layer, &correlated)
 	for slot, group := range source.groups {
 		if slot != 0 && group.active {
-			if groupErr := group.media.SenderReport(layer, &correlated); err == nil {
+			if groupErr := group.media.CopyCorrelation(layer, source.media.Source); err == nil {
 				err = groupErr
 			}
 		}

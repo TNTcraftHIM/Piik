@@ -40,9 +40,9 @@ Piik 支持一位房主分享屏幕，最多 20 位受邀观众观看。先选�
 
 1. 从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
    [Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载以 **`piik-app`** 开头、
-   对应平台的压缩包，完整解压并保留目录结构。
+   对应平台的程序包。手机或平板安装 App，电脑上完整解压并保留目录结构。
 2. Windows 打开 `piik-app.exe`，macOS 打开 `Piik App.app`，Linux 运行 `./piik-app`。
-   启动页会在系统浏览器里打开。
+   手机或平板安装后打开 Piik。启动页会在系统浏览器里打开。
 3. 邀请不在同一局域网的朋友时，选择 **公网邀请**，再点击 **进入 Piik**。
    其他模式的用途见下方说明。
 4. 点击 **开始分享**，按可用选项选择 **浏览器**、**摄像头**、**程序 / 窗口** 或 **屏幕**，
@@ -64,6 +64,7 @@ macOS 首次打开被拦截时，按 [Mac 打开说明](./troubleshooting.zh-CN.
 | `darwin-amd64` | Intel Mac；原生采集需 macOS 13 及以上 |
 | `linux-amd64` | Linux x64 |
 | `linux-arm64` | Linux ARM64 |
+| `android-universal` | Android 10 及以上；一个 APK 包含 ARM64 和 x64 |
 
 Linux 原生采集还需要[系统组件](../../native/capture/linux/README.md)。
 程序包与启动参数的细节见 [App 指南](../../cmd/piik-app/README.zh-CN.md)。

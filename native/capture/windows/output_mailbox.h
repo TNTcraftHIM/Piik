@@ -77,6 +77,15 @@ class OutputMailbox final {
     return !stopped_ && !failed_ && active_ && generation == generation_;
   }
 
+  // A dropped input still needs a fresh presentation from the capture owner.
+  // Retain its recovery intent without admitting work from a retired activation.
+  bool Retry(uint64_t generation, bool recovery) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (stopped_ || failed_ || !active_ || generation != generation_) return false;
+    key_requested_ = key_requested_ || recovery;
+    return true;
+  }
+
   bool Fail(std::optional<uint64_t> generation = std::nullopt) {
     std::lock_guard<std::mutex> lock(mutex_);
     if (stopped_ || failed_ ||

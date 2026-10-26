@@ -1,6 +1,7 @@
 package mediaedge
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/streamtracker"
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 	"google.golang.org/protobuf/proto"
@@ -57,6 +59,97 @@ func TestSourceRecoveryCoalescesTargetsWithoutWakingUnrelatedOutputs(t *testing.
 			}
 		})
 	}
+}
+
+func TestSingleRenditionFollowsSharedRemoteBudget(t *testing.T) {
+	engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true, InitialBitrate: 200_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 2, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	check(source.SetFormat(0, 640, 360))
+	check(source.ConfigureOutputs([]uint32{1_000_000}))
+	source.SetLowestLayerRateControlled(true)
+	var pts time.Duration
+	plan := func(label string, active bool, bitrate uint32) {
+		t.Helper()
+		value, err := source.BeginFrame(pts)
+		check(err)
+		pts += time.Second / 30
+		if len(value.Active) != 1 || value.Active[0] != active || len(value.Bitrates) != 1 || value.Bitrates[0] != bitrate {
+			t.Fatalf("%s: plan = %+v, want active=%t bitrate=%d", label, value, active, bitrate)
+		}
+	}
+	plan("no consumers", false, 1_000_000)
+	preview, err := engine.NewEdge(source, EdgeOptions{ConnectionID: "preview", Local: true})
+	check(err)
+	previewReceiver := newReceiver(t)
+	defer previewReceiver.Close()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	offer, err := preview.CreateLocalOffer(ctx, "preview-offer", false)
+	check(err)
+	check(previewReceiver.SetRemoteDescription(offer))
+	answer, err := previewReceiver.CreateAnswer(nil)
+	check(err)
+	gathered := webrtc.GatheringCompletePromise(previewReceiver)
+	check(previewReceiver.SetLocalDescription(answer))
+	waitSignal(t, gathered, "preview ICE gathering")
+	check(preview.SetAnswer(*previewReceiver.LocalDescription(), "preview-offer"))
+	for preview.State() != webrtc.PeerConnectionStateConnected {
+		select {
+		case <-ctx.Done():
+			t.Fatal("preview did not connect")
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	plan("preview alone", true, 1_000_000)
+	weak, weakReceiver, _ := connectedReceiver(t, engine, source, "weak")
+	defer weakReceiver.Close()
+	weak.transport.OnTransportCCFeedback(nil, &rtcp.TransportLayerCC{})
+	weak.transport.Output.SetBudget(100_000)
+	plan("preview does not mask weak child", true, 100_000)
+	healthy, healthyReceiver, _ := connectedReceiver(t, engine, source, "healthy")
+	defer healthyReceiver.Close()
+	healthy.transport.OnTransportCCFeedback(nil, &rtcp.TransportLayerCC{})
+	healthy.transport.Output.SetBudget(700_000)
+	plan("weak child does not lower healthy sibling", true, 700_000)
+	healthy.transport.Output.SetBudget(0)
+	plan("parked sibling", true, 100_000)
+	healthy.transport.Output.SetBudget(900_000)
+	plan("reactivated sibling", true, 900_000)
+	check(healthy.Close())
+	plan("retired sibling", true, 100_000)
+	check(weak.Close())
+	plan("preview remains", true, 1_000_000)
+	check(preview.Close())
+	plan("all consumers retired", false, 1_000_000)
+
+	publication, err := engine.NewPublication(source, EdgeOptions{ConnectionID: "single-publication"})
+	check(err)
+	check(publication.transport.SetConnected())
+	plan("SFU upload budget", true, 200_000)
+	check(publication.SetActiveCount(0))
+	plan("SFU upload parked", false, 1_000_000)
+	check(publication.SetActiveCount(1))
+	plan("SFU upload reactivated", true, 200_000)
+	check(source.ConfigureOutputs([]uint32{150_000}))
+	source.BeginGeneration()
+	pts = 0
+	plan("new generation ceiling", true, 150_000)
+	check(publication.Close())
+	plan("publication retired", false, 150_000)
 }
 
 func TestSourceStartupFeedbackRequestsRecovery(t *testing.T) {

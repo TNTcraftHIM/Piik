@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build darwin && !ios && cgo
 
 #include "platform_darwin.h"
 #include <ApplicationServices/ApplicationServices.h>
@@ -40,27 +40,33 @@ static bool focused_window(uint32_t pid, CGRect rect) {
   return focused;
 }
 
-bool piik_input_target(bool window, uint32_t id, uint32_t pid, uint64_t created,
+PiikInputTargetResult piik_input_target(bool window, uint32_t id, uint32_t pid, uint64_t created,
                        PiikInputBounds *bounds) {
   CGRect rect = CGRectNull;
   bool focused = true;
   if (!window) {
-    if (!CGDisplayIsActive(id)) return false;
+    if (!CGDisplayIsActive(id)) return PiikInputTargetUnavailable;
     rect = CGDisplayBounds(id);
   } else {
     struct proc_bsdinfo process = {0};
-    if (!pid || proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &process, sizeof(process)) != sizeof(process) ||
-        process.pbi_start_tvsec * 1000000ULL + process.pbi_start_tvusec != created) return false;
+    if (!pid || !created) return PiikInputTargetInvalid;
+    if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &process, sizeof(process)) != sizeof(process))
+      return PiikInputTargetUnavailable;
+    if (process.pbi_start_tvsec * 1000000ULL + process.pbi_start_tvusec != created)
+      return PiikInputTargetInvalid;
     CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionAll, kCGNullWindowID);
-    if (!windows) return false;
+    if (!windows) return PiikInputTargetUnavailable;
+    bool found = false;
     for (CFIndex index = 0; index < CFArrayGetCount(windows); ++index) {
       CFDictionaryRef entry = CFArrayGetValueAtIndex(windows, index);
       int64_t current = 0, owner = 0;
       if (!number(entry, kCGWindowNumber, &current)) continue;
       if (current != id || !number(entry, kCGWindowOwnerPID, &owner) || owner != pid) continue;
+      found = true;
       CFDictionaryRef geometry = CFDictionaryGetValue(entry, kCGWindowBounds);
       if (geometry) CGRectMakeWithDictionaryRepresentation(geometry, &rect);
     }
+    if (!found) { CFRelease(windows); return PiikInputTargetInvalid; }
     // Public AX has no CGWindowID. Match the actual key window's geometry only
     // when it identifies exactly one window of this process; z-order is not focus.
     unsigned matches = 0;
@@ -75,9 +81,9 @@ bool piik_input_target(bool window, uint32_t id, uint32_t pid, uint64_t created,
     focused = matches == 1 && focused_window(pid, rect);
     CFRelease(windows);
   }
-  if (CGRectIsNull(rect) || CGRectIsEmpty(rect)) return false;
+  if (CGRectIsNull(rect) || CGRectIsEmpty(rect)) return PiikInputTargetUnavailable;
   *bounds = (PiikInputBounds){rect.origin.x, rect.origin.y, rect.size.width, rect.size.height, focused};
-  return true;
+  return PiikInputTargetReady;
 }
 
 static bool post(CGEventRef event, uint64_t flags) {

@@ -43,11 +43,9 @@ export class SfuPeer {
     this.pc.onicecandidate = ({ candidate }) => {
       if (this.closed || !candidate || candidate.protocol === "tcp") return;
       const value = { ...candidate.toJSON(), candidate: candidate.candidate };
-      if (this.localCandidates.length >= 64) this.events.onState("failed");
-      else {
-        this.localCandidates.push(value);
-        this.flushSignaling();
-      }
+      if (this.localCandidates.length >= 64) return;
+      this.localCandidates.push(value);
+      this.flushSignaling();
     };
     this.pc.onconnectionstatechange = () => {
       if (!this.closed) this.events.onState(this.pc.connectionState);
@@ -143,7 +141,6 @@ export class SfuPeer {
           await this.waitForOperation(() => addRemoteIceCandidate(this.pc, message.candidate!));
         else if (this.remoteCandidates.length < 64)
           this.remoteCandidates.push(message.candidate);
-        else throw new Error("Too many SFU ICE candidates");
       }
     };
     const next = this.signalTail.then(work);

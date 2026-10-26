@@ -55,7 +55,7 @@ Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一
 | 从这里开始 | 需要做什么 |
 | --- | --- |
 | [使用在线版](https://demo.piik.tv) | 用电脑浏览器分享画面；手机浏览器支持摄像头访问时，也可选择摄像头分享。 |
-| [下载 Piik App](https://piik.tv/?lang=zh-CN#download) | 解压并启动 Piik App，选择**公网邀请**，点击**进入 Piik**，创建临时房间。 |
+| [下载 Piik App](https://piik.tv/?lang=zh-CN#download) | 电脑上解压程序包，手机或平板安装 App。打开 Piik，选择**公网邀请**，点击**进入 Piik**。 |
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="选择画面，发送邀请，一起观看。"></p>
 
@@ -82,7 +82,7 @@ Piik App 可创建本地房间或临时公网邀请，也能在后台为已授�
 
 <p><a href="./docs/operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik"></a></p>
 
-Piik Server 是一个内置网页界面的独立程序。
+Piik Server 是内置网页界面的独立程序，支持 Windows x64 和 Linux x64／ARM64。
 根据服务器架构下载 Linux x64 的 `piik-<revision>-runtime.tar.gz` 或 ARM64 的
 `piik-<revision>-linux-arm64-runtime.tar.gz`，解压后运行：
 

@@ -65,6 +65,7 @@ func Start(
 	parent context.Context,
 	executable string,
 	localOrigin string,
+	temporaryDirectory string,
 ) (*Process, error) {
 	if parent == nil {
 		parent = context.Background()
@@ -83,7 +84,7 @@ func Start(
 	var err error
 	for attempt := 1; attempt <= startupAttempts; attempt++ {
 		var process *Process
-		process, err = startAttempt(startup, executable, localOrigin)
+		process, err = startAttempt(startup, executable, localOrigin, temporaryDirectory)
 		if err == nil {
 			return process, nil
 		}
@@ -123,11 +124,11 @@ func Start(
 	return nil, err
 }
 
-func startAttempt(parent context.Context, executable, localOrigin string) (*Process, error) {
+func startAttempt(parent context.Context, executable, localOrigin, temporaryDirectory string) (*Process, error) {
 	if err := parent.Err(); err != nil {
 		return nil, err
 	}
-	configPath, err := writeTemporaryConfig()
+	configPath, err := writeTemporaryConfig(temporaryDirectory)
 	if err != nil {
 		return nil, err
 	}
@@ -253,18 +254,12 @@ func startAttempt(parent context.Context, executable, localOrigin string) (*Proc
 			cancel()
 			return nil, errors.Join(errStartupExited, process.Err())
 		case <-parent.Done():
-			if err := process.Close(); err != nil {
-				return nil, errors.Join(parent.Err(), err)
-			}
-			return nil, parent.Err()
+			return nil, process.stopStartup(parent.Err())
 		}
 	}
 	select {
 	case <-parent.Done():
-		if err := process.Close(); err != nil {
-			return nil, errors.Join(parent.Err(), err)
-		}
-		return nil, parent.Err()
+		return nil, process.stopStartup(parent.Err())
 	case <-process.done:
 		cancel()
 		return nil, errors.Join(errStartupExited, process.Err())
@@ -273,8 +268,27 @@ func startAttempt(parent context.Context, executable, localOrigin string) (*Proc
 	return process, nil
 }
 
-func writeTemporaryConfig() (string, error) {
-	file, err := os.CreateTemp("", "piik-cloudflared-*.yml")
+func (process *Process) stopStartup(cause error) error {
+	closeErr := process.Close()
+	err := cause
+	if closeErr != nil {
+		err = errors.Join(cause, closeErr)
+	}
+	// Killing an unready child at our deadline is clean process shutdown, but
+	// its last dependency error still explains why startup did not complete.
+	if errors.Is(cause, context.DeadlineExceeded) && closeErr == nil {
+		process.mu.Lock()
+		detail := process.lastDetail
+		process.mu.Unlock()
+		if detail != "" {
+			err = fmt.Errorf("%w\nlast public invitation detail: %s", err, detail)
+		}
+	}
+	return err
+}
+
+func writeTemporaryConfig(directory string) (string, error) {
+	file, err := os.CreateTemp(directory, "piik-cloudflared-*.yml")
 	if err != nil {
 		return "", fmt.Errorf("public tunnel temporary file could not be created: %w", err)
 	}

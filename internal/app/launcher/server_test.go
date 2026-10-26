@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,6 +25,50 @@ import (
 func appAssets() fs.FS {
 	return fstest.MapFS{
 		"index.html": {Data: []byte("<!doctype html><html><body>client</body></html>")},
+	}
+}
+
+func TestLauncherCompressesEntryAndAssetsWithoutChangingAPI(t *testing.T) {
+	body := []byte(strings.Repeat("Piik launcher asset ", 400))
+	assets := fstest.MapFS{
+		"index.html":    {Data: body},
+		"assets/app.js": {Data: body},
+	}
+	server, err := Start(t.Context(), assets, Options{Version: "development"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	for _, path := range []string{"/client", "/client/", "/assets/app.js"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, origin+path, nil)
+			request.Header.Set("Accept-Encoding", "gzip")
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || response.Header().Get("Content-Encoding") != "gzip" {
+				t.Fatalf("static response: %d, %v", response.Code, response.Header())
+			}
+			reader, err := gzip.NewReader(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reader.Close()
+			decoded, err := io.ReadAll(reader)
+			if err != nil || !bytes.Equal(decoded, body) {
+				t.Fatalf("compressed asset changed: %v", err)
+			}
+			if path != "/assets/app.js" && response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("launcher entry lost its cache policy")
+			}
+		})
+	}
+	request := httptest.NewRequest(http.MethodGet, origin+"/api/client-launcher", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Encoding") != "" || !json.Valid(response.Body.Bytes()) {
+		t.Fatalf("launcher API changed: %d, %v", response.Code, response.Header())
 	}
 }
 
@@ -91,6 +136,80 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 	}
 }
 
+func TestLauncherReentryReturnsTheExistingRoom(t *testing.T) {
+	server := startFixture(t, "https://share.example")
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	post := func(ctx context.Context) (*http.Response, error) {
+		request, err := http.NewRequestWithContext(ctx, http.MethodPost, origin+"/api/client-launcher/launch",
+			strings.NewReader(`{"mode":"local","language":"en"}`))
+		if err != nil {
+			return nil, err
+		}
+		request.Header.Set("Origin", origin)
+		request.Header.Set("Content-Type", "application/json")
+		return (&http.Client{Timeout: 3 * time.Second}).Do(request)
+	}
+	results := make(chan *http.Response, 2)
+	errors := make(chan error, 2)
+	enter := func(ctx context.Context) {
+		response, err := post(ctx)
+		if err != nil {
+			errors <- err
+			return
+		}
+		results <- response
+	}
+	first, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	go enter(first)
+	select {
+	case <-server.Selection():
+	case <-time.After(time.Second):
+		t.Fatal("first entry did not start the room")
+	}
+	// Leaving the page cancels HTTP, but the accepted startup remains alive.
+	cancel()
+	select {
+	case <-errors:
+	case <-time.After(time.Second):
+		t.Fatal("departed page did not release its request")
+	}
+	// A second page or rapid repeat entry must join the accepted startup.
+	go enter(t.Context())
+	go enter(t.Context())
+	target := "http://localhost:8787/#piik-client=1"
+	server.SetResult(target, nil)
+	check := func(response *http.Response) {
+		t.Helper()
+		defer response.Body.Close()
+		var result struct{ Target string }
+		if json.NewDecoder(response.Body).Decode(&result) != nil || response.StatusCode != http.StatusOK || result.Target != target {
+			t.Fatalf("entry did not open the existing room: status=%d result=%+v", response.StatusCode, result)
+		}
+	}
+	for range 2 {
+		select {
+		case response := <-results:
+			check(response)
+		case err := <-errors:
+			t.Fatal(err)
+		case <-time.After(time.Second):
+			t.Fatal("repeat entry did not finish")
+		}
+	}
+	// Returning to the launcher after sharing uses the same healthy room.
+	response, err := post(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	check(response)
+	select {
+	case <-server.Selection():
+		t.Fatal("reentry started a second room")
+	default:
+	}
+}
+
 func TestRoomFailureInvalidatesReadyTargetButKeepsSiteApprovalAvailable(t *testing.T) {
 	server := startFixture(t, "https://share.example")
 	server.changeSite = func(site string, allowed bool) ([]string, error) { return []string{}, nil }
@@ -127,9 +246,8 @@ func TestLauncherRetainsAcceptedSelectionAfterRequestCancellation(t *testing.T) 
 	// Cancellation may race the handoff, but cannot discard an accepted launch.
 	for range 32 {
 		server := &Server{
-			ctx:         t.Context(),
-			selection:   make(chan Selection, 1),
-			resultReady: make(chan struct{}),
+			ctx:       t.Context(),
+			selection: make(chan Selection, 1),
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		request := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/client-launcher/launch",
@@ -150,6 +268,77 @@ func TestLauncherRetainsAcceptedSelectionAfterRequestCancellation(t *testing.T) 
 	}
 }
 
+type pausedLaunchContext struct {
+	context.Context
+	waiting chan struct{}
+	resume  chan struct{}
+}
+
+func (ctx pausedLaunchContext) Done() <-chan struct{} {
+	close(ctx.waiting)
+	<-ctx.resume
+	return ctx.Context.Done()
+}
+
+func TestFailedAttemptCanRetryWithoutReplacingAnOlderRequestResult(t *testing.T) {
+	server := &Server{ctx: t.Context(), selection: make(chan Selection, 1)}
+	// Resume the old HTTP waiter only after the retry has already succeeded.
+	firstContext := pausedLaunchContext{t.Context(), make(chan struct{}), make(chan struct{})}
+	firstResponse := httptest.NewRecorder()
+	firstDone := make(chan struct{})
+	go func() {
+		defer close(firstDone)
+		server.handleLaunch(firstResponse, httptest.NewRequestWithContext(firstContext, "POST", "/api/client-launcher/launch",
+			strings.NewReader(`{"mode":"link","language":"en"}`)))
+	}()
+	select {
+	case <-firstContext.waiting:
+	case <-time.After(time.Second):
+		t.Fatal("first request did not start waiting")
+	}
+	if selection := <-server.Selection(); selection.Mode != ModeLink {
+		t.Fatalf("first selection = %+v", selection)
+	}
+	if server.Begin() {
+		t.Fatal("pending room allowed another start")
+	}
+	server.SetResult("", errors.New("first attempt failed"))
+
+	secondResponse := httptest.NewRecorder()
+	secondDone := make(chan struct{})
+	go func() {
+		defer close(secondDone)
+		server.handleLaunch(secondResponse, httptest.NewRequest("POST", "/api/client-launcher/launch",
+			strings.NewReader(`{"mode":"local","language":"en"}`)))
+	}()
+	select {
+	case selection := <-server.Selection():
+		if selection.Mode != ModeLocal {
+			t.Fatalf("retry selection = %+v", selection)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("failure did not permit retry")
+	}
+	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	if server.Begin() {
+		t.Fatal("successful room allowed replacement")
+	}
+	close(firstContext.resume)
+	for _, done := range []chan struct{}{firstDone, secondDone} {
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("launch request did not complete")
+		}
+	}
+	if firstResponse.Code != http.StatusServiceUnavailable || !strings.Contains(firstResponse.Body.String(), "first attempt failed") {
+		t.Fatalf("old request observed retry result: %d %s", firstResponse.Code, firstResponse.Body.String())
+	}
+	if secondResponse.Code != http.StatusOK || !strings.Contains(secondResponse.Body.String(), "http://localhost:8787/") {
+		t.Fatalf("retry did not return its own success: %d %s", secondResponse.Code, secondResponse.Body.String())
+	}
+}
+
 func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 	const version = "v1.2.3"
 	const revision = "0123456789abcdef0123456789abcdef01234567"
@@ -166,9 +355,13 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 		PackageTarget string `json:"packageTarget"`
 		DefaultMode   Mode   `json:"defaultMode"`
 	}
+	packageTarget := runtime.GOOS + "-" + runtime.GOARCH
+	if runtime.GOOS == "android" {
+		packageTarget = "android-universal"
+	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Version != version || state.Revision != revision ||
-		state.PackageTarget != runtime.GOOS+"-"+runtime.GOARCH || state.DefaultMode != ModeLink {
+		state.PackageTarget != packageTarget || state.DefaultMode != ModeLink {
 		t.Fatalf("launcher build = %d, %+v", response.StatusCode, state)
 	}
 }
@@ -227,7 +420,11 @@ func TestLauncherLANChoicesUseCurrentAddressesAndTheExplicitPreference(t *testin
 
 func TestLauncherPassesTheChosenLANAddressToTheApp(t *testing.T) {
 	server := startFixture(t, "")
-	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	selected := make(chan Selection, 1)
+	go func() {
+		selected <- <-server.Selection()
+		server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	}()
 	response, err := localPost(strings.TrimSuffix(server.URL(), "/client")+"/api/client-launcher/launch",
 		"application/json", strings.NewReader(`{"mode":"local","language":"en","lanAddress":"192.168.1.4"}`))
 	if err != nil {
@@ -237,7 +434,7 @@ func TestLauncherPassesTheChosenLANAddressToTheApp(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("selection status = %d", response.StatusCode)
 	}
-	selection := <-server.Selection()
+	selection := <-selected
 	if selection.LANAddress == nil || *selection.LANAddress != "192.168.1.4" {
 		t.Fatalf("selected invitation address was lost: %+v", selection)
 	}
@@ -376,7 +573,10 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 	}
 	_ = response.Body.Close()
 	cause := errors.New("public tunnel failed: token=private-secret " + strings.Repeat("network unavailable ", 200))
-	server.SetResult("", errors.Join(appfailure.TunnelExited, cause))
+	go func() {
+		<-server.Selection()
+		server.SetResult("", errors.Join(appfailure.TunnelExited, cause))
+	}()
 	response, err = localPost(origin+"/api/client-launcher/launch", "application/json",
 		strings.NewReader(`{"mode":"link","language":"en"}`))
 	if err != nil {
@@ -400,7 +600,7 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&restored); err != nil || restored.Reason != failure.Reason || restored.Detail != failure.Detail {
 		t.Fatalf("restored failure = %+v, %v", restored, err)
 	}
-	if !errors.Is(server.resultErr, cause) {
+	if !errors.Is(server.attempt.err, cause) {
 		t.Fatal("launcher lost original cause")
 	}
 }
@@ -462,7 +662,8 @@ func startFixtureWithBuildAndPassword(
 	site, version, revision, password string,
 ) *Server {
 	t.Helper()
-	server, err := Start(t.Context(), appAssets(), Options{Sites: siteList(site), Version: version, Revision: revision, LocalAccessPassword: password})
+	server, err := Start(t.Context(), appAssets(), Options{Sites: siteList(site), Version: version, Revision: revision, LocalAccessPassword: password,
+		EnableDebug: func() error { return nil }})
 	if err != nil {
 		t.Fatal(err)
 	}

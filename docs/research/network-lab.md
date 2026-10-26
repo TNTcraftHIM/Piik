@@ -140,14 +140,15 @@ game quality. Frame cadence, bitrate, loss, repair, freezes and QP remain separa
 measurements. These longer cases cap captures at 500,000 packets, retaining only
 each packet's first 96 bytes; ordinary cases keep their 100,000-packet bound.
 
-The [full process acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/38505151190)
-on 2026-10-14 passed all 37 scenarios and six negative controls on candidate
-`a5e89805`, including resource cleanup and unchanged host networking. Thirty-one
-scenarios produced advancing decoded audio/video. Blocked UDP, the two
-random-mapping profiles and the three Browser-containing sequential-mapping
-cases produced bounded unavailability; there were no observation timeouts.
-A passing failure observation is not a
-successful connection or an Internet success-rate measurement.
+The [full process acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/40218617697)
+on 2026-10-25 passed all 83 trials across 43 scenarios on candidate `8db79dd0`,
+with paired enhancement on/off trials where applicable and six negative controls.
+Seventy trials produced progressing media; thirteen exhausted their deliberately
+restricted routes with bounded unavailability. There were no observation timeouts.
+All owned resources retired and host networking remained unchanged. The matrix
+includes both voice and picture, STUN fallback, every Browser/App pairing,
+address changes, SFU fallback and constrained/recovered quality. It measures the
+laboratory profiles, not an Internet connection-success rate.
 The [paired comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38301455274)
 also passed eight trials across two seeds with alternating enhancement on/off
 order. All four ordinary App/App trials delivered media; all four random-mapping

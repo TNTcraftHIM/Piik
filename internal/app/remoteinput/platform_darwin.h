@@ -14,7 +14,13 @@ typedef struct {
   int64_t count;
 } PiikInputClick;
 
-bool piik_input_target(bool window, uint32_t id, uint32_t pid, uint64_t created,
+typedef enum {
+  PiikInputTargetUnavailable,
+  PiikInputTargetInvalid,
+  PiikInputTargetReady
+} PiikInputTargetResult;
+
+PiikInputTargetResult piik_input_target(bool window, uint32_t id, uint32_t pid, uint64_t created,
                        PiikInputBounds *bounds);
 bool piik_input_key(CGEventSourceRef source, uint16_t code, bool down,
                     uint64_t flags, bool repeat);

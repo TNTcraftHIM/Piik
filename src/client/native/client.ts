@@ -1,6 +1,8 @@
 import type { z } from "zod";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { debugError, debugEvent } from "../lib/debug";
+import { clientRuntimePort } from "../lib/session";
+import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "./discovery-ports";
 
 import type {
   IceConfig,
@@ -23,8 +25,6 @@ import {
   nativeDiscoveryIdentitySchema,
   nativeConnectSchema,
   nativeHealthSchema,
-  NATIVE_CLIENT_PORT_END,
-  NATIVE_CLIENT_PORT_START,
   NATIVE_CLIENT_PROTOCOL,
   NATIVE_CLIENT_SUBPROTOCOL,
   pongResponseSchema,
@@ -56,7 +56,7 @@ interface NativeDiscoveryOptions {
   signal?: AbortSignal;
 }
 
-function isLoopbackPage(): boolean {
+export function isLoopbackPage(): boolean {
   return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 }
 
@@ -158,17 +158,21 @@ async function discoverNative<T>(
   }
   if (signal?.aborted) return null;
   const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  signal?.addEventListener("abort", abort, { once: true });
   // The first request may wait for browser permission. One shared deadline
   // bounds the scan; a silent port must not hide an App on another port.
   const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    return await Promise.any(Array.from({
+    // An explicit launch stays with its App even when another approved App is faster.
+    const selectedPort = clientRuntimePort();
+    const ports = selectedPort === null ? Array.from({
       length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
-    }, async (_, index) => {
-      const port = NATIVE_CLIENT_PORT_START + index;
+    }, (_, index) => NATIVE_CLIENT_PORT_START + index) : [selectedPort];
+    return await Promise.any(ports.map(async port => {
       const response = await fetch(`http://127.0.0.1:${port}/${path}`, {
         cache: "no-store",
-        signal: signal ? AbortSignal.any([signal, controller.signal]) : controller.signal,
+        signal: controller.signal,
         ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
       } as RequestInit);
       if (!response.ok) throw new Error("Piik App discovery was not accepted");
@@ -197,6 +201,7 @@ async function discoverNative<T>(
     debugEvent("native", "unavailable", { stage: "discovery", timedOut: controller.signal.aborted });
     return null;
   } finally {
+    signal?.removeEventListener("abort", abort);
     window.clearTimeout(timer);
     controller.abort();
   }
@@ -335,6 +340,7 @@ export class NativeClient {
 
   async startShare(
     input: NativeShareInput,
+    onRequested?: () => void,
   ): Promise<{ audio: boolean; codec: NativeVideoCodec; sourceAudio?: boolean }> {
     // Older Apps reject unknown command fields.
     const { showCaptureBorder = false, excludeAudio, ...shareInput } = input;
@@ -348,9 +354,11 @@ export class NativeClient {
         ...(this.health.nativeMedia.microphone || this.health.nativeMedia.shareVolume ? { microphoneMixing: true } : {}),
         ...(this.health.nativeMedia.remoteInput ? { remoteInput: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
+        ...(this.health.nativeMedia.sourceCancellation ? { reportSourceCancellation: true } : {}),
       },
       shareStartedResponseSchema,
       input.source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
+      onRequested,
     );
     if (response.shareId !== input.shareId) {
       throw new Error("Native share identity changed");
@@ -395,6 +403,7 @@ export class NativeClient {
         adapterIndex: path.adapterIndex,
         encoderIndex: path.encoderIndex,
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
+        ...(this.health.nativeMedia.sourceCancellation ? { reportSourceCancellation: true } : {}),
       },
       shareSourceReplacedResponseSchema,
       source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,
@@ -770,6 +779,7 @@ export class NativeClient {
     fields: object,
     schema: z.ZodType<T>,
     timeoutMs: number | null = REQUEST_TIMEOUT_MS,
+    onRequested?: () => void,
   ): Promise<T> {
     if (this.closed || this.socket.readyState !== WebSocket.OPEN) {
       return Promise.reject(new NativeRequestError("unavailable", type));
@@ -814,7 +824,9 @@ export class NativeClient {
         this.pending.delete(id);
         debugError("native", "request-failed", error, { ...details, durationMs: performance.now() - began });
         rejectRequest(new NativeRequestError("send-failed", type, { cause: error }));
+        return;
       }
+      onRequested?.();
     });
   }
 
@@ -835,6 +847,10 @@ export class NativeClient {
       if (pending.timer !== null) window.clearTimeout(pending.timer);
       const failure = requestFailedResponseSchema.safeParse(value);
       if (failure.success) {
+        if (failure.data.code === "source-canceled") {
+          pending.reject(new DOMException("Source selection canceled", "NotAllowedError"));
+          return;
+        }
         pending.reject(new NativeRequestError("rejected", pending.operation, { cause: { code: failure.data.code } }));
         return;
       }

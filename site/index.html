@@ -48,6 +48,12 @@
           stroke-linejoin="round"
         />
       </symbol>
+      <symbol id="phone-mark" viewBox="0 0 32 32">
+        <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="8" y="2" width="16" height="28" rx="4" />
+          <path d="M14 6h4m-4 20h4" />
+        </g>
+      </symbol>
     </svg>
 
     <header class="site-header wrap">
@@ -374,12 +380,12 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Download and extract Piik App.</span
-                    ><span lang="zh-CN">下载并解压 Piik App。</span></strong
+                    ><span lang="en">Download Piik App.</span
+                    ><span lang="zh-CN">下载 Piik App。</span></strong
                   >
                   <p>
-                    <span lang="en"><a href="#download">Download the App package for your system</a>, extract it completely and keep the folder intact.</span
-                    ><span lang="zh-CN"><a href="#download">下载对应系统的 Piik App 程序包</a>，完整解压并保留目录结构。</span>
+                    <span lang="en"><a href="#download">Download Piik App for your device</a>. On computers, extract the package. On phones and tablets, install the app.</span
+                    ><span lang="zh-CN"><a href="#download">下载适合你设备的 Piik App</a>。电脑上解压后打开，手机或平板安装后打开。</span>
                   </p>
                   <dl class="launch-files">
                     <div>
@@ -393,6 +399,10 @@
                     <div>
                       <dt>Linux</dt>
                       <dd><span lang="en">Run </span><span lang="zh-CN">运行 </span><code>./piik-app</code></dd>
+                    </div>
+                    <div>
+                      <dt><span lang="en">Mobile</span><span lang="zh-CN">手机／平板</span></dt>
+                      <dd><span lang="en">Open Piik after installation</span><span lang="zh-CN">安装后打开 Piik</span></dd>
                     </div>
                   </dl>
                 </li>
@@ -633,11 +643,11 @@
             </summary>
             <p>
               <span lang="en"
-                >Windows App and browser sharing are the primary tested paths. Viewers can use a computer or phone browser.
+                >Piik App is available for Windows, macOS, Linux and Android. Friends can watch in a computer or phone browser.
                 Physical-device coverage for the macOS and Linux apps is still limited; if you have a device,
                 we'd welcome your test results and <a href="https://github.com/TNTcraftHIM/Piik/issues">feedback</a>.</span
               ><span lang="zh-CN"
-                >目前主要测试 Windows 版 Piik App 和浏览器分享，观众可使用电脑或手机浏览器。
+                >Piik App 提供 Windows、macOS、Linux 和 Android 版本，朋友可使用电脑或手机浏览器观看。
                 macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span
               >
             </p>
@@ -706,11 +716,11 @@
             </summary>
             <p>
               <span lang="en"
-                >Yes. Share an app window or screen through Piik App, then enable <strong>Remote control</strong> and approve your friends.
+                >Yes. Share an app window or screen through Piik App on a computer, then enable <strong>Remote control</strong> and approve your friends.
                 Turn on <strong>Allow simultaneous control</strong> to share the keyboard and mouse with several friends.
                 Games need to support local multiplayer; see the <a href="./docs/remote-control.html?lang=en">co-play guide</a> for setup and optional gamepads.</span
               ><span lang="zh-CN"
-                >可以。用 Piik App 分享程序窗口或屏幕，开启<strong>远程控制</strong>并授权朋友即可。
+                >可以。用电脑上的 Piik App 分享程序窗口或屏幕，开启<strong>远程控制</strong>并授权朋友即可。
                 打开<strong>允许多人同时控制</strong>，还能和多位朋友共用键鼠，一起玩支持本地多人模式的游戏。
                 操作步骤和可选手柄配置见<a href="./docs/zh/remote-control.html">远控与多人同乐指南</a>。</span
               >
@@ -763,8 +773,8 @@
           <h2 id="download-title"><span lang="en">Get Piik App.</span><span lang="zh-CN">下载 Piik App。</span></h2>
           <p>
             <span lang="en"
-              >Run it on your computer. Friends join with a link.</span
-            ><span lang="zh-CN">电脑上运行，朋友点开链接就能加入。</span>
+              >Share from your computer or phone. Friends join with a link.</span
+            ><span lang="zh-CN">电脑或手机上开播，朋友点开链接就能加入。</span>
           </p>
           <a class="download-release" href="https://github.com/TNTcraftHIM/Piik/releases/latest">
             <span class="download-headline" id="download-headline" hidden><span lang="en"><strong></strong><span></span></span><span lang="zh-CN"><strong></strong><span></span></span></span>
@@ -777,90 +787,117 @@
             </span>
           </a>
         </div>
-        <div class="download-cards">
-          <article class="download-card" aria-labelledby="download-windows">
-            <div class="platform-mark" aria-hidden="true">
-              <svg viewBox="0 0 32 32">
-                <path d="M4 5h10v10H4zm14 0h10v10H18zM4 19h10v10H4zm14 0h10v10H18z" fill="currentColor" />
-              </svg>
-            </div>
-            <h3 id="download-windows">Windows</h3>
-            <fieldset class="lr-toggle download-architecture" disabled>
-              <legend class="sr-only"><span lang="en">Windows architecture</span><span lang="zh-CN">Windows 架构</span></legend>
-              <label><input type="radio" name="windows-architecture" value="windows-amd64" checked /><span><span lang="en">64-bit (x64)</span><span lang="zh-CN">64 位（x64）</span></span></label>
-            </fieldset>
-            <a
-              class="lr-btn button download-button"
-              href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-windows-amd64.zip"
-              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
-              ><span lang="zh-CN">GitHub 下载</span></a
-            ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip"
-              ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
-            >
-          </article>
-          <article class="download-card" aria-labelledby="download-macos">
-            <div class="platform-mark" aria-hidden="true">
-              <svg
-                viewBox="0 0 32 32"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+        <section class="download-platforms" aria-labelledby="download-desktop-title">
+          <h3 class="download-group-title" id="download-desktop-title"><span lang="en">Desktop</span><span lang="zh-CN">桌面端</span></h3>
+          <div class="download-cards">
+            <article class="download-card" aria-labelledby="download-windows">
+              <div class="platform-mark" aria-hidden="true">
+                <svg viewBox="0 0 32 32">
+                  <path d="M4 5h10v10H4zm14 0h10v10H18zM4 19h10v10H4zm14 0h10v10H18z" fill="currentColor" />
+                </svg>
+              </div>
+              <h4 id="download-windows">Windows</h4>
+              <p class="download-variant">x64</p>
+              <a
+                class="lr-btn button download-button"
+                href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-windows-amd64.zip"
+                ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
+                ><span lang="zh-CN">GitHub 下载</span></a
+              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip"
+                ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
               >
-                <rect x="6" y="4" width="20" height="18" rx="2" />
-                <path d="M3 27h26M10 22l-2 5m14-5 2 5" />
-              </svg>
-            </div>
-            <h3 id="download-macos">macOS</h3>
-            <fieldset class="lr-toggle download-architecture" disabled>
-              <legend class="sr-only"><span lang="en">Mac processor</span><span lang="zh-CN">Mac 芯片</span></legend>
-              <label><input type="radio" name="macos-architecture" value="darwin-arm64" checked /><span><span lang="en">Apple silicon</span><span lang="zh-CN">Apple 芯片</span></span></label>
-              <label><input type="radio" name="macos-architecture" value="darwin-amd64" /><span>Intel</span></label>
-            </fieldset>
-            <a
-              class="lr-btn button download-button"
-              href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-darwin-arm64.zip"
-              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
-              ><span lang="zh-CN">GitHub 下载</span></a
-            ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-darwin-arm64.zip"
-              ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
-            >
-            <p><span lang="en">Native capture requires macOS 13+.</span><span lang="zh-CN">原生采集需 macOS 13 及以上。</span></p>
-          </article>
-          <article class="download-card" aria-labelledby="download-linux">
-            <div class="platform-mark" aria-hidden="true">
-              <svg
-                viewBox="0 0 32 32"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2.2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
+            </article>
+            <article class="download-card" aria-labelledby="download-macos">
+              <div class="platform-mark" aria-hidden="true">
+                <svg
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="6" y="4" width="20" height="18" rx="2" />
+                  <path d="M3 27h26M10 22l-2 5m14-5 2 5" />
+                </svg>
+              </div>
+              <h4 id="download-macos">macOS</h4>
+              <fieldset class="lr-toggle download-architecture" disabled>
+                <legend class="sr-only"><span lang="en">Mac processor</span><span lang="zh-CN">Mac 芯片</span></legend>
+                <label><input type="radio" name="macos-architecture" value="darwin-arm64" checked /><span><span lang="en">Apple silicon</span><span lang="zh-CN">Apple 芯片</span></span></label>
+                <label><input type="radio" name="macos-architecture" value="darwin-amd64" /><span>Intel</span></label>
+              </fieldset>
+              <a
+                class="lr-btn button download-button"
+                href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-darwin-arm64.zip"
+                ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
+                ><span lang="zh-CN">GitHub 下载</span></a
+              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-darwin-arm64.zip"
+                ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
               >
-                <rect x="3" y="5" width="26" height="22" rx="4" />
-                <path d="m9 12 5 4-5 4m9 0h5" />
-              </svg>
-            </div>
-            <h3 id="download-linux">Linux</h3>
-            <fieldset class="lr-toggle download-architecture" disabled>
-              <legend class="sr-only"><span lang="en">Linux architecture</span><span lang="zh-CN">Linux 架构</span></legend>
-              <label><input type="radio" name="linux-architecture" value="linux-amd64" checked /><span><span lang="en">64-bit (x64)</span><span lang="zh-CN">64 位（x64）</span></span></label>
-              <label><input type="radio" name="linux-architecture" value="linux-arm64" /><span>ARM64</span></label>
-            </fieldset>
-            <a
-              class="lr-btn button download-button"
-              href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-linux-amd64.zip"
-              ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
-              ><span lang="zh-CN">GitHub 下载</span></a
-            ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-linux-amd64.zip"
-              ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
-            >
-          </article>
-        </div>
+              <p><span lang="en">Native capture requires macOS 13+.</span><span lang="zh-CN">原生采集需 macOS 13 及以上。</span></p>
+            </article>
+            <article class="download-card" aria-labelledby="download-linux">
+              <div class="platform-mark" aria-hidden="true">
+                <svg
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="5" width="26" height="22" rx="4" />
+                  <path d="m9 12 5 4-5 4m9 0h5" />
+                </svg>
+              </div>
+              <h4 id="download-linux">Linux</h4>
+              <fieldset class="lr-toggle download-architecture" disabled>
+                <legend class="sr-only"><span lang="en">Linux architecture</span><span lang="zh-CN">Linux 架构</span></legend>
+                <label><input type="radio" name="linux-architecture" value="linux-amd64" checked /><span>x64</span></label>
+                <label><input type="radio" name="linux-architecture" value="linux-arm64" /><span>ARM64</span></label>
+              </fieldset>
+              <a
+                class="lr-btn button download-button"
+                href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-linux-amd64.zip"
+                ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
+                ><span lang="zh-CN">GitHub 下载</span></a
+              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-linux-amd64.zip"
+                ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
+              >
+            </article>
+          </div>
+        </section>
+        <section class="download-platforms" aria-labelledby="download-mobile-title">
+          <h3 class="download-group-title" id="download-mobile-title"><span lang="en">Mobile</span><span lang="zh-CN">移动端</span></h3>
+          <div class="download-cards download-cards--mobile">
+            <article class="download-card" aria-labelledby="download-android">
+              <div class="platform-mark" aria-hidden="true">
+                <svg aria-hidden="true"><use href="#phone-mark" /></svg>
+              </div>
+              <h4 id="download-android">Android</h4>
+              <p class="download-variant">ARM64 / x64</p>
+              <a class="lr-btn button download-button" href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-android-universal.apk"
+                ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span><span lang="zh-CN">GitHub 下载</span></a
+              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-android-universal.apk"
+                ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a>
+              <p class="download-note"><span lang="en">Android 10 or later.</span><span lang="zh-CN">Android 10 及以上。</span></p>
+            </article>
+            <article class="download-card" aria-labelledby="download-ios">
+              <div class="platform-mark" aria-hidden="true">
+                <svg aria-hidden="true"><use href="#phone-mark" /></svg>
+              </div>
+              <h4 id="download-ios">iOS</h4>
+              <p class="download-variant">iPhone / iPad</p>
+              <a class="lr-btn button download-button" href="https://demo.piik.tv"
+                ><span lang="en">Use online</span><span lang="zh-CN">使用在线版</span><span aria-hidden="true">↗</span></a>
+              <p class="download-note"><span lang="en">Watch, chat and talk in your browser.</span><span lang="zh-CN">通过浏览器观看、聊天与语音。</span></p>
+            </article>
+          </div>
+        </section>
         <div class="download-help">
           <a class="lr-btn button" href="https://github.com/TNTcraftHIM/Piik"><span lang="en">View on GitHub</span><span lang="zh-CN">GitHub 项目</span><span aria-hidden="true"> ↗</span></a>
-          <p><span lang="en">Physical-device coverage for the macOS and Linux apps is still limited. If you have a device, we'd welcome your <a href="https://github.com/TNTcraftHIM/Piik/issues">test results and feedback</a>.</span><span lang="zh-CN">macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span></p>
+          <p><span lang="en">Found a problem? <a href="https://github.com/TNTcraftHIM/Piik/issues">Let us know</a>.</span><span lang="zh-CN">遇到问题？欢迎<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈</a>。</span></p>
         </div>
       </section>
 
@@ -875,11 +912,11 @@
           </h2>
           <p>
             <span lang="en"
-              >Self-host Piik on a Linux server or NAS with your own domain.
-              Server packages support x64 and ARM64; Docker selects the matching architecture automatically.</span
+              >Run your own Piik site on Windows or Linux.
+              Windows packages support x64; Linux packages and Docker images support x64 and ARM64.</span
             ><span lang="zh-CN"
-              >在 Linux 服务器或 NAS 上自部署 Piik，用自己的域名和朋友共享屏幕。
-              服务端程序支持 x64 和 ARM64，Docker 镜像会自动选择对应架构。</span
+              >在 Windows 或 Linux 上部署自己的 Piik 站点。
+              Windows 程序包支持 x64，Linux 程序包和 Docker 镜像支持 x64／ARM64。</span
             >
           </p>
           <a class="docs-index" href="./docs/self-hosting.html" lang="en">Server downloads and setup<span aria-hidden="true"> ↗</span></a>

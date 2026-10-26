@@ -257,7 +257,7 @@ try {
     "build",
     "-trimpath",
     "-ldflags",
-    `-s -w -X github.com/TNTcraftHIM/Piik/internal/app.BuildRevision=${revision} -X github.com/TNTcraftHIM/Piik/internal/app.BuildVersion=${version}`,
+    `-s -w -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Revision=${revision} -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Release=${version}`,
     "-o",
     appPath,
     "./cmd/piik-app",

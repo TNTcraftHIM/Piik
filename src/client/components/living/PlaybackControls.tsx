@@ -5,7 +5,7 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { debugError } from "../../lib/debug";
 import { Btn } from "./primitives";
-import { ViewerPlaybackSettings, type ViewerPlaybackSettingsProps } from "./ViewerPlaybackSettings";
+import { PlaybackPictureControls, PlaybackSettings, type PlaybackSettingsProps } from "./PlaybackSettings";
 import { Tooltip } from "./Tooltip";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { usePlaybackControlsVisibility } from "./use-playback-controls-visibility";
@@ -43,7 +43,7 @@ export function PlaybackControls({
   overlayAction?: ReactNode;
   overlaySettings?: ReactNode;
   remoteActions?: ReactNode;
-  settings?: ViewerPlaybackSettingsProps;
+  settings?: PlaybackSettingsProps;
   sharingAudio?: SharingAudioControl;
 }) {
   const audioRef = useRef<ViewerAudio | null>(null);
@@ -165,7 +165,7 @@ export function PlaybackControlsView({
   togglePlayback: () => void; toggleFullscreen: () => void; toggleMute: () => void;
   setLevel: (level: number) => void; onToggleTheater: () => void; onReconnect?: () => void;
   reconnectAvailable?: boolean; overlayAction?: ReactNode; overlaySettings?: ReactNode; remoteActions?: ReactNode;
-  settings?: ViewerPlaybackSettingsProps;
+  settings?: PlaybackSettingsProps;
   sharingAudio?: boolean; audioControlAvailable?: boolean;
 }) {
   const { t, vis } = useCopy();
@@ -183,7 +183,6 @@ export function PlaybackControlsView({
   const pipTitle = picture.failed ? "playback.pipFailed" : !picture.supported ? "playback.pipUnavailable"
     : picture.active ? "playback.exitPip" : !canPlay ? "playback.pipWaiting" : "playback.pip";
   const theaterTitle = theaterMode ? "viewer.theater.exit" : "viewer.theater";
-  const nextFit = settings?.pictureFit === "contain" ? "cover" : settings?.pictureFit === "cover" ? "fill" : "contain";
   const displayActions = <>
     <Btn icon={picture.active ? "pipExit" : "pip"} draw="playback-pip" title={pipTitle}
       hintTone={picture.failed ? "bad" : undefined}
@@ -232,16 +231,7 @@ export function PlaybackControlsView({
         {remoteActions}
         <span className="lr-playback-view" role="group" aria-label={t("playback.viewControls")}>
           {overlayAction}
-          {settings && <>
-            <span className="lr-playback-fit"><Btn
-              icon={settings.pictureFit === "contain" ? "fitContain" : settings.pictureFit === "cover" ? "fitCover" : "fitStretch"}
-              title="playback.changeFit" hint={`hint-fit-${settings.pictureFit}`} hintText="playback.fitCycle"
-              hintVars={{ current: t(`playback.fit.${settings.pictureFit}`), next: t(`playback.fit.${nextFit}`) }}
-              onClick={() => settings.setPictureFit(nextFit)} /></span>
-            <Btn icon="rotatePicture" title="playback.rotation" hint="hint-picture-rotation" hintText="playback.rotationHint"
-              pressed={settings.pictureRotation !== 0}
-              onClick={() => settings.setPictureRotation(settings.pictureRotation === 0 ? 90 : 0)} />
-          </>}
+          {settings && <span className="lr-playback-picture-actions"><PlaybackPictureControls settings={settings} /></span>}
           <PlaybackMore anchor={barRef} settings={settings} overlaySettings={overlaySettings}
             onReconnect={onReconnect} reconnectAvailable={reconnectAvailable} />
         </span>
@@ -268,14 +258,15 @@ export function PlaybackControlsView({
 
 // Only detailed preferences belong here; direct playback actions stay outside.
 function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnectAvailable }: {
-  anchor: RefObject<HTMLDivElement | null>; settings?: ViewerPlaybackSettingsProps; overlaySettings?: ReactNode;
+  anchor: RefObject<HTMLDivElement | null>; settings?: PlaybackSettingsProps; overlaySettings?: ReactNode;
   onReconnect?: () => void; reconnectAvailable?: boolean;
 }) {
   const { t } = useCopy();
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const available = Boolean(overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
+  const detailed = Boolean(settings?.preview || settings?.remoteTouch || overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
+  const available = detailed || Boolean(settings);
   useAnchoredPopover(anchor, panel, { align: "center", minVisibleHeight: 160, enabled: available });
   const reconnect = onReconnect ? <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"
     cap="viewer.reconnect" disabled={!reconnectAvailable} onClick={() => {
@@ -283,11 +274,11 @@ function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnec
       onReconnect();
     }} /> : null;
   if (!available) return null;
-  return <span className="lr-playback-more">
+  return <span className={`lr-playback-more${detailed ? "" : " is-compact-only"}`}>
     <Btn icon="sliders" title="playback.more" hint="hint-advanced" popoverTarget={id} expanded={open} controls={id} />
     <div id={id} ref={panel} className="lr-floating-surface lr-playback-menu lr-playback-settings" popover="auto" aria-label={t("playback.more")}
       onToggle={event => { if (event.target === event.currentTarget) setOpen(event.newState === "open"); }}>
-      <ViewerPlaybackSettings {...settings} overlaySettings={overlaySettings} reconnect={reconnect} />
+      <PlaybackSettings {...settings} picture={settings} overlaySettings={overlaySettings} reconnect={reconnect} />
     </div>
   </span>;
 }

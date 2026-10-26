@@ -16,12 +16,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
@@ -309,6 +311,94 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 	}
 }
 
+func TestLauncherRetriesARetiredFailureWithoutReplacingAReadyRoom(t *testing.T) {
+	t.Setenv("PIIK_APP_TUNNEL_FIXTURE", "ready")
+	t.Setenv("PIIK_APP_TUNNEL_STARTED", filepath.Join(t.TempDir(), "started"))
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	occupied, err := net.Listen("tcp4", "0.0.0.0:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer occupied.Close()
+	port := occupied.Addr().(*net.TCPAddr).Port
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	control, err := loopback.Start(ctx, loopback.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer control.Close()
+	configPath := filepath.Join(t.TempDir(), "client.json")
+	config, err := appconfig.LoadOrCreate(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config.SetApprovedSites([]string{"https://site.example"})
+	opened := make(chan string, 1)
+	console := newConsole(cancel, true)
+	console.openURL = func(target string) error { opened <- target; return nil }
+	done := make(chan error, 1)
+	go func() {
+		done <- runLauncher(ctx, Options{Port: port, console: console, TunnelProcess: executable},
+			configPath, config, control, func(*Options, appconfig.Config) error { return nil })
+	}()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Errorf("retried room exit retained an obsolete failure: %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Error("retried launcher did not retire")
+		}
+	})
+	var target string
+	select {
+	case target = <-opened:
+	case <-time.After(2 * time.Second):
+		t.Fatal("launcher did not open")
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	endpoint := strings.TrimSuffix(target, "/client") + "/api/client-launcher/launch"
+	post := func() *http.Response {
+		t.Helper()
+		response, err := postLocalLauncher(client, endpoint, "application/json", strings.NewReader(`{"mode":"link","language":"en"}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { response.Body.Close() })
+		return response
+	}
+	if response := post(); response.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("occupied port startup = %d", response.StatusCode)
+	}
+	if err := occupied.Close(); err != nil {
+		t.Fatal(err)
+	}
+	response := post()
+	var ready struct{ Target string }
+	if err := json.NewDecoder(response.Body).Decode(&ready); err != nil || response.StatusCode != http.StatusOK || ready.Target == "" {
+		t.Fatalf("retry did not become ready: %d %+v %v", response.StatusCode, ready, err)
+	}
+	response = post()
+	var reopened struct{ Target string }
+	if err := json.NewDecoder(response.Body).Decode(&reopened); err != nil || response.StatusCode != http.StatusOK || reopened.Target != ready.Target {
+		t.Fatalf("reentry replaced the ready room: %d %+v %v", response.StatusCode, reopened, err)
+	}
+	response, err = client.Get(fmt.Sprintf("http://127.0.0.1:%d/healthz", port))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("launcher reopening retired the ready room = %d", response.StatusCode)
+	}
+}
+
 func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 	t.Setenv("TERM", "dumb")
 	for _, mode := range []string{"launcher", "site", "starred-site", "starred-second-site", "revoked-site"} {
@@ -366,12 +456,18 @@ func TestHungBrowserHandoffDoesNotBlockLauncherOrSiteExit(t *testing.T) {
 				t.Fatal("manual entry was not available while browser opening hung")
 			}
 			if mode == "site" || mode == "starred-site" || mode == "starred-second-site" {
-				if model.view.entry != launchURL("https://share.example") {
+				if model.view.entry != launcher.EntryURL("https://share.example", control.Endpoint().Port) {
 					t.Fatalf("App did not open the selected Site: %s", model.view.entry)
 				}
-				response, err := http.Get(model.launcher)
+				response, err := http.Get(strings.TrimSuffix(model.launcher, "/client") + "/api/client-launcher")
 				if err != nil {
 					t.Fatalf("launcher management is unavailable: %v", err)
+				}
+				var state struct {
+					ControlPort int `json:"controlPort"`
+				}
+				if err := json.NewDecoder(response.Body).Decode(&state); err != nil || state.ControlPort != control.Endpoint().Port {
+					t.Fatalf("launcher selected another App runtime: %+v, %v", state, err)
 				}
 				response.Body.Close()
 				if response.StatusCode != http.StatusOK {
@@ -572,10 +668,10 @@ func TestLocalLaunchRevalidatesTheChosenLANAddress(t *testing.T) {
 }
 
 func TestAppLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
-	value := launchURL("https://share.example/")
+	value := launcher.EntryURL("https://share.example/", loopback.DefaultPortStart)
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "share.example" ||
-		parsed.RawQuery != "" {
+		parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 		t.Fatalf("launch URL = %q, %v", value, err)
 	}
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
@@ -621,7 +717,7 @@ func TestAppDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 			continue
 		}
 		if readErr != nil || !strings.Contains(string(content), `"event":"start"`) ||
-			!strings.Contains(string(content), `"version":"`+buildVersion()+`"`) ||
+			!strings.Contains(string(content), `"version":"`+buildinfo.Version()+`"`) ||
 			!strings.Contains(string(content), `"revision":`) ||
 			!strings.Contains(string(content), `"event":"stopped","failed":true`) {
 			t.Fatalf("missing file lifecycle events: %s, %v", content, readErr)
@@ -699,9 +795,9 @@ func TestFailedCaptureProbeRetainsItsCause(t *testing.T) {
 }
 
 func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
-	value := launchURL("http://localhost:8787/#client-access=secret")
+	value := launcher.EntryURL("http://localhost:8787/#client-access=secret", loopback.DefaultPortStart)
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.RawQuery != "" {
+	if err != nil || parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 		t.Fatalf("local native launch URL = %q, %v", value, err)
 	}
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
@@ -714,13 +810,15 @@ func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 	for _, password := range []string{"x", "好", " ", "+", "%", "#&?=", " 中文 a+b&c?d=e% "} {
 		t.Run(password, func(t *testing.T) {
-			value := launchURLWithLocalAccess(
+			value := launcher.LocalEntryURL(
 				"http://localhost:8787/?retained=query#retained=a%2Bb%25&client-access=old&piik-lang=zh&piik-mode=text&piik-theme=dark",
 				password,
+				loopback.DefaultPortStart,
 			)
-			for _, target := range []string{value, launchURL(value)} {
+			for _, target := range []string{value, launcher.EntryURL(value, loopback.DefaultPortStart)} {
 				parsed, err := url.Parse(target)
-				if err != nil || parsed.RawQuery != "retained=query" {
+				if err != nil || parsed.Query().Get("retained") != "query" ||
+					parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 					t.Fatalf("local launch URL = %q, %v", target, err)
 				}
 				// location.hash stays escaped. Parsing Fragment instead would decode
@@ -736,7 +834,7 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 		})
 	}
 
-	open := launchURLWithLocalAccess("http://localhost:8787/#client-access=old", "")
+	open := launcher.LocalEntryURL("http://localhost:8787/#client-access=old", "", loopback.DefaultPortStart)
 	parsed, err := url.Parse(open)
 	if err != nil {
 		t.Fatal(err)
@@ -782,9 +880,9 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 		{name: "local ignores public override", override: "invalid"},
 		{
 			name: "link", link: true,
-			stunURLs: []string{publicSTUNURL, publicFallbackSTUNURLA, publicFallbackSTUNURLB},
+			stunURLs: []string{"stun:stun.cloudflare.com:3478", "stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"},
 			natPredictionSTUNURLs: []string{
-				publicFallbackSTUNURLA, publicFallbackSTUNURLB,
+				"stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478",
 			},
 		},
 		{

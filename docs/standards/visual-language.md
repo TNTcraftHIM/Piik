@@ -85,7 +85,7 @@ permissions and window chrome are verified in the actual platform, not imitated.
 | Choose a short, fixed mode | Shared `.lr-toggle` sliding selection; option chips/cards when individual choices need explanations, richer previews or wrapping |
 | Switch related content pages | A named tablist with one selected tab and its associated panel; use the shared sliding treatment for short labels, including capture categories, and `navigateTabs` for Arrow/Home/End navigation |
 | Pick a device or an item from a variable list | Existing named selector/menu; use source thumbnails when appearance helps identify the item |
-| Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `QualityNumberControl` when exact entry or a wider accepted range is useful |
+| Adjust a numeric value | Range slider for quick adjustment, with a visible value; reuse `NumberControl` when exact entry or a wider accepted range is useful |
 | Return within a room tool | Shared `BackButton`: left arrow and **Back**, with the same quiet dense treatment in settings and expanded reactions |
 | Apply several settings together | A named preset tile/chip; allow no preset to be selected when the current values are custom |
 
@@ -200,6 +200,11 @@ guidance after a 500 ms hold on both help indicators and action controls,
 without triggering the action on release. Action controls keep their direct
 short-tap action. `Tooltip` owns these interactions; pages do not add their own
 open state or timers.
+
+An actionable sharing failure reveals its status guidance once without moving
+focus. Keep troubleshooting on the status indicator's direct action; do not add
+a permanent caption beside the light. The shared tooltip retains dismissal and
+can be reopened through its ordinary hover or touch-hold interaction.
 
 Mouse hover opens after 500 ms of staying on the trigger; passing through or
 operating a control cancels that pending hint. Keyboard focus and explicit help
@@ -316,8 +321,10 @@ Playback follows the [shared playback owner](./presentation-lifecycle.md#playbac
 Keep related controls together at the picture's lower edge: local playback and
 sound, remote input, viewing options, then window modes with fullscreen last.
 Common actions remain directly available; detailed preferences use an anchored
-popover. A narrow player may use two adjacent rows in the same capsule to preserve
-usable controls, not send window actions to a distant corner. One visibility
+popover. A narrow player keeps one compact row, including sound, remote input
+and window actions. Picture fit and rotation move to the same attached settings
+at that width, reusing their controls rather than duplicating visible actions.
+The playback surface is lightly translucent over the picture. One visibility
 owner hides the complete surface. Grants, pause and source changes do not move
 the bar or resize the picture. Remote input retains its local bezel pull.
 Playback settings own on-screen chat appearance and connection preferences;
@@ -328,6 +335,21 @@ change local display only, separate from the Host's picture settings.
 Persistent interaction and remote-permission tools may use the shared floating
 window; the remote keyboard docks outside the picture and can detach on capable
 browsers. One-step actions and brief adjustments do not need movable windows.
+Touch controllers default to direct touch without a cursor. A draggable mini
+mouse expands on tap, with its cursor spaced above and to the left; one pointer
+position drives both. The existing viewport pans the picture to leave room for
+the mouse at its edges. Added blank space is bounded by the tool's footprint,
+and the cursor stops at the source picture's edges. Two-finger pinch and pan
+move the picture beneath the full mouse, reanchoring its local source target
+without remote input. The compact trackpad retains its two-finger scrolling
+at normal scale.
+A separate button minimizes it and restores the selected touch mode; the
+compact trackpad cursor remains an optional local preference in playback settings.
+Only the mini mouse tucks away after resting at a picture edge, using the player
+controls' idle delay. The wheel shares middle-click, scrolling and held middle-drag
+in one target. Expanded buttons, scrolling and pointer movement share
+the existing input grant and pointer geometry; the keyboard keeps its separate
+docked surface.
 
 Visual source choices (windows, screens and cameras) share named thumbnail cards,
 including their focus, hover and refresh treatment. Thumbnails fit the whole frame

@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,6 +45,144 @@ func TestMain(tests *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(tests.Run())
+}
+
+type retiringCapture struct {
+	processCapture
+	entered, release chan struct{}
+}
+
+func (capture retiringCapture) Video(ctx context.Context, options nativecapture.VideoOptions) (CaptureStream, error) {
+	stream, err := capture.processCapture.Video(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	return &retiringCaptureStream{CaptureStream: stream, entered: capture.entered, release: capture.release}, nil
+}
+
+type retiringCaptureStream struct {
+	CaptureStream
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (stream *retiringCaptureStream) Close() error {
+	stream.once.Do(func() { close(stream.entered) })
+	<-stream.release
+	return stream.CaptureStream.Close()
+}
+
+func TestCloseReleasesUpdateLockBeforeWaitingForCaptureRetirement(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("PIIK_VIDEO_START_GATE", filepath.Join(t.TempDir(), "video"))
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	resume := sync.OnceFunc(func() { close(release) })
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}}
+	session, err := Start(ctx, Options{ShareID: "retiring-audio", Video: video,
+		Capture:      retiringCapture{processCapture{executable}, entered, release},
+		Profile:      QualityProfile{Video: video.Profile, AudioBitrate: 64_000},
+		AudioEnabled: true, MicrophoneMixing: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0"})
+	if err != nil {
+		resume()
+		t.Fatal(err)
+	}
+	defer func() { resume(); _ = session.Close() }()
+	closed := make(chan error, 1)
+	go func() { closed <- session.Close() }()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("Close did not reach capture retirement")
+	}
+	// A startup worker awakened by active/cancellation may still need this lock
+	// before it can finish. Close cannot retain it while waiting for that worker.
+	if session.updateMu.TryLock() {
+		session.updateMu.Unlock()
+	} else {
+		t.Error("Close retained the update lock across blocking retirement")
+	}
+	resume()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("Close did not finish after capture retirement")
+	}
+}
+
+func TestEdgeReplacementFencesNativeControl(t *testing.T) {
+	engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer engine.Close()
+	source, err := engine.NewSource("vp8", 1, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if err = source.SetFormat(0, 320, 180); err != nil {
+		t.Fatal(err)
+	}
+	if err = source.ConfigureOutputs([]uint32{300_000}); err != nil {
+		t.Fatal(err)
+	}
+	events := make(chan Event, 64)
+	session := &Session{shareID: "share_12345678", engine: engine, source: source, ctx: t.Context(),
+		edges: make(map[string]*mediaedge.Edge), events: func(ctx context.Context, event Event) {
+			select {
+			case events <- event:
+			case <-ctx.Done():
+			}
+		}}
+	const connectionID = "connection_12345678"
+	if _, err = session.PrepareEdge(connectionID, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	old := session.edge(connectionID)
+	if err = old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	var closed Event
+	var observations []Event
+	deadline := time.NewTimer(3 * time.Second)
+	defer deadline.Stop()
+	for closed.Current == nil {
+		select {
+		case event := <-events:
+			observations = append(observations, event)
+			if event.Type == "edge-state" && event.State == "closed" {
+				if event.Current == nil || !event.Current() {
+					t.Fatal("current transport failure lost its delivery authority")
+				}
+				closed = event
+			}
+		case <-deadline.C:
+			t.Fatal("edge did not emit its terminal state")
+		}
+	}
+	session.CloseEdge(connectionID)
+	if _, err = session.PrepareEdge(connectionID, nil, false); err != nil {
+		t.Fatal(err)
+	}
+	defer session.CloseEdge(connectionID)
+	if session.edge(connectionID) == old {
+		t.Fatal("replacement reused the retired edge")
+	}
+	for _, event := range observations {
+		if event.Current == nil || event.Current() {
+			t.Fatal("same-ID replacement accepted a retired edge observation", event.Type)
+		}
+	}
 }
 
 func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
@@ -156,7 +295,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			}
 			videoDone := make(chan error, 1)
 			go func() { videoDone <- session.runVideo() }()
-			go session.run(videoDone)
+			go session.run(videoDone, nil)
 			closed := make(chan error, 1)
 			if mode == "closed" {
 				go func() { closed <- session.Close() }()
@@ -321,7 +460,7 @@ func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
 	defer stopShare()
 	operationContext, finishOperation := context.WithCancel(shareContext)
 	defer finishOperation()
-	session := &Session{ctx: shareContext, captureProcess: executable, edgeCapacity: 4}
+	session := &Session{ctx: shareContext, capture: processCapture{executable}, edgeCapacity: 4}
 	stream, _, err := session.prepareVideo(operationContext, nativecapture.VideoOptions{
 		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
 		Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"},
@@ -332,13 +471,13 @@ func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
 	defer stream.Close()
 	finishOperation()
 	select {
-	case <-stream.Done():
+	case <-stream.(*nativecapture.Stream).Done():
 		t.Fatal("finishing permission preparation stopped its accepted picture")
 	case <-time.After(250 * time.Millisecond):
 	}
 	stopShare()
 	select {
-	case <-stream.Done():
+	case <-stream.(*nativecapture.Stream).Done():
 	case <-time.After(2 * time.Second):
 		t.Fatal("capture outlived its owning share")
 	}

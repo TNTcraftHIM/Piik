@@ -23,6 +23,38 @@ class Channel extends EventTarget {
   receive(value: object) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
 }
 
+it("opts into input feedback only when advertised and retains the same grant after a rejected input", () => {
+  const channel = new Channel();
+  const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
+  const ready = { platform: "windows", mode: "room", state: "ready" };
+  channel.receive(ready);
+  expect(channel.sent).toEqual([{ type: "sync" }, { type: "capabilities" }]);
+  channel.receive({ ...ready, capabilities: ["coPlay", "text"] });
+  expect(channel.sent).toHaveLength(2);
+  channel.receive({ ...ready, capabilities: ["coPlay", "text", "inputFeedback"] });
+  expect(channel.sent.at(-1)).toEqual({ type: "capabilities", inputFeedback: true });
+  channel.receive({ ...ready, capabilities: ["coPlay", "text", "inputFeedback"] });
+  expect(channel.sent).toHaveLength(3);
+  session.request();
+  const intent = channel.sent.at(-1)?.intent, grant = "f".repeat(64);
+  const active = { ...ready, state: "active", intent, grant, capabilities: ["inputFeedback"] };
+  channel.receive(active);
+  session.input({ type: "key", code: "KeyW", down: true });
+  const beforeFeedback = channel.sent.length;
+  channel.receive({ ...active, inputFailed: true });
+  expect(session.state).toMatchObject({ state: "active", grant, intent, inputFailed: true });
+  expect(channel.sent).toHaveLength(beforeFeedback);
+  session.input({ type: "key", code: "KeyD", down: true });
+  expect(channel.sent.at(-1)).toEqual({ type: "key", code: "KeyD", down: true, grant });
+  channel.receive(active);
+  expect(session.state?.inputFailed).toBeUndefined();
+  expect(session.state?.grant).toBe(grant);
+  expect(channel.readyState).toBe("open");
+  session.release();
+  expect(channel.sent.at(-1)).toEqual({ type: "release", intent });
+  session.dispose();
+});
+
 it("updates text availability without replacing an active keyboard grant", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});

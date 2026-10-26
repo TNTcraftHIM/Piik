@@ -10,6 +10,7 @@ export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"]
 const roomPreferencesSchema = z.object({
   pictureFit: z.enum(["contain", "cover", "fill"]).default("contain"),
   pictureRotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).catch(0).default(0),
+  previewAutoPause: z.boolean().default(true),
   routePreference: viewerRoutePreferenceSchema.default("auto"),
   overlayEnabled: z.boolean().default(false),
   overlayAppearance: z.object({
@@ -25,6 +26,7 @@ const roomPreferencesSchema = z.object({
   combineKeys: z.boolean().default(false),
   remoteReleaseKey: remoteShortcutKeySchema.default(10),
   remoteStopKey: remoteShortcutKeySchema.default(10),
+  remoteTouchMode: z.enum(["direct", "trackpad"]).default("direct"),
   remoteControlMode: remoteControlModeSchema.exclude(["off"]).default("ask"),
 });
 export type RoomPreferences = z.infer<typeof roomPreferencesSchema>;

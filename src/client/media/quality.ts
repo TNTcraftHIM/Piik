@@ -112,7 +112,7 @@ export const QUALITY_RESOLUTIONS = {
   "720p": { width: 1280, height: 720 },
   "1080p": { width: 1920, height: 1080 },
   "1440p": { width: 2560, height: 1440 },
-  "4K": { width: 3840, height: 2160 },
+  "2160p": { width: 3840, height: 2160 },
 } as const satisfies Record<string, QualityResolution>;
 
 export function qualityResolutionEqual(left: QualityResolution, right: QualityResolution): boolean {

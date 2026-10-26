@@ -33,9 +33,6 @@ type Packetizer struct {
 	hasTimestamp       bool
 	lastTimestamp      time.Duration
 	timestampRemainder float64
-	rebasePending      bool
-	rebaseInput        time.Duration
-	rebaseOutput       time.Duration
 }
 
 func NewPacketizer(payloader rtp.Payloader, payloadType uint8, mtu uint16) *Packetizer {
@@ -47,17 +44,6 @@ func NewPacketizer(payloader rtp.Payloader, payloadType uint8, mtu uint16) *Pack
 func (p *Packetizer) Packetize(data []byte, timestamp, duration time.Duration) ([]*rtp.Packet, error) {
 	if len(data) == 0 || len(data) > MaxAccessUnitBytes || timestamp < 0 || duration <= 0 {
 		return nil, errors.New("encoded video access unit is invalid")
-	}
-	if p.rebasePending {
-		p.rebasePending = false
-		p.rebaseInput = timestamp
-		p.rebaseOutput = p.lastTimestamp + duration
-		timestamp = p.rebaseOutput
-	} else if p.rebaseOutput > 0 {
-		if timestamp < p.rebaseInput {
-			return nil, ErrInvalidTimestamp
-		}
-		timestamp = p.rebaseOutput + timestamp - p.rebaseInput
 	}
 	if p.hasTimestamp {
 		if timestamp <= p.lastTimestamp {
@@ -76,12 +62,4 @@ func (p *Packetizer) Packetize(data []byte, timestamp, duration time.Duration) (
 		return nil, errors.New("encoded video access unit produced no RTP packets")
 	}
 	return packets, nil
-}
-
-// BeginGeneration rebases a replacement source clock. Layer changes within the
-// same source must not call it: they retain the original source timestamps.
-func (p *Packetizer) BeginGeneration() {
-	p.rebasePending = true
-	p.rebaseInput = 0
-	p.rebaseOutput = 0
 }
