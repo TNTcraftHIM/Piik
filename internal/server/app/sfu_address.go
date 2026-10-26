@@ -26,5 +26,5 @@ func resolveSFUPublicIP(ctx context.Context, host string) (string, error) {
 	if len(addresses) == 0 {
 		return "", fmt.Errorf("SFU_PUBLIC_IP has no IPv4 address: %s", host)
 	}
-	return addresses[0].String(), nil
+	return addresses[0].Unmap().String(), nil
 }
