@@ -9,6 +9,7 @@ import { writeAndroidAppIcon } from './app-icons.mjs';
 import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256, ANDROID_APP_PACKAGE_TARGET, androidVersionCode } from './app-package-targets.mjs';
 import { buildVersion } from './release-version.mjs';
 import { assertCleanRevision } from './build-workspace.mjs';
+import { packageAndroidRelease } from './package-android-release.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'mobile', 'android');
@@ -164,14 +165,10 @@ if (!tunnelOnly) {
     if (!badging.includes(`package: name='tv.piik.android' versionCode='${versionCode}' versionName='${versionName}'`) ||
         /application-debuggable/.test(badging) || !badging.includes("native-code: 'arm64-v8a' 'x86_64'"))
       throw new Error('Android release identity, ABIs or debuggable flag differs from the package contract.');
-    const { id: target, artifact } = ANDROID_APP_PACKAGE_TARGET;
-    const digest = createHash('sha256').update(readFileSync(apk)).digest('hex');
+    const { artifact } = ANDROID_APP_PACKAGE_TARGET;
     assertCleanRevision(root, revision);
-    mkdirSync(output, { recursive: true });
-    copyFileSync(apk, join(output, artifact));
-    writeFileSync(join(output, `${artifact}.sha256`), `${digest}  ${artifact}\n`, 'ascii');
-    writeFileSync(join(output, artifact.replace(/\.apk$/, '.release.json')),
-      `${JSON.stringify({ schema: 2, version, revision, target, artifact, artifactSha256: digest }, null, 2)}\n`);
+    packageAndroidRelease(apk, output, version, revision);
+    assertCleanRevision(root, revision);
     console.log(`Piik Android signed release APK: ${join(output, artifact)}`);
   } else console.log(`Piik Android development APK: ${apk}`);
 }
