@@ -202,6 +202,8 @@ separate control password. Viewer identity and requests reuse authenticated room
 membership; grants and encrypted input stay bound to the current route and source.
 Changing the source, stopping sharing, authorization loss or route retirement
 releases the corresponding grants and held input. Reconnection requires a new grant.
+Preparing a source replacement preserves the current source's authorization;
+failed preparation or cancellation does not retire a still-active source.
 An individual input execution failure drops that operation and preserves the
 grant. Failed key/button releases remain owned cleanup; only releases are retried,
 never presses, movement or text. Missing current target geometry suspends input

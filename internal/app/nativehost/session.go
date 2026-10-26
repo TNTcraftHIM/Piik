@@ -552,12 +552,6 @@ func (session *Session) ReplaceSource(
 			return errors.New("native source audio is unavailable until video becomes active")
 		}
 	}
-	if !audioOnly {
-		// Suspend input while changing capture. On success bind the committed
-		// target; on failure the previous picture remains eligible for a new grant.
-		session.remoteInput.SetTarget(nativecapture.CaptureTarget{}, nil)
-		defer session.syncRemoteInputSource(nil)
-	}
 	if excludeAudio != nil {
 		if session.mixer == nil {
 			return errors.New("native audio exclusion requires mixed audio")
@@ -600,6 +594,10 @@ func (session *Session) ReplaceSource(
 			return err
 		}
 		defer capturePreparationDone(replacement)
+		// Preparation still belongs to the old source. Retire its authorization
+		// only when the replacement is ready to enter the capture transaction.
+		session.remoteInput.SetTarget(nativecapture.CaptureTarget{}, nil)
+		defer session.syncRemoteInputSource(nil)
 	}
 	return session.commitCapture(
 		options,
