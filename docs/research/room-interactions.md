@@ -489,8 +489,9 @@ authority remain separate decisions, not prerequisites.
 Reviewed 2026-10-26. The owner's newer 3.0 direction targets Rust. The isolated
 [`prototype/channel-server`](../../prototype/channel-server/README.md) experiment
 uses Axum/Tokio for a real WebSocket chat authority and reuses the existing
-React visual primitives. It does not change the accepted 2.x protocol or prove
-Rust media, native capture, permissions or automatic routing compatibility.
+React visual primitives. Chat is networked; microphone and picture capture are
+local. Production admission, persistence and media transport are the next
+integration boundaries. The accepted 2.x protocol remains unchanged.
 
 Mature references support separating these responsibilities. Public
 [channel permission definitions](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx)
@@ -504,18 +505,15 @@ file bytes need not travel through chat signaling or the media route controller.
 
 The open [Spacebar server](https://github.com/spacebarchat/server) and
 [Mumble implementation](https://github.com/mumble-voip/mumble) are comparative
-references for channel authority and voice, respectively. Their existence does
-not supply Piik's P2P-first controller or justify importing an entire product
-stack. This prototype uses existing platform controls and its own small channel
-authority; no implementation code was copied from these references.
+references for channel authority and voice, respectively. Adopt their separation
+of responsibilities while keeping Piik's P2P-first routing and shared controls.
 
 Channel browsing, conversation, joined voice and picture publication have
 different lifetimes. The prototype retains per-channel drafts/history while
 browsing, and keeps local voice/picture capture in their originating channels.
-Its fixed shared membership is an explicit local test boundary, not a proposed
-authentication or private-channel policy. File exchange needs a finite transfer
-owner with admission, recipient scope, size/retention/deletion and cancellation;
-it is absent rather than simulated by a local attachment.
+All prototype participants can access its three fixed channels. File exchange is
+deferred; its separate transfer owner must define recipients, size, retention
+and cancellation before implementation.
 
 The implementation boundary is:
 
@@ -523,17 +521,15 @@ The implementation boundary is:
 | --- | --- |
 | Web interface and Browser WebRTC | Reuse React components, Browser capture/playback and native `RTCPeerConnection`; channel/publication identities still need explicit integration. |
 | HTTP/WebSocket authority | [Axum](https://docs.rs/axum/latest/axum/extract/ws/) and [Tokio](https://docs.rs/tokio/latest/tokio/) supply the actual running prototype stack. Rust owns message attribution and bounded history. Production admission/storage remain unimplemented. |
-| P2P-first controller | Preserve one graph, one reconcile loop and one serial child operation. The existing Go implementation is the reference owner; no Rust route-controller migration has been implemented or measured. |
-| Native WebRTC | [webrtc-rs](https://github.com/webrtc-rs/webrtc) and [str0m](https://github.com/algesten/str0m) are candidates, not adopted dependencies. Their async versus Sans-I/O ownership changes integration work; neither repository establishes Piik's codec, adaptation, forwarding, NAT and recovery acceptance. |
-| Embedded SFU and native media adapter | The [LiveKit Rust SDK](https://github.com/livekit/rust-sdks) connects clients to a LiveKit server. It is not a Rust implementation of the embedded Go server or Piik's Pion/LiveKit adapter. Retaining a bounded Go media component or separately validating a Rust replacement remains a design choice. |
-| Platform capture/encoding/input | Preserve the OS capability boundaries and existing native helpers where practical. Rust still needs adapters and lifecycle/permission validation; a channel WebSocket does not migrate platform APIs, codecs or attended input authority. |
+| P2P-first controller | Migrate the Go controller's single graph, reconciliation and serial child operations; preserve the aggregate capacity of each endpoint across publications. |
+| Native WebRTC | Evaluate [webrtc-rs](https://github.com/webrtc-rs/webrtc)'s async transport and [str0m](https://github.com/algesten/str0m)'s Sans-I/O transport against Browser codec interoperability, adaptation, forwarding, NAT and recovery. Both remain candidates. |
+| Embedded SFU and native media adapter | The [LiveKit Rust SDK](https://github.com/livekit/rust-sdks) supplies client and service APIs, rather than an SFU implementation. Separately evaluate a Rust replacement for the embedded Go forwarding/allocator components; retain the current media component during that comparison. |
+| Platform capture/encoding/input | Reuse the existing native helpers and OS capability boundaries through narrow Rust adapters. Verify their permissions, resource retirement and frame/input contracts. |
 
-Mapping one channel to one existing room can reuse a single-picture routing
-scope, but the current Host authority also owns publication. It cannot by
-itself support arbitrary channel members publishing. Separate channel authority,
-publisher/subscriber identity and aggregate endpoint capacity before choosing
-that integration. Rust does not imply a central-SFU default or a replacement
-congestion-control algorithm.
+The current Host owns both room authority and publication. Supporting multiple
+publishers requires separate channel, publication and subscription identities,
+with one aggregate capacity owner per endpoint. Preserve P2P-first routing and
+mature congestion control during the migration.
 
 ## Attended Remote-Control Prototype
 
