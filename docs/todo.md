@@ -35,6 +35,12 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **Piik 3.0 channel prototype.** Rust is the selected implementation target.
+  Develop independent channel, chat, voice and screen-share lifecycles on
+  `feat/channel-prototype`, retaining P2P-first routing and shared endpoint
+  capacity. Reuse the existing frontend and validate media/native migration
+  boundaries. The [hosting and subscription assessment](./research/room-interactions.md#multi-room-and-distributed-hosting-assessment)
+  owns the model; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
@@ -64,11 +70,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
-- **Piik 3.0 scope.** Explore independent room, chat, voice and screen-share
-  lifecycles, with optional image/file exchange, retaining the current topology
-  and route controller. Compare continued Go with scoped Rust components before
-  choosing implementation scope. The [hosting and subscription assessment](./research/room-interactions.md#multi-room-and-distributed-hosting-assessment)
-  distinguishes per-room hosting, federation and replicated room authority.
 - **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The

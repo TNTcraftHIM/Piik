@@ -478,9 +478,11 @@ publishers with one selected primary picture is a smaller first UI than a live
 grid; the data model should represent subscriptions rather than hard-code one
 room-wide current publisher.
 
-The proposed starting point is one authority per room, many rooms per instance,
-and existing Go/media components. Automatic room migration, replicated authority
-and a language rewrite are separate decisions, not prerequisites.
+The proposed starting point is one authority per room and many rooms per
+instance. The owner selected Rust as the 3.0 implementation target on 2026-10-26;
+the existing Go/media components remain the current 2.x implementation and the
+reference for required behavior. Automatic room migration and replicated
+authority remain separate decisions, not prerequisites.
 
 ## Attended Remote-Control Prototype
 
