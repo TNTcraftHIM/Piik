@@ -6,15 +6,32 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeAndroidLicenseNotices } from './package-licenses.mjs';
 import { writeAndroidAppIcon } from './app-icons.mjs';
-import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256 } from './app-package-targets.mjs';
+import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256, ANDROID_APP_PACKAGE_TARGET, androidVersionCode } from './app-package-targets.mjs';
 import { buildVersion } from './release-version.mjs';
+import { assertCleanRevision } from './build-workspace.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'mobile', 'android');
 const gradleHome = process.env.GRADLE_HOME;
 const tunnelOnly = process.argv.includes('--tunnel-only');
-for (const option of process.argv.slice(2)) {
-  if (option !== '--tunnel-only') throw new Error(`Unknown Android build option: ${option}`);
+const release = process.argv.includes('--release');
+let output;
+for (let index = 2; index < process.argv.length; index++) {
+  const option = process.argv[index];
+  if (option === '--output' && !output && process.argv[index + 1] && !process.argv[index + 1].startsWith('--')) {
+    output = resolve(process.argv[++index]);
+  } else if (option !== '--tunnel-only' && option !== '--release') {
+    throw new Error(`Unknown Android build option: ${option}`);
+  }
+}
+if ((release && tunnelOnly) || (release !== Boolean(output)))
+  throw new Error('Use --release --output <new-directory> for a signed release APK.');
+if (output && existsSync(output)) throw new Error('Android release output must not already exist.');
+const releaseRevision = release ? assertCleanRevision(root) : undefined;
+if (release) {
+  for (const name of ['PIIK_ANDROID_KEYSTORE', 'PIIK_ANDROID_STORE_PASSWORD', 'PIIK_ANDROID_KEY_ALIAS', 'PIIK_ANDROID_KEY_PASSWORD'])
+    if (!process.env[name]) throw new Error(`Android release signing requires ${name}.`);
+  if (!existsSync(process.env.PIIK_ANDROID_KEYSTORE)) throw new Error('Android release keystore does not exist.');
 }
 if (!process.env.ANDROID_NDK_HOME || (!tunnelOnly && (!process.env.ANDROID_HOME || !gradleHome))) {
   throw new Error('Set ANDROID_HOME, ANDROID_NDK_HOME and GRADLE_HOME to the installed SDK, NDK and Gradle distribution.');
@@ -94,8 +111,10 @@ for (const [abi, arch, target, machine] of [
   console.log(`Android cloudflared ${CLOUDFLARED_VERSION}: ${abi} PIE (16KB)`);
 }
 if (!tunnelOnly) {
-  const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  const revision = releaseRevision ?? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
   const version = buildVersion(root, revision);
+  const versionCode = androidVersionCode(version);
+  const versionName = version === 'development' ? `${version}-${revision.slice(0, 7)}` : version;
   const launcher = readdirSync(join(gradleHome, 'lib')).find(name => /^gradle-launcher-.*\.jar$/.test(name));
   if (!launcher) throw new Error('GRADLE_HOME does not contain a Gradle launcher.');
   const frameDropper = join(root, 'native', 'third_party', 'webrtc-frame-dropper');
@@ -118,8 +137,9 @@ if (!tunnelOnly) {
         throw new Error(`Unexpected FrameDropper Android dependency: ${library}`);
     console.log(`Android WebRTC FrameDropper: ${abi} (static C++ runtime, 16KB)`);
   }
-  if (process.platform === 'win32') run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm run build:web']);
-  else run('npm', ['run', 'build:web']);
+  const webEnv = { ...process.env, VITE_PIIK_VERSION: version, VITE_PIIK_REVISION: revision };
+  if (process.platform === 'win32') run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm run build:web'], { env: webEnv });
+  else run('npm', ['run', 'build:web'], { env: webEnv });
   writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'), 'go');
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
   mkdirSync(join(android, 'app', 'libs'), { recursive: true });
@@ -129,9 +149,29 @@ if (!tunnelOnly) {
   // Recreate the final ZIP so replaced native libraries leave no free blocks.
   run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
     '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android, '--no-daemon',
-    `-PpiikVersion=${version === 'development' ? `${version}-${revision.slice(0, 7)}` : version}`,
-    ':app:packageDebug', '--rerun', ':app:assembleDebug', '--console=plain']);
-  const apk = join(android, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
+    `-PpiikVersion=${versionName}`, `-PpiikVersionCode=${versionCode}`,
+    release ? ':app:packageRelease' : ':app:packageDebug', '--rerun',
+    release ? ':app:assembleRelease' : ':app:assembleDebug', '--console=plain']);
+  const variant = release ? 'release' : 'debug';
+  const apk = join(android, 'app', 'build', 'outputs', 'apk', variant, `app-${variant}.apk`);
   if (!existsSync(apk)) throw new Error('The Android build did not produce its APK.');
-  console.log(`Piik Android development APK: ${apk}`);
+  if (release) {
+    const sdkTools = join(process.env.ANDROID_HOME, 'build-tools', '35.0.0');
+    const signing = execFileSync('java', ['-jar', join(sdkTools, 'lib', 'apksigner.jar'),
+      'verify', '--verbose', '--print-certs', apk], { encoding: 'utf8', windowsHide: true });
+    if (/CN=Android Debug\b/i.test(signing)) throw new Error('A release APK cannot use an Android debug signing key.');
+    const badging = execFileSync(join(sdkTools, `aapt${exe}`), ['dump', 'badging', apk], { encoding: 'utf8', windowsHide: true });
+    if (!badging.includes(`package: name='tv.piik.android' versionCode='${versionCode}' versionName='${versionName}'`) ||
+        /application-debuggable/.test(badging) || !badging.includes("native-code: 'arm64-v8a' 'x86_64'"))
+      throw new Error('Android release identity, ABIs or debuggable flag differs from the package contract.');
+    const { id: target, artifact } = ANDROID_APP_PACKAGE_TARGET;
+    const digest = createHash('sha256').update(readFileSync(apk)).digest('hex');
+    assertCleanRevision(root, revision);
+    mkdirSync(output, { recursive: true });
+    copyFileSync(apk, join(output, artifact));
+    writeFileSync(join(output, `${artifact}.sha256`), `${digest}  ${artifact}\n`, 'ascii');
+    writeFileSync(join(output, artifact.replace(/\.apk$/, '.release.json')),
+      `${JSON.stringify({ schema: 2, version, revision, target, artifact, artifactSha256: digest }, null, 2)}\n`);
+    console.log(`Piik Android signed release APK: ${join(output, artifact)}`);
+  } else console.log(`Piik Android development APK: ${apk}`);
 }

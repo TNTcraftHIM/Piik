@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { APP_PACKAGE_TARGETS } from "./app-package-targets.mjs";
+import { APP_PACKAGE_TARGETS, ANDROID_APP_PACKAGE_TARGET } from "./app-package-targets.mjs";
 import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
 
 export function readReleaseArtifacts(directory, version, revision) {
@@ -49,7 +49,7 @@ export function readReleaseArtifacts(directory, version, revision) {
       throw new Error(`App checksum file mismatch: ${target}`);
     }
   }
-  const expected = [...SERVER_PACKAGE_TARGETS, ...APP_PACKAGE_TARGETS].map(target => target.id);
+  const expected = [...SERVER_PACKAGE_TARGETS, ...APP_PACKAGE_TARGETS, ANDROID_APP_PACKAGE_TARGET].map(target => target.id);
   if (targets.size !== expected.length || expected.some((target) => !targets.has(target))) {
     throw new Error("Publication requires every registered Server and App target");
   }

@@ -129,7 +129,7 @@ package set. While the publishing run's artifacts are available, download all pa
 into one directory (replace `RUN_ID`, `FULL_SOURCE_SHA` and `VERSION`):
 
 ```sh
-for artifact in piik-server piik-server-linux-arm64 piik-server-windows-amd64 piik-app-windows-amd64 piik-app-linux-amd64 piik-app-linux-arm64 piik-app-darwin-arm64 piik-app-darwin-amd64; do
+for artifact in piik-server piik-server-linux-arm64 piik-server-windows-amd64 piik-app-windows-amd64 piik-app-linux-amd64 piik-app-linux-arm64 piik-app-darwin-arm64 piik-app-darwin-amd64 piik-app-android-universal; do
   gh run download RUN_ID --repo TNTcraftHIM/Piik \
     --name "$artifact-FULL_SOURCE_SHA" --dir /tmp/piik-mirror
 done

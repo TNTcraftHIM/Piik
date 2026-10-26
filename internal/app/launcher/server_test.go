@@ -355,9 +355,13 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 		PackageTarget string `json:"packageTarget"`
 		DefaultMode   Mode   `json:"defaultMode"`
 	}
+	packageTarget := runtime.GOOS + "-" + runtime.GOARCH
+	if runtime.GOOS == "android" {
+		packageTarget = "android-universal"
+	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Version != version || state.Revision != revision ||
-		state.PackageTarget != runtime.GOOS+"-"+runtime.GOARCH || state.DefaultMode != ModeLink {
+		state.PackageTarget != packageTarget || state.DefaultMode != ModeLink {
 		t.Fatalf("launcher build = %d, %+v", response.StatusCode, state)
 	}
 }

@@ -1,7 +1,8 @@
-# Android development build
+# Android App
 
-This directory contains the Android App candidate for local acceptance.
-It targets Android 10 or later on arm64 and x86-64 devices.
+This directory contains the Android App shell and capture bridge.
+It targets Android 10 or later on ARM64 and x64 devices, using the Android ABI
+identifiers `arm64-v8a` and `x86_64` in one APK.
 Piik opens its existing Web UI in the system browser. An Android service owns
 the shared Go runtime until the user stops App; the Activity handles visible
 system consent. A `mediaProjection` foreground service
@@ -63,12 +64,37 @@ also include their short revision in Android's application version.
 
 The build produces `android/app/build/outputs/apk/debug/app-debug.apk`
 relative to `mobile/`. The application ID remains `tv.piik.android`, so an update
-replaces the previous candidate while retaining App settings.
+signed with the same key replaces the previous installation while retaining App settings.
 Generated libraries, APKs, Gradle state and signing material stay
 ignored. The `checklinkname` flag is required by the existing Android networking
 dependency [anet on Go 1.23+](https://github.com/wlynxg/anet); it is confined to
 this platform build. Android uses the repository's single Go dependency graph;
 pins and temporary upstream replacements remain owned by the root `go.mod`.
+
+### Signed release APK
+
+Use the same entry with `--release --output <new-directory>`. Set
+`PIIK_BUILD_VERSION` to the planned product version, and inject signing material
+through `PIIK_ANDROID_KEYSTORE` (absolute path), `PIIK_ANDROID_STORE_PASSWORD`,
+`PIIK_ANDROID_KEY_ALIAS` and `PIIK_ANDROID_KEY_PASSWORD`. Keep the keystore and
+passwords outside tracked files; back up the long-lived signing key securely.
+Missing signing inputs fail the release build. Release packages reject Android
+debug certificates and debuggable APKs. Release builds require a clean checkout
+and verify that the same clean source revision still owns the final output.
+
+The universal `piik-app-android-universal.apk` contains arm64 and x86-64.
+The build verifies its signature, package identity, version and ABIs, then writes
+the existing schema-2 release descriptor and SHA-256 sidecar beside the APK.
+The existing CI App matrix publishes it with the matching desktop/Server
+artifacts. Publication requires four repository secrets:
+`PIIK_ANDROID_KEYSTORE_BASE64` (the keystore bytes in Base64),
+`PIIK_ANDROID_STORE_PASSWORD`, `PIIK_ANDROID_KEY_ALIAS` and
+`PIIK_ANDROID_KEY_PASSWORD`. Manual candidate runs use the same release variant
+with a disposable signing key, and never publish.
+
+A formal APK cannot update an earlier debug-signed candidate. Uninstall that
+candidate before installing the first formal release; this removes its saved App
+settings. Later formal updates retain settings when signed with the same key.
 
 Install with `adb install -r <apk>`. The shared startup page offers Local and
 Public link. Use **+** beside the site section to enter a Piik site address;
