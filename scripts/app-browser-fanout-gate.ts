@@ -240,7 +240,7 @@ async function main(): Promise<void> {
       (sample) => sample.controlOpen && sample.requests.includes("list-sources"), 10000);
     stage = "share-browser-capture";
     await click(host, 'button[data-source-tab="browser"]');
-    await click(host, '.lr-source-option.is-browser');
+    await click(host, 'button.lr-source-option[aria-label="Choose what to share"]');
     stage = "share-ingress";
     await waitForSample(() => read(host), (s) => s.sharing && s.receiveRequests === 1 && s.outbound === 1, 30000);
     let invite = await evaluate<string>(cdp, host, "document.querySelector('.lr-invite-url').value", Date.now()+5000);
@@ -313,7 +313,7 @@ async function main(): Promise<void> {
     await evaluate(cdp, host, `fanoutGate.audio(${!initialAudio})`, Date.now()+5000);
     await click(host, 'button[aria-label="Switch source"]');
     await click(host, 'button[data-source-tab="browser"]');
-    await click(host, '.lr-source-option.is-browser');
+    await click(host, 'button.lr-source-option[aria-label="Choose what to share"]');
     await waitForSample(() => read(host), (s) => s.receiveRequests === 2 && s.captures === 2 && s.sharing, 15000);
     const beforeSource = await read(viewers[1]!);
     await waitForSample(() => read(viewers[1]!), (s) => s.width > 0 && s.frames >= beforeSource.frames+20 && s.audio===Number(!initialAudio), 25000);
