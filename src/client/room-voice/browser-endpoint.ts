@@ -3,6 +3,7 @@ import { observeDebugConnection } from "../lib/debug-webrtc";
 import { waitForConnectionOperation } from "../webrtc/connection-operation";
 import type { MicrophoneInput } from "../media/microphone-input";
 import { ViewerAudio } from "../media/viewer-audio";
+import type { OutputAudioContext } from "../media/audio-output";
 import { configureAudioSender, audioSenderCeiling } from "../media/quality";
 import { preferRoomVoiceAudio } from "../webrtc/opus-receive-sdp";
 import { addRemoteIceCandidate, iceServersWithNatPrediction, natPredictionSurveyUrls, NatPredictionCandidateEmitter } from "../webrtc/nat-prediction";
@@ -44,6 +45,7 @@ interface Received {
   audio?: HTMLAudioElement;
   playback?: ViewerAudio;
   blocked: boolean;
+  outputFailed?: boolean;
 }
 
 // One authorized room plan owns these audio transports. This adapter neither
@@ -55,9 +57,14 @@ export class BrowserVoiceEndpoint {
   private state: RoomVoiceState | null = null;
   private peerId = "";
   private generation = 0;
-  private playbackContext: AudioContext | null = null;
+  private playbackContext: OutputAudioContext | null = null;
   private listeningVolume = 1;
-  private readonly createPlaybackContext = (): AudioContext => this.playbackContext ??= new AudioContext();
+  outputDeviceId = "";
+  private outputSerial = Promise.resolve();
+  private outputSwitching = false;
+  private outputUnavailable = false;
+  private readonly createPlaybackContext = (): AudioContext => this.playbackContext ??=
+    new AudioContext({ sinkId: this.outputDeviceId } as AudioContextOptions & { sinkId: string }) as OutputAudioContext;
   readonly muted = new Set<string>();
   readonly peerVolumes = new Map<string, number>();
   deafened = false;
@@ -121,6 +128,63 @@ export class BrowserVoiceEndpoint {
     return samples.flat();
   }
   get autoplayBlocked(): boolean { return !this.deafened && [...this.received.values()].some(binding => binding.blocked); }
+  get outputFailed(): boolean { return this.outputUnavailable || [...this.received.values()].some(binding => binding.outputFailed); }
+
+  // Output work is serialized independently of SDP. A new receiver waits for the
+  // selected device before playing, including when it arrives during a switch.
+  private queueOutput(action: () => Promise<void>): Promise<void> {
+    const result = this.outputSerial.then(action);
+    this.outputSerial = result.catch(() => {});
+    return result;
+  }
+  setOutputDevice(deviceId: string): Promise<void> {
+    const generation = this.generation;
+    return this.queueOutput(async () => {
+      if (generation !== this.generation) throw new DOMException("Voice playback retired", "AbortError");
+      const previous = this.outputDeviceId;
+      const apply = async (id: string) => {
+        const results = await Promise.allSettled([...this.received.values()].flatMap(binding =>
+          binding.audio ? [binding.audio.setSinkId(id)] : []));
+        if (generation !== this.generation) throw new DOMException("Voice playback retired", "AbortError");
+        // Volume changes may have lazily acquired the shared context while the
+        // element switches were pending. Route that current context as well.
+        let context = this.playbackContext;
+        while (context) {
+          try { await context.setSinkId(id); }
+          catch (error) { if (context === this.playbackContext) throw error; }
+          if (generation !== this.generation) throw new DOMException("Voice playback retired", "AbortError");
+          if (context === this.playbackContext) break;
+          context = this.playbackContext;
+        }
+        const failed = results.find(result => result.status === "rejected");
+        if (failed?.status === "rejected") throw failed.reason;
+      };
+      this.outputSwitching = true; this.syncPlayback();
+      try {
+        // Validate the choice even before any remote publication exists.
+        const probe = new Audio();
+        await probe.setSinkId(deviceId);
+        if (generation !== this.generation) throw new DOMException("Voice playback retired", "AbortError");
+        await apply(deviceId);
+        if (generation !== this.generation) throw new DOMException("Voice playback retired", "AbortError");
+        this.outputDeviceId = deviceId; this.outputUnavailable = false;
+        for (const binding of this.received.values()) binding.outputFailed = false;
+      } catch (error) {
+        if (generation === this.generation) {
+          try { await apply(previous); }
+          catch { this.outputUnavailable = true; }
+        }
+        throw error;
+      } finally {
+        this.outputSwitching = false;
+        this.syncPlayback(); this.changed();
+      }
+    });
+  }
+  suspendOutput(): void {
+    this.outputUnavailable = true;
+    this.syncPlayback(); this.changed();
+  }
   updateIceConfig(config: IceConfig): void { this.iceConfig = config; }
 
   setAuthority(state: RoomVoiceState | null, peerId: string): void {
@@ -269,7 +333,8 @@ export class BrowserVoiceEndpoint {
       }
       if (!connection.config.pending && !binding.audio) {
         const audio = binding.audio = new Audio();
-        audio.autoplay = true; audio.hidden = true;
+        // Playback starts only after the output device has been applied.
+        audio.autoplay = false; audio.hidden = true;
         const stream = new MediaStream([track]);
         audio.srcObject = stream;
         // Independent 0–200% master and person controls compose to at most 4×.
@@ -285,7 +350,20 @@ export class BrowserVoiceEndpoint {
   private async play(binding: Received): Promise<void> {
     const audio = binding.audio;
     if (!audio) return;
-    binding.playback?.resume();
+    try {
+      await this.queueOutput(async () => {
+        if (binding.audio !== audio) return;
+        try {
+          if (audio.setSinkId && audio.sinkId !== this.outputDeviceId) await audio.setSinkId(this.outputDeviceId);
+          if (binding.audio === audio) binding.outputFailed = false;
+        } catch (error) {
+          if (binding.audio === audio) { binding.outputFailed = true; this.syncPlayback(); this.changed(); }
+          throw error;
+        }
+      });
+    } catch { return; }
+    if (binding.audio !== audio) return;
+    this.syncPlayback(); binding.playback?.resume();
     try { await audio.play(); if (binding.audio !== audio) return; binding.blocked = false; }
     catch { if (binding.audio !== audio) return; binding.blocked = true; }
     this.changed();
@@ -310,7 +388,7 @@ export class BrowserVoiceEndpoint {
   private syncPlayback(): void {
     for (const binding of this.received.values()) if (binding.playback) {
       const publisher = this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId;
-      binding.playback.setMuted(this.deafened || !!publisher && this.muted.has(publisher));
+      binding.playback.setMuted(this.deafened || this.outputSwitching || this.outputUnavailable || !!binding.outputFailed || !!publisher && this.muted.has(publisher));
       binding.playback.setLevel(this.listeningVolume * (publisher ? this.peerVolumes.get(publisher) ?? 1 : 1));
     }
   }

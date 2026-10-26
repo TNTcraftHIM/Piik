@@ -4,9 +4,11 @@ import { debugError } from "../lib/debug";
 import { BrowserVoiceEndpoint } from "./browser-endpoint";
 import { MicrophoneInput } from "../media/microphone-input";
 import { browserCaptureDevices } from "../media/capture-devices";
+import { audioOutputSelectionSupported, browserAudioOutputs, requestAudioOutputAccess } from "../media/audio-output";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 
 export type RoomVoiceError = "microphoneUnavailable" | "microphoneDenied" | "microphoneMissing" | "microphoneFailed" | "transport" | "rejected" | "closed";
+export type VoiceOutputError = "denied" | "missing" | "failed";
 export interface RoomVoiceSnapshot {
   peerId: string;
   role: "host" | "viewer";
@@ -21,6 +23,10 @@ export interface RoomVoiceSnapshot {
   input: RoomPreferences["voiceInput"];
   listeningVolume: number;
   peerVolumes: ReadonlyMap<string, number>;
+  outputDeviceId: string;
+  outputSupported: boolean;
+  outputPending: boolean;
+  outputError: VoiceOutputError | null;
 }
 interface CaptureRequest { input?: MicrophoneInput; context?: AudioContext; settings: RoomPreferences["voiceInput"] }
 
@@ -31,7 +37,8 @@ export class RoomVoiceSession {
   private listeners = new Set<() => void>();
   private state: RoomVoiceSnapshot = { peerId: "", role: "viewer", connected: false, room: null,
     capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: null,
-    input: readRoomPreferences().voiceInput, listeningVolume: readRoomPreferences().voiceListeningVolume, peerVolumes: new Map() };
+    input: readRoomPreferences().voiceInput, listeningVolume: readRoomPreferences().voiceListeningVolume, peerVolumes: new Map(),
+    outputDeviceId: "", outputSupported: audioOutputSelectionSupported(), outputPending: false, outputError: null };
   private capture: CaptureRequest | null = null;
   private publishing: CaptureRequest | null = null;
   private retiredPublications = new Set<string>();
@@ -46,12 +53,48 @@ export class RoomVoiceSession {
       this.refresh(); this.schedule();
     });
     this.endpoint.setListeningVolume(this.state.listeningVolume);
+    if (typeof navigator !== "undefined") navigator.mediaDevices?.addEventListener?.("devicechange", this.checkOutputDevice);
   }
   getSnapshot = (): RoomVoiceSnapshot => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   get microphone(): boolean { return this.endpoint.microphone; }
   activity = (localOnly = false): Promise<ReadonlyMap<string, number>> => this.endpoint.levels(localOnly);
   microphones = () => browserCaptureDevices("audioinput");
+  outputs = browserAudioOutputs;
+  private checkOutputDevice = async (): Promise<void> => {
+    const deviceId = this.state.outputDeviceId;
+    if (this.closed || !deviceId || this.state.outputPending) return;
+    try {
+      const devices = await this.outputs();
+      if (this.closed || this.state.outputDeviceId !== deviceId || this.state.outputPending) return;
+      if (!devices.some(device => device.id === deviceId)) {
+        this.endpoint.suspendOutput(); this.update({ outputError: "missing" });
+      }
+    } catch { /* A failed enumeration is not proof that a playing device disappeared. */ }
+  };
+  async configureOutput(deviceId?: string): Promise<void> {
+    if (this.closed || this.state.outputPending || !this.state.outputSupported) return;
+    const epoch = this.epoch;
+    this.update({ outputPending: true, outputError: null });
+    try {
+      const requested = deviceId ?? await requestAudioOutputAccess();
+      const selected = requested === "default" ? "" : requested;
+      if (this.closed || epoch !== this.epoch) return;
+      if (selected !== undefined) {
+        await this.endpoint.setOutputDevice(selected);
+        if (this.closed || epoch !== this.epoch) return;
+        this.update({ outputDeviceId: selected, outputError: null });
+        this.resumeAudio();
+      }
+    } catch (error) {
+      if (!this.closed && epoch === this.epoch) {
+        const name = error instanceof Error ? error.name : "";
+        this.update({ outputError: name === "NotAllowedError" ? "denied" : name === "NotFoundError" ? "missing" : "failed" });
+      }
+    } finally {
+      if (!this.closed && epoch === this.epoch) { this.update({ outputPending: false }); void this.checkOutputDevice(); }
+    }
+  }
   private update(patch: Partial<RoomVoiceSnapshot>): void {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(listener => listener());
@@ -60,6 +103,7 @@ export class RoomVoiceSession {
     this.update({ microphone: this.endpoint.microphone, capturePending: !!this.capture || !!this.publishing,
       deafened: this.endpoint.deafened, autoplayBlocked: this.endpoint.autoplayBlocked, muted: new Set(this.endpoint.muted),
       peerVolumes: new Map(this.endpoint.peerVolumes),
+      ...(this.endpoint.outputFailed && !this.state.outputPending && !this.state.outputError ? { outputError: "failed" as const } : {}),
       ...(this.state.error === "transport" && !this.state.room?.unavailable.length && this.endpoint.connected ? { error: null } : {}) });
   }
   updateIceConfig(config: IceConfig): void { this.endpoint.updateIceConfig(config); }
@@ -220,7 +264,13 @@ export class RoomVoiceSession {
     this.epoch++;
     this.cancelCapture(); this.publishing = null; this.endpoint.close();
     this.retiredPublications.clear(); this.scheduled = false;
-    this.update({ connected: false, capturePending: false, microphone: false, autoplayBlocked: false });
+    this.update({ connected: false, capturePending: false, microphone: false, autoplayBlocked: false, outputPending: false });
   }
-  close(): void { if (!this.closed) { this.disconnected(); this.closed = true; this.update({ room: null, peerId: "" }); } }
+  close(): void {
+    if (!this.closed) {
+      this.disconnected(); this.closed = true;
+      if (typeof navigator !== "undefined") navigator.mediaDevices?.removeEventListener?.("devicechange", this.checkOutputDevice);
+      this.update({ room: null, peerId: "" });
+    }
+  }
 }

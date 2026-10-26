@@ -73,6 +73,14 @@ listening volumes, and noise/echo reduction. On supporting sites, the Host can
 also set **Room voice bitrate**; the default is 64 kbps per speaker.
 Browser and App-backed sharing use these same voice controls.
 
+On supporting browsers, **Voice settings → Voice output device** sends room
+voice to your chosen headphones or sound card. If devices are not listed, use
+**Choose a device**; the browser may briefly request microphone access to list
+outputs, without turning on your room microphone. The choice lasts for this page,
+including reconnections. If the device disconnects, choose another output or
+**Default device** to resume listening. Choosing another sound card only prevents
+screen-share echo when that device is outside the shared audio capture.
+
 **Connection topology** at the bottom of the room shows current media routes.
 Idle room members stay visible without a connecting state. **Connection details**
 groups shared picture/audio and room voice separately; voice routes remain

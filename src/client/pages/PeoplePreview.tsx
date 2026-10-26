@@ -77,6 +77,7 @@ export function PeoplePreview() {
         publications: [], connections: [], unavailable: [] },
       capturePending: false, microphone: false, deafened: false, autoplayBlocked: false, muted: new Set(), error: mode === "voice-failed" ? "transport" : null,
       input: { deviceId: "", volume: 1, voiceProcessing: true }, listeningVolume: 1, peerVolumes: new Map(),
+      outputDeviceId: "", outputSupported: true, outputPending: false, outputError: null,
     };
     return { getSnapshot: () => state, subscribe: () => () => {} };
   }, [voiceActive, count, view, self, mode]);

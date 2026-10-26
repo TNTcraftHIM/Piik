@@ -8,6 +8,7 @@ function initialState(viewer: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,
     microphone: false, capturePending: false, deafened: false, listeningVolume: 1, peerVolumes: new Map(), autoplayBlocked: false, error: null, muted: new Set(),
     input: { deviceId: "", volume: 1, voiceProcessing: true },
+    outputDeviceId: "", outputSupported: true, outputPending: false, outputError: null,
     room: { type: "room-voice-state", bitrate: 64_000, revision: 1, enabled: true, hostPeerId: "preview-host", publications: [], connections: [], unavailable: [],
       members: [
         { peerId: "preview-host", connected: true, joined: true,
@@ -55,6 +56,8 @@ export function useRoomVoicePreview(viewer: boolean) {
         .map((member, index) => [member.peerId, Math.max(0, Math.sin(performance.now() / 350 + index * 2)) * .18
           * (member.peerId === state.peerId ? state.input.volume : 1)])),
       microphones: async () => [{ id: "headset", label: "USB Headset" }, { id: "desk", label: "Desk Microphone" }],
+      outputs: async () => [{ id: "headset", label: "USB Headset" }, { id: "speakers", label: "Speakers" }],
+      configureOutput: async (deviceId = "headset") => { setState(current => ({ ...current, outputDeviceId: deviceId })); },
       muteVoice: peerId => setState(current => {
         const muted = new Set(current.muted);
         if (muted.has(peerId)) muted.delete(peerId); else muted.add(peerId);

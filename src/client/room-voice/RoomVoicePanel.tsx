@@ -14,10 +14,11 @@ import { Glyph } from "../ui/icons";
 import type { RoomVoiceSession } from "./session";
 import { MicrophoneLevel } from "./MicrophoneLevel";
 import { describeVoiceParticipant } from "./participant-presentation";
+import { VoiceOutputSelect } from "./VoiceOutputSelect";
 import "./room-voice.css";
 
 export type RoomVoiceView = Pick<RoomVoiceSession, "subscribe" | "getSnapshot" | "resumeAudio" | "command" |
-  "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "setListeningVolume" | "setPeerVolume" | "activity" | "microphones">;
+  "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "setListeningVolume" | "setPeerVolume" | "activity" | "microphones" | "outputs" | "configureOutput">;
 interface Props { session: RoomVoiceView }
 
 function useVoiceLevels(session: RoomVoiceView, enabled: boolean, localOnly = false): ReadonlyMap<string, number> {
@@ -81,6 +82,8 @@ export function RoomVoiceControls({ session }: Props) {
     {state.autoplayBlocked && <Btn icon="play" title="voice.play" cap="voice.play" size="compact" hint="hint-local-play" onClick={() => session.resumeAudio()} />}
     {state.error && <p className="lr-voice-control-error" role="alert"><Glyph name="alert" size={16} />
       <span className={vis ? "visually-hidden" : undefined}>{t(`voice.error.${state.error}`)}</span></p>}
+    {state.outputError && <p className="lr-voice-control-error" role="alert"><Glyph name="headphonesOff" size={16} />
+      <span className={vis ? "visually-hidden" : undefined}>{t(`voice.outputError.${state.outputError}`)}</span></p>}
   </>;
 }
 
@@ -94,6 +97,7 @@ export function RoomVoiceSettings({ session }: Props) {
       volume={state.input.volume} onVolume={value => session.setVolume(value)}
       voiceProcessing={state.input.voiceProcessing} onVoiceProcessing={voiceProcessing => void session.configureInput({ voiceProcessing })} />
     <div className="lr-door-group lr-audio-settings" role="group" aria-label={t("voice.listening")}>
+      <VoiceOutputSelect state={state} load={session.outputs} configure={deviceId => session.configureOutput(deviceId)} />
       <AudioVolumeControl volume={state.listeningVolume} onVolume={value => session.setListeningVolume(value)}
         label="voice.listeningVolume" icon="headphones" hint="hint-volume" hintText="voice.listeningVolumeHint" />
     </div>
