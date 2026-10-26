@@ -1122,12 +1122,18 @@ static int run_pipeline(CaptureRun *run, const char *starting_status) {
   }
   GstStateChangeReturn state =
       gst_element_set_state(run->pipeline, GST_STATE_PLAYING);
-  if (state == GST_STATE_CHANGE_FAILURE) {
-    fail_run(run, "GStreamer pipeline failed to start");
-    goto stopped;
-  }
-  if (gst_element_get_state(run->pipeline, NULL, NULL, 5 * GST_SECOND) ==
-      GST_STATE_CHANGE_FAILURE) {
+  if (state == GST_STATE_CHANGE_FAILURE ||
+      gst_element_get_state(run->pipeline, NULL, NULL, 5 * GST_SECOND) ==
+          GST_STATE_CHANGE_FAILURE) {
+    // State changes can fail before the main loop dispatches the queued error.
+    // Preserve the same primary cause and diagnostics as a live pipeline error.
+    GstBus *failed_bus = gst_element_get_bus(run->pipeline);
+    GstMessage *message = gst_bus_pop_filtered(failed_bus, GST_MESSAGE_ERROR);
+    if (message != NULL) {
+      bus_message(failed_bus, message, run);
+      gst_message_unref(message);
+    }
+    gst_object_unref(failed_bus);
     fail_run(run, "GStreamer pipeline failed to start");
     goto stopped;
   }

@@ -155,6 +155,31 @@ static void check_bus_error_retains_primary_cause(void) {
   g_mutex_clear(&run.lock);
 }
 
+static void check_startup_error_retains_primary_cause(void) {
+  char *missing = NULL;
+  int file = g_file_open_tmp("piik-missing-source-XXXXXX", &missing, NULL);
+  g_assert_cmpint(file, >=, 0);
+  close(file);
+  g_assert_cmpint(unlink(missing), ==, 0);
+  CaptureRun run = {.loop = g_main_loop_new(NULL, FALSE),
+      .pipeline = gst_parse_launch("filesrc name=source ! fakesink", NULL)};
+  g_assert_nonnull(run.pipeline);
+  g_mutex_init(&run.lock);
+  GstElement *source = gst_bin_get_by_name(GST_BIN(run.pipeline), "source");
+  g_assert_nonnull(source);
+  g_object_set(source, "location", missing, NULL);
+  gst_object_unref(source);
+  g_assert_cmpint(run_pipeline(&run, NULL), ==, 2);
+  char *expected = gst_error_get_message(GST_RESOURCE_ERROR, GST_RESOURCE_ERROR_NOT_FOUND);
+  g_assert_cmpstr(run.failure, ==, expected);
+  g_free(expected);
+  g_free(missing);
+  g_free(run.failure);
+  gst_object_unref(run.pipeline);
+  g_main_loop_unref(run.loop);
+  g_mutex_clear(&run.lock);
+}
+
 static void check_slot_profiles(void) {
   char *arguments[23 + 7 * 5] = {
       "capture", "--capture-video", "picker", "1", "0", "0",
@@ -693,6 +718,7 @@ int main(int argc, char **argv) {
   check_pipewire_target_identity();
   check_encoder_admission_and_control();
   check_bus_error_retains_primary_cause();
+  check_startup_error_retains_primary_cause();
   check_slot_profiles();
   check_desktop_source_pixel_aspect();
   check_source_geometry(1920, 1080);
