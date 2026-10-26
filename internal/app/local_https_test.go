@@ -33,13 +33,14 @@ func TestLocalHTTPSAndLoopbackShareRoomAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	port := reservation.Addr().(*net.TCPAddr).Port
-	_ = reservation.Close()
+	defer reservation.Close()
 	ctx, cancel := context.WithCancel(t.Context())
 	control, err := loopback.Start(ctx, loopback.Options{})
 	if err != nil {
 		cancel()
 		t.Fatal(err)
 	}
+	_ = reservation.Close()
 	ready, done := make(chan string, 1), make(chan error, 1)
 	go func() {
 		done <- runLocal(ctx, Options{Local: true, Port: port, LANAddress: addresses[0],
@@ -148,14 +149,28 @@ func TestLocalPortCollisionReleasesTheOtherEntry(t *testing.T) {
 		{"tcp4", "127.0.0.1"}, {"tcp4", addresses[0]}, {"udp4", addresses[0]},
 	} {
 		t.Run(test.network+"/"+test.address, func(t *testing.T) {
+			control, err := loopback.Start(t.Context(), loopback.Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer control.Close()
 			var occupied io.Closer
+			var reservation net.Listener
 			var port int
 			if test.network == "udp4" {
-				socket, err := net.ListenPacket("udp4", net.JoinHostPort(test.address, "0"))
+				// A UDP allocation alone says nothing about the same TCP port.
+				// Reserve both Local HTTP addresses until the UDP fixture is ready.
+				reservation, err = net.Listen("tcp4", "0.0.0.0:0")
 				if err != nil {
 					t.Fatal(err)
 				}
-				occupied, port = socket, socket.LocalAddr().(*net.UDPAddr).Port
+				defer reservation.Close()
+				port = reservation.Addr().(*net.TCPAddr).Port
+				socket, err := net.ListenPacket("udp4", net.JoinHostPort(test.address, fmt.Sprint(port)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				occupied = socket
 			} else {
 				socket, err := net.Listen("tcp4", net.JoinHostPort(test.address, "0"))
 				if err != nil {
@@ -164,11 +179,9 @@ func TestLocalPortCollisionReleasesTheOtherEntry(t *testing.T) {
 				occupied, port = socket, socket.Addr().(*net.TCPAddr).Port
 			}
 			defer occupied.Close()
-			control, err := loopback.Start(t.Context(), loopback.Options{})
-			if err != nil {
-				t.Fatal(err)
+			if reservation != nil {
+				_ = reservation.Close()
 			}
-			defer control.Close()
 			err = runLocal(t.Context(), Options{Local: true, Port: port, LANAddress: addresses[0],
 				DisableBrowser: true, console: newConsole(func() {}, true),
 				Ready: func(string) { t.Error("occupied Local service reported readiness") },
