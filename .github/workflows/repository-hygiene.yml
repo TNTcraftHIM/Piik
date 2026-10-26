@@ -344,7 +344,7 @@ jobs:
       - name: Install pinned Android build tools
         if: matrix.target == 'android-universal'
         run: |
-          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;30.0.16248370'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;30.0.16248370'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
           echo "GRADLE_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v gradle)")")")" >> "$GITHUB_ENV"
           go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20261011034528-197770444867
