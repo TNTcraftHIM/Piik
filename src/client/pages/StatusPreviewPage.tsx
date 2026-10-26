@@ -77,7 +77,7 @@ export function StatusPreviewPage() {
       <AppHeader homeHref="/__status-preview" />
       <main className="sp-main">
         <section className="sp-catalog" id="sharing-troubleshooting">
-          <header><h2>分享失败排查</h2><p>房主的排查入口位于电视下沿。点按「问题排查」查看检查方法；不会自动重试或更改设置。</p></header>
+          <header><h2>分享失败排查</h2><p>出错时，电视下沿的状态灯会主动展开图示提示。点按状态灯查看排查方法。</p></header>
           <label className="sp-failure-choice">错误示例
             <select className="lr-input" value={failureIndex} onChange={event => setFailureIndex(Number(event.target.value))}>
               {SHARING_FAILURES.map(([key, code], index) => <option key={code} value={index}>{t(key)}</option>)}

@@ -60,6 +60,7 @@ export function Tooltip({
   place = "above",
   align = "center",
   toggleOnClick = false,
+  autoOpen = false,
   disabled = false,
   overflow,
   children,
@@ -73,6 +74,8 @@ export function Tooltip({
   align?: Align;
   /** For help-only buttons; action controls keep click and touch long-press. */
   toggleOnClick?: boolean;
+  /** Reveal new guidance once, retaining ordinary dismissal and focus. */
+  autoOpen?: boolean;
   /** Suppress guidance while the control's own disclosure is open. */
   disabled?: boolean;
   children: ReactNode;
@@ -282,6 +285,12 @@ export function Tooltip({
   // the panel stays inside the viewport mid-open — no page-level clamps.
   const pickAlignRef = useRef(pickAlign);
   pickAlignRef.current = pickAlign;
+  useEffect(() => {
+    if (!autoOpen || !enabled) return;
+    mountPanel(true);
+    pickAlignRef.current();
+    setPressOpen(true);
+  }, [autoOpen, enabled, kind, text, ownerDocument]);
   useLayoutEffect(() => {
     const tip = tipRef.current;
     if (panelMounted) {

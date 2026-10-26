@@ -17,7 +17,7 @@ export function StatusIndicator({ status, label, onActivate }: {
   const indicator = (
     <button
       type="button"
-      className={`lr-status-indicator${onActivate && !vis ? " has-action-caption" : ""}`}
+      className="lr-status-indicator"
       data-tone={status.tone}
       data-pulse={status.pulse || undefined}
       aria-label={description}
@@ -25,9 +25,8 @@ export function StatusIndicator({ status, label, onActivate }: {
       onClick={onActivate}
     >
       <Glyph name={status.icon} size={17} />
-      {onActivate && !vis && <span>{t("help.troubleshooting")}</span>}
     </button>
   );
-  return <Tooltip toggleOnClick={!onActivate} kind={hint} tone={status.tone} motion={status.pulse ? "progress" : "still"}
+  return <Tooltip toggleOnClick={!onActivate} autoOpen={Boolean(onActivate)} kind={hint} tone={status.tone} motion={status.pulse ? "progress" : "still"}
     text={vis ? undefined : description}>{indicator}</Tooltip>;
 }

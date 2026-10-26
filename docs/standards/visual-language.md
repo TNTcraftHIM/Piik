@@ -201,6 +201,11 @@ without triggering the action on release. Action controls keep their direct
 short-tap action. `Tooltip` owns these interactions; pages do not add their own
 open state or timers.
 
+An actionable sharing failure reveals its status guidance once without moving
+focus. Keep troubleshooting on the status indicator's direct action; do not add
+a permanent caption beside the light. The shared tooltip retains dismissal and
+can be reopened through its ordinary hover or touch-hold interaction.
+
 Mouse hover opens after 500 ms of staying on the trigger; passing through or
 operating a control cancels that pending hint. Keyboard focus and explicit help
 activation do not wait. Keep the open panel hoverable for reading, with a short

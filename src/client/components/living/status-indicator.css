@@ -15,17 +15,6 @@ button.lr-status-indicator {
   background: transparent;
   cursor: pointer;
 }
-.lr-status-indicator.has-action-caption {
-  gap: 5px;
-  padding-inline: 6px;
-  font-size: 11px;
-  font-weight: 650;
-  white-space: nowrap;
-}
-.lr-status-indicator.has-action-caption:is(:hover, :focus-visible) > span {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
 .lr-status-indicator[data-tone="live"] { --status-colour: var(--live); }
 .lr-status-indicator[data-tone="busy"] { --status-colour: var(--busy); }
 .lr-status-indicator[data-tone="warn"] { --status-colour: var(--warn); }
