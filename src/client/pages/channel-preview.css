@@ -1,0 +1,446 @@
+.cp-shell {
+  width: min(1440px, calc(100% - 64px));
+  margin: 20px auto 40px;
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  min-height: 740px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  overflow: clip;
+  background: var(--paper);
+  box-shadow: var(--panel-shadow);
+}
+.cp-sidebar {
+  background: var(--wall);
+  display: flex;
+  flex-direction: column;
+  padding: 30px 16px 18px;
+  border-right: 1px solid var(--line);
+}
+.cp-home {
+  padding: 0 14px 36px;
+}
+.cp-eyebrow,
+.cp-section-label {
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.13em;
+  color: var(--muted);
+}
+.cp-home h1 {
+  font-size: 21px;
+  letter-spacing: -0.04em;
+  margin: 12px 0 7px;
+}
+.cp-home p,
+.cp-room-heading p {
+  color: var(--muted);
+  font-size: 13px;
+}
+.cp-section-label {
+  padding: 0 14px 12px;
+}
+.cp-channels {
+  display: grid;
+  gap: 8px;
+}
+.cp-channel {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: start;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  padding: 14px 12px;
+}
+.cp-channel:hover {
+  background: var(--control-hover);
+}
+.cp-channel.is-selected {
+  background: var(--paper);
+  border-color: var(--line);
+  box-shadow: 0 3px 8px rgb(var(--surface-shade-rgb) / 0.06);
+}
+.cp-channel.is-selected > .lr-glyph {
+  color: var(--action-text);
+}
+.cp-channel strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+.cp-channel small,
+.cp-sidebar-bottom small {
+  display: block;
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.cp-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+.cp-sidebar-bottom {
+  margin-top: auto;
+  padding: 40px 12px 0;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.cp-sidebar-bottom strong {
+  font-size: 13px;
+}
+.cp-room {
+  min-width: 0;
+}
+.cp-room-heading {
+  padding: 32px 34px 28px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  align-items: start;
+}
+.cp-room-heading h2 {
+  font-size: 30px;
+  letter-spacing: -0.04em;
+  margin: 9px 0 6px;
+  font-weight: 650;
+}
+.cp-preview-badge {
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 5px 10px;
+  white-space: nowrap;
+  font-size: 10px;
+  color: var(--muted);
+}
+.cp-content {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(280px, 1fr);
+}
+.cp-presence {
+  padding: 26px;
+  border-right: 1px solid var(--line);
+}
+.cp-stage {
+  position: relative;
+  aspect-ratio: 1.4;
+  background: var(--wall);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+}
+.cp-stage video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: var(--stage);
+}
+.cp-stage-label {
+  position: absolute;
+  bottom: 10px;
+  left: 12px;
+  background: var(--paper);
+  border-radius: 12px;
+  padding: 3px 9px;
+  font-size: 10px;
+}
+.cp-stage-empty {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 24px;
+  text-align: center;
+}
+.cp-television {
+  color: var(--muted);
+  margin-bottom: 22px;
+  transform: rotate(-4deg);
+}
+.cp-stage h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.cp-stage p {
+  font-size: 11px;
+  color: var(--muted);
+  max-width: 240px;
+}
+.cp-media-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 16px 0 28px;
+}
+.cp-media-actions small,
+.cp-voice-card > small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.cp-voice-card {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 20px;
+}
+.cp-voice-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.cp-voice-title h3 {
+  font-size: 13px;
+  font-weight: 650;
+}
+.cp-seat {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  margin: 20px 0;
+}
+.cp-seat p {
+  font-size: 12px;
+  color: var(--muted);
+}
+.cp-voice-card > small {
+  display: block;
+  margin-top: 14px;
+}
+.cp-voice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cp-context {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 15px;
+}
+.cp-context button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--action-text);
+}
+.cp-error {
+  font-size: 12px;
+  color: var(--danger);
+  margin-top: 16px;
+}
+.cp-conversation {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 24px 22px 18px;
+}
+.cp-conversation > header {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.cp-conversation > header h3 {
+  font-size: 13px;
+  font-weight: 650;
+}
+.cp-conversation > header > span {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--muted);
+}
+.cp-message-log {
+  height: 385px;
+  overflow-y: auto;
+  padding: 30px 0 16px;
+  overflow-wrap: anywhere;
+}
+.cp-chat-welcome {
+  padding: 8px 5px 30px;
+}
+.cp-chat-welcome > .lr-glyph {
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.cp-chat-welcome h3 {
+  font-size: 20px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+}
+.cp-chat-welcome p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+  max-width: 270px;
+}
+.cp-message {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 10px;
+  margin: 15px 0;
+}
+.cp-message > svg {
+  width: 28px;
+  height: 34px;
+}
+.cp-message-meta {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+}
+.cp-message-meta strong {
+  font-size: 12px;
+}
+.cp-message-meta time {
+  font-size: 9px;
+  color: var(--muted);
+}
+.cp-message p {
+  font-size: 13px;
+  white-space: pre-wrap;
+  margin-top: 5px;
+}
+.cp-composer {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px;
+  margin-top: auto;
+  background: var(--wall);
+}
+.cp-composer:focus-within {
+  border-color: var(--action);
+}
+.cp-composer textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 55px;
+  max-height: 160px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+}
+.cp-compose-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.cp-compose-actions small {
+  color: var(--muted);
+  font-size: 9px;
+  margin-left: auto;
+}
+.cp-retention {
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+  margin-top: 10px;
+}
+.cp-reconnect {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: var(--action-text);
+  font-size: inherit;
+}
+@media (min-width: 1450px) {
+  .cp-shell {
+    margin-top: 40px;
+  }
+  .cp-message-log {
+    height: 470px;
+  }
+}
+@media (max-width: 1100px) {
+  .cp-shell {
+    width: calc(100% - 32px);
+    grid-template-columns: 205px minmax(0, 1fr);
+  }
+  .cp-content {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .cp-presence {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .cp-stage {
+    aspect-ratio: 2;
+  }
+  .cp-message-log {
+    height: 300px;
+  }
+}
+@media (max-width: 620px) {
+  .cp-shell {
+    width: calc(100% - 20px);
+    grid-template-columns: minmax(0, 1fr);
+    margin-top: 10px;
+    border-radius: 18px;
+  }
+  .cp-sidebar {
+    padding: 18px 10px 10px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .cp-home {
+    padding: 0 8px 16px;
+  }
+  .cp-home h1 {
+    font-size: 19px;
+    margin-top: 5px;
+  }
+  .cp-home p,
+  .cp-section-label,
+  .cp-channel small,
+  .cp-sidebar-bottom {
+    display: none;
+  }
+  .cp-channels {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .cp-channel {
+    padding: 12px 7px;
+    gap: 6px;
+  }
+  .cp-channel strong {
+    font-size: 11px;
+  }
+  .cp-channel > svg {
+    width: 17px;
+    flex-shrink: 0;
+  }
+  .cp-count {
+    display: none;
+  }
+  .cp-room-heading {
+    padding: 23px 20px;
+  }
+  .cp-room-heading h2 {
+    font-size: 26px;
+  }
+  .cp-room-heading .cp-eyebrow {
+    font-size: 8px;
+  }
+  .cp-preview-badge {
+    padding: 4px 6px;
+    font-size: 8px;
+  }
+  .cp-presence {
+    padding: 18px;
+  }
+  .cp-stage {
+    aspect-ratio: 1.5;
+  }
+  .cp-conversation {
+    padding: 20px 18px;
+  }
+}

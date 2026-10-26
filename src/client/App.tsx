@@ -39,6 +39,10 @@ const TooltipPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/TooltipPreviewPage").then((module) => ({ default: module.TooltipPreviewPage })))
   : null;
 
+const ChannelPreviewPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/ChannelPreviewPage").then((module) => ({ default: module.ChannelPreviewPage })))
+  : null;
+
 const StatusPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/StatusPreviewPage").then((module) => ({ default: module.StatusPreviewPage })))
   : null;
@@ -157,6 +161,9 @@ function AppRoute() {
   useEffect(() => {
     if (appRoute.kind === "viewer") return watchViewerInvites(setViewerRoute);
   }, []);
+  if (ChannelPreviewPage && window.location.pathname === "/__channel-preview") {
+    return <ChannelPreviewPage />;
+  }
   if (PlaybackPreviewPage && window.location.pathname === "/__playback-preview") {
     return <PlaybackPreviewPage />;
   }

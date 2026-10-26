@@ -478,9 +478,45 @@ publishers with one selected primary picture is a smaller first UI than a live
 grid; the data model should represent subscriptions rather than hard-code one
 room-wide current publisher.
 
-The proposed starting point is one authority per room, many rooms per instance,
-and existing Go/media components. Automatic room migration, replicated authority
-and a language rewrite are separate decisions, not prerequisites.
+The proposed starting point is one authority per room and many rooms per
+instance. The owner selected Rust as the 3.0 implementation target on 2026-10-26;
+the existing Go/media components remain the current 2.x implementation and the
+reference for required behavior. Automatic room migration and replicated
+authority remain separate decisions, not prerequisites.
+
+### Rust Channel Prototype Assessment
+
+Reviewed 2026-10-26. The owner's newer 3.0 direction targets Rust. The isolated
+[`prototype/channel-server`](../../prototype/channel-server/README.md) experiment
+uses Axum/Tokio for a real WebSocket chat authority and reuses the existing
+React visual primitives. It does not change the accepted 2.x protocol or prove
+Rust media, native capture, permissions or automatic routing compatibility.
+
+Channel browsing, conversation, joined voice and picture publication have
+different lifetimes. The prototype retains per-channel drafts/history while
+browsing, and keeps local voice/picture capture in their originating channels.
+Its fixed shared membership is an explicit local test boundary, not a proposed
+authentication or private-channel policy. File exchange needs a finite transfer
+owner with admission, recipient scope, size/retention/deletion and cancellation;
+it is absent rather than simulated by a local attachment.
+
+The implementation boundary is:
+
+| Owner | Reuse or remaining Rust work |
+| --- | --- |
+| Web interface and Browser WebRTC | Reuse React components, Browser capture/playback and native `RTCPeerConnection`; channel/publication identities still need explicit integration. |
+| HTTP/WebSocket authority | [Axum](https://docs.rs/axum/latest/axum/extract/ws/) and [Tokio](https://docs.rs/tokio/latest/tokio/) supply the actual running prototype stack. Rust owns message attribution and bounded history. Production admission/storage remain unimplemented. |
+| P2P-first controller | Preserve one graph, one reconcile loop and one serial child operation. The existing Go implementation is the reference owner; no Rust route-controller migration has been implemented or measured. |
+| Native WebRTC | [webrtc-rs](https://github.com/webrtc-rs/webrtc) and [str0m](https://github.com/algesten/str0m) are candidates, not adopted dependencies. Their async versus Sans-I/O ownership changes integration work; neither repository establishes Piik's codec, adaptation, forwarding, NAT and recovery acceptance. |
+| Embedded SFU and native media adapter | The [LiveKit Rust SDK](https://github.com/livekit/rust-sdks) connects clients to a LiveKit server. It is not a Rust implementation of the embedded Go server or Piik's Pion/LiveKit adapter. Retaining a bounded Go media component or separately validating a Rust replacement remains a design choice. |
+| Platform capture/encoding/input | Preserve the OS capability boundaries and existing native helpers where practical. Rust still needs adapters and lifecycle/permission validation; a channel WebSocket does not migrate platform APIs, codecs or attended input authority. |
+
+Mapping one channel to one existing room can reuse a single-picture routing
+scope, but the current Host authority also owns publication. It cannot by
+itself support arbitrary channel members publishing. Separate channel authority,
+publisher/subscriber identity and aggregate endpoint capacity before choosing
+that integration. Rust does not imply a central-SFU default or a replacement
+congestion-control algorithm.
 
 ## Attended Remote-Control Prototype
 
