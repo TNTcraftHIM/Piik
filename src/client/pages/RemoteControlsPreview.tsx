@@ -86,8 +86,8 @@ export function RemoteControlsPreview() {
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Swipe over the picture to move the pointer. Open the mouse from the right edge for buttons and scrolling; use the edge arrow to tuck it away. Input only appears in the local log; it does not control your computer."
-        : "在画面上滑动移动光标。右侧贴边入口可展开鼠标按键与滚轮，再点边缘箭头即可收起。输入只记录在本地，不会操作电脑。"}</p>
+      <p>{en ? "Drag the mini mouse to place it, or tap to expand. Leave it at an edge for two seconds to tuck it away. The expanded mouse has a separate minimize button. Input stays in the local log; it does not control your computer."
+        : "迷你鼠标可以拖动，轻点展开；贴边停留两秒后自动收纳。展开后点击独立按钮缩回迷你状态。输入只记录在本地，不会操作电脑。"}</p>
     </div></header>
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
@@ -123,7 +123,7 @@ export function RemoteControlsPreview() {
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
-      <output>{lastInput || (en ? "Drag over the picture, or open the mouse from the right edge." : "在画面上拖动，或从右侧边缘展开鼠标。")}</output>
+      <output>{lastInput || (en ? "Tap the mini mouse to expand it, or drag it to an edge." : "轻点迷你鼠标展开，或拖到边缘试试自动收纳。")}</output>
     </p>
     <div className="cp-tools">
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
