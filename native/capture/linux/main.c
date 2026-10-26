@@ -544,12 +544,16 @@ static gboolean configure_encoder(VideoOutput *output) {
   }
   set_numeric_property(G_OBJECT(output->encoder), "key-int-max",
                        output->profile.frame_rate * 2);
+  set_numeric_property(G_OBJECT(output->encoder), "gop-size",
+                       output->profile.frame_rate * 2);
   set_numeric_property(G_OBJECT(output->encoder), "b-frames", 0);
+  set_numeric_property(G_OBJECT(output->encoder), "bframes", 0);
   set_numeric_property(G_OBJECT(output->encoder), "ref-frames", 1);
   set_optional_boolean(G_OBJECT(output->encoder), "cabac", FALSE);
   set_optional_boolean(G_OBJECT(output->encoder), "aud", TRUE);
   set_optional_boolean(G_OBJECT(output->encoder), "zerolatency", TRUE);
   set_optional_enum(G_OBJECT(output->encoder), "rate-control", "cbr");
+  set_optional_enum(G_OBJECT(output->encoder), "rc-mode", "cbr");
   guint usage = output->profile.preference == kPreferResolution
                     ? 1
                     : run->profile.preference == kPreferFramerate ? 7 : 4;

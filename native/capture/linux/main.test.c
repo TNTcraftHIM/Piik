@@ -4,26 +4,44 @@
 #undef main
 #include <gst/video/video.h>
 
-typedef struct { GstElement parent; guint bitrate; } FixtureEncoder;
+typedef struct {
+  GstElement parent;
+  guint bitrate;
+  gint gop_size;
+  guint bframes;
+  gint rc_mode;
+} FixtureEncoder;
 typedef struct { GstElementClass parent; } FixtureEncoderClass;
 G_DEFINE_TYPE(FixtureEncoder, fixture_encoder, GST_TYPE_ELEMENT)
 
 static void fixture_set_property(GObject *object, guint id,
                                  const GValue *value, GParamSpec *property) {
-  (void)id;
   (void)property;
-  ((FixtureEncoder *)object)->bitrate = g_value_get_uint(value);
+  FixtureEncoder *encoder = (FixtureEncoder *)object;
+  switch (id) {
+    case 1: encoder->bitrate = g_value_get_uint(value); break;
+    case 2: encoder->gop_size = g_value_get_int(value); break;
+    case 3: encoder->bframes = g_value_get_uint(value); break;
+    case 4: encoder->rc_mode = g_value_get_enum(value); break;
+  }
 }
 
 static void fixture_get_property(GObject *object, guint id,
                                  GValue *value, GParamSpec *property) {
-  (void)id;
   (void)property;
-  g_value_set_uint(value, ((FixtureEncoder *)object)->bitrate);
+  FixtureEncoder *encoder = (FixtureEncoder *)object;
+  switch (id) {
+    case 1: g_value_set_uint(value, encoder->bitrate); break;
+    case 2: g_value_set_int(value, encoder->gop_size); break;
+    case 3: g_value_set_uint(value, encoder->bframes); break;
+    case 4: g_value_set_enum(value, encoder->rc_mode); break;
+  }
 }
 
 static void fixture_encoder_init(FixtureEncoder *encoder) {
   encoder->bitrate = 3000000;
+  encoder->gop_size = 75;
+  encoder->bframes = 2;
 }
 
 static void fixture_encoder_class_init(FixtureEncoderClass *klass) {
@@ -33,6 +51,16 @@ static void fixture_encoder_class_init(FixtureEncoderClass *klass) {
   g_object_class_install_property(object_class, 1,
       g_param_spec_uint("bitrate", "Bitrate", "Bitrate in bps", 1000, 50000000,
                         3000000, G_PARAM_READWRITE | GST_PARAM_MUTABLE_PLAYING));
+  g_object_class_install_property(object_class, 2,
+      g_param_spec_int("gop-size", "GOP size", "Number of frames between intra frames",
+                      -1, G_MAXINT, 75, G_PARAM_READWRITE));
+  g_object_class_install_property(object_class, 3,
+      g_param_spec_uint("bframes", "B frames", "Number of B frames", 0, 4, 2,
+                       G_PARAM_READWRITE));
+  static const GEnumValue modes[] = {{0, "Default", "default"}, {1, "CBR", "cbr"}, {0, NULL, NULL}};
+  g_object_class_install_property(object_class, 4,
+      g_param_spec_enum("rc-mode", "RC mode", "Rate control mode",
+          g_enum_register_static("PiikFixtureRateControl", modes), 0, G_PARAM_READWRITE));
 }
 
 static void check_encoder_admission_and_control(void) {
@@ -53,6 +81,12 @@ static void check_encoder_admission_and_control(void) {
   run.outputs[0] = (VideoOutput){.run = &run, .encoder = encoder,
       .profile = {.bit_rate = 3000000, .frame_rate = 30}};
   g_assert_true(configure_encoder(&run.outputs[0]));
+  gint gop_size = 0, rc_mode = 0;
+  guint bframes = 0;
+  g_object_get(encoder, "gop-size", &gop_size, "bframes", &bframes, "rc-mode", &rc_mode, NULL);
+  g_assert_cmpint(gop_size, ==, 60);
+  g_assert_cmpuint(bframes, ==, 0);
+  g_assert_cmpint(rc_mode, ==, 1);
   g_assert_true(apply_control(&run, "B 0 3000000"));
   g_assert_true(apply_control(&run, "B 0 1000000"));
   guint applied = 0;
