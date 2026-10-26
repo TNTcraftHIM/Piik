@@ -267,11 +267,11 @@ export function ChannelPreviewPage() {
                 <Glyph name={item.icon} size={22} />
                 <span>
                   <strong>{zh ? item.zh : item.en}</strong>
-                  <small>
-                    {voice?.channel === item.id
-                      ? copy("你的麦克风在这里", "Your microphone is here")
-                      : copy("聊天 · 语音 · 屏幕", "Chat, voice & screen")}
-                  </small>
+                  {voice?.channel === item.id ? (
+                    <small>
+                      {copy("你的麦克风在这里", "Your microphone is here")}
+                    </small>
+                  ) : null}
                 </span>
                 {messages[item.id].length ? (
                   <span className="cp-count">{messages[item.id].length}</span>
@@ -308,163 +308,6 @@ export function ChannelPreviewPage() {
           </header>
           <div className="cp-content">
             <section
-              className="cp-presence"
-              aria-label={copy("语音和画面", "Voice and screen")}
-            >
-              <div className="cp-stage">
-                {screen?.channel === selected ? (
-                  <>
-                    <video
-                      ref={video}
-                      autoPlay
-                      playsInline
-                      muted
-                      aria-label={copy("本机屏幕预览", "Local screen preview")}
-                    />
-                    <span className="cp-stage-label">
-                      {copy("仅本机预览", "Local preview only")}
-                    </span>
-                  </>
-                ) : (
-                  <div className="cp-stage-empty">
-                    <div className="cp-television">
-                      <Glyph name="tv" size={65} />
-                    </div>
-                    <h3>
-                      {copy(
-                        "有画面的时候，再打开。",
-                        "Share a view when you feel like it.",
-                      )}
-                    </h3>
-                    <p>
-                      {copy(
-                        "聊天和语音，不用等屏幕亮起来。",
-                        "The conversation can start before the screen does.",
-                      )}
-                    </p>
-                  </div>
-                )}
-              </div>
-              <div className="cp-media-actions">
-                <button
-                  className={`lr-btn is-compact${screen?.channel === selected ? " is-danger" : ""}`}
-                  disabled={
-                    !!pending || (!!screen && screen.channel !== selected)
-                  }
-                  onClick={() =>
-                    screen?.channel === selected
-                      ? stop("screen")
-                      : void capture("screen")
-                  }
-                >
-                  <Glyph name="tv" size={19} />
-                  <span>
-                    {screen?.channel === selected
-                      ? copy("停止预览", "Stop preview")
-                      : copy("预览屏幕", "Preview screen")}
-                  </span>
-                </button>
-                <small>
-                  {copy(
-                    "系统选择器会让你选择画面",
-                    "Choose a surface in the system picker",
-                  )}
-                </small>
-              </div>
-              <div className="cp-voice-card">
-                <div className="cp-voice-title">
-                  <Glyph name="headphones" size={22} />
-                  <h3>{copy("语音小角落", "A little voice corner")}</h3>
-                </div>
-                <div className="cp-seat">
-                  <PawnSvg
-                    color={
-                      voice?.channel === selected ? "var(--you)" : "var(--idle)"
-                    }
-                    voice={
-                      voice?.channel === selected
-                        ? { microphone: !muted }
-                        : undefined
-                    }
-                  />
-                  <p>
-                    {voice?.channel === selected
-                      ? muted
-                        ? copy("你的麦克风已静音", "Your microphone is muted")
-                        : copy("你的麦克风已打开", "Your microphone is open")
-                      : copy(
-                          "不必开口，也可以待一会。",
-                          "You can just hang out for a while.",
-                        )}
-                  </p>
-                </div>
-                {voice?.channel === selected ? (
-                  <div className="cp-voice-actions">
-                    <button
-                      className="lr-btn is-dense"
-                      aria-pressed={muted}
-                      onClick={() => {
-                        voice.stream.getAudioTracks().forEach((track) => {
-                          track.enabled = muted;
-                        });
-                        setMuted(!muted);
-                      }}
-                    >
-                      <Glyph
-                        name={muted ? "microphoneOff" : "microphone"}
-                        size={18}
-                      />
-                      {muted
-                        ? copy("取消静音", "Unmute")
-                        : copy("静音", "Mute")}
-                    </button>
-                    <button
-                      className="lr-btn is-dense is-quiet"
-                      onClick={() => stop("voice")}
-                    >
-                      {copy("离开语音", "Leave voice")}
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    className="lr-btn is-compact"
-                    disabled={!!pending}
-                    onClick={() => void capture("voice")}
-                  >
-                    <Glyph name="microphone" size={18} />
-                    {voice
-                      ? copy("将麦克风移到这里", "Move microphone here")
-                      : copy("试试麦克风", "Try microphone")}
-                  </button>
-                )}
-                <small>
-                  {copy(
-                    "仅采集本机声音，不向其他设备发送。",
-                    "Captures locally. Audio is not sent to other devices.",
-                  )}
-                </small>
-              </div>
-              {voice && voice.channel !== selected ? (
-                <p className="cp-context">
-                  {copy("麦克风仍在：", "Microphone remains in: ")}
-                  {name(voice.channel)}
-                </p>
-              ) : null}
-              {screen && screen.channel !== selected ? (
-                <p className="cp-context">
-                  <button onClick={() => setSelected(screen.channel)}>
-                    {copy("回到屏幕所在频道：", "Return to your screen: ")}
-                    {name(screen.channel)}
-                  </button>
-                </p>
-              ) : null}
-              {error ? (
-                <p className="cp-error" role="alert">
-                  {error}
-                </p>
-              ) : null}
-            </section>
-            <section
               className="cp-conversation"
               aria-label={copy("频道聊天", "Channel chat")}
             >
@@ -484,6 +327,20 @@ export function ChannelPreviewPage() {
                   )}
                 </span>
               </header>
+              {screen?.channel === selected ? (
+                <div className="cp-stage">
+                  <video
+                    ref={video}
+                    autoPlay
+                    playsInline
+                    muted
+                    aria-label={copy("本机屏幕预览", "Local screen preview")}
+                  />
+                  <span className="cp-stage-label">
+                    {copy("仅本机预览", "Local preview only")}
+                  </span>
+                </div>
+              ) : null}
               <div
                 className="cp-message-log"
                 ref={log}
@@ -570,6 +427,129 @@ export function ChannelPreviewPage() {
                   "Chat syncs through the local Rust service. Server restart clears history.",
                 )}
               </p>
+            </section>
+            <section
+              className="cp-presence"
+              aria-label={copy("语音和画面", "Voice and screen")}
+            >
+              <div className="cp-media-actions">
+                <button
+                  className={`lr-btn is-compact${screen?.channel === selected ? " is-danger" : ""}`}
+                  disabled={
+                    !!pending || (!!screen && screen.channel !== selected)
+                  }
+                  onClick={() =>
+                    screen?.channel === selected
+                      ? stop("screen")
+                      : void capture("screen")
+                  }
+                >
+                  <Glyph name="tv" size={19} />
+                  <span>
+                    {screen?.channel === selected
+                      ? copy("停止预览", "Stop preview")
+                      : copy("预览屏幕", "Preview screen")}
+                  </span>
+                </button>
+                <small>
+                  {copy(
+                    "系统选择器会让你选择画面",
+                    "Choose a surface in the system picker",
+                  )}
+                </small>
+              </div>
+              <div className="cp-voice-card">
+                <div className="cp-voice-title">
+                  <Glyph name="headphones" size={22} />
+                  <h3>{copy("本机麦克风", "Local microphone")}</h3>
+                </div>
+                <div className="cp-seat">
+                  <PawnSvg
+                    color={
+                      voice?.channel === selected ? "var(--you)" : "var(--idle)"
+                    }
+                    voice={
+                      voice?.channel === selected
+                        ? { microphone: !muted }
+                        : undefined
+                    }
+                  />
+                  <p>
+                    {voice?.channel === selected
+                      ? muted
+                        ? copy("你的麦克风已静音", "Your microphone is muted")
+                        : copy("你的麦克风已打开", "Your microphone is open")
+                      : copy(
+                          "试试麦克风，感受频道切换。",
+                          "Try your microphone while switching channels.",
+                        )}
+                  </p>
+                </div>
+                {voice?.channel === selected ? (
+                  <div className="cp-voice-actions">
+                    <button
+                      className="lr-btn is-dense"
+                      aria-pressed={muted}
+                      onClick={() => {
+                        voice.stream.getAudioTracks().forEach((track) => {
+                          track.enabled = muted;
+                        });
+                        setMuted(!muted);
+                      }}
+                    >
+                      <Glyph
+                        name={muted ? "microphoneOff" : "microphone"}
+                        size={18}
+                      />
+                      {muted
+                        ? copy("取消静音", "Unmute")
+                        : copy("静音", "Mute")}
+                    </button>
+                    <button
+                      className="lr-btn is-dense is-quiet"
+                      onClick={() => stop("voice")}
+                    >
+                      {copy("离开语音", "Leave voice")}
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="lr-btn is-compact"
+                    disabled={!!pending}
+                    onClick={() => void capture("voice")}
+                  >
+                    <Glyph name="microphone" size={18} />
+                    {voice
+                      ? copy("将麦克风移到这里", "Move microphone here")
+                      : copy("试试麦克风", "Try microphone")}
+                  </button>
+                )}
+                <small>
+                  {copy(
+                    "仅采集本机声音，不向其他设备发送。",
+                    "Captures locally. Audio is not sent to other devices.",
+                  )}
+                </small>
+              </div>
+              {voice && voice.channel !== selected ? (
+                <p className="cp-context">
+                  {copy("麦克风仍在：", "Microphone remains in: ")}
+                  {name(voice.channel)}
+                </p>
+              ) : null}
+              {screen && screen.channel !== selected ? (
+                <p className="cp-context">
+                  <button onClick={() => setSelected(screen.channel)}>
+                    {copy("回到屏幕所在频道：", "Return to your screen: ")}
+                    {name(screen.channel)}
+                  </button>
+                </p>
+              ) : null}
+              {error ? (
+                <p className="cp-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
             </section>
           </div>
         </section>
