@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -58,6 +59,14 @@ func runAudioRecoveryCapture() {
 		}
 	}
 	audio := microphone || (len(os.Args) > 1 && os.Args[1] == "--capture-audio")
+	startupGate := os.Getenv("PIIK_VIDEO_START_GATE")
+	if audio && !microphone && startupGate != "" {
+		if _, err := os.Stat(startupGate + ".active"); err != nil {
+			_ = os.WriteFile(startupGate+".early-audio", nil, 0600)
+			os.Exit(2)
+		}
+		_ = os.WriteFile(startupGate+".audio", []byte(os.Args[3]+":"+os.Args[4]), 0600)
+	}
 	if !audio && os.Getenv("PIIK_VIDEO_FAIL") == "1" {
 		_, _ = io.WriteString(os.Stderr, "stage=mft-set-output-type\nhresult=0xc00d36b4\ndetail=private capture target\n")
 		os.Exit(2)
@@ -74,15 +83,31 @@ func runAudioRecoveryCapture() {
 		<-stopped
 		return
 	}
-	period := time.Second / 30
+	profile := audioRecoveryProfile()
+	if !audio {
+		for index := 1; index+1 < len(os.Args); index++ {
+			value, _ := strconv.ParseUint(os.Args[index+1], 10, 32)
+			switch os.Args[index] {
+			case "--width":
+				profile.Width = uint32(value)
+			case "--height":
+				profile.Height = uint32(value)
+			case "--fps":
+				profile.Framerate = uint32(value)
+			case "--bitrate":
+				profile.Bitrate = uint32(value)
+			}
+		}
+	}
+	period := time.Second / time.Duration(profile.Framerate)
 	status := []byte(`{"state":"active","audio":true}`)
 	if audio {
 		period = 20 * time.Millisecond
 	} else {
-		outputs := nativecapture.ScreenShareOutputs(audioRecoveryProfile())
+		outputs := nativecapture.ScreenShareOutputs(profile)
 		outputs = append(outputs, outputs[0])
 		status, _ = json.Marshal(CaptureState{State: "active", Codec: "vp8",
-			Width: 1280, Height: 720, FPS: 30, Outputs: outputs})
+			Width: profile.Width, Height: profile.Height, FPS: profile.Framerate, Outputs: outputs})
 	}
 	marker := os.Getenv("PIIK_AUDIO_WAIT_FOR_VIDEO")
 	if audio && marker != "" {
@@ -98,6 +123,36 @@ func runAudioRecoveryCapture() {
 			case <-ticker.C:
 			}
 		}
+	}
+	if !audio && startupGate != "" && os.Args[3] == "1" && profile.Width == audioRecoveryProfile().Width {
+		var starting CaptureState
+		_ = json.Unmarshal(status, &starting)
+		starting.State = "starting"
+		index := uint32(0)
+		starting.AdapterIndex = &index
+		starting.AdapterName, starting.AdapterIdentity = "Fixture", "fixture"
+		starting.EncoderName, starting.EncoderIdentity = "Fixture VP8", "fixture-vp8"
+		initial, _ := json.Marshal(starting)
+		write(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: initial})
+		ticker := time.NewTicker(5 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if _, err := os.Stat(startupGate + ".fail"); err == nil {
+				_, _ = io.WriteString(os.Stderr, "stage=fixture-video-initialization\n")
+				os.Exit(2)
+			}
+			if _, err := os.Stat(startupGate + ".release"); err == nil {
+				break
+			}
+			select {
+			case <-stopped:
+				return
+			case <-ticker.C:
+			}
+		}
+	}
+	if !audio && startupGate != "" {
+		_ = os.WriteFile(startupGate+".active", nil, 0600)
 	}
 	write(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: status})
 	if !audio && marker != "" {
@@ -131,6 +186,205 @@ func runAudioRecoveryCapture() {
 			write(nativecapture.Frame{Kind: nativecapture.FrameVP8, Layer: layer, Width: 8, Height: 8,
 				Timestamp: pts, Duration: period, KeyFrame: true, Data: sfu.VP8KeyFrame8x8})
 		}
+	}
+}
+
+func TestMixedSourceAudioWaitsForActiveVideoWithoutBlockingStart(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	gate := filepath.Join(t.TempDir(), "video")
+	t.Setenv("PIIK_VIDEO_START_GATE", gate)
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	events := make(chan Event, 32)
+	video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+		Target: nativecapture.CaptureTarget{Kind: "window", SourceID: "1", PID: 42, CreationTime: "1", Title: "Fixture"}}
+	session, err := Start(ctx, Options{ShareID: "staged-audio", CaptureProcess: executable,
+		Video: video, Profile: QualityProfile{Video: video.Profile, AudioBitrate: 64_000},
+		AudioEnabled: true, MicrophoneMixing: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0",
+		Events: func(_ context.Context, event Event) { events <- event }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if _, err := os.Stat(gate + ".early-audio"); err == nil {
+		t.Fatal("source audio initialized before video became active")
+	}
+	if !session.HasAudio() || session.SourceAudio() == nil || *session.SourceAudio() {
+		t.Fatal("pending source audio changed the mixed output shape or claimed readiness")
+	}
+	if err := os.WriteFile(gate+".release", nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		select {
+		case event := <-events:
+			if event.Type == "audio-state" && event.SourceAudio {
+				if _, err := os.Stat(gate + ".audio"); err != nil {
+					t.Fatal("source audio did not initialize after active video")
+				}
+				return
+			}
+		case <-ctx.Done():
+			t.Fatal("active video did not resume pending source audio")
+		}
+	}
+}
+
+func TestPendingSourceAudioRetiresWithVideoOrLaterSelection(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finish := range []string{"stop", "video-failure", "audio-off", "source-replacement", "audio-profile", "video-profile", "audio-on"} {
+		t.Run(finish, func(t *testing.T) {
+			gate := filepath.Join(t.TempDir(), "video")
+			t.Setenv("PIIK_VIDEO_START_GATE", gate)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			events := make(chan Event, 32)
+			video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+				Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}}
+			session, err := Start(ctx, Options{ShareID: "pending-audio", CaptureProcess: executable,
+				Video: video, Profile: QualityProfile{Video: video.Profile, AudioBitrate: 64_000},
+				AudioEnabled: true, MicrophoneMixing: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0",
+				Events: func(_ context.Context, event Event) { events <- event }})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer session.Close()
+			completed := make(chan error, 1)
+			switch finish {
+			case "stop":
+				go func() { completed <- session.Close() }()
+			case "video-failure":
+				if err := os.WriteFile(gate+".fail", nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+				go func() { err := <-session.Done(); completed <- err }()
+			case "audio-off", "source-replacement":
+				next := video
+				if finish == "source-replacement" {
+					next.Target = nativecapture.CaptureTarget{Kind: "window", SourceID: "2", PID: 99, CreationTime: "2", Title: "Next fixture"}
+				}
+				go func() { completed <- session.ReplaceSource(next, false, nil) }()
+			case "audio-profile":
+				profile := QualityProfile{Video: video.Profile, AudioBitrate: 32_000}
+				go func() { completed <- session.UpdateProfile(profile) }()
+			case "video-profile":
+				profile := QualityProfile{Video: video.Profile, AudioBitrate: 64_000}
+				profile.Video.Width, profile.Video.Height = 640, 360
+				go func() { completed <- session.UpdateProfile(profile) }()
+			case "audio-on":
+				go func() { completed <- session.ReplaceSource(video, true, nil) }()
+			}
+			select {
+			case err := <-completed:
+				if (err != nil) != (finish == "video-failure" || finish == "audio-on") {
+					t.Fatalf("unexpected %s result: %v", finish, err)
+				}
+			case <-ctx.Done():
+				t.Fatal("pending audio blocked", finish)
+			}
+			if _, err := os.Stat(gate + ".early-audio"); err == nil {
+				t.Fatal("source audio initialized before active video")
+			}
+			if finish == "audio-off" || finish == "source-replacement" {
+				if session.SourceAudio() == nil || *session.SourceAudio() || session.currentAudioStream() != nil {
+					t.Fatal("late initial audio overwrote the newer source-audio selection")
+				}
+			} else if finish != "video-profile" {
+				if _, err := os.Stat(gate + ".audio"); err == nil {
+					t.Fatal("retired video still started source audio")
+				}
+			}
+			if finish == "video-profile" {
+				for {
+					select {
+					case event := <-events:
+						if event.Type == "audio-state" && event.SourceAudio {
+							return
+						}
+					case <-ctx.Done():
+						t.Fatal("quality replacement lost pending source audio")
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestFixedSourceAudioWaitsForActiveVideoAndCanCancel(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, cancelStartup := range []bool{false, true} {
+		t.Run(map[bool]string{false: "active", true: "cancelled"}[cancelStartup], func(t *testing.T) {
+			gate := filepath.Join(t.TempDir(), "video")
+			t.Setenv("PIIK_VIDEO_START_GATE", gate)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			events := make(chan Event, 16)
+			type result struct {
+				session *Session
+				err     error
+			}
+			started := make(chan result, 1)
+			go func() {
+				video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+					Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}}
+				session, err := Start(ctx, Options{ShareID: "fixed-audio", CaptureProcess: executable,
+					Video: video, Profile: QualityProfile{Video: video.Profile, AudioBitrate: 64_000},
+					AudioEnabled: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0",
+					Events: func(_ context.Context, event Event) { events <- event }})
+				started <- result{session, err}
+			}()
+			select {
+			case event := <-events:
+				if event.Type != "capture-state" || event.State != "starting" {
+					t.Fatal("missing video startup progress", event)
+				}
+			case <-ctx.Done():
+				t.Fatal("video startup progress did not arrive")
+			}
+			select {
+			case result := <-started:
+				if result.session != nil {
+					_ = result.session.Close()
+				}
+				t.Fatal("fixed audio shape committed before video became active", result.err)
+			default:
+			}
+			if cancelStartup {
+				cancel()
+			} else if err := os.WriteFile(gate+".release", nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			select {
+			case result := <-started:
+				if result.session != nil {
+					defer result.session.Close()
+				}
+				if cancelStartup {
+					if result.err == nil || result.session != nil {
+						t.Fatal("cancelled startup admitted a share")
+					}
+				} else if result.err != nil || result.session == nil || !result.session.HasAudio() {
+					t.Fatal("fixed source audio was not admitted", result.err)
+				}
+			case <-time.After(2 * time.Second):
+				t.Fatal("source audio did not finish startup or cancellation")
+			}
+			if _, err := os.Stat(gate + ".early-audio"); err == nil {
+				t.Fatal("source audio initialized before active video")
+			}
+		})
 	}
 }
 

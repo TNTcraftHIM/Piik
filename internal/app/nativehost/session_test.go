@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -44,6 +45,78 @@ func TestMain(tests *testing.M) {
 		os.Exit(0)
 	}
 	os.Exit(tests.Run())
+}
+
+type retiringCapture struct {
+	processCapture
+	entered, release chan struct{}
+}
+
+func (capture retiringCapture) Video(ctx context.Context, options nativecapture.VideoOptions) (CaptureStream, error) {
+	stream, err := capture.processCapture.Video(ctx, options)
+	if err != nil {
+		return nil, err
+	}
+	return &retiringCaptureStream{CaptureStream: stream, entered: capture.entered, release: capture.release}, nil
+}
+
+type retiringCaptureStream struct {
+	CaptureStream
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (stream *retiringCaptureStream) Close() error {
+	stream.once.Do(func() { close(stream.entered) })
+	<-stream.release
+	return stream.CaptureStream.Close()
+}
+
+func TestCloseReleasesUpdateLockBeforeWaitingForCaptureRetirement(t *testing.T) {
+	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("PIIK_VIDEO_START_GATE", filepath.Join(t.TempDir(), "video"))
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	resume := sync.OnceFunc(func() { close(release) })
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+		Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}}
+	session, err := Start(ctx, Options{ShareID: "retiring-audio", Video: video,
+		Capture:      retiringCapture{processCapture{executable}, entered, release},
+		Profile:      QualityProfile{Video: video.Profile, AudioBitrate: 64_000},
+		AudioEnabled: true, MicrophoneMixing: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0"})
+	if err != nil {
+		resume()
+		t.Fatal(err)
+	}
+	defer func() { resume(); _ = session.Close() }()
+	closed := make(chan error, 1)
+	go func() { closed <- session.Close() }()
+	select {
+	case <-entered:
+	case <-ctx.Done():
+		t.Fatal("Close did not reach capture retirement")
+	}
+	// A startup worker awakened by active/cancellation may still need this lock
+	// before it can finish. Close cannot retain it while waiting for that worker.
+	if session.updateMu.TryLock() {
+		session.updateMu.Unlock()
+	} else {
+		t.Error("Close retained the update lock across blocking retirement")
+	}
+	resume()
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-ctx.Done():
+		t.Fatal("Close did not finish after capture retirement")
+	}
 }
 
 func TestEdgeReplacementFencesNativeControl(t *testing.T) {
@@ -222,7 +295,7 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 			}
 			videoDone := make(chan error, 1)
 			go func() { videoDone <- session.runVideo() }()
-			go session.run(videoDone)
+			go session.run(videoDone, nil)
 			closed := make(chan error, 1)
 			if mode == "closed" {
 				go func() { closed <- session.Close() }()

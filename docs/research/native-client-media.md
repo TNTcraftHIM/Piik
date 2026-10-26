@@ -151,6 +151,10 @@ The 2026-10-20 pipe reproduction establishes a second startup defect: waiting
 for audio readiness before reading video can fill the video pipe and block a
 capture service that audio initialization also needs. The session now waits for
 video readiness while draining video, then initializes optional source audio.
+The 2026-10-26 gated-helper check found that the `starting` progress status
+still admitted audio before platform video initialization finished. Source audio
+now waits for the existing `active` status. Mixed-audio pages can receive their
+stable output first; source changes and shutdown cancel the pending input.
 The full-pipe/silent/no-ready controls and native Host lifecycle tests pass
 without longer deadlines. This also removes the overlapping initial source
 enumeration described in an [Apple Developer Forums report](https://developer.apple.com/forums/thread/772365)

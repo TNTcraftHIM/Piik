@@ -94,10 +94,11 @@ type Session struct {
 	mixer        *audioMix
 	events       func(context.Context, Event)
 
-	ctx    context.Context
-	cancel context.CancelFunc
-	done   chan error
-	ready  chan error
+	ctx         context.Context
+	cancel      context.CancelFunc
+	done        chan error
+	ready       chan error
+	videoActive chan struct{}
 
 	mu           sync.Mutex
 	updateMu     sync.Mutex
@@ -145,7 +146,8 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		_ = engine.Close()
 		return nil, err
 	}
-	defer capturePreparationDone(stream)
+	preparing := stream
+	defer func() { capturePreparationDone(preparing) }()
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
 		shareID:      options.ShareID,
@@ -160,6 +162,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		cancel:       cancel,
 		done:         make(chan error, 1),
 		ready:        make(chan error, 1),
+		videoActive:  make(chan struct{}),
 		edges:        make(map[string]*mediaedge.Edge),
 		audioChanged: make(chan struct{}, 1),
 		remoteInput:  options.RemoteInput.NewSession(),
@@ -195,12 +198,12 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		session.retire()
 		return nil, errors.Join(err, captureErr)
 	}
-	// Start the optional audio helper only after video initialization, avoiding
-	// concurrent platform source enumeration while continuing to drain video.
+	// Legacy pages choose a fixed audio shape in the start response. Mixed audio
+	// already has a stable output, so its optional input can attach after return.
 	var audioStream CaptureStream
-	if options.AudioEnabled {
+	if options.AudioEnabled && !options.MicrophoneMixing {
 		var audioErr error
-		audioStream, audioErr = capture.Audio(audioCtx, options.Video.Target, options.ExcludeAudio)
+		audioStream, audioErr = session.startSourceAudio(audioCtx, options.Video.Target, options.ExcludeAudio)
 		if audioErr != nil {
 			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
 		}
@@ -243,7 +246,46 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		session.mixer = &audioMix{ctx: ctx, output: session.audioSource, emit: session.emit, shareID: session.shareID, gain: 1}
 		session.mixer.setSource(audioStream)
 	}
-	go session.run(videoDone)
+	var audioStarting chan struct{}
+	if options.AudioEnabled && session.mixer != nil {
+		audioStarting = make(chan struct{})
+		preparing = nil // The input startup now owns the interactive preparation.
+		go func() {
+			defer close(audioStarting)
+			defer capturePreparationDone(stream)
+			// Waiting for the platform must not hold up a source or quality change.
+			// A later source-audio commit supersedes this initial input request.
+			select {
+			case <-session.videoActive:
+			case <-session.audioChanged:
+				return
+			case <-audioCtx.Done():
+				return
+			}
+			session.updateMu.Lock()
+			defer session.updateMu.Unlock()
+			select {
+			case <-session.audioChanged:
+				return
+			default:
+			}
+			input, audioErr := session.startSourceAudio(audioCtx, options.Video.Target, options.ExcludeAudio)
+			if audioErr != nil {
+				slog.DebugContext(ctx, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
+				return
+			}
+			session.mu.Lock()
+			if audioCtx.Err() != nil || session.closed {
+				session.mu.Unlock()
+				_ = input.Close()
+				return
+			}
+			session.audioStream = input
+			session.mu.Unlock()
+			session.mixer.setSource(input)
+		}()
+	}
+	go session.run(videoDone, audioStarting)
 	if err := ctx.Err(); err != nil {
 		_ = session.Close()
 		return nil, err
@@ -503,6 +545,13 @@ func (session *Session) ReplaceSource(
 	if session.mixer == nil && audioEnabled != hasAudio {
 		return errors.New("native source audio availability cannot change while sharing")
 	}
+	if audioEnabled && session.videoActive != nil {
+		select {
+		case <-session.videoActive:
+		default:
+			return errors.New("native source audio is unavailable until video becomes active")
+		}
+	}
 	if !audioOnly {
 		// Suspend input while changing capture. On success bind the committed
 		// target; on failure the previous picture remains eligible for a new grant.
@@ -533,7 +582,7 @@ func (session *Session) ReplaceSource(
 	// platform handler that also starts audio. The current picture stays drained.
 	var replacementAudio CaptureStream
 	if audioEnabled {
-		replacementAudio, err = session.capture.Audio(
+		replacementAudio, err = session.startSourceAudio(
 			session.ctx,
 			options.Target,
 			excludeAudio,
@@ -648,6 +697,26 @@ func startAudioCapture(
 		return nativecapture.StartSystemAudio(ctx, captureProcess)
 	}
 	return nativecapture.StartAudio(ctx, captureProcess, target, false)
+}
+
+func (session *Session) startSourceAudio(
+	ctx context.Context,
+	target nativecapture.CaptureTarget,
+	excludeAudio *nativecapture.CaptureTarget,
+) (CaptureStream, error) {
+	// A starting status admits control and progress; only active proves that
+	// platform video initialization finished. Keep draining video during this wait.
+	if session.videoActive != nil {
+		select {
+		case <-session.videoActive:
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return session.capture.Audio(ctx, target, excludeAudio)
 }
 
 // Interactive platforms retain their preparation UI until the whole operation,
@@ -835,16 +904,19 @@ func (session *Session) Done() <-chan error {
 func (session *Session) Close() error {
 	session.cancel()
 	session.updateMu.Lock()
-	defer session.updateMu.Unlock()
 	session.mu.Lock()
 	if session.closed {
 		session.mu.Unlock()
+		session.updateMu.Unlock()
 		_, _ = <-session.done
 		return nil
 	}
 	session.closed = true
 	session.edges = make(map[string]*mediaedge.Edge)
 	session.mu.Unlock()
+	// Closed/cancelled rejects further updates. Pending startup must be able to
+	// acquire the update lock and finish before run can complete retirement.
+	session.updateMu.Unlock()
 	session.retire()
 	_, _ = <-session.done
 	return nil
@@ -880,7 +952,7 @@ func (session *Session) edge(connectionID string) *mediaedge.Edge {
 	return session.edges[connectionID]
 }
 
-func (session *Session) run(videoDone <-chan error) {
+func (session *Session) run(videoDone <-chan error, audioStarting <-chan struct{}) {
 	audioDone := make(chan struct{})
 	qualityDone := make(chan struct{})
 	go func() {
@@ -908,6 +980,9 @@ func (session *Session) run(videoDone <-chan error) {
 		result = nil
 	}
 	session.cancel()
+	if audioStarting != nil {
+		<-audioStarting
+	}
 	session.mu.Lock()
 	audioStream := session.audioStream
 	session.mu.Unlock()
@@ -931,6 +1006,12 @@ func (session *Session) run(videoDone <-chan error) {
 func (session *Session) runVideo() error {
 	ready := false
 	activeSeen := false
+	markActive := func() {
+		if !activeSeen && session.videoActive != nil {
+			close(session.videoActive)
+		}
+		activeSeen = true
+	}
 	fail := func(err error) error {
 		if !ready {
 			session.ready <- err
@@ -944,7 +1025,7 @@ func (session *Session) runVideo() error {
 		}
 		current = next
 		// prepareVideo consumed and verified this replacement's active status.
-		activeSeen = true
+		markActive()
 		return nil
 	}
 	for current != nil {
@@ -1018,7 +1099,7 @@ func (session *Session) runVideo() error {
 				return fail(errors.New("native capture codec changed within a share"))
 			}
 			if status.State == "active" {
-				activeSeen = true
+				markActive()
 				if status.RestoreToken != "" {
 					session.videoOptions.RestoreToken = status.RestoreToken
 				}

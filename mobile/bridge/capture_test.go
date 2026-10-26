@@ -128,7 +128,7 @@ func (p *testPlatform) StartMicrophone(id int64, _ string) { p.StartAudio(id) }
 func (*testPlatform) Microphones() (string, error)         { return "[]", nil }
 
 func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
-	for _, outcome := range []string{"ready", "denied", "cancelled", "video-ended", "video-only", "replace"} {
+	for _, outcome := range []string{"ready", "denied", "cancelled", "video-ended", "video-only", "mixed", "replace"} {
 		t.Run(outcome, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
@@ -152,7 +152,7 @@ func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
 				var err error
 				session, err = nativehost.Start(ctx, nativehost.Options{ShareID: "preparation-fixture", Capture: c, Video: video,
 					Profile: nativehost.QualityProfile{Video: video.Profile, AudioBitrate: 64_000}, AudioEnabled: outcome != "video-only" && outcome != "replace",
-					MicrophoneMixing: outcome == "replace",
+					MicrophoneMixing: outcome == "replace" || outcome == "mixed",
 					EdgeCapacity:     1, BindAddress: "127.0.0.1:0"})
 				result <- err
 			}()
@@ -187,6 +187,14 @@ func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
 					t.Fatal("video released preparation before source audio admission")
 				default:
 				}
+				if outcome == "mixed" {
+					if err := awaitResult(); err != nil {
+						t.Fatal(err)
+					}
+					if !session.HasAudio() || session.SourceAudio() == nil || *session.SourceAudio() {
+						t.Fatal("pending source input changed the mixed output shape or claimed readiness")
+					}
+				}
 				switch outcome {
 				case "cancelled":
 					cancel()
@@ -198,7 +206,10 @@ func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
 					r.AudioReady(audioID)
 				}
 			}
-			err := awaitResult()
+			var err error
+			if outcome != "mixed" {
+				err = awaitResult()
+			}
 			if (err != nil) != (outcome == "cancelled" || outcome == "video-ended") {
 				t.Fatalf("operation result: %v", err)
 			}
@@ -224,6 +235,9 @@ func TestVideoPreparationSpansSourceAudioAndCaptureCommit(t *testing.T) {
 				}
 			case <-time.After(3 * time.Second):
 				t.Fatal("aggregate preparation was not released")
+			}
+			if outcome == "mixed" && !*session.SourceAudio() {
+				t.Fatal("completed preparation did not attach the source input")
 			}
 			if session != nil {
 				_ = session.Close()
