@@ -2,6 +2,7 @@ package launcher
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,6 +25,50 @@ import (
 func appAssets() fs.FS {
 	return fstest.MapFS{
 		"index.html": {Data: []byte("<!doctype html><html><body>client</body></html>")},
+	}
+}
+
+func TestLauncherCompressesEntryAndAssetsWithoutChangingAPI(t *testing.T) {
+	body := []byte(strings.Repeat("Piik launcher asset ", 400))
+	assets := fstest.MapFS{
+		"index.html":    {Data: body},
+		"assets/app.js": {Data: body},
+	}
+	server, err := Start(t.Context(), assets, Options{Version: "development"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	origin := strings.TrimSuffix(server.URL(), "/client")
+	for _, path := range []string{"/client", "/client/", "/assets/app.js"} {
+		t.Run(path, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodGet, origin+path, nil)
+			request.Header.Set("Accept-Encoding", "gzip")
+			response := httptest.NewRecorder()
+			server.ServeHTTP(response, request)
+			if response.Code != http.StatusOK || response.Header().Get("Content-Encoding") != "gzip" {
+				t.Fatalf("static response: %d, %v", response.Code, response.Header())
+			}
+			reader, err := gzip.NewReader(response.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reader.Close()
+			decoded, err := io.ReadAll(reader)
+			if err != nil || !bytes.Equal(decoded, body) {
+				t.Fatalf("compressed asset changed: %v", err)
+			}
+			if path != "/assets/app.js" && response.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("launcher entry lost its cache policy")
+			}
+		})
+	}
+	request := httptest.NewRequest(http.MethodGet, origin+"/api/client-launcher", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+	response := httptest.NewRecorder()
+	server.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || response.Header().Get("Content-Encoding") != "" || !json.Valid(response.Body.Bytes()) {
+		t.Fatalf("launcher API changed: %d, %v", response.Code, response.Header())
 	}
 }
 

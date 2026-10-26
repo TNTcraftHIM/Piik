@@ -22,6 +22,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/TNTcraftHIM/Piik/internal/httpassets"
 )
 
 const (
@@ -72,6 +73,7 @@ type Server struct {
 	httpServer          *http.Server
 	assets              fs.FS
 	static              http.Handler
+	client              http.Handler
 	sites               []string
 	startupSite         string
 	modes               []Mode
@@ -128,7 +130,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		cancel:              cancel,
 		listener:            listener,
 		assets:              assets,
-		static:              http.FileServer(http.FS(assets)),
+		static:              httpassets.Compress(http.FileServer(http.FS(assets))),
 		sites:               normalizedSites,
 		startupSite:         options.StartupSite,
 		defaultMode:         options.DefaultMode,
@@ -146,6 +148,7 @@ func Start(parent context.Context, assets fs.FS, options Options) (*Server, erro
 		done:                make(chan error, 1),
 		ready:               make(chan struct{}),
 	}
+	server.client = httpassets.Compress(http.HandlerFunc(server.serveClient))
 	server.httpServer = &http.Server{
 		Handler:           server,
 		ReadHeaderTimeout: 5 * time.Second,
@@ -253,16 +256,20 @@ func (server *Server) ServeHTTP(response http.ResponseWriter, request *http.Requ
 	case "/api/client-launcher/debug":
 		server.handleDebug(response, request)
 	case "/client", "/client/":
-		if request.Method != http.MethodGet && request.Method != http.MethodHead {
-			response.Header().Set("Allow", "GET, HEAD")
-			http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		response.Header().Set("Cache-Control", "no-store")
-		http.ServeFileFS(response, request, server.assets, launcherIndex)
+		server.client.ServeHTTP(response, request)
 	default:
 		server.static.ServeHTTP(response, request)
 	}
+}
+
+func (server *Server) serveClient(response http.ResponseWriter, request *http.Request) {
+	if request.Method != http.MethodGet && request.Method != http.MethodHead {
+		response.Header().Set("Allow", "GET, HEAD")
+		http.Error(response, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	response.Header().Set("Cache-Control", "no-store")
+	http.ServeFileFS(response, request, server.assets, launcherIndex)
 }
 
 func (server *Server) handleState(response http.ResponseWriter, request *http.Request) {
