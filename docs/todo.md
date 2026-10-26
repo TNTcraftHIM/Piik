@@ -29,9 +29,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   with source sound on and off, including native capture status. Video and source
   audio already use independent helpers; audio failure preserves video in local checks.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
-  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) in the reporter's environment.
-  The current candidate retains the Viewer picture and native input grant while
-  the Host preview is paused locally; obtain the failing control/capture diagnostics.
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) with Chrome's default
+  background policy. Record the control channel and grant as the Host minimizes
+  the browser while the Viewer picture continues.
 - [ ] **Intel native H.264 startup (#452).** Follow the
   [new v2.4.0 report](https://github.com/TNTcraftHIM/Piik/issues/452): explicit H.264
   fails while VP8 works on Intel Arc B580 / Intel Graphics. The Browser report

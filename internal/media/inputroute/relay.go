@@ -110,6 +110,12 @@ func (r *Relay) SetUpAvailable(available bool) {
 
 func (r *Relay) AttachDown(edgeID string, channel *webrtc.DataChannel) {
 	r.mu.Lock()
+	// SCTP can close before its OnClose callback retires the old binding.
+	if old := r.down[edgeID]; !r.closed && old != nil && old.channel.ReadyState() == webrtc.DataChannelStateClosed {
+		r.mu.Unlock()
+		r.LoseDown(edgeID, old.channel)
+		r.mu.Lock()
+	}
 	if r.closed || r.down[edgeID] != nil {
 		r.mu.Unlock()
 		_ = channel.Close()
