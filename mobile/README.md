@@ -122,8 +122,9 @@ Public link uses the same shared room service and supervised official cloudflare
 helper as desktop. Android executes the helper from the installed APK native
 library directory and writes its temporary configuration into the app cache.
 Failed room startup can retry from the same page after the failed attempt has
-retired. An unexpected room-service or helper exit ends this runtime; Restart Piik
-creates a fresh attempt.
+retired. An unexpected room-service or helper exit ends that room; the launcher,
+App connection and other approved sites remain available. Select the room mode
+again to start a fresh room.
 
 Create a room and select Android screen capture in the ordinary source picker.
 Approve the Android projection prompt. Pure video does not request microphone
@@ -156,8 +157,8 @@ Android can also end projection on screen lock. Capture and optional audio use
 the existing stream replacement transaction; the foreground service owns the
 projection token and its single VirtualDisplay.
 
-Release acceptance and remaining platform checks are tracked in the
-[TODO ledger](../docs/todo.md#next).
+Platform checks are summarized in [verification status](../docs/verification-status.md#device-evidence-boundary);
+remaining work stays in the [TODO ledger](../docs/todo.md).
 
 Platform references: [Projection lifecycle](https://developer.android.com/media/grow/media-projection),
 [playback audio](https://developer.android.com/media/platform/av-capture),

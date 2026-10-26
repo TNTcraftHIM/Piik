@@ -445,8 +445,24 @@ func TestVoiceQueuedCandidateFailureDoesNotPoisonNegotiation(t *testing.T) {
 		VoiceSignal{Candidate: &webrtc.ICECandidateInit{Candidate: "candidate:malformed"}}); err != nil {
 		t.Fatal(err)
 	}
+	// Additional trickle input must not turn a full bounded candidate queue
+	// into a transport error while the first 64 candidates remain usable.
+	for index := range 64 {
+		candidate := webrtc.ICECandidateInit{Candidate: fmt.Sprintf("candidate:queued%d 1 udp 100 127.0.0.1 %d typ host", index, 10000+index)}
+		if err := service.SignalVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID,
+			VoiceSignal{Candidate: &candidate}); err != nil {
+			t.Fatalf("candidate %d falsely failed the voice transport: %v", index, err)
+		}
+	}
+	connection := service.voice.connections[plan.key()]
+	if len(connection.candidates) != 64 || connection.candidates[63].Candidate != "candidate:queued62 1 udp 100 127.0.0.1 10062 typ host" {
+		t.Fatal("candidate overflow changed the retained queue or its bound")
+	}
 	if err := peer.answer(first, false); err != nil {
 		t.Fatalf("valid answer was rejected by a queued candidate: %v", err)
+	}
+	if len(connection.candidates) != 0 || connection.pending != nil {
+		t.Fatal("valid answer did not drain retained candidates and finish negotiation")
 	}
 	for _, candidate := range []string{"candidate:malformed", "candidate:control 1 udp 2122260223 127.0.0.1 9999 typ host"} {
 		if err := service.SignalVoice(plan.RoomID, plan.PeerID, plan.SessionID, plan.ConnectionID,

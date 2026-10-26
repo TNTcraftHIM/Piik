@@ -652,6 +652,9 @@ export function HostPage({
     if (!client || !nativeModeRef.current) throw new Error("Piik App is unavailable");
     return client.sources();
   }, []);
+  const microphoneClient = nativeActive ? nativeConnection.current : null;
+  const loadMicrophoneDevices = useCallback(() => microphoneClient
+    ? microphoneClient.microphones() : browserCaptureDevices("audioinput"), [microphoneClient]);
   const nativeSourceRequestRef = useRef<object | null>(null);
   const nativePreviewTailRef = useRef<Promise<void>>(Promise.resolve());
   const nativeSourcePathRef = useRef<NativeCapturePath | null>(null);
@@ -4157,8 +4160,7 @@ export function HostPage({
                     volume={commentaryInput.volume} onVolume={changeCommentaryVolume}
                     deviceId={commentaryInput.deviceId}
                     onDevice={deviceId => { void changeCommentary(true, { ...commentaryInput, deviceId }); }}
-                    loadDevices={() => nativeActive && nativeConnection.current
-                      ? nativeConnection.current.microphones() : browserCaptureDevices("audioinput")}
+                    loadDevices={loadMicrophoneDevices}
                     voiceProcessing={nativeActive ? undefined : commentaryInput.voiceProcessing}
                     onVoiceProcessing={voiceProcessing => { void changeCommentary(true, { ...commentaryInput, voiceProcessing }); }} /> : null}
               {phase === "live" && nativeActive && nativeSourceSelectionRef.current?.target.kind === "display" &&

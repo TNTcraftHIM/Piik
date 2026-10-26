@@ -232,8 +232,9 @@ document links. Screenshot refresh and visual review are manual steps.
 
 ## Downloads
 
-The Windows, macOS and Linux App cards use fixed filenames and each provider's
-native latest-attachment route:
+The desktop row contains Windows, macOS and Linux; the mobile row contains
+Android and the iOS online entry. App downloads use fixed ZIP/APK filenames and
+each provider's native latest-attachment route:
 
 - GitHub: `releases/latest/download/asset-name.zip`
   ([documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)).
@@ -242,10 +243,11 @@ native latest-attachment route:
 
 Both links follow provider publication without a website rebuild. Supported App
 architecture choices stay visible; one selection updates both providers' links.
-An optional GitHub metadata request supplies the latest version/date and its
+Android uses one universal APK for ARM64 and x64. The iOS entry opens the online
+version without promising an App release date. An optional GitHub metadata request supplies the latest version/date and its
 authored editorial title and one-line explanation;
 failure does not disable architecture selection. Without JavaScript, the default
-links remain Windows x64, Apple silicon and Linux x64. Publish a newly listed App
+links remain Windows x64, Apple silicon, Linux x64 and Android universal. Publish a newly listed App
 package before deploying its website option. ARM64 Server packages alone do not
 enable an ARM64 App choice.
 Platform buttons say “Download from GitHub” /

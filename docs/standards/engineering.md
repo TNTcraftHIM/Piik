@@ -24,7 +24,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `internal/thirdparty/` | Scoped Go dependency repairs with pinned upstream provenance, licenses and tests; removal criteria live beside the source |
 | `native/capture`, `native/fixtures`, `native/probes` | Platform capture implementations, synthetic workloads and standalone capability probes |
 | `site/` | Independently published static introduction; its assets do not implement product behavior |
-| `mobile/` | Unreleased Android platform shell and in-process capture bridge over the shared Go core |
+| `mobile/` | Android platform shell and in-process capture bridge over the shared Go core |
 | `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |
 | `tests/` | TypeScript/tooling tests and cross-language fixtures; Go tests stay beside their packages |
 | `deploy/` | Operator scripts and container, proxy, service and certificate templates |

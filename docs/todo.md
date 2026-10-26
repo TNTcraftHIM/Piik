@@ -7,10 +7,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Android and touch-control release.** Finish owner review of the website,
-  then publish the shared App/Server
-  update and associate resolved issues. Android uses the existing publication
-  pipeline and a dedicated signing key; iOS remains outside this release.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -25,11 +21,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
 - [ ] **macOS window capture with sound (#500).** Follow
   [#500](https://github.com/TNTcraftHIM/Piik/issues/500). Compare the same window
-  with source sound on and off in the candidate that waits for video `active`
+  with source sound on and off in the App that waits for video `active`
   before starting source audio. Obtain the App diagnostic if the window stays black.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) with the corrected
-  Windows candidate. If minimizing still prevents input, obtain its Host App
+  Windows App. If minimizing still prevents input, obtain its Host App
   diagnostic ZIP to identify the rejected system operation.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream

@@ -1137,7 +1137,7 @@ export const serverMessageSchema = z.union([
   z.object({ type: z.literal("co-play-presence"), participants: z.array(coPlayParticipantSchema).max(MAX_VIEWERS_PER_ROOM_LIMIT)
     .refine(participants => new Set(participants.map(person => person.peerId)).size === participants.length) }).strict(),
   z.object({ type: z.literal("remote-input-peers"), peers: z.array(z.object({ peerId: opaqueIdSchema,
-    endpointId: z.string().regex(/^[0-9a-f]{32}$/), secret: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).max(20) }).strict(),
+    endpointId: z.string().regex(/^[0-9a-f]{32}$/), secret: z.string().regex(/^[0-9a-f]{64}$/) }).strict()).max(MAX_VIEWERS_PER_ROOM_LIMIT) }).strict(),
   z.object({ type: z.literal("room-interactions-ready"), serverTime: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict(),
   z.object({ type: z.literal("room-interaction-rejected"), requestId: opaqueIdSchema,
     reason: z.enum(["rate-limited", "target-unavailable", "not-subscribed", "busy"]) }).strict(),
