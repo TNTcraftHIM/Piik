@@ -265,7 +265,7 @@ function PlaybackMore({ anchor, settings, overlaySettings, onReconnect, reconnec
   const id = useId();
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
-  const detailed = Boolean(settings?.preview || overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
+  const detailed = Boolean(settings?.preview || settings?.remoteTouch || overlaySettings || settings?.route || settings?.relayVolunteer || onReconnect);
   const available = detailed || Boolean(settings);
   useAnchoredPopover(anchor, panel, { align: "center", minVisibleHeight: 160, enabled: available });
   const reconnect = onReconnect ? <Btn icon="refresh" title="viewer.reconnect" size="dense" hint="hint-reconnect" draw="playback-reconnect"

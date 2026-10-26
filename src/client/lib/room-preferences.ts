@@ -26,6 +26,7 @@ const roomPreferencesSchema = z.object({
   combineKeys: z.boolean().default(false),
   remoteReleaseKey: remoteShortcutKeySchema.default(10),
   remoteStopKey: remoteShortcutKeySchema.default(10),
+  remoteTouchMode: z.enum(["direct", "trackpad"]).default("direct"),
   remoteControlMode: remoteControlModeSchema.exclude(["off"]).default("ask"),
 });
 export type RoomPreferences = z.infer<typeof roomPreferencesSchema>;

@@ -2,11 +2,12 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import { RemoteControl } from "../components/living/RemoteControl";
 import { PlaybackControls } from "../components/living/PlaybackControls";
+import { RemoteTouchSettings } from "../components/living/PlaybackSettings";
 import { StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { RemoteKeyboard } from "../components/living/RemoteKeyboard";
-import { RemoteMouse, placeRemotePointer } from "../components/living/RemoteMouse";
+import { RemoteMouse, placeRemotePointer, remotePointerRoom } from "../components/living/RemoteMouse";
 import { Couch } from "../components/living/Couch";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
@@ -14,6 +15,8 @@ import type { RemoteControlRequest } from "../native/wire";
 import type { RemoteInputEvent } from "../remote-control/input-session";
 import { picturePoint, pictureRect, rotatePicturePoint, videoRotation } from "../media/video-geometry";
 import { RemoteTouchpad } from "../remote-control/touchpad";
+import { RemoteViewport } from "../remote-control/viewport";
+import type { RoomPreferences } from "../lib/room-preferences";
 import type { RemoteControlMode, RemoteInputPlatform } from "../remote-control/protocol";
 import { useCopy } from "../ui/copy";
 import { testMedia } from "./PlaybackPreviewPage";
@@ -36,6 +39,9 @@ export function RemoteControlsPreview() {
   const [lastInput, setLastInput] = useState("");
   const mouseVideo = useRef<HTMLVideoElement>(null);
   const mouseLayer = useRef<HTMLDivElement>(null);
+  const mouseSurface = useRef<HTMLDivElement>(null);
+  const [pointer, setPointer] = useState<RemoteTouchpad | null>(null);
+  const [touchMode, setTouchMode] = useState<RoomPreferences["remoteTouchMode"]>("direct");
   const [releaseKey, setReleaseKey] = useState(10);
   const [stopKey, setStopKey] = useState(10);
   const shortcut = useCallback(async (key?: number) => {
@@ -52,38 +58,40 @@ export function RemoteControlsPreview() {
     const point = rotatePicturePoint(position, videoRotation(video));
     placeRemotePointer(layer, picture.left - rect.left + point.x * picture.width, picture.top - rect.top + point.y * picture.height);
   }, []);
-  const [pointer] = useState(() => new RemoteTouchpad(() => {
-    const video = mouseVideo.current;
-    if (!video) return null;
-    const rect = pictureRect(video);
-    return rect ? { ...rect, rotation: videoRotation(video) } : null;
-  }, input,
-    deltaY => setLastInput(JSON.stringify({ type: "wheel", deltaY })), placePointer,
-    { scale: 1, transform: () => {}, visiblePosition: position => position }));
   useEffect(() => {
     const element = mouseVideo.current!;
-    const layer = mouseLayer.current!;
+    const surface = mouseSurface.current!;
+    const view = new RemoteViewport(element, surface, () => placePointer(current.position));
+    const current = new RemoteTouchpad(() => {
+      const rect = pictureRect(element);
+      return rect ? { ...rect, rotation: videoRotation(element) } : null;
+    }, input, deltaY => setLastInput(JSON.stringify({ type: "wheel", deltaY })), position => {
+      view.follow(position, remotePointerRoom(mouseLayer.current));
+      placePointer(position);
+    }, view);
+    setPointer(current);
     const sample = testMedia(false, false);
     element.srcObject = sample.stream;
     void element.play().catch(() => {});
-    const surface = element.parentElement!;
     const wheel = (event: WheelEvent) => {
       event.preventDefault();
-      pointer.wheel(event.deltaY);
+      current.wheel(event.deltaY);
     };
     surface.addEventListener("wheel", wheel, { passive: false });
-    const position = () => placePointer(pointer.position);
+    const position = () => { view.refresh(); current.refresh(); };
     const resize = new ResizeObserver(position);
-    resize.observe(layer);
+    resize.observe(surface);
+    element.addEventListener("resize", position);
     position();
     return () => {
       resize.disconnect();
+      element.removeEventListener("resize", position);
       surface.removeEventListener("wheel", wheel);
-      pointer.reset();
+      current.reset(); view.reset(); setPointer(null);
       element.srcObject = null;
       sample.stop();
     };
-  }, [pointer, placePointer]);
+  }, [input, placePointer]);
   const closeKeyboard = () => {
     setKeyboardOpen(false);
     document.getElementById("preview-remote-keyboard-toggle")?.focus();
@@ -92,29 +100,32 @@ export function RemoteControlsPreview() {
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Touch the picture directly, or expand the mini mouse for precise control. Its upper-left cursor moves with the mouse. Minimize to return to touch; leave the mini mouse at an edge to tuck it away after the player's idle delay. Input stays in the local log."
-        : "默认直接触摸画面；展开迷你鼠标可精细操作，光标固定在鼠标左上角一起移动。缩小后恢复触摸，迷你鼠标贴边闲置后按播控相同的时长收纳。输入只记录在本地，不会操作电脑。"}</p>
+      <p>{en ? "Expand the mini mouse and drag its lower shell; the picture pans at the edges to leave room. Tap the wheel to middle-click, swipe to scroll, or hold to drag. Try direct touch or the compact trackpad below. Input stays in the local log."
+        : "展开迷你鼠标，拖动下半部；到达边缘时画面会平移留黑。滚轮可轻点中击、滑动滚动、长按后拖动。下方可切换直接触摸或光标触控板，输入仅记录在本地。"}</p>
     </div></header>
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
         <video ref={mouseVideo} muted playsInline style={{ objectFit: "cover" }}
           aria-label={en ? "Local sample picture" : "本地示例画面"} />
-        <div className="lr-remote-input-surface" role="application" aria-label={t("remote.surface")} tabIndex={0}
+        <div ref={mouseSurface} className="lr-remote-input-surface" role="application" aria-label={t("remote.surface")} tabIndex={0}
           onPointerDown={event => {
             if (event.button !== 0) return;
             event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
-            pointer.down(event.pointerId, event.clientX, event.clientY,
+            pointer?.down(event.pointerId, event.clientX, event.clientY,
               mouseVideo.current && picturePoint(mouseVideo.current, event.clientX, event.clientY));
           }}
-          onPointerMove={event => pointer.move(event.pointerId, event.clientX, event.clientY)}
-          onPointerUp={event => pointer.up(event.pointerId)}
-          onPointerCancel={event => pointer.cancel(event.pointerId)}
-          onLostPointerCapture={event => pointer.cancel(event.pointerId)}
+          onPointerMove={event => pointer?.move(event.pointerId, event.clientX, event.clientY)}
+          onPointerUp={event => pointer?.up(event.pointerId)}
+          onPointerCancel={event => pointer?.cancel(event.pointerId)}
+          onLostPointerCapture={event => pointer?.cancel(event.pointerId)}
           onContextMenu={event => event.preventDefault()}>
-          <RemoteMouse pointer={pointer} positionRef={mouseLayer}
-            pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />
+          {pointer && <RemoteMouse pointer={pointer} positionRef={mouseLayer} touchMode={touchMode}
+            pointAt={(x, y) => mouseVideo.current && picturePoint(mouseVideo.current, x, y)} />}
         </div>
       </StageTv>
+    </div>
+    <div className="lr-viewer-settings is-single" style={{ maxWidth: 480 }}>
+      <RemoteTouchSettings mode={touchMode} onChange={setTouchMode} />
     </div>
     <div className="cp-tools">
       <label className="lr-input"><span>{en ? "Host platform" : "房主平台"}</span>

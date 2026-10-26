@@ -1,6 +1,7 @@
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import type { ViewerRoutePreference } from "../../../shared/protocol";
 import type { VideoFit, VideoRotation } from "../../media/video-geometry";
+import type { RoomPreferences } from "../../lib/room-preferences";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn, Cap, Chip, FieldCap, Pill, RowGroup, SwitchItem } from "./primitives";
@@ -15,6 +16,10 @@ export interface PlaybackSettingsProps {
   preview?: {
     autoPause: boolean;
     onChange: (enabled: boolean) => void;
+  };
+  remoteTouch?: {
+    mode: RoomPreferences["remoteTouchMode"];
+    onChange: (mode: RoomPreferences["remoteTouchMode"]) => void;
   };
   route?: {
     preference: ViewerRoutePreference;
@@ -56,8 +61,27 @@ export function PlaybackPictureControls({ settings, captions = false }: {
   </>;
 }
 
+export function RemoteTouchSettings({ mode, onChange }: NonNullable<PlaybackSettingsProps["remoteTouch"]>) {
+  const { t, vis } = useCopy();
+  const id = useId();
+  const hint = mode === "direct" ? "remote.touchMode.directHint" : "remote.touchMode.trackpadHint";
+  return <section aria-label={t("remote.touchMode")}>
+    <div className="lr-viewer-settings-heading">
+      <h3><Glyph name="mouse" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("remote.touchMode")}</span></h3>
+    </div>
+    <div className="lr-toggle" role="radiogroup" aria-label={t("remote.touchMode")} aria-describedby={vis ? undefined : `${id}-hint`}>
+      {(["direct", "trackpad"] as const).map(value => <label key={value}>
+        <input type="radio" name={id} value={value} checked={mode === value}
+          aria-label={t(`remote.touchMode.${value}`)} onChange={() => onChange(value)} />
+        <span><Glyph name={value === "direct" ? "tv" : "mouse"} size={17} /><Cap k={`remote.touchMode.${value}`} /></span>
+      </label>)}
+    </div>
+    {!vis && <p id={`${id}-hint`}>{t(hint)}</p>}
+  </section>;
+}
+
 // Local display and connection intent; media and routing keep their owners.
-export function PlaybackSettings({ picture, preview, route, relayVolunteer, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "route" | "relayVolunteer"> & {
+export function PlaybackSettings({ picture, preview, remoteTouch, route, relayVolunteer, overlaySettings, reconnect }: Pick<PlaybackSettingsProps, "preview" | "remoteTouch" | "route" | "relayVolunteer"> & {
   picture?: PlaybackSettingsProps;
   overlaySettings?: ReactNode; reconnect: ReactNode;
 }) {
@@ -65,7 +89,7 @@ export function PlaybackSettings({ picture, preview, route, relayVolunteer, over
   const routeHint = route?.rejected ? "playback.routeRejected" : route?.sfuOnly ? "playback.routeSfuOnly"
     : route?.peerOnly ? "playback.routePeerOnly" : !route?.sfuAvailable ? "playback.routeNoSfu"
     : `playback.routeHint.${route.preference}` as const;
-  const detailedSections = [preview, overlaySettings, route || relayVolunteer || reconnect].filter(Boolean).length;
+  const detailedSections = [preview, remoteTouch, overlaySettings, route || relayVolunteer || reconnect].filter(Boolean).length;
   return <div className={`lr-viewer-settings${detailedSections <= 1 ? " is-single" : ""}`}>
     {picture && <section className="lr-playback-compact-picture" aria-label={t("playback.viewControls")}>
       <div className="lr-viewer-settings-heading">
@@ -81,6 +105,7 @@ export function PlaybackSettings({ picture, preview, route, relayVolunteer, over
         label={t("host.previewAutoPause")} note={t("host.previewAutoPauseHint")} hint="hint-local-pause" /></RowGroup>
       {!vis && <p>{t("host.previewAutoPauseHint")}</p>}
     </section>}
+    {remoteTouch && <RemoteTouchSettings {...remoteTouch} />}
     {overlaySettings && <section aria-label={t("playback.overlay")}>
       <div className="lr-viewer-settings-heading">
         <h3><Glyph name="danmaku" size={17} /><span className={vis ? "visually-hidden" : undefined}>{t("playback.overlay")}</span></h3>

@@ -272,6 +272,7 @@ export function ViewerPage({
   const voiceMetrics = useRoomVoiceMetrics(roomVoiceSession, showConnectionDetails || selectedPawn !== null, roomVoice);
   const [pictureFit, setPictureFit] = useState<VideoFit>(() => readRoomPreferences().pictureFit);
   const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
+  const [remoteTouchMode, setRemoteTouchMode] = useState(() => readRoomPreferences().remoteTouchMode);
   const [routeOptions, setRouteOptions] = useState<{ sfu: boolean; sfuOnly: boolean } | null>(null);
   const [routePreference, setRoutePreference] = useState<ViewerRoutePreference>("auto");
   const [routePreferencePending, setRoutePreferencePending] = useState(false);
@@ -2313,13 +2314,17 @@ export function ViewerPage({
               overlayAction={<RoomChatToggle session={interactionSession} />}
               overlaySettings={interactionSession && <RoomChatOverlaySettings session={interactionSession} />}
               remoteActions={<RemoteControl channel={inputRoute.current} videoRef={videoRef}
-                  pictureFit={pictureFit} pictureRotation={pictureRotation}
+                  pictureFit={pictureFit} pictureRotation={pictureRotation} touchMode={remoteTouchMode}
                   available={presentation.overlay === "none" && presentation.hasCurrentFrame} />}
               settings={{ pictureFit, pictureRotation, setPictureRotation: rotation => {
                 setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation });
               }, setPictureFit: fit => {
                 setPictureFit(fit); saveRoomPreferences({ pictureFit: fit });
               },
+                remoteTouch: inputRoute.current ? {
+                  mode: remoteTouchMode,
+                  onChange: mode => { setRemoteTouchMode(mode); saveRoomPreferences({ remoteTouchMode: mode }); },
+                } : undefined,
                 route: routeOptions ? {
                   preference: routePreference, sfuAvailable: routeOptions.sfu && !peerOnly,
                   sfuOnly: routeOptions.sfuOnly, peerOnly,

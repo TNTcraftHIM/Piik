@@ -13,7 +13,7 @@ it("targets the touched picture directly, ignores letterboxing and retires gestu
       const picture = pictureRect(video);
       return picture && { ...picture, rotation: 0 };
     }, event => events.push(event), () => {}, () => {},
-    { scale: 1, transform: () => {}, visiblePosition: position => position });
+    { scale: 1, transform: () => {} });
     pad.down(1, 320, 10, picturePoint(video, 320, 10)); pad.move(1, 350, 100); pad.up(1);
     expect(events).toEqual([]); expect(vi.getTimerCount()).toBe(0);
 
@@ -42,31 +42,38 @@ it("targets the touched picture directly, ignores letterboxing and retires gestu
   } finally { vi.useRealTimers(); }
 });
 
-it("anchors the expanded mouse to the visible picture and shares its position with subsequent motion", () => {
+it("anchors expansion in source coordinates and refreshes geometry without input", () => {
   const video = { videoWidth: 400, videoHeight: 200, style: { objectFit: "contain" }, dataset: {},
     getBoundingClientRect: () => ({ left: 0, top: 0, width: 400, height: 300 }) } as unknown as HTMLVideoElement;
   const events: RemoteInputEvent[] = [], changed = vi.fn();
-  const visiblePosition = vi.fn((position: { x: number; y: number }) => ({ x: Math.min(.6, position.x), y: Math.max(.3, position.y) }));
   const pad = new RemoteTouchpad(() => {
     const picture = pictureRect(video);
     return picture && { ...picture, rotation: 0 };
-  }, event => events.push(event), () => {}, changed, { scale: 1, transform: () => {}, visiblePosition });
+  }, event => events.push(event), () => {}, changed, { scale: 1, transform: () => {} });
   pad.setVirtualMouse(true, picturePoint(video, 320, 100));
-  expect(visiblePosition).toHaveBeenLastCalledWith({ x: .8, y: .25 });
-  expect(pad.position).toEqual({ x: .6, y: .3 });
-  expect(events).toEqual([{ type: "move", x: .6, y: .3 }]);
+  expect(pad.position).toEqual({ x: .8, y: .25 });
+  expect(events).toEqual([{ type: "move", x: .8, y: .25 }]);
   expect(changed.mock.calls).toEqual([[pad.position]]);
   pad.moveBy(-40, 20);
-  expect(pad.position).toEqual({ x: .5, y: .4 });
+  expect(pad.position.x).toBeCloseTo(.7); expect(pad.position.y).toBeCloseTo(.35);
   expect(events.at(-1)).toEqual({ type: "move", ...pad.position });
   expect(changed).toHaveBeenLastCalledWith(pad.position);
   pad.setVirtualMouse(false);
   events.length = 0; changed.mockClear();
   pad.setVirtualMouse(true, picturePoint(video, 320, 10));
-  expect(events).toEqual([{ type: "move", x: .5, y: .4 }]);
+  expect(events).toEqual([{ type: "move", ...pad.position }]);
   expect(changed.mock.calls).toEqual([[pad.position]]);
   pad.setVirtualMouse(true, { x: .1, y: .9 });
-  expect(events).toHaveLength(1);
+  expect(pad.position).toEqual({ x: .1, y: .9 });
+  expect(events.at(-1)).toEqual({ type: "move", x: .1, y: .9 });
+  events.length = 0; changed.mockClear();
+  pad.setVirtualMouse(true);
+  expect(changed).not.toHaveBeenCalled();
+  const position = pad.position;
+  pad.refresh();
+  expect(changed.mock.calls).toEqual([[position]]);
+  expect(pad.position).toBe(position);
+  expect(events).toEqual([]);
   pad.reset();
 });
 
@@ -75,7 +82,7 @@ it("shares virtual buttons with picture gestures until their final owner release
   try {
     const events: RemoteInputEvent[] = [];
     const pad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: 0 }), event => events.push(event),
-      () => {}, () => {}, { scale: 1, transform: () => {}, visiblePosition: position => position });
+      () => {}, () => {}, { scale: 1, transform: () => {} });
     pad.setVirtualMouse(true);
     events.length = 0;
     const buttons = () => events.filter(event => event.type === "button");
@@ -115,7 +122,7 @@ it("keeps taps, dragging, two-finger gestures and grant retirement distinct", ()
     vi.stubGlobal("requestAnimationFrame", (callback: () => void) => setTimeout(callback, 16));
     vi.stubGlobal("cancelAnimationFrame", clearTimeout);
     const touchpad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: 0 }),
-      event => events.push(event), delta => scroll.push(delta), () => {}, { scale: 1, transform: () => {}, visiblePosition: position => position });
+      event => events.push(event), delta => scroll.push(delta), () => {}, { scale: 1, transform: () => {} });
     touchpad.setVirtualMouse(true);
     events.length = 0;
     touchpad.down(1, 20, 20, null); touchpad.up(1);
@@ -162,7 +169,7 @@ it("keeps pinch/pan local and never turns the remaining finger into a remote cli
   vi.stubGlobal("cancelAnimationFrame", clearTimeout);
   try {
     const input = vi.fn(), scroll = vi.fn(), transform = vi.fn();
-    const viewport = { scale: 1, transform, visiblePosition: (position: { x: number; y: number }) => position };
+    const viewport = { scale: 1, transform };
     const pad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: 0 }), input, scroll, () => {}, viewport);
     pad.setVirtualMouse(true);
     pad.down(1, 40, 50, null); pad.down(2, 160, 50, null);
@@ -175,6 +182,14 @@ it("keeps pinch/pan local and never turns the remaining finger into a remote cli
     expect(scroll).not.toHaveBeenCalled();
 
     viewport.scale = 1.5;
+    pad.down(1, 40, 50, null); pad.down(2, 160, 50, null);
+    pad.move(1, 60, 70); pad.move(2, 180, 70);
+    vi.advanceTimersByTime(16);
+    expect(transform).toHaveBeenLastCalledWith({ x: 100, y: 50 }, { x: 120, y: 70 }, 1);
+    expect(scroll).not.toHaveBeenCalled();
+    pad.up(1); pad.up(2);
+
+    viewport.scale = .5;
     pad.down(1, 40, 50, null); pad.down(2, 160, 50, null);
     pad.move(1, 60, 70); pad.move(2, 180, 70);
     vi.advanceTimersByTime(16);
@@ -196,30 +211,25 @@ it("keeps pinch/pan local and never turns the remaining finger into a remote cli
   } finally { vi.useRealTimers(); vi.unstubAllGlobals(); }
 });
 
-it("moves the widget through the rendered picture and visible viewport without a delayed click", () => {
+it("moves across the full source through the rendered zoom without a delayed click", () => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
   try {
     const events: RemoteInputEvent[] = [];
     const changed = vi.fn(), scroll = vi.fn(), transform = vi.fn();
-    const visiblePosition = vi.fn((position: { x: number; y: number }) => ({
-      x: Math.max(.3, Math.min(.6, position.x)), y: Math.max(.2, Math.min(.7, position.y)),
-    }));
     // pictureRect already includes the local zoom; do not divide by scale again.
     const pad = new RemoteTouchpad(() => ({ width: 400, height: 200, rotation: 0 }),
-      event => events.push(event), scroll, changed, { scale: 2, transform, visiblePosition });
+      event => events.push(event), scroll, changed, { scale: 2, transform });
     pad.setVirtualMouse(true);
     events.length = 0;
     pad.down(1, 20, 20, null);
     pad.moveBy(100, 50);
-    expect(visiblePosition).toHaveBeenLastCalledWith({ x: .75, y: .75 });
-    expect(pad.position).toEqual({ x: .6, y: .7 });
+    expect(pad.position).toEqual({ x: .75, y: .75 });
     expect(changed).toHaveBeenLastCalledWith(pad.position);
-    expect(events).toEqual([{ type: "move", x: .6, y: .7 }]);
+    expect(events).toEqual([{ type: "move", x: .75, y: .75 }]);
     vi.advanceTimersByTime(600); pad.up(1);
     expect(events).toHaveLength(1);
     pad.moveBy(400, 200);
-    expect(visiblePosition).toHaveBeenLastCalledWith({ x: 1, y: 1 });
-    expect(events.at(-1)).toEqual({ type: "move", x: .6, y: .7 });
+    expect(events.at(-1)).toEqual({ type: "move", x: 1, y: 1 });
     expect(scroll).not.toHaveBeenCalled();
     expect(transform).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -233,7 +243,7 @@ it.each([
   try {
     const events: RemoteInputEvent[] = [];
     const pad = new RemoteTouchpad(() => ({ width: 200, height: 100, rotation: rotation as VideoRotation }),
-      event => events.push(event), () => {}, () => {}, { scale: 1, transform: () => {}, visiblePosition: position => position });
+      event => events.push(event), () => {}, () => {}, { scale: 1, transform: () => {} });
     pad.setVirtualMouse(true);
     events.length = 0;
     pad.down(1, 20, 20, null);

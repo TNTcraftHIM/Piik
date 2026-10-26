@@ -16,11 +16,12 @@ function storage() {
 it("keeps independent room-tool choices across reads without storing private runtime fields", () => {
   const values = storage();
   expect(readRoomPreferences().previewAutoPause).toBe(true);
+  expect(readRoomPreferences().remoteTouchMode).toBe("direct");
   saveRoomPreferences({ pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text", combineKeys: true });
-  saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
+  saveRoomPreferences({ remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
   expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 270, previewAutoPause: false, routePreference: "p2p", keyboardPage: "text",
-    combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8,
+    combineKeys: true, remoteControlMode: "password", remoteReleaseKey: 9, remoteStopKey: 8, remoteTouchMode: "trackpad",
     voiceListeningVolume: 1.5, voiceInput: { deviceId: "", volume: 2, voiceProcessing: true } });
 
   // Storage accepts only the preference contract, even if a caller supplies a
@@ -34,8 +35,10 @@ it("keeps independent room-tool choices across reads without storing private run
   for (const field of ["password", "grant", "text", "modifiers", "controller"]) expect(saved).not.toHaveProperty(field);
   expect([...values.values()][0]).not.toContain("private");
   expect(readRoomPreferences().pictureFit).toBe("cover");
+  saveRoomPreferences(JSON.parse('{"remoteTouchMode":"unknown"}'));
+  expect(readRoomPreferences().remoteTouchMode).toBe("trackpad");
   values.set("piik:room-preferences:v1", JSON.stringify({ pictureFit: "cover", pictureRotation: 45 }));
-  expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 0 });
+  expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 0, remoteTouchMode: "direct" });
   values.set("piik:room-preferences:v1", JSON.stringify({ overlayAppearance: { scale: 1.2, opacity: .7 } }));
   expect(readRoomPreferences().overlayAppearance).toEqual({ scale: 1.2, opacity: .7, speed: 1, colorBySender: false });
 });
@@ -47,7 +50,7 @@ it("rejects malformed saved data and invalid patches while retaining useful defa
   const [key] = [...values.keys()];
   saveRoomPreferences(JSON.parse('{"remoteControlMode":"off"}'));
   expect(readRoomPreferences().remoteControlMode).toBe("room");
-  for (const raw of ["{", "null", JSON.stringify({ overlayAppearance: { scale: 100, opacity: 0 } })]) {
+  for (const raw of ["{", "null", JSON.stringify({ overlayAppearance: { scale: 100, opacity: 0 } }), JSON.stringify({ remoteTouchMode: "unknown" })]) {
     values.set(key, raw);
     expect(readRoomPreferences()).toEqual(defaults);
   }
@@ -67,7 +70,7 @@ it("restores overlay choices in a new room without restoring messages or room au
 
 it("keeps room tools working when Browser storage is unavailable", () => {
   vi.stubGlobal("window", { get localStorage() { throw new Error("storage denied"); } });
-  expect(readRoomPreferences()).toMatchObject({ pictureFit: "contain", routePreference: "auto", remoteControlMode: "ask" });
+  expect(readRoomPreferences()).toMatchObject({ pictureFit: "contain", routePreference: "auto", remoteControlMode: "ask", remoteTouchMode: "direct" });
   expect(() => saveRoomPreferences({ keyboardPage: "symbols" })).not.toThrow();
   const session = new RoomInteractionSession(() => true);
   session.setOverlayEnabled(true);

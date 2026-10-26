@@ -8,9 +8,9 @@ import { RemoteTouchpad } from "../../remote-control/touchpad";
 import { RemoteViewport } from "../../remote-control/viewport";
 import { RemoteGamepad } from "../../remote-control/gamepad";
 import { matchesRemoteShortcut, remoteTextAvailable, remoteGamepadAvailable } from "../../remote-control/protocol";
-import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
+import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
-import { RemoteMouse, placeRemotePointer } from "./RemoteMouse";
+import { RemoteMouse, placeRemotePointer, remotePointerRoom } from "./RemoteMouse";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import { picturePoint, pictureRect, rotatePicturePoint, rotatePictureDelta, videoRotation, type VideoFit, type VideoRotation } from "../../media/video-geometry";
@@ -18,11 +18,12 @@ import "./remote-control.css";
 
 // The video keeps its existing media owner. This temporary surface handles
 // input only while its current routed endpoint holds a local App grant.
-export function RemoteControl({ channel, videoRef, available, pictureFit, pictureRotation = 0 }: {
+export function RemoteControl({ channel, videoRef, available, pictureFit, pictureRotation = 0, touchMode = "direct" }: {
   channel: InputTransport | null; videoRef: RefObject<HTMLVideoElement | null>;
   available: boolean;
   pictureFit?: VideoFit;
   pictureRotation?: VideoRotation;
+  touchMode?: RoomPreferences["remoteTouchMode"];
 }) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<RemoteInputState | null>(null);
@@ -103,10 +104,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
         picture.left - rect.left + position.x * picture.width,
         picture.top - rect.top + position.y * picture.height);
     };
-    const view = new RemoteViewport(video, element, () => {
-      current.position = view.visiblePosition(current.position);
-      updateCursor();
-    });
+    const view = new RemoteViewport(video, element, updateCursor);
     viewport.current = view;
     const current = new RemoteTouchpad(
       () => {
@@ -115,13 +113,16 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       },
       event => session.current?.input(event),
       delta => session.current?.scroll(delta, 0),
-      updateCursor,
+      () => {
+        view.follow(current.position, remotePointerRoom(cursor.current));
+        updateCursor();
+      },
       view,
     );
     touchpad.current = current;
     setTouchPointer(matchMedia("(pointer: coarse)").matches ? current : null);
     // Layout changes and decoded aspect-ratio changes share the input geometry.
-    const refresh = () => view.refresh();
+    const refresh = () => { view.refresh(); current.refresh(); };
     const observer = new ResizeObserver(refresh);
     observer.observe(video);
     video.addEventListener("resize", refresh);
@@ -131,10 +132,10 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       current.reset(); view.reset(); touchpad.current = null; viewport.current = null;
     };
   }, [controlled, state?.grant, channel, videoRef]);
-  useLayoutEffect(() => { if (touchPointer) viewport.current?.refresh(); }, [touchPointer]);
-  useEffect(() => { viewport.current?.refresh(); }, [pictureFit]);
+  useLayoutEffect(() => { if (touchPointer) { viewport.current?.refresh(); touchPointer.refresh(); } }, [touchPointer]);
+  useEffect(() => { viewport.current?.refresh(); touchpad.current?.refresh(); }, [pictureFit]);
   useEffect(() => {
-    reset(); viewport.current?.reset(); viewport.current?.refresh();
+    reset(); viewport.current?.reset(); viewport.current?.refresh(); touchpad.current?.refresh();
   }, [pictureRotation, reset]);
   useEffect(() => {
     const video = videoRef.current as FullscreenVideo | null;
@@ -336,7 +337,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
           if (!event.nativeEvent.isComposing) input({ type: "key", code: event.code, down: true });
         }}
         onKeyUp={event => { event.preventDefault(); event.stopPropagation(); input({ type: "key", code: event.code, down: false }); }}>
-        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} pointAt={point} />}
+        {active && touchPointer && <RemoteMouse key={state.grant} pointer={touchPointer} positionRef={cursor} pointAt={point} touchMode={touchMode} />}
       </div>}
       {active && keyboardOpen && <RemoteKeyboard input={input} touch={touchControls} platform={state.platform}
         allowText={remoteTextAvailable(state)}
