@@ -58,6 +58,7 @@
 .lr-lang > button { min-width: 0; padding: 0; }
 .lr-toggle button, .lr-lang > button { cursor: pointer; }
 .lr-toggle button:disabled, .lr-lang > button:disabled { cursor: default; }
+.lr-toggle button > .lr-glyph { flex: none; }
 .lr-toggle > label { position: relative; min-width: 0; }
 .lr-toggle > label > input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .lr-toggle > label > input:disabled { cursor: default; }

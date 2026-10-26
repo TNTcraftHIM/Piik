@@ -74,6 +74,7 @@ export function ControlsPreview() {
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
+  const [inviteAvailable, setInviteAvailable] = useState(true);
   const [includeCredential, setIncludeCredential] = useState(true);
   const roomLink = `https://piik.example/r/9527${includeCredential ? "#v=preview" : ""}`;
   const [paused, setPaused] = useState(false);
@@ -204,7 +205,7 @@ export function ControlsPreview() {
           <SwitchItem checked disabled locked onChange={() => undefined} label={t("host.advanced.route.sfuOnly")}
             note={t("host.advanced.route.sfuOnlyHint")} hint="hint-route-sfu" />
         </div>
-        <div className="cp-tools" id="admission-preview">
+        <div className="cp-tools lr-row-group" id="admission-preview">
           <span className="lr-toggle" role="group" aria-label={t("host.policy")}>
             {(["open", "private"] as const).map(value => <Tooltip key={value} kind={value === "open" ? "hint-admission-code" : "hint-policy-private"}
               text={vis ? undefined : `${t(`host.policy.${value}`)}\n${t(value === "private" && roomPassword ? "host.policy.privatePasswordHint" : `host.policy.${value}Hint`)}`}>
@@ -213,14 +214,19 @@ export function ControlsPreview() {
                 <Glyph name={value === "open" ? "globe" : "lock"} size={19} />{vis ? null : <span className="lr-cap">{t(`host.policy.${value}`)}</span>}
               </button></Tooltip>)}
           </span>
+          {!inviteAvailable && <Pill icon="link" tone="off" comic="hint-invite-link"
+            label={t(policy === "open" ? "host.invite.emptyOpen" : roomPassword ? "host.invite.emptyPassword" : "host.invite.emptyPrivate")} />}
+        </div>
+        <div className="cp-tools">
           <SwitchItem checked={roomPassword} onChange={setRoomPassword} label={t("host.password.set")} />
+          <SwitchItem checked={inviteAvailable} onChange={setInviteAvailable} label={en ? "Active invitation" : "邀请链接有效"} />
         </div>
         <div className="cp-tools">
           <RoomAdmissionBadge policy="open" passwordEnabled={false} />
           <RoomAdmissionBadge policy="private" passwordEnabled />
           <RoomAdmissionBadge policy="private" passwordEnabled={false} />
         </div>
-        <div className="lr-invite-field">
+        {inviteAvailable && <div className="lr-invite-field">
           <Tooltip kind="hint-invite-link" text={roomLink} className="lr-invite-hint">
             <input className="lr-invite-url" readOnly dir="ltr" value={roomLink}
               aria-label={t(includeCredential ? "host.invite" : "host.invite.address")} />
@@ -229,8 +235,8 @@ export function ControlsPreview() {
             <SwitchItem checked={includeCredential} onChange={setIncludeCredential}
               label={t("host.invite.includeCredential")} note={t("host.invite.credentialHint")} hint="hint-invite-link" />
           </span>
-        </div>
-        {!includeCredential && policy === "private" && !roomPassword ? <Pill icon="lock" tone="warn"
+        </div>}
+        {inviteAvailable && !includeCredential && policy === "private" && !roomPassword ? <Pill icon="lock" tone="warn"
           comic="hint-policy-private" label={t("host.invite.credentialRequired")} /> : null}
         <p>{en ? "The website's architecture picker uses the same sliding style with native radio buttons. Arrow keys change the choice."
           : "官网的架构选择也复用滑动样式，使用原生单选项；聚焦后可用方向键切换。"}</p>
