@@ -1,0 +1,19 @@
+Android robot
+
+The Android robot is reproduced or modified from work created and shared by
+Google and used according to terms described in the Creative Commons 3.0
+Attribution License.
+
+Source: https://developer.android.com/distribute/marketing-tools/brand-guidelines
+License: https://creativecommons.org/licenses/by/3.0/
+Changes by Piik: simplified to a monochrome outline with rounded strokes.
+
+Android is a trademark of Google LLC.
+
+Platform names
+
+Apple, Mac, macOS, iPhone and iPad are trademarks of Apple Inc., registered in
+the U.S. and other countries and regions.
+IOS is a trademark or registered trademark of Cisco in the U.S. and other
+countries. Apple uses the iOS name under license from Cisco.
+Intel is a trademark of Intel Corporation or its subsidiaries.

@@ -48,12 +48,6 @@
           stroke-linejoin="round"
         />
       </symbol>
-      <symbol id="phone-mark" viewBox="0 0 32 32">
-        <g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="8" y="2" width="16" height="28" rx="4" />
-          <path d="M14 6h4m-4 20h4" />
-        </g>
-      </symbol>
     </svg>
 
     <header class="site-header wrap">
@@ -792,8 +786,16 @@
           <div class="download-cards">
             <article class="download-card" aria-labelledby="download-windows">
               <div class="platform-mark" aria-hidden="true">
-                <svg viewBox="0 0 32 32">
-                  <path d="M4 5h10v10H4zm14 0h10v10H18zM4 19h10v10H4zm14 0h10v10H18z" fill="currentColor" />
+                <svg
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="5" width="26" height="22" rx="3" />
+                  <path d="M3 12h26M12 12v15M7 8.5h.1m3.9 0h.1" />
                 </svg>
               </div>
               <h4 id="download-windows">Windows</h4>
@@ -817,8 +819,7 @@
                   stroke-linecap="round"
                   stroke-linejoin="round"
                 >
-                  <rect x="6" y="4" width="20" height="18" rx="2" />
-                  <path d="M3 27h26M10 22l-2 5m14-5 2 5" />
+                  <path d="M12 12H8a4 4 0 1 1 4-4v16a4 4 0 1 1-4-4h16a4 4 0 1 1-4 4V8a4 4 0 1 1 4 4Z" />
                 </svg>
               </div>
               <h4 id="download-macos">macOS</h4>
@@ -873,19 +874,32 @@
           <div class="download-cards download-cards--mobile">
             <article class="download-card" aria-labelledby="download-android">
               <div class="platform-mark" aria-hidden="true">
-                <svg aria-hidden="true"><use href="#phone-mark" /></svg>
+                <svg
+                  viewBox="0 0 32 32"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M4 24a12 12 0 0 1 24 0ZM9 13 6 8m17 5 3-5" />
+                  <circle cx="11" cy="20" r="1.3" fill="currentColor" stroke="none" />
+                  <circle cx="21" cy="20" r="1.3" fill="currentColor" stroke="none" />
+                </svg>
               </div>
               <h4 id="download-android">Android</h4>
               <p class="download-variant">ARM64 / x64</p>
               <a class="lr-btn button download-button" href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-android-universal.apk"
                 ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span><span lang="zh-CN">GitHub 下载</span></a
-              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-android-universal.apk"
-                ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a>
+              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-android-universal.zip"
+                ><span lang="en">Gitee ZIP (extract to install)</span><span lang="zh-CN">Gitee 国内镜像（ZIP，解压安装）</span></a>
               <p class="download-note"><span lang="en">Android 10 or later.</span><span lang="zh-CN">Android 10 及以上。</span></p>
             </article>
             <article class="download-card" aria-labelledby="download-ios">
               <div class="platform-mark" aria-hidden="true">
-                <svg aria-hidden="true"><use href="#phone-mark" /></svg>
+                <svg viewBox="0 0 32 32">
+                  <text x="16" y="16" dy=".35em" text-anchor="middle" fill="currentColor" font-size="18" font-weight="700">iOS</text>
+                </svg>
               </div>
               <h4 id="download-ios">iOS</h4>
               <p class="download-variant">iPhone / iPad</p>
@@ -976,6 +990,8 @@
           ><span aria-hidden="true"> ↗</span></a
         ><a href="https://github.com/TNTcraftHIM/Piik/blob/main/LICENSE"
           ><span lang="en">MIT license</span><span lang="zh-CN">MIT 许可证</span></a
+        ><a href="./assets/platform-notices.txt"
+          ><span lang="en">Icon credits</span><span lang="zh-CN">图标署名</span></a
         >
       </div>
       <details class="display-settings" id="display-settings" hidden>

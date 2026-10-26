@@ -44,7 +44,8 @@ restrictive networks may load the page but block video.
 1. Download **Piik App** for your platform from
    [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
    [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases). On phones and tablets,
-   install the app. On a computer, extract the whole archive and keep its directory structure intact.
+   install the app; extract the APK first if you use the Gitee ZIP. On a computer,
+   extract the whole archive and keep its directory structure intact.
 2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
    On phones and tablets, open Piik after installation. The launcher opens in your system browser.
 3. Choose **Public invite** for friends outside your local network, then select
