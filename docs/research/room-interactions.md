@@ -856,12 +856,19 @@ grant, rather than desktop pointer coordinates.
 For window keyboard/mouse control, the captured region must map to the current
 native window geometry, including movement, resizing and DPI. The input owner
 reads the current geometry and process identity. It suspends input and releases
-held state when the target loses focus, and revokes control if the source
-disappears. Both pages display that same suspension; the Host is asked to focus
-the shared window to resume. This reduces
+held state when the target loses focus or its current geometry cannot be read,
+and revokes control when the source identity is confirmed invalid. Both pages
+display the suspension; restoring the shared window resumes the existing grant. This reduces
 accidental input after switching away; it is not an OS window sandbox.
 `SendInput` has no target-window parameter, and shortcuts can change focus.
 Window selection must never imply that remote input is confined to that window.
+
+Input execution and authorization have separate lifetimes. A failed system input
+call drops that operation, while the existing grant accepts subsequent input.
+Failed releases remain with the input owner until cleanup succeeds; actions and
+partially inserted text are never replayed. This follows the failure scope used by
+[Sunshine's Windows input sink](https://github.com/LizardByte/Sunshine/blob/v2025.923.33222/src/platform/windows/input.cpp#L435),
+where an unsuccessful system call does not revoke the user's control session.
 
 The Windows sink uses physical-key mapping through
 [scan codes](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),

@@ -29,20 +29,21 @@ const ChannelLabel = inputroute.Label
 type bounds struct{ left, top, width, height int32 }
 
 type inputEvent struct {
-	Type     string         `json:"type"`
-	Grant    string         `json:"grant,omitempty"`
-	Intent   string         `json:"intent,omitempty"`
-	Password string         `json:"password,omitempty"`
-	X        float64        `json:"x,omitempty"`
-	Y        float64        `json:"y,omitempty"`
-	Button   int            `json:"button,omitempty"`
-	Down     bool           `json:"down,omitempty"`
-	Code     string         `json:"code,omitempty"`
-	Text     string         `json:"text,omitempty"`
-	Delta    int            `json:"delta,omitempty"`
-	DX       int32          `json:"dx,omitempty"`
-	DY       int32          `json:"dy,omitempty"`
-	Gamepad  *gamepadReport `json:"gamepad,omitempty"`
+	Type          string         `json:"type"`
+	Grant         string         `json:"grant,omitempty"`
+	Intent        string         `json:"intent,omitempty"`
+	Password      string         `json:"password,omitempty"`
+	X             float64        `json:"x,omitempty"`
+	Y             float64        `json:"y,omitempty"`
+	Button        int            `json:"button,omitempty"`
+	Down          bool           `json:"down,omitempty"`
+	Code          string         `json:"code,omitempty"`
+	Text          string         `json:"text,omitempty"`
+	Delta         int            `json:"delta,omitempty"`
+	DX            int32          `json:"dx,omitempty"`
+	DY            int32          `json:"dy,omitempty"`
+	Gamepad       *gamepadReport `json:"gamepad,omitempty"`
+	InputFeedback bool           `json:"inputFeedback,omitempty"`
 }
 
 type inputSink interface {
@@ -63,6 +64,8 @@ type View struct {
 type Manager struct {
 	mu             sync.Mutex
 	sink           inputSink
+	pendingKeys    map[string]bool
+	pendingButtons map[int]bool
 	gamepads       gamepadBackend
 	gamepadOpening bool
 	connections    map[endpointKey]*connection
@@ -92,24 +95,26 @@ type Session struct {
 }
 
 type connection struct {
-	owner     *Session
-	edgeID    string
-	epoch     string
-	id        string
-	requested bool
-	requestID string
-	intent    string
-	grant     string
-	suspended bool
-	peerID    string
-	secret    string
-	cipher    *inputCipher
-	extended  bool
-	keys      map[string]bool
-	buttons   map[int]bool
-	pad       gamepadDevice
-	padFailed bool
-	padIntent uint64
+	owner         *Session
+	edgeID        string
+	epoch         string
+	id            string
+	requested     bool
+	requestID     string
+	intent        string
+	grant         string
+	suspended     bool
+	inputFailed   bool
+	inputFeedback bool
+	peerID        string
+	secret        string
+	cipher        *inputCipher
+	extended      bool
+	keys          map[string]bool
+	buttons       map[int]bool
+	pad           gamepadDevice
+	padFailed     bool
+	padIntent     uint64
 }
 
 type endpointKey struct {
@@ -151,6 +156,7 @@ func New(ctx context.Context, captureInput bool) (*Manager, error) {
 				m.Revoke()
 			case <-ticker.C:
 				m.mu.Lock()
+				m.retryReleases()
 				m.refreshActive()
 				m.mu.Unlock()
 			}
@@ -310,6 +316,7 @@ func (s *Session) receivePacket(edgeID string, packet inputroute.Packet) {
 	}
 	if c.epoch != packet.Epoch {
 		c.extended = false
+		c.inputFeedback = false
 	}
 	c.edgeID, c.epoch = edgeID, packet.Epoch
 	m.mu.Unlock()
@@ -337,12 +344,13 @@ func (m *Manager) reply(c *connection, state, reason string) {
 		Intent       string   `json:"intent,omitempty"`
 		Mode         string   `json:"mode"`
 		Reason       string   `json:"reason,omitempty"`
+		InputFailed  bool     `json:"inputFailed,omitempty"`
 		Capabilities []string `json:"capabilities,omitempty"`
 		CoPlay       *bool    `json:"coPlay,omitempty"`
-	}{Platform: runtime.GOOS, State: state, Grant: c.grant, Intent: c.intent, Mode: c.owner.mode, Reason: reason}
+	}{Platform: runtime.GOOS, State: state, Grant: c.grant, Intent: c.intent, Mode: c.owner.mode, Reason: reason, InputFailed: c.inputFailed && c.inputFeedback}
 	if c.extended {
 		coPlay := c.owner.coPlay
-		value.Capabilities, value.CoPlay = []string{"coPlay"}, &coPlay
+		value.Capabilities, value.CoPlay = []string{"coPlay", "inputFeedback"}, &coPlay
 		if coPlay && m.singleController(c.owner) == c {
 			value.Capabilities = append(value.Capabilities, "text")
 		}
@@ -405,10 +413,12 @@ func (m *Manager) refreshActive() (bounds, bool) {
 	}
 	if changed {
 		if !focused {
-			_ = m.sink.Reset()
+			err := m.resetHeld(s)
 			for _, c := range m.connections {
 				if c.owner == s {
-					c.keys, c.buttons = nil, nil
+					if err != nil {
+						m.noteInputResult(c, err)
+					}
 					if c.pad != nil {
 						if err := c.pad.Update(gamepadReport{}); err != nil {
 							m.failGamepad(c)
@@ -429,7 +439,7 @@ func (m *Manager) release() {
 	}
 	s := m.owner
 	m.owner = nil
-	_ = m.sink.Reset()
+	_ = m.resetHeld(s)
 	for _, c := range m.connections {
 		if c.owner == s && c.grant != "" {
 			if c.pad != nil {
@@ -437,7 +447,7 @@ func (m *Manager) release() {
 				c.pad = nil
 			}
 			c.grant, c.suspended = "", false
-			c.keys, c.buttons = nil, nil
+			c.inputFailed = false
 			m.send(c, "ready")
 		}
 	}
@@ -452,14 +462,14 @@ func (m *Manager) clearHeld(c *connection) error {
 	var err error
 	for code := range keys {
 		if !m.keyHeld(code) {
-			err = errors.Join(err, m.sink.Apply(bounds{}, inputEvent{Type: "key", Code: code}))
+			err = errors.Join(err, m.releaseKey(code))
 		}
 	}
 	buttons := c.buttons
 	c.buttons = nil
 	for button := range buttons {
 		if !m.buttonHeld(button) {
-			err = errors.Join(err, m.sink.Apply(bounds{}, inputEvent{Type: "button", Button: button}))
+			err = errors.Join(err, m.releaseButton(button))
 		}
 	}
 	return err
@@ -503,15 +513,14 @@ func (m *Manager) releaseConnection(c *connection) {
 	if !c.owner.coPlay {
 		m.release()
 		return
-	} else if m.clearHeld(c) != nil {
-		m.release()
-		return
 	}
+	_ = m.clearHeld(c)
 	if c.pad != nil {
 		_ = c.pad.Close()
 		c.pad = nil
 	}
 	c.grant, c.suspended = "", false
+	c.inputFailed = false
 	if remaining := m.singleController(c.owner); remaining != nil && remaining.extended {
 		m.send(remaining, m.state(remaining))
 	}
@@ -521,60 +530,6 @@ func (m *Manager) releaseConnection(c *connection) {
 		}
 	}
 	m.owner = nil
-}
-
-func (m *Manager) applyCoPlay(c *connection, b bounds, event inputEvent) error {
-	switch event.Type {
-	case "key":
-		// A Browser has fewer than 256 physical keys. Bound even unknown codes
-		// before recording them; the platform owns its supported key mapping.
-		if event.Code == "" || len(event.Code) > 32 || event.Down && len(c.keys) >= 256 && !c.keys[event.Code] {
-			return nil
-		}
-		if event.Down {
-			if c.keys[event.Code] {
-				// Repeat from an existing holder is intentional keyboard input.
-				// Only another player's initial press is deduplicated below.
-				return m.sink.Apply(b, event)
-			}
-			held := m.keyHeld(event.Code)
-			if c.keys == nil {
-				c.keys = make(map[string]bool)
-			}
-			c.keys[event.Code] = true
-			if held {
-				return nil
-			}
-		} else {
-			if !c.keys[event.Code] {
-				return nil
-			}
-			delete(c.keys, event.Code)
-			if m.keyHeld(event.Code) {
-				return nil
-			}
-		}
-	case "button":
-		if event.Button < 0 || event.Button > 4 || c.buttons[event.Button] == event.Down {
-			return nil
-		}
-		held := m.buttonHeld(event.Button)
-		if c.buttons == nil {
-			c.buttons = make(map[int]bool)
-		}
-		if event.Down {
-			c.buttons[event.Button] = true
-			if held {
-				return nil
-			}
-		} else {
-			delete(c.buttons, event.Button)
-			if m.buttonHeld(event.Button) {
-				return nil
-			}
-		}
-	}
-	return m.sink.Apply(b, event)
 }
 
 func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoch string) {
@@ -597,6 +552,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		m.send(c, m.state(c))
 	case "capabilities":
 		c.extended = true
+		c.inputFeedback = event.InputFeedback
 		m.send(c, m.state(c))
 	case "request":
 		if !c.owner.available() || c.owner.mode == "off" || c.requested || c.grant != "" {
@@ -646,13 +602,7 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		}
 		if event.Type == "reset" {
 			m.receiveGamepad(c, inputEvent{Type: "gamepad-reset"})
-			if c.owner.coPlay {
-				if m.clearHeld(c) != nil {
-					m.release()
-				}
-			} else {
-				_ = m.sink.Reset()
-			}
+			m.noteInputResult(c, m.clearHeld(c))
 			return
 		}
 		if event.Type == "text" && c.owner.coPlay && m.singleController(c.owner) != c {
@@ -665,18 +615,14 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 		}
 		var err error
 		if event.Type == "text" {
-			err = applyText(m.sink, b, event.Text)
-			c.keys, c.buttons = nil, nil
-		} else if c.owner.coPlay {
-			err = m.applyCoPlay(c, b, event)
+			err = applyText(controllerTextSink{m, c}, b, event.Text)
 		} else {
-			err = m.sink.Apply(b, event)
+			err = m.applyHeld(c, b, event)
 		}
 		if err != nil {
 			slog.Debug("remote-input", "event", "apply-failed", "connectionId", diagnostics.ID(c.edgeID), "inputGeneration", diagnostics.ID(c.epoch), diagnostics.Error(err))
-			m.release()
-			m.send(c, "failed")
 		}
+		m.noteInputResult(c, err)
 	}
 }
 
@@ -780,6 +726,7 @@ func (m *Manager) Close() {
 	}
 	m.closed = true
 	m.release()
+	m.retryReleases()
 	if m.gamepads != nil {
 		_ = m.gamepads.Close()
 		m.gamepads = nil

@@ -51,10 +51,17 @@ func (*macSink) Target(target nativecapture.CaptureTarget, _ *nativecapture.Stre
 	if err != nil || id == 0 || (target.Kind != "display" && target.Kind != "window") {
 		return bounds{}, false, errors.New("shared source is unavailable")
 	}
-	created, _ := strconv.ParseUint(target.CreationTime, 10, 64)
+	created, creationErr := strconv.ParseUint(target.CreationTime, 10, 64)
+	if target.Kind == "window" && (creationErr != nil || created == 0 || target.PID == 0) {
+		return bounds{}, false, errors.New("shared window identity is invalid")
+	}
 	var b C.PiikInputBounds
-	if !bool(C.piik_input_target(C.bool(target.Kind == "window"), C.uint32_t(id), C.uint32_t(target.PID), C.uint64_t(created), &b)) {
+	result := C.piik_input_target(C.bool(target.Kind == "window"), C.uint32_t(id), C.uint32_t(target.PID), C.uint64_t(created), &b)
+	if result == C.PiikInputTargetInvalid {
 		return bounds{}, false, errors.New("shared source is unavailable")
+	}
+	if result != C.PiikInputTargetReady {
+		return bounds{}, false, nil
 	}
 	return bounds{int32(b.left), int32(b.top), int32(b.width), int32(b.height)}, bool(b.focused), nil
 }

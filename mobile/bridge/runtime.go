@@ -175,7 +175,15 @@ func (r *Runtime) runLauncher(lanAddress string) {
 			target, err := r.startLocal(selected, lanAddress)
 			r.launcher.SetResult(target, err)
 			if err == nil {
-				return
+				r.configMu.Lock()
+				server, tunnel := r.server, r.tunnel
+				r.configMu.Unlock()
+				err = r.watchRoom(server, tunnel)
+				if r.ctx.Err() != nil {
+					r.closeErr = errors.Join(r.closeErr, err)
+					return
+				}
+				r.launcher.SetResult("", err)
 			}
 		case <-r.ctx.Done():
 			return
@@ -280,7 +288,6 @@ func (r *Runtime) startLocal(selection launcher.Selection, address string) (targ
 	r.server, r.tunnel, r.url = server, tunnel, target
 	committed = true
 	r.configMu.Unlock()
-	go r.watchRoom(server, tunnel)
 	return target, nil
 }
 
@@ -294,7 +301,7 @@ func endRuntimeServer(server *serverapp.Server) error {
 	return err
 }
 
-func (r *Runtime) watchRoom(server *serverapp.Server, tunnel *publictunnel.Process) {
+func (r *Runtime) watchRoom(server *serverapp.Server, tunnel *publictunnel.Process) error {
 	var tunnelDone <-chan struct{}
 	if tunnel != nil {
 		tunnelDone = tunnel.Done()
@@ -302,12 +309,35 @@ func (r *Runtime) watchRoom(server *serverapp.Server, tunnel *publictunnel.Proce
 	reason := failure.LocalServer
 	select {
 	case <-r.ctx.Done():
-		return
 	case <-server.Done():
 	case <-tunnelDone:
 		reason = failure.TunnelStopped
 	}
-	r.stop(reason)
+	err := endRuntimeServer(server)
+	if tunnel != nil {
+		err = errors.Join(err, tunnel.Close())
+	}
+	r.configMu.Lock()
+	origin := ""
+	if r.server == server {
+		if r.url != "" {
+			origin = r.localOrigin()
+		}
+		r.server, r.tunnel, r.url = nil, nil, ""
+	}
+	r.configMu.Unlock()
+	if origin != "" {
+		retireErr := r.control.RemoveAllowedOrigin(origin)
+		// Whole-runtime cancellation also cancels this permission wait. Close
+		// joins control cleanup with its own deadline after launchDone instead.
+		if r.ctx.Err() == nil {
+			err = errors.Join(err, retireErr)
+		}
+	}
+	if r.ctx.Err() != nil {
+		return err
+	}
+	return errors.Join(reason, err)
 }
 
 func (r *Runtime) watchServices() {

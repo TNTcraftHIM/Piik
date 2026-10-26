@@ -3,6 +3,7 @@ package loopback
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -62,8 +63,12 @@ func (session *retiringControl) Close() error {
 }
 
 func TestSiteRevocationPreservesUnrelatedSessions(t *testing.T) {
-	for _, otherOrigin := range []string{"", "https://keep.example"} {
-		t.Run(otherOrigin, func(t *testing.T) {
+	for _, test := range []struct {
+		otherOrigin string
+		remove      bool
+	}{{"", false}, {"https://keep.example", false}, {"https://keep.example", true}} {
+		t.Run(fmt.Sprintf("%s/remove=%v", test.otherOrigin, test.remove), func(t *testing.T) {
+			otherOrigin := test.otherOrigin
 			finish := make(chan struct{})
 			defer close(finish)
 			created := make(chan *testControlSession, 2)
@@ -89,7 +94,13 @@ func TestSiteRevocationPreservesUnrelatedSessions(t *testing.T) {
 			localSession := <-created
 
 			done := make(chan error, 1)
-			go func() { done <- server.SetAllowedOrigins([]string{"https://next.example", "https://keep.example"}) }()
+			go func() {
+				if test.remove {
+					done <- server.RemoveAllowedOrigin(testOrigin)
+				} else {
+					done <- server.SetAllowedOrigins([]string{"https://next.example", "https://keep.example"})
+				}
+			}()
 			select {
 			case <-oldSession.closed:
 			case <-time.After(time.Second):

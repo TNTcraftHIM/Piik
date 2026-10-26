@@ -205,6 +205,26 @@ func (server *Server) Done() <-chan error {
 
 func (server *Server) SetAllowedOrigins(origins []string) error {
 	server.mu.Lock()
+	retired := server.setAllowedOriginsLocked(origins)
+	server.mu.Unlock()
+	return server.retireConnections(retired)
+}
+
+// RemoveAllowedOrigin retires one authority without replaying other origins.
+func (server *Server) RemoveAllowedOrigin(origin string) error {
+	server.mu.Lock()
+	origins := make([]string, 0, len(server.allowedOrigins))
+	for _, allowed := range server.allowedOrigins {
+		if !sameOrigin(allowed, origin) {
+			origins = append(origins, allowed)
+		}
+	}
+	retired := server.setAllowedOriginsLocked(origins)
+	server.mu.Unlock()
+	return server.retireConnections(retired)
+}
+
+func (server *Server) setAllowedOriginsLocked(origins []string) []*controlConnection {
 	server.allowedOrigins = normalizedOrigins(origins)
 	var retired []*controlConnection
 	for connection := range server.connections {
@@ -213,7 +233,10 @@ func (server *Server) SetAllowedOrigins(origins []string) error {
 			retired = append(retired, connection)
 		}
 	}
-	server.mu.Unlock()
+	return retired
+}
+
+func (server *Server) retireConnections(retired []*controlConnection) error {
 	ctx, cancel := context.WithTimeout(server.ctx, shutdownTimeout)
 	defer cancel()
 	for _, connection := range retired {

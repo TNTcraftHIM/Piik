@@ -223,11 +223,12 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
     } else session.current?.request();
   };
   const touchControls = touch || matchMedia("(pointer: coarse)").matches;
-  const statusIcon = state.reason === "busy" ? "users" : state.reason === "password" || state.reason === "gamepad" || state.state === "failed" ? "alert"
+  const statusIcon = state.reason === "busy" ? "users" : state.reason === "password" || state.reason === "gamepad" || state.state === "failed" || state.inputFailed ? "alert"
     : state.state === "suspended" ? "pause" : gamepadConnected && controlled ? "gamepad" : "clock";
   const feedback: CopyKey | undefined = state.reason ? `remote.reason.${state.reason}`
     : state.state === "suspended" ? "remote.suspended" : state.state === "failed" ? "remote.failed"
     : state.state === "pending" ? state.mode === "ask" ? "remote.pending" : "remote.connecting"
+    : state.inputFailed ? "remote.inputFailed"
     : gamepadConnected && controlled ? "remote.gamepadHelp"
     : undefined;
   const parent = videoRef.current?.parentElement;
@@ -236,7 +237,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       <span className="lr-remote-viewer-control">
         <Btn icon="mouse" title={presentation === "external" ? "remote.inlineRequired" : presentation === "paused" ? "remote.playbackRequired" : state.state === "unavailable" ? "remote.unavailable" : buttonTitle}
           hint={holding ? "hint-remote-stop" : "hint-remote-control"}
-          hintText={feedback} hintTone={state.state === "failed" ? "warn" : undefined}
+          hintText={feedback} hintTone={state.state === "failed" || state.inputFailed ? "warn" : undefined}
           busy={requesting} pressed={controlled} disabled={!canControl || state.state === "unavailable"}
           onClick={() => requestControl()} />
         {feedback && !passwordOpen && <span className="lr-remote-feedback" role="status">

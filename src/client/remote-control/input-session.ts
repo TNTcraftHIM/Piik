@@ -23,6 +23,7 @@ export class RemoteInputSession {
   private intent: string | null = null;
   private disposed = false;
   private capabilitiesRequested = false;
+  private inputFeedbackRequested = false;
   private pointer: PointerInput | null = null;
   private pointerTimer: ReturnType<typeof setTimeout> | null = null;
   private nextPointerAt = 0;
@@ -74,6 +75,10 @@ export class RemoteInputSession {
       this.capabilitiesRequested = true;
       if (!state.capabilities && !this.send({ type: "capabilities" })) return;
     }
+    if (!this.inputFeedbackRequested && state.capabilities?.includes("inputFeedback")) {
+      this.inputFeedbackRequested = true;
+      if (!this.send({ type: "capabilities", inputFeedback: true })) return;
+    }
     // Source availability is authoritative for every request. Pause/off may
     // reach us before the Host receives our new intent; it still ends it.
     if (state.state === "unavailable") this.intent = null;
@@ -111,7 +116,7 @@ export class RemoteInputSession {
     if (!state) return;
     this.intent = crypto.randomUUID().replaceAll("-", "");
     if (this.send({ type: "request", intent: this.intent, ...(password !== undefined ? { password } : {}) }))
-      this.set({ ...state, state: "pending", grant: undefined, reason: undefined, intent: this.intent });
+      this.set({ ...state, state: "pending", grant: undefined, reason: undefined, inputFailed: undefined, intent: this.intent });
   }
 
   release(): void {
@@ -122,7 +127,7 @@ export class RemoteInputSession {
     const intent = this.intent;
     const state = this.state;
     this.intent = null;
-    if (this.send({ type: "release", intent })) this.set({ ...state, state: "ready", grant: undefined, intent: undefined });
+    if (this.send({ type: "release", intent })) this.set({ ...state, state: "ready", grant: undefined, intent: undefined, inputFailed: undefined });
   }
 
   input(event: RemoteInputEvent): void {

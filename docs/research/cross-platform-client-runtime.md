@@ -348,7 +348,9 @@ process and the same room server. Its Android PIE executable is installed in
 the APK native-library directory; temporary configuration uses the Android
 cache directory rather than a process-wide temporary-path override. Runtime
 shutdown joins startup work, ends the room server, then joins the sidecar.
-An unexpected sidecar exit ends the runtime and presents an explicit restart.
+A room-server or sidecar failure retires that local room and returns its launcher
+to retry. The resident capability service and approved external Site sessions
+continue independently; failure of the launcher or capability service ends the runtime.
 
 A `mediaProjection` foreground service owns the approved Projection, VirtualDisplay,
 MediaCodec and AudioRecord. A narrow

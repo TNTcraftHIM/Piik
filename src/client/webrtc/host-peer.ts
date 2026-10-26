@@ -765,8 +765,10 @@ export class HostPeer {
           const applied = await this.configureSender(this.videoSender, audio, {
             profile: this.desiredProfile, profileRevision: revision, video: false, audio: true,
           });
-          if (!applied && !this.disposed && revision === this.profileRevision) this.fail();
-        }).catch(error => this.fail(error));
+          // The negotiated ceiling changed independently of the requested
+          // bitrate. Keep the old readback, but let an explicit update retry.
+          if (!applied && !this.disposed && revision === this.profileRevision) this.appliedAudioBitrate = null;
+        }).catch(error => debugError("webrtc", "audio-parameters-failed", error, { connectionId: this.connectionId }));
       }
       await this.flushCandidates();
       if (this.ownsAnswer(epoch)) {

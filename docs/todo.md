@@ -28,10 +28,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   with source sound on and off in the candidate that waits for video `active`
   before starting source audio. Obtain the App diagnostic if the window stays black.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
-  [#502](https://github.com/TNTcraftHIM/Piik/issues/502). The supplied recording
-  and two Browser reports show control being cleared while display capture and
-  P2P media remain connected. Await the Host App diagnostic ZIP from the supplied
-  candidate with input diagnostics to identify the target or execution error.
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502). Supply the corrected
+  Windows candidate; if minimizing still prevents input, obtain its Host App
+  diagnostic ZIP to identify the rejected system operation.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the

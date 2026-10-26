@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -24,7 +24,99 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
 	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
 	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
+
+type retiringRoomControl struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (*retiringRoomControl) Handle(context.Context, []byte) (any, error) { return nil, nil }
+func (*retiringRoomControl) Events() <-chan any                          { return nil }
+func (control *retiringRoomControl) Close() error {
+	close(control.started)
+	<-control.release
+	return nil
+}
+
+func TestCloseJoinsLocalControlRetirementWithoutFalseError(t *testing.T) {
+	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+	r, _ := tunnelRuntime(t)
+	if err := r.control.Close(); err != nil {
+		t.Fatal(err)
+	}
+	control := &retiringRoomControl{started: make(chan struct{}), release: make(chan struct{})}
+	var release sync.Once
+	t.Cleanup(func() { release.Do(func() { close(control.release) }) })
+	var err error
+	r.control, err = loopback.Start(r.ctx, loopback.Options{NewControl: func() loopback.ControlSession { return control }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.launcher, err = launcher.Start(r.ctx, fstest.MapFS{"index.html": {Data: []byte("launcher")}}, launcher.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.launchDone = make(chan struct{})
+	go func() { defer close(r.launchDone); r.runLauncher("") }()
+	launcherOrigin := strings.TrimSuffix(r.launcher.URL(), "/client")
+	request, _ := http.NewRequest("POST", launcherOrigin+"/api/client-launcher/launch", strings.NewReader(`{"mode":"link","language":"en"}`))
+	request.Header.Set("Origin", launcherOrigin)
+	request.Header.Set("Content-Type", "application/json")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("launch = %d", response.StatusCode)
+	}
+	r.configMu.Lock()
+	origin := r.localOrigin()
+	r.configMu.Unlock()
+	endpoint := r.control.Endpoint()
+	connection, _, err := websocket.Dial(t.Context(), strings.Replace(endpoint.URL, "http://", "ws://", 1)+"/control", &websocket.DialOptions{
+		HTTPHeader:   http.Header{"Origin": []string{origin}},
+		Subprotocols: []string{loopback.ControlSubprotocol + "." + endpoint.InstanceToken},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.CloseNow()
+	if err = wsjson.Write(t.Context(), connection, map[string]any{"version": loopback.ProtocolVersion, "id": "close_hello", "type": "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	var ready map[string]any
+	if err = wsjson.Read(t.Context(), connection, &ready); err != nil {
+		t.Fatal(err)
+	}
+	if ready["type"] != "ready" {
+		t.Fatalf("control handshake = %v", ready)
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- r.Close() }()
+	select {
+	case <-control.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("local control did not enter retirement")
+	}
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before local control cleanup: %v", err)
+	case <-time.After(30 * time.Millisecond):
+	}
+	release.Do(func() { close(control.release) })
+	select {
+	case err := <-closed:
+		if err != nil {
+			t.Fatalf("completed local control cleanup reported failure: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not join completed control cleanup")
+	}
+}
 
 // Run the real supervised process path without contacting Cloudflare.
 func TestMain(tests *testing.M) {
@@ -214,7 +306,7 @@ func TestEssentialServicesRetireTheMobileRuntime(t *testing.T) {
 				select {
 				case reason := <-platform.terminated:
 					if component == "room-and-control" {
-						if reason != string(failure.NativeControl) && reason != string(failure.TunnelStopped) {
+						if reason != string(failure.NativeControl) {
 							t.Fatalf("unexpected competing failure: %q", reason)
 						}
 					} else if reason != string(want) {
@@ -229,7 +321,6 @@ func TestEssentialServicesRetireTheMobileRuntime(t *testing.T) {
 			}
 			if component == "room-and-control" {
 				<-r.tunnel.Done()
-				r.watchRoom(r.server, r.tunnel)
 			}
 			r.watchServices()
 			select {
@@ -319,10 +410,50 @@ func TestLauncherRetriesFailedStartupAndKeepsSuccessfulRoom(t *testing.T) {
 		t.Fatalf("active room reentry = %d, target unchanged = %v", response.StatusCode, reopened.Target == target)
 	}
 	r.configMu.Lock()
-	defer r.configMu.Unlock()
 	if r.server != server || r.tunnel != tunnel {
+		r.configMu.Unlock()
 		t.Fatal("launcher reopening replaced a successful room")
 	}
+	r.configMu.Unlock()
+	siteCapture := r.capture.stream(r.ctx, nil)
+	if err := tunnel.Close(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		response, err := client.Get(strings.TrimSuffix(r.launcher.URL(), "/client") + "/api/client-launcher")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var state struct {
+			Target string
+			Reason string
+		}
+		err = json.NewDecoder(response.Body).Decode(&state)
+		response.Body.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Target == "" && state.Reason != "" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("room failure did not return launcher to retry")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if r.TrustedURL(target) || !r.TrustedURL("https://site.example") || r.capture.get(siteCapture.id) == nil {
+		t.Fatal("room failure changed unrelated authority")
+	}
+	if response := post(`{"mode":"link","language":"en"}`); response.StatusCode != http.StatusOK {
+		t.Fatalf("room retry = %d", response.StatusCode)
+	}
+	r.configMu.Lock()
+	if r.server == nil || r.server == server || r.tunnel == tunnel || r.url == target {
+		r.configMu.Unlock()
+		t.Fatal("retry did not create a fresh room")
+	}
+	r.configMu.Unlock()
 }
 
 func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
@@ -330,6 +461,10 @@ func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
 	trigger := filepath.Join(t.TempDir(), "exit")
 	t.Setenv("PIIK_ANDROID_TUNNEL_EXIT", trigger)
 	r, platform := tunnelRuntime(t)
+	if _, err := r.approveSite("https://site.example"); err != nil {
+		t.Fatal(err)
+	}
+	siteCapture := r.capture.stream(r.ctx, nil)
 	target, err := r.startLocal(launcher.Selection{Mode: launcher.ModeLink}, "")
 	if err != nil {
 		t.Fatal(err)
@@ -348,20 +483,37 @@ func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("shared server not ready: %d", response.StatusCode)
 	}
+	result := make(chan error, 1)
+	r.launchDone = make(chan struct{})
+	go func() { defer close(r.launchDone); result <- r.watchRoom(r.server, r.tunnel) }()
 	if err := os.WriteFile(trigger, nil, 0600); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case reason := <-platform.terminated:
-		if reason != string(failure.TunnelStopped) {
-			t.Fatalf("wrong terminal cause: %q", reason)
+	case err := <-result:
+		if !errors.Is(err, failure.TunnelStopped) {
+			t.Fatalf("wrong room failure: %v", err)
 		}
 	case <-time.After(5 * time.Second):
-		t.Fatal("dependency exit did not finish runtime retirement")
+		t.Fatal("dependency exit did not finish room retirement")
 	}
-	var dependency *exec.ExitError
-	if !errors.As(r.Close(), &dependency) || dependency.ExitCode() != 7 {
-		t.Fatal("dependency failure was swallowed by Close")
+	if r.ctx.Err() != nil || r.TrustedURL(target) || !r.TrustedURL("https://site.example") || r.capture.get(siteCapture.id) != siteCapture {
+		t.Fatal("room failure changed unrelated Runtime/Site/capture authority")
+	}
+	request, _ := http.NewRequest("GET", r.control.Endpoint().URL+"/health", nil)
+	request.Header.Set("Origin", "https://site.example")
+	if response, err := client.Do(request); err != nil {
+		t.Fatal(err)
+	} else {
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatal("Site control is unavailable")
+		}
+	}
+	select {
+	case <-platform.terminated:
+		t.Fatal("room failure ended Runtime")
+	default:
 	}
 	if response, err := client.Get(endpoint.String()); err == nil {
 		response.Body.Close()
@@ -373,8 +525,13 @@ func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
 	}
 }
 
-func TestRoomListenerFailureRetiresRuntime(t *testing.T) {
+func TestRoomListenerFailureRetiresOnlyRoom(t *testing.T) {
+	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
 	r, platform := tunnelRuntime(t)
+	if _, err := r.approveSite("https://site.example"); err != nil {
+		t.Fatal(err)
+	}
+	siteCapture := r.capture.stream(r.ctx, nil)
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -390,23 +547,48 @@ func TestRoomListenerFailureRetiresRuntime(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.server = server
+	oldTarget := "http://127.0.0.1:" + strconv.Itoa(port) + "/"
+	r.url = oldTarget
 	if _, err := server.Listen(r.ctx); err != nil {
 		t.Fatal(err)
 	}
-	go r.watchRoom(server, nil)
+	result := make(chan error, 1)
+	r.launchDone = make(chan struct{})
+	go func() { defer close(r.launchDone); result <- r.watchRoom(server, nil) }()
 	if err := listener.Close(); err != nil {
 		t.Fatal(err)
 	}
 	select {
-	case reason := <-platform.terminated:
-		if reason != string(failure.LocalServer) {
-			t.Fatalf("wrong terminal cause: %q", reason)
+	case err := <-result:
+		if !errors.Is(err, failure.LocalServer) {
+			t.Fatalf("wrong room failure: %v", err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("listener failure left the mobile runtime ready")
 	}
-	if r.ctx.Err() == nil {
-		t.Fatal("listener failure did not retire the runtime")
+	if r.ctx.Err() != nil || r.server != nil {
+		t.Fatal("listener failure retained room or ended Runtime")
+	}
+	if r.TrustedURL(oldTarget) || !r.TrustedURL("https://site.example") || r.capture.get(siteCapture.id) == nil {
+		t.Fatal("listener failure changed unrelated Site/capture authority")
+	}
+	request, _ := http.NewRequest("GET", r.control.Endpoint().URL+"/health", nil)
+	request.Header.Set("Origin", "https://site.example")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatal("listener failure ended Site control")
+	}
+	if target, err := r.startLocal(launcher.Selection{Mode: launcher.ModeLink}, ""); err != nil || target == oldTarget {
+		t.Fatalf("new selection did not recover after listener failure: %v", err)
+	}
+	select {
+	case <-platform.terminated:
+		t.Fatal("listener failure ended Runtime")
+	default:
 	}
 }
 

@@ -7,7 +7,7 @@ export class PreviewInput extends EventTarget implements InputTransport {
   bufferedAmount = 0;
   private listeners = new Set<() => void>();
   private password = "";
-  private state: RemoteInputState = { state: "ready", mode: "ask", platform: "windows", coPlay: true, capabilities: ["coPlay", "text"] };
+  private state: RemoteInputState = { state: "ready", mode: "ask", platform: "windows", coPlay: true, capabilities: ["coPlay", "text", "inputFeedback"] };
   getSnapshot = () => this.state;
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(next: RemoteInputState): void {
@@ -28,16 +28,21 @@ export class PreviewInput extends EventTarget implements InputTransport {
       } else {
         const pending = this.state.mode === "ask";
         this.publish({ ...this.state, state: pending ? "pending" : "active", intent: event.intent,
-          grant: pending ? undefined : "1".repeat(64), reason: undefined });
+          grant: pending ? undefined : "1".repeat(64), reason: undefined, inputFailed: undefined });
       }
+    } else if (this.state.inputFailed) {
+      this.publish({ ...this.state, inputFailed: undefined });
     }
   }
+  failInput(): void {
+    if (this.state.state === "active") this.publish({ ...this.state, inputFailed: true });
+  }
   reset(): void {
-    this.publish({ ...this.state, state: this.state.mode === "off" ? "unavailable" : "ready", grant: undefined, reason: undefined });
+    this.publish({ ...this.state, state: this.state.mode === "off" ? "unavailable" : "ready", grant: undefined, reason: undefined, inputFailed: undefined });
   }
   policy(mode: RemoteControlMode, password = ""): void {
     this.password = password;
-    this.publish({ ...this.state, mode, state: mode === "off" ? "unavailable" : "ready", grant: undefined, reason: undefined });
+    this.publish({ ...this.state, mode, state: mode === "off" ? "unavailable" : "ready", grant: undefined, reason: undefined, inputFailed: undefined });
   }
   decide(allow: boolean): void {
     if (!allow) this.reset();

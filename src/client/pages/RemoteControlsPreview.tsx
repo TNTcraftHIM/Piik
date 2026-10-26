@@ -223,6 +223,8 @@ function PermissionRequestPreview() {
     </div>
     <div className="cp-tools"><button type="button" className="lr-btn is-compact" onClick={() => channel.policy("ask")}>
       {en ? "Reset example" : "重置示例"}</button>
+      <button type="button" className="lr-btn is-compact" disabled={state.state !== "active"} onClick={() => channel.failInput()}>
+        {en ? "Simulate an input failure" : "模拟单次操作失败"}</button>
       <span className="cp-permission-caption">{en ? "Hover the picture to reveal its normal playback controls." : "鼠标移入画面，即可呼出正式播控。"}</span>
     </div>
   </section>;

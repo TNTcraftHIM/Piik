@@ -31,6 +31,7 @@ type recordedInput struct {
 	focused   bool
 	targetErr error
 	applyErr  error
+	resetErr  error
 }
 
 func setTestPolicy(s *Session, mode, password string) error {
@@ -323,9 +324,14 @@ func (s *recordedInput) Apply(target bounds, event inputEvent) error {
 	s.events <- event
 	return nil
 }
-func (s *recordedInput) Reset() error { s.resets <- struct{}{}; return nil }
+func (s *recordedInput) Reset() error {
+	if s.resets != nil {
+		s.resets <- struct{}{}
+	}
+	return s.resetErr
+}
 
-func TestInputFailureDiagnosticsReleaseGrantWithoutRecordingInput(t *testing.T) {
+func TestInputFailureDiagnosticsPreserveExecutionAuthority(t *testing.T) {
 	for _, stage := range []string{"target", "apply"} {
 		t.Run(stage, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -349,8 +355,12 @@ func TestInputFailureDiagnosticsReleaseGrantWithoutRecordingInput(t *testing.T) 
 				sink.applyErr = failure
 			}
 			sendTestInput(m, c, inputEvent{Type: "text", Text: "private committed text", Grant: grant})
-			if m.owner != nil || c.grant != "" || len(c.keys) != 0 || len(sink.resets) == 0 {
-				t.Fatal("platform failure retained grant or held input")
+			if stage == "target" {
+				if m.owner != nil || c.grant != "" || len(c.keys) != 0 {
+					t.Fatal("invalid target retained authority")
+				}
+			} else if m.owner == nil || c.grant != grant || !c.inputFailed {
+				t.Fatal("execution failure retired authorization or hid failure")
 			}
 			var record map[string]any
 			if err := json.Unmarshal(logs.Bytes(), &record); err != nil {
@@ -1146,16 +1156,20 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		peer, state  string
 		capabilities []string
 		coPlay       *bool
+		grant        string
+		inputFailed  *bool
 	}
 	states := make(chan observedState, 128)
 	bindings := map[string]protocol.RemoteInputPeer{}
 	ciphers := map[string]*inputCipher{}
+	epochs := map[string]string{}
 	for _, name := range []string{"first", "second"} {
 		id, key := make([]byte, 16), make([]byte, 32)
 		_, _ = rand.Read(id)
 		_, _ = rand.Read(key)
 		bindings[name] = protocol.RemoteInputPeer{PeerID: name + "-viewer", EndpointID: hex.EncodeToString(id), Secret: hex.EncodeToString(key)}
 		ciphers[name], _ = newInputCipher(bindings[name].Secret)
+		epochs[name] = bindings[name].EndpointID
 	}
 	if err := s.SetPeers([]protocol.RemoteInputPeer{bindings["first"], bindings["second"]}); err != nil {
 		t.Fatal(err)
@@ -1178,9 +1192,11 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 				State        string   `json:"state"`
 				Capabilities []string `json:"capabilities"`
 				CoPlay       *bool    `json:"coPlay"`
+				Grant        string   `json:"grant"`
+				InputFailed  *bool    `json:"inputFailed"`
 			}
 			if json.Unmarshal(plain, &value) == nil {
-				states <- observedState{c.Label(), value.State, value.Capabilities, value.CoPlay}
+				states <- observedState{c.Label(), value.State, value.Capabilities, value.CoPlay, value.Grant, value.InputFailed}
 			}
 		})
 		c.OnOpen(func() { channels <- c })
@@ -1255,7 +1271,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		binary.BigEndian.PutUint64(header, cipher.sent)
 		_, _ = rand.Read(header[8:])
 		plain, _ := json.Marshal(event)
-		epoch := bindings[peer].EndpointID
+		epoch := epochs[peer]
 		data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
 		packet, _ := json.Marshal(inputroute.Packet{ID: bindings[peer].EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)})
 		if err := peers[peer].SendText(string(packet)); err != nil {
@@ -1452,16 +1468,60 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		t.Fatal("baseline sync added unnegotiated fields")
 	}
 	send("first", inputEvent{Type: "capabilities"})
-	if state := waitReply("first", true); *state.coPlay || len(state.capabilities) != 1 || state.capabilities[0] != "coPlay" {
+	if state := waitReply("first", true); *state.coPlay || len(state.capabilities) != 2 || state.capabilities[0] != "coPlay" || state.capabilities[1] != "inputFeedback" {
 		t.Fatal("extended Guest did not receive the explicit single-controller capability state")
 	}
 	send("second", inputEvent{Type: "sync"})
 	if state := waitReply("second", false); len(state.capabilities) != 0 {
 		t.Fatal("one Guest opted another Guest into the extension")
 	}
+	// The old capabilities command does not opt a strict reader into new keys.
+	m.mu.Lock()
+	sink.applyErr = errors.New("execution temporarily refused")
+	m.mu.Unlock()
+	send("first", inputEvent{Type: "move", X: .4, Y: .3, Grant: nextGrant})
+	wait(func() bool { return first.inputFailed })
+	if state := waitReply("first", true); state.inputFailed != nil || state.grant != nextGrant || state.state != "active" {
+		t.Fatal("legacy feedback changed JSON shape or retired its grant")
+	}
+	send("first", inputEvent{Type: "capabilities", InputFeedback: true})
+	if state := waitReply("first", true); state.inputFailed == nil || !*state.inputFailed || state.grant != nextGrant {
+		t.Fatal("explicit feedback opt-in did not report retained-grant failure")
+	}
+	m.mu.Lock()
+	sink.applyErr = nil
+	m.mu.Unlock()
+	send("first", inputEvent{Type: "move", X: .2, Y: .3, Grant: nextGrant})
+	wait(func() bool { return !first.inputFailed })
+	if state := waitReply("first", true); state.inputFailed != nil || state.grant != nextGrant || state.state != "active" {
+		t.Fatal("fresh input did not clear failure within the same grant")
+	}
+	// Replacing this endpoint's live epoch retires its opt-in along with its grant.
+	epochs["first"] = strings.Repeat("a", 32)
+	send("first", inputEvent{Type: "sync"})
+	if state := waitReply("first", false); state.inputFailed != nil || state.grant != "" {
+		t.Fatal("new epoch inherited grant or feedback fields")
+	}
+	first = request("first")
+	nextGrant = decide(first, true)
+	// Consume the active baseline reply before checking a later failure reply.
+	for state := waitReply("first", false); state.state != "active"; state = waitReply("first", false) {
+	}
+	m.mu.Lock()
+	sink.applyErr = errors.New("new epoch execution refused")
+	m.mu.Unlock()
+	send("first", inputEvent{Type: "move", X: .4, Y: .3, Grant: nextGrant})
+	wait(func() bool { return first.inputFailed })
+	if state := waitReply("first", false); state.inputFailed != nil || state.grant != nextGrant || state.state != "active" {
+		t.Fatal("new legacy epoch received an unnegotiated feedback field")
+	}
+	m.mu.Lock()
+	sink.applyErr = nil
+	m.mu.Unlock()
+	beforeCloseEvents, beforeCloseResets := len(sink.events), len(sink.resets)
 	s.Close()
 	key(first, nextGrant)
-	if len(sink.events) != 4 || len(sink.resets) != 7 || len(s.State().Requests) != 0 || s.Decide(first.requestID, true) == nil {
+	if len(sink.events) != beforeCloseEvents || len(sink.resets) != beforeCloseResets+1 || len(s.State().Requests) != 0 || s.Decide(first.requestID, true) == nil {
 		t.Fatal("source retirement kept a grant")
 	}
 }
