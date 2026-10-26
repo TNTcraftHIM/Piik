@@ -1550,33 +1550,13 @@ std::shared_ptr<const CaptureInput> RefreshCaptureInput(const CaptureInput& late
 }
 
 std::optional<UINT64> CapturePresentationTimestamp(
-    UINT64 captured, UINT64 previous_capture, UINT64 previous_presentation) {
-  if (captured <= previous_capture) return std::nullopt;
+    UINT64 captured, UINT64 previous_capture, UINT64 previous_presentation,
+    UINT64 minimum_capture) {
+  if (captured <= previous_capture || captured < minimum_capture) return std::nullopt;
   // A real frame can have been captured before a requested still was presented.
   // Retain its new pixels and keep separate access units at least one RTP tick apart.
   constexpr UINT64 rtp_tick_100ns = (10'000'000 + 90'000 - 1) / 90'000;
   return std::max(captured, previous_presentation + rtp_tick_100ns);
-}
-
-bool CaptureSizeMatches(SIZE content, SIZE target, HWND window) {
-  const auto matches = [&](SIZE size) {
-    return content.cx == size.cx && content.cy == size.cy;
-  };
-  if (matches(target)) return true;
-  if (window == nullptr) return false;
-  // Win10 item.Size can include invisible borders that ContentSize excludes.
-  // Compare the current visual bounds too, still rejecting queued resize frames.
-  RECT bounds{};
-  if (SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS,
-                                      &bounds, sizeof(bounds))) &&
-      matches({bounds.right - bounds.left, bounds.bottom - bounds.top})) return true;
-  // Maximized windows can extend outside the monitor behind their hidden borders.
-  MONITORINFO monitor{};
-  monitor.cbSize = sizeof(monitor);
-  return IsZoomed(window) &&
-      GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONULL), &monitor) &&
-      matches({monitor.rcWork.right - monitor.rcWork.left,
-               monitor.rcWork.bottom - monitor.rcWork.top});
 }
 
 class OutputWorker final {
@@ -2150,6 +2130,8 @@ void RunVideoCapture(ProductArguments arguments) {
 
     UINT64 previous_timestamp = 0;
     UINT64 previous_capture_timestamp = 0;
+    UINT64 minimum_capture_timestamp = 0;
+    bool window_minimized = false;
     UINT64 next_output_timestamp = 0;
     UINT64 source_frames = 0;
     auto pool_size = initial_size;
@@ -2181,6 +2163,18 @@ void RunVideoCapture(ProductArguments arguments) {
         refresh_input = true;
       }
       border.Apply(capture_session);
+      if (window_target && !IsWindow(reinterpret_cast<HWND>(
+              static_cast<UINT_PTR>(arguments.source_id)))) {
+        Fail("capture-closed", "selected source stopped capture");
+      }
+      // WGC can deliver a minimized title-bar frame after the window is restored.
+      // Fence that suspended content by capture time, not current window geometry.
+      const bool minimized = window_target && IsIconic(reinterpret_cast<HWND>(
+          static_cast<UINT_PTR>(arguments.source_id)));
+      if (window_minimized && !minimized) {
+        minimum_capture_timestamp = static_cast<UINT64>(MFGetSystemTime());
+      }
+      window_minimized = minimized;
       DWORD wait = window_target
                        ? WaitForMultipleObjects(3, window_waits, FALSE, control_wait_ms)
                        : WaitForMultipleObjects(2, display_waits, FALSE, control_wait_ms);
@@ -2229,19 +2223,13 @@ void RunVideoCapture(ProductArguments arguments) {
       }
       UINT64 timestamp = static_cast<UINT64>(signed_timestamp);
       const auto presentation_timestamp = CapturePresentationTimestamp(
-          timestamp, previous_capture_timestamp, previous_timestamp);
+          timestamp, previous_capture_timestamp, previous_timestamp,
+          minimum_capture_timestamp);
       if (!presentation_timestamp) continue;
       auto content_size = latest.ContentSize();
       if (content_size.Width <= 0 || content_size.Height <= 0) continue;
-      // Reject queued geometry from before the current target's resize/restore.
-      const auto target_size = item.Size();
-      if (!CaptureSizeMatches({content_size.Width, content_size.Height},
-                              {target_size.Width, target_size.Height},
-                              window_target ? reinterpret_cast<HWND>(
-                                  static_cast<UINT_PTR>(arguments.source_id)) : nullptr)) {
-        latest.Close();
-        continue;
-      }
+      // ContentSize owns this rendered frame's geometry. Item/window bounds can
+      // differ on Windows 10; comparing them would discard every valid frame.
       const auto color = display_color.Resolve();
       if (content_size.Width != pool_size.Width ||
           content_size.Height != pool_size.Height || color.Format() != pool_format) {

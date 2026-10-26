@@ -84,51 +84,19 @@ void CheckQuietCaptureRefresh() {
   // The compositor changed the picture just before the refresh, but its frame
   // callback arrives afterwards. It is new capture input, not a stale still.
   const auto delayed_capture = before - 1;
-  const auto following = CapturePresentationTimestamp(delayed_capture, previous, refreshed->timestamp);
+  const auto following = CapturePresentationTimestamp(delayed_capture, previous, refreshed->timestamp, 0);
   assert(following && *following > refreshed->timestamp);
   assert((*following - refreshed->timestamp) * 90'000 >= 10'000'000);
-  assert(!CapturePresentationTimestamp(previous, previous, refreshed->timestamp));
+  assert(!CapturePresentationTimestamp(previous, previous, refreshed->timestamp, 0));
   const auto current_capture = after + 10'000'000;
-  const auto current = CapturePresentationTimestamp(current_capture, delayed_capture, *following);
+  const auto current = CapturePresentationTimestamp(current_capture, delayed_capture, *following, 0);
   assert(current && *current == current_capture);
-}
-
-void CheckCaptureFrameSize() {
-  HWND window = CreateWindowExW(0, L"STATIC", L"Piik capture size fixture",
-      WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 640, 480,
-      nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-  assert(window != nullptr);
-  ShowWindow(window, SW_SHOWNOACTIVATE);
-  DwmFlush();
-  RECT bounds{};
-  assert(SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS,
-                                         &bounds, sizeof(bounds))));
-  const SIZE content{bounds.right - bounds.left, bounds.bottom - bounds.top};
-  // Win10 item.Size includes invisible window borders; ContentSize does not.
-  assert(CaptureSizeMatches(content, {content.cx + 16, content.cy + 16}, window));
-  assert(CaptureSizeMatches(content, content, nullptr));
-  assert(!CaptureSizeMatches(content, {content.cx + 16, content.cy + 16}, nullptr));
-  assert(SetWindowPos(window, nullptr, 0, 0, 800, 600,
-                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE));
-  DwmFlush();
-  assert(SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS,
-                                         &bounds, sizeof(bounds))));
-  const SIZE resized{bounds.right - bounds.left, bounds.bottom - bounds.top};
-  assert(!CaptureSizeMatches(content, resized, window));
-  assert(CaptureSizeMatches(resized, {resized.cx + 16, resized.cy + 16}, window));
-  ShowWindow(window, SW_MAXIMIZE);
-  DwmFlush();
-  assert(SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS,
-                                         &bounds, sizeof(bounds))));
-  const SIZE visible{bounds.right - bounds.left, bounds.bottom - bounds.top};
-  assert(CaptureSizeMatches(visible, {visible.cx + 16, visible.cy + 16}, window));
-  MONITORINFO monitor{sizeof(monitor)};
-  assert(GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONULL), &monitor));
-  const SIZE maximized{monitor.rcWork.right - monitor.rcWork.left,
-                       monitor.rcWork.bottom - monitor.rcWork.top};
-  assert(CaptureSizeMatches(maximized, {maximized.cx + 16, maximized.cy + 16}, window));
-  assert(!CaptureSizeMatches(resized, maximized, window));
-  assert(DestroyWindow(window));
+  // Minimized title-bar frames can arrive after restore. Their timestamps are
+  // newer than the last real picture, but older than the observed restoration.
+  const auto restored_at = current_capture + 10'000'000;
+  assert(!CapturePresentationTimestamp(restored_at - 1, current_capture, *current, restored_at));
+  const auto restored = CapturePresentationTimestamp(restored_at + 1, current_capture, *current, restored_at);
+  assert(restored && *restored == restored_at + 1);
 }
 
 class CadenceEncoder final : public VideoEncoder {
@@ -777,7 +745,6 @@ int main() {
   assert(!piik::capture::ValidCodedVideoSize(3840, 3840));
   assert(!piik::capture::ValidCodedVideoSize(UINT32_MAX, UINT32_MAX));
   CheckEncoderCandidates();
-  CheckCaptureFrameSize();
   CheckQuietCaptureRefresh();
   CheckH264ProfileCompatibility();
   CheckPrimaryFailureDetails();
