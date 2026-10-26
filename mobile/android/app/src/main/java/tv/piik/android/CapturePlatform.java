@@ -42,7 +42,7 @@ final class CapturePlatform implements Platform {
   }
 
   public void control(long id, String command, long layer, long value) {
-    CaptureService.control(owner.get(), id, command, value);
+    CaptureService.control(owner.get(), id, command, (int) layer, value);
   }
 
   public void stop(long id) {

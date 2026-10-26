@@ -401,6 +401,29 @@ public-link helper established its tunnel without extra DNS configuration.
 [Verification status](../verification-status.md#device-evidence-boundary) owns
 the current rate-control and physical-device acceptance boundaries.
 
+### Android Encoder Budget
+
+A 2026-10-26 standalone API 35 emulator probe isolated the software
+`OMX.google.vp8.encoder` from Piik's room and transport. A changing 1080p30
+Surface produced about 2.65 Mbps at either a 1 Mbps or 100 kbps CBR request.
+Extending the keyframe interval reduced keyframes, but not that output rate.
+The [AOSP software VPX implementation](https://android.googlesource.com/platform/frameworks/av/+/ffede69924118c5454484164fd590b3474cc716a/media/libstagefright/codecs/on2/enc/SoftVPXEncoder.cpp)
+disables frame dropping and CBR resizing; reaching its compression limit can
+therefore exceed the budget even when bitrate updates succeed.
+
+The same probe reused the unmodified
+[WebRTC FrameDropper](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/frame_dropper.cc)
+from the existing native SDK pin, with the
+[VideoStreamEncoder call sequence](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/video/video_stream_encoder.cc).
+The 960x540 lower output at 100 kbps averaged 99.1 kbps over the final 20 seconds;
+1080p at 1 Mbps reached about 1.03 Mbps over the final three seconds. Restoring
+3 Mbps restored full frame submission. At 1080p and 100 kbps, output remained
+about 175 kbps: the stock component bounds frame suppression rather than
+promising an arbitrary hard byte ceiling. These are synthetic platform/component
+comparisons, not a full-App capture or network result. Android reuses that same
+component at each encoder's Surface input, with one capture clock and existing
+demand-driven lower outputs.
+
 ### Android Browser Handoff
 
 The Android App uses the system browser with the same Go room, authorization and media code.

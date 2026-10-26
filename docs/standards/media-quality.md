@@ -428,6 +428,12 @@ VP8 uses the library encoder. Windows tunes the stock QP history and sampling
 for brief interruptions and low-frame-rate recovery; codec thresholds and the
 adaptation controller remain WebRTC-owned. Other platform producers retain their
 current fixed-output implementation pending equivalent physical acceptance.
+Android shares one Projection and captured texture across demand-driven
+MediaCodec outputs. Each output uses the pinned WebRTC FrameDropper before
+encoder submission, with encoded-byte feedback and the current allocation;
+dropping an output frame never stops the shared capture clock. Unsupported
+optional encoders leave the original usable. Its fixed spatial outputs and
+platform codec still bound extremely low-bandwidth delivery.
 Each source groups compatible effective direct-child requests and keeps
 incompatible weak budgets independent. Per-group rates change in place; joining
 another group's output waits for accepted recovery and keeps the existing

@@ -1,17 +1,16 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-25
+Last reviewed: 2026-10-26
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Android weak-network encoding acceptance.** Compare payload bitrate,
-  live-profile recovery and static-source late joins after the keyframe-cadence
-  correction. Baseline software VP8 exceeds even a 1 Mbps budget; the reduced-FPS
-  control and unsupported frame-drop mode are confirmed. Complete the rebuilt
-  APK comparison before accepting weak-network output.
+- [ ] **Android weak-network and multi-output acceptance.** Compare payload
+  bitrate, live-profile recovery, static-source late joins and concurrent
+  original/lower outputs in the rebuilt App on a device. Include both lower
+  allocation and recovery through the shared capture and media route.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -50,8 +49,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   the existing [headline contract](./standards/versioning.md#release-notes).
 - [ ] **Android App release scope.** Complete phone/tablet/TV hardware acceptance
   and release packaging. The current system-browser build shares the desktop Web
-  UI and adapts the bitrate of one native rendition. Per-viewer lower renditions
-  remain a separate capture-backend extension.
+  UI and native screen-share output plan.
 ## Held By Owner
 
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser

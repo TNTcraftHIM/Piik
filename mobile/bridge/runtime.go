@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
@@ -77,9 +78,10 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	ctx, cancel := context.WithCancel(context.Background())
 	r := &Runtime{
 		capture: &capture{
-			platform: platform,
-			encoders: catalog.Encoders,
-			streams:  make(map[int64]*captureStream),
+			platform:    platform,
+			multiOutput: catalog.MultiOutput,
+			encoders:    catalog.Encoders,
+			streams:     make(map[int64]*captureStream),
 		},
 		ctx: ctx, cancel: cancel,
 		config: preferences, configPath: filepath.Join(dataDirectory, "client.json"),
@@ -126,6 +128,7 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 		mode = modes[0]
 	}
 	r.launcher, err = launcher.Start(ctx, webassets.FS(), launcher.Options{
+		Version: buildinfo.Version(), Revision: buildinfo.Revision,
 		ControlPort: r.control.Endpoint().Port,
 		Modes:       modes, LocalAccessPassword: preferences.LocalAccessPassword, DefaultMode: mode, Sites: preferences.ApprovedSites(), StartupSite: startup, LANAddress: lanAddress,
 		ChangeSite: func(site string, allowed bool) ([]string, error) {

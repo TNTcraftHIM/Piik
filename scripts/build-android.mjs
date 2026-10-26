@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { writeAndroidLicenseNotices } from './package-licenses.mjs';
 import { writeAndroidAppIcon } from './app-icons.mjs';
 import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256 } from './app-package-targets.mjs';
+import { buildVersion } from './release-version.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'mobile', 'android');
@@ -93,18 +94,42 @@ for (const [abi, arch, target, machine] of [
   console.log(`Android cloudflared ${CLOUDFLARED_VERSION}: ${abi} PIE (16KB)`);
 }
 if (!tunnelOnly) {
+  const revision = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8', windowsHide: true }).trim();
+  const version = buildVersion(root, revision);
   const launcher = readdirSync(join(gradleHome, 'lib')).find(name => /^gradle-launcher-.*\.jar$/.test(name));
   if (!launcher) throw new Error('GRADLE_HOME does not contain a Gradle launcher.');
+  const frameDropper = join(root, 'native', 'third_party', 'webrtc-frame-dropper');
+  for (const [abi, target] of [['arm64-v8a', 'aarch64-linux-android29'], ['x86_64', 'x86_64-linux-android29']]) {
+    const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libpiik_frame_dropper.so');
+    mkdirSync(dirname(output), { recursive: true });
+    run(join(tools, `clang++${exe}`), [`--target=${target}`, '-std=c++17', '-O2', '-fPIC', '-shared',
+      '-static-libstdc++', '-fno-exceptions', '-fno-rtti', '-fvisibility=hidden',
+      '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '-Wl,--exclude-libs,ALL',
+      '-Wl,-z,defs', '-Wl,-z,max-page-size=16384', '-Wl,-soname,libpiik_frame_dropper.so',
+      '-I', frameDropper, join(android, 'frame_dropper.cc'),
+      join(frameDropper, 'modules', 'video_coding', 'utility', 'frame_dropper.cc'),
+      join(frameDropper, 'rtc_base', 'numerics', 'exp_filter.cc'), '-o', output]);
+    const elf = execFileSync(join(tools, `llvm-readelf${exe}`), ['-h', '-l', '-d', output], { encoding: 'utf8', windowsHide: true });
+    const loads = [...elf.matchAll(/^\s*LOAD\s+.*$/gm)];
+    if (!/Type:\s+DYN/.test(elf) || !loads.length || loads.some(([line]) => !/0x4000\s*$/.test(line)))
+      throw new Error(`FrameDropper ${abi} must have 16KB LOAD alignment.`);
+    for (const [, library] of elf.matchAll(/Shared library: \[([^\]]+)\]/g))
+      if (!['libc.so', 'libdl.so', 'libm.so'].includes(library))
+        throw new Error(`Unexpected FrameDropper Android dependency: ${library}`);
+    console.log(`Android WebRTC FrameDropper: ${abi} (static C++ runtime, 16KB)`);
+  }
   if (process.platform === 'win32') run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm run build:web']);
   else run('npm', ['run', 'build:web']);
   writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'), 'go');
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
   mkdirSync(join(android, 'app', 'libs'), { recursive: true });
   run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
-    '-ldflags=-s -w -checklinkname=0', '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/bridge']);
+    `-ldflags=-s -w -checklinkname=0 -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Release=${version} -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Revision=${revision}`,
+    '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/bridge']);
   // Recreate the final ZIP so replaced native libraries leave no free blocks.
   run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
     '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android, '--no-daemon',
+    `-PpiikVersion=${version === 'development' ? `${version}-${revision.slice(0, 7)}` : version}`,
     ':app:packageDebug', '--rerun', ':app:assembleDebug', '--console=plain']);
   const apk = join(android, 'app', 'build', 'outputs', 'apk', 'debug', 'app-debug.apk');
   if (!existsSync(apk)) throw new Error('The Android build did not produce its APK.');

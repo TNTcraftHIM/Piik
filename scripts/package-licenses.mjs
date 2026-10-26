@@ -132,6 +132,10 @@ export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand
   writeFileSync(outputFile, "Piik Android third-party software notices\n" +
     section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules) +
+    section("WebRTC FrameDropper (BSD-3-Clause)",
+      ["LICENSE", "PATENTS"].map(file => readFileSync(join(repositoryRoot,
+        "native", "third_party", "webrtc-frame-dropper", file), "utf8")).join("\n")) +
+    section("Android NDK libc++ (Apache-2.0 WITH LLVM-exception)", pinnedNotice("libc++@ndk-30.0.16248370")) +
     section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)) +
     section("Piik Android cloudflared changes (MIT)",
       "Android system DNS adapter and exhausted-QUIC-dial fallback. Source and provenance: mobile/cloudflared/."));

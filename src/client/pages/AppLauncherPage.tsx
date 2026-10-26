@@ -119,7 +119,8 @@ export function AppLauncherPage() {
           setLan(state.lan);
           restoredSettings = true;
         }
-        setVersion(state.version);
+        setVersion(state.version === "development" && /^[a-f0-9]{40}$/i.test(state.revision)
+          ? `${state.version} (${state.revision.slice(0, 7)})` : state.version);
         setControlPort(state.controlPort);
         setTarget(state.target);
         setStarting(state.starting === true);

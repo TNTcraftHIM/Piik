@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -28,7 +28,11 @@ phases, including NAT and Auto codec behavior.
   replacement, cancellation and background return preserve the share. Local/public
   startup and launcher reentry also have emulator evidence. Phone/tablet/TV
   hardware and physical audio remain in the [Android acceptance scope](./todo.md#next).
-  The encoder's corrected keyframe cadence still needs a device comparison;
+  Demand-driven original/lower encoding and retirement pass the shared Go bridge,
+  actual-owner CPU checks and Android SDK compilation. A standalone MediaCodec
+  probe validates the pinned WebRTC FrameDropper's rate correction and recovery;
+  the [capture assessment](./research/cross-platform-client-runtime.md#android-encoder-budget)
+  owns its measured bounds. Concurrent App output still needs a device comparison;
   [weak-network encoding acceptance](./todo.md#now) remains open.
 - The separate iOS system-browser implementation passes Apple SDK device and
   simulator builds and its session/encoder checks. Physical capture, background

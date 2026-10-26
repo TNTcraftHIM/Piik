@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -770,5 +771,63 @@ func TestProjectionDismissalPreservesCancellationAndCurrentCapture(t *testing.T)
 				}
 			}
 		})
+	}
+}
+
+func TestMultiOutputCaptureUsesSharedProfilesAndOneInputClock(t *testing.T) {
+	p := &testPlatform{}
+	var configuration struct{ Outputs []nativecapture.OutputProfile }
+	p.videoStarted = func(_ int64, value string) {
+		if err := json.Unmarshal([]byte(value), &configuration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	c := &capture{platform: p, multiOutput: true, encoders: []encoderCapability{{Codec: "vp8"}}, streams: make(map[int64]*captureStream)}
+	r := &Runtime{capture: c}
+	profile := nativecapture.VideoProfile{Width: 1920, Height: 1080, Framerate: 30, Bitrate: 1_000_000, Preference: "balanced"}
+	stream, err := c.Video(t.Context(), nativecapture.VideoOptions{Codec: "vp8", Profile: profile, OutputGroups: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stream.Close()
+	s := stream.(*captureStream)
+	want := nativecapture.ScreenShareOutputs(profile)
+	want = append(want, want[0], want[0])
+	if !slices.Equal(stream.Outputs(), want) || !slices.Equal(configuration.Outputs, want) {
+		t.Fatalf("outputs do not reuse shared plan: %v / %v", stream.Outputs(), configuration.Outputs)
+	}
+	// GPU input can progress before the asynchronous original encoder is admitted.
+	r.VideoInput(s.id, 0)
+	r.VideoInput(s.id, 66_666)
+	if !r.VideoReady(s.id, "vp8", 1920, 1080, "") {
+		t.Fatal("original not admitted")
+	}
+	if !r.VideoLayerReady(s.id, 0, "vp8", 960, 540, "") || r.VideoLayerReady(s.id, 0, "vp8", 1920, 1080, "") || r.VideoLayerReady(s.id, 0, "h264", 960, 540, "42e01f") {
+		t.Fatal("optional encoder admission ignored output contract")
+	}
+	// Independent encoders may complete out of order; neither creates input events.
+	r.VideoLayer(s.id, 1, []byte{1}, 33_333, 33_333, 1920, 1080, true)
+	r.VideoLayer(s.id, 0, []byte{2}, 0, 33_333, 960, 540, true)
+	r.VideoLayer(s.id, 2, []byte{3}, 66_666, 33_333, 960, 540, true)
+	for index, kind := range []nativecapture.FrameKind{nativecapture.FrameStatus, nativecapture.FrameBegin, nativecapture.FrameBegin, nativecapture.FrameVP8, nativecapture.FrameVP8, nativecapture.FrameVP8} {
+		frame, err := stream.Read()
+		if err != nil || frame.Kind != kind {
+			t.Fatalf("event%d=%+v,%v", index, frame, err)
+		}
+		if index == 1 && frame.Timestamp != 0 || index == 2 && frame.Timestamp != 66_666*time.Microsecond {
+			t.Fatalf("capture clock=%v", frame.Timestamp)
+		}
+		if index >= 3 && frame.Layer != []int{1, 0, 2}[index-3] {
+			t.Fatalf("wrong output slot: %+v", frame)
+		}
+	}
+	r.VideoLayerUnavailable(s.id, 2)
+	frame, err := stream.Read()
+	if err != nil || frame.Kind != nativecapture.FrameLayerUnavailable || frame.Layer != 2 || !r.CaptureCurrent(s.id) {
+		t.Fatalf("optional failure ended original: %+v,%v", frame, err)
+	}
+	r.VideoLayerUnavailable(s.id, 1)
+	if r.CaptureCurrent(s.id) {
+		t.Fatal("required original failure retained capture")
 	}
 }

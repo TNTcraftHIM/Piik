@@ -1,4 +1,9 @@
 {
+  "libc++@ndk-30.0.16248370": {
+    "file": "libcxx-ndk-30.txt",
+    "source": "https://github.com/llvm/llvm-project/blob/2d287f51eff2a5fbf84458a33f7fb2493cf67965/libcxx/LICENSE.TXT",
+    "sha256": "539dd7aed86e8a4f12cbdd0e6c50c189c7d74847e4fecc64ce2c6ee3a01da38b"
+  },
   "webrtc@m152.7977.0.2": {
     "file": "webrtc-m152.7977.0.2.txt",
     "source": "https://github.com/shiguredo-webrtc-build/webrtc-build/releases/tag/m152.7977.0.2",

@@ -78,6 +78,18 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
 }
 
 describe("App launcher state recovery", () => {
+  it.each([
+    ["v2.4.1", "v2.4.1"],
+    ["development", "development (aaaaaaa)"],
+  ])("shows the App build identity for %s without changing update inputs", async (version, label) => {
+    const revision = "a".repeat(40);
+    const page = mount(vi.fn(async () => response({ ...saved, version, revision })));
+    await settle();
+    expect(page.state.Version).toBe(label);
+    expect(page.checkReleaseUpdate).toHaveBeenCalledWith({ version, revision }, { packageTarget: undefined });
+    page.cleanup();
+  });
+
   it("shows a failed Enter attempt and navigates after its retry succeeds", async () => {
     type Result = { ok: boolean; status: number; json(): Promise<unknown> };
     const fetch = vi.fn(async (): Promise<Result> => response());

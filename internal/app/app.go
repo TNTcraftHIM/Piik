@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
@@ -36,7 +37,6 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
 	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
-	"golang.org/x/mod/semver"
 )
 
 const (
@@ -46,17 +46,6 @@ const (
 	// inside that budget.
 	localShutdownTimeout = 5 * time.Second
 )
-
-var BuildVersion = "development"
-var BuildRevision = "development"
-
-func buildVersion() string {
-	version := strings.TrimSpace(BuildVersion)
-	if version != "" && semver.Canonical(version) == version && semver.Prerelease(version) == "" {
-		return version
-	}
-	return "development"
-}
 
 type Options struct {
 	Site           string
@@ -98,7 +87,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		if err != nil {
 			return errors.Join(failure.Diagnostics, fmt.Errorf("Piik App diagnostics are unavailable: %w", err))
 		}
-		recorder.Context("build", map[string]any{"version": buildVersion(), "revision": BuildRevision})
+		recorder.Context("build", map[string]any{"version": buildinfo.Version(), "revision": buildinfo.Revision})
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
 		var dependencyLog *diagnostics.LineWriter
 		restoreLogger = func() {
@@ -121,7 +110,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			return err
 		}
 	}
-	slog.Debug("piik-client", "event", "start", "version", buildVersion(), "revision", BuildRevision)
+	slog.Debug("piik-client", "event", "start", "version", buildinfo.Version(), "revision", buildinfo.Revision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
 		return errors.Join(failure.Configuration, err)
@@ -283,7 +272,7 @@ func runLauncher(
 			SaveStartupSite: func(site string) error {
 				return launcher.SaveStartupSite(configPath, site)
 			},
-			Sites: config.ApprovedSites(), Version: buildVersion(), Revision: BuildRevision,
+			Sites: config.ApprovedSites(), Version: buildinfo.Version(), Revision: buildinfo.Revision,
 			ControlPort:         control.Endpoint().Port,
 			LocalAccessPassword: config.LocalAccessPassword,
 			Debug:               options.Debug, LANAddress: options.LANAddress,
@@ -472,13 +461,13 @@ func openDiagnostics(directory string) (*diagnostics.Recorder, error) {
 		directory = strings.TrimSpace(os.Getenv("PIIK_LOG_DIR"))
 	}
 	if directory != "" {
-		return diagnostics.Open(directory, "client", BuildRevision)
+		return diagnostics.Open(directory, "client", buildinfo.Revision)
 	}
 	executable, err := os.Executable()
 	if err != nil {
 		return nil, err
 	}
-	recorder, err := diagnostics.Open(filepath.Join(filepath.Dir(executable), "logs"), "client", BuildRevision)
+	recorder, err := diagnostics.Open(filepath.Join(filepath.Dir(executable), "logs"), "client", buildinfo.Revision)
 	if err == nil || !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.EROFS) {
 		return recorder, err
 	}
@@ -486,7 +475,7 @@ func openDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	if cacheErr != nil {
 		return nil, errors.Join(err, cacheErr)
 	}
-	return diagnostics.Open(filepath.Join(cache, "Piik", "logs"), "client", BuildRevision)
+	return diagnostics.Open(filepath.Join(cache, "Piik", "logs"), "client", buildinfo.Revision)
 }
 
 func openSite(site string, options Options, controlPort int) {

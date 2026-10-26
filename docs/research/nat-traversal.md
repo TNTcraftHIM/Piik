@@ -1119,6 +1119,23 @@ and the owner confirmed both page and picture worked. No proxy, candidate
 substitution or Browser privacy change was used. This closes the direct
 App-to-Browser trial without claiming universal campus-network compatibility.
 
+### Startup Resource Transfer
+
+The later title-only loading report concerns Web startup, before ICE or STUN.
+The entry modules and bootstrap API use the same origin. Static compression
+reduced the main script from about 674 KB to 194 KB and a 64 KiB/s controlled
+page load from 11.0 to 3.2 seconds.
+
+A 2026-10-26 isolated TCP control used the installed virtual adapter's 1470-byte
+MTU at both endpoints, with a hidden 1280-byte link and no ICMP feedback. The
+712-byte HTML arrived, but the compressed 194 KB script received zero bytes in
+18 seconds with repeated retransmissions. Changing only the isolated SYN MSS
+to 1240 restored the complete script in about 8 ms. This reproduces
+[TCP path-MTU black holes](https://www.rfc-editor.org/rfc/rfc2923), including why
+compression or an endpoint MTU below 1500 is insufficient. The field report
+still needs its actual resource transfer and route evidence to distinguish this
+case from tunnel interruption, filtering or Browser execution failure.
+
 ## Primary Sources
 
 - [RFC 8445: Interactive Connectivity Establishment](https://datatracker.ietf.org/doc/html/rfc8445)

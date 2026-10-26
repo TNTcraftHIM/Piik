@@ -31,26 +31,32 @@ type Platform interface {
 }
 
 type capture struct {
-	platform Platform
-	encoders []encoderCapability
-	mu       sync.Mutex
-	next     int64
-	streams  map[int64]*captureStream
+	platform    Platform
+	multiOutput bool
+	encoders    []encoderCapability
+	mu          sync.Mutex
+	next        int64
+	streams     map[int64]*captureStream
 }
 
 type captureStream struct {
-	owner     *capture
-	id        int64
-	ctx       context.Context
-	cancel    context.CancelCauseFunc
-	frames    chan nativecapture.Frame
-	outputs   []nativecapture.OutputProfile
-	once      sync.Once
-	format    atomic.Uint64
-	ready     chan struct{}
-	readyOnce sync.Once
-	codec     atomic.Uint32
-	requested string
+	owner         *capture
+	id            int64
+	ctx           context.Context
+	cancel        context.CancelCauseFunc
+	frames        chan nativecapture.Frame
+	outputs       []nativecapture.OutputProfile
+	once          sync.Once
+	format        atomic.Uint64
+	ready         chan struct{}
+	readyOnce     sync.Once
+	codec         atomic.Uint32
+	requested     string
+	videoMu       sync.Mutex
+	inputPTS      time.Duration
+	hasInput      bool
+	firstInputPTS time.Duration
+	inputReady    bool
 }
 
 func (c *capture) stream(ctx context.Context, outputs []nativecapture.OutputProfile) *captureStream {
@@ -76,12 +82,20 @@ func (c *capture) Video(ctx context.Context, options nativecapture.VideoOptions)
 		return nil, errors.New("requested mobile encoder is unavailable")
 	}
 	output := nativecapture.OutputProfile{Width: options.Profile.Width, Height: options.Profile.Height, Framerate: options.Profile.Framerate, Bitrate: options.Profile.Bitrate}
-	s := c.stream(ctx, []nativecapture.OutputProfile{output})
+	outputs := []nativecapture.OutputProfile{output}
+	if c.multiOutput {
+		outputs = nativecapture.ScreenShareOutputs(options.Profile)
+		for range options.OutputGroups {
+			outputs = append(outputs, outputs[0])
+		}
+	}
+	s := c.stream(ctx, outputs)
 	s.requested = options.Codec
 	configuration, _ := json.Marshal(struct {
 		nativecapture.OutputProfile
-		Codec string `json:"codec"`
-	}{output, options.Codec})
+		Codec   string                        `json:"codec"`
+		Outputs []nativecapture.OutputProfile `json:"outputs,omitempty"`
+	}{output, options.Codec, outputs})
 	c.platform.StartVideo(s.id, string(configuration))
 	return s, nil
 }
@@ -196,7 +210,7 @@ func (s *captureStream) push(frame nativecapture.Frame) bool {
 // VideoReady publishes actual encoder dimensions and profile, not requested capability.
 func (r *Runtime) VideoReady(id int64, codec string, width, height int64, profile string) bool {
 	s := r.capture.get(id)
-	if s == nil || len(s.outputs) != 1 {
+	if s == nil || len(s.outputs) == 0 {
 		return false
 	}
 	if (codec != "h264" && codec != "vp8") || (s.requested != "auto" && s.requested != codec) {
@@ -213,14 +227,30 @@ func (r *Runtime) VideoReady(id int64, codec string, width, height int64, profil
 	}
 	// An incompatible prepared encoder has not committed any state. The platform
 	// can try another candidate or restore the existing source on this stream.
-	if width < 2 || height < 2 || width > int64(s.outputs[0].Width) || height > int64(s.outputs[0].Height) || !nativecapture.ValidVideoSize(uint32(width), uint32(height)) || (codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(profile)) || (codec == "vp8" && profile != "") {
+	if width < 2 || height < 2 || width > int64(s.outputs[min(1, len(s.outputs)-1)].Width) || height > int64(s.outputs[min(1, len(s.outputs)-1)].Height) || !nativecapture.ValidVideoSize(uint32(width), uint32(height)) || (codec == "h264" && !nativecapture.SupportedH264ProfileLevelID(profile)) || (codec == "vp8" && profile != "") {
 		return false
 	}
 	s.codec.Store(kind)
 	s.format.Store(uint64(width)<<32 | uint64(height))
-	state := nativehost.CaptureState{State: "active", HardwareOnly: codec == "h264", Codec: codec, Width: uint32(width), Height: uint32(height), FPS: s.outputs[0].Framerate, ProfileLevelID: profile, Outputs: s.outputs}
+	state := nativehost.CaptureState{State: "active", HardwareOnly: codec == "h264", Codec: codec, Width: uint32(width), Height: uint32(height), FPS: s.outputs[min(1, len(s.outputs)-1)].Framerate, ProfileLevelID: profile, Outputs: s.outputs}
 	data, _ := json.Marshal(state)
-	return s.push(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: data})
+	s.videoMu.Lock()
+	defer s.videoMu.Unlock()
+	if !s.push(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: data}) {
+		return false
+	}
+	if !s.inputReady {
+		s.inputReady = true
+		if s.hasInput {
+			if !s.push(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: s.firstInputPTS}) {
+				return false
+			}
+			if s.inputPTS > s.firstInputPTS {
+				return s.push(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: s.inputPTS})
+			}
+		}
+	}
+	return true
 }
 
 // Video accepts a complete codec access unit; AVC recovery includes SPS/PPS.
@@ -234,16 +264,77 @@ func (r *Runtime) Video(id int64, data []byte, ptsMicros, durationMicros int64, 
 		s.Close()
 		return
 	}
-	pts := time.Duration(ptsMicros) * time.Microsecond
-	if !s.push(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: pts}) {
+	r.VideoInput(id, ptsMicros)
+	r.VideoLayer(id, int64(min(1, len(s.outputs)-1)), data, ptsMicros, durationMicros, int64(format>>32), int64(uint32(format)), key)
+}
+
+// VideoLayerReady admits optional encoders without replacing capture authority.
+func (r *Runtime) VideoLayerReady(id, layer int64, codec string, width, height int64, profile string) bool {
+	s := r.capture.get(id)
+	if s == nil || layer < 0 || layer >= int64(len(s.outputs)) || s.format.Load() == 0 {
+		return false
+	}
+	if (s.codec.Load() == 1 && codec != "h264") || (s.codec.Load() == 2 && codec != "vp8") {
+		return false
+	}
+	output := s.outputs[layer]
+	return width >= 2 && height >= 2 && width <= int64(output.Width) && height <= int64(output.Height) && nativecapture.ValidVideoSize(uint32(width), uint32(height)) && ((codec == "h264" && nativecapture.SupportedH264ProfileLevelID(profile)) || (codec == "vp8" && profile == ""))
+}
+
+// VideoInput advances the single capture-image clock before encoder submission.
+func (r *Runtime) VideoInput(id, ptsMicros int64) {
+	s := r.capture.get(id)
+	if s == nil || ptsMicros < 0 {
 		return
 	}
+	s.videoMu.Lock()
+	defer s.videoMu.Unlock()
+	pts := time.Duration(ptsMicros) * time.Microsecond
+	if s.hasInput && pts <= s.inputPTS {
+		return
+	}
+	if !s.hasInput {
+		s.firstInputPTS = pts
+	}
+	s.hasInput, s.inputPTS = true, pts
+	if s.inputReady {
+		s.push(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: pts})
+	}
+}
+
+// VideoLayer preserves one capture timeline across independently completing encoders.
+func (r *Runtime) VideoLayer(id, layer int64, data []byte, ptsMicros, durationMicros, width, height int64, key bool) {
+	s := r.capture.get(id)
+	if s == nil {
+		return
+	}
+	if layer < 0 || layer >= int64(len(s.outputs)) || s.format.Load() == 0 || len(data) == 0 || len(data) > encoded.MaxAccessUnitBytes || ptsMicros < 0 || durationMicros <= 0 || width < 2 || height < 2 || width > int64(s.outputs[layer].Width) || height > int64(s.outputs[layer].Height) || !nativecapture.ValidVideoSize(uint32(width), uint32(height)) {
+		s.Close()
+		return
+	}
+	s.videoMu.Lock()
+	defer s.videoMu.Unlock()
+	pts := time.Duration(ptsMicros) * time.Microsecond
 	kind := nativecapture.FrameH264
 	if s.codec.Load() == 2 {
 		kind = nativecapture.FrameVP8
 	}
-	s.push(nativecapture.Frame{Kind: kind, Layer: 0, Width: uint32(format >> 32), Height: uint32(format), Data: append([]byte(nil), data...), Timestamp: pts, Duration: time.Duration(durationMicros) * time.Microsecond, KeyFrame: key})
+	s.push(nativecapture.Frame{Kind: kind, Layer: int(layer), Width: uint32(width), Height: uint32(height), Data: append([]byte(nil), data...), Timestamp: pts, Duration: time.Duration(durationMicros) * time.Microsecond, KeyFrame: key})
 }
+
+// VideoLayerUnavailable retires optional output demand through the shared planner.
+func (r *Runtime) VideoLayerUnavailable(id, layer int64) {
+	s := r.capture.get(id)
+	if s == nil || layer < 0 || layer >= int64(len(s.outputs)) {
+		return
+	}
+	if layer == int64(min(1, len(s.outputs)-1)) {
+		s.Close()
+		return
+	}
+	s.push(nativecapture.Frame{Kind: nativecapture.FrameLayerUnavailable, Layer: int(layer)})
+}
+
 func (r *Runtime) Audio(id int64, data []byte) {
 	s := r.capture.get(id)
 	if s != nil {

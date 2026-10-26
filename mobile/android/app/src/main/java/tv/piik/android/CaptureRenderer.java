@@ -19,8 +19,14 @@ final class CaptureRenderer {
     final Consumer<RuntimeException> failed;
     final AtomicBoolean refreshQueued = new AtomicBoolean();
     volatile boolean retired;
+    volatile boolean enabled = true;
+    Target owner;
+    Consumer<Long> inputFrame;
     EGLSurface window = EGL14.EGL_NO_SURFACE;
-    long timestamp;
+    long timestamp, inputTimestamp;
+    int bitrate, framerate;
+    boolean recovery = true;
+    FrameDropper dropper;
 
     Target(Surface surface, int width, int height, int sourceWidth, int sourceHeight,
         Consumer<RuntimeException> failed) {
@@ -51,6 +57,7 @@ final class CaptureRenderer {
   Target current;
   int textureID, program, position, coordinates, matrix;
   boolean hasFrame;
+  long frameTimestamp;
   int sourceWidth, sourceHeight;
 
   CaptureRenderer(Handler callbacks, Consumer<RuntimeException> failedInitialization) {
@@ -80,6 +87,7 @@ final class CaptureRenderer {
                       display, config, target.surface, new int[] {EGL14.EGL_NONE}, 0);
               require(target.window != EGL14.EGL_NO_SURFACE, "create encoder surface");
               targets.add(target);
+              target.dropper = new FrameDropper(target.bitrate, target.framerate);
             }
             // A rotated source must supply its new image before it proves a new format.
             if (sourceWidth != target.sourceWidth || sourceHeight != target.sourceHeight)
@@ -88,6 +96,7 @@ final class CaptureRenderer {
             sourceHeight = target.sourceHeight;
             texture.setDefaultBufferSize(target.width, target.height);
             current = target;
+            if (hasFrame) captureFrame();
             callbacks.post(() -> { if (!closing && !target.retired) bound.accept(input); });
             draw(target);
           } catch (RuntimeException error) {
@@ -96,18 +105,49 @@ final class CaptureRenderer {
         });
   }
 
+  // Additional renditions sample the same retained texture and keep the original capture size.
+  void attach(Target target, Target owner) {
+    target.owner = owner;
+    gl.post(() -> {
+      if (closing || target.retired || owner.retired) return;
+      try {
+        target.window = EGL14.eglCreateWindowSurface(display, config, target.surface,
+            new int[] {EGL14.EGL_NONE}, 0);
+        require(target.window != EGL14.EGL_NO_SURFACE, "create derived encoder surface");
+        targets.add(target);
+        target.dropper = new FrameDropper(target.bitrate, target.framerate);
+        draw(target);
+      } catch (RuntimeException error) { failed(target, error); }
+    });
+  }
+
   void refresh(Target target) {
     if (target == null || closing || target.retired
         || !target.refreshQueued.compareAndSet(false, true)) return;
     gl.post(
         () -> {
           target.refreshQueued.set(false);
+          target.recovery = true;
           try {
+            if (hasFrame && (target == current || target.owner == current)) captureFrame();
             draw(target);
           } catch (RuntimeException error) {
             failed(target, error);
           }
         });
+  }
+
+  void encoded(Target target, int bytes, boolean keyframe) {
+    gl.post(() -> {
+      if (!closing && !target.retired && target.dropper != null)
+        target.dropper.encoded(bytes, keyframe);
+    });
+  }
+
+  void bitrate(Target target, int bitrate) {
+    gl.post(() -> {
+      if (!closing && !target.retired && target.dropper != null) target.dropper.bitrate(bitrate);
+    });
   }
 
   void release(Target target, Runnable released) {
@@ -216,15 +256,30 @@ final class CaptureRenderer {
             texture.updateTexImage();
             texture.getTransformMatrix(transform);
             hasFrame = true;
-            draw(target);
+            captureFrame();
+            for (Target output : new HashSet<>(targets)) {
+              try { draw(output); } catch (RuntimeException error) { failed(output, error); }
+            }
           } catch (RuntimeException error) {
             if (target != null) failed(target, error);
           }
         }, gl);
   }
 
+  void captureFrame() {
+    frameTimestamp = Math.max(System.nanoTime(), frameTimestamp + 1000);
+    Target owner = current;
+    if (owner != null && owner.inputFrame != null) {
+      long timestamp = frameTimestamp / 1000;
+      callbacks.post(() -> { if (!closing && !owner.retired) owner.inputFrame.accept(timestamp); });
+    }
+  }
+
   void draw(Target target) {
-    if (closing || target == null || current != target || target.retired || !hasFrame) return;
+    if (closing || target == null || (current != target && current != target.owner) || target.retired || !target.enabled || !hasFrame) return;
+    if (frameTimestamp <= target.inputTimestamp) return;
+    target.inputTimestamp = frameTimestamp;
+    if (!target.dropper.shouldEncode(frameTimestamp, target.recovery)) return;
     makeCurrent(target.window);
     GLES20.glViewport(0, 0, target.width, target.height);
     GLES20.glUseProgram(program);
@@ -238,14 +293,19 @@ final class CaptureRenderer {
     GLES20.glEnableVertexAttribArray(coordinates);
     GLES20.glUniformMatrix4fv(matrix, 1, false, transform, 0);
     GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4);
-    target.timestamp = Math.max(System.nanoTime(), target.timestamp + 1000);
+    target.timestamp = frameTimestamp;
     require(EGLExt.eglPresentationTimeANDROID(display, target.window, target.timestamp), "set presentation time");
     // This can wait for codec input space. Its output callbacks run on another thread.
     require(EGL14.eglSwapBuffers(display, target.window), "submit encoder image");
+    target.recovery = false;
     require(GLES20.glGetError() == GLES20.GL_NO_ERROR, "render captured image");
   }
 
   void destroyTarget(Target target) {
+    if (target.dropper != null) {
+      target.dropper.close();
+      target.dropper = null;
+    }
     if (target.window == EGL14.EGL_NO_SURFACE) return;
     // Teardown still attempts every owned release after an EGL failure.
     EGL14.eglMakeCurrent(display, parking, parking, context);

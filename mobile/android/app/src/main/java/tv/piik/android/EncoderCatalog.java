@@ -45,6 +45,13 @@ final class EncoderCatalog {
     return selected;
   }
 
+  static MediaCodecInfo.CodecCapabilities capabilities(Entry entry) {
+    for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos())
+      if (info.getName().equals(entry.name))
+        return info.getCapabilitiesForType(entry.codec.equals("h264") ? "video/avc" : "video/x-vnd.on2.vp8");
+    throw new IllegalArgumentException("Encoder is no longer available");
+  }
+
   static long attemptDeadline(long now, long deadline, boolean hasNext) {
     return hasNext ? Math.min(deadline, now + 2000) : deadline;
   }
@@ -55,6 +62,6 @@ final class EncoderCatalog {
       encoders.put(new JSONObject().put("name", entry.name).put("codec", entry.codec));
     }
     return new JSONObject().put("platform", "android").put("provider", "Android MediaCodec")
-        .put("systemAudio", encoders.length() > 0).put("encoders", encoders).toString();
+        .put("multiOutput", true).put("systemAudio", encoders.length() > 0).put("encoders", encoders).toString();
   }
 }

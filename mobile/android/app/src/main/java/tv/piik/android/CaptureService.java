@@ -30,6 +30,8 @@ public final class CaptureService extends Service {
   volatile MediaProjection projection;
   VirtualDisplay display;
   CaptureRenderer renderer;
+  final Set<Video> allocatedVideos = new HashSet<>();
+  int retiringCodecs;
   volatile Video video;
   volatile Video previousVideo;
   CapturedAudio audio;
@@ -58,13 +60,21 @@ public final class CaptureService extends Service {
     String configuration;
     byte[] config;
     long base = -1, last = -1;
-    boolean ready, proven, released;
+    boolean ready, proven, released, cleaned;
+    final List<Runnable> releaseCallbacks = new ArrayList<>();
     String actualCodec, profile = "";
     List<EncoderCatalog.Entry> candidates;
     int candidateIndex;
     long deadline;
     Runnable timeout;
-    Video replaced;
+    Video replaced, root;
+    int layer = 1;
+    JSONArray outputs;
+    final Video[] children = new Video[6];
+    final int[] rates = new int[6];
+    final boolean[] active = new boolean[6], unavailable = new boolean[6];
+
+    Video owner() { return root == null ? this : root; }
   }
 
   @Override
@@ -182,6 +192,24 @@ public final class CaptureService extends Service {
       fail(runtime, id);
       return;
     }
+    // Keep the original usable while freeing optional instances for transactional preparation.
+    Video current = video;
+    List<Video> lower = new ArrayList<>();
+    if (current != null)
+      for (int layer = 0; layer < current.children.length; layer++)
+        if (layer != 1 && current.children[layer] != null) lower.add(current.children[layer]);
+    if (!lower.isEmpty()) {
+      restoringVideo = true;
+      int[] remaining = {lower.size()};
+      for (Video output : lower) releaseVideo(output, () -> {
+        if (current.children[output.layer] == output) current.children[output.layer] = null;
+        if (--remaining[0] == 0) {
+          restoringVideo = false;
+          beginVideo(runtime, id, json);
+        }
+      });
+      return;
+    }
     beginVideo(
         runtime,
         id,
@@ -206,12 +234,21 @@ public final class CaptureService extends Service {
       List<EncoderCatalog.Entry> candidates,
       int index,
       long deadline) {
+    createVideo(runtime, id, json, candidates, index, deadline, null, 1);
+  }
+
+  void createVideo(tv.piik.bridge.Runtime runtime, long id, String json,
+      List<EncoderCatalog.Entry> candidates, int index, long deadline, Video root, int layer) {
     if (runtime != AppRuntimeService.runtime()
         || !runtime.captureCurrent(id)
         || retiring
         || stopRequested
         || projection == null) return;
     if (index >= candidates.size() || SystemClock.uptimeMillis() >= deadline) {
+      if (root != null) {
+        unavailableOutput(root, layer);
+        return;
+      }
       // A rotation reuses the running stream identity; restored old capture stays valid.
       if (video != null && video.id == id && video.runtime == runtime) return;
       fail(runtime, id);
@@ -219,14 +256,25 @@ public final class CaptureService extends Service {
       return;
     }
     Video next = new Video(id, runtime);
+    next.root = root;
+    next.layer = layer;
+    if (root != null) root.children[layer] = next;
     next.candidates = candidates;
     next.candidateIndex = index;
     next.deadline = deadline;
     next.configuration = json;
-    Video old = video;
+    Video old = root == null ? video : null;
     next.replaced = old;
     try {
       JSONObject options = new JSONObject(json);
+      if (root == null) {
+        next.outputs = options.getJSONArray("outputs");
+        if (next.outputs.length() < 2 || next.outputs.length() > 6)
+          throw new IllegalArgumentException("Invalid capture outputs");
+        for (int slot = 0; slot < next.outputs.length(); slot++)
+          next.rates[slot] = next.outputs.getJSONObject(slot).getInt("bitrate");
+        next.children[1] = next;
+      } else options = root.outputs.getJSONObject(layer);
       if (captureWidth <= 0 || captureHeight <= 0) updateCaptureSize();
       next.sourceWidth = captureWidth;
       next.sourceHeight = captureHeight;
@@ -242,11 +290,11 @@ public final class CaptureService extends Service {
       EncoderCatalog.Entry selected = candidates.get(index);
       next.actualCodec = selected.codec;
       boolean h264 = selected.codec.equals("h264");
+      MediaCodecInfo.CodecCapabilities capabilities = EncoderCatalog.capabilities(selected);
+      if (codecInstances(selected.name, next) > capabilities.getMaxSupportedInstances())
+        throw new IllegalStateException("Encoder concurrent-instance capacity exhausted");
       next.codec = MediaCodec.createByCodecName(selected.name);
-      MediaCodecInfo.CodecCapabilities capabilities =
-          next.codec
-              .getCodecInfo()
-              .getCapabilitiesForType(h264 ? "video/avc" : "video/x-vnd.on2.vp8");
+      allocatedVideos.add(next);
       MediaCodecInfo.VideoCapabilities supported = capabilities.getVideoCapabilities();
       next.width -= next.width % Math.max(2, supported.getWidthAlignment());
       next.height -= next.height % Math.max(2, supported.getHeightAlignment());
@@ -255,11 +303,14 @@ public final class CaptureService extends Service {
               h264 ? "video/avc" : "video/x-vnd.on2.vp8", next.width, next.height);
       format.setInteger(
           MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-      next.bitrate = options.getInt("bitrate");
+      next.bitrate = root == null ? options.getInt("bitrate") : root.rates[layer];
       format.setInteger(MediaFormat.KEY_BIT_RATE, next.bitrate);
       // CBR avoids Android's VBR quality floor overriding transport bitrate budgets.
-      if (capabilities.getEncoderCapabilities()
-          .isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR))
+      MediaCodecInfo.EncoderCapabilities rateControl = capabilities.getEncoderCapabilities();
+      if (rateControl.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR_FD))
+        format.setInteger(
+            MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR_FD);
+      else if (rateControl.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR))
         format.setInteger(
             MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR);
       format.setInteger(MediaFormat.KEY_FRAME_RATE, next.fps);
@@ -279,7 +330,7 @@ public final class CaptureService extends Service {
             public void onOutputBufferAvailable(
                 MediaCodec codec, int index, MediaCodec.BufferInfo info) {
               try {
-                if (next.released || (video != next && previousVideo != next)) return;
+                if (!currentVideo(next)) return;
                 ByteBuffer buffer = codec.getOutputBuffer(index);
                 if (buffer == null || info.size == 0) return;
                 buffer.position(info.offset);
@@ -292,8 +343,9 @@ public final class CaptureService extends Service {
                 }
                 if (!next.ready) return;
                 long pts = info.presentationTimeUs;
-                if (next.base < 0) next.base = pts;
-                pts -= next.base;
+                Video clock = next.owner();
+                if (clock.base < 0) clock.base = pts;
+                pts -= clock.base;
                 if (pts <= next.last) return;
                 next.last = pts;
                 boolean key = (info.flags & MediaCodec.BUFFER_FLAG_KEY_FRAME) != 0;
@@ -303,6 +355,7 @@ public final class CaptureService extends Service {
                   System.arraycopy(bytes, 0, combined, next.config.length, bytes.length);
                   bytes = combined;
                 }
+                renderer.encoded(next.target, bytes.length, key);
                 boolean firstFrame = !next.proven;
                 if (firstFrame) {
                   if (SystemClock.uptimeMillis() >= next.deadline) {
@@ -310,24 +363,29 @@ public final class CaptureService extends Service {
                     return;
                   }
                   if (!key) return;
-                  if (!runtime.videoReady(
-                      id, next.actualCodec, next.width, next.height, next.profile)) {
+                  boolean admitted = root == null
+                      ? runtime.videoReady(id, next.actualCodec, next.width, next.height, next.profile)
+                      : runtime.videoLayerReady(id, layer, next.actualCodec, next.width, next.height, next.profile);
+                  if (!admitted) {
                     retryVideo(next);
                     return;
                   }
                   next.proven = true;
-                  AppRuntimeService.prepared(runtime, id);
+                  if (root == null) AppRuntimeService.prepared(runtime, id);
                   handler.removeCallbacks(next.timeout);
                   if (next.replaced != null && next.replaced.id == id) {
                     retireVideo(next.replaced);
                     next.replaced = null;
                   }
-                  JSONObject locked = new JSONObject(next.configuration);
-                  locked.put("codec", next.actualCodec);
-                  next.configuration = locked.toString();
+                  if (root == null) {
+                    JSONObject locked = new JSONObject(next.configuration);
+                    locked.put("codec", next.actualCodec);
+                    next.configuration = locked.toString();
+                  }
                 }
-                runtime.video(id, bytes, pts, 1000000 / next.fps, key);
-                if (firstFrame) handler.post(CaptureService.this::resizeVideo);
+                if (firstFrame && root == null) runtime.videoInput(id, pts);
+                runtime.videoLayer(id, layer, bytes, pts, 1000000 / next.fps, next.width, next.height, key);
+                if (firstFrame && root == null) handler.post(CaptureService.this::resizeVideo);
               } catch (Exception error) {
                 retryVideo(next);
               } finally {
@@ -340,14 +398,14 @@ public final class CaptureService extends Service {
 
             @Override
             public void onError(MediaCodec codec, MediaCodec.CodecException error) {
-              if (next.released || (video != next && previousVideo != next)) return;
+              if (!currentVideo(next)) return;
               android.util.Log.w("PiikCapture", "encoder failed", error);
               retryVideo(next);
             }
 
             @Override
             public void onOutputFormatChanged(MediaCodec codec, MediaFormat output) {
-              if (next.released || (video != next && previousVideo != next)) return;
+              if (!currentVideo(next)) return;
               try {
                 if (!h264) {
                   next.profile = "";
@@ -385,10 +443,10 @@ public final class CaptureService extends Service {
       next.codec.start();
       if (!runtime.captureCurrent(id)) throw new IllegalStateException("capture retired");
       // The Go stream owner closes old on commit or next on rollback.
-      video = next;
+      if (root == null) video = next;
       next.timeout =
           () -> {
-            if (!next.proven && video == next) retryVideo(next);
+            if (!next.proven && currentVideo(next)) retryVideo(next);
           };
       // Consent has completed. Share one finite first-frame budget across encoders;
       // a silent candidate yields to another, never to an idle watchdog.
@@ -400,7 +458,7 @@ public final class CaptureService extends Service {
         // Display rotation changes the physical encoder, not the Go stream clock.
         next.base = old.base;
         next.last = old.last;
-      } else previousVideo = old;
+      } else if (root == null) previousVideo = old;
       if (renderer == null) renderer = new CaptureRenderer(handler,
           error -> {
             android.util.Log.w("PiikCapture", "GPU capture initialization failed", error);
@@ -411,9 +469,17 @@ public final class CaptureService extends Service {
           next.sourceWidth, next.sourceHeight,
           error -> {
             android.util.Log.w("PiikCapture", "GPU capture failed", error);
-            if (video == next) retryVideo(next);
+            if (currentVideo(next)) retryVideo(next);
           });
-      bindVideo(next, () -> {});
+      next.target.bitrate = next.bitrate;
+      next.target.framerate = next.fps;
+      if (root == null) next.target.inputFrame = pts -> {
+        if (!currentVideo(next)) return;
+        if (next.base < 0) next.base = pts;
+        next.runtime.videoInput(next.id, pts - next.base);
+      };
+      if (root == null) bindVideo(next, () -> {});
+      else renderer.attach(next.target, root.target);
     } catch (Exception error) {
       android.util.Log.w("PiikCapture", "video capture failed", error);
       retryVideo(next);
@@ -442,6 +508,10 @@ public final class CaptureService extends Service {
 
   void retryVideo(Video failed) {
     if (failed.released) return;
+    if (failed.root != null) {
+      unavailableOutput(failed.root, failed.layer);
+      return;
+    }
     if (failed.timeout != null) handler.removeCallbacks(failed.timeout);
     if (failed.proven) {
       fail(failed.runtime, failed.id);
@@ -469,6 +539,36 @@ public final class CaptureService extends Service {
                 retry.run();
               });
         });
+  }
+
+  boolean currentVideo(Video value) {
+    Video root = value.owner();
+    return !value.released && !root.released && (video == root || previousVideo == root)
+        && root.children[value.layer] == value;
+  }
+
+  int codecInstances(String name, Video pending) {
+    int count = 1;
+    for (Video output : allocatedVideos)
+      if (output != pending && output.codec.getName().equals(name)) count++;
+    return count;
+  }
+
+  void startOutput(Video root, int layer) {
+    if (!root.proven || root.released || video != root || previousVideo != null
+        || retiringCodecs > 0) return;
+    EncoderCatalog.Entry selected = root.candidates.get(root.candidateIndex);
+    createVideo(root.runtime, root.id, root.configuration, Collections.singletonList(selected),
+        0, SystemClock.uptimeMillis() + 2000, root, layer);
+  }
+
+  void unavailableOutput(Video root, int layer) {
+    if (root.unavailable[layer]) return;
+    root.unavailable[layer] = true;
+    Video failed = root.children[layer];
+    root.children[layer] = null;
+    releaseVideo(failed);
+    root.runtime.videoLayerUnavailable(root.id, layer);
   }
 
   void updateCaptureSize() {
@@ -505,13 +605,46 @@ public final class CaptureService extends Service {
   }
 
   static void control(tv.piik.bridge.Runtime owner, long id, String command, long value) {
+    control(owner, id, command, 1, value);
+  }
+
+  static void control(tv.piik.bridge.Runtime owner, long id, String command, int layer, long value) {
     CaptureService s = instance;
     if (s != null)
       s.handler.post(
           () -> {
             Video current = s.video;
             if (current == null || current.id != id || current.runtime != owner) return;
-            if (command.equals("bitrate") && current.bitrate == value) return;
+            if (layer < 0 || layer >= current.outputs.length() || current.unavailable[layer]) return;
+            if (command.equals("bitrate")) current.rates[layer] = (int) value;
+            if (command.equals("active")) {
+              current.active[layer] = value != 0;
+              if (layer == 1) {
+                boolean resume = value != 0 && !current.target.enabled;
+                current.target.enabled = value != 0;
+                if (resume) control(owner, id, "keyframe", layer, 0);
+                return;
+              }
+              if (layer != 1 && value == 0) {
+                Video retired = current.children[layer];
+                if (retired == null || retired.released) return;
+                s.releaseVideo(retired, () -> {
+                  if (current.children[layer] == retired) current.children[layer] = null;
+                  if (current.active[layer] && !current.unavailable[layer]) s.startOutput(current, layer);
+                });
+                return;
+              }
+              if (layer != 1 && current.children[layer] == null && value != 0)
+                s.startOutput(current, layer);
+              return;
+            }
+            Video output = current.children[layer];
+            if (output == null || output.released) {
+              // Demand for an idle rendition must advance the shared input plan even on a static screen.
+              if (command.equals("keyframe")) s.renderer.refresh(current.target);
+              return;
+            }
+            if (command.equals("bitrate") && output.bitrate == value) return;
             try {
               Bundle params = new Bundle();
               if (command.equals("keyframe"))
@@ -519,12 +652,16 @@ public final class CaptureService extends Service {
               else if (command.equals("bitrate"))
                 params.putInt(MediaCodec.PARAMETER_KEY_VIDEO_BITRATE, (int) value);
               else return;
-              current.codec.setParameters(params);
-              if (command.equals("bitrate")) current.bitrate = (int) value;
-              if (command.equals("keyframe")) s.renderer.refresh(current.target);
+              output.codec.setParameters(params);
+              if (command.equals("bitrate")) {
+                output.bitrate = (int) value;
+                s.renderer.bitrate(output.target, (int) value);
+              }
+              if (command.equals("keyframe")) s.renderer.refresh(output.target);
             } catch (Exception error) {
               android.util.Log.w("PiikCapture", "encoder control failed", error);
-              s.fail(current.runtime, id);
+              if (layer == 1) s.fail(current.runtime, id);
+              else s.unavailableOutput(current, layer);
             }
           });
   }
@@ -795,34 +932,47 @@ public final class CaptureService extends Service {
   }
 
   void releaseVideo(Video value, Runnable released) {
-    if (value == null || value.released) {
+    if (value == null || value.cleaned) {
       released.run();
       return;
     }
+    value.releaseCallbacks.add(released);
+    if (value.released) return;
     value.released = true;
+    if (value.codec != null) retiringCodecs++;
+    if (value.root == null) {
+      for (int layer = 0; layer < value.children.length; layer++) {
+        if (layer != 1) {
+          Video child = value.children[layer];
+          value.children[layer] = null;
+          releaseVideo(child);
+        }
+      }
+    }
     if (value.timeout != null) handler.removeCallbacks(value.timeout);
     // Retire its EGL window before stopping the codec or releasing its input Surface.
-    if (value.target != null) renderer.release(value.target,
-        () -> {
-          releaseCodec(value);
-          released.run();
-        });
-    else {
+    Runnable finish = () -> {
       releaseCodec(value);
-      released.run();
-    }
+      value.cleaned = true;
+      List<Runnable> callbacks = new ArrayList<>(value.releaseCallbacks);
+      value.releaseCallbacks.clear();
+      for (Runnable callback : callbacks) callback.run();
+    };
+    if (value.target != null) renderer.release(value.target, finish);
+    else finish.run();
   }
 
   void releaseCodec(Video value) {
     try {
-      value.codec.stop();
+      if (value.codec != null) value.codec.stop();
     } catch (Exception ignored) {
     }
     try {
-      value.codec.release();
+      if (value.codec != null) value.codec.release();
     } catch (Exception ignored) {
     }
     if (value.surface != null) value.surface.release();
+    if (allocatedVideos.remove(value)) retiringCodecs--;
   }
 
   // A retired target can retain an unfinished rotation of the same Go stream.

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
 	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
@@ -28,6 +29,9 @@ func TestLauncherRestoresOnlyAvailableModes(t *testing.T) {
 	if webassets.FS() == nil {
 		t.Skip("mobile runtime requires built Web assets")
 	}
+	previousVersion, previousRevision := buildinfo.Release, buildinfo.Revision
+	buildinfo.Release, buildinfo.Revision = "v2.4.1", strings.Repeat("a", 40)
+	t.Cleanup(func() { buildinfo.Release, buildinfo.Revision = previousVersion, previousRevision })
 	helper, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -66,12 +70,17 @@ func TestLauncherRestoresOnlyAvailableModes(t *testing.T) {
 			var state struct {
 				DefaultMode launcher.Mode
 				Modes       []launcher.Mode
+				Version     string
+				Revision    string
 			}
 			if err = json.NewDecoder(response.Body).Decode(&state); err != nil {
 				t.Fatal(err)
 			}
 			if state.DefaultMode != test.want || !slices.Equal(state.Modes, test.modes) {
 				t.Fatalf("launcher mode = %+v, want default=%s modes=%v", state, test.want, test.modes)
+			}
+			if state.Version != buildinfo.Version() || state.Revision != buildinfo.Revision {
+				t.Fatalf("launcher did not receive App build identity: %+v", state)
 			}
 			if test.selectLocal {
 				origin := strings.TrimSuffix(r.URL(), "/client")

@@ -18,14 +18,20 @@ Quality settings use the shared capture limits; the selected MediaCodec admits
 each requested profile during startup.
 When supported by that encoder, constant-bitrate mode keeps Android's quality
 floor from overriding the network allocation.
+The existing WebRTC FrameDropper also gates each encoder's input from its actual
+output size, so a codec that reaches its compression limit can reduce frame rate
+instead of ignoring the allocation. The shared capture clock and other outputs
+continue independently.
 Devices without either encoder can still join rooms. Piik needs an installed
 system browser.
 TV capture depends on the system's Projection and encoder support. Physical TV
 checks are pending.
 
-Native Android capture currently provides one encoded rendition. It reuses the
-shared P2P/SFU transports and can forward received media, but does not yet derive
-lower renditions for individual viewers as the desktop capture backend does.
+Native Android capture reuses the shared screen-share output plan and P2P/SFU
+transports. One Projection and captured texture feed the original and requested
+lower renditions. Optional encoders start on demand, retire when unused and leave
+the original available if the device cannot admit another encoder. Received
+media can use the same forwarding path.
 Live bitrate follows the shared [media-quality contract](../docs/standards/media-quality.md):
 remote allocations reach the encoder without the local preview holding it at its ceiling.
 Android can control a desktop through the shared browser controls; it does not
@@ -50,6 +56,10 @@ notices, binds the Go runtime for both supported ABIs and packages the APK.
 The single mobile Go entry lives in `mobile/bridge`; this command generates its
 Android binding.
 `PIIK_GOMOBILE` may name an installed `gomobile` executable outside `PATH`.
+
+The build injects the same product version and source revision used by desktop
+App packages. The shared startup page displays that identity; development APKs
+also include their short revision in Android's application version.
 
 The build produces `android/app/build/outputs/apk/debug/app-debug.apk`
 relative to `mobile/`. The application ID remains `tv.piik.android`, so an update

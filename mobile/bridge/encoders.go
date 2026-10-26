@@ -18,6 +18,7 @@ type encoderCapability struct {
 type encoderCapabilities struct {
 	Platform    string              `json:"platform"`
 	Provider    string              `json:"provider"`
+	MultiOutput bool                `json:"multiOutput"`
 	SystemAudio bool                `json:"systemAudio"`
 	Encoders    []encoderCapability `json:"encoders"`
 }
