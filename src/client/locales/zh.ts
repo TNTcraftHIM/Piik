@@ -21,7 +21,7 @@ export const zh = {
   "remote.mouseWheel": "滚轮",
   "remote.mouseExpand": "展开虚拟鼠标",
   "remote.mouseCollapse": "收起虚拟鼠标",
-  "remote.mouseMove": "拖动移动光标，轻点展开或收起",
+  "remote.mouseMove": "拖动移动光标",
   "remote.mouseScroll": "上下滑动滚动页面",
   "remote.keyPages": "键盘分区",
   "remote.keys.letters": "字母键",

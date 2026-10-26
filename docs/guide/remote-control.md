@@ -106,10 +106,12 @@ choice needs **Allow Viewers** before it applies again. Passwords are not saved.
 
 On a phone, swipe to move the pointer, tap to click and hold to drag. Two-finger
 tap is right-click; two-finger swipe scrolls. Pinch to zoom, then use two fingers
-to move around the enlarged picture. Tap the little mouse at the pointer to
-expand its left, middle and right buttons and scroll area. Drag its lower shell
+to move around the enlarged picture. Open the mouse from the picture's right
+edge for left, middle and right buttons and a scroll area. Drag its lower shell
 to move the pointer; hold a button while moving to drag an item. The scroll area
-also works while zoomed in. **Remote keyboard** provides keys, shortcuts and text entry.
+also works while zoomed in. Tap the edge arrow to tuck the mouse away; touch
+gestures and the pointer remain available. **Remote keyboard** provides keys,
+shortcuts and text entry.
 On a computer, **Game mouse** captures continuous mouse movement;
 press **Esc** to release it.
 

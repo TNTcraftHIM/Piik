@@ -10,7 +10,7 @@ import { RemoteGamepad } from "../../remote-control/gamepad";
 import { matchesRemoteShortcut, remoteTextAvailable, remoteGamepadAvailable } from "../../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
 import { RemoteKeyboard } from "./RemoteKeyboard";
-import { RemoteMouse, placeRemoteMouse } from "./RemoteMouse";
+import { RemoteMouse, placeRemotePointer } from "./RemoteMouse";
 import { Btn } from "./primitives";
 import { videoFullscreenState, type FullscreenVideo } from "./video-fullscreen";
 import { picturePoint, pictureRect, rotatePicturePoint, rotatePictureDelta, videoRotation, type VideoFit, type VideoRotation } from "../../media/video-geometry";
@@ -99,7 +99,7 @@ export function RemoteControl({ channel, videoRef, available, pictureFit, pictur
       const rect = surface.current?.getBoundingClientRect();
       if (!picture || !rect || !cursor.current) return;
       const position = rotatePicturePoint(current.position, videoRotation(video));
-      placeRemoteMouse(cursor.current,
+      placeRemotePointer(cursor.current,
         picture.left - rect.left + position.x * picture.width,
         picture.top - rect.top + position.y * picture.height);
     };

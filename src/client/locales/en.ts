@@ -21,7 +21,7 @@ export const en: Record<CopyKey, string> = {
   "remote.mouseWheel": "Scroll wheel",
   "remote.mouseExpand": "Expand virtual mouse",
   "remote.mouseCollapse": "Collapse virtual mouse",
-  "remote.mouseMove": "Drag to move the pointer; tap to expand or collapse",
+  "remote.mouseMove": "Drag to move the pointer",
   "remote.mouseScroll": "Drag vertically to scroll",
   "remote.keyPages": "Keyboard sections",
   "remote.keys.letters": "Letter keys",

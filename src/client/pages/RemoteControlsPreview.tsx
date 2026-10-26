@@ -6,7 +6,7 @@ import { StageTv } from "../components/living/Stage";
 import { StatusIndicator } from "../components/living/StatusIndicator";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 import { RemoteKeyboard } from "../components/living/RemoteKeyboard";
-import { RemoteMouse, placeRemoteMouse } from "../components/living/RemoteMouse";
+import { RemoteMouse, placeRemotePointer } from "../components/living/RemoteMouse";
 import { Couch } from "../components/living/Couch";
 import { STATUS_CATALOG } from "../ui/media-status";
 import { Btn } from "../components/living/primitives";
@@ -46,7 +46,7 @@ export function RemoteControlsPreview() {
     const layer = mouseLayer.current;
     if (!layer) return;
     const rect = layer.getBoundingClientRect();
-    placeRemoteMouse(layer, position.x * rect.width, position.y * rect.height);
+    placeRemotePointer(layer, position.x * rect.width, position.y * rect.height);
   }, []);
   const [pointer] = useState(() => new RemoteTouchpad(() => {
     const rect = mouseLayer.current?.getBoundingClientRect();
@@ -86,14 +86,26 @@ export function RemoteControlsPreview() {
   return <><PermissionRequestPreview /><section id="remote-control-preview" className="cp-section">
     <header className="cp-section-head"><div>
       <h2>{t("remote.inputTools")}</h2>
-      <p>{en ? "Tap the little mouse to expand it. Drag its body, use its buttons or scroll wheel, or open the keyboard below. Input only appears in the local log; it does not control your computer."
-        : "轻点画面中的小鼠标展开，拖动本体移动光标，试用按键与滚轮，也可在下方打开键盘。输入只记录在本地，不会操作电脑。"}</p>
+      <p>{en ? "Swipe over the picture to move the pointer. Open the mouse from the right edge for buttons and scrolling; use the edge arrow to tuck it away. Input only appears in the local log; it does not control your computer."
+        : "在画面上滑动移动光标。右侧贴边入口可展开鼠标按键与滚轮，再点边缘箭头即可收起。输入只记录在本地，不会操作电脑。"}</p>
     </div></header>
     <div className="cp-stage" style={{ maxWidth: 480 }}>
       <StageTv live label={en ? "Local mouse example" : "本地鼠标示例"}>
         <video ref={mouseVideo} muted playsInline style={{ objectFit: "cover" }}
           aria-label={en ? "Local sample picture" : "本地示例画面"} />
-        <RemoteMouse pointer={pointer} positionRef={mouseLayer} />
+        <div className="lr-remote-input-surface" role="application" aria-label={t("remote.surface")} tabIndex={0}
+          onPointerDown={event => {
+            if (event.button !== 0) return;
+            event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId);
+            pointer.down(event.pointerId, event.clientX, event.clientY);
+          }}
+          onPointerMove={event => pointer.move(event.pointerId, event.clientX, event.clientY)}
+          onPointerUp={event => pointer.up(event.pointerId)}
+          onPointerCancel={event => pointer.cancel(event.pointerId)}
+          onLostPointerCapture={event => pointer.cancel(event.pointerId)}
+          onContextMenu={event => event.preventDefault()}>
+          <RemoteMouse pointer={pointer} positionRef={mouseLayer} />
+        </div>
       </StageTv>
     </div>
     <div className="cp-tools">
@@ -111,7 +123,7 @@ export function RemoteControlsPreview() {
         releaseKey={releaseKey} onReleaseKeyChange={setReleaseKey} />}
     </div>
     <p className="cp-input-output"><span>{en ? "Latest input" : "最近一次输入"}</span>
-      <output>{lastInput || (en ? "Tap the little mouse in the picture to try it." : "轻点画面中的小鼠标即可试用。")}</output>
+      <output>{lastInput || (en ? "Drag over the picture, or open the mouse from the right edge." : "在画面上拖动，或从右侧边缘展开鼠标。")}</output>
     </p>
     <div className="cp-tools">
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
