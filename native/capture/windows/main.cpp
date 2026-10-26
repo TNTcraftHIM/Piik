@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include <windows.h>
+#include <dwmapi.h>
 
 #include <codecapi.h>
 #include <d3d10_1.h>
@@ -1557,6 +1558,27 @@ std::optional<UINT64> CapturePresentationTimestamp(
   return std::max(captured, previous_presentation + rtp_tick_100ns);
 }
 
+bool CaptureSizeMatches(SIZE content, SIZE target, HWND window) {
+  const auto matches = [&](SIZE size) {
+    return content.cx == size.cx && content.cy == size.cy;
+  };
+  if (matches(target)) return true;
+  if (window == nullptr) return false;
+  // Win10 item.Size can include invisible borders that ContentSize excludes.
+  // Compare the current visual bounds too, still rejecting queued resize frames.
+  RECT bounds{};
+  if (SUCCEEDED(DwmGetWindowAttribute(window, DWMWA_EXTENDED_FRAME_BOUNDS,
+                                      &bounds, sizeof(bounds))) &&
+      matches({bounds.right - bounds.left, bounds.bottom - bounds.top})) return true;
+  // Maximized windows can extend outside the monitor behind their hidden borders.
+  MONITORINFO monitor{};
+  monitor.cbSize = sizeof(monitor);
+  return IsZoomed(window) &&
+      GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONULL), &monitor) &&
+      matches({monitor.rcWork.right - monitor.rcWork.left,
+               monitor.rcWork.bottom - monitor.rcWork.top});
+}
+
 class OutputWorker final {
  public:
   using Factory = AdaptiveEncoder::Factory;
@@ -2211,12 +2233,12 @@ void RunVideoCapture(ProductArguments arguments) {
       if (!presentation_timestamp) continue;
       auto content_size = latest.ContentSize();
       if (content_size.Width <= 0 || content_size.Height <= 0) continue;
-      // ContentSize belongs to the rendered frame; Size belongs to the current
-      // target. Queued minimize/resize frames must not reconfigure the encoder
-      // after the target has already changed again.
+      // Reject queued geometry from before the current target's resize/restore.
       const auto target_size = item.Size();
-      if (content_size.Width != target_size.Width ||
-          content_size.Height != target_size.Height) {
+      if (!CaptureSizeMatches({content_size.Width, content_size.Height},
+                              {target_size.Width, target_size.Height},
+                              window_target ? reinterpret_cast<HWND>(
+                                  static_cast<UINT_PTR>(arguments.source_id)) : nullptr)) {
         latest.Close();
         continue;
       }
