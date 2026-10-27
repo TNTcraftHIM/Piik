@@ -7,6 +7,13 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **3.0 room-owner runtime.** Establish the existing semantic/module map,
+  then implement the accepted [network model](./research/channel-network-design.md)
+  and [room-data model](./research/channel-storage-and-identity.md) in cohesive
+  Rust owners. Begin with domain directory and authenticated runtime bindings,
+  room-owned confirmation/storage, and the room base tree. Reuse mature components
+  and the shared frontend; preserve useful behavior rather than translating
+  functions. Keep the first version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -24,9 +31,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   with source sound on and off in the App that waits for video `active`
   before starting source audio. Obtain the App diagnostic if the window stays black.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
-  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) with the corrected
-  Windows App. If minimizing still prevents input, obtain its Host App
-  diagnostic ZIP to identify the rejected system operation.
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
+  host with the maintenance line's input-recovery candidate. Its v2.5.0 report
+  shows rejected input and failed release cleanup; the candidate repairs a
+  reproduced thread-desktop mismatch and records the native rejection context.
+  Confirm the original host's trigger before closing the issue.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -41,15 +50,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **Piik 3.0 core implementation.** Held on 2026-10-27 until the 2.x
-  maintenance audit closes its core routing, recovery and lifecycle defects.
-  Review the [network design](./research/channel-network-design.md) and
-  [room-data model](./research/channel-storage-and-identity.md) without expanding
-  their first-version scope. Preserve the isolated Rust prototype and visual
-  proposal; its [README](../prototype/channel-server/README.md) owns runnable scope.
-  After maintenance closure, establish the existing module/semantic map before
-  implementing separate room owners and shared paths in Rust. Reuse mature Rust
-  components and the shared frontend rather than translating Go mechanically.
+- [ ] **Maintenance publication.** Held on 2026-10-27. Completed fixes stay on
+  the maintenance branch; publish only on the owner's next instruction.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session

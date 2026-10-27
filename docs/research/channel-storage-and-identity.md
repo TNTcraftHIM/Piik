@@ -6,7 +6,7 @@ accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
 behavior; [TODO](../todo.md) owns pending decisions and implementation.
 The first version keeps one room data owner and reuses established room paths.
-Implementation follows the 2.x maintenance closure recorded in TODO.
+The next implementation stage is recorded in TODO.
 
 ## Ownership And Placement
 

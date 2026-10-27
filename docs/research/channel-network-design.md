@@ -22,7 +22,7 @@ nodes receive the picture. Both stages use the same route state and transports.
 The owner accepted this routing foundation and durable room records with cached
 attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
 shared file delivery on those same paths. The new runtime is not yet implemented;
-the implementation hold and maintenance prerequisite are owned by TODO.
+TODO owns the next implementation stage.
 
 ## Terminology And Roles
 
