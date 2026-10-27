@@ -1,5 +1,4 @@
 mod attachments;
-mod storage;
 
 use axum::{
     extract::{
@@ -12,6 +11,7 @@ use axum::{
     Router,
 };
 use piik_channel_prototype::{
+    storage,
     wire::{Event, Request},
     Authority, Effects,
 };
@@ -36,9 +36,23 @@ struct Hub {
 
 impl Hub {
     fn request(&mut self, connection: Uuid, request: Request) {
-        let metadata = request.changes_metadata();
-        let request_id = request.request_id.clone();
-        let before = metadata.then(|| self.authority.clone());
+        let metadata = self.authority.changes_metadata(&request);
+        // A host has already committed its room policy. The domain's directory
+        // is a projection of that authority, not a second writer that may undo it.
+        // Completing an invited identity still belongs to the domain transaction.
+        let room_projection = matches!(&request.command,
+            piik_channel_prototype::wire::Command::HostOutput { output, .. }
+            if !output.reply.as_ref().is_some_and(|reply| matches!(reply.result,
+                piik_channel_prototype::host::RoomResult::Invited)));
+        let (failure_target, request_id) = match &request.command {
+            piik_channel_prototype::wire::Command::HostOutput { output, .. } => output
+                .reply
+                .as_ref()
+                .map(|reply| (reply.context.connection, reply.context.request_id.clone()))
+                .unwrap_or((connection, request.request_id.clone())),
+            _ => (connection, request.request_id.clone()),
+        };
+        let before = (metadata && !room_projection).then(|| self.authority.clone());
         let effects = self.authority.handle(connection, request, now());
         let failed = effects
             .events
@@ -48,9 +62,20 @@ impl Hub {
             let checkpoint =
                 serde_json::to_value(self.authority.export_state()).expect("typed metadata");
             if self.storage.lock().unwrap().save(&checkpoint).is_err() {
+                if room_projection {
+                    self.apply(effects);
+                    self.send(
+                        connection,
+                        Event::Error {
+                            code: "directory_storage_failed".into(),
+                            request_id: None,
+                        },
+                    );
+                    return;
+                }
                 self.authority = before.expect("metadata request checkpoint");
                 self.send(
-                    connection,
+                    failure_target,
                     Event::Error {
                         code: "storage_failed".into(),
                         request_id,
@@ -112,8 +137,8 @@ async fn upgrade(
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     };
     socket
-        .max_message_size(256 * 1024)
-        .max_frame_size(256 * 1024)
+        .max_message_size(2 * 1024 * 1024)
+        .max_frame_size(2 * 1024 * 1024)
         .on_upgrade(move |socket| async move {
             let _permit = permit;
             session(socket, state).await;

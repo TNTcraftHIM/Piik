@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -31,18 +31,28 @@ pub enum Command {
         #[serde(default)]
         attachments: Vec<Uuid>,
     },
-    CreateRoom {
-        name: String,
-        access: RoomAccess,
-        hidden: bool,
-        password: Option<String>,
+    HostRegister {
+        room: crate::host::RoomSummary,
+        resume_binding: Option<Uuid>,
+    },
+    HostOutput {
+        room_id: String,
+        output: crate::host::HostOutput,
+    },
+    HostStop {
+        room_id: String,
+        binding_id: Uuid,
     },
     UpdateRoom {
         room_id: String,
         name: String,
         access: RoomAccess,
         hidden: bool,
-        #[serde(default, deserialize_with = "nullable_password")]
+        #[serde(
+            default,
+            deserialize_with = "nullable_password",
+            skip_serializing_if = "Option::is_none"
+        )]
         password: Option<Option<String>>,
     },
     EnterRoom {
@@ -128,22 +138,6 @@ fn nullable_password<'de, D: serde::Deserializer<'de>>(
     Option::<String>::deserialize(d).map(Some)
 }
 
-impl Request {
-    pub fn changes_metadata(&self) -> bool {
-        matches!(
-            self.command,
-            Command::Join { .. }
-                | Command::SetName { .. }
-                | Command::CreateRoom { .. }
-                | Command::UpdateRoom { .. }
-                | Command::EnterRoom { .. }
-                | Command::RoomInvite { .. }
-                | Command::RevokeRoomAccess { .. }
-                | Command::SetRoles { .. }
-        )
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RoomAccess {
@@ -162,7 +156,7 @@ pub enum Kind {
     Voice,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PublicationInput {
     pub id: Uuid,
@@ -171,7 +165,7 @@ pub struct PublicationInput {
     pub muted: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LinkState {
     Connected,
@@ -245,7 +239,7 @@ pub struct Track {
     pub stream_id: String,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Room {
     pub id: String,
@@ -256,11 +250,19 @@ pub struct Room {
     pub has_password: bool,
     pub authorized: bool,
     pub can_manage: bool,
+    pub available: bool,
+    pub capabilities: RoomCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<Uuid>>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomCapabilities {
+    pub attachments: bool,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublicationInfo {
     pub id: Uuid,
@@ -271,7 +273,7 @@ pub struct PublicationInfo {
     pub muted: bool,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VoiceInfo {
     pub session_id: Uuid,
@@ -346,6 +348,20 @@ pub struct ChatMessage {
     rename_all_fields = "camelCase"
 )]
 pub enum Event {
+    RoomReply {
+        room_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+        result: crate::host::RoomResult,
+    },
+    HostBound {
+        room_id: String,
+        binding_id: Uuid,
+    },
+    HostInput {
+        room_id: String,
+        input: crate::host::HostInput,
+    },
     Welcome {
         credential: String,
         session_id: Uuid,
@@ -364,11 +380,6 @@ pub enum Event {
         // Echo the request cursor; omission identifies a fresh latest page.
         #[serde(skip_serializing_if = "Option::is_none")]
         before: Option<u64>,
-    },
-    RoomCreated {
-        room_id: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
     },
     RoomInvite {
         room_id: String,

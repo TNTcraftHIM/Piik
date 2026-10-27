@@ -1,6 +1,49 @@
 use super::*;
 
 #[test]
+fn independent_room_catalogs_share_the_same_per_endpoint_source_rules() {
+    let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
+    let peers: Vec<_> = (0..20).map(|_| join(&mut channel, false)).collect();
+    for room_id in ["living", "studio", "quiet"] {
+        for peer in &peers {
+            channel
+                .handle(
+                    peer.session_id,
+                    Command::Voice {
+                        room_id: room_id.into(),
+                        joined: true,
+                        muted: false,
+                        deafened: false,
+                    },
+                    0,
+                )
+                .unwrap();
+            for kind in [Kind::Screen, Kind::Voice] {
+                channel
+                    .handle(
+                        peer.session_id,
+                        Command::Publish {
+                            publication: PublicationInput {
+                                id: Uuid::new_v4(),
+                                room_id: room_id.into(),
+                                kind,
+                                muted: false,
+                            },
+                        },
+                        0,
+                    )
+                    .unwrap();
+            }
+        }
+        assert_eq!(channel.rooms[room_id].publications().count(), 40);
+    }
+    assert_eq!(
+        channel.snapshot(peers[0].session_id).publications.len(),
+        120
+    );
+}
+
+#[test]
 fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
     let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
     let source = join(&mut channel, false);
@@ -336,15 +379,20 @@ fn deafen_preserves_voice_routes_and_role_revocation_preserves_identity() {
     assert!(channel.publication_room(screen).is_none());
     assert!(channel.publication_room(owner_voice).is_some());
     assert!(channel
-        .handle(
+        .register_host(
             friend.session_id,
-            Command::CreateRoom {
+            channel.identity.sessions[&friend.session_id]
+                .connection
+                .unwrap(),
+            RoomSummary {
+                id: "forbidden".into(),
                 name: "Forbidden".into(),
+                creator_id: friend.user_id,
                 access: RoomAccess::Public,
                 hidden: false,
-                password: None
+                has_password: false,
             },
-            0
+            None,
         )
         .is_err());
 }

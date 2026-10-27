@@ -6,7 +6,7 @@ use crate::{
     transport::Flow,
     wire::{Kind, PublicationInfo, Room, RoomAccess, VoiceInfo},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -31,7 +31,7 @@ pub struct RoomRuntime {
     publications: BTreeMap<Uuid, Publication>,
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomSnapshot {
     pub room: Room,

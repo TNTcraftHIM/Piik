@@ -233,7 +233,8 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
     let forbidden = apply(
         &mut core,
         guest,
-        json!({"type":"create_room", "name":"Denied", "access":"public", "hidden":false, "requestId":"create"}),
+        json!({"type":"host_register", "room":{"id":Uuid::new_v4(), "name":"Denied", "creatorId":guest_user,
+            "access":"public", "hidden":false, "hasPassword":false}, "requestId":"create"}),
         2,
     );
     assert!(forbidden.close.is_empty());

@@ -1,7 +1,10 @@
 use crate::wire::PairInfo;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Flow {
     pub publication_id: Uuid,
     pub sender: Uuid,

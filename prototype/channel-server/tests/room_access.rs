@@ -1,15 +1,20 @@
+#![cfg(feature = "server")]
+
 use piik_channel_prototype::{
     history::HistoryRequest,
-    wire::{Event, Request, Snapshot},
-    Authority, Effects, RoomPermission,
+    host::RoomResult,
+    wire::{Event, Snapshot},
+    Effects, RoomPermission,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
+mod support;
+use support::RoomNetwork;
 
-fn command(core: &mut Authority, connection: Uuid, value: Value) -> Effects {
-    core.handle(connection, Request::parse(&value.to_string()).unwrap(), 100)
+fn command(core: &mut RoomNetwork, connection: Uuid, value: Value) -> Effects {
+    core.command(connection, value)
 }
-fn admit(core: &mut Authority, connection: Uuid, value: Value) -> (Uuid, String, Snapshot) {
+fn admit(core: &mut RoomNetwork, connection: Uuid, value: Value) -> (Uuid, String, Snapshot) {
     command(core, connection, value)
         .events
         .into_iter()
@@ -28,18 +33,21 @@ fn state(effects: Effects, connection: Uuid) -> Snapshot {
     effects
         .events
         .into_iter()
+        .rev()
         .find_map(|(c, e)| match e {
             Event::State { state } if c == connection => Some(state),
             _ => None,
         })
         .unwrap()
 }
-fn room(core: &mut Authority, connection: Uuid, access: &str, hidden: bool) -> String {
-    command(core, connection, json!({"type":"create_room","name":"Friends","access":access,"hidden":hidden,"requestId":"create"})).events.into_iter().find_map(|(_,e)|match e {
-        Event::RoomCreated {room_id,request_id} => { assert_eq!(request_id.as_deref(),Some("create"));Some(room_id) }, _=>None
-    }).unwrap()
+fn room(core: &mut RoomNetwork, connection: Uuid, access: &str, hidden: bool) -> String {
+    core.create(
+        connection,
+        serde_json::from_value(json!(access)).unwrap(),
+        hidden,
+    )
 }
-fn invite(core: &mut Authority, connection: Uuid, room: &str) -> String {
+fn invite(core: &mut RoomNetwork, connection: Uuid, room: &str) -> String {
     command(
         core,
         connection,
@@ -60,13 +68,17 @@ fn invite(core: &mut Authority, connection: Uuid, room: &str) -> String {
 }
 fn rejected(effects: Effects) {
     assert!(effects.history.is_none());
-    assert!(effects
-        .events
-        .iter()
-        .any(|(_, e)| matches!(e, Event::Error { .. })));
+    assert!(effects.events.iter().any(|(_, e)| matches!(
+        e,
+        Event::Error { .. }
+            | Event::RoomReply {
+                result: RoomResult::Error { .. },
+                ..
+            }
+    )));
 }
-fn core() -> Authority {
-    Authority::new("owner".into(), "invite".into(), vec![]).unwrap()
+fn core() -> RoomNetwork {
+    RoomNetwork::new()
 }
 
 #[test]
@@ -198,6 +210,7 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     assert!(!initial.channel.rooms.iter().any(|r| r.id == room));
     // Promoting a channel collaborator does not bypass a room creator's privacy.
     let outsider_user = core
+        .authority
         .authorize_user(&outsider_credential, "living", RoomPermission::Read)
         .unwrap();
     command(
@@ -205,12 +218,12 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         owner,
         json!({"type":"set_roles","userId":outsider_user,"roles":["member","moderator"]}),
     );
-    assert!(core
-        .authorize_user(&outsider_credential, &room, RoomPermission::Read)
-        .is_err());
-    assert!(core
-        .authorize_user(&outsider_credential, &room, RoomPermission::Manage)
-        .is_err());
+    assert!(!core
+        .state(outsider)
+        .channel
+        .rooms
+        .iter()
+        .any(|entry| entry.id == room));
     rejected(command(
         &mut core,
         outsider,
@@ -222,7 +235,7 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         json!({"type":"enter_room","roomId":room,"inviteKey":"wrong"}),
     ));
     let guest = Uuid::new_v4();
-    let (guest_session, credential, initial) = admit(
+    let (guest_session, _, initial) = admit(
         &mut core,
         guest,
         json!({"type":"join","name":"Guest","roomId":room,"key":key}),
@@ -232,9 +245,12 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         .rooms
         .iter()
         .any(|r| r.id == room && r.authorized));
-    let guest_user = core
-        .authorize_user(&credential, &room, RoomPermission::Read)
-        .unwrap();
+    let guest_user = initial
+        .sessions
+        .iter()
+        .find(|entry| entry.id == guest_session)
+        .unwrap()
+        .user_id;
     let private_pub = Uuid::new_v4();
     let public_pub = Uuid::new_v4();
     command(
@@ -287,18 +303,23 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
             .user_id,
         guest_user
     );
-    assert!(core
-        .authorize_user(&credential, &room, RoomPermission::Read)
-        .is_err());
+    assert!(!core
+        .state(guest)
+        .channel
+        .rooms
+        .iter()
+        .any(|entry| entry.id == room));
     for value in [
         json!({"type":"history","roomId":room}),
         json!({"type":"chat","roomId":room,"text":"Revoked","nonce":"revoked"}),
     ] {
         rejected(command(&mut core, guest, value));
     }
-    assert!(core
-        .authorize_user(&outsider_credential, &room, RoomPermission::Manage)
-        .is_err());
+    rejected(command(
+        &mut core,
+        outsider,
+        json!({"type":"room_invite","roomId":room}),
+    ));
     // The channel owner can manage the room; the creator's ordinary member role suffices too.
     let updated = command(
         &mut core,
@@ -357,8 +378,11 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
         json!({"type":"enter_room","roomId":room,"password":unicode_password}),
     );
     assert!(core
-        .authorize_user(&credential, &room, RoomPermission::Read)
-        .is_ok());
+        .state(guest)
+        .channel
+        .rooms
+        .iter()
+        .any(|entry| entry.id == room && entry.authorized));
     let first = invite(&mut core, creator, &room);
     let second = invite(&mut core, creator, &room);
     assert_ne!(first, second);
@@ -378,8 +402,11 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
         json!({"type":"update_room","roomId":room,"name":"Private","access":"private","hidden":false,"password":"second"}),
     );
     assert!(core
-        .authorize_user(&credential, &room, RoomPermission::Read)
-        .is_ok());
+        .state(guest)
+        .channel
+        .rooms
+        .iter()
+        .any(|entry| entry.id == room && entry.authorized));
     let another = Uuid::new_v4();
     admit(
         &mut core,
@@ -404,7 +431,7 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
 }
 
 #[test]
-fn checkpoint_restores_access_and_credentials_but_no_live_media_or_sessions() {
+fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media() {
     let mut original = core();
     let creator = Uuid::new_v4();
     let owner = Uuid::new_v4();
@@ -435,12 +462,16 @@ fn checkpoint_restores_access_and_credentials_but_no_live_media_or_sessions() {
     );
     assert_eq!(active.publications.len(), 1);
     assert_eq!(active.voice.len(), 1);
-    let checkpoint = serde_json::to_string(&original.export_state()).unwrap();
+    let policy = original.policy(&room);
+    let checkpoint = serde_json::to_string(&original.authority.export_state()).unwrap();
     assert!(!checkpoint.contains(&credential));
     assert!(!checkpoint.contains(&owner_credential));
     assert!(!checkpoint.contains(&key));
+    let room_policy = serde_json::to_value(&policy).unwrap();
+    assert!(!checkpoint.contains(&serde_json::to_string(&room_policy["inviteHash"]).unwrap()));
     let mut restored = core();
     restored
+        .authority
         .import_state(serde_json::from_str(&checkpoint).unwrap())
         .unwrap();
     let new_page = Uuid::new_v4();
@@ -453,28 +484,38 @@ fn checkpoint_restores_access_and_credentials_but_no_live_media_or_sessions() {
     assert!(initial.publications.is_empty());
     assert!(initial.pairs.is_empty());
     assert!(initial.voice.is_empty());
-    assert!(initial
+    assert!(!initial
         .channel
         .rooms
         .iter()
-        .any(|candidate| candidate.id == room && candidate.authorized && candidate.can_manage));
+        .any(|candidate| candidate.id == room && candidate.available));
+    restored.restore_room(new_page, policy);
+    assert!(restored
+        .state(new_page)
+        .channel
+        .rooms
+        .iter()
+        .any(|candidate| candidate.id == room
+            && candidate.authorized
+            && candidate.can_manage
+            && candidate.available));
     let history = command(
         &mut restored,
         new_page,
         json!({"type":"browse","roomId":room}),
     );
-    assert!(history.events.is_empty());
-    assert!(matches!(
-        history.history.unwrap().request,
-        HistoryRequest::Read { room_id, before: None } if room_id == room
-    ));
+    assert!(
+        history.history.is_none(),
+        "domain storage must not receive Browser room history"
+    );
+    assert!(history.events.iter().any(|(_, event)| matches!(event,
+        Event::History { room_id, messages, .. } if room_id == &room && messages.is_empty())));
     let (_, again, _) = admit(
         &mut restored,
         Uuid::new_v4(),
         json!({"type":"join","name":"Owner","key":"owner"}),
     );
     assert_eq!(again, owner_credential);
-    assert!(restored
-        .authorize_user(&owner_credential, &room, RoomPermission::Manage)
-        .is_ok());
+    assert!(restored.state(new_page).publications.is_empty());
+    assert!(restored.state(new_page).voice.is_empty());
 }

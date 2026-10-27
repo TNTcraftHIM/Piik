@@ -1,6 +1,6 @@
 //! The local Server experiment's metadata, confirmed room history and attachments.
 //! Media sessions and routes never enter this database.
-use piik_channel_prototype::{
+use crate::{
     history::{AttachmentOwner, ConfirmationInput, HistoryRequest, HistoryResult, HISTORY_PAGE},
     wire::ChatMessage,
 };
@@ -332,7 +332,7 @@ pub fn media_type(bytes: &[u8]) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use piik_channel_prototype::history::MessageDraft;
+    use crate::history::MessageDraft;
     use serde_json::json;
     fn attachment(id: Uuid) -> Attachment {
         Attachment {

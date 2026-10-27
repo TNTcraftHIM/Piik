@@ -164,6 +164,8 @@ impl RoomState {
             has_password: self.password_hash.is_some(),
             authorized,
             can_manage,
+            available: true,
+            capabilities: crate::wire::RoomCapabilities { attachments: true },
             members: can_manage.then(|| self.grants.iter().copied().collect()),
         })
     }

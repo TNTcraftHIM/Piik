@@ -7,7 +7,7 @@ use uuid::Uuid;
 pub const HISTORY_WINDOW: usize = 1000;
 pub const HISTORY_PAGE: usize = 100;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageDraft {
     pub user_id: Uuid,
@@ -110,14 +110,14 @@ pub struct AttachmentOwner {
     pub user_id: Uuid,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageConfirmation {
     pub message: ChatMessage,
     pub inserted: bool,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -142,7 +142,7 @@ impl HistoryRequest {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",

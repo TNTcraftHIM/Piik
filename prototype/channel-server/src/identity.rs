@@ -45,6 +45,7 @@ pub struct Admission<'a> {
     pub name: &'a str,
 }
 
+#[derive(Clone)]
 pub struct Admitted {
     pub user_id: Uuid,
     pub session_id: Uuid,
@@ -61,6 +62,8 @@ pub struct Member {
     pub domain_owner: bool,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Endpoint {
     pub member: Member,
     pub connected: bool,
