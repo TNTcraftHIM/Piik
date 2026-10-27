@@ -670,7 +670,7 @@ func (s *Server) armHeartbeat() {
 
 // handleMessage requires mu to be held.
 func (s *Server) handleMessage(sess *session, encoded []byte) {
-	if !s.sessions.Has(sess) || s.closing {
+	if !s.sessions.Has(sess) || s.closing || !sess.open() {
 		return
 	}
 	if sess.revoked {
