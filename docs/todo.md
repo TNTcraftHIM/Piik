@@ -35,15 +35,16 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Piik 3.0 channels, rooms and Rust prototype.** Discuss the
-  [network and lifecycle proposal](./research/channel-network-design.md) with the
-  owner before implementing it, as requested on 2026-10-26. Resolve the proposed
-  publication-scoped routing, actual shared-resource ownership, cross-room
-  interaction, multiple user roles and attachment/storage behavior.
+- [ ] **Piik 3.0 channels, rooms and Rust prototype.** The owner authorized a
+  usable Browser prototype on 2026-10-27: Rust channel authority, rooms, multiple
+  user roles, chat, independent screen publications, selective watching and voice.
+  Present the accepted five-endpoint Browser slice for owner trial. The
+  [network and lifecycle proposal](./research/channel-network-design.md) owns
+  the model; the [prototype README](../prototype/channel-server/README.md) owns
+  its executable scope and launch instructions.
   Assess [further decentralization](./research/channel-network-design.md#further-decentralization-assessment):
   sharer-owned route computation and reuse of existing control paths, with
   authority handoff evaluated separately. Discuss the comparison before implementation.
-  Then complete the real multi-source/voice baseline in the isolated experiment.
   Rust is the selected core language; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes

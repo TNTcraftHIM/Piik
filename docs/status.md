@@ -1,10 +1,19 @@
 # Current Status
 
-Last updated: 2026-10-26
+Last updated: 2026-10-27
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
 and Git/PRs own completed history.
+
+## Isolated 3.0 Prototype
+
+The [channel prototype](../prototype/channel-server/README.md) has a Rust
+coordinator and real Browser chat, screen publications, selective watching and
+room voice. Its five-endpoint gate covers relay continuity and recovery; the
+focused lifecycle gate covers revocation, offline stop and session expiry. It is
+ready for local user trial on `feat/channel-prototype`. Production 2.x remains
+on its existing contract. [TODO](./todo.md) owns the next stages.
 
 ## Accepted Release Contract
 

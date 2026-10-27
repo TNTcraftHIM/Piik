@@ -1,0 +1,65 @@
+import { z } from "zod";
+
+// This is the experimental channel wire boundary; production room contracts stay separate.
+const id = z.string().min(1).max(128);
+export const userSchema = z.object({ id, name: z.string().max(40), roles: z.array(id).max(16) });
+export const roomSchema = z.object({ id, name: z.string().max(64) });
+export const publicationSchema = z.object({
+  id, roomId: id, sessionId: id, userId: id,
+  kind: z.enum(["screen", "voice"]), muted: z.boolean(),
+});
+export const messageSchema = z.object({
+  id, userId: id, text: z.string().max(4000), time: z.number(),
+});
+export const snapshotSchema = z.object({
+  channel: z.object({
+    id, name: z.string(), ownerId: id.nullable(), rooms: z.array(roomSchema).max(32),
+    roles: z.array(z.object({ id, name: z.string(), permissions: z.array(z.string()) })),
+  }),
+  users: z.array(userSchema).max(64),
+  sessions: z.array(z.object({ id, userId: id, online: z.boolean() })).max(20),
+  publications: z.array(publicationSchema).max(80),
+  voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })).max(160),
+  subscriptions: z.array(id).max(80),
+  pairs: z.array(z.object({ id, peerId: id, outgoing: z.array(id), incoming: z.array(id) })).max(19),
+  iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
+});
+export const signalSchema = z.object({
+  description: z.object({ type: z.enum(["offer", "answer", "rollback", "pranswer"]), sdp: z.string().max(150000).optional() }).optional(),
+  candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional(),
+  tracks: z.array(z.object({ publicationId: id, streamId: id })).max(80).optional(),
+});
+export const eventSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),
+  z.object({ type: z.literal("state"), state: snapshotSchema }),
+  z.object({ type: z.literal("history"), roomId: id, messages: z.array(messageSchema).max(100) }),
+  z.object({ type: z.literal("message"), roomId: id, message: messageSchema }),
+  z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: signalSchema }),
+  z.object({ type: z.literal("ack"), requestId: id }),
+  z.object({ type: z.literal("error"), code: z.string(), requestId: id.optional() }),
+]);
+
+export type ChannelSnapshot = z.infer<typeof snapshotSchema>;
+export type ChannelPublication = z.infer<typeof publicationSchema>;
+export type ChannelMessage = z.infer<typeof messageSchema>;
+export type ChannelUser = z.infer<typeof userSchema>;
+export type ChannelRoom = z.infer<typeof roomSchema>;
+export type ChannelPair = ChannelSnapshot["pairs"][number];
+export type ChannelSignal = z.infer<typeof signalSchema>;
+export type ChannelEvent = z.infer<typeof eventSchema>;
+export type ChannelCommand =
+  | { type: "join"; name: string; credential?: string; key?: string; sessionId?: string }
+  | { type: "set_name"; name: string }
+  | { type: "browse"; roomId: string }
+  | { type: "chat"; roomId: string; text: string; nonce: string }
+  | { type: "create_room"; name: string }
+  | { type: "set_roles"; userId: string; roles: string[] }
+  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; muted: boolean } }
+  | { type: "unpublish"; publicationId: string }
+  | { type: "subscribe"; publicationId: string; enabled: boolean }
+  | { type: "voice"; roomId: string; joined: boolean; muted: boolean; deafened: boolean }
+  | { type: "signal"; pairId: string; payload: ChannelSignal }
+  | { type: "link_state"; pairId: string; state: "connected" | "failed" }
+  | { type: "flow_state"; publicationId: string; pairId: string; ready: boolean }
+  | { type: "leave" };
+export type ChannelRequest = ChannelCommand & { requestId?: string };

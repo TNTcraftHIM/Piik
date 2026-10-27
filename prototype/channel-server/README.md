@@ -1,76 +1,84 @@
 # Channel prototype
 
-An isolated Rust authority and the existing React interface, for evaluating a
-channel-centred Piik. This is a local experiment, not a production server or a
-replacement for the accepted 2.x protocol.
+A Rust channel coordinator with Piik's shared React interface and real Browser
+WebRTC media. It runs separately from the production 2.x App and Server.
 
-From the repository root, run in separate terminals:
+## Run
+
+From the repository root, use two terminals:
 
 ```powershell
 cargo run --manifest-path prototype/channel-server/Cargo.toml
-node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 8790
+node node_modules/vite/bin/vite.js --config prototype/channel-server/vite.config.ts
 ```
 
-Open <http://127.0.0.1:8790/__channel-preview> in two browser tabs. Send messages,
-switch rooms, leave a draft, and return. Other tabs receive messages through
-the Rust WebSocket service. Each room has independent history and drafts;
-browsing a different room does not move a microphone or screen capture.
-Reopening a page restores the server's bounded history. Restarting the server
-clears it. After a disconnect, the explicit reconnect action gets a new snapshot.
+Open the **owner URL printed by Rust**. It contains the private owner key; keep
+that URL for yourself. Use **Invite** in the interface to copy a member link.
+Open that link in another browser or browser profile for a separate user. Tabs
+in the same profile share a saved user identity but have independent live sessions.
+The coordinator and preview bind to loopback on ports 8791 and 8790 respectively.
 
-The microphone and screen controls perform real local Browser capture. They do
-**not** send media to another participant. Capture permissions, mute, move,
-stop, browser-ended tracks and page disposal have real resource lifecycles.
-File exchange is deliberately absent until there is an authorised transfer owner.
+## Try it
 
-## Design boundary
+1. Change your name and send a message. Browse another room and return: each
+   room has its own history and draft.
+2. Have two users share their screens. Select either picture or watch both.
+   The channel owner does not need to be a sharer.
+3. Join voice, or choose listen-only without opening a microphone. Each room
+   keeps its own mute and listening controls. Browsing another room leaves an
+   existing call or share running, with its destination visible in the interface.
+4. Stop your own share while watching someone else. Other publications and any
+   forwarding you provide for them continue independently.
+5. Reconnect one browser. Its live session and media survive a signaling outage
+   of up to 20 seconds. A longer outage releases its captures and peer connections.
 
-The [3.0 network and lifecycle proposal](../../docs/research/channel-network-design.md)
-owns the next model and implementation order. It awaits owner discussion before
-runtime changes. The following describes only the current executable prototype.
+Screen capture requires a desktop browser with `getDisplayMedia`. The browser
+chooses the source and permissions. Remote audio offers a Play action when the
+browser requires a user gesture. Local screen previews are muted.
 
-Use the [agreed vocabulary](../../docs/research/channel-network-design.md#terminology-and-roles)
-for discussion: a channel contains rooms, and all participants are users whose
-roles and activities can overlap. The three conversation containers in the
-executable prototype still use the `channel` field and old channel labels; they
-correspond to rooms in this design. The top-level channel is not yet modeled.
+## Owners and limits
 
-- One local service supplies these three conversation containers. Each WebSocket gets
-  a server-issued, connection-scoped identity. All prototype participants have
-  the same access to all three rooms; there are no private rooms or roles.
-- Rust owns room history and message attribution. A connection cannot claim
-  another sender. At most 20 active connections, 100 messages per room, 2,000
-  Unicode characters per message, and a 128-event broadcast queue are retained.
-  Slow consumers disconnect and recover by taking a fresh snapshot.
-- The process binds only loopback and accepts the exact local UI Origin.
-  Identity is **not authentication**. Hosted deployment requires the accepted
-  admission/credential owner, room access and production transport limits.
-- Selection, joined voice and picture publication are separate owners. A single
-  local voice and a single local picture can remain attached to their original
-  room while the user reads another room. Moving voice retains the same
-  microphone stream and its mute setting;
-  stopping picture does not leave voice or clear chat.
-- Mapping each new room to a 2.x room could reuse its single-picture route
-  controller, but current Host authority and picture publisher are coupled.
-  That mapping alone cannot deliver arbitrary users sharing in a room.
-  The linked proposal separates room access, publication and subscription,
-  and identifies which 2.x route constraints need to change for multiple sources.
-- Axum/Tokio own HTTP/WebSocket/runtime mechanics. This crate implements no media
-  router, SFU, quality algorithm, NAT traversal, persistence or native adapter.
-  Mature media components must be evaluated separately; a Rust client SDK is
-  not a Rust replacement for the embedded server or native encoding pipeline.
+- A channel contains rooms. All participants are users; owner status, multiple
+  roles and concurrent sharing/watching/forwarding are separate.
+- Rust owns admission, role grants, the room directory, chat history, publication
+  authorization and independent route plans. Browser endpoints own capture,
+  WebRTC transports, playback and local resource retirement.
+- Member links admit users; server-issued credentials preserve their identity.
+  Resume additionally checks the live session's ownership. The owner can assign
+  roles; an owner or moderator can create a room. This first slice has public
+  rooms within the admitted channel, not private-room overrides.
+- Each publication first connects to two subscribers, then uses ready subscribers
+  as bounded relays. Healthy paths stay in place. Compatible publications share
+  a physical peer connection; ending one removes its tracks rather than closing
+  the other publications' connection. Relay failure reassigns affected branches.
+- Browser relays receive and re-encode media through WebRTC. This proves routing
+  and lifecycle behavior; encoded-packet forwarding belongs to the later Native
+  and SFU integration. Browser WebRTC owns ICE and congestion control.
+- History retains 100 messages per room; messages allow 2,000 Unicode characters.
+  This temporary instance admits at most 20 live endpoints, 64 user identities,
+  32 rooms and 80 publications. These are prototype resource bounds, not a fixed
+  bandwidth allowance shared among rooms. Restarting Rust clears the channel.
+
+This slice does not include Native App linkage, SFU fallback, files, persistent
+channels, federation or coordinator handoff. The
+[network and lifecycle design](../../docs/research/channel-network-design.md)
+owns those later stages. Routing plans currently run in Rust at the coordinator;
+media forwarding is distributed among the Browser endpoints.
 
 ## Checks
 
 ```powershell
-cargo check --manifest-path prototype/channel-server/Cargo.toml
 cargo test --manifest-path prototype/channel-server/Cargo.toml
-node --test prototype/channel-server/check.mjs
 npm run typecheck
+node --test prototype/channel-server/check.mjs
+node prototype/channel-server/browser-acceptance.mjs
+node prototype/channel-server/browser-acceptance.mjs --lifecycle
 ```
 
-The protocol check requires the prototype server. It exercises two live
-WebSockets, sender identity, room-specific history on reconnect and rejection
-of a spoofed sender. The Browser preview is development-only and excluded from
-the production route. Rust dependencies are locked in this crate's Cargo.lock;
-no dependencies were added to the production JavaScript application.
+The two live checks need the running service and local test keys in their
+environment; their source lists the variable names. The Browser check uses five
+isolated sessions and generated moving-picture/audio tracks, actual peer
+connections and receiver statistics. Generated captures replace only the system
+picker. They do not replace the coordinator, negotiation, routing or playback.
+The preview route and test hook are development-only. No production frontend
+dependencies were added.

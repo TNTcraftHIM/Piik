@@ -1,7 +1,8 @@
 # Piik 3.0 Channels, Rooms And Networking
 
-Reviewed 2026-10-27. Proposal for owner discussion, before implementation.
-Rust is the selected core language. This document owns the proposed 3.0 model;
+Reviewed 2026-10-27. The owner authorized the usable Browser prototype after
+agreeing the vocabulary and independent activity model. Rust is the selected core
+language. This document owns the 3.0 model and subsequent design proposals;
 the [2.x routing contract](../standards/routing-transport.md) remains unchanged.
 The [prototype README](../../prototype/channel-server/README.md) owns what runs
 today; [TODO](../todo.md) owns remaining work.
@@ -282,12 +283,11 @@ to every other user, fanout grows quadratically; small messages alone do not
 make that design cheap. Room or publication mutations must not hold a global
 lock while waiting for network or storage I/O.
 
-The current Rust prototype sends all three rooms' history on admission and
-uses one global event broadcast. The production 2.x service already scopes
-interactions to a room, reuses their encoded bytes, and sends route assignments
-per participant; its default heartbeat interval is 30 seconds. Keep those useful
-boundaries while replacing the prototype's all-room delivery. Neither existing
-implementation is a measured capacity result for the proposed 3.0 model.
+The Browser prototype scopes chat and requested history to the browsed room,
+negotiation to assigned peer pairs, and route assignments to each endpoint.
+Directory and presence changes still use bounded channel snapshots. Production
+2.x already reuses encoded room messages and supplies participant-specific routes;
+retain those useful boundaries as the prototype grows.
 
 Hosting Web assets causes an initial-download burst. Storing attachments or also
 acting as an SFU/peer relay adds real byte delivery and storage work; account for
@@ -553,7 +553,7 @@ cutover. Optional capabilities support additive later features. Product version,
 wire version, stored schema and live generation keep their separate jobs under
 the [versioning standard](../standards/versioning.md).
 
-## Implementation Order After Discussion
+## Implementation Order
 
 1. Replace connection-only prototype identity with actual membership and sessions.
    Add authorized room snapshots and independent activity state in the Rust core.
@@ -577,8 +577,9 @@ the [versioning standard](../standards/versioning.md).
 The usable network baseline is five endpoints, two independent sharers,
 selective watching, simultaneous voice and bounded peer forwarding, with observed
 recovery on relay exit. Its acceptance includes session reconnect, revocation,
-source replacement and cleanup without killing unrelated activities. The current
-chat/local-capture prototype is the starting point, not that delivered baseline.
+source replacement and cleanup without killing unrelated activities. The
+[prototype README](../../prototype/channel-server/README.md) records the runnable
+scope; Native integration, SFU and storage are subsequent stages.
 
 ## Decisions For Owner Discussion
 
