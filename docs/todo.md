@@ -40,6 +40,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   owner before implementing it, as requested on 2026-10-26. Resolve the proposed
   publication-scoped routing, actual shared-resource ownership, cross-channel
   interaction and attachment/storage behavior.
+  Assess [further decentralization](./research/channel-network-design.md#further-decentralization-assessment):
+  publisher-owned route computation and reuse of existing control paths, with
+  authority handoff evaluated separately. Discuss the comparison before implementation.
   Then complete the real multi-publisher/voice baseline in the isolated experiment.
   Rust is the selected core language; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
@@ -71,11 +74,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
-- **Further decentralized hosting.** After the basic 3.0 channel model is
-  established, assess coordination handoff and distributed authority against its
-  actual costs and user benefit. The current baseline is independently hosted
-  spaces with distributed media; this research does not block that baseline.
-  [Design boundary](./research/channel-network-design.md#recommendation).
 - **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The

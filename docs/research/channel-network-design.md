@@ -1,6 +1,6 @@
 # Piik 3.0 Channel And Network Design
 
-Reviewed 2026-10-26. Proposal for owner discussion, before implementation.
+Reviewed 2026-10-27. Proposal for owner discussion, before implementation.
 Rust is the selected core language. This document owns the proposed 3.0 model;
 the [2.x routing contract](../standards/routing-transport.md) remains unchanged.
 The [prototype README](../../prototype/channel-server/README.md) owns what runs
@@ -23,10 +23,11 @@ Participants can publish without becoming the space administrator.
 
 The baseline aims for anyone to host a space without a mandatory Piik-operated
 account or coordination service, with media work distributed among participants.
-Each space retains one coordination authority. The owner requested that further
-decentralization be researched after the basic model is established; automatic
-authority takeover, replicated room state and publisher-side route computation
-are not prerequisites for this baseline.
+Each space retains one coordination authority. Further decentralization is now
+being researched in the [assessment below](#further-decentralization-assessment).
+Publisher-side route computation is the first proposed comparison; replicated
+authority and automatic takeover remain separate choices. This assessment does
+not silently replace the baseline or authorize its implementation.
 
 ## Lessons From Mature Systems
 
@@ -234,8 +235,8 @@ Private-channel media and metadata must never be offered to an unauthorized rela
 ### Keep The Authority's Work Proportional To Activity
 
 Publication controllers have independent state and operations, but run in the
-hosting authority's Rust process in this proposal. This is scheduling isolation,
-not distributed computation. The authority still pays for live sessions, access
+hosting authority's Rust process in the comparison baseline. This is scheduling
+isolation, not distributed computation. The authority still pays for live sessions, access
 checks, message delivery, stored history and route-plan changes.
 
 | Work at the authority | Scope |
@@ -316,6 +317,117 @@ SFU fallback enters the affected publication plan and actual resource accounting
 publication/representation and each outgoing copy. A configured SFU URL is not
 evidence of reachable media. If a path is unavailable, report the affected
 subscription and preserve working paths.
+
+### Further Decentralization Assessment
+
+Separate three decisions: which endpoints maintain connections, how each source
+reaches its subscribers, and who may commit membership or permission changes.
+A sparse peer graph, one delivery tree per publication and one space authority
+can coexist. The combined graph can look like a mesh while each source still has
+one committed input at each receiver. Media need not follow control-message paths.
+
+For 20 endpoints, full interconnection requires 190 links. A connected tree has
+19; a symmetric graph with average degree three has 30. These are structural
+counts, not a proposed degree limit or a NAT success estimate. Construct links
+from actual authorized demand and reachability, not every possible pair.
+
+| Candidate | Work removed from A | Remaining responsibility and cost |
+| --- | --- | --- |
+| Publisher runs its publication controller | Route selection, transition state and source-path recovery CPU | A still owns admission and discovery. If all messages pass through A, its signaling traffic remains. |
+| Control messages reuse established peer paths | Some steady-state signaling delivery and event fanout | Requires verifiable origin, bounded forwarding and recovery when the path disappears. A still bootstraps new contacts and commits authority changes. |
+| Optional trusted service workers | Assigned file delivery, SFU forwarding or channel processing | Clients must reach the worker directly to reduce A's byte load; proxying everything through A does not. Delegation does not grant space administration. |
+| Authority replicas or explicit handoff | Read replicas can serve history; handoff moves future ownership | Replication adds work. Handoff needs state, ownership fencing and a usable entry address; neither automatically distributes writes. |
+| Multi-writer room authority | Different nodes accept local changes during partitions | Adds event authentication, replication and conflict resolution, with a new permission/partition policy. This is a different product commitment. |
+
+The first candidate preserves the existing ownership boundaries while moving
+their execution: A owns space membership, channel access and the authorized
+publication directory; B owns B's publication plan; C owns C's. Each endpoint's
+runtime owns its physical connections and resource commitments. A does not keep
+a second writable copy of B's route graph. A permits participation, the publisher
+chooses a permitted route, and each endpoint admits the work it will perform.
+
+Keep route computation independent of sockets and timers. The same Rust state
+machine can be a Native library or a Browser Wasm module, driven by typed events
+and producing transport commands. Axum/Tokio stays outside that core. The
+[Rust/Wasm WebRTC example](https://wasm-bindgen.github.io/wasm-bindgen/examples/webrtc_datachannel.html)
+demonstrates Browser bindings; Piik still needs to validate its own controller
+boundary. A Browser can freeze or discard a background page under its
+[page lifecycle](https://developer.chrome.com/docs/web-platform/page-lifecycle-api).
+Do not add an automatic A-side shadow controller to conceal that behavior.
+
+First keep message delivery through A to measure computation separately. A later
+comparison can reuse a shared control DataChannel on eligible peer transports:
+
+1. A authorizes the publisher and recipients. Before a peer path exists, A
+   delivers the initial contact and negotiation messages to the intended parties.
+2. Once connected, source-scoped control messages can use that source's existing
+   tree where this saves A traffic. Endpoints verify the original controller and
+   current authorization, not just the identity of the forwarding neighbor.
+3. A supplies targeted contact again if the path breaks. Both carriers deliver
+   the same command to the same controller; they do not create separate route state.
+
+Control messages retain publication, session/generation and operation identity.
+Transfer queues are bounded; opening another DataChannel does not create an
+independent network budget under [RFC 8831](https://www.rfc-editor.org/rfc/rfc8831.html).
+Do not put control into the remote-input queue or broadcast private negotiation
+data to the whole space. No media activity means no standing peer control mesh in
+this candidate; quiet chat continues through A. Maintaining an always-on mesh for
+chat would introduce a new connection lifetime and needs a separate benefit.
+
+#### What Mature Decentralized Systems Contribute
+
+| Primary evidence | Useful idea and boundary |
+| --- | --- |
+| [HyParView](https://asc.di.fct.unl.pt/~jleitao/pdf/dsn07-leitao.pdf) maintains small active and passive neighbor views. | Bounded neighbors and spare candidates can aid recovery. Random membership alone does not establish an authenticated, reachable Browser media path. |
+| [Plumtree](https://asc.di.fct.unl.pt/~jleitao/pdf/srds07-leitao.pdf) sends broadcast payload along trees and uses other overlay links for repair. | A mesh can support efficient trees. Its reliable message-broadcast mechanism is not an RTP forwarding or congestion-control replacement. |
+| [Gossipsub](https://github.com/libp2p/specs/blob/master/pubsub/gossipsub/gossipsub-v1.0.md) uses bounded topic meshes and message deduplication. | Consider dissemination costs; do not import a gossip stack, peer scoring or periodic mesh maintenance for a small space without measured benefit. |
+| [Jami's swarm model](https://docs.jami.net/en_US/developer/jami-concepts/swarm.html) replicates conversations between participant devices. | Device-held identity, discovery and synchronized history show a fuller decentralized alternative; these are additional owners, not a route-controller setting. |
+| [Matrix architecture](https://spec.matrix.org/latest/#architecture) replicates room events across homeservers with authorization and state resolution. | Multi-writer authority supports a different partition model. Copying room state alone does not provide its conflict or revocation behavior. |
+
+NAT limits the edges that can be established, not whether the application may use
+a mesh. If B cannot reach D directly but both can reach an authorized C, C can
+provide a forwarding path subject to real capacity. If no permitted reachable
+path crosses the network boundary, a graph algorithm cannot supply one. Native
+network APIs offer more choices; Browser connections still use supported WebRTC
+and its ICE behavior rather than raw socket listeners.
+
+[libp2p's Browser WebRTC specification](https://github.com/libp2p/specs/blob/master/webrtc/webrtc.md)
+first uses an authenticated relayed path to exchange SDP and ICE candidates.
+[DCUtR](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md) instead coordinates
+Native TCP/QUIC connection upgrades through an existing relay. Both illustrate
+using an established path to arrange a better one. Neither removes rendezvous or
+guarantees direct reachability. Reuse that principle within Piik's existing
+transport policy; do not silently introduce a different fallback protocol.
+
+#### Availability Is A Separate Choice
+
+Publisher delegation leaves A responsible for membership, permissions and the
+directory. Its loss therefore still invokes the session deadline above. B's exit
+ends B's publication, not C's; no peer takes over a departed live source.
+
+For A to quit while the space continues, another owner needs current state,
+authority to take over, and a reachable entry. Distinguish four outcomes: existing
+media continues, members reconnect, new invitations open, and history/files remain
+available. Moving business state does not move an HTTPS origin, certificate or
+public tunnel address. Browser credentials also retain their storage scope.
+An explicit planned handoff is the smaller candidate if host departure becomes
+required; crash survival additionally needs replication and takeover rules.
+
+#### Proposed Comparison
+
+After owner agreement, compare the same workload in three configurations:
+controllers at A; controllers at publishers with A carrying signaling; then the
+latter with control delivery reusing established peer paths. Use five actual
+endpoints for the existing multi-source baseline and a controlled 20-endpoint
+control workload. Exercise joins, relay exit, publisher/page suspension,
+reconnect and access removal. Record A's CPU, signaling bytes and queue delay,
+total bytes and connections across peers, and connection/recovery time.
+
+Select the placement that reduces the measured bottleneck without making media
+recovery or authorization worse. Native and Browser must both retain a single
+controller owner; a Browser lifecycle failure is a design result to resolve,
+not permission to add silent dual ownership. No decentralization runtime or
+performance improvement has been implemented or measured by this assessment.
 
 ## Access, History And Files
 
@@ -423,6 +535,9 @@ chat/local-capture prototype is the starting point, not that delivered baseline.
 - **Network:** recommend independent publication-scoped route controllers with
   one shared implementation. Coordinate actual shared resources at their owners,
   without imposing a space-wide media quota or channel-wide network wait queue.
+- **Decentralization:** compare publisher-owned route computation first, then
+  control delivery over existing peer paths. Keep one space authority during
+  that comparison; host handoff and replicated authority are separate decisions.
 - **Interaction:** support explicit activities and subscriptions across channels.
   Expose voice and picture destinations clearly; extra selections add actual
   resource demand rather than consuming a fixed per-room entitlement.
