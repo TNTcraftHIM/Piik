@@ -224,6 +224,43 @@ Peer relays and SFU terminate their media hops. SRTP protects those hops; this
 proposal does not introduce end-to-end encryption against a forwarding endpoint.
 Private-channel media and metadata must never be offered to an unauthorized relay.
 
+### Keep The Authority's Work Proportional To Activity
+
+Publication controllers have independent state and operations, but run in the
+hosting authority's Rust process in this proposal. This is scheduling isolation,
+not distributed computation. The authority still pays for live sessions, access
+checks, message delivery, stored history and route-plan changes.
+
+| Work at the authority | Scope |
+| --- | --- |
+| Connections and heartbeats | One service connection per endpoint can carry multiple channel subscriptions; no new signaling socket for every channel or picture. |
+| Space directory and presence | Send the authorized summaries needed for navigation. Deliver detailed activity to interested, authorized recipients. |
+| Chat and history | Deliver messages to channel subscribers; load bounded history for requested channels instead of every channel on each join. |
+| Media negotiation and routing | Address negotiation to affected peers and update affected publication plans. Receivers need their assignments, not every source's complete graph. |
+| Transport feedback and adaptation | Keep packet feedback, pacing, encoding and decoding at the media endpoints. Supply only the observations required for route decisions to the authority. |
+
+Use an authorized snapshot for initial load or recovery, then scoped changes.
+For an event of size B delivered to K recipients, the authority sends roughly
+B times K bytes plus transport overhead. If every member's frequent update goes
+to every other member, fanout grows quadratically; small messages alone do not
+make that design cheap. Channel or publication mutations must not hold a global
+lock while waiting for network or storage I/O.
+
+The current Rust prototype sends all three channels' history on admission and
+uses one global event broadcast. The production 2.x service already scopes
+interactions to a room, reuses their encoded bytes, and sends route assignments
+per participant; its default heartbeat interval is 30 seconds. Keep those useful
+boundaries while replacing the prototype's all-channel delivery. Neither existing
+implementation is a measured capacity result for the proposed 3.0 model.
+
+Hosting Web assets causes an initial-download burst. Storing attachments or also
+acting as an SFU/peer relay adds real byte delivery and storage work; account for
+those roles separately from coordination. A coordinator-only App need not receive
+or decode a picture merely to authorize its distribution. The authority's
+availability remains central: stopping a temporary hosting App ends the space's
+authority under the existing session deadline. A persistent Server supplies that
+availability without requiring the administrator's personal device to stay online.
+
 ### Count Actual Work
 
 Scheduling scope, observed resource use and configured limits have different jobs:
@@ -351,6 +388,9 @@ the [versioning standard](../standards/versioning.md).
 
 1. Replace connection-only prototype identity with actual membership and sessions.
    Add authorized channel snapshots and independent activity state in the Rust core.
+   Measure authority CPU, memory, queued bytes and signaling traffic for idle
+   members, simultaneous joins, active channels and reconnection; verify that
+   unrelated channels do not receive detailed media updates or full histories.
    In parallel, prove that candidate Rust media components can accept existing
    Native encoded frames and forward to a Browser with feedback and clean retirement.
    Resolve that boundary before committing the transport interface.
