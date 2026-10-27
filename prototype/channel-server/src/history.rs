@@ -1,11 +1,14 @@
 use crate::wire::{valid_id, ChatMessage, Event, MAX_MESSAGE_ATTACHMENTS};
 use crate::Effects;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use uuid::Uuid;
 
 pub const HISTORY_WINDOW: usize = 1000;
 pub const HISTORY_PAGE: usize = 100;
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct MessageDraft {
     pub user_id: Uuid,
     pub nonce: String,
@@ -41,8 +44,85 @@ impl MessageDraft {
             time,
         })
     }
+
+    /// Read these facts and commit the returned message in the same transaction.
+    /// A confirmed retry preserves its original content, even after bytes expire.
+    pub fn prepare_confirmation(
+        &self,
+        room_id: &str,
+        input: ConfirmationInput,
+    ) -> Result<MessageConfirmation, &'static str> {
+        match input {
+            ConfirmationInput::Existing { message } => Ok(MessageConfirmation {
+                message,
+                inserted: false,
+            }),
+            ConfirmationInput::New {
+                last_seq,
+                attachments,
+            } => {
+                if self.attachments.iter().any(|id| {
+                    !attachments.iter().any(|attachment| {
+                        attachment.id == *id
+                            && attachment.room_id == room_id
+                            && attachment.user_id == self.user_id
+                    })
+                }) {
+                    return Err("attachment_unavailable");
+                }
+                Ok(MessageConfirmation {
+                    message: ChatMessage {
+                        seq: last_seq + 1,
+                        id: Uuid::new_v4(),
+                        user_id: self.user_id,
+                        text: self.text.clone(),
+                        time: self.time,
+                        attachments: self.attachments.clone(),
+                    },
+                    inserted: true,
+                })
+            }
+        }
+    }
 }
 
+#[derive(Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum ConfirmationInput {
+    Existing {
+        message: ChatMessage,
+    },
+    New {
+        last_seq: u64,
+        attachments: Vec<AttachmentOwner>,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentOwner {
+    pub id: Uuid,
+    pub room_id: String,
+    pub user_id: Uuid,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageConfirmation {
+    pub message: ChatMessage,
+    pub inserted: bool,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum HistoryRequest {
     Read {
         room_id: String,
@@ -62,6 +142,12 @@ impl HistoryRequest {
     }
 }
 
+#[derive(Serialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum HistoryResult {
     Page {
         messages: Vec<ChatMessage>,
@@ -69,10 +155,25 @@ pub enum HistoryResult {
         oldest_seq: Option<u64>,
         before: Option<u64>,
     },
-    Sent {
-        message: ChatMessage,
-        inserted: bool,
-    },
+    Sent(MessageConfirmation),
+}
+
+impl HistoryResult {
+    pub fn page(
+        mut newest_first: Vec<ChatMessage>,
+        oldest_seq: Option<u64>,
+        before: Option<u64>,
+    ) -> Self {
+        let has_more = newest_first.len() > HISTORY_PAGE;
+        newest_first.truncate(HISTORY_PAGE);
+        newest_first.reverse();
+        Self::Page {
+            messages: newest_first,
+            has_more,
+            oldest_seq,
+            before,
+        }
+    }
 }
 
 /// The runtime executes and finishes this effect before admitting another command.
@@ -104,7 +205,7 @@ impl HistoryEffect {
                     before,
                 },
             )),
-            Ok(HistoryResult::Sent { message, inserted }) => {
+            Ok(HistoryResult::Sent(MessageConfirmation { message, inserted })) => {
                 if inserted {
                     effects
                         .events

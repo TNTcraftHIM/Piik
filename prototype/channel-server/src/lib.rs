@@ -14,9 +14,10 @@ mod routes;
 mod transport;
 pub mod wire;
 
-pub use access::RoomPermission;
+pub use access::{RoomPermission, RoomState};
 pub use channel::DurableState;
-pub use identity::User;
+pub use identity::{Endpoint, Member, User};
+pub use room::RoomRuntime;
 pub use wire::MAX_MESSAGE_ATTACHMENTS;
 
 use channel::Channel;

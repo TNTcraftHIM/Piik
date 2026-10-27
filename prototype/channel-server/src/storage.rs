@@ -1,7 +1,7 @@
 //! The local Server experiment's metadata, confirmed room history and attachments.
 //! Media sessions and routes never enter this database.
 use piik_channel_prototype::{
-    history::{HistoryRequest, HistoryResult, HISTORY_PAGE},
+    history::{AttachmentOwner, ConfirmationInput, HistoryRequest, HistoryResult, HISTORY_PAGE},
     wire::ChatMessage,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
@@ -107,7 +107,7 @@ impl Storage {
                     .map(|seq| seq.saturating_sub(1))
                     .unwrap_or(u64::MAX)
                     .min(i64::MAX as u64);
-                let mut messages = {
+                let messages = {
                     let mut query = transaction
                         .prepare(
                             "SELECT seq,id,user_id,text,time,attachments FROM message
@@ -122,9 +122,6 @@ impl Storage {
                         .map_err(|_| "storage_failed")?;
                     rows
                 };
-                let has_more = messages.len() > HISTORY_PAGE;
-                messages.truncate(HISTORY_PAGE);
-                messages.reverse();
                 let oldest_seq = transaction
                     .query_row(
                         "SELECT min(seq) FROM message WHERE room_id=?1",
@@ -132,12 +129,7 @@ impl Storage {
                         |row| row.get(0),
                     )
                     .map_err(|_| "storage_failed")?;
-                HistoryResult::Page {
-                    messages,
-                    has_more,
-                    oldest_seq,
-                    before: *before,
-                }
+                HistoryResult::page(messages, oldest_seq, *before)
             }
             HistoryRequest::Send { room_id, draft } => {
                 let previous = transaction
@@ -149,43 +141,54 @@ impl Storage {
                     )
                     .optional()
                     .map_err(|_| "storage_failed")?;
-                if let Some(message) = previous {
-                    // Confirmed metadata remains authoritative even when its bytes
-                    // were removed. A retry never revalidates the original upload.
-                    HistoryResult::Sent {
-                        message,
-                        inserted: false,
-                    }
+                let input = if let Some(message) = previous {
+                    ConfirmationInput::Existing { message }
                 } else {
+                    let mut attachments = Vec::new();
                     for id in &draft.attachments {
-                        let found = transaction
-                            .execute(
-                                "UPDATE attachment SET committed=1
-                             WHERE id=?1 AND room_id=?2 AND user_id=?3",
-                                params![id.to_string(), room_id, draft.user_id.to_string()],
+                        if let Some(attachment) = transaction
+                            .query_row(
+                                "SELECT room_id,user_id FROM attachment WHERE id=?1",
+                                [id.to_string()],
+                                |row| {
+                                    Ok(AttachmentOwner {
+                                        id: *id,
+                                        room_id: row.get(0)?,
+                                        user_id: read_uuid(row, 1)?,
+                                    })
+                                },
                             )
-                            .map_err(|_| "storage_failed")?;
-                        if found != 1 {
-                            return Err("attachment_unavailable");
+                            .optional()
+                            .map_err(|_| "storage_failed")?
+                        {
+                            attachments.push(attachment);
                         }
                     }
                     // No owner-history deletion exists in this slice. The last
                     // persisted row is the room's order, independent of other rooms.
-                    let seq: u64 = transaction
+                    let last_seq = transaction
                         .query_row(
-                            "SELECT coalesce(max(seq),0)+1 FROM message WHERE room_id=?1",
+                            "SELECT coalesce(max(seq),0) FROM message WHERE room_id=?1",
                             [room_id],
                             |row| row.get(0),
                         )
                         .map_err(|_| "storage_failed")?;
-                    let message = ChatMessage {
-                        seq,
-                        id: Uuid::new_v4(),
-                        user_id: draft.user_id,
-                        text: draft.text.clone(),
-                        time: draft.time,
-                        attachments: draft.attachments.clone(),
-                    };
+                    ConfirmationInput::New {
+                        last_seq,
+                        attachments,
+                    }
+                };
+                let confirmation = draft.prepare_confirmation(room_id, input)?;
+                if confirmation.inserted {
+                    let message = &confirmation.message;
+                    for id in &message.attachments {
+                        transaction
+                            .execute(
+                                "UPDATE attachment SET committed=1 WHERE id=?1",
+                                [id.to_string()],
+                            )
+                            .map_err(|_| "storage_failed")?;
+                    }
                     let attachments = serde_json::to_string(&message.attachments)
                         .map_err(|_| "storage_failed")?;
                     transaction.execute(
@@ -195,11 +198,8 @@ impl Storage {
                             message.user_id.to_string(), draft.nonce, message.text,
                             message.time, attachments],
                     ).map_err(|_| "storage_failed")?;
-                    HistoryResult::Sent {
-                        message,
-                        inserted: true,
-                    }
                 }
+                HistoryResult::Sent(confirmation)
             }
         };
         transaction.commit().map_err(|_| "storage_failed")?;
@@ -289,22 +289,24 @@ impl Storage {
     }
 }
 
+fn read_uuid(row: &Row<'_>, index: usize) -> rusqlite::Result<Uuid> {
+    use rusqlite::types::Type;
+    let text: String = row.get(index)?;
+    Uuid::parse_str(&text).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
+    })
+}
+
 fn read_message(row: &Row<'_>) -> rusqlite::Result<ChatMessage> {
     use rusqlite::types::Type;
-    let id = |index| -> rusqlite::Result<Uuid> {
-        let text: String = row.get(index)?;
-        Uuid::parse_str(&text).map_err(|error| {
-            rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
-        })
-    };
     let attachments: String = row.get(5)?;
     let attachments = serde_json::from_str(&attachments).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(error))
     })?;
     Ok(ChatMessage {
         seq: row.get(0)?,
-        id: id(1)?,
-        user_id: id(2)?,
+        id: read_uuid(row, 1)?,
+        user_id: read_uuid(row, 2)?,
         text: row.get(3)?,
         time: row.get(4)?,
         attachments,
@@ -362,7 +364,7 @@ mod tests {
             })
             .unwrap()
         {
-            HistoryResult::Sent { message, inserted } => (message, inserted),
+            HistoryResult::Sent(confirmation) => (confirmation.message, confirmation.inserted),
             _ => panic!("send returned a history page"),
         }
     }
