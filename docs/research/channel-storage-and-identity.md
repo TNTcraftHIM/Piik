@@ -92,10 +92,11 @@ Recommend durable domain and room data for the 3.0 communication model, kept
 outside program/update files. This does not change the published 2.x App's
 process-only room behavior.
 
-Room availability follows the room runtime, not its highlighted UI panel.
-An App can keep operating after the panel closes; a Browser-owned runtime depends
-on its page remaining active. If the runtime stops, the room pauses and retains
-its data. Restarting with the same data restores that room's identity and history.
+Room availability follows its explicit hosting session, not the highlighted UI
+panel. Changing views preserves that session; losing its owning page follows the
+network model's recovery window and does not grant an idle App independent hosting.
+When the session ends, the room pauses and retains its data. Restarting with the
+same data restores that room's identity and history.
 Recreating a same-named room without its data creates a new room.
 
 The domain directory can retain the unavailable room's summary and owner binding.

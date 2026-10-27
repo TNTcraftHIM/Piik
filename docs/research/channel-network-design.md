@@ -13,7 +13,7 @@ configurable file-storage service is not wanted. Ordinary URLs and manual
 bookmarks remain the entry model; automatic address discovery is not planned.
 
 Recommend one room routing owner: a base tree carries conversation, voice and
-files; screen subscriptions may request shorter, publication-specific paths.
+files; screen subscriptions use reachable paths and retain necessary relays.
 Both use the same connection facts and transport implementation. This routing
 choice is for owner review, not an implemented change.
 
@@ -33,10 +33,14 @@ Management identities and activities overlap. A room owner can share, watch or
 forward, and an ordinary user can publish without becoming the room owner.
 A file sender supplies that file; sending never transfers room management to them.
 
-The App can keep a user's room runtime running when that user closes a room
-panel. This separates a view from its running work, without separating the room
-owner from responsibility for operating the room. Explicit transfer of ownership
-would also transfer its hosting responsibility; automatic takeover is not selected.
+Changing the selected room or closing an in-page panel does not end a hosting
+session. Closing the page that owns that session is a different event. Recommend
+keeping ordinary App-linked hosting tied to that explicit session: reconcile a
+reload/reconnect within the existing recovery window, then pause the room if its
+owner session expires. A running standby App does not silently take over ownership.
+Independent background hosting would need an explicit product decision and a
+visible lifetime; it is not the default in this proposal. Explicit room ownership
+transfer would also transfer hosting responsibility; automatic takeover is not selected.
 
 ## Authority And Information Boundaries
 
@@ -104,9 +108,9 @@ those forwarding endpoints.
 
 | Model | Benefit | Cost and choice |
 | --- | --- | --- |
-| One tree for every kind of traffic | One stable set of paths; any connected members can exchange data. | Video can cross several non-viewing Browser relays. Keep the base connectivity, but do not require every picture to follow it. |
+| One tree for every kind of traffic | One stable set of paths; any connected members can exchange data. | Some pictures incur extra hops. Use established paths as the baseline; a non-viewing relay can still be essential for connectivity. |
 | A new distribution plan for every source or transfer | Paths can follow each source's recipients. | Repeats planning for room-wide voice and ordinary files. Keep source-specific demand only where it changes useful forwarding work. |
-| One room base tree with selective screen paths | Reuses room connectivity and permits short video paths. | Needs explicit flow ownership over shared connections. Recommended; no separate discovery, reconnect loop or optimizer per traffic kind. |
+| One room base tree with selective screen flows | Reuses room connectivity; sends each picture only along branches serving its viewers. | Needs distinct local-viewing and forwarding demand. Recommended; optional route changes use the same admission and transition owner. |
 
 This compares topology and work, not measured performance. A routing root owns
 coordination; it need not forward every media byte. Only nodes on an admitted
@@ -144,12 +148,23 @@ A forwarding node need not save the complete file. Use negotiated message limits
 bufferedAmount and bufferedamountlow for bounded sending under the
 [WebRTC DataChannel API](https://www.w3.org/TR/webrtc/#rtcdatachannel).
 
-### Screen Routes Follow Actual Viewers
+### Screen Demand Uses Reachable Paths
 
-A screen can use existing room-tree links where they form an appropriate route.
-It need not follow a long chain through users who are not watching. Start a
-publication-scoped plan when someone subscribes, prefer eligible established
-connections, and prepare new peer edges when the actual viewing demand needs them.
+Viewers are a publication's destinations, not the complete set of eligible relays.
+Start with usable established paths and project source-to-viewer demand onto them.
+On the base tree this is the union of the unique paths to those viewers; retain
+every required intermediate node. Prune only branches with no downstream demand.
+Stopping local playback removes local viewing demand, not an admitted forwarding
+duty. A relay receives the needed stream without presenting it locally; Browser
+relaying can still require decode/re-encode work.
+
+Do not add a shortest-path optimizer above the existing router or derive an edge
+from a pair of nicknames on a diagram. A reachable A-B and B-C do not prove A-C.
+New candidates follow the same availability/direct-convergence rules, ICE checks,
+source-path admission, capacity reservation and commit proof. A healthy route stays
+until an admitted replacement is proved; no overlap capacity means following the
+existing bounded-gap policy, not silently dropping the old path.
+Viewing changes alone do not trigger a global rewire or remove a needed bridge.
 
 The room runtime owns one routing controller. Its base topology, voice/file
 flows and screen subscriptions share connection facts, edge admission and repair.
@@ -167,8 +182,8 @@ Room owner B ── C ── D
 
 C sends a file to E through C-B-E. C and E need not establish a new direct path
 for that transfer. If E shares a picture only with D, E-D can be a shorter
-screen route when reachable. If that edge is not reachable, an eligible route
-through admitted peers may still work. Every admitted hop must have the source
+screen candidate when reachable, rather than a requirement to bypass C or B.
+If it fails, keep the working admitted path. Every admitted hop must have the source
 and enough actual capacity; an existing control link alone does not prove this.
 
 The source and viewers determine a screen plan, while the room owner manages
@@ -248,7 +263,8 @@ no desktop control. Changing the focused picture never retargets an input grant.
 
 | Event | Recommended outcome |
 | --- | --- |
-| Room owner closes a panel while their App keeps hosting | The room continues. |
+| Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
+| The page owning an App-linked room session closes or loses connection | Allow the existing session recovery window; expiry pauses the live room. An idle App does not replace the missing owner session. |
 | Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
 | Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
 | Same owner restarts using saved room data | Restore room identity/history and establish new live sessions. Captures require explicit activation; reopening data does not resume a saved call. |
@@ -264,8 +280,9 @@ ends it. Local stop takes effect immediately. One scope's retirement cannot
 release another room's healthy source or transport lease.
 
 App and Browser can operate the same logical room runtime through different
-execution/storage adapters. App hosting can outlive a view; Browser hosting
-depends on that page's lifecycle and available storage. A Browser-only room host
+execution/storage adapters, while obeying the same explicit hosting-session
+lifetime. Persistent data can outlive that session; background App execution
+alone does not extend it. A Browser-only room host
 is not implemented merely because the current UI can ask the central service to
 create a room. It requires the shared authority core running locally, potentially
 through WASM, and actual local persistence/recovery verification.
@@ -277,6 +294,11 @@ SQLite storage in the domain coordinator. It plans both screen and voice
 publications independently, shares physical media pairs, and transfers files
 through authenticated HTTP. It has no room base DataChannel tree. Those are
 implementation facts, not evidence that this new model is already integrated.
+Its simplified screen plan currently uses subscribers as relay candidates and
+detaches an unsubscribed relay's descendants. Separate local subscription from
+required transit demand before integrating the shared graph; a unique reachable
+bridge must not disappear just because its user stops watching. The prototype
+does not yet inherit the full 2.x transition and media-proof machinery.
 
 The next architectural change moves a cohesive room runtime to its actual owner:
 room permissions and confirmed state, persistence, base planning and per-screen
