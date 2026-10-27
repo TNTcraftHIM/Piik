@@ -2,7 +2,7 @@ import type { GlyphName } from "../../ui/icons";
 
 export type DesignScene = "chat" | "screens" | "focus" | "create";
 export type DesignCopy = (chinese: string, english: string) => string;
-export type DesignRoom = { id: string; name: string; icon: GlyphName; private?: boolean; hidden?: boolean };
+export type DesignRoom = { id: string; name: string; icon: GlyphName; image?: File; private?: boolean; hidden?: boolean };
 
 export const designPeople = [
   { id: "design-xiaoman", name: "小满", english: "Mallow", status: "sharing", owner: true },
@@ -17,7 +17,7 @@ export function designRooms(copy: DesignCopy): DesignRoom[] {
     { id: "lounge", name: copy("客厅", "Living room"), icon: "couch" },
     { id: "games", name: copy("再来一局", "One more round"), icon: "gamepad" },
     { id: "cinema", name: copy("放映室", "Movie night"), icon: "clapperboard" },
-    { id: "quiet", name: copy("安静角落", "Quiet corner"), icon: "lock", private: true },
+    { id: "quiet", name: copy("安静角落", "Quiet corner"), icon: "book", private: true },
   ];
 }
 

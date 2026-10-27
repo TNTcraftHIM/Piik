@@ -49,6 +49,13 @@ existing components. Conversations, pictures and interactions are local samples;
 they do not create rooms or transmit media. The functional prototype keeps its
 existing layout until the owner accepts the visual direction.
 
+Click a person to send reactions or throw props; message reactions stay below
+their message. The composer supports the attachment button, file drop and image
+paste, with a draft preview before sending. Channel appearance and room creation
+share preset icons and custom image selection. These design-board changes stay
+in memory; room-scoped file upload is already implemented in the functional
+prototype, while persistent identity images and reactions remain integration work.
+
 References for spatial hierarchy and viewing modes:
 [Discord's server introduction](https://discord.com/blog/starting-your-first-discord-server)
 and [Go Live / screen sharing](https://support.discord.com/hc/en-us/articles/360040816151-Go-Live-and-Screen-Share).

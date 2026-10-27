@@ -1,20 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../../shared/room-interactions";
 import { Glyph } from "../../ui/icons";
 import { BrandMark } from "../../components/living/BrandMark";
-import { PawnSvg, type PawnVoice } from "../../components/living/Pawn";
-import { participantColor } from "../../components/living/participant-color";
+import { WelcomeLine } from "../../components/living/WelcomeLine";
+import { RoomQuickReactions } from "../../components/living/RoomQuickReactions";
+import { RoomReactionActivity } from "../../components/living/RoomReactionActivity";
+import type { RoomInteraction } from "../../lib/room-interactions";
 import { ChannelAction } from "../components/ChannelMedia";
 import { DesignArtwork } from "./DesignArtwork";
 import { DesignRoomDialog } from "./DesignRoomDialog";
+import { DesignChannelDialog } from "./DesignChannelDialog";
+import { DesignAvatar as Avatar } from "./DesignAvatar";
+import { DesignConversation } from "./DesignConversation";
+import { DesignIdentityMark, type DesignIdentity } from "./DesignIdentityPicker";
 import { designPeople, designRooms, type DesignCopy, type DesignScene } from "./fixtures";
 
-function Avatar({ index, voice = false }: { index: number; voice?: boolean | PawnVoice }) {
-  const person = designPeople[index];
-  return <span className="cd-avatar">
-    <PawnSvg color={participantColor(person.id)} identity={person.id} host={index === 0}
-      voice={typeof voice === "object" ? voice : voice ? { microphone: person.status !== "muted", deafened: person.status === "away" } : undefined} />
-  </span>;
-}
+import "../../components/living/floating-panel.css";
+import "../../components/living/room-interactions.css";
+import "./design-social.css";
 
 export function DesignWorkspace({ copy, scene, onScene }: {
   copy: DesignCopy; scene: DesignScene; onScene(scene: DesignScene): void;
@@ -27,43 +30,55 @@ export function DesignWorkspace({ copy, scene, onScene }: {
   const [deafened, setDeafened] = useState(false);
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const [screensHidden, setScreensHidden] = useState(false);
-  const [roomMessages, setRoomMessages] = useState<Record<string, string[]>>({});
-  const [reactionSelected, setReactionSelected] = useState(false);
-  const [draft, setDraft] = useState("");
   const [focused, setFocused] = useState(0);
-  const conversation = useRef<HTMLDivElement>(null);
+  const [channelName, setChannelName] = useState<string>();
+  const [channelIdentity, setChannelIdentity] = useState<DesignIdentity>({ icon: "couch" });
+  const [editingChannel, setEditingChannel] = useState(false);
+  const [personMenu, setPersonMenu] = useState<{ index: number; trigger: HTMLElement } | null>(null);
+  const [activity, setActivity] = useState<(RoomInteraction & { expiresAt: number }) | null>(null);
   const room = rooms.find(item => item.id === roomId)!;
   const roomName = designRooms(copy).find(item => item.id === roomId)?.name ?? room.name;
   const demoRoom = roomId === "games";
   const sharing = sharingRoom === roomId;
   const screenIds = [...(demoRoom ? [0, 1] : []), ...(sharing ? [3] : [])];
   const showingScreens = screenIds.length > 0 && !screensHidden && (scene === "screens" || scene === "focus" || sharing);
-  const messages = roomMessages[roomId] ?? [];
   const selfVoice = joined ? { microphone: !muted, deafened } : false;
   const here = demoRoom ? [0, 1, 2, 3] : [3];
   const elsewhere = demoRoom ? [4] : [0, 1, 2, 4];
   const name = (index: number) => copy(designPeople[index].name, designPeople[index].english);
 
-  useEffect(() => { setMobilePane("room"); setScreensHidden(false); }, [scene]);
+  const channelTitle = channelName ?? copy("下班以后", "After hours");
+  const interact = (index: number, trigger: HTMLElement) => setPersonMenu({ index, trigger });
+  const participants = designPeople.map((person, index) => ({ peerId: person.id, displayName: name(index) }));
+  useEffect(() => { setMobilePane("room"); setScreensHidden(false); setPersonMenu(null); setActivity(null); }, [scene, roomId]);
   useEffect(() => {
-    if (messages.length) conversation.current?.scrollTo({ top: conversation.current.scrollHeight, behavior: "smooth" });
-  }, [messages]);
+    if (!activity) return;
+    const timer = setTimeout(() => setActivity(null), Math.max(0, activity.expiresAt - Date.now()));
+    return () => clearTimeout(timer);
+  }, [activity]);
+  function react(reaction: ReactionId, targetPeerId?: string) {
+    const occurredAt = Date.now();
+    setActivity({ type: "room-interaction", id: crypto.randomUUID(), requestId: crypto.randomUUID(), occurredAt,
+      sender: { peerId: designPeople[3].id, role: "viewer", displayName: name(3) },
+      payload: { kind: "reaction", reaction, targetPeerId }, expiresAt: occurredAt + REACTION_DURATION_MS });
+  }
 
   return <>
     <div className="cd-workspace" data-pane={mobilePane}>
       <nav className="cd-channel-rail" aria-label={copy("频道", "Channels")}>
         <span className="cd-rail-brand" aria-label="Piik"><BrandMark size={30} /></span>
         <span className="cd-rail-rule" />
-        <button type="button" className="lr-btn cd-channel-icon is-on" aria-label={copy("下班以后", "After hours")}
+        <button type="button" className="lr-btn cd-channel-icon is-on" aria-label={channelTitle}
           onClick={() => { setRoomId("games"); setMobilePane("rooms"); }}>
-          <Glyph name="couch" size={26} />
+          <DesignIdentityMark value={channelIdentity} size={28} />
         </button>
         <span className="cd-rail-bottom">3.0</span>
       </nav>
 
       <aside className="cd-rooms" aria-label={copy("房间", "Rooms")}>
         <header className="cd-channel-heading">
-          <div><small>{copy("一个属于朋友的频道", "A place for your people")}</small><h2>{copy("下班以后", "After hours")}</h2></div>
+          <div><small>{copy("一个属于朋友的频道", "A place for your people")}</small><h2>{channelTitle}</h2></div>
+          <ChannelAction icon="pencil" label={copy("频道外观", "Channel appearance")} iconOnly quiet hint="hint-rename" onClick={() => setEditingChannel(true)} />
           <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} quiet iconOnly onClick={() => setMobilePane("room")} /></span>
         </header>
         <div className="cd-room-nav">
@@ -73,10 +88,10 @@ export function DesignWorkspace({ copy, scene, onScene }: {
           <nav aria-label={copy("房间列表", "Room list")}>
             {rooms.map(item => <button key={item.id} type="button" className="cd-room-link"
               aria-current={roomId === item.id ? "page" : undefined}
-              onClick={() => { setRoomId(item.id); setMobilePane("room"); setDraft(""); setFocused(item.id === "games" ? 0 : 3); }}>
-              <Glyph name={item.icon} size={21} />
+              onClick={() => { setRoomId(item.id); setMobilePane("room"); setFocused(item.id === "games" ? 0 : 3); }}>
+              <DesignIdentityMark value={item} size={21} />
               <span>{designRooms(copy).find(preset => preset.id === item.id)?.name ?? item.name}</span>
-              {item.id === "games" ? <small>4</small> : item.hidden ? <Glyph name="eyeOff" size={14} /> : null}
+              {item.id === "games" ? <small>4</small> : item.private ? <Glyph name={item.hidden ? "eyeOff" : "lock"} size={14} /> : null}
             </button>)}
           </nav>
         </div>
@@ -89,7 +104,7 @@ export function DesignWorkspace({ copy, scene, onScene }: {
                 hint={joined ? "hint-voice-leave" : "hint-voice-join"} onClick={() => setJoined(!joined)} /></div>
           </div>
           <div className="cd-self">
-            <Avatar index={3} voice={selfVoice} /><div className="cd-self-name"><strong>{name(3)}</strong><small>{copy("在线", "Online")}</small></div>
+            <Avatar index={3} voice={selfVoice} onInteract={interact} /><div className="cd-self-name"><strong>{name(3)}</strong><small>{copy("在线", "Online")}</small></div>
             <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={muted ? copy("开启麦克风", "Unmute microphone") : copy("关闭麦克风", "Mute microphone")}
               pressed={muted} hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} quiet iconOnly onClick={() => setMuted(!muted)} />
             <ChannelAction icon={deafened ? "headphonesOff" : "headphones"} label={deafened ? copy("开启收听", "Undeafen") : copy("关闭收听", "Deafen")}
@@ -101,7 +116,7 @@ export function DesignWorkspace({ copy, scene, onScene }: {
       <main className="cd-room">
         <header className="cd-room-heading">
           <span className="cd-mobile-rooms"><ChannelAction icon="arrowLeft" label={copy("房间列表", "Rooms")} quiet iconOnly onClick={() => setMobilePane("rooms")} /></span>
-          <span className="cd-room-heading-icon"><Glyph name={room.icon} size={23} /></span>
+          <span className="cd-room-heading-icon"><DesignIdentityMark value={room} size={23} /></span>
           <div className="cd-room-heading-text"><h2>{roomName}</h2><span>{demoRoom ? copy("输赢不重要，人在就好。", "Good company. Questionable skills.") : copy("留个地方，一起聊聊。", "A place to get together.")}</span></div>
           <span className="cd-header-action"><ChannelAction icon={sharing ? "stop" : "share"} primary={!sharing} hint={sharing ? "hint-share-stop" : "hint-share-start"}
             label={sharing ? copy("停止分享", "Stop sharing") : copy("分享屏幕", "Share screen")} onClick={() => {
@@ -130,39 +145,8 @@ export function DesignWorkspace({ copy, scene, onScene }: {
             <ChannelAction icon="play" label={copy("观看", "Watch")} onClick={() => { setScreensHidden(false); onScene("screens"); }} />
           </div> : null}
 
-          <div className="cd-conversation" ref={conversation} role="log" aria-label={copy("聊天记录", "Conversation")}>
-            {!showingScreens && <div className="cd-room-welcome">
-              <span className="cd-welcome-icon"><Glyph name={room.icon} size={33} /></span>
-              <div><h3>{demoRoom ? copy("今晚，再来一局。", "One more round?") : roomName}</h3><p>{copy("有空就来，随时开聊。", "Drop in whenever. Stay a little longer.")}</p></div>
-            </div>}
-            {demoRoom && <>
-            <div className="cd-date"><span>{copy("今天", "Today")}</span></div>
-            <article className="cd-message">
-              <Avatar index={0} /><div><header><strong>{name(0)}</strong><time>20:42</time></header>
-                <p>{copy("都到齐了吗？就差一个人了。", "Everyone here? We need one more.")}</p></div>
-            </article>
-            <article className="cd-message">
-              <Avatar index={1} /><div><header><strong>{name(1)}</strong><time>20:43</time></header>
-                <p>{copy("来了。这次绝对不跳空。", "Here. Definitely making that jump this time.")}</p>
-                {!showingScreens && <div className="cd-inline-preview"><DesignArtwork /><span><Glyph name="gamepad" size={16} />{copy("今晚的目标：过第一关", "Tonight's ambition: finish level one")}</span></div>}
-              </div>
-            </article>
-            <article className="cd-message">
-              <Avatar index={2} /><div><header><strong>{name(2)}</strong><time>20:44</time></header>
-                <p>{copy("这句话我截图了。", "Saving this for the highlight reel.")}</p>
-                <button className="cd-reaction" type="button" aria-label={copy("回应大笑", "React with laughter")}
-                  onClick={() => setReactionSelected(!reactionSelected)} aria-pressed={reactionSelected}>😂&nbsp; {reactionSelected ? 3 : 2}</button>
-              </div>
-            </article>
-            </>}
-            {messages.map((message, index) => <article className="cd-message" key={index}><Avatar index={3} /><div><header><strong>{name(3)}</strong><time>20:45</time></header><p>{message}</p></div></article>)}
-          </div>
-
-          <form className="cd-composer" onSubmit={event => { event.preventDefault(); if (!draft.trim()) return; setRoomMessages({ ...roomMessages, [roomId]: [...messages, draft.trim()] }); setDraft(""); }}>
-            <input aria-label={copy("发送消息", "Message")} value={draft} onChange={event => setDraft(event.target.value)}
-              placeholder={copy("聊点什么，", "Message ") + roomName + "…"} />
-            <ChannelAction icon="send" label={copy("发送", "Send")} hint="hint-chat-send" iconOnly quiet type="submit" disabled={!draft.trim()} />
-          </form>
+          <DesignConversation room={room} roomName={roomName} copy={copy} showingScreens={showingScreens} onInteract={interact} />
+          {activity && <div className="cd-live-interaction"><RoomReactionActivity key={activity.id} reaction={activity} participants={participants} hostPeerId={designPeople[0].id} now={Date.now} /></div>}
           <div className="cd-mobile-voice" data-connected={joined}>
             <span><Glyph name="headphones" size={15} />{joined ? copy("语音已连接", "Voice connected") : copy("尚未加入语音", "Not in voice")}</span>
             <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={copy("麦克风", "Microphone")} pressed={muted} quiet iconOnly onClick={() => setMuted(!muted)} />
@@ -175,22 +159,28 @@ export function DesignWorkspace({ copy, scene, onScene }: {
         <header><h2>{copy("成员", "Members")} <span>5</span></h2>
           <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} quiet iconOnly onClick={() => setMobilePane("room")} /></span></header>
         <div className="cd-member-group"><h3>{copy("这个房间", "In this room")}<span>{here.length}</span></h3>
-          {here.map(index => <div className="cd-member" key={index}>
+          {here.map(index => <button type="button" className="cd-member cd-member-button" key={index} aria-label={copy("与", "Interact with ") + name(index) + copy("互动", "")}
+            onClick={event => interact(index, event.currentTarget)}>
             <Avatar index={index} voice={index === 3 ? selfVoice : true} />
             <div><strong>{name(index)}</strong><small>
               {index === 0 ? copy("正在分享", "Sharing screen") : index === 1 ? copy("正在说话", "Speaking") : index === 2 ? copy("麦克风已关闭", "Microphone muted") : copy("就是你", "That's you")}
             </small></div>
             {index === 0 ? <Glyph name="display" size={16} /> : index === 1 ? <span className="cd-speaking" aria-hidden="true"><i /><i /><i /></span> : null}
-          </div>)}
+          </button>)}
         </div>
         <div className="cd-member-group"><h3>{copy("其他房间", "Elsewhere")}<span>{elsewhere.length}</span></h3>
           {elsewhere.map(index => <div className="cd-member is-away" key={index}><Avatar index={index} /><div><strong>{name(index)}</strong><small>{index === 4 ? copy("在客厅", "In the living room") : copy("在再来一局", "In One more round")}</small></div></div>)}
         </div>
-        <div className="cd-members-foot"><Glyph name="couch" size={26} /><p>{copy("在一起就很好。", "Better with company.")}</p></div>
+        <div className="cd-members-foot"><Glyph name="couch" size={26} /><WelcomeLine still /></div>
       </aside>
     </div>
     {scene === "create" && <DesignRoomDialog copy={copy} onClose={() => onScene("chat")} onCreate={newRoom => {
-      setRooms([...rooms, newRoom]); setRoomId(newRoom.id); setDraft(""); setFocused(3); setMobilePane("room"); onScene("chat");
+      setRooms([...rooms, newRoom]); setRoomId(newRoom.id); setFocused(3); setMobilePane("room"); onScene("chat");
     }} />}
+    {editingChannel && <DesignChannelDialog copy={copy} name={channelTitle} identity={channelIdentity} onClose={() => setEditingChannel(false)}
+      onSave={(newName, identity) => { setChannelName(newName); setChannelIdentity(identity); setEditingChannel(false); }} />}
+    {personMenu && <RoomQuickReactions id="cd-person-actions" trigger={personMenu.trigger} person={participants[personMenu.index]}
+      selfPeerId={designPeople[3].id} hostPeerId={designPeople[0].id} reactionIds={REACTION_IDS} canSend
+      onSend={react} onClose={() => setPersonMenu(null)} />}
   </>;
 }

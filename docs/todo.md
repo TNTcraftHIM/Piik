@@ -42,7 +42,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   persistent room/member navigation, conversation and shared-screen layouts,
   and a complete room-creation dialog. Then apply the accepted design to the
   existing functional slice, including room access, host-saved conversation,
-  attachments and selective multi-picture viewing. Keep it isolated from 2.x. The
+  attachments and selective multi-picture viewing, plus persistent channel/room
+  identity images and person/message reactions. Keep it isolated from 2.x. The
   [network and lifecycle proposal](./research/channel-network-design.md) owns
   the model; the [prototype README](../prototype/channel-server/README.md) owns
   its executable scope and launch instructions.

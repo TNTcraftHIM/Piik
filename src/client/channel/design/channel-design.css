@@ -117,7 +117,7 @@
 .cd-stage.is-focused .cd-screen-grid { grid-template-columns: minmax(0, 1fr) 132px; gap: 10px; }
 .cd-stage.is-focused .cd-screen.is-focused { grid-column: 1; grid-row: 1 / span 2; }
 .cd-stage.is-focused .cd-screen:not(.is-focused) { grid-column: 2; }
-.cd-stage.is-focused + .cd-conversation { padding-top: 17px; }
+.cd-stage.is-focused + .cd-chat .cd-conversation { padding-top: 17px; }
 .cd-members { display: flex; flex-direction: column; min-width: 0; padding: 0 16px; background: color-mix(in srgb, var(--wall) 60%, var(--paper)); border-left: 1px solid var(--line); }
 .cd-members > header { display: flex; justify-content: space-between; align-items: center; min-height: 72px; }
 .cd-members > header h2 { font-size: 13px; font-weight: 600; }

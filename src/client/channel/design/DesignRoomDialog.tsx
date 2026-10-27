@@ -3,6 +3,7 @@ import { Glyph } from "../../ui/icons";
 import { SwitchItem } from "../../components/living/primitives";
 import { ChannelAction } from "../components/ChannelMedia";
 import type { DesignCopy, DesignRoom } from "./fixtures";
+import { DesignIdentityMark, DesignIdentityPicker, type DesignIdentity } from "./DesignIdentityPicker";
 
 export function DesignRoomDialog({ copy, onClose, onCreate }: {
   copy: DesignCopy; onClose(): void; onCreate(room: DesignRoom): void;
@@ -10,6 +11,7 @@ export function DesignRoomDialog({ copy, onClose, onCreate }: {
   const dialog = useRef<HTMLDialogElement>(null);
   const [privateRoom, setPrivateRoom] = useState(false);
   const [hidden, setHidden] = useState(false);
+  const [identity, setIdentity] = useState<DesignIdentity>({ icon: "couch" });
   useEffect(() => {
     const element = dialog.current!;
     if (!element.open) element.showModal();
@@ -19,10 +21,10 @@ export function DesignRoomDialog({ copy, onClose, onCreate }: {
       event.preventDefault();
       const name = String(new FormData(event.currentTarget).get("room-name") ?? "").trim();
       if (!name) return;
-      onCreate({ id: "design-room-" + Date.now(), name, icon: privateRoom ? "lock" : "couch", private: privateRoom, hidden: privateRoom && hidden });
+      onCreate({ id: "design-room-" + Date.now(), name, ...identity, private: privateRoom, hidden: privateRoom && hidden });
     }}>
       <header className="cd-create-heading">
-        <div className="cd-room-emblem"><Glyph name="couch" size={30} /></div>
+        <div className="cd-room-emblem"><DesignIdentityMark value={identity} size={30} /></div>
         <ChannelAction icon="x" label={copy("关闭", "Close")} hint="hint-close" quiet iconOnly onClick={() => dialog.current?.close()} />
       </header>
       <h2 id="cd-create-title">{copy("创建房间", "Create a room")}</h2>
@@ -31,6 +33,7 @@ export function DesignRoomDialog({ copy, onClose, onCreate }: {
         <span>{copy("房间名称", "Room name")}</span>
         <input name="room-name" autoComplete="off" autoFocus required maxLength={60} placeholder={copy("比如，周末联机…", "Maybe, Weekend party…")} />
       </label>
+      <DesignIdentityPicker copy={copy} value={identity} onChange={setIdentity} />
       <fieldset className="cd-access-field">
         <legend>{copy("谁可以进入", "Who can join")}</legend>
         <div className="lr-toggle cd-access-track">

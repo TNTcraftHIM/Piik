@@ -1,0 +1,15 @@
+.cd-identity-mark { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; vertical-align: middle; }
+.cd-identity-mark img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 25%; }
+.cd-identity-picker { border: 0; padding: 0; margin: 20px 0; min-width: 0; }
+.cd-identity-picker legend { padding: 0; margin-bottom: 10px; font-size: 12px; font-weight: 600; }
+.cd-identity-options { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
+.cd-identity-options > .lr-comic-tip-wrap { min-width: 0; }
+.cd-identity-options .lr-btn { --button-size: 36px; width: 100%; min-width: 0; padding-inline: 0; }
+.cd-identity-upload { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.cd-identity-upload label { cursor: pointer; }
+.cd-identity-file { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+.cd-identity-upload:has(input:focus-visible) label { outline: 3px solid var(--action); outline-offset: 3px; }
+.cd-identity-error { margin-top: 5px; color: var(--danger); font-size: 11px; }
+@media (max-width: 400px) {
+  .cd-identity-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
