@@ -423,12 +423,43 @@ describe("ViewerPeer connection generations", () => {
       },
     );
 
-    await peer.acceptSignal("host", offer("fresh-exact"));
+    const accepting = peer.acceptSignal("host", offer("fresh-exact"));
+    FakePeerConnection.instances[0]!.connectionState = "connected";
+    await accepting;
     await flushAsyncWork();
 
     expect(decoded).toHaveBeenCalledOnce();
     expect(decoded).toHaveBeenCalledWith("fresh-exact");
     peer.dispose();
+  });
+
+  it("defers an in-flight decoded proof until the same prepared transport reconnects", async () => {
+    vi.useFakeTimers();
+    const stats = createDeferred<RTCStatsReport>();
+    FakePeerConnection.plans.push({ statsGate: stats.promise });
+    const decoded = vi.fn(() => true), restart = vi.fn(() => true);
+    const peer = new ViewerPeer({ iceServers: [] }, {
+      sendSignal: () => true, sendRestartRequest: restart,
+      onStream: () => undefined, onUpdate: () => undefined, onFirstDecodedFrame: decoded,
+    }, { recoveryOwner: "route" });
+    try {
+      await peer.acceptSignal("host", offer("prepared"));
+      const connection = FakePeerConnection.instances[0]!;
+      connection.connectionState = "connected";
+      connection.dispatchEvent(new Event("connectionstatechange"));
+      connection.connectionState = "disconnected";
+      connection.dispatchEvent(new Event("connectionstatechange"));
+      stats.resolve(decodedReport(1));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(decoded).not.toHaveBeenCalled();
+      connection.connectionState = "connected";
+      connection.dispatchEvent(new Event("connectionstatechange"));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(decoded).toHaveBeenCalledExactlyOnceWith("prepared");
+      expect(FakePeerConnection.instances).toHaveLength(1);
+      expect(restart).not.toHaveBeenCalled();
+      expect(timeoutCallbacks.size).toBe(0);
+    } finally { peer.dispose(); vi.useRealTimers(); }
   });
 
   it("does not publish an in-flight decoded proof from a replaced connection", async () => {

@@ -71,6 +71,8 @@ export class SfuSubscriber {
     this.peer?.updateConfig(config);
   }
 
+  isConnected(): boolean { return this.peer?.pc.connectionState === "connected"; }
+
   // Reauthentication cannot establish whether a lost offer/answer was applied.
   // Retire that exact subscription through the route owner; do not replay SDP.
   resync(): void {
@@ -229,6 +231,7 @@ export class SfuSubscriber {
         this.proofMode === mode,
       requireProgress: mode === "progress",
       onProof: () => {
+        if (!this.isConnected()) return false;
         const accepted = this.events.onFirstDecodedFrame?.() ?? true;
         if (accepted) {
           this.proofMode = null;

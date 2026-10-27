@@ -691,6 +691,45 @@ it.each([
   }
 });
 
+it("defers local bridge decoded proof while its prepared Native network edge is disconnected", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("window", globalThis);
+  vi.stubGlobal("MediaStream", class { getTracks() { return []; } });
+  vi.stubGlobal("RTCPeerConnection", class { close() {} });
+  vi.spyOn(NativeMediaBridge.prototype, "start").mockResolvedValue({} as MediaStream);
+  vi.spyOn(NativeMediaBridge.prototype, "collectMetrics").mockResolvedValue({ ...EMPTY_METRICS });
+  let finishStats!: (frames: number) => void;
+  const stats = new Promise<number>(resolve => { finishStats = resolve; });
+  vi.spyOn(NativeMediaBridge.prototype, "decodedVideoFrames").mockReturnValue(stats);
+  let event!: (event: NativeClientEvent) => void;
+  const client = {
+    receiveOffer: vi.fn(async () => ({ answer: { type: "answer", sdp: "answer" }, audio: false, codec: "vp8" })),
+    onEvent: (listener: typeof event) => { event = listener; return () => {}; }, onClose: () => () => {},
+    closeReceiver: vi.fn(async () => {}), closeEdge: vi.fn(async () => {}),
+  } as unknown as NativeClient;
+  const decoded = vi.fn(() => true), restart = vi.fn(() => true), unavailable = vi.fn();
+  const peer = new NativeCapableViewerPeer({ iceServers: [] }, {
+    sendSignal: () => true, sendRestartRequest: restart, onStream: () => {}, onUpdate: () => {}, onFirstDecodedFrame: decoded,
+  }, { recoveryOwner: "route" }, async () => client, unavailable, "session", 2);
+  const state = (value: "connected" | "disconnected") => event({
+    version: 10, shareId: "session", connectionId: "prepared", type: "edge-state", state: value,
+  });
+  try {
+    await peer.acceptSignal("host", { kind: "description", connectionId: "prepared", description: { type: "offer",
+      sdp: "v=0\r\nm=video 9 UDP/TLS/RTP/SAVPF 96\r\na=sendonly\r\na=rtpmap:96 VP8/90000\r\n" } });
+    state("connected"); state("disconnected");
+    finishStats(1);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(decoded).not.toHaveBeenCalled();
+    state("connected");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(decoded).toHaveBeenCalledExactlyOnceWith("prepared");
+    expect(client.receiveOffer).toHaveBeenCalledOnce();
+    expect(restart).not.toHaveBeenCalled();
+    expect(unavailable).not.toHaveBeenCalled();
+  } finally { peer.dispose(); }
+});
+
 it.each(["first", "replacement", "failed-offer"])("keeps committed route recovery and its budget across backend replacement (%s)", async (scenario) => {
   vi.useFakeTimers();
   vi.stubGlobal("window", globalThis);

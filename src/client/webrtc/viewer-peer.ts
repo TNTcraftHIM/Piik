@@ -369,8 +369,8 @@ export class ViewerPeer implements ViewerMediaPeer {
           );
         },
         owns: () => this.isCurrentConnection(connection, connectionId),
-        onProof: () =>
-          this.events.onFirstDecodedFrame?.(connectionId) ?? true,
+        onProof: () => connection.connectionState === "connected" &&
+          (this.events.onFirstDecodedFrame?.(connectionId) ?? true),
       });
     }
     this.emit();

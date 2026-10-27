@@ -25,6 +25,7 @@ interface ViewerSubscriberTransport {
   getRemoteInput?(): RTCDataChannel | null;
   connect(config: SfuConnectionConfig): Promise<boolean>;
   updateConfig(config: SfuConnectionConfig): void;
+  isConnected(): boolean;
   acceptSignal(message: SfuSignalMessage): Promise<void>;
   reconnect(): boolean;
   resync(): void;
@@ -56,7 +57,7 @@ interface ViewerSfuRouteEvents {
   activatePeer: (
     assignment: ParticipantRouteAssignment,
     revision?: number,
-  ) => boolean | void | Promise<boolean | void>;
+  ) => boolean | "waiting" | void | Promise<boolean | "waiting" | void>;
   preparePeer?: (
     assignment: ParticipantRouteAssignment | null,
     revision?: number,
@@ -446,6 +447,8 @@ export class ViewerSfuRoute {
         } else if (
           this.pending === slot &&
           !slot.failed &&
+          !slot.readySent &&
+          this.route.getPhase() === "prepare" &&
           slot.qualityProbe
         ) {
           if (this.events.qualityProbeEligible?.() === false) {
@@ -471,6 +474,9 @@ export class ViewerSfuRoute {
       onState: (state: "connected" | "reconnecting") => {
         if (this.active === slot && !slot.failed) {
           this.events.onSfuState?.(state, slot.revision);
+        } else if (this.pending === slot && !slot.failed && state === "connected") {
+          this.sendPendingReady(slot);
+          void this.queueTransition(() => this.promotePendingSfu(slot));
         }
       },
       onDisconnected: (failure?: "VIDEO_REJECTED") => this.failSubscriberSlot(slot, failure),
@@ -549,6 +555,14 @@ export class ViewerSfuRoute {
       connectionId,
       this.events.send,
     );
+  }
+
+  retryPeerActivation(connectionId: string): boolean {
+    const token = this.route.token();
+    if (this.closed || this.resyncing || !token || !this.route.owns(token, "active") ||
+      this.pendingPeer?.revision !== token.revision || this.pendingPeer.connectionId !== connectionId) return false;
+    void this.queueActiveRoute(token, false);
+    return true;
   }
 
   async acceptSignal(message: SfuSignalMessage): Promise<void> {
@@ -663,6 +677,7 @@ export class ViewerSfuRoute {
       if (!this.route.owns(token, "active")) {
         return;
       }
+      if (promoted === "waiting") return;
       if (pendingPeer?.revision === token.revision && promoted !== true) {
         // Readiness may reach the server before a candidate's local failure.
         // Once committed, report against the exact active connection for recovery.
@@ -785,6 +800,7 @@ export class ViewerSfuRoute {
       this.pending !== slot ||
       slot.failed ||
       slot.readySent ||
+      !slot.subscriber.isConnected() ||
       !slot.decodedFrame ||
       (slot.qualityProbe !== null && slot.qualityResult !== "approved") ||
       (slot.qualityProbe !== null &&
@@ -806,6 +822,7 @@ export class ViewerSfuRoute {
     const assignment = this.route.getActiveAssignment();
     if (
       this.pending !== slot ||
+      !slot.subscriber.isConnected() ||
       !slot.stream ||
       !slot.decodedFrame ||
       !token ||

@@ -612,7 +612,8 @@ class NativeViewerPeer implements ViewerMediaPeer {
       readFramesDecoded: () => bridge.decodedVideoFrames(),
       owns: () =>
         !this.disposed && this.bridge === bridge && this.connectionId === connectionId,
-      onProof: () => this.events.onFirstDecodedFrame?.(connectionId) ?? true,
+      onProof: () => this.isConnected() &&
+        (this.events.onFirstDecodedFrame?.(connectionId) ?? true),
     });
     this.statsTimer = window.setInterval(() => {
       void this.updateStats(bridge, connectionId);

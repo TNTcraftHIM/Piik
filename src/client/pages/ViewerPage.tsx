@@ -958,6 +958,7 @@ export function ViewerPage({
         snapshot !== null &&
         snapshot.peerId === probe.parentPeerId &&
         probe.peer?.hasConnectionId(snapshot.connectionId) === true &&
+        probe.peer.isConnected() &&
         probe.decodedFrame
       );
     }
@@ -1019,6 +1020,7 @@ export function ViewerPage({
               discardPendingPeer();
               return false;
             }
+            if (!probe.peer.isConnected()) return "waiting";
             const previousPeer = peerRef.current;
             const activatedPeer = probe.peer;
             activatedPeer.stopDecodedFrameProof();
@@ -1358,7 +1360,7 @@ export function ViewerPage({
               if (snapshot.connectionId !== probe.candidateConnectionId) return;
               probe.snapshot = snapshot;
               noteReceiveFailure(snapshot, probe.revision);
-              if (probe.qualityProbe) {
+              if (probe.qualityProbe && !probe.readySent) {
                 if (
                   pageSuspended ||
                   currentHostPaused ||
@@ -1388,6 +1390,7 @@ export function ViewerPage({
                 }
               }
               provePendingPeer();
+              if (peer.isConnected()) viewerSfuRoute?.retryPeerActivation(snapshot.connectionId);
             } else if (active && peerRef.current === peer) {
               noteReceiveFailure(snapshot, currentRouteRevision);
               activePeerMetrics = snapshot.metrics;
@@ -1415,12 +1418,6 @@ export function ViewerPage({
           },
           onRecoveryExhausted: (parentPeerId, connectionId): boolean => {
             if (pendingPeer === probe && peer.hasConnectionId(connectionId)) {
-              signal.send({
-                type: "route-failed",
-                revision: probe.revision,
-                phase: "prepare",
-                connectionId,
-              });
               probe.peer = null;
               probe.stream = null;
               probe.snapshot = null;
@@ -1428,6 +1425,14 @@ export function ViewerPage({
               probe.connectedSent = false;
               probe.readySent = false;
               peer.dispose();
+              if (!viewerSfuRoute?.retryPeerActivation(connectionId)) {
+                signal.send({
+                  type: "route-failed",
+                  revision: probe.revision,
+                  phase: "prepare",
+                  connectionId,
+                });
+              }
               return true;
             }
             return peerRef.current === peer
