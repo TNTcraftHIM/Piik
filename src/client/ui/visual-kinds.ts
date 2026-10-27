@@ -157,6 +157,8 @@ export type InteractionHintKind =
   | "hint-chat-send"
   | "hint-chat-settings"
   | "hint-chat-export"
+  | "hint-file-add"
+  | "hint-file-download"
   | "hint-window-detach"
   | "hint-chat-overlay-show"
   | "hint-chat-overlay-hide";

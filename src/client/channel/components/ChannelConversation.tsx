@@ -142,7 +142,7 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
       onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
       onDrop={event => { event.preventDefault(); addFiles([...event.dataTransfer.files]); }}>
       <input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
-      <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-details"
+      <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
         disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} />
       <textarea rows={1} maxLength={2000} aria-label={zh ? "消息内容" : "Message"} value={draft}
         placeholder={zh ? "说点什么…" : "Say something…"} disabled={!roomId}

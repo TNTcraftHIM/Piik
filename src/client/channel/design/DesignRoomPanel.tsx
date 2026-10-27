@@ -2,6 +2,7 @@ import { useId, useRef, useState } from "react";
 import { FloatingPanel } from "../../components/living/FloatingPanel";
 import { Tooltip } from "../../components/living/Tooltip";
 import { Glyph } from "../../ui/icons";
+import { useCopy } from "../../ui/copy";
 import { DesignConversation, type DesignConversationModel } from "./DesignConversation";
 import { DesignCouch, type DesignReactionsModel } from "./DesignCouch";
 import { DesignVoiceControls, DesignVoiceJoin, type DesignVoiceModel } from "./DesignVoiceControls";
@@ -14,16 +15,19 @@ export function DesignRoomPanel({ room, roomName, people, conversation, reaction
   reactions: DesignReactionsModel; voice: DesignVoiceModel; copy: DesignCopy;
 }) {
   const id = useId();
+  const { vis } = useCopy();
   const trigger = useRef<HTMLButtonElement>(null);
   const [surface, setSurface] = useState<{ open: boolean; document: Document | null }>({ open: false, document: null });
   const detached = Boolean(surface.document && surface.document !== document);
   const label = copy("房间小窗", "Room mini window");
   return <>
-    <Tooltip kind="hint-window-detach" text={label}>
+    <Tooltip kind={detached ? "hint-window-detach" : "hint-chat-open"} disabled={surface.open}
+      text={vis ? undefined : label} className="cd-header-action">
       <button ref={trigger} type="button" className="lr-btn is-compact is-quiet" aria-label={label}
         aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}
         onClick={detached ? () => surface.document?.defaultView?.focus() : undefined}>
         <Glyph name="pip" size={19} />
+        {!vis && <span className="lr-cap">{copy("小窗", "Mini window")}</span>}
       </button>
     </Tooltip>
     <FloatingPanel id={id} trigger={trigger} title={roomName} icon="couch" detachable

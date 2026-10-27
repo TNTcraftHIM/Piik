@@ -1,4 +1,5 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Chip } from "../../components/living/primitives";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { ChannelAction } from "../components/ChannelMedia";
 import type { DesignCopy } from "./fixtures";
@@ -30,16 +31,18 @@ export function DesignIdentityMark({ value, size = 32 }: { value: DesignIdentity
   </span>;
 }
 
-export function DesignIdentityPicker({ copy, value, onChange }: {
+export function DesignIdentityPicker({ copy, value, onChange, busy, onBusyChange }: {
   copy: DesignCopy; value: DesignIdentity; onChange(value: DesignIdentity): void;
+  busy: boolean; onBusyChange(busy: boolean): void;
 }) {
-  const inputId = useId();
+  const chooser = useRef<HTMLInputElement>(null);
   const request = useRef(0);
   const [failed, setFailed] = useState(false);
   useEffect(() => () => { request.current++; }, []);
   async function chooseImage(file: File) {
     const current = ++request.current;
     setFailed(false);
+    onBusyChange(true);
     const url = URL.createObjectURL(file);
     try {
       const image = new Image();
@@ -48,26 +51,32 @@ export function DesignIdentityPicker({ copy, value, onChange }: {
       if (request.current === current) onChange({ icon: value.icon, image: file });
     } catch {
       if (request.current === current) setFailed(true);
-    } finally { URL.revokeObjectURL(url); }
+    } finally {
+      URL.revokeObjectURL(url);
+      if (request.current === current) onBusyChange(false);
+    }
   }
   return <fieldset className="cd-identity-picker">
     <legend>{copy("图标或图片", "Icon or image")}</legend>
     <div className="cd-identity-options">
-      {presets.map(preset => <ChannelAction key={preset.icon} icon={preset.icon} iconOnly quiet hint="hint-details"
-        label={copy(...preset.name)} pressed={!value.image && value.icon === preset.icon}
-        onClick={() => { request.current++; setFailed(false); onChange({ icon: preset.icon }); }} />)}
+      {presets.map(preset => <Chip key={preset.icon} title={copy(...preset.name)} selected={!value.image && value.icon === preset.icon}
+        onClick={() => { request.current++; setFailed(false); onBusyChange(false); onChange({ icon: preset.icon }); }}>
+        <Glyph name={preset.icon} size={19} />
+      </Chip>)}
     </div>
     <div className="cd-identity-upload">
       {value.image && <DesignIdentityMark value={value} size={36} />}
-      <label htmlFor={inputId} className="lr-btn is-dense is-quiet"><Glyph name="arrowUp" size={17} />{copy(value.image ? "更换图片" : "选择图片", value.image ? "Change image" : "Choose image")}</label>
-      <input id={inputId} className="cd-identity-file" type="file" accept="image/*" onChange={event => {
+      <ChannelAction icon="arrowUp" quiet busy={busy}
+        label={busy ? copy("正在打开图片…", "Opening image…") : copy(value.image ? "更换图片" : "选择图片", value.image ? "Change image" : "Choose image")}
+        onClick={() => chooser.current?.click()} />
+      <input ref={chooser} hidden type="file" accept="image/*" onChange={event => {
         const file = event.currentTarget.files?.[0];
         event.currentTarget.value = "";
         if (file) void chooseImage(file);
       }} />
-      {value.image && <button type="button" className="lr-btn is-dense is-quiet" onClick={() => {
-        request.current++; setFailed(false); onChange({ icon: value.icon });
-      }}>{copy("移除", "Remove")}</button>}
+      {value.image && <ChannelAction icon="x" quiet label={copy("移除", "Remove")} onClick={() => {
+        request.current++; setFailed(false); onBusyChange(false); onChange({ icon: value.icon });
+      }} />}
     </div>
     {failed && <p className="cd-identity-error" role="alert">{copy("这张图片无法打开，请换一张。", "Couldn't open this image. Try another.")}</p>}
   </fieldset>;

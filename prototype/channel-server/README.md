@@ -56,6 +56,9 @@ Seats keep a readable size in one horizontally scrollable row, with your own sea
 fixed on the right. Arrow controls and touch scrolling reach the other people;
 the full member list scrolls independently. Select a seated person to send
 reactions or throw props along the sender-to-recipient path.
+The design board uses the production interaction session and effect renderer;
+only its transport is a local loopback. Cooldown, repeated throws, acknowledgements
+and expiry therefore follow the same behavior as the room interface.
 Chat avatars and the member list are informational; message reactions stay
 below their message. **Room mini window** beside the share action opens a movable,
 resizable view with the same couch, chat and voice shortcuts. Its detach action

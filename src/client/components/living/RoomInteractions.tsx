@@ -1,5 +1,5 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { normalizeChatText, MAX_CHAT_CODE_POINTS, isThrow, type ReactionId } from "../../../shared/room-interactions";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode } from "react";
+import { normalizeChatText, MAX_CHAT_CODE_POINTS, type ReactionId } from "../../../shared/room-interactions";
 import { RoomInteractionSession } from "../../lib/room-interactions";
 import { labelParticipantNames } from "../../lib/viewer-presence";
 import { useCopy } from "../../ui/copy";
@@ -9,7 +9,7 @@ import { participantColor } from "./participant-color";
 import { FloatingPanel } from "./FloatingPanel";
 import { PawnSvg } from "./Pawn";
 import { Couch, type CouchProps } from "./Couch";
-import { RoomReaction } from "./RoomReaction";
+import { RoomReactionEffects } from "./RoomReaction";
 import { RoomReactionPicker, type InteractionParticipant } from "./RoomReactionPicker";
 import { RoomQuickReactions } from "./RoomQuickReactions";
 import { RoomReactionActivity } from "./RoomReactionActivity";
@@ -271,7 +271,7 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
             onClick={detached ? () => chatDocument?.defaultView?.focus() : undefined} />
           {unread > 0 && <span className="lr-interaction-unread" aria-label={t("interaction.unread", { count: String(unread) })}>{unread}</span>}
         </span>} />
-      <ReactionEffects state={state} participants={participants} area={area} now={session.now} />
+      <RoomReactionEffects reactions={state.reactions} participants={participants} area={area} now={session.now} />
     </div>
     <FloatingPanel id={menuId} trigger={anchor} compact anchorOnOpen icon="smile" className="lr-person-menu"
       title={t("interaction.express")} onOpenChange={open => { if (!open) setTarget(null); }}>
@@ -290,24 +290,4 @@ function InteractionPanel({ session, state, voice, ...couch }: ConnectedProps & 
       </div>
     </FloatingPanel>
   </div>;
-}
-
-function ReactionEffects({ state, participants, area, now }: {
-  state: ReturnType<RoomInteractionSession["getSnapshot"]>;
-  participants: InteractionParticipant[];
-  area: RefObject<HTMLDivElement | null>;
-  now: () => number;
-}) {
-  return state.reactions.map((reaction, index) => {
-    const payload = reaction.payload;
-    if (payload.kind !== "reaction") return null;
-    // A gift never speaks for its recipient or replaces their own expression.
-    const covered = !payload.targetPeerId && !isThrow(payload.reaction) && state.reactions.slice(index + 1).some(next =>
-      next.payload.kind === "reaction" && !next.payload.targetPeerId && !isThrow(next.payload.reaction) &&
-      next.sender.peerId === reaction.sender.peerId);
-    if (covered) return null;
-    return participants.some(person => person.peerId === reaction.sender.peerId) &&
-      (!payload.targetPeerId || participants.some(person => person.peerId === payload.targetPeerId)) &&
-      <RoomReaction key={reaction.id} reaction={reaction} area={area} now={now} />;
-  });
 }

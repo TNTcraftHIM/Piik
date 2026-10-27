@@ -35,7 +35,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
   const [editingChannel, setEditingChannel] = useState(false);
   const conversation = useDesignConversation();
   const reactions = useDesignReactions(roomId, copy);
-  const voice = { joined, muted, deafened, toggleJoined: () => setJoined(!joined),
+  const voice = { joined, muted, deafened, toggleJoined: () => { setJoined(!joined); if (joined) setMuted(true); },
     toggleMuted: () => setMuted(!muted), toggleDeafened: () => setDeafened(!deafened) };
   const room = rooms.find(item => item.id === roomId)!;
   const roomName = designRooms(copy).find(item => item.id === roomId)?.name ?? room.name;
@@ -118,7 +118,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
         <div className="cd-room-content">
           {showingScreens ? <section className={"cd-stage" + (scene === "focus" ? " is-focused" : "")} aria-label={copy("分享的画面", "Shared screens")}>
             <div className="cd-stage-heading"><span><Glyph name="display" size={16} />{copy("正在观看", "Watching")} <b>{screenIds.length}</b></span>
-              <button type="button" className="lr-btn is-dense is-quiet" onClick={() => setScreensHidden(true)}><Glyph name="x" size={16} /><span>{copy("收起画面", "Hide screens")}</span></button>
+              <ChannelAction icon="x" label={copy("收起画面", "Hide screens")} hint="hint-collapse" quiet onClick={() => setScreensHidden(true)} />
             </div>
             <div className="cd-screen-grid">
               {screenIds.map(index => <button key={index} type="button" className={"cd-screen" + (scene === "focus" && focused === index ? " is-focused" : "")}

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { Btn } from "../../components/living/primitives";
-import { Tooltip } from "../../components/living/Tooltip";
 import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
@@ -13,16 +12,11 @@ export function ChannelAction({ icon, label, onClick, disabled, busy, pressed, d
   icon: GlyphName; label: string; onClick?: () => void; disabled?: boolean;
   busy?: boolean; pressed?: boolean; danger?: boolean; primary?: boolean;
   iconOnly?: boolean; quiet?: boolean;
-  hint?: ComponentProps<typeof Tooltip>["kind"]; type?: "button" | "submit";
+  hint?: ComponentProps<typeof Btn>["hint"]; type?: "button" | "submit";
 }) {
-  const { vis } = useCopy();
-  const button = <button type={type} onClick={event => { onClick?.(); if (event.detail !== 0) event.currentTarget.blur(); }} disabled={disabled || busy}
-    aria-label={label} aria-pressed={pressed} aria-busy={busy || undefined}
-    className={`lr-btn is-compact${quiet ? " is-quiet" : ""}${danger ? " is-danger" : primary ? " is-primary" : pressed ? " is-on" : ""}`}>
-    <Glyph name={busy ? "loader" : icon} size={19} className={busy ? "lr-spin" : undefined} />
-    {!vis && !iconOnly && <span className="lr-cap">{label}</span>}
-  </button>;
-  return hint ? <Tooltip kind={hint} text={vis ? undefined : label}>{button}</Tooltip> : button;
+  return <Btn icon={icon} title={{ text: label }} cap={iconOnly ? undefined : { text: label }}
+    size="compact" quiet={quiet} tone={danger ? "danger" : primary ? "primary" : undefined}
+    type={type} onClick={onClick} disabled={disabled || busy} busy={busy} pressed={pressed} hint={hint} />;
 }
 
 export function ChannelVideo({ stream, local, label }: { stream: MediaStream; local: boolean; label: string }) {

@@ -99,7 +99,7 @@ function LocalAttachment({ entry, copy, onRemove }: { entry: DesignFile; copy: D
     {image ? <img src={image} alt={entry.file.name} onError={() => setImage(undefined)} /> : <Glyph name="save" size={22} />}
     <span><strong>{entry.file.name}</strong><small>{fileSize(entry.file.size)}</small></span>
     <ChannelAction icon={onRemove ? "x" : "arrowDown"} label={onRemove ? copy("移除文件", "Remove file") : copy("下载文件", "Download file")}
-      iconOnly quiet hint={onRemove ? "hint-close" : "hint-details"}
+      iconOnly quiet hint={onRemove ? "hint-close" : "hint-file-download"}
       onClick={onRemove ?? (() => downloadBlob(entry.file, entry.file.name))} />
   </div>;
 }
@@ -132,6 +132,10 @@ export function DesignConversation({ room, roomName, showingScreens, copy, model
   const chooser = useRef<HTMLInputElement>(null);
   const { messages, draft, files } = model.rooms[room.id] ?? emptyRoom;
   const demoRoom = room.id === "games";
+  useEffect(() => {
+    dragDepth.current = 0;
+    setDragging(false);
+  }, [room.id, surfaceDocument]);
   useLayoutEffect(() => {
     if (reading.current.roomId !== room.id) reading.current = { roomId: room.id, position: 0, following: true };
     const node = log.current;
@@ -152,7 +156,7 @@ export function DesignConversation({ room, roomName, showingScreens, copy, model
     onDragOver={event => { if (event.dataTransfer.types.includes("Files")) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }}
     onDragLeave={() => { if (--dragDepth.current <= 0) { dragDepth.current = 0; setDragging(false); } }}
     onDrop={event => { event.preventDefault(); dragDepth.current = 0; setDragging(false); addFiles([...event.dataTransfer.files]); }}>
-    <div className="cd-conversation" ref={log} role="log" aria-label={copy("聊天记录", "Conversation")}
+    <div className="cd-conversation" ref={log} role="log" tabIndex={0} aria-relevant="additions" aria-label={copy("聊天记录", "Conversation")}
       onScroll={event => {
         const node = event.currentTarget;
         reading.current = { roomId: room.id, position: node.scrollTop,
@@ -181,12 +185,15 @@ export function DesignConversation({ room, roomName, showingScreens, copy, model
     )}</div>}
     <form className="cd-composer" onSubmit={event => {
       event.preventDefault();
+      if (!draft.trim() && !files.length) return;
+      reading.current.following = true;
       model.send(room.id);
     }}>
       <input ref={chooser} type="file" multiple hidden aria-label={copy("添加图片或文件", "Add images or files")}
         onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
-      <ChannelAction icon="plus" label={copy("添加图片或文件", "Add images or files")} iconOnly quiet hint="hint-details" onClick={() => chooser.current?.click()} />
+      <ChannelAction icon="plus" label={copy("添加图片或文件", "Add images or files")} iconOnly quiet hint="hint-file-add" onClick={() => chooser.current?.click()} />
       <input aria-label={copy("发送消息", "Message")} value={draft} onChange={event => model.setDraft(room.id, event.target.value)}
+        onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}
         onPaste={event => { if (event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
         placeholder={copy("聊点什么，", "Message ") + roomName + "…"} />
       <ChannelAction icon="send" label={copy("发送", "Send")} hint="hint-chat-send" iconOnly quiet type="submit" disabled={!draft.trim() && !files.length} />

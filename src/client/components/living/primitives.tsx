@@ -30,9 +30,11 @@ function blurAfterPointerClick(event: MouseEvent<HTMLButtonElement>): void {
   if (event.detail !== 0) event.currentTarget.blur();
 }
 
-export function Cap({ k }: { k: CopyKey }) {
+type ControlCopy = CopyKey | { text: string };
+
+export function Cap({ k }: { k: ControlCopy }) {
   const { vis, t } = useCopy();
-  return vis ? null : <span className="lr-cap">{t(k)}</span>;
+  return vis ? null : <span className="lr-cap">{typeof k === "string" ? t(k) : k.text}</span>;
 }
 
 export function BackButton({ onClick }: { onClick: () => void }) {
@@ -65,11 +67,11 @@ export function Btn({
 }: {
   id?: string;
   icon: GlyphName;
-  cap?: CopyKey;
+  cap?: ControlCopy;
   tone?: "primary" | "danger" | "on";
   size?: "compact" | "dense";
   quiet?: boolean;
-  title: CopyKey;
+  title: ControlCopy;
   disabled?: boolean;
   busy?: boolean;
   pressed?: boolean;
@@ -91,7 +93,7 @@ export function Btn({
   iconOverlay?: ReactNode;
 }) {
   const { t, vis } = useCopy();
-  const label = t(title);
+  const label = typeof title === "string" ? t(title) : title.text;
   const wrapped = Boolean(hint);
   const softDisabled = Boolean(wrapped && disabled);
   const activeTone = tone ?? (pressed ? "on" : undefined);

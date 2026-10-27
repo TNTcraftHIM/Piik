@@ -162,8 +162,8 @@
 .cd-field { display: grid; gap: 8px; font-size: 12px; font-weight: 600; }
 .cd-field > span { display: flex; align-items: center; gap: 8px; }
 .cd-field small { color: var(--muted); font-size: 10px; font-weight: 400; }
-.cd-field input { width: 100%; min-width: 0; height: 46px; padding: 10px 13px; border: 1px solid var(--control-edge); border-radius: 11px; background: var(--wall); font-size: 13px; font-weight: 400; }
-.cd-field input::placeholder { color: var(--muted); }
+.cd-field .lr-input { width: 100%; font-weight: 400; }
+.cd-field .lr-input input { width: 100%; }
 .cd-access-field { border: 0; padding: 0; margin: 22px 0 0; min-width: 0; }
 .cd-access-field legend { padding: 0; font-size: 12px; font-weight: 600; margin-bottom: 10px; }
 .cd-access-track { width: 100%; box-shadow: none; border-color: var(--line); --selection-item-size: 38px; }

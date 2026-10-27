@@ -5,6 +5,27 @@ import { identityHash } from "../../lib/identity-hash";
 import { Glyph } from "../../ui/icons";
 import { useSurfaceDocument } from "../../ui/panel-window";
 
+/** Active throws coexist; a person's newest self-expression replaces their older one. */
+export function RoomReactionEffects({ reactions, participants, area, now }: {
+  reactions: readonly (RoomInteraction & { expiresAt: number })[];
+  participants: readonly { peerId: string }[];
+  area: RefObject<HTMLDivElement | null>;
+  now: () => number;
+}) {
+  return reactions.map((reaction, index) => {
+    const payload = reaction.payload;
+    if (payload.kind !== "reaction") return null;
+    // A gift never speaks for its recipient or replaces their own expression.
+    const covered = !payload.targetPeerId && !isThrow(payload.reaction) && reactions.slice(index + 1).some(next =>
+      next.payload.kind === "reaction" && !next.payload.targetPeerId && !isThrow(next.payload.reaction) &&
+      next.sender.peerId === reaction.sender.peerId);
+    if (covered) return null;
+    return participants.some(person => person.peerId === reaction.sender.peerId) &&
+      (!payload.targetPeerId || participants.some(person => person.peerId === payload.targetPeerId)) &&
+      <RoomReaction key={reaction.id} reaction={reaction} area={area} now={now} />;
+  });
+}
+
 /** Props use the same small silhouette in the picker and on the couch. */
 export function ReactionIcon({ reaction }: { reaction: ReactionId }) {
   if (!isThrow(reaction)) return <span aria-hidden="true">{REACTION_GLYPHS[reaction]}</span>;

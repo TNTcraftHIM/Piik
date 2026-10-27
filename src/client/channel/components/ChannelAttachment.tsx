@@ -42,7 +42,7 @@ export function ChannelAttachment({ id, client }: { id: string; client: ChannelA
     <div className="c3-attachment-file"><Glyph name="save" size={21} />
       <div><strong>{file?.name ?? (failed ? (zh ? "附件不可用" : "Attachment unavailable") : (zh ? "正在读取附件" : "Loading attachment"))}</strong>
         {file && <small>{fileSize(file.size)}</small>}</div>
-      {file && <ChannelAction icon="arrowDown" label={zh ? "下载" : "Download"} quiet busy={busy} onClick={() => { void open(false); }} />}
+      {file && <ChannelAction icon="arrowDown" label={zh ? "下载" : "Download"} quiet busy={busy} hint="hint-file-download" onClick={() => { void open(false); }} />}
       {!file && failed && <ChannelAction icon="refresh" label={zh ? "重试" : "Retry"} quiet onClick={() => setRetry(value => value + 1)} />}
     </div>
     {file?.mediaType.startsWith("image/") && !preview && <ChannelAction icon="eye" quiet label={zh ? "查看图片" : "View image"}

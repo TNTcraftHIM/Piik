@@ -95,6 +95,31 @@ function ChatExportHint({ theme }: { theme: ComicTheme }) {
   </g>)}</>;
 }
 
+function FileHint({ theme, download = false }: { theme: ComicTheme; download?: boolean }) {
+  return <><InteractionMotion />{[0, 160].map((x, index) => {
+    const draft = download ? !index : Boolean(index);
+    return <g key={x}>
+      <Frame x={x + 4} w={152} theme={theme} result={Boolean(index)} />
+      <Pawn x={x + 30} yb={83} s={11} eyes className={index ? "vls-talk-nod" : undefined} />
+      {draft ? <>
+        <rect x={x + 56} y={14} width={82} height={66} rx={7} fill="var(--paper)" stroke={FAINT} strokeWidth={2} />
+        <g transform={`translate(${x + 62} 19)`}><Glyph name="chat" size={14} /></g>
+        <path d={`M${x + 64} 69h47`} stroke={FAINT} strokeWidth={2} strokeLinecap="round" />
+        {!download && <g transform={`translate(${x + 119} 63)`}><Glyph name="send" size={12} /></g>}
+      </> : <>
+        <path d={`M${x + 56} 32v-9a4 4 0 0 1 4-4h23l7 9h44a4 4 0 0 1 4 4v43a4 4 0 0 1-4 4H${x + 60}a4 4 0 0 1-4-4V32Z`}
+          fill="var(--wall-2)" stroke={FAINT} strokeWidth={2} strokeLinejoin="round" />
+        {download && Boolean(index) && <g transform={`translate(${x + 117} 60)`}><Glyph name="save" size={15} /></g>}
+      </>}
+      <g className={index ? "vls-talk-bubble" : undefined}>
+        <path d={`M${x + 82} 30h18l9 9v22H${x + 82}Z`} fill="var(--paper)" stroke={YOU} strokeWidth={2} strokeLinejoin="round" />
+        <path d={`M${x + 100} 30v9h9m-21 8h14m-14 7h10`} fill="none" stroke={YOU} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+      {!index && <g transform={`translate(${x + 119} 43)`}><Glyph name={download ? "arrowDown" : "plus"} size={15} /></g>}
+    </g>;
+  })}</>;
+}
+
 const ReactionPickerHint: HintScene = ({ theme }) => <>
   <InteractionMotion />
   {[0, 160].map((x, index) => <g key={x}>
@@ -119,6 +144,8 @@ export const INTERACTION_SCENES: Record<InteractionHintKind, HintScene> = {
   "hint-chat-send": props => <ChatHint {...props} send />,
   "hint-chat-settings": props => <ChatSettingsHint {...props} />,
   "hint-chat-export": props => <ChatExportHint {...props} />,
+  "hint-file-add": props => <FileHint {...props} />,
+  "hint-file-download": props => <FileHint {...props} download />,
   "hint-window-detach": props => <PanelWindowHint {...props} />,
   "hint-chat-overlay-show": props => <OverlayHint {...props} show />,
   "hint-chat-overlay-hide": props => <OverlayHint {...props} show={false} />,
