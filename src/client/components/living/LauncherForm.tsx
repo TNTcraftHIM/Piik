@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { BrandMark } from "./BrandMark";
+import { BrandLockup } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
 import { SiteAddressEntry } from "./SiteAddressEntry";
@@ -119,10 +119,8 @@ export function LauncherForm({
   return (
     <form className="lr-client-launch-panel" onSubmit={onSubmit}>
       <header className="lr-client-launch-heading">
-        <div className="lr-client-launch-brand">
-          <BrandMark size={52} motion="once" />
-          <h1 className="lr-client-launch-title">Piik<span className="lr-client-brand-dot">.</span> <small>App</small></h1>
-        </div>
+        <BrandLockup size={52} motion="once" className="lr-client-launch-brand"
+          heading titleClassName="lr-client-launch-title" suffix={<> <small>App</small></>} />
         <WelcomeLine />
       </header>
 

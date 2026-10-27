@@ -1,5 +1,10 @@
 @import "../../../../site/assets/brand-motion.css";
 
+.lr-brand-lockup { display: flex; align-items: baseline; }
+/* The mascot's feet sit at y=29 in its 32-unit canvas; align them to the wordmark baseline. */
+.lr-brand-lockup > .lr-brand-mark { translate: 0 9.375%; }
+.lr-brand-dot { color: #e77d38; }
+
 .lr-brand-mark {
   display: block;
   flex: 0 0 auto;

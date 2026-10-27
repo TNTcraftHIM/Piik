@@ -1,7 +1,19 @@
-import { useEffect, useRef, useState, type AnimationEvent } from "react";
+import { useEffect, useRef, useState, type AnimationEvent, type ReactNode } from "react";
 import { bindSvgReplayOnPointerEnter } from "../../ui/animation";
 
 export type BrandMotion = "static" | "once" | "loop";
+
+export function BrandLockup({ size, motion, className = "", titleClassName, heading = false, suffix, children }: {
+  size?: number; motion?: BrandMotion; className?: string; titleClassName?: string;
+  heading?: boolean; suffix?: ReactNode; children?: ReactNode;
+}) {
+  const Title = heading ? "h1" : "strong";
+  return <div className={`lr-brand-lockup ${className}`}>
+    <BrandMark size={size} motion={motion} />
+    <Title className={titleClassName}>Piik<span className="lr-brand-dot">.</span>{suffix}</Title>
+    {children}
+  </div>;
+}
 
 export function BrandMark({
   size = 32,

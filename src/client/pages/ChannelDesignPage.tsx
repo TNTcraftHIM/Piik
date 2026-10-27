@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { useCopy } from "../ui/copy";
 import { Glyph } from "../ui/icons";
-import { BrandMark } from "../components/living/BrandMark";
+import { BrandLockup } from "../components/living/BrandMark";
 import { HeaderControls } from "../components/living/Header";
 import { DesignWorkspace } from "../channel/design/DesignWorkspace";
 import { designScenes, readDesignScene, type DesignScene } from "../channel/design/fixtures";
@@ -33,7 +33,7 @@ export function ChannelDesignPage() {
 
   return <div className="cd-book">
     <header className="cd-book-header">
-      <a className="cd-book-brand" href="#chat"><BrandMark size={38} motion="once" /><strong>Piik<span>.</span></strong><span className="cd-book-version">3.0</span></a>
+      <a className="cd-book-brand" href="#chat"><BrandLockup size={38} motion="once"><span className="cd-book-version">3.0</span></BrandLockup></a>
       <HeaderControls appControl={null} diagnosticControl={null} />
     </header>
     <section className="cd-book-intro">

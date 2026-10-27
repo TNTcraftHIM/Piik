@@ -1,9 +1,9 @@
 /* Dev-only design boards. Palette, controls, cast and motion remain shared. */
 .cd-book { width: min(1480px, 100%); margin: auto; padding: 26px 42px 28px; }
 .cd-book-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.cd-book-brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+.cd-book-brand { color: var(--ink); text-decoration: none; }
+.cd-book-brand .lr-brand-lockup { gap: 10px; }
 .cd-book-brand strong { font-size: 29px; letter-spacing: -1.3px; line-height: 1; }
-.cd-book-brand strong > span { color: var(--couch-dark); }
 .cd-book-version { align-self: end; margin-bottom: 3px; padding-left: 5px; font: 12px var(--mono); color: var(--muted); }
 .cd-book-intro { margin: 45px 0 25px; }
 .cd-book-eyebrow { display: flex; align-items: center; gap: 20px; color: var(--muted); font-size: 12px; font-weight: 650; letter-spacing: .08em; }

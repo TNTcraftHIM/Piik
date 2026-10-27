@@ -1472,12 +1472,9 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   gap: 20px;
 }
 .lr-client-launch-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 8px; width: min(380px, 100%); text-align: center; }
-.lr-client-launch-brand { display: flex; align-items: baseline; justify-content: center; gap: 14px; }
-/* The mascot's feet sit at y=29 in its 32-unit canvas; align them to the wordmark baseline. */
-.lr-client-launch-brand > svg { translate: 0 9.375%; }
+.lr-client-launch-brand { justify-content: center; gap: 14px; }
 .lr-client-launch-title { font-size: 36px; line-height: 1.1; letter-spacing: -.04em; }
 .lr-client-launch-title small { margin-left: 6px; color: var(--muted); font-size: 15px; letter-spacing: 0; font-weight: 650; }
-.lr-client-brand-dot { color: #e77d38; }
 .lr-client-standby { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; width: 100%; padding: 12px 20px 16px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface-glaze) var(--paper); box-shadow: var(--control-shadow); }
 .lr-client-standby-state { display: inline-flex; align-items: center; gap: 9px; }
 .lr-client-standby-heading { display: flex; align-items: start; gap: 12px; min-width: 0; }
