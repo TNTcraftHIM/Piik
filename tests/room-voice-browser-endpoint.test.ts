@@ -55,7 +55,7 @@ class Peer {
   localDescription: RTCSessionDescriptionInit | null = null;
   remoteDescription: RTCSessionDescriptionInit | null = null;
   onicecandidate: ((event: { candidate: RTCIceCandidateInit | null }) => void) | null = null;
-  getTransceivers = () => [];
+  getTransceivers = (): unknown[] => [];
   addTransceiver = () => {};
   createDataChannel = () => {};
   createOffer = async () => ({ type: "offer" as const, sdp: "offer" });
@@ -72,6 +72,106 @@ class Peer {
 }
 
 afterEach(() => { vi.unstubAllGlobals(); Peer.instances = []; });
+
+it.each(["levels", "metrics"].flatMap(observation => [false, true].map(replaced => ({ observation, replaced }))))(
+"keeps in-flight $observation tied to its receiver publication (replaced=$replaced)", async ({ observation, replaced }) => {
+  class AudioElement extends EventTarget {
+    volume = 1; muted = false; paused = true; ended = false;
+    srcObject: unknown = null;
+    play = async () => { this.paused = false; };
+    pause = () => { this.paused = true; };
+    remove = () => {};
+  }
+  vi.stubGlobal("Audio", AudioElement);
+  vi.stubGlobal("document", { body: { append: () => {} } });
+  vi.stubGlobal("MediaStream", class {
+    constructor(private tracks: MediaStreamTrack[]) {}
+    getAudioTracks() { return this.tracks; }
+  });
+  const track = { id: "stable-receiver", kind: "audio", readyState: "live" };
+  let finishStats!: (report: RTCStatsReport) => void;
+  const reading = new Promise<RTCStatsReport>(resolve => { finishStats = resolve; });
+  const getStats = vi.fn(() => reading);
+  vi.stubGlobal("RTCPeerConnection", class extends Peer {
+    getStats = getStats;
+    getTransceivers = () => [{ mid: "0", direction: "recvonly", receiver: { track }, sender: { track: null } }];
+  });
+  const endpoint = new BrowserVoiceEndpoint({ iceServers: [] }, () => true, () => {});
+  const authority = (publicationId: string, peerId: string, revision: number): RoomVoiceState => ({
+    type: "room-voice-state", revision, enabled: true, hostPeerId: "host", unavailable: [],
+    members: [{ peerId: "self", connected: true, joined: true, upstream: { kind: "sfu" } }],
+    publications: [{ id: publicationId, peerId }],
+    connections: [{ connectionId: "stable-connection", childPeerId: "self", transport: "sfu", revision, pending: false, send: [], receive: [publicationId] }],
+  });
+  const manifest = async (publicationId: string, revision: number) => endpoint.receive({
+    type: "room-voice-signal", connectionId: "stable-connection", description: {
+      revision, sdp: { type: "offer", sdp: "offer" }, tracks: [{ mid: "0", publicationId }],
+    },
+  });
+  const report = (ssrc: number, audioLevel: number) => new Map([["audio", {
+    id: "audio", type: "inbound-rtp", kind: "audio", ssrc, timestamp: ssrc * 1000,
+    trackIdentifier: track.id, audioLevel, bytesReceived: ssrc * 100,
+  }]]) as unknown as RTCStatsReport;
+  try {
+    endpoint.setAuthority(authority("old-publication", "old-publisher", 1), "self");
+    await endpoint.reconcile(); await manifest("old-publication", 1);
+    const pending = observation === "levels" ? endpoint.levels() : endpoint.connectionMetrics();
+    expect(getStats).toHaveBeenCalledOnce();
+    const publication = replaced ? "new-publication" : "old-publication";
+    const publisher = replaced ? "new-publisher" : "old-publisher";
+    endpoint.setAuthority(authority(publication, publisher, 2), "self");
+    await manifest(publication, 2);
+    finishStats(report(1, .75));
+    if (replaced) expect([...(await pending)]).toEqual([]);
+    else if (observation === "levels") expect([...(await pending)]).toEqual([[publisher, .75]]);
+    else expect(await pending).toEqual([expect.objectContaining({ peerId: publisher, direction: "receive" })]);
+
+    getStats.mockResolvedValue(report(2, .25));
+    if (observation === "levels") expect([...(await endpoint.levels())]).toEqual([[publisher, .25]]);
+    else expect(await endpoint.connectionMetrics()).toEqual([
+      expect.objectContaining({ peerId: publisher, direction: "receive", connectionId: "stable-connection" }),
+    ]);
+    expect(Peer.instances).toHaveLength(1);
+    expect(Peer.instances[0]!.close).not.toHaveBeenCalled();
+  } finally { endpoint.close(); }
+});
+
+it("drops an in-flight sender report after microphone replacement on the same publication", async () => {
+  vi.stubGlobal("MediaStream", class { constructor(public tracks: unknown[]) {} });
+  const oldTrack = { id: "old-input", kind: "audio", readyState: "live" };
+  const newTrack = { id: "new-input", kind: "audio", readyState: "live" };
+  const sender = { track: oldTrack, setStreams: () => {}, getParameters: () => ({ encodings: [], codecs: [] }),
+    replaceTrack: async (track: typeof oldTrack) => { sender.track = track; } };
+  let finishStats!: (report: RTCStatsReport) => void;
+  const reading = new Promise<RTCStatsReport>(resolve => { finishStats = resolve; });
+  const getStats = vi.fn(() => reading);
+  vi.stubGlobal("RTCPeerConnection", class extends Peer { getStats = getStats; addTrack = () => sender; });
+  const endpoint = new BrowserVoiceEndpoint({ iceServers: [] }, () => true, () => {});
+  endpoint.setAuthority({ type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "self", unavailable: [],
+    members: [{ peerId: "self", connected: true, joined: true, upstream: { kind: "none" } }],
+    publications: [{ id: "mic", peerId: "self" }],
+    connections: [{ connectionId: "stable", transport: "peer", parentPeerId: "self", childPeerId: "other", revision: 1, pending: false, send: ["mic"], receive: [] }],
+  }, "self");
+  const input = (track: typeof oldTrack) => ({ stream: { getAudioTracks: () => [track] },
+    close: () => { track.readyState = "ended"; } }) as unknown as MicrophoneInput;
+  const report = (track: typeof oldTrack) => new Map([
+    ["sender", { id: "sender", type: "outbound-rtp", kind: "audio", mediaSourceId: "source", timestamp: 1000, ssrc: 1 }],
+    ["source", { id: "source", type: "media-source", kind: "audio", trackIdentifier: track.id }],
+  ]) as unknown as RTCStatsReport;
+  try {
+    endpoint.attach("mic", input(oldTrack)); await endpoint.reconcile();
+    const pending = endpoint.connectionMetrics();
+    endpoint.attach("mic", input(newTrack)); await endpoint.reconcile();
+    finishStats(report(oldTrack));
+    expect(await pending).toEqual([]);
+    getStats.mockResolvedValue(report(newTrack));
+    expect(await endpoint.connectionMetrics()).toEqual([
+      expect.objectContaining({ peerId: "self", direction: "send", metrics: expect.objectContaining({ trackIdentifier: newTrack.id }) }),
+    ]);
+    expect(Peer.instances).toHaveLength(1);
+    expect(Peer.instances[0]!.close).not.toHaveBeenCalled();
+  } finally { endpoint.close(); }
+});
 
 it.each(["local", "remote"])("retains and flushes the first 64 %s voice candidates without failing the transport", async phase => {
   vi.stubGlobal("RTCPeerConnection", Peer);
