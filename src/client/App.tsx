@@ -43,6 +43,10 @@ const ChannelPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/ChannelPreviewPage").then((module) => ({ default: module.ChannelPreviewPage })))
   : null;
 
+const ChannelDesignPage = import.meta.env.DEV
+  ? lazy(() => import("./pages/ChannelDesignPage").then((module) => ({ default: module.ChannelDesignPage })))
+  : null;
+
 const StatusPreviewPage = import.meta.env.DEV
   ? lazy(() => import("./pages/StatusPreviewPage").then((module) => ({ default: module.StatusPreviewPage })))
   : null;
@@ -161,6 +165,9 @@ function AppRoute() {
   useEffect(() => {
     if (appRoute.kind === "viewer") return watchViewerInvites(setViewerRoute);
   }, []);
+  if (ChannelDesignPage && window.location.pathname === "/__channel-design") {
+    return <ChannelDesignPage />;
+  }
   if (ChannelPreviewPage && window.location.pathname === "/__channel-preview") {
     return <ChannelPreviewPage />;
   }

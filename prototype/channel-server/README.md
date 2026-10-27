@@ -34,6 +34,26 @@ have independent live sessions. The default loopback ports are 8791 for Rust and
 8790 for the interface. `PIIK_CHANNEL_PORT`, `PIIK_CHANNEL_UI_PORT` and
 `PIIK_CHANNEL_WEB_ORIGIN` allow an isolated instance with matching ports/origin.
 
+## Visual proposal
+
+Open `/__channel-design` on the same Vite service for the interactive design
+boards. This route needs no channel credential or running Rust service. Direct
+links `#chat`, `#screens`, `#focus` and `#create` select the four studies; the
+toolbar compares desktop/narrow layouts and the shared light/dark themes.
+
+The proposal places room navigation on the left, conversation and selected
+screens in the middle, and a persistent member list on the right. Narrow layouts
+use a full member/room pane. Room creation is one native dialog with conditional
+private options. Colours, controls, icons and animated people come from Piik's
+existing components. Conversations, pictures and interactions are local samples;
+they do not create rooms or transmit media. The functional prototype keeps its
+existing layout until the owner accepts the visual direction.
+
+References for spatial hierarchy and viewing modes:
+[Discord's server introduction](https://discord.com/blog/starting-your-first-discord-server)
+and [Go Live / screen sharing](https://support.discord.com/hc/en-us/articles/360040816151-Go-Live-and-Screen-Share).
+The studies reinterpret those familiar patterns using Piik's visual language.
+
 ## Rooms, conversation and media
 
 A channel contains rooms. Members can create rooms and manage their own rooms;
