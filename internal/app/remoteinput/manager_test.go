@@ -1533,3 +1533,186 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		t.Fatal("source retirement kept a grant")
 	}
 }
+
+func TestLateOldEpochCannotHideRelayedGrantFromBranchLoss(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 8), resets: make(chan struct{}, 8), focused: true}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s := m.NewSession()
+	t.Cleanup(s.Close)
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+	if err := setTestPolicy(s, "ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	peer := protocol.RemoteInputPeer{PeerID: "viewer-route-test", EndpointID: strings.Repeat("a", 32), Secret: strings.Repeat("b", 64)}
+	if err := s.SetPeers([]protocol.RemoteInputPeer{peer}); err != nil {
+		t.Fatal(err)
+	}
+	observed := make(chan inputroute.Packet, 10)
+	s.route.Close()
+	s.route = inputroute.New(func(edge string, p inputroute.Packet) { s.receivePacket(edge, p); observed <- p })
+	rootChannel, relayUp := inputChannelPair(t)
+	s.Attach("sfu-root", rootChannel)
+	relay := inputroute.New(nil)
+	t.Cleanup(relay.Close)
+	relay.AttachUp(relayUp)
+	viewer, branch := inputChannelPair(t)
+	ready := make(chan struct{}, 10)
+	viewer.OnMessage(func(message webrtc.DataChannelMessage) {
+		var p inputroute.Packet
+		if json.Unmarshal(message.Data, &p) == nil && p.Ready != nil && *p.Ready {
+			ready <- struct{}{}
+		}
+	})
+	relay.AttachDown("shared-branch", branch)
+	relay.SetUpAvailable(true)
+	select {
+	case <-ready:
+	case <-time.After(3 * time.Second):
+		t.Fatal("relay not ready")
+	}
+	cipher, _ := newInputCipher(peer.Secret)
+	encode := func(seq uint64, epoch string, event inputEvent) inputroute.Packet {
+		header := make([]byte, 20)
+		binary.BigEndian.PutUint64(header, seq)
+		_, _ = rand.Read(header[8:])
+		plain, _ := json.Marshal(event)
+		data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
+		return inputroute.Packet{ID: peer.EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)}
+	}
+	sendPacket := func(p inputroute.Packet) {
+		t.Helper()
+		data, _ := json.Marshal(p)
+		if err := viewer.SendText(string(data)); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.After(3 * time.Second)
+		for {
+			select {
+			case got := <-observed:
+				if got == p {
+					return
+				}
+			case <-deadline:
+				t.Fatal("packet did not reach actual manager")
+			}
+		}
+	}
+	approve := func() string {
+		t.Helper()
+		views := s.State().Requests
+		if len(views) != 1 || views[0].State != "pending" {
+			t.Fatalf("request state: %+v", views)
+		}
+		if err := s.Decide(views[0].ID, true); err != nil {
+			t.Fatal(err)
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.connections[endpointKey{s, peer.EndpointID}].grant
+	}
+	oldEpoch, newEpoch := strings.Repeat("c", 32), strings.Repeat("d", 32)
+	sendPacket(encode(1, oldEpoch, inputEvent{Type: "request", Intent: oldEpoch}))
+	oldGrant := approve()
+	// Packet 2 was sent on the old longer branch before the route migrated.
+	// The new shorter path overtakes it. Its lower sequence must be rejected.
+	late := encode(2, oldEpoch, inputEvent{Type: "key", Code: "KeyA", Down: true, Grant: oldGrant})
+	sendPacket(encode(3, newEpoch, inputEvent{Type: "request", Intent: newEpoch}))
+	newGrant := approve()
+	sendPacket(encode(4, newEpoch, inputEvent{Type: "key", Code: "KeyW", Down: true, Grant: newGrant}))
+	sendPacket(late)
+	m.mu.Lock()
+	current := m.connections[endpointKey{s, peer.EndpointID}]
+	if current.grant != newGrant || current.keys["KeyA"] || !current.keys["KeyW"] {
+		m.mu.Unlock()
+		t.Fatal("late old packet changed authority")
+	}
+	m.mu.Unlock()
+	// The shared upstream branch then disconnects while the root SFU leg stays up.
+	relay.LoseDown("shared-branch", nil)
+	// On recovery, a sync is ordered behind all branch retirement packets. It
+	// may report current availability but cannot restore the previous grant.
+	sendPacket(encode(5, newEpoch, inputEvent{Type: "sync"}))
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if current.grant != "" || current.keys["KeyW"] {
+		t.Fatal("branch loss retained current grant and held key after a late old epoch")
+	}
+}
+
+func waitInputChannel(t *testing.T, label string, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if ready() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal(label)
+}
+
+func inputChannelPair(t *testing.T) (*webrtc.DataChannel, *webrtc.DataChannel) {
+	t.Helper()
+	settings := webrtc.SettingEngine{}
+	settings.SetIncludeLoopbackCandidate(true)
+	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(settings))
+	a, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	b, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	remote := make(chan *webrtc.DataChannel, 1)
+	b.OnDataChannel(func(c *webrtc.DataChannel) { remote <- c })
+	local, err := a.CreateDataChannel(inputroute.Label, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, err := a.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gather := webrtc.GatheringCompletePromise(a)
+	if err = a.SetLocalDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-gather:
+	case <-time.After(5 * time.Second):
+		t.Fatal("offer gather")
+	}
+	if err = b.SetRemoteDescription(*a.LocalDescription()); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := b.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gather = webrtc.GatheringCompletePromise(b)
+	if err = b.SetLocalDescription(answer); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-gather:
+	case <-time.After(5 * time.Second):
+		t.Fatal("answer gather")
+	}
+	if err = a.SetRemoteDescription(*b.LocalDescription()); err != nil {
+		t.Fatal(err)
+	}
+	var other *webrtc.DataChannel
+	select {
+	case other = <-remote:
+	case <-time.After(5 * time.Second):
+		t.Fatal("remote data channel")
+	}
+	waitInputChannel(t, "SCTP opens", func() bool {
+		return local.ReadyState() == webrtc.DataChannelStateOpen && other.ReadyState() == webrtc.DataChannelStateOpen
+	})
+	return local, other
+}

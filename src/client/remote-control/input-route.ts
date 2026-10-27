@@ -2,6 +2,8 @@ export const INPUT_CHANNEL = "piik-remote-input-prototype-v1";
 export type InputIdentity = { endpointId: string; secret: string };
 type Packet = { id?: string; epoch?: string; data?: string; closed?: boolean; ready?: boolean };
 export type InputTransport = Pick<RTCDataChannel, "readyState" | "bufferedAmount" | "send" | "close" | "addEventListener" | "removeEventListener">;
+// Local relay metadata bound, independent of ciphertext authorization or route age.
+const MAX_UNCLOSED_EPOCHS_PER_CHILD = 128;
 
 function packet(data: unknown): Packet | null {
   if (typeof data !== "string" || data.length > 6144) return null;
@@ -26,7 +28,7 @@ export class InputRoute {
   private identity: InputIdentity | null = null;
   private counter = { sent: 0n };
   private register: ((identity: InputIdentity) => boolean) | null = null;
-  private children = new Map<RTCDataChannel, Map<string, string>>();
+  private children = new Map<RTCDataChannel, Map<string, Set<string>>>();
   constructor(private readonly changed: () => void) {}
   get current(): InputTransport | null { return this.endpoint; }
 
@@ -46,10 +48,7 @@ export class InputRoute {
       this.up.removeEventListener("message", this.received);
       this.up.removeEventListener("close", this.lost);
       this.up.removeEventListener("open", this.opened);
-      for (const ids of this.children.values()) {
-        for (const [id, epoch] of ids) send(this.up, { id, epoch, closed: true });
-        ids.clear();
-      }
+      for (const child of this.children.keys()) this.loseChild(child);
     }
     this.retireEndpoint();
     this.ready = false;
@@ -89,14 +88,20 @@ export class InputRoute {
     this.endpoint = null;
     this.changed();
   }
+  private loseChild(channel: RTCDataChannel, detach = false): void {
+    const ids = this.children.get(channel);
+    if (!ids) return;
+    if (detach) this.children.delete(channel);
+    for (const [id, epochs] of ids) for (const epoch of epochs) send(this.up, { id, epoch, closed: true });
+    ids.clear();
+  }
   attachChild(channel: RTCDataChannel, connection: RTCPeerConnection): void {
-    const ids = new Map<string, string>();
+    const ids = new Map<string, Set<string>>();
     this.children.set(channel, ids);
     connection.addEventListener("connectionstatechange", () => {
       if (!this.children.has(channel)) return;
       if (connection.connectionState === "disconnected" || connection.connectionState === "failed" || connection.connectionState === "closed") {
-        for (const [id, epoch] of ids) send(this.up, { id, epoch, closed: true });
-        ids.clear();
+        this.loseChild(channel);
       }
     });
     channel.addEventListener("open", () => send(channel, { ready: this.ready }));
@@ -104,14 +109,22 @@ export class InputRoute {
       const p = packet(event.data); if (!p || !this.children.has(channel)) return;
       if (p.ready !== undefined) { send(channel, { ready: this.ready }); return; }
       if (!this.ready || !p.id || !p.epoch) return;
-      if (p.closed) { if (ids.get(p.id) === p.epoch) ids.delete(p.id); }
-      else { if (!ids.has(p.id) && ids.size >= 20) return; ids.set(p.id, p.epoch); }
+      const epochs = ids.get(p.id);
+      if (p.closed) {
+        epochs?.delete(p.epoch);
+        if (epochs?.size === 0) ids.delete(p.id);
+      } else if (!epochs?.has(p.epoch)) {
+        if (!epochs && ids.size >= 20) return;
+        if ([...ids.values()].reduce((total, epochs) => total + epochs.size, 0) >= MAX_UNCLOSED_EPOCHS_PER_CHILD) {
+          this.loseChild(channel, true);
+          channel.close();
+          return;
+        }
+        if (epochs) epochs.add(p.epoch); else ids.set(p.id, new Set([p.epoch]));
+      }
       send(this.up, p);
     });
-    channel.addEventListener("close", () => {
-      if (!this.children.delete(channel)) return;
-      for (const [id, epoch] of ids) send(this.up, { id, epoch, closed: true });
-    });
+    channel.addEventListener("close", () => this.loseChild(channel, true));
     if (channel.readyState === "open") send(channel, { ready: this.ready });
   }
   dispose(): void {

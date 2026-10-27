@@ -14,6 +14,10 @@ const Label = "piik-remote-input-prototype-v1"
 // 2 KiB of text, JSON escaping, authenticated encryption and the relay envelope.
 const MaxPacket = 6144
 
+// Allow route overlap for the room's 20 endpoints while bounding retirement
+// metadata. Epochs remain opaque here; only the Host knows which is authorized.
+const maxTrackedEpochs = 128
+
 // Packet data is authenticated and encrypted between the Viewer and Host App.
 // Relays only learn endpoint IDs. Small Host state replies fan out along the
 // existing tree; only the named endpoint can read them.
@@ -27,7 +31,7 @@ type Packet struct {
 
 type leg struct {
 	channel   *webrtc.DataChannel
-	endpoints map[string]string
+	endpoints map[string]map[string]struct{}
 }
 
 type Relay struct {
@@ -121,7 +125,7 @@ func (r *Relay) AttachDown(edgeID string, channel *webrtc.DataChannel) {
 		_ = channel.Close()
 		return
 	}
-	child := &leg{channel: channel, endpoints: make(map[string]string)}
+	child := &leg{channel: channel, endpoints: make(map[string]map[string]struct{})}
 	r.down[edgeID] = child
 	r.mu.Unlock()
 	channel.OnOpen(func() { r.mu.Lock(); defer r.mu.Unlock(); send(channel, Packet{Ready: &r.ready}) })
@@ -145,15 +149,35 @@ func (r *Relay) AttachDown(edgeID string, channel *webrtc.DataChannel) {
 			return
 		}
 		if p.Closed {
-			if child.endpoints[p.ID] == p.Epoch {
+			delete(child.endpoints[p.ID], p.Epoch)
+			if len(child.endpoints[p.ID]) == 0 {
 				delete(child.endpoints, p.ID)
 			}
 		} else {
-			if child.endpoints[p.ID] == "" && len(child.endpoints) >= 20 {
+			epochs := child.endpoints[p.ID]
+			if epochs == nil && len(child.endpoints) >= 20 {
 				r.mu.Unlock()
 				return
 			}
-			child.endpoints[p.ID] = p.Epoch
+			if _, known := epochs[p.Epoch]; !known {
+				count := 0
+				for _, tracked := range child.endpoints {
+					count += len(tracked)
+				}
+				if count >= maxTrackedEpochs {
+					r.mu.Unlock()
+					r.LoseDown(edgeID, channel)
+					_ = channel.Close()
+					return
+				}
+				if epochs == nil {
+					epochs = make(map[string]struct{})
+					child.endpoints[p.ID] = epochs
+				}
+				// A late packet from an old branch must not erase another epoch
+				// whose grant the Host may still need to retire on branch loss.
+				epochs[p.Epoch] = struct{}{}
+			}
 		}
 		if r.receive == nil {
 			send(r.up, p)
@@ -176,8 +200,10 @@ func (r *Relay) LoseDown(edgeID string, channel *webrtc.DataChannel) {
 		return
 	}
 	packets := make([]Packet, 0, len(child.endpoints))
-	for id, epoch := range child.endpoints {
-		packets = append(packets, Packet{ID: id, Epoch: epoch, Closed: true})
+	for id, epochs := range child.endpoints {
+		for epoch := range epochs {
+			packets = append(packets, Packet{ID: id, Epoch: epoch, Closed: true})
+		}
 	}
 	clear(child.endpoints)
 	if channel != nil {

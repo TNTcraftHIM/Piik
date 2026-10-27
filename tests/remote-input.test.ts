@@ -219,6 +219,78 @@ it("reuses the authenticated identity across media routes and syncs after delaye
   route.dispose();
 });
 
+it.each([false, true])("retires the current input epoch after late old-branch packets (closed=%s)", async closed => {
+  const controller = new InputRoute(() => {}), relay = new InputRoute(() => {});
+  controller.enable(() => true);
+  const oldUpstream = new Channel(), nextUpstream = new Channel(), upstream = new Channel(), sharedChild = new Channel();
+  const connection = Object.assign(new EventTarget(), { connectionState: "connected" });
+  relay.setUpstream(upstream as unknown as RTCDataChannel);
+  upstream.receive({ ready: true });
+  relay.attachChild(sharedChild as unknown as RTCDataChannel, connection as unknown as RTCPeerConnection);
+  try {
+    controller.setUpstream(oldUpstream as unknown as RTCDataChannel);
+    oldUpstream.receive({ ready: true });
+    controller.current!.send(JSON.stringify({ type: "request" }));
+    controller.current!.send(JSON.stringify({ type: "key", code: "KeyA", down: true }));
+    await vi.waitFor(() => expect(oldUpstream.sent.filter(packet => packet.data)).toHaveLength(2));
+    const [oldRequest, lateOldInput] = oldUpstream.sent.filter(packet => packet.data);
+    controller.setUpstream(nextUpstream as unknown as RTCDataChannel);
+    nextUpstream.receive({ ready: true });
+    controller.current!.send(JSON.stringify({ type: "request" }));
+    controller.current!.send(JSON.stringify({ type: "key", code: "KeyW", down: true }));
+    await vi.waitFor(() => expect(nextUpstream.sent.filter(packet => packet.data)).toHaveLength(2));
+    const currentPackets = nextUpstream.sent.filter(packet => packet.data);
+    expect(currentPackets[0].id).toBe(oldRequest.id);
+    expect(currentPackets[0].epoch).not.toBe(oldRequest.epoch);
+
+    sharedChild.receive(oldRequest);
+    currentPackets.forEach(packet => sharedChild.receive(packet));
+    // A longer retired route can reach this shared leg after the current route.
+    sharedChild.receive(lateOldInput);
+    if (closed) sharedChild.receive({ id: oldRequest.id, epoch: oldRequest.epoch, closed: true });
+    connection.connectionState = "disconnected";
+    connection.dispatchEvent(new Event("connectionstatechange"));
+    expect(upstream.sent.filter(packet => packet.closed)).toContainEqual({
+      id: currentPackets[0].id, epoch: currentPackets[0].epoch, closed: true,
+    });
+  } finally {
+    controller.dispose(); relay.dispose();
+  }
+});
+
+it("bounds unclosed child epochs and retires them before input-channel overflow closes", () => {
+  const route = new InputRoute(() => {}), upstream = new Channel(), child = new Channel();
+  const connection = Object.assign(new EventTarget(), { connectionState: "connected" });
+  const envelope = (index: number) => ({ id: (index % 20).toString(16).padStart(32, "0"),
+    epoch: index.toString(16).padStart(32, "0"), data: "opaque" });
+  route.setUpstream(upstream as unknown as RTCDataChannel);
+  upstream.receive({ ready: true });
+  route.attachChild(child as unknown as RTCDataChannel, connection as unknown as RTCPeerConnection);
+  // Real close is asynchronous; retirement cannot wait for its close event.
+  vi.spyOn(child, "close").mockImplementation(() => { child.readyState = "closing"; });
+  try {
+    for (let index = 0; index < 128; index++) child.receive(envelope(index));
+    child.receive(envelope(0)); // Existing tuples still forward at capacity.
+    child.receive({ ...envelope(0), id: "f".repeat(32) }); // Keep the existing 20-identity bound.
+    expect(upstream.sent.filter(packet => packet.data)).toHaveLength(129);
+    expect(child.close).not.toHaveBeenCalled();
+    child.receive(envelope(128));
+    expect(child.close).toHaveBeenCalledOnce();
+    expect(upstream.sent.filter(packet => packet.data)).toHaveLength(129);
+    expect(upstream.sent.filter(packet => packet.closed)).toHaveLength(128);
+    for (let index = 0; index < 128; index++) expect(upstream.sent).toContainEqual({
+      id: envelope(index).id, epoch: envelope(index).epoch, closed: true,
+    });
+    const retiredCount = upstream.sent.length;
+    child.receive(envelope(129));
+    child.dispatchEvent(new Event("close"));
+    expect(upstream.sent).toHaveLength(retiredCount);
+    expect(connection.connectionState).toBe("connected");
+  } finally {
+    route.dispose();
+  }
+});
+
 it("binds input to the current request and retires cancelled or replaced grants", () => {
   const channel = new Channel();
   const session = new RemoteInputSession(channel as unknown as RTCDataChannel, () => {});
