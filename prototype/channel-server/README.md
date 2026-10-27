@@ -57,7 +57,14 @@ fixed on the right. Arrow controls and touch scrolling reach the other people;
 the full member list scrolls independently. Select a seated person to send
 reactions or throw props along the sender-to-recipient path.
 Chat avatars and the member list are informational; message reactions stay
-below their message. The composer supports the attachment button, file drop and image
+below their message. **Room mini window** beside the share action opens a movable,
+resizable view with the same couch, chat and voice shortcuts. Its detach action
+uses the existing browser picture-in-picture window where available. Messages,
+drafts, attachments, reactions and voice state share the room's owner; closing
+the window does not leave the room. It follows the selected room and preserves
+its reading position when detached or returned.
+
+The composer supports the attachment button, file drop and image
 paste, with a draft preview before sending. Channel appearance and room creation
 share preset icons and custom image selection. These design-board changes stay
 in memory; room-scoped file upload is already implemented in the functional

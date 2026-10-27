@@ -7,8 +7,10 @@ import { DesignArtwork } from "./DesignArtwork";
 import { DesignRoomDialog } from "./DesignRoomDialog";
 import { DesignChannelDialog } from "./DesignChannelDialog";
 import { DesignAvatar as Avatar } from "./DesignAvatar";
-import { DesignConversation } from "./DesignConversation";
-import { DesignCouch } from "./DesignCouch";
+import { DesignConversation, useDesignConversation } from "./DesignConversation";
+import { DesignCouch, useDesignReactions } from "./DesignCouch";
+import { DesignRoomPanel } from "./DesignRoomPanel";
+import { DesignVoiceControls, DesignVoiceJoin } from "./DesignVoiceControls";
 import { DesignIdentityMark, type DesignIdentity } from "./DesignIdentityPicker";
 import { designPeople, designRooms, type DesignCopy, type DesignScene } from "./fixtures";
 
@@ -31,6 +33,10 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
   const [channelName, setChannelName] = useState<string>();
   const [channelIdentity, setChannelIdentity] = useState<DesignIdentity>({ icon: "couch" });
   const [editingChannel, setEditingChannel] = useState(false);
+  const conversation = useDesignConversation();
+  const reactions = useDesignReactions(roomId, copy);
+  const voice = { joined, muted, deafened, toggleJoined: () => setJoined(!joined),
+    toggleMuted: () => setMuted(!muted), toggleDeafened: () => setDeafened(!deafened) };
   const room = rooms.find(item => item.id === roomId)!;
   const roomName = designRooms(copy).find(item => item.id === roomId)?.name ?? room.name;
   const demoRoom = roomId === "games";
@@ -81,17 +87,11 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
         <div className="cd-nav-bottom">
           <div className="cd-voice-session" data-connected={joined}>
             <div className="cd-voice-title"><Glyph name="headphones" size={17} /><strong>{joined ? copy("语音已连接", "Voice connected") : copy("随时来聊聊", "Come hang out")}</strong></div>
-            <div className="cd-voice-detail"><span>{copy("再来一局", "One more round")}</span>
-              <ChannelAction icon={joined ? "door" : "headphones"} quiet iconOnly
-                label={joined ? copy("退出语音", "Leave voice") : copy("加入语音", "Join voice")}
-                hint={joined ? "hint-voice-leave" : "hint-voice-join"} onClick={() => setJoined(!joined)} /></div>
+            <div className="cd-voice-detail"><span>{roomName}</span><DesignVoiceJoin voice={voice} copy={copy} /></div>
           </div>
           <div className="cd-self">
             <Avatar index={3} voice={selfVoice} /><div className="cd-self-name"><strong>{name(3)}</strong><small>{copy("在线", "Online")}</small></div>
-            <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={muted ? copy("开启麦克风", "Unmute microphone") : copy("关闭麦克风", "Mute microphone")}
-              pressed={muted} hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} quiet iconOnly onClick={() => setMuted(!muted)} />
-            <ChannelAction icon={deafened ? "headphonesOff" : "headphones"} label={deafened ? copy("开启收听", "Undeafen") : copy("关闭收听", "Deafen")}
-              pressed={deafened} hint={deafened ? "hint-voice-undeafen" : "hint-voice-deafen"} quiet iconOnly onClick={() => setDeafened(!deafened)} />
+            <DesignVoiceControls voice={voice} copy={copy} />
           </div>
         </div>
       </aside>
@@ -103,8 +103,9 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
             <span className="cd-room-heading-icon"><DesignIdentityMark value={room} size={23} /></span>
             <div className="cd-room-heading-text"><h2>{roomName}</h2><span>{demoRoom ? copy("输赢不重要，人在就好。", "Good company. Questionable skills.") : copy("留个地方，一起聊聊。", "A place to get together.")}</span></div>
           </div>
-          <DesignCouch key={roomId} people={here} selfVoice={selfVoice} copy={copy} />
+          <DesignCouch key={roomId} people={here} selfVoice={selfVoice} copy={copy} reactions={reactions} />
           <div className="cd-room-actions">
+            <DesignRoomPanel room={room} roomName={roomName} people={here} conversation={conversation} reactions={reactions} voice={voice} copy={copy} />
             <span className="cd-header-action"><ChannelAction icon={sharing ? "stop" : "share"} primary={!sharing} hint={sharing ? "hint-share-stop" : "hint-share-start"}
               label={sharing ? copy("停止分享", "Stop sharing") : copy("分享屏幕", "Share screen")} onClick={() => {
                 setSharingRoom(sharing ? null : roomId); setScreensHidden(false);
@@ -133,11 +134,10 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
             <ChannelAction icon="play" label={copy("观看", "Watch")} onClick={() => { setScreensHidden(false); onScene("screens"); }} />
           </div> : null}
 
-          <DesignConversation room={room} roomName={roomName} copy={copy} showingScreens={showingScreens} />
+          <DesignConversation room={room} roomName={roomName} copy={copy} showingScreens={showingScreens} model={conversation} />
           <div className="cd-mobile-voice" data-connected={joined}>
             <span><Glyph name="headphones" size={15} />{joined ? copy("语音已连接", "Voice connected") : copy("尚未加入语音", "Not in voice")}</span>
-            <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={copy("麦克风", "Microphone")} pressed={muted} quiet iconOnly onClick={() => setMuted(!muted)} />
-            <ChannelAction icon={deafened ? "headphonesOff" : "headphones"} label={copy("收听", "Listening")} pressed={deafened} quiet iconOnly onClick={() => setDeafened(!deafened)} />
+            <DesignVoiceControls voice={voice} copy={copy} /><DesignVoiceJoin voice={voice} copy={copy} />
           </div>
         </div>
       </main>
