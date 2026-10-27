@@ -8,6 +8,10 @@ Use the brand for people and predictable lowercase identifiers for tools.
 Use the same role and action vocabulary in the App, Browser, website and guides.
 Role labels describe permission; a person's chosen nickname stays unchanged.
 
+The table below describes the published 2.x model. The
+[3.0 design vocabulary](../research/channel-network-design.md#terminology-and-roles)
+owns the channel/room hierarchy and overlapping user roles for that experiment.
+
 | Meaning | English | Chinese |
 | --- | --- | --- |
 | Person sharing and controlling the room | Host | 房主 |

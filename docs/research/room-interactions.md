@@ -432,12 +432,14 @@ is incomplete, so unsupported pages retain the in-page panel. Video PiP and chat
 PiP may replace each other under the browser's single-window policy; no media
 or room owner changes. This needs no new room protocol or major version.
 
-## Piik 3.0 Channels And Multiple Publishers
+## Piik 3.0 Channels, Rooms And Sharing
 
 The [channel and network proposal](./channel-network-design.md) owns the Rust
 direction, independent activity lifecycles, multi-source routing, hosting and
-attachment design. The owner requested model discussion before implementation;
-these proposals do not change the accepted 2.x contract.
+attachment design. Its [vocabulary](./channel-network-design.md#terminology-and-roles)
+defines channels containing rooms, users with multiple roles and concurrent
+sharing, watching and forwarding. The owner requested model discussion before
+implementation; these proposals do not change the accepted 2.x contract.
 
 The isolated [Rust channel prototype](../../prototype/channel-server/README.md)
 currently supplies networked chat and local microphone/picture capture. Its README
