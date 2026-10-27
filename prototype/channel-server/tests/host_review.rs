@@ -58,6 +58,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         };
         host.dispatch(HostInput {
             binding_id: binding,
+            host_session_id: publisher,
             revision: 1,
             endpoints: endpoints.clone(),
             action: HostAction::Command {
@@ -87,6 +88,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         let work = host
             .dispatch(HostInput {
                 binding_id: binding,
+                host_session_id: publisher,
                 revision: 2,
                 endpoints,
                 action: HostAction::Command {

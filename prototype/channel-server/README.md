@@ -11,8 +11,9 @@ in their owner's Browser, using the same Rust room core through
 policy, activities, publication plans and confirmed history. The domain binds
 authenticated runtimes to directory entries and combines their transport demand;
 a physical pair remains while any room needs it. Domain WebSocket rendezvous
-currently carries room commands and replies. The shared room base tree, Native
-hosting and peer file delivery are the next integration.
+currently carries room commands and replies. Browser-hosted rooms establish a
+shared base tree when an activity needs it; Native hosting and peer file delivery
+remain the next integration.
 
 ## Run
 
@@ -124,11 +125,20 @@ a grid or focus one picture, with chat alongside or tucked away. These presentat
 choices do not implement media layering or a new quality policy. Local previews
 stay muted, and pausing a player does not stop forwarding its source.
 
-Each publication has its own bounded distribution tree: the source first serves
-two subscribers, then ready subscribers can relay. Compatible flows reuse physical
-peer connections. A relay can stop watching while continuing to serve downstream
-viewers; its transit ends when that demand ends. Stopping one share keeps unrelated
-received and forwarded media alive. Browser relays can decode and re-encode; Native encoded forwarding and SFU
+In Browser-hosted rooms, reading, voice, sharing and watching share a bounded
+base tree rooted at the actual hosting session. Each edge requires an open reliable
+DataChannel at both endpoints. Voice follows the needed paths of that tree in
+either direction; a participant can forward without joining or hearing the call.
+Leaving the room view ends reading, while active media and necessary transit remain.
+
+Screens still use their own bounded distribution trees: the source first serves
+two subscribers, then ready subscribers can relay. Server-owned default rooms use
+these publication plans until the Server has a Native media endpoint.
+Compatible base and media flows reuse physical peer connections. A relay can stop
+watching while continuing to serve downstream viewers; its transit ends when that
+demand ends. A failed DataChannel repairs its room paths without closing healthy
+media on the same connection. Stopping one share keeps unrelated received and
+forwarded media alive. Browser relays can decode and re-encode; Native encoded forwarding and SFU
 fallback are not implemented here. Browser WebRTC owns ICE and congestion control.
 Optional `PIIK_CHANNEL_ICE_SERVERS` supplies an ICE-server JSON array; local checks
 do not establish public-NAT connectivity or reliable background Browser service.
@@ -218,6 +228,7 @@ node prototype/channel-server/run-browser-check.mjs
 node prototype/channel-server/run-browser-check.mjs --rooms
 node prototype/channel-server/run-browser-check.mjs --lifecycle
 node prototype/channel-server/run-browser-check.mjs --hosts
+node prototype/channel-server/run-browser-check.mjs --base
 ```
 
 Browser checks require `agent-browser` and its installed Chromium. The runner
@@ -227,7 +238,9 @@ service running or restart another instance. Default acceptance covers multiple
 real Browser peers and relay recovery; `--rooms` exercises room access and files;
 `--lifecycle` focuses on capture, offline intent and expiry; `--hosts` exercises
 separate domain/Browser ownership, private admission, room recovery, cross-room
-media and actual IndexedDB/SQLite placement. Generated captures
+media and actual IndexedDB/SQLite placement. `--base` blocks one direct negotiation
+and verifies bidirectional voice through a non-listening relay, DataChannel failure
+recovery and independent cross-room media leases. Generated captures
 replace only the system picker, not business state, routing or peer connections.
 The storage check owns an isolated temporary database and tests real HTTP,
 WebSocket, process restart and failed-write rollback.

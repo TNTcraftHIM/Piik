@@ -206,6 +206,7 @@ export class ChannelSession {
   private applyState(state: ChannelSnapshot): void {
     const sessionId = this.view.sessionId;
     if (!sessionId) return;
+    const previousRooms = this.view.state?.channel.rooms;
     const userId = state.sessions.find(session => session.id === sessionId)?.userId;
     for (const id of this.admittedPublications) {
       if (!state.publications.some(publication => publication.id === id)) this.retireCapture(id);
@@ -241,6 +242,12 @@ export class ChannelSession {
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id))),
     });
+    if (this.view.connection === "connected") for (const room of state.channel.rooms) {
+      if (room.id !== this.roomId && room.reading && room.authorized && room.available
+        && previousRooms?.some(previous => previous.id === room.id && !previous.available)) {
+        this.write({ type: "browse", roomId: room.id, active: false });
+      }
+    }
     this.media.update(sessionId, state);
     this.releaseUnusedMicrophone();
   }
@@ -317,9 +324,16 @@ export class ChannelSession {
   }
 
   browse = (roomId: string): void => {
+    const previous = this.roomId;
     this.roomId = roomId;
-    if (this.view.connection === "connected" && this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.available)) {
-      this.write({ type: "browse", roomId });
+    if (this.view.connection !== "connected") return;
+    for (const room of this.view.state?.channel.rooms ?? []) {
+      if (room.id !== roomId && (room.reading || room.id === previous) && room.authorized && room.available) {
+        this.write({ type: "browse", roomId: room.id, active: false });
+      }
+    }
+    if (this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.available)) {
+      this.write({ type: "browse", roomId, active: true });
     }
   };
   acceptRoomInvitation = async (): Promise<string | null> => {
@@ -359,7 +373,7 @@ export class ChannelSession {
     if (this.view.sessionId !== sessionId || this.closed) { await host.close(); throw new Error("disconnected"); }
     this.hostedRooms.set(roomId, { host });
     await this.request({ type: "host_register", room: host.summary() });
-    await this.request({ type: "browse", roomId });
+    await this.request({ type: "browse", roomId, active: true });
     return roomId;
   });
   updateRoom = (roomId: string, settings: RoomSettings): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }));

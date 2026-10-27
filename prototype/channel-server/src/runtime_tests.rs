@@ -241,7 +241,10 @@ fn room_commit_owns_confirmation_retry_and_broadcast_without_domain_checkpoint()
     };
     let mut sender = Endpoint::join(&mut hub, "owner");
     let mut reader = Endpoint::join(&mut hub, "invite");
-    reader.request(&mut hub, json!({"type":"browse", "roomId":"living"}));
+    reader.request(
+        &mut hub,
+        json!({"type":"browse", "active":true, "roomId":"living"}),
+    );
     reader.drain();
     sender.drain();
     let database = rusqlite::Connection::open(&path).unwrap();
@@ -269,8 +272,12 @@ fn room_commit_owns_confirmation_retry_and_broadcast_without_domain_checkpoint()
         vec![json!({"type":"message", "roomId":"living", "message":confirmed[0]["message"]})]
     );
 
-    sender.request(&mut hub, json!({"type":"browse", "roomId":"quiet"}));
+    sender.request(
+        &mut hub,
+        json!({"type":"browse", "active":true, "roomId":"quiet"}),
+    );
     sender.drain();
+    reader.drain();
     database.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'metadata unavailable'); END;").unwrap();
     sender.request(&mut hub, json!({"type":"chat", "roomId":"living", "text":"Changed retry", "nonce":"same-send", "requestId":"retry"}));
     let retry = sender.drain();

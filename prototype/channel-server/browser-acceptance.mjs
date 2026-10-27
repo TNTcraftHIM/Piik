@@ -38,7 +38,8 @@ const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}
 const lifecycleOnly = process.argv.includes("--lifecycle");
 const roomsOnly = process.argv.includes("--rooms");
 const hostsOnly = process.argv.includes("--hosts");
-const active = lifecycleOnly || roomsOnly || hostsOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const baseOnly = process.argv.includes("--base");
+const active = baseOnly ? [0, 1, 2, 3] : lifecycleOnly || roomsOnly || hostsOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   const { stdout } = await run(executable, ["--session", sessions[index], "--json", ...args], {
     timeout: 35_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
@@ -67,22 +68,32 @@ function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
-    const peers = [], sockets = [], captures = [], contexts = [], protocol = [];
+    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [];
+    const blockedPeers = new Set(), pairPeers = new Map();
     const record = (direction, data) => {
       const event = JSON.parse(data);
+      for (const pair of event.state?.pairs ?? []) pairPeers.set(pair.id, pair.peerId);
       protocol.push({ direction, type:event.type, room:event.roomId, request:event.requestId,
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
         binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
         result:event.result?.type ?? event.output?.reply?.result?.type, code:event.code });
       if (protocol.length > 64) protocol.shift();
+      return event;
     };
     const NativePC = window.RTCPeerConnection, NativeWS = window.WebSocket;
     window.RTCPeerConnection = class extends NativePC {
-      constructor(...args) { super(...args); peers.push(this); }
+      constructor(...args) { super(...args); peers.push(this); this.addEventListener('datachannel', event => channels.push(event.channel)); }
+      createDataChannel(...args) { const channel = super.createDataChannel(...args); channels.push(channel); return channel; }
     };
     window.WebSocket = class extends NativeWS {
-      constructor(...args) { super(...args); sockets.push(this); this.addEventListener('message', event => record('received', event.data)); }
-      send(data) { record('sent', data); return super.send(data); }
+      constructor(...args) { super(...args); sockets.push(this); this.addEventListener('message', message => {
+        const event = record('received', message.data);
+        if (event.type === 'signal' && blockedPeers.has(event.fromSessionId)) message.stopImmediatePropagation();
+      }); }
+      send(data) { const event = record('sent', data);
+        if (event.type === 'signal' && blockedPeers.has(pairPeers.get(event.pairId))) return;
+        return super.send(data);
+      }
     };
     const microphone = () => {
       const context = new AudioContext(), oscillator = context.createOscillator();
@@ -111,6 +122,8 @@ function captureProbe(name) {
       return stream;
     };
     window.__channelProbe = { peers, sockets, captures, contexts,
+      blockPeer(sessionId) { blockedPeers.add(sessionId); },
+      closeDataChannels() { for (const channel of channels) channel.close(); },
       async sample() {
         const inbound = [], outbound = [];
         for (const pc of peers) if (pc.connectionState === 'connected') {
@@ -121,6 +134,7 @@ function captureProbe(name) {
           }
         }
         return { inbound, outbound, protocol, connections: peers.map(pc => pc.connectionState),
+          channels: channels.map(channel => ({ label: channel.label, state: channel.readyState })),
           videos: [...document.querySelectorAll('video')].map(video => ({ time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),
           captures: captures.flatMap(stream => stream.getTracks().map(track => ({ kind: track.kind, state: track.readyState }))),
@@ -174,6 +188,85 @@ async function assertNoError(index, flow) {
 }
 const dropSignaling = index => evaluate(index,
   "window.__channelProbe.sockets.filter(socket => socket.readyState === WebSocket.OPEN && new URL(socket.url).pathname === '/prototype/channel').forEach(socket => socket.close())");
+
+async function roomBase(initial, serverRoom) {
+  const source = await capturedScreen(1, serverRoom);
+  await action(2, `watch(${JSON.stringify(source)})`);
+  await playing(2, source);
+  const originalPair = (await view(2)).state.pairs.find(pair => pair.incoming.includes(source)).id;
+  const room = await action(1, "createRoom({name:'Connected room',access:'public',hidden:false})");
+  for (const index of [1, 2]) await browser(index, "click", '.c3-room-link[aria-label="Connected room"]');
+  await until("base reuses the existing screen connection", () => view(2), value =>
+    value.state.pairs.some(pair => pair.id === originalPair && pair.rooms.includes(room)));
+  await until("room DataChannel opens", () => sample(2), value => value.channels.some(channel => channel.state === "open"));
+
+  // Prevent this pair's real SDP/ICE exchange. Other peer negotiations still run.
+  // This is a controlled unreachable edge, not a model of a particular NAT.
+  await evaluate(1, `window.__channelProbe.blockPeer(${JSON.stringify(initial[3].sessionId)})`);
+  await evaluate(3, `window.__channelProbe.blockPeer(${JSON.stringify(initial[1].sessionId)})`);
+  await browser(3, "click", '.c3-room-link[aria-label="Connected room"]');
+  await until("D reaches its room through C after B-D fails", () => view(3), value =>
+    value.state.pairs.some(pair => pair.peerId === initial[2].sessionId && pair.rooms.includes(room)), 35_000);
+  await action(1, `joinVoice(${JSON.stringify(room)}, true)`);
+  await action(3, `joinVoice(${JSON.stringify(room)})`);
+  await until("voice crosses the base transit", () => sample(1), value =>
+    value.inbound.some(report => report.kind === "audio" && report.samples > 0 && report.energy > 0));
+  const dVoice = (await view(3)).state.publications.find(value => value.sessionId === initial[3].sessionId && value.kind === "voice").id;
+  const cTransit = await view(2);
+  assert(cTransit.state.pairs.some(pair => pair.incoming.includes(dVoice)));
+  assert(cTransit.state.pairs.some(pair => pair.outgoing.includes(dVoice)));
+  assert(!cTransit.state.subscriptions.includes(dVoice), "transit does not join voice or play it locally");
+  assert(await evaluate(2, "[...document.querySelectorAll('audio')].filter(audio => audio.srcObject).every(audio => audio.hidden && audio.muted)"),
+    "transit decoder consumers must remain silent and absent from local playback");
+  await progressing(2, source);
+
+  await action(1, `setMuted(${JSON.stringify(room)}, false)`);
+  await until("reverse voice crosses the same base edges", () => sample(3), value =>
+    value.inbound.some(report => report.kind === "audio" && report.samples > 0 && report.energy > 0));
+  const voicePairIds = (await view(1)).state.pairs.map(pair => pair.id).sort();
+  await action(1, `setDeafened(${JSON.stringify(room)}, true)`);
+  await until("deafen only mutes local voice", () => evaluate(1,
+    "[...document.querySelectorAll('audio')].filter(audio => audio.srcObject).map(audio => audio.muted)"), value => value.length > 0 && value.every(Boolean));
+  assert.deepEqual((await view(1)).state.pairs.map(pair => pair.id).sort(), voicePairIds);
+  await action(1, `setDeafened(${JSON.stringify(room)}, false)`);
+  await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
+  assert((await view(2)).state.pairs.some(pair => pair.rooms.includes(room)), "leaving the view preserves necessary transit");
+  await progressing(2, source);
+
+  await browser(0, "click", '.c3-room-link[aria-label="Connected room"]');
+  await until("A becomes an available base branch", () => view(0), value => value.state.pairs.some(pair => pair.rooms.includes(room)));
+  await action(0, `watch(${JSON.stringify(source)})`);
+  await playing(0, source);
+  const survivingPair = (await view(0)).state.pairs.find(pair => pair.incoming.includes(source)).id;
+  await evaluate(2, "window.__channelProbe.closeDataChannels()");
+  await until("D repairs through A after its transit DataChannel closes", () => view(3), value =>
+    value.state.pairs.some(pair => pair.rooms.includes(room) && pair.peerId === initial[0].sessionId), 30_000);
+  const energyBefore = (await sample(1)).inbound.filter(report => report.kind === "audio").reduce((total, report) => total + (report.energy ?? 0), 0);
+  await until("voice resumes on the replacement base path", () => sample(1), value =>
+    value.inbound.filter(report => report.kind === "audio").reduce((total, report) => total + (report.energy ?? 0), 0) > energyBefore);
+  await progressing(0, source);
+  await progressing(2, source);
+  assert((await view(2)).state.pairs.some(pair => pair.id === originalPair && pair.incoming.includes(source)), "a failed DataChannel must not close the same pair's healthy picture");
+  assert((await view(0)).state.pairs.some(pair => pair.id === survivingPair && pair.incoming.includes(source)), "base repair preserves unrelated screen transport");
+  await browser(2, "close");
+
+  for (const index of [1, 3]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
+  await until("last voice stops without closing base connections", () => view(3), value =>
+    !value.state.voice.some(member => member.roomId === room) && value.state.pairs.some(pair => pair.rooms.includes(room)));
+  for (const index of [0, 3]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
+  await until("last room demand releases only base leases", () => view(0), value =>
+    !value.state.pairs.some(pair => pair.rooms.includes(room)) && value.state.pairs.some(pair => pair.id === survivingPair && pair.incoming.includes(source)));
+  await progressing(0, source);
+  await action(1, `stopScreen(${JSON.stringify(source)})`);
+  await until("last physical lease closes the pair", () => view(0), value => !value.state.pairs.some(pair => pair.id === survivingPair));
+  for (const index of [0, 1, 3]) await assertNoError(index, "room base lifecycle");
+  await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true,
+    scenarios: ["room entry without capture", "media/base transport reuse", "unreachable direct edge",
+      "bidirectional voice through a non-listener", "deafen keeps routes", "view change preserves transit",
+      "failed DataChannel repairs voice without closing healthy RTP", "retired transit leaves independently",
+      "repair preserves another room's picture", "voice stop keeps base", "last lease retirement"] }, null, 2));
+  console.log("Room DataChannels, bidirectional voice transit and shared media leases passed real Browser acceptance");
+}
 
 async function roomOwner(initial, serverRoom) {
   const room = await action(1, "createRoom({name:'Browser-owned room',access:'private',hidden:true,password:'browser-room-password'})");
@@ -474,7 +567,10 @@ try {
   }
   const roomId = initial[0].state.channel.rooms[0].id;
   assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
-  if (hostsOnly) {
+  if (baseOnly) {
+    await roomBase(initial, roomId);
+    console.log(`Room base acceptance passed; evidence: ${output}`);
+  } else if (hostsOnly) {
     await roomOwner(initial, roomId);
     console.log(`Browser room-owner acceptance passed; evidence: ${output}`);
   } else if (roomsOnly) {

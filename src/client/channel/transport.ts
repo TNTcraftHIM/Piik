@@ -7,6 +7,7 @@ interface TransportOptions {
   send(payload: ChannelSignal): void;
   receive(publicationId: string, stream: MediaStream): void;
   connected(): void;
+  base(ready: boolean): void;
   failed(): void;
 }
 
@@ -23,10 +24,13 @@ export class ChannelTransport {
   private operations: Promise<void> = Promise.resolve();
   private deadline: ReturnType<typeof setTimeout> | null;
   private closed = false;
+  private rooms = new Set<string>();
+  private channel: RTCDataChannel | null = null;
+  private baseFailed = false;
 
   constructor(private options: TransportOptions) {
     this.pc = new RTCPeerConnection({ iceServers: options.iceServers, bundlePolicy: "max-bundle" });
-    this.deadline = setTimeout(() => this.fail(), 20000);
+    this.deadline = setTimeout(() => this.timeout(), 20000);
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) options.send({ candidate: candidate.toJSON() });
     };
@@ -42,9 +46,14 @@ export class ChannelTransport {
     };
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
-        this.clearDeadline();
         options.connected();
+        this.reportBaseReady();
+        this.syncDeadline();
       } else if (this.pc.connectionState === "failed") this.fail();
+    };
+    this.pc.ondatachannel = ({ channel }) => {
+      if (channel.label !== "piik-room" || this.channel) { channel.close(); return; }
+      this.installChannel(channel);
     };
     this.pc.ontrack = ({ streams }) => {
       for (const stream of streams) {
@@ -53,6 +62,68 @@ export class ChannelTransport {
         if (publicationId) options.receive(publicationId, stream);
       }
     };
+  }
+
+  /** Room leases share one reliable ordered channel on this physical pair. */
+  setRooms(rooms: readonly string[]): void {
+    const added = rooms.some(room => !this.rooms.has(room));
+    this.rooms = new Set(rooms);
+    if (added) this.baseFailed = false;
+    if (this.rooms.size && !this.baseFailed && !this.channel && !this.options.polite) {
+      this.installChannel(this.pc.createDataChannel("piik-room", { ordered: true }));
+    }
+    this.reportBaseReady();
+    this.syncDeadline();
+  }
+
+  isBaseReady(): boolean {
+    return !this.closed && !this.baseFailed && this.rooms.size > 0
+      && this.channel?.readyState === "open" && this.pc.connectionState === "connected";
+  }
+
+  private installChannel(channel: RTCDataChannel): void {
+    this.channel = channel;
+    const current = () => !this.closed && this.channel === channel;
+    channel.onopen = () => { if (current()) { this.reportBaseReady(); this.syncDeadline(); } };
+    const failed = () => {
+      if (!current()) return;
+      this.channel = null;
+      this.failBase();
+      channel.close();
+    };
+    channel.onclose = failed;
+    channel.onerror = failed;
+    this.reportBaseReady();
+    this.syncDeadline();
+  }
+
+  private reportBaseReady(): void {
+    if (this.isBaseReady()) this.options.base(true);
+  }
+
+  private failBase(): void {
+    if (!this.rooms.size || this.baseFailed) return;
+    this.baseFailed = true;
+    const channel = this.channel;
+    this.channel = null;
+    channel?.close();
+    this.options.base(false);
+    this.syncDeadline();
+  }
+
+  private syncDeadline(): void {
+    if (this.pc.connectionState === "connected" && (!this.rooms.size || this.baseFailed || this.channel?.readyState === "open")) {
+      this.clearDeadline();
+    } else if (this.rooms.size && !this.baseFailed && this.channel?.readyState !== "open" && this.deadline === null) {
+      this.deadline = setTimeout(() => this.timeout(), 20000);
+    }
+  }
+
+  private timeout(): void {
+    this.deadline = null;
+    if (this.closed) return;
+    if (this.pc.connectionState === "connected") this.failBase();
+    else this.fail();
   }
 
   setOutgoing(streams: ReadonlyMap<string, MediaStream>): void {
@@ -117,6 +188,7 @@ export class ChannelTransport {
   private fail(): void {
     if (this.closed) return;
     this.clearDeadline();
+    this.failBase();
     this.options.failed();
   }
 
@@ -127,6 +199,9 @@ export class ChannelTransport {
     this.pc.ontrack = null;
     this.pc.onnegotiationneeded = null;
     this.pc.onconnectionstatechange = null;
+    this.pc.ondatachannel = null;
+    this.channel?.close();
+    this.channel = null;
     this.pc.close();
     this.sending.clear();
     this.receiving.clear();

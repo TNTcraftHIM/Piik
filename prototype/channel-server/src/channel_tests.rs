@@ -407,6 +407,7 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
             first.session_id,
             Command::Browse {
                 room_id: "living".into(),
+                active: true,
             },
             0,
         )
@@ -416,6 +417,7 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
             second.session_id,
             Command::Browse {
                 room_id: "quiet".into(),
+                active: true,
             },
             0,
         )

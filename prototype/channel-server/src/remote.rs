@@ -36,11 +36,13 @@ impl RemoteRoom {
         self.binding = None;
         if let Some(projection) = &mut self.projection {
             projection.flows.clear();
+            projection.base_links.clear();
             for view in projection.views.values_mut() {
                 view.publications.clear();
                 view.voice.clear();
                 view.subscriptions.clear();
                 view.room.available = false;
+                view.room.reading = false;
             }
         }
     }
@@ -63,6 +65,7 @@ impl RemoteRoom {
             HostAction::Command { context, .. }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
+            | HostAction::BaseState { context, .. }
             | HostAction::GrantInvited { context } => Some(ReplyOwner::Request(context.clone())),
             HostAction::VerifyInvite { ticket, .. } => Some(ReplyOwner::Invitation(*ticket)),
             _ => None,
@@ -81,6 +84,7 @@ impl RemoteRoom {
             binding.session,
             HostInput {
                 binding_id: binding.id,
+                host_session_id: binding.session,
                 revision: binding.revision,
                 endpoints,
                 action,
@@ -109,6 +113,7 @@ impl RemoteRoom {
                 authorized: manager || self.summary.access == RoomAccess::Public,
                 can_manage: manager,
                 available: false,
+                reading: false,
                 capabilities: RoomCapabilities { attachments: false },
                 members: None,
             },

@@ -23,6 +23,7 @@ pub enum Command {
     },
     Browse {
         room_id: String,
+        active: bool,
     },
     Chat {
         room_id: String,
@@ -101,6 +102,11 @@ pub enum Command {
     },
     FlowState {
         publication_id: Uuid,
+        pair_id: Uuid,
+        ready: bool,
+    },
+    BaseState {
+        room_id: String,
         pair_id: Uuid,
         ready: bool,
     },
@@ -251,6 +257,7 @@ pub struct Room {
     pub authorized: bool,
     pub can_manage: bool,
     pub available: bool,
+    pub reading: bool,
     pub capabilities: RoomCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<Uuid>>,
@@ -295,6 +302,7 @@ pub struct SessionInfo {
 pub struct PairInfo {
     pub id: Uuid,
     pub peer_id: Uuid,
+    pub rooms: Vec<String>,
     pub outgoing: Vec<Uuid>,
     pub incoming: Vec<Uuid>,
 }

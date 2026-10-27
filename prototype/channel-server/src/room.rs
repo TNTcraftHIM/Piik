@@ -2,8 +2,8 @@ use crate::{
     access::{RoomPermission, RoomState},
     history::{HistoryRequest, MessageDraft},
     identity::{Endpoint, Member},
-    routes::Plan,
-    transport::Flow,
+    routes::{BaseTree, Plan},
+    transport::{BaseLink, Flow},
     wire::{Kind, PublicationInfo, Room, RoomAccess, VoiceInfo},
 };
 use serde::{Deserialize, Serialize};
@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 #[derive(Clone, Default)]
 struct Activity {
+    reading: bool,
     watching: BTreeSet<Uuid>,
     voice: Option<VoiceInfo>,
 }
@@ -29,6 +30,7 @@ pub struct RoomRuntime {
     policy: RoomState,
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
+    base: Option<BaseTree>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -46,6 +48,7 @@ impl RoomRuntime {
             policy,
             activity: BTreeMap::new(),
             publications: BTreeMap::new(),
+            base: None,
         }
     }
 
@@ -76,7 +79,8 @@ impl RoomRuntime {
     }
 
     pub fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
-        let room = self.policy.view(member.user_id, member.domain_owner)?;
+        let mut room = self.policy.view(member.user_id, member.domain_owner)?;
+        room.reading = room.authorized && self.reading(session);
         let mut snapshot = RoomSnapshot {
             room,
             publications: Vec::new(),
@@ -93,6 +97,31 @@ impl RoomRuntime {
 
     pub fn accepts_invite(&self, key: &str) -> bool {
         self.policy.accepts_invite(key)
+    }
+
+    pub fn set_host_session(&mut self, session: Uuid) {
+        if self.base.as_ref().is_none_or(|base| base.root() != session) {
+            self.base = Some(BaseTree::new(session));
+        }
+    }
+    pub fn reading(&self, session: Uuid) -> bool {
+        self.activity
+            .get(&session)
+            .is_some_and(|activity| activity.reading)
+    }
+    pub fn browse(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        active: bool,
+    ) -> Result<Option<HistoryRequest>, &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        self.activity.entry(session).or_default().reading = active;
+        if active {
+            self.history(member, None).map(Some)
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn grant_invited(&mut self, user: Uuid) {
@@ -321,6 +350,14 @@ impl RoomRuntime {
     }
 
     pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>) {
+        let readable: BTreeSet<_> = endpoints
+            .iter()
+            .filter_map(|(session, endpoint)| {
+                self.authorize(endpoint.member, RoomPermission::Read)
+                    .is_ok()
+                    .then_some(*session)
+            })
+            .collect();
         let available: BTreeSet<_> = endpoints
             .iter()
             .filter_map(|(session, endpoint)| {
@@ -332,8 +369,12 @@ impl RoomRuntime {
         self.publications
             .retain(|_, publication| available.contains(&publication.info.session_id));
         self.activity
-            .retain(|session, _| available.contains(session));
-        for activity in self.activity.values_mut() {
+            .retain(|session, _| readable.contains(session));
+        for (session, activity) in &mut self.activity {
+            if !available.contains(session) {
+                activity.voice = None;
+                activity.watching.clear();
+            }
             activity
                 .watching
                 .retain(|id| self.publications.contains_key(id));
@@ -349,7 +390,28 @@ impl RoomRuntime {
                 (endpoint.connected && available.contains(session)).then_some(*session)
             })
             .collect();
+        if let Some(base) = &mut self.base {
+            let mut demand: BTreeSet<_> = self
+                .activity
+                .iter()
+                .filter_map(|(session, activity)| {
+                    (activity.reading || activity.voice.is_some() || !activity.watching.is_empty())
+                        .then_some(*session)
+                })
+                .collect();
+            demand.extend(self.publications.values().map(|p| p.info.session_id));
+            let base_connected = endpoints
+                .iter()
+                .filter_map(|(session, endpoint)| {
+                    (endpoint.connected && readable.contains(session)).then_some(*session)
+                })
+                .collect();
+            base.reconcile(&demand, &readable, &base_connected);
+        }
         for (id, publication) in &mut self.publications {
+            if self.base.is_some() && publication.info.kind == Kind::Voice {
+                continue;
+            }
             let subscribers = requested
                 .iter()
                 .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
@@ -362,19 +424,64 @@ impl RoomRuntime {
 
     pub fn flows(&self) -> impl Iterator<Item = Flow> + '_ {
         self.publications.iter().flat_map(|(id, publication)| {
-            publication
-                .plan
-                .parents
-                .iter()
-                .map(move |(child, parent)| Flow {
-                    publication_id: *id,
-                    sender: *parent,
-                    receiver: *child,
-                })
+            let paths: BTreeSet<_> = if let Some(base) = self
+                .base
+                .as_ref()
+                .filter(|_| publication.info.kind == Kind::Voice)
+            {
+                base.project(
+                    publication.info.session_id,
+                    &self
+                        .activity
+                        .iter()
+                        .filter_map(|(session, activity)| {
+                            activity.voice.is_some().then_some(*session)
+                        })
+                        .collect(),
+                )
+            } else {
+                publication
+                    .plan
+                    .parents
+                    .iter()
+                    .map(|(child, parent)| (*parent, *child))
+                    .collect()
+            };
+            paths.into_iter().map(move |(parent, child)| Flow {
+                publication_id: *id,
+                sender: parent,
+                receiver: child,
+            })
         })
     }
 
+    pub fn base_links(&self) -> impl Iterator<Item = BaseLink> + '_ {
+        self.base
+            .iter()
+            .flat_map(|base| base.links())
+            .map(|(parent, child)| BaseLink {
+                room_id: self.policy.id.clone(),
+                parent,
+                child,
+            })
+    }
+    pub fn base_state(
+        &mut self,
+        endpoint: Uuid,
+        peer: Uuid,
+        ready: bool,
+    ) -> Result<bool, &'static str> {
+        Ok(self
+            .base
+            .as_mut()
+            .ok_or("base_unavailable")?
+            .state(endpoint, peer, ready))
+    }
+
     pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
+        if let Some(base) = &mut self.base {
+            base.failed(first, second);
+        }
         for publication in self.publications.values_mut() {
             publication.plan.failed(first, second);
         }
@@ -387,6 +494,15 @@ impl RoomRuntime {
         sender: Uuid,
         ready: bool,
     ) -> Result<bool, &'static str> {
+        if self.base.is_some() && self.publication(id).is_some_and(|p| p.kind == Kind::Voice) {
+            return if self.flows().any(|flow| {
+                flow.publication_id == id && flow.sender == sender && flow.receiver == receiver
+            }) {
+                Ok(false)
+            } else {
+                Err("not_assigned_receiver")
+            };
+        }
         let publication = self
             .publications
             .get_mut(&id)

@@ -367,8 +367,10 @@ restarting captures or voice.
 
 Domain WebSocket rendezvous currently carries authenticated room commands and
 replies. Server-owned rooms retain HTTP attachments; Browser-owned rooms wait for
-peer file delivery rather than storing their content on the domain. App hosting,
-shared room paths, peer file bytes and participant history caches remain integration work.
+peer file delivery rather than storing their content on the domain. The shared
+base paths now carry Browser-room voice; room commands/history and file bytes
+still need that carrier integration. App hosting and participant history caches
+remain later work.
 
 The next carrier check extends the separate A-domain/B-room-owner model:
 C and D receive history along admitted room paths, so A no longer carries every

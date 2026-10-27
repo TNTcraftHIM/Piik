@@ -18,8 +18,10 @@ authenticated bindings; confirmed history and private policy stay with the room.
 The [accepted routing foundation](./research/channel-network-design.md) assigns
 each room to its actual operator and starts video on usable room paths before
 bounded source-rooted convergence. The [data model](./research/channel-storage-and-identity.md)
-owns history and file delivery. Shared room paths, Native hosting and peer file
-delivery are next. [TODO](./todo.md) owns remaining stages and platform reports.
+owns history and file delivery. Browser-hosted rooms now share base connections
+for reading and media demand, with bidirectional voice on those paths. Native
+hosting and peer file delivery are next. [TODO](./todo.md) owns remaining stages
+and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 

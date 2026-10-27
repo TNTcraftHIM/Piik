@@ -19,7 +19,7 @@ window.runBrowserRoomCheck = async () => {
   let host = await BrowserRoomHost.open(database, policy);
   await host.bind(bindingId);
   const dispatch = async (command: object, signal?: AbortSignal, target = host): Promise<Output> => target.dispatch({
-    bindingId, revision: ++revision, endpoints,
+    bindingId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
   }, signal) as Promise<Output>;
   const send = async (text: string, nonce: string, attachments: string[] = [], signal?: AbortSignal) => {
@@ -33,7 +33,7 @@ window.runBrowserRoomCheck = async () => {
     return output.reply.result.result;
   };
   try {
-    const initial = await dispatch({ type: "browse", roomId: host.roomId });
+    const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
     check(initial.projection.views[session].room.canManage, "room owner view comes from shared Rust");
     const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", creatorId: owner.userId,
       access: "private", hidden: true });
@@ -41,20 +41,20 @@ window.runBrowserRoomCheck = async () => {
     await privateHost.bind(bindingId);
     try {
       const guestSession = crypto.randomUUID();
-      const output = await privateHost.dispatch({ bindingId, revision: ++revision,
-        endpoints: { [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true } },
+      const output = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision,
+        endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true } },
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: "hidden", now: Date.now() },
           command: { type: "history", roomId: privateHost.roomId } },
       }) as Output;
       check(!output.projection.views[guestSession] && output.reply?.result.type === "error", "shared private-room policy hides its view");
       const invitation = await dispatch({ type: "room_invite", roomId: privateHost.roomId }, undefined, privateHost);
-      const verified = await privateHost.dispatch({ bindingId, revision: ++revision, endpoints,
+      const verified = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints,
         action: { type: "verify_invite", ticket: crypto.randomUUID(), key: invitation.reply!.result.key, member: null },
       }) as Output;
       check(verified.invitation?.accepted, "shared room verifies private invitation");
       const guest = { ...owner, userId: crypto.randomUUID() };
       const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true } };
-      const granted = await privateHost.dispatch({ bindingId, revision: ++revision, endpoints: guestEndpoints,
+      const granted = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
         action: { type: "grant_invited", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() } },
       }) as Output;
       check(granted.reply?.result.type === "invited" && granted.projection.views[guestSession], "committed grant returns invited projection");
@@ -62,7 +62,7 @@ window.runBrowserRoomCheck = async () => {
       const reopened = await BrowserRoomHost.open(database, privatePolicy);
       await reopened.bind(bindingId);
       try {
-        const restored = await reopened.dispatch({ bindingId, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const restored = await reopened.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
@@ -106,13 +106,13 @@ window.runBrowserRoomCheck = async () => {
     await host.close();
     host = await BrowserRoomHost.open(database, policy);
     await host.bind(bindingId);
-    const restored = await dispatch({ type: "browse", roomId: host.roomId });
+    const restored = await dispatch({ type: "browse", active: true, roomId: host.roomId });
     check(restored.projection.views[session].publications.length === 0, "restart restores policy/history, not capture");
     check((await BrowserRoomHost.storedPolicies(database)).length === 2, "persisted room policies enumerated");
     const publication = crypto.randomUUID();
     await dispatch({ type: "publish", publication: { id: publication, roomId: host.roomId, kind: "screen", muted: false } });
     await host.bind(bindingId);
-    check((await dispatch({ type: "browse", roomId: host.roomId })).projection.views[session].publications.length === 1,
+    check((await dispatch({ type: "browse", active: true, roomId: host.roomId })).projection.views[session].publications.length === 1,
       "same binding preserves live activity");
     const previousHost = host, previousBinding = bindingId;
     const lateClaim = await BrowserRoomHost.open(database, policy);
@@ -133,7 +133,7 @@ window.runBrowserRoomCheck = async () => {
         { type: "chat", roomId: previousHost.roomId, text: "Stale message", nonce: "stale", attachments: [] },
         { type: "history", roomId: previousHost.roomId },
       ]) {
-        const stale = await previousHost.dispatch({ bindingId: previousBinding, revision: ++revision, endpoints,
+        const stale = await previousHost.dispatch({ bindingId: previousBinding, hostSessionId: session, revision: ++revision, endpoints,
           action: { type: "command", context: { connection, sessionId: session, requestId: null, now: Date.now() }, command },
         }) as Output;
         check(stale.reply?.result.type === "error" && stale.reply.result.code === "stale_room_host", "old owner cannot write or confirm history");

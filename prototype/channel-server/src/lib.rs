@@ -153,6 +153,13 @@ impl Authority {
             self.join(connection, request, now, &mut effects);
             return effects;
         };
+        // Transport completion can arrive after its last lease has retired.
+        if !self.channel.current_report(session_id, &request.command) {
+            if let Some(request_id) = request.request_id {
+                effects.events.push((connection, Event::Ack { request_id }));
+            }
+            return effects;
+        }
         let context = RequestContext {
             connection,
             session_id,
@@ -613,49 +620,44 @@ impl Authority {
             }
             let mut completion = RoomResult::Done;
             match reply.result {
-                RoomResult::History { result, browse } => {
-                    if browse {
-                        self.channel.browse_remote(context.session_id, room_id);
-                    }
-                    match result {
-                        history::HistoryResult::Page {
+                RoomResult::History { result } => match result {
+                    history::HistoryResult::Page {
+                        messages,
+                        has_more,
+                        oldest_seq,
+                        before,
+                    } => effects.events.push((
+                        context.connection,
+                        Event::History {
+                            room_id: room_id.into(),
                             messages,
                             has_more,
                             oldest_seq,
                             before,
-                        } => effects.events.push((
-                            context.connection,
-                            Event::History {
-                                room_id: room_id.into(),
-                                messages,
-                                has_more,
-                                oldest_seq,
-                                before,
-                            },
-                        )),
-                        history::HistoryResult::Sent(confirmation) => {
-                            if confirmation.inserted {
-                                for audience in self.channel.history_audience(room_id) {
-                                    effects.events.push((
-                                        audience,
-                                        Event::Message {
-                                            room_id: room_id.into(),
-                                            message: confirmation.message.clone(),
-                                        },
-                                    ));
-                                }
+                        },
+                    )),
+                    history::HistoryResult::Sent(confirmation) => {
+                        if confirmation.inserted {
+                            for audience in self.channel.history_audience(room_id) {
+                                effects.events.push((
+                                    audience,
+                                    Event::Message {
+                                        room_id: room_id.into(),
+                                        message: confirmation.message.clone(),
+                                    },
+                                ));
                             }
-                            effects.events.push((
-                                context.connection,
-                                Event::MessageConfirmed {
-                                    room_id: room_id.into(),
-                                    message: confirmation.message,
-                                    request_id: context.request_id.clone(),
-                                },
-                            ));
                         }
+                        effects.events.push((
+                            context.connection,
+                            Event::MessageConfirmed {
+                                room_id: room_id.into(),
+                                message: confirmation.message,
+                                request_id: context.request_id.clone(),
+                            },
+                        ));
                     }
-                }
+                },
                 RoomResult::Invite { key } => effects.events.push((
                     context.connection,
                     Event::RoomInvite {

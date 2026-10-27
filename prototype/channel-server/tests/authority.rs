@@ -152,10 +152,22 @@ fn history_requests_carry_authenticated_author_and_defer_confirmation() {
     let browse = apply(
         &mut core,
         connection,
-        json!({"type":"browse", "roomId":"studio", "requestId":"browse"}),
+        json!({"type":"browse","active":true, "roomId":"studio", "requestId":"browse"}),
         1,
     );
-    assert!(browse.events.is_empty());
+    assert!(browse
+        .events
+        .iter()
+        .all(|(_, event)| !matches!(event, Event::Ack { .. } | Event::History { .. })));
+    assert!(
+        state(&browse, connection)
+            .channel
+            .rooms
+            .iter()
+            .find(|room| room.id == "studio")
+            .unwrap()
+            .reading
+    );
     assert!(matches!(
         browse.history.unwrap().request,
         HistoryRequest::Read { room_id, before: None } if room_id == "studio"

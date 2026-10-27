@@ -150,7 +150,7 @@ try {
   const failedUpload = await upload(member, roomId, "commit-retry.bin", Buffer.from("retry"));
   assert.equal(failedUpload.status, 200);
   const failedAttachment = await failedUpload.json();
-  assert.equal((await member.request({ type: "browse", roomId })).type, "ack");
+  assert.equal((await member.request({ type: "browse", roomId, active: true })).type, "ack");
   database.exec(`CREATE TABLE fail_message_commit (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
     CREATE TRIGGER fail_message AFTER INSERT ON message BEGIN INSERT INTO fail_message_commit VALUES('missing'); END;`);
   const failedNonce = randomUUID();

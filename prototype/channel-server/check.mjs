@@ -93,7 +93,7 @@ test("authenticated users, role authority, attributed chat and selective source 
   assert.equal((await owner.request({ type: "set_roles", userId: friendUser, roles: ["member"] })).type, "ack");
 
   const roomId = state.channel.rooms[0].id;
-  for (const client of [owner, friend, other]) assert.equal((await client.request({ type: "browse", roomId })).type, "ack");
+  for (const client of [owner, friend, other]) assert.equal((await client.request({ type: "browse", roomId, active: true })).type, "ack");
   const text = `prototype-check-${randomUUID()}`;
   const nonce = randomUUID();
   const received = other.wait(event => event.type === "message" && event.message.text === text, "attributed message");
@@ -132,7 +132,7 @@ test("authenticated users, role authority, attributed chat and selective source 
   const returningUser = returning.welcome.state.sessions.find(session => session.id === returning.welcome.sessionId).userId;
   assert.equal(returningUser, friendUser);
   assert.notEqual(returning.welcome.sessionId, friend.welcome.sessionId, "another page is another endpoint");
-  assert.equal((await returning.request({ type: "browse", roomId })).type, "ack");
+  assert.equal((await returning.request({ type: "browse", roomId, active: true })).type, "ack");
   const history = await returning.wait(event => event.type === "history" && event.roomId === roomId, "authorized history");
   assert.equal(history.messages.filter(message => message.text === text).length, 1);
   assert.equal(typeof history.hasMore, "boolean");
@@ -163,7 +163,7 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert.equal((await creator.request({ type: "update_room", roomId, name: "Private check", access: "private", hidden: true, password: "test-room-password" })).type, "ack");
   const concealed = await outsider.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "hidden room excluded");
   assert(!concealed.state.publications.some(p => p.roomId === roomId));
-  assert.equal((await outsider.request({ type: "browse", roomId })).type, "error");
+  assert.equal((await outsider.request({ type: "browse", roomId, active: true })).type, "error");
   assert.equal((await outsider.request({ type: "enter_room", roomId, password: "wrong" })).type, "error");
   assert.equal((await creator.request({ type: "room_invite", roomId })).type, "ack");
   const invitation = await creator.wait(event => event.type === "room_invite" && event.roomId === roomId, "room invitation");
@@ -177,7 +177,7 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert.equal((await creator.request({ type: "publish", publication: { id: privatePublication, roomId, kind: "screen", muted: false } })).type, "ack");
   assert.equal((await outsider.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "error");
   assert.equal((await guest.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "ack");
-  assert.equal((await guest.request({ type: "browse", roomId })).type, "ack");
+  assert.equal((await guest.request({ type: "browse", roomId, active: true })).type, "ack");
   const history = await guest.wait(event => event.type === "history" && event.roomId === roomId, "private history");
   assert(history.messages.some(message => message.text === "private-content"));
   assert.equal((await creator.request({ type: "revoke_room_access", roomId, userId: guestUser })).type, "ack");

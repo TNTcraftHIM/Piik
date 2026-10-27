@@ -4,7 +4,7 @@ use crate::{
     history::{HistoryRequest, HistoryResult},
     identity::{Endpoint, Member},
     room::{RoomRuntime, RoomSnapshot},
-    transport::Flow,
+    transport::{BaseLink, Flow},
     wire::{Command, RoomAccess},
     RoomState,
 };
@@ -68,6 +68,11 @@ pub enum HostAction {
         sender: Uuid,
         ready: bool,
     },
+    BaseState {
+        context: RequestContext,
+        peer: Uuid,
+        ready: bool,
+    },
     PairFailed {
         first: Uuid,
         second: Uuid,
@@ -86,6 +91,7 @@ pub enum HostAction {
 #[serde(rename_all = "camelCase")]
 pub struct HostInput {
     pub binding_id: Uuid,
+    pub host_session_id: Uuid,
     pub revision: u64,
     pub endpoints: BTreeMap<Uuid, Endpoint>,
     pub action: HostAction,
@@ -100,7 +106,7 @@ pub struct HostInput {
 pub enum RoomResult {
     Done,
     Invite { key: String },
-    History { result: HistoryResult, browse: bool },
+    History { result: HistoryResult },
     Invited,
     Error { code: String },
 }
@@ -125,6 +131,7 @@ pub struct RoomProjection {
     pub summary: RoomSummary,
     pub views: BTreeMap<Uuid, RoomSnapshot>,
     pub flows: Vec<Flow>,
+    pub base_links: Vec<BaseLink>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -148,7 +155,6 @@ pub(crate) struct RoomOperation {
     pub result: RoomResult,
     pub history: Option<HistoryRequest>,
     pub policy_changed: bool,
-    pub browse: bool,
 }
 
 impl RoomRuntime {
@@ -165,13 +171,9 @@ impl RoomRuntime {
             result: RoomResult::Done,
             history: None,
             policy_changed: false,
-            browse: false,
         };
         match command {
-            Command::Browse { .. } => {
-                op.history = Some(self.history(member, None)?);
-                op.browse = true;
-            }
+            Command::Browse { active, .. } => op.history = self.browse(member, session, active)?,
             Command::History { before, .. } => op.history = Some(self.history(member, before)?),
             Command::Chat {
                 text,
@@ -242,7 +244,6 @@ struct Pending {
     reply: Option<RoomReply>,
     invitation: Option<InviteVerification>,
     history: bool,
-    browse: bool,
 }
 
 pub struct RoomHost {
@@ -286,6 +287,7 @@ mod tests {
         ] {
             let input = HostInput {
                 binding_id: Uuid::new_v4(),
+                host_session_id: session,
                 revision: 1,
                 endpoints: BTreeMap::from([(
                     session,
@@ -331,6 +333,7 @@ impl RoomHost {
         if self.pending.is_some() {
             return Err("room_operation_pending");
         }
+        self.room.set_host_session(input.host_session_id);
         self.room.reconcile(&input.endpoints);
         let before = self.room.clone();
         let mut reply = None;
@@ -339,11 +342,11 @@ impl RoomHost {
             policy: None,
             history: None,
         };
-        let mut browse = false;
         let context = match &input.action {
             HostAction::Command { context, .. }
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
+            | HostAction::BaseState { context, .. }
             | HostAction::GrantInvited { context } => Some(context.clone()),
             _ => None,
         };
@@ -360,6 +363,13 @@ impl RoomHost {
                 .transpose()?;
             match &input.action {
                 HostAction::Sync => {}
+                HostAction::BaseState {
+                    context,
+                    peer,
+                    ready,
+                } => {
+                    self.room.base_state(context.session_id, *peer, *ready)?;
+                }
                 HostAction::PairFailed { first, second } => self.room.failed_pair(*first, *second),
                 HostAction::VerifyInvite {
                     ticket,
@@ -392,7 +402,6 @@ impl RoomHost {
                         work.policy = Some(self.policy().clone());
                     }
                     work.history = op.history;
-                    browse = op.browse;
                     return Ok(op.result);
                 }
                 HostAction::Revoke { target, .. } => {
@@ -432,7 +441,6 @@ impl RoomHost {
             reply,
             invitation,
             history: work.history.is_some(),
-            browse,
         });
         Ok(work)
     }
@@ -444,10 +452,7 @@ impl RoomHost {
         }
         let mut pending = self.pending.take().unwrap();
         if let Some(result) = history {
-            pending.reply.as_mut().unwrap().result = RoomResult::History {
-                result,
-                browse: pending.browse,
-            };
+            pending.reply.as_mut().unwrap().result = RoomResult::History { result };
         }
         Ok(self.output(pending))
     }
@@ -482,6 +487,7 @@ impl RoomHost {
                 summary: self.summary(),
                 views,
                 flows: self.room.flows().collect(),
+                base_links: self.room.base_links().collect(),
             },
             reply: pending.reply,
             invitation: pending.invitation,

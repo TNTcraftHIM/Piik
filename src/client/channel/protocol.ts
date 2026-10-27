@@ -7,7 +7,7 @@ export const roomSchema = z.object({
   id, name: z.string().max(64), creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
   members: z.array(id).optional(),
-  available: z.boolean(),
+  available: z.boolean(), reading: z.boolean(),
   capabilities: z.object({ attachments: z.boolean() }),
 });
 export const publicationSchema = z.object({
@@ -27,7 +27,7 @@ export const snapshotSchema = z.object({
   publications: z.array(publicationSchema),
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
-  pairs: z.array(z.object({ id, peerId: id, outgoing: z.array(id), incoming: z.array(id) })).max(19),
+  pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(id), incoming: z.array(id) })).max(19),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
 export const signalSchema = z.object({
@@ -69,7 +69,7 @@ export type ChannelCommand =
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
   | { type: "host_output"; roomId: string; output: unknown }
   | { type: "host_stop"; roomId: string; bindingId: string }
-  | { type: "browse"; roomId: string }
+  | { type: "browse"; roomId: string; active: boolean }
   | { type: "history"; roomId: string; before?: number }
   | { type: "chat"; roomId: string; text: string; nonce: string; attachments: string[] }
   | ({ type: "update_room"; roomId: string } & RoomSettings)
@@ -84,5 +84,6 @@ export type ChannelCommand =
   | { type: "signal"; pairId: string; payload: ChannelSignal }
   | { type: "link_state"; pairId: string; state: "connected" | "failed" }
   | { type: "flow_state"; publicationId: string; pairId: string; ready: boolean }
+  | { type: "base_state"; roomId: string; pairId: string; ready: boolean }
   | { type: "leave" };
 export type ChannelRequest = ChannelCommand & { requestId?: string };

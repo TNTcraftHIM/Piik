@@ -132,7 +132,11 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     assert_eq!(before.pairs[0].outgoing.len(), 2);
     let pair = before.pairs[0].id;
 
-    let browsing = command(&mut core, b, json!({"type":"browse","roomId":"quiet"}));
+    let browsing = command(
+        &mut core,
+        b,
+        json!({"type":"browse","active":true,"roomId":"quiet"}),
+    );
     assert!(
         matches!(browsing.history.unwrap().request, HistoryRequest::Read { room_id, .. } if room_id == "quiet")
     );
@@ -227,7 +231,7 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     rejected(command(
         &mut core,
         outsider,
-        json!({"type":"browse","roomId":room}),
+        json!({"type":"browse","active":true,"roomId":room}),
     ));
     rejected(command(
         &mut core,
@@ -349,7 +353,11 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
     );
     let room = room(&mut core, creator, "public", false);
     let unicode_password = "密".repeat(128);
-    command(&mut core, guest, json!({"type":"browse","roomId":room}));
+    command(
+        &mut core,
+        guest,
+        json!({"type":"browse","active":true,"roomId":room}),
+    );
     let locked = state(
         command(
             &mut core,
@@ -502,7 +510,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     let history = command(
         &mut restored,
         new_page,
-        json!({"type":"browse","roomId":room}),
+        json!({"type":"browse","active":true,"roomId":room}),
     );
     assert!(
         history.history.is_none(),

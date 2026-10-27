@@ -11,10 +11,19 @@ pub struct Flow {
     pub receiver: Uuid,
 }
 
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BaseLink {
+    pub room_id: String,
+    pub parent: Uuid,
+    pub child: Uuid,
+}
+
 #[derive(Clone, Default)]
 struct Directions {
     forward: BTreeSet<Uuid>,
     reverse: BTreeSet<Uuid>,
+    rooms: BTreeSet<String>,
 }
 
 #[derive(Clone)]
@@ -30,7 +39,11 @@ pub struct TransportBook {
 }
 
 impl TransportBook {
-    pub fn reconcile(&mut self, flows: impl IntoIterator<Item = Flow>) {
+    pub fn reconcile(
+        &mut self,
+        flows: impl IntoIterator<Item = Flow>,
+        base: impl IntoIterator<Item = BaseLink>,
+    ) {
         let mut needed = BTreeMap::<_, Directions>::new();
         for flow in flows {
             let (key, forward) = if flow.sender < flow.receiver {
@@ -45,6 +58,14 @@ impl TransportBook {
                 &mut directions.reverse
             }
             .insert(flow.publication_id);
+        }
+        for link in base {
+            let key = if link.parent < link.child {
+                (link.parent, link.child)
+            } else {
+                (link.child, link.parent)
+            };
+            needed.entry(key).or_default().rooms.insert(link.room_id);
         }
         self.pairs.retain(|key, _| needed.contains_key(key));
         for (key, flows) in needed {
@@ -80,6 +101,12 @@ impl TransportBook {
         })
     }
 
+    pub fn serves_room(&self, id: Uuid, room: &str) -> bool {
+        self.pairs
+            .values()
+            .any(|pair| pair.id == id && pair.flows.rooms.contains(room))
+    }
+
     pub fn retire(&mut self, id: Uuid) {
         self.pairs.retain(|_, pair| pair.id != id);
     }
@@ -98,6 +125,7 @@ impl TransportBook {
                 Some(PairInfo {
                     id: pair.id,
                     peer_id: peer,
+                    rooms: pair.flows.rooms.iter().cloned().collect(),
                     outgoing: outgoing.iter().copied().collect(),
                     incoming: incoming.iter().copied().collect(),
                 })

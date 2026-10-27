@@ -387,9 +387,17 @@ undo a policy already committed by its room owner.
 
 A shared transport book combines logical flows into physical pairs. Changing
 one room's activity cannot retire a pair still used by another room. Domain
-rendezvous currently carries Browser-room commands and replies. Screen and
-voice publications use independent plans; files use authenticated HTTP only in
-Server-owned rooms. The room base DataChannel tree remains to be built.
+rendezvous currently carries Browser-room commands and replies. Browser-hosted
+rooms establish a base DataChannel tree from reading and media demand, rooted
+at the actual host session. Both endpoints must confirm an installed open channel
+before an edge carries bidirectional voice. A non-listening participant may
+forward that voice; changing views retains necessary transit. DataChannel failure
+repairs base paths while preserving the pair's healthy media leases.
+
+Screens retain independent plans in this slice. Server-owned default rooms also
+retain publication plans until a Native media endpoint supplies their base root;
+the administrator's page is not that endpoint. Files use authenticated HTTP only
+in those Server-owned rooms.
 Its simplified screen plan starts with subscribers as relay candidates and
 retains existing transit while downstream demand needs it. Stopping local
 watching does not dismantle those paths. A failed edge marks only its own parent
@@ -405,7 +413,7 @@ Implement the resulting concepts in Rust using suitable mature components;
 module and function parity with Go is not an acceptance criterion. Verify the
 same complete user flows and failure cases against the new ownership model.
 
-The next slice connects shared room paths and Native hosting to those owners.
+The next slice connects Native hosting and peer data delivery to those owners.
 Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Use one Rust
 core with thin App/Server and Browser adapters. Evaluate
@@ -438,15 +446,19 @@ hop, relay departure, room-host restart and domain-authority loss. Compare share
 voice and independent screens under the same workload; measure startup, recovery,
 frame/voice delay and bytes at the actual forwarding endpoints.
 
-Native encoded forwarding, SFU integration and a Rust media-library selection
-remain separate implementation stages. str0m and webrtc-rs are candidates, not
-selected dependencies. Full ICE, candidate gathering on the media socket,
-reliable DataChannel backpressure and encoded forwarding are separate selection
-requirements. In particular, str0m supplies the ICE agent but leaves local
-interface and STUN address discovery to its caller
-([published ICE boundary](https://github.com/algesten/str0m/blob/95e5038c6f45de6646d8e3f4c2bca6207a5bedde/crates/is/README.md)).
-The current 2.x Native media core is not automatically
-replaced by having a Rust coordinator.
+The next Native transport slice uses the tested webrtc-rs/rtc 0.21.1 candidate.
+Its [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc389547450e245877310c9cbed/src/peer_connection/mod.rs)
+owns sockets, candidate gathering and protocol deadlines. Its
+[interceptor registry](https://github.com/webrtc-rs/rtc/blob/2a732df55ca4bcf26b80914fa0f570cfaf74cfcb/src/peer_connection/configuration/interceptor_registry.rs)
+provides RTCP, GCC/TWCC and pacing; congestion control needs explicit configuration.
+The existing DataChannel/Opus proof did not enable it. Enable those components
+and verify feedback-driven pacing before integrating the adapter. Piik owns
+encoder demand, bounded queued work and the source's RTP timeline, rather than
+reimplementing those network algorithms.
+
+Native encoded forwarding and SFU integration remain later stages. This candidate
+is not yet a product dependency, and the Rust coordinator does not replace the
+current 2.x Native media core.
 
 ## Design References
 
