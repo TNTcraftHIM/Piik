@@ -11,10 +11,12 @@ and Git/PRs own completed history.
 The [channel prototype](../prototype/channel-server/README.md) has a Rust
 coordinator and real Browser chat, screen publications, selective watching and
 room voice. Its five-endpoint gate covers relay continuity and recovery; the
-focused lifecycle gate covers revocation, offline stop and session expiry. The
-next step is owner review of the visual proposal before replacing the functional
-prototype's layout on `feat/channel-prototype`. Production 2.x remains
-on its existing contract. [TODO](./todo.md) owns the next stages.
+focused lifecycle gate covers revocation, offline stop and session expiry.
+Current work reviews [room-data ownership and hosting](./research/channel-storage-and-identity.md)
+before implementing App persistence or peer storage. The visual proposal and
+functional prototype share editable URL bookmarks; automatic address discovery
+is not planned. Further layout integration stays on `feat/channel-prototype`.
+Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.
 
 ## Accepted Release Contract
 

@@ -50,13 +50,15 @@ own behavior; research and Git/PRs own evidence and completed history.
   Assess [further decentralization](./research/channel-network-design.md#further-decentralization-assessment):
   sharer-owned route computation and reuse of existing control paths, with
   authority handoff evaluated separately. Discuss the comparison before implementation.
-  Complete channel backup/restore and incremental room/message persistence,
-  separating the data directory from program updates. The
-  [storage and identity design](./research/channel-storage-and-identity.md) owns
-  peer-history copies, attachment retention and fixed-client address discovery.
-  Agree persistent App hosting, authority trust and offline write/download behavior
-  before implementing replication or automatic discovery. URL bookmarks are a
-  local client feature, not an identity or access grant.
+  Review the [room-data and hosting model](./research/channel-storage-and-identity.md):
+  one channel service, room-scoped data, persistent App hosting, client history
+  copies and on-demand file holders. Then complete incremental room/message
+  storage and channel backup/restore, separating data from program updates.
+  Native App persistence and peer delivery wait for this model review. Automatic
+  address discovery and a mandatory fixed public Web client were declined; keep
+  ordinary URLs and manual bookmarks. Cross-origin identity recovery is not part
+  of URL replacement. Peer-supplied history and independent room hosting remain
+  later design options, not prerequisites for the next implementation.
   Rust is the selected core language; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes

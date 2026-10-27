@@ -45,8 +45,10 @@ reuse physical peer connections. Each media runtime accounts for the actual work
 it hosts across those flows. The channel has no fixed media allowance to divide
 among its rooms or users.
 
-An App can host a temporary channel; a self-hosted Server can keep a channel available.
-Both use the same Rust core and Web UI. The service owns metadata and permissions;
+App and self-hosted Server use the same Rust core and Web UI. The
+[storage proposal](./channel-storage-and-identity.md) owns the current recommendation
+for their saved data and lifetime; stopping a service and deleting its data are
+distinct. The service owns metadata and permissions;
 ordinary media remains P2P-first with bounded peer forwarding and an optional SFU.
 Users can publish without becoming the domain owner or room owner.
 
@@ -78,7 +80,7 @@ from the current controller and the multiple-source requirement.
 | Object | Owner and lifetime |
 | --- | --- |
 | Service instance | Rust process and storage adapter. A process restart creates a new live incarnation, even when durable channel identity survives. |
-| Channel | Service authority owns its room catalog, membership, role definitions and user-role assignments. A temporary App channel ends when its hosting service ends; a Server channel survives the domain owner's logout and service restart. |
+| Channel | Service authority owns its room catalog, membership, role definitions and user-role assignments. Saved data follows the storage policy; live availability follows the hosting process, not the owner's personal session. |
 | Category | Channel-owned display grouping. Moving a room between categories does not change access or interrupt media. |
 | Room | Authority owns conversation and media scope. Deletion retires that room's resources; an empty room remains available. |
 | User | Channel-scoped authenticated principal, separate from nickname and connection identity. Credentials or invitations establish access; no global account service is required. |
@@ -105,8 +107,9 @@ An invitation admits a user; it is not that user's identity. Independent
 people redeeming the same invitation receive different user credentials, even
 with identical nicknames. Reconnect proves the user credential and live session.
 Revoking an invitation stops new admission; removing a user ends that user's
-access. Server membership survives restart until revoked; temporary channel
-membership ends with its channel. These credentials remain scoped to their service.
+access. Saved membership follows the channel's persistence policy rather than a
+live connection. These credentials remain scoped to their service; changing the
+Browser origin does not carry its stored credential into the new page.
 
 The current room-access experiment uses two policies. Public rooms admit every
 channel user; private rooms admit their room owner, the domain owner and explicitly
@@ -170,7 +173,7 @@ lifetime. No active media demand means no media connections, encoders or decoder
 | Room access or role assignments change | Recompute effective permissions and retire only affected activities or room presence. Losing publishing permission does not end permitted viewing or forwarding; removing one role does not end work still permitted by the resulting policy. |
 | Service process restarts | Restore durable catalog/history where configured, create new live sessions and readmit media. Old transport/control grants cannot authorize the new incarnation. |
 | Close a page / quit an App | Retire resources owned by that runtime. A Native background sharing session continues only under its existing explicit background owner; linking an App alone does not transfer Browser capture ownership. |
-| Domain owner leaves | A Server channel and its users continue. Quitting the App that hosts a temporary channel ends its authority; ownership alone does not require the owner's personal endpoint to remain. |
+| Domain owner leaves | A separately running channel service and its users continue. Stopping that hosting process interrupts authority under the recovery deadline; ownership alone does not require the owner's personal endpoint to remain. |
 
 Start with the current 20-second signaling recovery policy for the experiment;
 the session owner starts one bounded recovery interval on loss of its authority
@@ -323,8 +326,8 @@ Hosting Web assets causes an initial-download burst. Storing attachments or also
 acting as an SFU/peer relay adds real byte delivery and storage work; account for
 those roles separately from coordination. A coordinator-only App need not receive
 or decode a picture merely to authorize its distribution. The authority's
-availability remains central: stopping a temporary hosting App ends the channel's
-authority under the existing session deadline. A persistent Server supplies that
+availability remains central: stopping its hosting process interrupts channel
+authority under the existing session deadline. A separately running Server supplies that
 availability without requiring the domain owner's personal device to stay online.
 
 ### Count Actual Work
@@ -520,17 +523,13 @@ authorization names the source, recipient/relay, room and current session.
 Chat messages have server-attributed authors, stable message IDs and room
 identity. A client nonce makes a retry of the same send idempotent. Reconnect
 takes an authorized snapshot with a revision and subsequent events; no unbounded
-event replay system is needed. Server history has configured retention; the
-temporary App channel can use bounded in-memory history. Drafts remain local.
+event replay system is needed. History retention and local copies follow the
+[storage proposal](./channel-storage-and-identity.md). Drafts remain local.
 
-The Server prototype implements uploads and authorized downloads; the App peer
-transfer remains proposed. Use one attachment model with explicit availability,
-and a separate transfer for each receiver:
-
-| Hosting | Content availability and transfer |
-| --- | --- |
-| Temporary App channel | Sender offers online content. Transfer directly to the requesting recipient over a reliable, authorized data path. Sender departure marks the offer unavailable. |
-| Persistent Server channel | Upload to temporary storage, validate and commit, then publish the attachment. Authorized HTTP download remains available according to storage retention. |
+The Server prototype implements uploads and authorized downloads; peer transfer
+remains proposed. Use one attachment model with explicit availability and a
+separate transfer for each receiver. The storage proposal owns retained files
+and additional content holders, independently of the App/Server wrapper.
 
 The [LocalSend protocol](https://github.com/localsend/protocol) is a useful
 prepare/accept/transfer/cancel reference. Discord's
@@ -558,14 +557,14 @@ An uploaded, committed Server attachment does not depend on its uploader remaini
 online. Partial local files are cleaned by their transfer owner. Already downloaded
 files cannot be remotely revoked.
 
-### Persistence And Discovery Assessment
+### Data And Hosting Ownership
 
-The [durable rooms and stable-entry proposal](./channel-storage-and-identity.md)
-owns the assessed distribution of history/files, incremental writes, backup,
-persistent App identity and signed address discovery. It preserves the initial
-single-authority model while separating management, hosting and content copies.
-These proposed changes need lifecycle agreement before implementation; they do
-not silently replace the temporary-App or same-origin Browser baseline here.
+The [room-data and hosting proposal](./channel-storage-and-identity.md) owns
+history/file storage, incremental writes, backup, App persistence and manual URL
+replacement. It retains one channel authority and separates management, hosting
+and content copies. That proposal replaces this document's earlier temporary-App
+recommendation for owner discussion; Native App persistence is not implemented.
+Automatic discovery and a mandatory fixed public Web client are not planned.
 
 ## Rust Implementation Boundaries
 
@@ -576,7 +575,7 @@ not silently replace the temporary-App or same-origin Browser baseline here.
 | Web interface | Reuse the current React controls, Browser capture, playback and native `RTCPeerConnection`. Room selection and media projections consume authoritative state. |
 | Native adapters | Reuse platform capture/encoding/input helpers. Rust owns their session and resource lifetime through narrow typed interfaces. Rust core does not require rewriting platform code or codecs. |
 | Native media and embedded SFU | Evaluate an established WebRTC implementation for codec interoperability, bandwidth control, forwarding, ICE and source replacement before replacing the current media core. |
-| Storage | One explicit owner for durable Server catalog/history/attachments; temporary App channels need no new configuration migration scheme. |
+| Storage | One explicit owner for durable catalog/history and hosted content; App/Server persistence follows the linked storage proposal. No separate store implementation for each role or room. |
 
 [str0m](https://github.com/algesten/str0m) and
 [webrtc-rs](https://github.com/webrtc-rs/webrtc) are candidates, not selected
@@ -635,6 +634,6 @@ scope and current storage; Native integration and SFU are subsequent stages.
 - **Permissions:** users can hold multiple roles; domain and room ownership and live
   sharing/watching/forwarding overlap. Keep permission evaluation separate from
   activity and define only the room overrides the agreed flows require.
-- **Persistence:** recommend temporary App channels and durable Server channels.
-  Begin file exchange with online offers for App channels and stored attachments
-  for configured Servers; do not add federation or automatic host takeover.
+- **Persistence:** the [storage proposal](./channel-storage-and-identity.md) owns
+  App/Server lifetime, room-history copies and file availability. Keep one
+  channel authority for this phase; do not add federation or automatic takeover.

@@ -1,37 +1,59 @@
-# Piik 3.0 Durable Rooms And Stable Entry
+# Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-10-27. This is the proposed storage, replication and address model,
-requested before implementation. The [network model](./channel-network-design.md)
+Reviewed 2026-10-27. This is the proposed storage and responsibility model,
+requested before implementation. Automatic address discovery was declined:
+keep ordinary URLs and manually updated bookmarks. The [network model](./channel-network-design.md)
 owns room/media lifecycles; the [prototype README](../../prototype/channel-server/README.md)
 describes running behavior. [TODO](../todo.md) owns implementation and decisions.
 
 ## Recommended Ownership
 
-Each room has one active confirming authority, hosted by the domain service or an
-explicitly delegated room-owner App. The domain authority retains membership,
-directory and delegation; it need not retain every room's history or attachments.
-Initially the existing Rust coordinator hosts all room authorities. This is the
-first deployment step, not a requirement for permanent central storage. Distribute
-storage and file traffic before adding distributed writes; room responsibility
-does not require a process per room.
+Start with one hosting service per channel, using the same Rust core in App and
+Server. It confirms membership, permissions, room changes and messages. Rooms
+isolate access and retained conversation; they do not require separate hosting
+processes or authority implementations. Domain and room owners are users with
+management permissions, independently of which device runs the service.
+
+Keep the lightweight authoritative record at this service. Distribute media and
+on-demand file delivery among participants, and keep local history copies for
+reading and recovery. A replica does not become another writer. Independent
+room hosting is a later deployment choice, not a prerequisite for this model.
 
 | Owner | Responsibility |
 | --- | --- |
-| Domain owner | Manages members, roles, room directory and hosting delegation, without having to store every room's history and attachments. |
-| Room owner | Manages that room's access and retention needs, and chooses an authorized host. Leaving a page or voice activity does not delete the room. |
-| Hosting service | Checks current permission, confirms message order and commits authoritative data. Initially the existing Rust coordinator hosts every room. |
-| History holder | Keeps authorized room history and supplies verifiable missing records. A copy grants neither management nor write authority. |
-| Attachment holder | Retains complete verified content and serves it to authorized recipients. It need not retain other files. |
+| Domain owner | Manages channel membership, roles and the room directory. Personal logout does not stop a separately running service. |
+| Room owner | Manages that room's access and presentation. Leaving a page, voice or sharing activity does not delete the room. |
+| Hosting service | Checks permissions, confirms changes and saves channel/room data. Its availability governs new authorized operations. |
+| Sharer | Owns a live publication and its capture. Each publication has its own distribution plan; stopping it leaves other activities intact. |
+| History holder | Keeps already-confirmed conversation. A copy grants neither management nor write authority. |
+| Attachment holder | Retains selected content and serves authorized recipients. It need not retain other files or be the room owner. |
 
 The coordinator retains membership and credential databases; ordinary history
 copies contain only authorized conversation data. The current prototype already
 separates room ownership from domain ownership. Do not add another permission
 evaluator for replicas, files or a future hosting adapter.
 
+## Where Information Lives
+
+| Information | Authoritative owner and copies |
+| --- | --- |
+| Channel identity, members, roles and room directory | Hosting service's durable database. Clients receive authorized projections. |
+| Room name, icon, access and membership grants | Room-scoped records in that database. The room owner requests changes; the service authorizes and commits them. |
+| Channel/room identity images | Small retained assets on the hosting service, independent of the uploading user's session or chat retention. |
+| Messages and attachment descriptions | Confirmed room history on the service; participants can cache the history they may read. Author departure does not erase messages. |
+| File bytes | Sender, recipients that retained a copy, and an optional configured host store. A message reference alone does not establish file availability. |
+| Live voice, pictures, subscriptions and routes | Their current sessions and media runtimes. Reconnection/restart reestablishes live work; these are not saved room content. |
+| Drafts, display preferences and URL bookmarks | The local client. They are neither channel configuration nor access grants. |
+
+Bound retained history and stored file bytes at their storage owner. A client
+loads the rooms and history pages it requests. File upload, relay and SFU work
+are explicit additional workloads, not inevitable costs of owning a channel.
+
 ## Writing And Replicating History
 
-Keep a single confirmed order per room. Authorize a send, then commit its message,
-retry nonce and retention changes in one transaction before acknowledging or
+Keep a single confirmed order per room. The current shared sequence already
+orders each room's messages; it does not need a new per-room allocator. Authorize
+a send, then commit its message, retry nonce and retention changes in one transaction before acknowledging or
 broadcasting it. A retry uses the original nonce. An unconfirmed message stays
 pending; disconnection does not turn it into a second message or a confirmed one.
 
@@ -46,25 +68,20 @@ for small preferences and the initial bookmark list. Reconnect requests missing
 records instead of replacing every room's history. A cache is not a permanent
 archive; explicitly retained copies belong to a hosting/storage configuration.
 
-First retain the existing trust in the authority's attribution and authorization.
-The authority signs committed room records, binding domain, room, history
-generation, position, previous digest, author and content. Verify copies with the
-pinned domain identity, independently of the device supplying them. Use maintained
-cryptographic libraries. This prevents ordinary holders from forging history;
-protecting authors against the authority itself would additionally require author
-signatures and is a separate trust-model decision. Verify against the room writer
-authorized by the pinned domain identity; delegated hosts never receive the
-domain's signing private key.
+Initially synchronize history from the authenticated hosting service. It owns
+author attribution, confirmed order, edits/deletions and the retention boundary;
+clients reconcile their copies against those facts. A cache with a larger local
+timestamp or sequence cannot override them. This keeps the existing trust model
+and does not require a signed history protocol merely to persist local copies.
 
-Only extend a valid committed history. A larger timestamp or sequence number is
-not proof of validity; conflicting signed histories must not silently overwrite
-each other. Signatures prove authenticity, not that an offline copy includes later
-messages. A retained-window checkpoint provides a trusted boundary, so reading
-recent history does not require downloading all earlier messages.
-
-[Jami's signed conversation history](https://docs.jami.net/en_US/developer/jami-concepts/swarm.html)
-is the reference for verified copies. Its multi-writer repository, administrator
-voting and device-certificate system are not prerequisites for this first model.
+Peer-supplied history is a separate distribution step. It must verify records
+against the room's authority before exposing them as confirmed history, and query
+that authority for the current head and retention/deletion state. A signed copy
+can prove its contents without proving it contains later messages. Use a mature
+implementation if that step has a concrete benefit; do not build hash chains,
+multi-writer merging or delegated signing into the first persistence change.
+[Jami's signed history](https://docs.jami.net/en_US/developer/jami-concepts/swarm.html)
+is a reference for that later step, not a dependency of ordinary chat storage.
 
 ## Files And Availability
 
@@ -74,9 +91,9 @@ original, recipients pull on demand, and a complete hash-verified copy can becom
 another source. A hosting service can retain files within an explicit quota.
 Do not automatically copy every file to the domain owner or every participant.
 
-The confirming room authority admits each transfer under channel policy for its
-file, sender and recipient sessions. Initially this is the existing coordinator.
-Bytes can then travel directly between those peers. Do not give a file
+The channel's hosting service admits each transfer under current room policy for
+its file, sender and recipient sessions. Bytes can then travel directly between
+those peers. Do not give a file
 holder another user's long-lived credential. Transfers use the existing session
 recovery deadline: access removal stops them, and lost authority does not create
 a separate heartbeat or an indefinitely valid grant.
@@ -85,117 +102,100 @@ a separate heartbeat or an indefinitely valid grant.
 | --- | --- |
 | Room owner leaves, hosting service stays online | Conversation continues; already admitted files remain available from their holders. |
 | Original sender leaves, another holder stays online | Download from that holder after ordinary room authorization. |
-| Confirming room service is unavailable | Read local history/files; new sends and remote downloads wait for that service to recover. |
+| Hosting service is unavailable | New sends and remote downloads wait for recovery; already-loaded clients can read content they have actually cached. |
 | No content holder is online | Show that the file is waiting for a source, without declaring it deleted. |
 | Message is withdrawn or access removed | Stop further authorized delivery and apply retention; already downloaded copies cannot be recalled. |
 
 [Jami's file transfer design](https://jami.net/swarm-file-transfers/) separates
-history synchronization from content availability in this way. The first Piik
-version keeps online authorization, avoiding offline permission replication.
+history synchronization from content availability in this way. This first 3.0
+storage phase keeps online authorization, avoiding offline permission replication.
+
+This changes the present prototype's centralized file delivery: its current
+attachments are uploaded to SQLite and downloaded over authenticated HTTP.
+Peer delivery is not implemented. Message history and file availability keep the
+same meaning whichever admitted storage/transport supplies the bytes.
 
 ## Hosting, Upgrades And Recovery
 
-Recommend persistent App-hosted channels for the 3.0 communication use case,
-with explicit deletion. This would replace the earlier temporary-App proposal;
-it does not change published 2.x behavior. Closing a client, stopping a hosting
-process, leaving membership and deleting a room remain distinct operations.
+Recommend persistent App-hosted channels as well as persistent Server channels
+for the 3.0 communication use case, with explicit deletion. This replaces the
+earlier temporary-App recommendation for owner discussion; it has not been
+implemented in Native App and does not change published 2.x behavior.
+
+| Action | Proposed result |
+| --- | --- |
+| Browse another room, close a panel or stop one activity | Affect only that view or activity; keep room data and unrelated activities. |
+| Room/domain owner closes their Browser | Retire that session; the separately running hosting service and room data remain. |
+| Hosting process stops | Channel operations become unavailable. Persistent data stays on disk; existing media obeys the network model's recovery deadline. |
+| Hosting process restarts using its data directory | Restore the channel, users, rooms and saved conversation. Establish new sessions and media activities. |
+| Room owner permanently leaves membership | Keep the room under domain-owner management until explicit transfer or deletion. |
+| Remove a bookmark or clear a local cache | Remove only that local entry/copy, without leaving membership or deleting a room. |
+| Explicitly delete a room | Retire its activities and authoritative data; synchronize deletion to connected clients. Already downloaded copies cannot be recalled. |
+
+Permanent membership departure and room/channel deletion need explicit commands;
+the current prototype's `Leave` only retires a live session. Do not label that
+existing action as deleting membership or durable data.
 
 Keep the data directory outside program/update files. Normal upgrades reopen it;
 export/import is for backup and moving devices. Use the standard
 [SQLite snapshot API](https://www.sqlite.org/backup.html), including current BLOB
-attachments. Domain-host recovery preserves its domain identity and signing key
-when introduced. A delegated room-host backup preserves its own writer identity
-and delegation, never the domain private key or whole-domain credential database.
-Conversation exports contain neither private keys nor credential databases.
-State which external startup configuration
-must be supplied separately. Captures, routes and live sessions do not restore.
+attachments. A hosting backup preserves channel/user identity, access state,
+retained history and hosted content. Conversation exports contain no credential
+database or secrets. State which external startup configuration must be supplied
+separately. Captures, routes and live sessions do not restore.
 
 Restore with the former writer stopped, validate the candidate and retain the
-previous data until success. Once signed replicas exist, restoring an older
-backup cannot reuse already-issued log positions. Recover valid later records
-where available; an explicit rollback begins a new history generation at its
-declared recovery point. Do not silently erase acknowledged history in other copies.
+previous data until success. Once durable client copies exist, an explicit
+rollback must identify a new history generation so clients reconcile rather than
+merge later cached records into the restored history. Ordinary restart keeps the
+existing history. Do not use the client with the largest sequence as a recovery
+authority. Independent room hosts, automatic takeover and offline concurrent
+writes remain separate decisions; no such framework is required here.
 
-Planned room-hosting delegation can follow this design. Automatic takeover and
-partitioned multi-writer chat are separate changes: they require deciding how
-permission changes and conflicting writes converge, not just choosing the peer
-with the most messages.
+## Ordinary URLs And Identity
 
-## Stable Entry Without A Piik Directory Server
+The owner declined pkarr, automatic address discovery and a mandatory fixed
+public Web client on 2026-10-27. Ship the Web interface with the hosting service;
+keep direct URLs, URL bookmarks and manual replacement when a public address
+changes. The website is optional. Do not add an account, registry or hosting
+dependency to make a bookmark work.
 
-The recommended experiment combines a fixed static Web client, a persistent
-domain key and [pkarr signed address discovery](https://pubky.github.io/pkarr/docs/integration.html).
-The user joins or saves a domain once; the App publishes address changes.
+A saved channel ID belongs to the data, not its hostname. Reopening the same
+database preserves channel, room and user identities even if the service URL
+changes. That ID is not a credential or proof that a new endpoint is trustworthy.
 
-```mermaid
-flowchart LR
-  H[Hosting App] -->|Publish signed current address| D[Public discovery network]
-  W[Fixed Web client] -->|Resolve and verify domain key| D
-  W -->|Authenticated WSS and HTTPS| H
-  W <-->|Media and admitted file transfers| P[Other participants]
-```
+Browser storage follows the
+[origin boundary](https://html.spec.whatwg.org/multipage/webstorage.html#the-localstorage-attribute).
+A new origin cannot read the old origin's bookmarks, login credential or history
+cache. Current bookmarks therefore remain local to the page that saved them;
+they are not a cross-site address book. Update them from an entry that is still
+available, or use the new invitation and the Browser's own bookmarks. An expired
+old tunnel may also prevent reopening its bookmark manager or cached conversation.
 
-1. The App starts its public tunnel and publishes the current HTTPS address under
-   the persistent domain key. It owns record refresh and updates after restarts.
-2. An invitation opens the fixed Web client with the domain key and admission
-   information. Invitation secrets remain in the private link, never in discovery.
-3. The Browser resolves through an HTTPS relay and verifies the signed record.
-   The endpoint must prove the expected domain identity against a fresh challenge
-   before receiving an invitation, password or saved credential. A UUID, TLS
-   hostname or the discovery record alone is not proof of endpoint key possession.
-   The page stays at the fixed client origin and connects to that
-   endpoint; it is not a redirect page.
-4. Bookmarks, room caches and user credentials are partitioned by domain identity
-   under this stable client origin. Tunnel replacement updates the endpoint without
-   creating another user or moving the Browser's storage to a different origin.
-
-The [Web Storage origin boundary](https://html.spec.whatwg.org/multipage/webstorage.html#the-localstorage-attribute)
-makes the fixed client important. A public key lookup followed by redirecting to
-the random tunnel address would still fragment identity and history storage.
-The App's own browser entry likewise needs a stable origin or a native storage
-owner; a changing loopback port is also an origin change.
-
-This requires one selected-endpoint owner shared by signaling and attachments.
-The prototype currently derives both from the page address. Keep WebSocket Origin
-validation, first-message authentication, and ordinary HTTPS/WSS certificate checks;
-authorize the fixed client origin in HTTP CORS for attachment requests. A signed
-discovery name does not replace Browser TLS or make arbitrary HTTP endpoints secure.
-See the [WebSocket](https://websockets.spec.whatwg.org/) and
-[CORS](https://fetch.spec.whatwg.org/#http-cors-protocol) standards.
-
-Piik need not run a dynamic directory, database or media proxy. The client can be
-distributed through free static hosting; Cloudflare currently documents
-[free static requests and asset storage](https://developers.cloudflare.com/workers/static-assets/billing-and-limitations/).
-Ordinary visitors need no provider account or DNS setup. Hosting the static build
-and maintaining its release still remain our work. Public discovery relays and
-Cloudflare remain external availability dependencies, not services we control.
-
-[Quick Tunnels](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
-change hostnames and have no uptime guarantee. Discovery repairs address continuity;
-it does not improve reachability of the tunnel provider. Keep direct user-supplied
-URLs usable, and allow a stable user-owned endpoint through the same client flow.
-No discovery service has been registered, deployed or integrated by this proposal.
+Joining through a new invitation creates a new user unless that client explicitly
+presents the original credential. A matching nickname, invitation or returned
+channel ID cannot recover old management permissions. Cross-origin identity
+continuity would require an explicit credential-transfer design; it is not part
+of simple URL replacement. A hosting backup preserves server-side identities,
+not the Browser's ability to access another origin's storage.
 
 ## Delivery And Acceptance
 
-Deliver incrementally: editable URL bookmarks; persistent data/backup and room
-writes; fixed-client endpoint binding and signed discovery; then history replicas
-and admitted file transfer. URL bookmarks already use one component in both
-prototype surfaces, save only an origin and local label, and open a new tab to
-preserve the current activity. They do not yet share storage between origins.
-
-Before dependent implementation, agree persistent App hosting, trust in the
-confirming authority and waiting for it during outages. Proposed acceptance:
+Agree the responsibility and persistence model before changing runtime behavior.
+Then complete incremental storage/backup, bounded client history and admitted
+peer file delivery. Peer history synchronization and room-host delegation are
+later options. The [prototype README](../../prototype/channel-server/README.md)
+owns the implemented scope. Proposed acceptance:
 
 - Concurrent room sends update only their durable records; failed writes receive
   no success acknowledgement. Reconnect retries do not duplicate messages.
 - Closing the room owner's page preserves a separately hosted room; stopping its
   service preserves local history and gives pending operations an honest state.
 - A holder supplies a file after its original sender leaves; modified content
-  or records fail verification, and revoked access stops new/active delivery.
-- Backup restoration preserves identity and avoids conflicting signed positions.
-- Replacing the tunnel keeps the same bookmark, user, room history and fixed page;
-  a wrong domain key receives no credential. Old addresses are not public invites.
-- A Browser with no Piik App can join through the static client. Once loaded,
-  unavailable discovery or domain hosting gives a recoverable connection state,
-  not lost local data.
+  fails verification, and revoked access stops new/active delivery.
+- Upgrade/restart preserves stored identity and conversation; backup rollback
+  cannot silently merge stale client history into the restored authoritative state.
+- Replacing the URL preserves the hosting database. A new Browser origin follows
+  normal admission without inheriting another origin's credentials or permissions.
+- An already-loaded client with a stored copy can read it during service loss;
+  missing files, unconfirmed sends and unavailable entry pages remain distinct.

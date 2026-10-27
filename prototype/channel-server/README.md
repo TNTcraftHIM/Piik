@@ -139,9 +139,11 @@ UI preferences belong to the client; the Browser also keeps its user credential
 locally. Read pages and drafts stay in memory, as do the design board's sample
 data and edits. They are not a second authoritative store.
 
-This coordinator saving the conversation does not change the distinct
-planned lifetimes of temporary App hosting and persistent Server hosting, and it
-does not add Native App persistence or distribution packages.
+Native App hosting/persistence remains a design step under the
+[room-data proposal](../../docs/research/channel-storage-and-identity.md).
+The Server prototype's saved database does not implement that App lifecycle or
+add distribution packages. A new service URL can use the same database, but a
+new Browser origin cannot read the previous origin's saved login or bookmarks.
 
 Files use authenticated HTTP to the authority, independently of media routes.
 The uploader can preview an uploaded draft; other authorized room users can read
