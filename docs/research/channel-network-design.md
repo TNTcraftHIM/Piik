@@ -387,11 +387,22 @@ required transit demand before integrating the shared graph; a unique reachable
 bridge must not disappear just because its user stops watching. The prototype
 does not yet inherit the full 2.x transition and media-proof machinery.
 
+Before implementing the next slice, map its user-visible behavior, authority,
+state transitions, resource lifetime and recovery. Existing code is evidence of
+current behavior, not proof that its semantics or structure should survive.
+Simplify that model first: remove obsolete behavior, duplicated responsibilities
+and accidental constraints, while preserving the accepted product contract.
+Implement the resulting concepts in Rust using suitable mature components;
+module and function parity with Go is not an acceptance criterion. Verify the
+same complete user flows and failure cases against the new ownership model.
+
 The next architectural change moves a cohesive room runtime to its actual owner:
 room permissions and confirmed state, persistence, base planning and per-screen
 planning. Domain runtime keeps directory, membership and authenticated rendezvous.
-Use one Rust core with thin App/Server and eventual Browser adapters; do not
-rewrite platform capture/encoding/input helpers or add a separate storage service.
+Use one Rust core with thin App/Server and eventual Browser adapters. Evaluate
+capture, encoding and input at their platform boundaries; retain native helpers
+only where platform APIs or a proven component require them. Do not add a
+separate storage service.
 
 | Boundary | Responsibility |
 | --- | --- |
