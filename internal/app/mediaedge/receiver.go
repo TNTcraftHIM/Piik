@@ -147,6 +147,12 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		if !receiver.active() {
 			return
 		}
+		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) {
+			// A retained source can have lost a frame's dependencies while ICE
+			// restarted. Refresh it when transport resumes, before downstream
+			// decoders have to exhaust NACK repair and request their own key.
+			receiver.RequestKeyFrame()
+		}
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
 			slog.Debug("piik-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())

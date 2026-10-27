@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/stun/v4"
@@ -401,9 +402,27 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = upstream.AddTrack(track); err != nil {
+	videoSender, err := upstream.AddTrack(track)
+	if err != nil {
 		t.Fatal(err)
 	}
+	recoveryRequests := make(chan struct{}, 16)
+	go func() {
+		for {
+			packets, _, readErr := videoSender.ReadRTCP()
+			if readErr != nil {
+				return
+			}
+			for _, packet := range packets {
+				if _, ok := packet.(*rtcp.PictureLossIndication); ok {
+					select {
+					case recoveryRequests <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}
+	}()
 	for _, transceiver := range upstream.GetTransceivers() {
 		if transceiver.Kind() == webrtc.RTPCodecTypeVideo {
 			if err = transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{videoCodecs[codec]}); err != nil {
@@ -627,6 +646,11 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	source, audio := nativeReceiver.Source(), nativeReceiver.AudioSource()
 	socket := nativeReceiver.socket
 	for _, restart := range []bool{false, true} {
+		if restart {
+			for len(recoveryRequests) > 0 {
+				<-recoveryRequests
+			}
+		}
 		previousGathering := nativeReceiver.localCandidates
 		candidateMu.Lock()
 		remoteReady = false
@@ -660,6 +684,10 @@ func testReceiverForwarding(t *testing.T, codec string) {
 			_ = upstream.AddICECandidate(*candidate)
 		}
 		waitConnected(t, upstream, "renegotiated receiver")
+		if restart {
+			waitConnected(t, nativeReceiver.connection, "receiver after ICE restart")
+			waitSignal(t, recoveryRequests, "recovery frame request after Native transport resumes")
+		}
 		if (previousGathering != nativeReceiver.localCandidates) != restart {
 			t.Fatalf("collector replaced=%v, ICE restart=%v", previousGathering != nativeReceiver.localCandidates, restart)
 		}
