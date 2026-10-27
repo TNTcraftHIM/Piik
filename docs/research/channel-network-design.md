@@ -523,8 +523,9 @@ takes an authorized snapshot with a revision and subsequent events; no unbounded
 event replay system is needed. Server history has configured retention; the
 temporary App channel can use bounded in-memory history. Drafts remain local.
 
-Files remain in scope for discussion. Use one attachment model with explicit
-availability, and a separate transfer for each receiver:
+The Server prototype implements uploads and authorized downloads; the App peer
+transfer remains proposed. Use one attachment model with explicit availability,
+and a separate transfer for each receiver:
 
 | Hosting | Content availability and transfer |
 | --- | --- |
@@ -556,6 +557,79 @@ does not retire the offer; a failed transfer may be retried once its path return
 An uploaded, committed Server attachment does not depend on its uploader remaining
 online. Partial local files are cleaned by their transfer owner. Already downloaded
 files cannot be remotely revoked.
+
+### Persistence And Discovery Assessment
+
+Reviewed 2026-10-27 after the owner's questions about upgrades, room-owner exit,
+peer copies and changing invitation addresses. The following is a proposal;
+it does not replace the single-authority baseline above.
+
+Keep management identity, message confirmation and content storage separate.
+Leaving a room as a user must not delete its history. Stopping the device hosting
+its service affects availability, not the existence of stored data. A room owner
+can delegate hosting without transferring ownership.
+
+First change the existing persistence owner to incremental room/message writes.
+The prototype currently clones its whole authority and rewrites the full durable
+checkpoint for each successful durable command, including each chat message.
+Retain commit-before-broadcast behavior while removing this whole-channel write
+amplification. This improvement does not require distributed authority.
+
+For peer copies, evaluate this small model before implementing replication:
+
+| Data | Proposed storage and synchronization |
+| --- | --- |
+| Channel directory, membership and room delegation | Coordinator retains authority; ordinary participants do not receive private-room metadata or credential databases. |
+| Room conversation | One logical room service confirms messages in order. Authorized participants cache retained history and fetch missing records; keeping a copy grants no management or write authority. |
+| Attachment content | Sender retains its offer; recipients download on demand and may serve verified copies. A room host or Server can retain files within an explicit quota, without making the domain owner store every attachment. |
+
+Use authenticated history records and content hashes, not timestamps or file
+modification dates, to reconcile copies. A verifiable room log must bind authors,
+room scope, authorization and order. Compare valid committed prefixes within
+the same authority generation; reject conflicting history rather than silently
+choosing a longer copy. Signatures establish authenticity, not that an offline
+peer has seen every later message. Attachment hashes belong in authenticated
+message metadata, so a receiver can verify bytes obtained from any holder.
+
+When the confirming service is offline, cached history stays readable and new
+sends wait for confirmation. Peer file delivery during that outage needs an
+agreed cached-access policy; it cannot enforce revocation it has not received.
+Planned hosting handoff is separate from automatic election. If participants must write
+independently through partitions, first decide how room membership and revocation
+merge. Do not introduce that multi-writer model merely to keep read-only copies.
+
+[Jami's signed conversation history](https://docs.jami.net/en_US/developer/jami-concepts/swarm.html)
+and [on-demand file copies](https://jami.net/swarm-file-transfers/) demonstrate
+these separate responsibilities. Files with no online holder wait for one;
+permanent retention requires a device that actually retains the content.
+
+Normal upgrades should reuse a stable data directory outside the program/update
+directory. Export/import is backup and recovery, not an upgrade requirement.
+Use a [consistent SQLite snapshot](https://www.sqlite.org/backup.html) for the
+current database, including its attachment content. Restore a validated snapshot
+with the service stopped and retain the previous database until success. Live
+sessions, captures and routes never restore. External startup credentials remain
+separate configuration; backup contents must state that boundary. Persistent
+App identity and retention would revise the temporary-App baseline and need an
+explicit decision before implementation.
+
+The left rail can begin with editable URL bookmarks. A channel's persistent ID
+and current address are different facts: changing a URL must not create another
+channel's data. However, the current UUID is not a cryptographic identity, and
+Browser credentials are stored under the page's origin. A new Quick Tunnel URL
+cannot read the old origin's credentials or history. A stable client origin or
+App-managed identity is needed for seamless cross-address continuity; a signed
+address record alone does not solve Browser storage isolation.
+
+[Quick Tunnels change their hostname on creation](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/).
+A user-owned fixed hostname is the simplest stable entry. For automatic discovery
+without a Piik-operated service, evaluate [pkarr's signed records](https://github.com/pubky/pkarr/blob/main/design/relays.md):
+the App publishes a domain key's current URL to the public DHT, while Browsers
+resolve through HTTPS relays and verify the record. This still depends on reachable
+bootstrap/relay infrastructure, record refresh and a stable client entry point.
+Publish no invitation secrets or credentials. The discovery key must survive
+upgrades and backup/restore. Keep automatic discovery an independent experiment
+until its identity and Browser bootstrap flow are accepted.
 
 ## Rust Implementation Boundaries
 
