@@ -865,12 +865,16 @@ accidental input after switching away; it is not an OS window sandbox.
 `SendInput` has no target-window parameter, and shortcuts can change focus.
 Window selection must never imply that remote input is confined to that window.
 
-Input execution and authorization have separate lifetimes. A failed system input
-call drops that operation, while the existing grant accepts subsequent input.
-Failed releases remain with the input owner until cleanup succeeds; actions and
-partially inserted text are never replayed. This follows the failure scope used by
+Input execution and authorization have separate lifetimes. An unrecovered system
+input failure drops that operation, while the existing grant accepts subsequent
+input. Failed releases remain with the input owner until cleanup succeeds;
+already accepted input is never replayed. This follows the failure scope used by
 [Sunshine's Windows input sink](https://github.com/LizardByte/Sunshine/blob/v2025.923.33222/src/platform/windows/input.cpp#L435),
 where an unsuccessful system call does not revoke the user's control session.
+On Windows, a rejected call may recover a thread bound to the wrong desktop:
+the sink pins the OS thread, binds it to its original desktop only while that
+desktop is active, retries the unaccepted input once, then restores the thread.
+This does not authorize another desktop or elevate the App.
 
 The Windows sink uses physical-key mapping through
 [scan codes](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-keybdinput),

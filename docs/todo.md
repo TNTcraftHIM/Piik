@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-26
+Last reviewed: 2026-10-27
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -25,9 +25,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   before starting source audio. Obtain the App diagnostic if the window stays black.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
-  host. Its received v2.5.0 App ZIP shows rejected input followed by failed
-  release cleanup. Verify the operation/retry diagnostics and input-desktop /
-  foreground-integrity observations to identify why Windows refuses input.
+  host with the Windows input-recovery candidate. The v2.5.0 report shows
+  rejected input followed by failed release cleanup. The candidate repairs a
+  reproduced thread-desktop mismatch and records the native rejection context;
+  confirm the original host's trigger before closing the issue.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the

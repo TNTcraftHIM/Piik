@@ -34,6 +34,7 @@ type winInput struct {
 	Mouse mouseInput
 }
 type windowsSink struct {
+	desktop string
 	keys    map[uint16]bool
 	buttons map[int]bool
 }
@@ -45,7 +46,14 @@ func newPlatformSink(bool) (inputSink, error) {
 	// The capture helper reports physical pixels. Match that coordinate space
 	// before reading monitor bounds in this Go process (including mixed DPI).
 	user32.NewProc("SetProcessDpiAwarenessContext").Call(^uintptr(3))
-	return &windowsSink{keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
+	runtime.LockOSThread()
+	desktop, _, _ := user32.NewProc("GetThreadDesktop").Call(uintptr(windows.GetCurrentThreadId()))
+	name, ok := desktopName(desktop)
+	runtime.UnlockOSThread()
+	if !ok {
+		return nil, errors.New("input backend desktop is unavailable")
+	}
+	return &windowsSink{desktop: name, keys: map[uint16]bool{}, buttons: map[int]bool{}}, nil
 }
 
 func (*windowsSink) Authorize() error { return nil }
@@ -138,7 +146,10 @@ func tokenIntegrity(token windows.Token) (uint32, bool) {
 	return sid.SubAuthority(uint32(sid.SubAuthorityCount() - 1)), true
 }
 
-func inject(inputs ...winInput) error {
+func (s *windowsSink) inject(inputs ...winInput) error {
+	if len(inputs) == 0 {
+		return nil
+	}
 	// Keep failure observations on the OS thread that attempted the operation.
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -148,7 +159,37 @@ func inject(inputs ...winInput) error {
 		// the accepted count and any reported code without inventing that cause.
 		var code syscall.Errno
 		errors.As(err, &code)
-		return rejectedWindowsInput(n, uintptr(len(inputs)), code)
+		original := rejectedWindowsInput(n, uintptr(len(inputs)), code)
+		// A changed active desktop grants no new input authority. Only repair a
+		// thread that drifted away from this backend's original desktop.
+		active, _, _ := user32.NewProc("OpenInputDesktop").Call(0, 0, 0x10000000) // GENERIC_ALL: input injection needs more than object observation.
+		if active == 0 {
+			return original
+		}
+		defer user32.NewProc("CloseDesktop").Call(active)
+		activeName, activeOK := desktopName(active)
+		thread, _, _ := user32.NewProc("GetThreadDesktop").Call(uintptr(windows.GetCurrentThreadId()))
+		threadName, threadOK := desktopName(thread)
+		if !activeOK || !threadOK || activeName != s.desktop || activeName == threadName {
+			return original
+		}
+		setDesktop := user32.NewProc("SetThreadDesktop")
+		if ok, _, _ := setDesktop.Call(active); ok == 0 {
+			return original
+		}
+		// Never replay the accepted prefix of a partially accepted operation.
+		remaining := inputs[n:]
+		accepted, _, retryErr := sendInput.Call(uintptr(len(remaining)), uintptr(unsafe.Pointer(&remaining[0])), unsafe.Sizeof(remaining[0]))
+		var result error
+		if accepted != uintptr(len(remaining)) {
+			var retryCode syscall.Errno
+			errors.As(retryErr, &retryCode)
+			result = rejectedWindowsInput(n+accepted, uintptr(len(inputs)), retryCode)
+		}
+		if ok, _, restoreErr := setDesktop.Call(thread); ok == 0 {
+			result = errors.Join(result, fmt.Errorf("restore input thread desktop: %w", restoreErr))
+		}
+		return result
 	}
 	return nil
 }
@@ -211,12 +252,12 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		}
 		px := float64(b.left) + e.X*float64(b.width-1) - float64(int32(x))
 		py := float64(b.top) + e.Y*float64(b.height-1) - float64(int32(y))
-		return inject(winInput{Mouse: mouseInput{X: int32(px * 65535 / float64(int32(w)-1)), Y: int32(py * 65535 / float64(int32(h)-1)), Flags: 0xc001}})
+		return s.inject(winInput{Mouse: mouseInput{X: int32(px * 65535 / float64(int32(w)-1)), Y: int32(py * 65535 / float64(int32(h)-1)), Flags: 0xc001}})
 	case "relative":
 		if e.DX < -32767 || e.DX > 32767 || e.DY < -32767 || e.DY > 32767 {
 			return errors.New("invalid relative pointer")
 		}
-		return inject(winInput{Mouse: mouseInput{X: e.DX, Y: e.DY, Flags: 1}})
+		return s.inject(winInput{Mouse: mouseInput{X: e.DX, Y: e.DY, Flags: 1}})
 	case "button":
 		input, err := buttonInput(e.Button, e.Down)
 		if err != nil {
@@ -225,7 +266,7 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		if !e.Down && !s.buttons[e.Button] {
 			return nil
 		}
-		if err := inject(input); err != nil {
+		if err := s.inject(input); err != nil {
 			return err
 		}
 		if e.Down {
@@ -237,7 +278,7 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		if e.Delta < -1200 || e.Delta > 1200 {
 			return errors.New("invalid wheel")
 		}
-		return inject(winInput{Mouse: mouseInput{Data: uint32(int32(e.Delta)), Flags: 0x800}})
+		return s.inject(winInput{Mouse: mouseInput{Data: uint32(int32(e.Delta)), Flags: 0x800}})
 	case "key":
 		key := scanCodes[e.Code]
 		if key == 0 {
@@ -246,7 +287,7 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 		if !e.Down && !s.keys[key] {
 			return nil
 		}
-		if err := inject(keyInput(key, e.Down)); err != nil {
+		if err := s.inject(keyInput(key, e.Down)); err != nil {
 			return err
 		}
 		if e.Down {
@@ -255,7 +296,7 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 			delete(s.keys, key)
 		}
 	case "text":
-		return inject(textInputs(e.Text)...)
+		return s.inject(textInputs(e.Text)...)
 	default:
 		return errors.New("unsupported input")
 	}
@@ -265,7 +306,7 @@ func (s *windowsSink) Apply(b bounds, e inputEvent) error {
 func (s *windowsSink) Reset() error {
 	var result error
 	for key := range s.keys {
-		if err := inject(keyInput(key, false)); err != nil {
+		if err := s.inject(keyInput(key, false)); err != nil {
 			result = errors.Join(result, err)
 		} else {
 			delete(s.keys, key)
