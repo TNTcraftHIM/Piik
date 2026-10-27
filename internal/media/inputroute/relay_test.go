@@ -12,10 +12,10 @@ import (
 
 func TestClosedDownstreamBindingAllowsReplacement(t *testing.T) {
 	received := make(chan Packet, 10)
-	relay := New(func(_ string, p Packet) { received <- p })
+	relay := New(func(_ string, p Packet, _ func() bool) { received <- p })
 	defer relay.Close()
 	oldSend, oldChannel := inputChannelPair(t)
-	relay.AttachDown("same-edge", oldChannel)
+	oldLoss := relay.AttachDown("same-edge", oldChannel)
 	oldPacket := Packet{ID: strings.Repeat("a", 32), Epoch: strings.Repeat("b", 32), Data: "old"}
 	send(oldSend, oldPacket)
 	if p := receiveInputPacket(t, received); p != oldPacket {
@@ -28,7 +28,7 @@ func TestClosedDownstreamBindingAllowsReplacement(t *testing.T) {
 	// Hold the actual SCTP callback after its channel has entered Closed.
 	oldChannel.OnClose(func() {
 		<-released
-		relay.LoseDown("same-edge", oldChannel)
+		relay.loseDown("same-edge", oldChannel, true)
 		close(closed)
 	})
 	if err := oldSend.Close(); err != nil {
@@ -56,6 +56,8 @@ func TestClosedDownstreamBindingAllowsReplacement(t *testing.T) {
 		t.Fatal("old OnClose did not finish")
 	}
 	checkReplacement() // Late cleanup must not detach the replacement.
+	oldLoss()
+	checkReplacement() // A queued ICE loss also belongs only to the old channel.
 	_, duplicate := inputChannelPair(t)
 	relay.AttachDown("same-edge", duplicate)
 	waitInputChannel(t, "live duplicate rejected", func() bool { return duplicate.ReadyState() == webrtc.DataChannelStateClosed })
@@ -66,10 +68,10 @@ func TestBranchLossRetiresEveryUnclosedEpoch(t *testing.T) {
 	for _, oldClosed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "late-old-data", true: "late-old-closure"}[oldClosed], func(t *testing.T) {
 			received := make(chan Packet, 10)
-			relay := New(func(_ string, p Packet) { received <- p })
+			relay := New(func(_ string, p Packet, _ func() bool) { received <- p })
 			defer relay.Close()
 			viewer, branch := inputChannelPair(t)
-			relay.AttachDown("shared-branch", branch)
+			loseBranch := relay.AttachDown("shared-branch", branch)
 			old := Packet{ID: strings.Repeat("a", 32), Epoch: strings.Repeat("b", 32), Data: "old"}
 			current := Packet{ID: old.ID, Epoch: strings.Repeat("c", 32), Data: "current"}
 			// Two routes may converge on this leg. The old longer route's last
@@ -87,7 +89,7 @@ func TestBranchLossRetiresEveryUnclosedEpoch(t *testing.T) {
 					t.Fatalf("old closure = %+v", got)
 				}
 			}
-			relay.LoseDown("shared-branch", nil)
+			loseBranch()
 			retired := map[string]bool{}
 			for len(received) > 0 {
 				p := <-received
@@ -105,7 +107,7 @@ func TestBranchLossRetiresEveryUnclosedEpoch(t *testing.T) {
 
 func TestEpochTrackingLimitRetiresInputWithoutClosingTransport(t *testing.T) {
 	received := make(chan Packet, maxTrackedEpochs+2)
-	relay := New(func(_ string, p Packet) { received <- p })
+	relay := New(func(_ string, p Packet, _ func() bool) { received <- p })
 	defer relay.Close()
 	viewer, branch := inputChannelPair(t)
 	relay.AttachDown("branch", branch)
@@ -149,6 +151,37 @@ func TestEpochTrackingLimitRetiresInputWithoutClosingTransport(t *testing.T) {
 	waitInputChannel(t, "overflow closes input channel", func() bool { return branch.ReadyState() == webrtc.DataChannelStateClosed })
 	if branch.Transport().State() != webrtc.SCTPTransportStateConnected {
 		t.Fatal("input metadata limit closed the shared transport")
+	}
+}
+
+func TestResetDownInvalidatesReadBindingAcrossSameEpoch(t *testing.T) {
+	permits := make(chan func() bool, 4)
+	relay := New(func(_ string, _ Packet, current func() bool) { permits <- current })
+	defer relay.Close()
+	viewer, branch := inputChannelPair(t)
+	relay.AttachDown("branch", branch)
+	p := Packet{ID: strings.Repeat("a", 32), Epoch: strings.Repeat("b", 32), Data: "input"}
+	readPermit := func() func() bool {
+		t.Helper()
+		send(viewer, p)
+		select {
+		case current := <-permits:
+			return current
+		case <-time.After(2 * time.Second):
+			t.Fatal("missing root delivery")
+			return nil
+		}
+	}
+	old := readPermit()
+	if !old() || !relay.ResetDown("branch", branch) {
+		t.Fatal("current input binding was unavailable")
+	}
+	current := readPermit() // The same epoch can send a fresh request after ICE recovery.
+	if old() || !current() {
+		t.Fatal("re-registering the same epoch revived a pre-loss delivery")
+	}
+	if relay.ResetDown("branch", viewer) || !current() {
+		t.Fatal("another physical channel retired the current binding")
 	}
 }
 

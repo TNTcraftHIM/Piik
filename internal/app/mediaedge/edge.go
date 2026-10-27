@@ -13,6 +13,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 )
@@ -21,8 +22,7 @@ const maxPendingCandidates = 64
 
 type EdgeEvents struct {
 	LocalCandidate func(*webrtc.ICECandidateInit)
-	// Historical loss still retires input permission. Media projections must
-	// check isCurrentState again after any event queues.
+	// Media projections must check isCurrentState again after event queues.
 	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool)
 }
 
@@ -266,6 +266,16 @@ func (edge *Edge) CreateOffer() (webrtc.SessionDescription, error) {
 // PeerConnection owns its transport and closes it with the media connection.
 func (edge *Edge) OpenDataChannel(label string) (*webrtc.DataChannel, error) {
 	return edge.connection.CreateDataChannel(label, nil)
+}
+
+// OnInputTransportLost binds the input leg before the initial offer. Pion's
+// ordered ICE observer is separate from its asynchronous PC state projection.
+func (edge *Edge) OnInputTransportLost(lost func()) {
+	inputroute.ObserveTransport(edge.connection.SCTP().Transport().ICETransport(), func(available bool) {
+		if !available {
+			lost()
+		}
+	})
 }
 
 // Local bridges have no STUN or gateway discovery. Complete SDP keeps their

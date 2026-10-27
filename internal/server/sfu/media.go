@@ -213,19 +213,6 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 }
 
 func (publication *mediaPublication) connectionStateChanged(state webrtc.PeerConnectionState) {
-	publication.mu.Lock()
-	input := publication.input
-	publication.mu.Unlock()
-	if input != nil {
-		// Historical loss retires grants even if this PC has recovered. Recovery
-		// requests a fresh handshake; it must never restore the previous grant.
-		if state != webrtc.PeerConnectionStateConnected {
-			input.SetUpAvailable(false)
-		}
-		if state != webrtc.PeerConnectionStateFailed && publication.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
-			input.SetUpAvailable(true)
-		}
-	}
 	if state == webrtc.PeerConnectionStateFailed {
 		publication.fail(errors.New("SFU publisher transport failed"))
 		return
@@ -360,6 +347,7 @@ func (media *Media) AcceptPublisherOffer(fence ResourceFence, connectionID strin
 	}
 	if publication.input == nil && strings.Contains(offer.SDP, "\nm=application ") {
 		publication.input = inputroute.New(nil)
+		inputroute.ObserveTransport(publication.pc.SCTP().Transport().ICETransport(), publication.input.SetUpAvailable)
 	}
 	publication.mu.Unlock()
 	if err = publication.pc.SetRemoteDescription(offer); err != nil {
@@ -627,7 +615,12 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		if channelErr != nil {
 			return webrtc.SessionDescription{}, channelErr
 		}
-		input.AttachDown(fence.ViewerPeerID+":"+connectionID, channel)
+		lost := input.AttachDown(fence.ViewerPeerID+":"+connectionID, channel)
+		inputroute.ObserveTransport(transport.PC.SCTP().Transport().ICETransport(), func(available bool) {
+			if !available {
+				lost()
+			}
+		})
 	}
 	transport.PC.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		var value *webrtc.ICECandidateInit
@@ -653,13 +646,9 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 func (publication *mediaPublication) subscriberStateChanged(subscriber *mediaSubscription, state webrtc.PeerConnectionState) {
 	publication.mu.Lock()
 	current := !publication.closed && publication.failure == nil && publication.subscribers[subscriber.key] == subscriber && subscriber.ctx.Err() == nil
-	input := publication.input
 	publication.mu.Unlock()
 	if !current {
 		return
-	}
-	if input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
-		input.LoseDown(subscriber.key.peerID+":"+subscriber.key.connectionID, nil)
 	}
 	// Failed still belongs to the route's terminal failure owner. Other queued
 	// states describe current readiness, never permission to attach an old PC.

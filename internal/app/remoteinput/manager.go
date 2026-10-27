@@ -241,8 +241,18 @@ func (s *Session) setTarget(target nativecapture.CaptureTarget, capture *nativec
 // The Linux Portal owns input and screen selection in the same OS session.
 func (s *Session) UsesCaptureInput() bool { return s != nil && runtime.GOOS == "linux" }
 
-func (s *Session) Attach(edgeID string, channel *webrtc.DataChannel) {
+// Attach returns the transport-loss action for this exact input channel. It
+// invalidates queued deliveries and grants together, retaining SCTP for recovery.
+func (s *Session) Attach(edgeID string, channel *webrtc.DataChannel) func() {
 	s.route.AttachDown(edgeID, channel)
+	return func() {
+		m := s.manager
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if !s.closed && !m.closed && s.route.ResetDown(edgeID, channel) {
+			s.revokeEdgeLocked(edgeID)
+		}
+	}
 }
 
 // Bindings come only from the owning Host's authenticated room connection.
@@ -290,25 +300,28 @@ func (s *Session) SetPeers(peers []protocol.RemoteInputPeer) error {
 	return nil
 }
 
-func (s *Session) receivePacket(edgeID string, packet inputroute.Packet) {
+func (s *Session) receivePacket(edgeID string, packet inputroute.Packet, current func() bool) {
 	m := s.manager
 	m.mu.Lock()
+	defer m.mu.Unlock()
 	c := m.connections[endpointKey{s, packet.ID}]
 	if c == nil || m.closed || s.closed {
-		m.mu.Unlock()
 		return
 	}
+	// Retirement may already have removed its relay record before the channel
+	// closes. It still ends the matching epoch; only new input needs a live binding.
 	if packet.Closed {
 		if c.edgeID == edgeID && c.epoch == packet.Epoch {
 			m.revoke(c)
 			c.edgeID = ""
 		}
-		m.mu.Unlock()
+		return
+	}
+	if current != nil && !current() {
 		return
 	}
 	plain, err := c.cipher.open(packet.Data, packet.Epoch)
 	if err != nil {
-		m.mu.Unlock()
 		return
 	}
 	if c.edgeID != "" && (c.edgeID != edgeID || c.epoch != packet.Epoch) {
@@ -319,8 +332,7 @@ func (s *Session) receivePacket(edgeID string, packet inputroute.Packet) {
 		c.inputFeedback = false
 	}
 	c.edgeID, c.epoch = edgeID, packet.Epoch
-	m.mu.Unlock()
-	m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: plain}, packet.Epoch)
+	m.receiveLocked(c, plain)
 }
 
 func (m *Manager) send(c *connection, state string) {
@@ -532,19 +544,15 @@ func (m *Manager) releaseConnection(c *connection) {
 	m.owner = nil
 }
 
-func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoch string) {
-	if !message.IsString || len(message.Data) > maxInputBytes {
+// Caller holds mu from delivery validation through the input action.
+func (m *Manager) receiveLocked(c *connection, plain []byte) {
+	if len(plain) > maxInputBytes {
 		return
 	}
 	var event inputEvent
-	decoder := json.NewDecoder(bytes.NewReader(message.Data))
+	decoder := json.NewDecoder(bytes.NewReader(plain))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&event) != nil || decoder.Decode(&struct{}{}) != io.EOF {
-		return
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closed || c.owner.closed || m.connections[endpointKey{c.owner, c.id}] != c || c.epoch != epoch {
 		return
 	}
 	switch event.Type {
@@ -659,15 +667,8 @@ func (s *Session) Pause(paused bool) {
 	s.notify()
 }
 
-// Transport loss retires permission, not the media-owned channel. A recovered
-// ICE connection can carry a new request, but never restore the previous grant.
-func (s *Session) RevokeEdge(edgeID string) {
-	if s == nil {
-		return
-	}
+func (s *Session) revokeEdgeLocked(edgeID string) {
 	m := s.manager
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	for _, c := range m.connections {
 		if c.owner == s && c.edgeID == edgeID {
 			m.revoke(c)

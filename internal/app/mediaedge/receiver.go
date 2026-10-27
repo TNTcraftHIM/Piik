@@ -11,6 +11,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	"github.com/pion/rtcp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
@@ -21,6 +22,8 @@ type ReceiverEvents struct {
 	LocalCandidate  func(candidate *webrtc.ICECandidateInit, current func() bool)
 	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool)
 	DataChannel     func(*webrtc.DataChannel)
+	// Bound before SDP starts the transport; runs in Pion's ordered ICE observer.
+	InputTransportAvailable func(bool)
 }
 
 type ReceiverOptions struct {
@@ -89,6 +92,9 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 	connection, err := socket.newPeerConnection()
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
+	}
+	if options.Events.InputTransportAvailable != nil {
+		inputroute.ObserveTransport(connection.SCTP().Transport().ICETransport(), options.Events.InputTransportAvailable)
 	}
 	if err = connection.SetRemoteDescription(options.Offer); err != nil {
 		_ = connection.Close()

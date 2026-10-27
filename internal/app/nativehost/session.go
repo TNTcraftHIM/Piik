@@ -367,9 +367,6 @@ func (session *Session) prepareEdge(
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
-				if current() && isCurrentState(state) && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
-					session.remoteInput.RevokeEdge(connectionID)
-				}
 				session.emit(Event{
 					Current: func() bool { return current() && isCurrentState(state) },
 					Type:    "edge-state", ShareID: session.shareID,
@@ -404,7 +401,7 @@ func (session *Session) prepareEdge(
 	if session.remoteInput != nil {
 		channel, channelErr := edge.OpenDataChannel(remoteinput.ChannelLabel)
 		if channelErr == nil {
-			session.remoteInput.Attach(connectionID, channel)
+			edge.OnInputTransportLost(session.remoteInput.Attach(connectionID, channel))
 		}
 	}
 	if localOfferID != "" {

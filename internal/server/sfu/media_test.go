@@ -337,6 +337,7 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 	}
 	var transports [2]*forwarding.Transport
 	inputStates := make(chan string, 32)
+	viewerInput := make(chan *webrtc.DataChannel, 1)
 	for index, subscription := range fences {
 		if !admission.ReserveSubscription(subscription) {
 			t.Fatal("subscription admission failed")
@@ -356,6 +357,7 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		if index == 0 {
 			receiver.OnDataChannel(func(channel *webrtc.DataChannel) {
 				channel.OnMessage(func(message webrtc.DataChannelMessage) { inputStates <- string(message.Data) })
+				viewerInput <- channel
 			})
 		}
 		receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
@@ -443,23 +445,55 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		}
 		check(inputChannel.SendText(`{"ready":true}`))
 		waitInput(inputStates, `{"ready":true}`)
-		// Pion dispatches state callbacks asynchronously. A Connecting callback
-		// may resume after this same physical PC has already recovered.
+		var viewerChannel *webrtc.DataChannel
+		select {
+		case viewerChannel = <-viewerInput:
+		case <-ctx.Done():
+			t.Fatal("viewer input did not open")
+		}
 		for len(requests) > 0 {
 			<-requests
 		}
+		for len(inputStates) > 0 {
+			<-inputStates
+		}
+		// Pion dispatches PC projections asynchronously. Old projections must
+		// not retire input that belongs to this same transport's recovery.
 		publication.connectionStateChanged(webrtc.PeerConnectionStateConnecting)
-		waitInput(inputStates, `{"ready":false}`)
-		select {
-		case message := <-requests:
-			if message != `{"ready":true}` {
-				t.Fatalf("fresh input handshake = %s", message)
+		const reply = `{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","epoch":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","data":"after-publisher-projection"}`
+		check(inputChannel.SendText(reply))
+		for waiting := true; waiting; {
+			select {
+			case message := <-inputStates:
+				if message == `{"ready":false}` {
+					t.Error("late publisher projection retired recovered input")
+				}
+				waiting = message != reply
+			case <-ctx.Done():
+				t.Fatal("publisher projection marker did not reach viewer")
 			}
-		case <-time.After(time.Second):
-			t.Fatal("late loss left recovered SFU input unavailable")
 		}
 		check(inputChannel.SendText(`{"ready":true}`))
 		waitInput(inputStates, `{"ready":true}`)
+		const request = `{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","epoch":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","data":"current-request"}`
+		check(viewerChannel.SendText(request))
+		waitInput(requests, request)
+		physical, getErr := service.subscriber(fences[0], "subscriber_123456")
+		check(getErr)
+		publication.subscriberStateChanged(physical, webrtc.PeerConnectionStateDisconnected)
+		const next = `{"id":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","epoch":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","data":"after-subscriber-projection"}`
+		check(viewerChannel.SendText(next))
+		for waiting := true; waiting; {
+			select {
+			case message := <-requests:
+				if strings.Contains(message, `"closed":true`) {
+					t.Error("late subscriber projection retired recovered input")
+				}
+				waiting = message != next
+			case <-ctx.Done():
+				t.Fatal("subscriber projection marker did not reach publisher")
+			}
+		}
 	}
 	publication.mu.Lock()
 	bound := 0

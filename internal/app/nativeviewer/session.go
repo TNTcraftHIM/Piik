@@ -169,9 +169,11 @@ func (session *Session) AcceptOffer(
 	session.CloseReceiver(connectionID)
 	var input *inputroute.Relay
 	var onDataChannel func(*webrtc.DataChannel)
+	var inputTransportAvailable func(bool)
 	if strings.Contains(offer.SDP, "\nm=application ") {
 		input = inputroute.New(nil)
 		onDataChannel = input.AttachUp
+		inputTransportAvailable = input.SetUpAvailable
 	}
 	mediaReceiver, answer, err := session.engine.NewReceiver(mediaedge.ReceiverOptions{
 		Offer:         offer,
@@ -180,7 +182,8 @@ func (session *Session) AcceptOffer(
 		Relay:         session.relay,
 		PunchedSocket: punchedSocket,
 		Events: mediaedge.ReceiverEvents{
-			DataChannel: onDataChannel,
+			DataChannel:             onDataChannel,
+			InputTransportAvailable: inputTransportAvailable,
 			LocalCandidate: func(candidate *webrtc.ICECandidateInit, current func() bool) {
 				session.emit(Event{
 					Current: current,
@@ -189,16 +192,6 @@ func (session *Session) AcceptOffer(
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
-				if input != nil {
-					// Historical loss still releases grants; a recovered transport
-					// then requests fresh readiness rather than restoring permission.
-					if state != webrtc.PeerConnectionStateConnected {
-						input.SetUpAvailable(false)
-					}
-					if isCurrentState(webrtc.PeerConnectionStateConnected) {
-						input.SetUpAvailable(true)
-					}
-				}
 				session.emit(Event{
 					Current: func() bool { return isCurrentState(state) },
 					Type:    "edge-state", ShareID: session.shareID,
@@ -316,9 +309,6 @@ func (session *Session) prepareEdge(
 				})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, pair *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
-				if receiver.input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
-					receiver.input.LoseDown(connectionID, nil)
-				}
 				session.emit(Event{
 					Current: func() bool { return isCurrentState(state) },
 					Type:    "edge-state", ShareID: session.shareID,
@@ -358,7 +348,7 @@ func (session *Session) prepareEdge(
 			session.CloseEdge(connectionID)
 			return webrtc.SessionDescription{}, channelErr
 		}
-		receiver.input.AttachDown(connectionID, channel)
+		edge.OnInputTransportLost(receiver.input.AttachDown(connectionID, channel))
 	}
 	if local {
 		offer, err = edge.CreateLocalOffer(session.ctx, localOfferID, false)

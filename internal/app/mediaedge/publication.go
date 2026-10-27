@@ -41,6 +41,10 @@ func (publication *Publication) OpenDataChannel(label string) (*webrtc.DataChann
 	return publication.signaling.OpenDataChannel(label)
 }
 
+func (publication *Publication) OnInputTransportLost(lost func()) {
+	publication.signaling.OnInputTransportLost(lost)
+}
+
 func (engine *Engine) NewPublication(source *Source, options EdgeOptions) (*Publication, error) {
 	if source == nil || source.engine != engine || options.Local || options.ConnectionID == "" ||
 		len(options.ConnectionID) > 256 || options.Audio != nil && options.Audio.engine != engine {
