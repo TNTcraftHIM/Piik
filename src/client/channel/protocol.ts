@@ -33,7 +33,7 @@ export const snapshotSchema = z.object({
 export const signalSchema = z.object({
   description: z.object({ type: z.enum(["offer", "answer", "rollback", "pranswer"]), sdp: z.string().max(150000).optional() }).optional(),
   candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional(),
-  tracks: z.array(z.object({ publicationId: id, streamId: id })).max(80).optional(),
+  tracks: z.array(z.object({ publicationId: id, streamId: id })).optional(),
 });
 export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),

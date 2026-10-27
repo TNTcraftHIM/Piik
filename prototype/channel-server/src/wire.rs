@@ -210,9 +210,10 @@ impl Signal {
                     .username_fragment
                     .as_ref()
                     .is_none_or(|value| value.len() <= 256)
-        }) && self.tracks.as_ref().is_none_or(|tracks| {
-            tracks.len() <= 80 && tracks.iter().all(|track| valid_id(&track.stream_id))
-        })
+        }) && self
+            .tracks
+            .as_ref()
+            .is_none_or(|tracks| tracks.iter().all(|track| valid_id(&track.stream_id)))
     }
 }
 

@@ -70,6 +70,10 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
     assert.equal(event.state.voice.length, 60);
     const parsed = eventSchema.safeParse(event);
     assert(parsed.success, JSON.stringify(parsed.error?.issues));
+    const negotiated = eventSchema.safeParse({ type: "signal", pairId: randomUUID(),
+      fromSessionId: reader.welcome.sessionId,
+      payload: { tracks: event.state.publications.map(publication => ({ publicationId: publication.id, streamId: randomUUID() })) } });
+    assert(negotiated.success, JSON.stringify(negotiated.error?.issues));
   } finally {
     // Leave immediately so the following protocol cases have the same endpoint budget.
     for (const client of clients) if (client.socket.readyState === WebSocket.OPEN) await client.request({ type: "leave" });

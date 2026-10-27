@@ -482,6 +482,41 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
         .unwrap();
     assert_eq!(forwarded.events.len(), 1);
     assert_eq!(forwarded.events[0].0, second.session_id);
+
+    // A physical pair combines authorized flows across rooms.
+    let tracks: Vec<_> = (0..100)
+        .map(|_| Track {
+            publication_id: Uuid::new_v4(),
+            stream_id: Uuid::new_v4().to_string(),
+        })
+        .collect();
+    channel.transports.reconcile(
+        tracks.iter().map(|track| crate::transport::Flow {
+            publication_id: track.publication_id,
+            sender: first.session_id,
+            receiver: second.session_id,
+        }),
+        [],
+    );
+    let pair_id = channel.snapshot(first.session_id).pairs[0].id;
+    let forwarded = channel
+        .handle(
+            first.session_id,
+            Command::Signal {
+                pair_id,
+                payload: Signal {
+                    description: None,
+                    candidate: None,
+                    tracks: Some(tracks),
+                },
+            },
+            0,
+        )
+        .unwrap();
+    assert!(
+        matches!(&forwarded.events[0].1, Event::Signal { payload, .. }
+        if payload.tracks.as_ref().unwrap().len() == 100)
+    );
 }
 
 #[test]
