@@ -49,8 +49,8 @@ func (sender *senderReports) BindRTCPWriter(writer interceptor.RTCPWriter) inter
 		for _, packet := range packets {
 			if report, ok := packet.(*rtcp.SenderReport); ok {
 				if track := sender.downTrack(report.SSRC); track != nil {
-					// Pion owns cadence; DownTrack owns the projected video clock and
-					// its matching RR/RTT state. Audio keeps the ordinary Pion report.
+					// Pion owns cadence; DownTrack owns its projected clock and the
+					// matching RR/RTT state. Other tracks keep the Pion report.
 					report = track.CreateSenderReport()
 					if report == nil {
 						continue
