@@ -70,6 +70,104 @@ fn core() -> Authority {
 }
 
 #[test]
+fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
+    let mut core = core();
+    let a = Uuid::new_v4();
+    let b = Uuid::new_v4();
+    admit(
+        &mut core,
+        a,
+        json!({"type":"join","name":"A","key":"owner"}),
+    );
+    let (b_session, _, _) = admit(
+        &mut core,
+        b,
+        json!({"type":"join","name":"B","key":"invite"}),
+    );
+    let mut voices = Vec::new();
+    for room in ["living", "studio"] {
+        for connection in [a, b] {
+            command(
+                &mut core,
+                connection,
+                json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
+            );
+            let id = Uuid::new_v4();
+            voices.push(id);
+            command(
+                &mut core,
+                connection,
+                json!({"type":"publish","publication":{"id":id,"roomId":room,"kind":"voice","muted":false}}),
+            );
+        }
+    }
+    let picture = Uuid::new_v4();
+    command(
+        &mut core,
+        a,
+        json!({"type":"publish","publication":{"id":picture,"roomId":"studio","kind":"screen","muted":false}}),
+    );
+    let before = state(
+        command(
+            &mut core,
+            b,
+            json!({"type":"subscribe","publicationId":picture,"enabled":true}),
+        ),
+        b,
+    );
+    assert_eq!(before.pairs.len(), 1);
+    assert_eq!(before.pairs[0].incoming.len(), 3);
+    assert_eq!(before.pairs[0].outgoing.len(), 2);
+    let pair = before.pairs[0].id;
+
+    let browsing = command(&mut core, b, json!({"type":"browse","roomId":"quiet"}));
+    assert!(
+        matches!(browsing.history.unwrap().request, HistoryRequest::Read { room_id, .. } if room_id == "quiet")
+    );
+    let after = state(
+        command(
+            &mut core,
+            b,
+            json!({"type":"voice","roomId":"studio","joined":false,"muted":true,"deafened":false}),
+        ),
+        b,
+    );
+    assert_eq!(after.pairs[0].id, pair);
+    assert_eq!(after.pairs[0].incoming.len(), 2);
+    assert!(after.pairs[0].incoming.contains(&picture));
+    assert!(after.pairs[0].incoming.contains(&voices[0]));
+    assert_eq!(after.pairs[0].outgoing, vec![voices[1]]);
+    assert!(after
+        .voice
+        .iter()
+        .any(|voice| voice.session_id == b_session && voice.room_id == "living"));
+    assert!(!after
+        .voice
+        .iter()
+        .any(|voice| voice.session_id == b_session && voice.room_id == "studio"));
+    assert!(after
+        .publications
+        .iter()
+        .any(|publication| publication.id == voices[2]));
+    assert!(!after
+        .publications
+        .iter()
+        .any(|publication| publication.id == voices[3]));
+
+    let picture_stopped = state(
+        command(
+            &mut core,
+            a,
+            json!({"type":"unpublish","publicationId":picture}),
+        ),
+        b,
+    );
+    assert_eq!(picture_stopped.pairs[0].id, pair);
+    assert_eq!(picture_stopped.pairs[0].incoming, vec![voices[0]]);
+    assert_eq!(picture_stopped.pairs[0].outgoing, vec![voices[1]]);
+}
+
+#[test]
 fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity() {
     let mut core = core();
     let owner = Uuid::new_v4();

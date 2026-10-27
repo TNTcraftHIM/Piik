@@ -9,7 +9,9 @@ mod access;
 mod channel;
 pub mod history;
 mod identity;
+mod room;
 mod routes;
+mod transport;
 pub mod wire;
 
 pub use access::RoomPermission;

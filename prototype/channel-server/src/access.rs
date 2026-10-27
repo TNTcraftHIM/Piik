@@ -55,12 +55,12 @@ impl RoomState {
         Ok(room)
     }
 
-    pub fn manages(&self, user: Uuid, owner: Uuid) -> bool {
-        user == owner || user == self.creator_id
+    pub fn manages(&self, user: Uuid, domain_owner: bool) -> bool {
+        domain_owner || user == self.creator_id
     }
-    pub fn reads(&self, user: Uuid, owner: Uuid) -> bool {
+    pub fn reads(&self, user: Uuid, domain_owner: bool) -> bool {
         self.access == RoomAccess::Public
-            || self.manages(user, owner)
+            || self.manages(user, domain_owner)
             || self.grants.contains(&user)
     }
 
@@ -115,11 +115,11 @@ impl RoomState {
     pub fn enter(
         &mut self,
         user: Uuid,
-        owner: Uuid,
+        domain_owner: bool,
         password: Option<&str>,
         invite: Option<&str>,
     ) -> Result<(), &'static str> {
-        if self.reads(user, owner) {
+        if self.reads(user, domain_owner) {
             return Ok(());
         }
         let valid = invite.is_some_and(|key| self.accepts_invite(key))
@@ -149,9 +149,9 @@ impl RoomState {
         Ok(key)
     }
 
-    pub fn view(&self, user: Uuid, owner: Uuid) -> Option<Room> {
-        let authorized = self.reads(user, owner);
-        let can_manage = self.manages(user, owner);
+    pub fn view(&self, user: Uuid, domain_owner: bool) -> Option<Room> {
+        let authorized = self.reads(user, domain_owner);
+        let can_manage = self.manages(user, domain_owner);
         if self.hidden && !authorized {
             return None;
         }

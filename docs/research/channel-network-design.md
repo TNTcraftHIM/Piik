@@ -377,6 +377,10 @@ through WASM, and actual local persistence/recovery verification.
 ## Implementation Boundary
 
 The current prototype still hosts domain and room authority in one process.
+Within that process, each room runtime owns policy, activities and publication
+plans. Domain admission supplies a credential-free member/session projection;
+a separate transport book combines logical flows into shared physical pairs.
+Changing one room's activity cannot retire a pair still used by another room.
 Confirmed messages now use room-scoped incremental storage outside the domain
 metadata checkpoint; they have not moved to their owners' devices. It plans
 screen and voice publications independently, shares physical media pairs, and transfers files

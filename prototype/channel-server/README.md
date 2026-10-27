@@ -6,9 +6,11 @@ App or Server. The [network design](../../docs/research/channel-network-design.m
 owns the accepted routing foundation; this file describes what currently runs.
 
 The current coordinator still runs every room and saves its history/files.
+Room policy, activities and publication plans have their own Rust runtime;
+domain admission and the shared transport book compose their results. A physical
+pair remains while any room needs it. The Browser protocol and UI are unchanged.
 Moving those responsibilities to the actual room owner, and sharing a base
-room network beneath media, remain unimplemented. Data ownership and synchronization
-details are the current discussion before that integration.
+room network beneath media, are the next integration under the accepted model.
 
 ## Run
 

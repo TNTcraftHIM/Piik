@@ -52,7 +52,44 @@ pub struct Admitted {
     pub replaced_connection: Option<Uuid>,
 }
 
+/// The domain's current admission, without credentials or its user database.
+#[derive(Clone, Copy)]
+pub struct Member {
+    pub user_id: Uuid,
+    pub participates: bool,
+    pub domain_owner: bool,
+}
+
+pub struct Endpoint {
+    pub member: Member,
+    pub connected: bool,
+}
+
 impl Identity {
+    pub fn member(&self, user_id: Uuid) -> Result<Member, &'static str> {
+        let user = self.users.get(&user_id).ok_or("invalid_credential")?;
+        Ok(Member {
+            user_id,
+            participates: self.may_participate(user_id),
+            domain_owner: user.owner,
+        })
+    }
+
+    pub fn endpoints(&self) -> BTreeMap<Uuid, Endpoint> {
+        self.sessions
+            .values()
+            .map(|session| {
+                (
+                    session.id,
+                    Endpoint {
+                        member: self.member(session.user_id).expect("admitted session"),
+                        connected: session.connection.is_some(),
+                    },
+                )
+            })
+            .collect()
+    }
+
     pub fn new(owner_key: String, invite_key: String) -> Self {
         Self {
             users: BTreeMap::new(),

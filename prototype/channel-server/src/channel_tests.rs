@@ -16,7 +16,7 @@ fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
     )
     .unwrap();
     room.grants.extend(peers.iter().map(|p| p.user_id));
-    channel.rooms.insert(id.clone(), room);
+    channel.rooms.insert(id.clone(), RoomRuntime::new(room));
     let private = Uuid::new_v4();
     channel
         .handle(
@@ -50,10 +50,7 @@ fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
         )
         .unwrap();
     watch(&mut channel, peers[2].session_id, private);
-    assert_eq!(
-        channel.publications[&private].plan.parents[&peers[2].session_id],
-        relay
-    );
+    assert_eq!(parents(&channel, private)[&peers[2].session_id], relay);
     watch(&mut channel, relay, public);
     let public_pair = channel
         .snapshot(relay)
@@ -72,10 +69,10 @@ fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
             0,
         )
         .unwrap();
-    let plan = &channel.publications[&private].plan;
-    assert!(!plan.parents.contains_key(&relay));
-    assert!(!plan.parents.values().any(|parent| *parent == relay));
-    assert!(plan.parents.contains_key(&peers[2].session_id));
+    let plan = parents(&channel, private);
+    assert!(!plan.contains_key(&relay));
+    assert!(!plan.values().any(|parent| *parent == relay));
+    assert!(plan.contains_key(&peers[2].session_id));
     assert!(channel
         .snapshot(relay)
         .pairs
@@ -128,6 +125,16 @@ fn watch(channel: &mut Channel, session: Uuid, publication: Uuid) {
             0,
         )
         .unwrap();
+}
+
+fn parents(channel: &Channel, publication: Uuid) -> BTreeMap<Uuid, Uuid> {
+    channel
+        .publication_room(publication)
+        .unwrap()
+        .flows()
+        .filter(|flow| flow.publication_id == publication)
+        .map(|flow| (flow.receiver, flow.sender))
+        .collect()
 }
 
 fn voice(channel: &mut Channel, session: Uuid, joined: bool, muted: bool, deafened: bool) {
@@ -227,7 +234,7 @@ fn selective_subscriptions_ready_relays_and_failed_pair_ids_are_fenced() {
             0,
         )
         .unwrap();
-    assert_eq!(channel.publications[&publication].plan.parents.len(), 3);
+    assert_eq!(parents(&channel, publication).len(), 3);
     assert_eq!(channel.snapshot(source.session_id).pairs.len(), 2);
     let relay_snapshot = channel.snapshot(relay);
     assert!(relay_snapshot
@@ -247,10 +254,7 @@ fn selective_subscriptions_ready_relays_and_failed_pair_ids_are_fenced() {
         .unwrap();
     assert!(channel.peer(relay, source_pairs[0].id).is_none());
     assert_eq!(
-        channel.publications[&publication]
-            .plan
-            .parents
-            .get(&healthy.peer_id),
+        parents(&channel, publication).get(&healthy.peer_id),
         Some(&source.session_id)
     );
     assert!(channel
@@ -296,7 +300,14 @@ fn deafen_preserves_voice_routes_and_role_revocation_preserves_identity() {
             0,
         )
         .unwrap();
-    assert!(channel.publications[&friend_voice].info.muted);
+    assert!(
+        channel
+            .publication_room(friend_voice)
+            .unwrap()
+            .publication(friend_voice)
+            .unwrap()
+            .muted
+    );
     assert!(channel
         .snapshot(friend.session_id)
         .subscriptions
@@ -321,9 +332,9 @@ fn deafen_preserves_voice_routes_and_role_revocation_preserves_identity() {
         .unwrap();
     assert!(channel.identity.sessions.contains_key(&friend.session_id));
     assert!(channel.identity.users.contains_key(&friend.user_id));
-    assert!(!channel.publications.contains_key(&friend_voice));
-    assert!(!channel.publications.contains_key(&screen));
-    assert!(channel.publications.contains_key(&owner_voice));
+    assert!(channel.publication_room(friend_voice).is_none());
+    assert!(channel.publication_room(screen).is_none());
+    assert!(channel.publication_room(owner_voice).is_some());
     assert!(channel
         .handle(
             friend.session_id,
@@ -435,8 +446,8 @@ fn session_retirement_does_not_close_another_sources_surviving_pair() {
     watch(&mut channel, c.session_id, other_source);
     let other_pair = channel.snapshot(b.session_id).pairs[0].id;
     channel.handle(a.session_id, Command::Leave, 0).unwrap();
-    assert!(!channel.publications.contains_key(&source));
-    assert!(channel.publications.contains_key(&other_source));
+    assert!(channel.publication_room(source).is_none());
+    assert!(channel.publication_room(other_source).is_some());
     assert_eq!(channel.snapshot(b.session_id).pairs[0].id, other_pair);
 }
 
