@@ -38,28 +38,24 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Piik 3.0 channels, rooms and Rust prototype.** The owner authorized a
   usable Browser prototype on 2026-10-27: Rust channel authority, rooms, multiple
   user roles, chat, independent screen publications, selective watching and voice.
-  Review the visual design boards with the owner before further UI integration:
-  persistent room/member navigation, conversation and shared-screen layouts,
-  and a complete room-creation dialog. Then apply the accepted design to the
-  existing functional slice, including room access, host-saved conversation,
-  attachments and selective multi-picture viewing, plus persistent channel/room
-  identity images and person/message reactions. Keep it isolated from 2.x. The
+  First review the foundation with the owner, before further business/UI work:
+  the domain owner operates membership/directory/rendezvous; each room owner
+  actually runs its room, confirms its state and retains its history. Review one
+  room routing controller with a bidirectional base tree for chat, voice and
+  files, selective screen paths, and shared physical transports. The
   [network and lifecycle proposal](./research/channel-network-design.md) owns
-  the model; the [prototype README](../prototype/channel-server/README.md) owns
-  its executable scope and launch instructions.
-  Assess [further decentralization](./research/channel-network-design.md#further-decentralization-assessment):
-  sharer-owned route computation and reuse of existing control paths, with
-  authority handoff evaluated separately. Discuss the comparison before implementation.
-  Review the [room-data and hosting model](./research/channel-storage-and-identity.md):
-  one channel service, room-scoped data, persistent App hosting, client history
-  copies and on-demand file holders. Then complete incremental room/message
-  storage and channel backup/restore, separating data from program updates.
-  Native App persistence and peer delivery wait for this model review. Automatic
-  address discovery and a mandatory fixed public Web client were declined; keep
-  ordinary URLs and manual bookmarks. Cross-origin identity recovery is not part
-  of URL replacement. Peer-supplied history and independent room hosting remain
-  later design options, not prerequisites for the next implementation.
-  Rust is the selected core language; the current 2.x contract remains unchanged.
+  that model; [room data and hosting](./research/channel-storage-and-identity.md)
+  owns data placement, copies and recovery. Runtime changes wait for this review.
+  Then prove separate domain/room hosts and shared room paths before integrating
+  the visual design: persistent navigation, conversation, room access, attachments,
+  selective multi-picture viewing, identity images and person/message reactions.
+  Complete local persistence, bounded history copies and scoped export/import
+  without adding a configurable storage service. Automatic address discovery
+  and a mandatory fixed public Web client were declined; keep ordinary URLs and
+  manual bookmarks. Cross-origin identity recovery is separate from URL editing.
+  Rust is the selected core language. Keep this on the isolated prototype; the
+  current 2.x contract remains unchanged. The
+  [prototype README](../prototype/channel-server/README.md) owns executable scope.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).

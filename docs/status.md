@@ -12,10 +12,12 @@ The [channel prototype](../prototype/channel-server/README.md) has a Rust
 coordinator and real Browser chat, screen publications, selective watching and
 room voice. Its five-endpoint gate covers relay continuity and recovery; the
 focused lifecycle gate covers revocation, offline stop and session expiry.
-Current work reviews [room-data ownership and hosting](./research/channel-storage-and-identity.md)
-before implementing App persistence or peer storage. The visual proposal and
-functional prototype share editable URL bookmarks; automatic address discovery
-is not planned. Further layout integration stays on `feat/channel-prototype`.
+Current work reviews the [responsibility and routing model](./research/channel-network-design.md):
+actual room-owner hosting, a shared room base tree and selective screen paths,
+with [data retained by its operating owner](./research/channel-storage-and-identity.md).
+Runtime and business/UI integration wait for this foundation review. The visual
+proposal and functional prototype share editable URL bookmarks; automatic address
+discovery is not planned. Work stays on `feat/channel-prototype`.
 Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.
 
 ## Accepted Release Contract

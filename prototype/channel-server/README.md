@@ -5,6 +5,10 @@ interface, and real Browser WebRTC. It does not replace the production 2.x
 App or Server. The [network design](../../docs/research/channel-network-design.md)
 owns the proposed model; this file describes what currently runs.
 
+The current coordinator still runs every room and saves its history/files.
+Moving those responsibilities to the actual room owner, and sharing a base
+room network beneath media, remain foundation-design work before further integration.
+
 ## Run
 
 Use Rust 1.86 or newer, the repository's Node/npm environment and installed npm
