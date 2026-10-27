@@ -1,0 +1,37 @@
+.c3-domain-rail { display: flex; flex-direction: column; align-items: center; gap: 16px; min-height: 0; padding: 20px 4px; background: var(--wall-2); }
+.c3-domain-brand { display: flex; flex: none; color: var(--muted); }
+.c3-domain-rule { width: 24px; height: 1px; flex: none; background: var(--line); margin-block: 2px 0; }
+.c3-domain-rail > .lr-comic-tip-wrap, .c3-domain-saved > .lr-comic-tip-wrap { flex: none; }
+.c3-domain-icon.lr-btn { --button-size: 44px; --button-padding: 0; width: 44px; border-radius: 16px; flex: none; text-decoration: none; }
+.c3-domain-initial { max-width: 100%; overflow: hidden; font-size: 18px; font-weight: 650; }
+.c3-domain-saved { display: flex; flex-direction: column; align-items: center; gap: 12px; min-height: 0; padding: 4px; overflow-y: auto; scrollbar-width: thin; }
+.c3-domain-saved:empty { display: none; }
+.c3-domain-version { margin-top: auto; color: var(--muted); font: 10px var(--mono); }
+.c3-bookmarks-dialog { width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); margin: auto; padding: 24px; overflow-y: auto; border: 1px solid var(--line); border-radius: 22px; background: var(--paper); color: var(--ink); box-shadow: var(--panel-shadow); }
+.c3-bookmarks-dialog::backdrop { background: rgb(var(--surface-shade-rgb) / .38); backdrop-filter: blur(5px); }
+.c3-bookmarks-dialog header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.c3-bookmarks-dialog h2 { margin: 0; font-size: 22px; letter-spacing: -.025em; }
+.c3-bookmarks-dialog header p { margin-top: 7px; color: var(--muted); font-size: 12px; }
+.c3-bookmark-current { display: flex; align-items: center; gap: 8px; padding: 14px 0; margin-top: 10px; }
+.c3-bookmark-current > span { display: flex; flex: 1; align-items: center; gap: 9px; min-width: 0; }
+.c3-bookmark-current strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-bookmark-current svg { flex: none; }
+.c3-bookmark-list { list-style: none; padding: 4px; margin: 18px -4px; max-height: min(30dvh, 250px); overflow-y: auto; scrollbar-width: thin; }
+.c3-bookmark-list li { display: flex; align-items: center; gap: 4px; padding: 5px 4px 5px 10px; border-radius: 12px; }
+.c3-bookmark-list li:is(:hover, [data-editing="true"]) { background: var(--control-hover); }
+.c3-bookmark-list li > a { display: flex; align-items: center; flex: 1; min-width: 0; gap: 12px; padding-block: 4px; color: var(--ink); text-decoration: none; }
+.c3-bookmark-list a > span:first-child { min-width: 0; flex: 1; }
+.c3-bookmark-list strong, .c3-bookmark-list small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-bookmark-list strong { font-size: 13px; font-weight: 600; }
+.c3-bookmark-list small { margin-top: 4px; color: var(--muted); font-size: 11px; }
+.c3-bookmark-arrow { flex: none; color: var(--muted); font-size: 17px; }
+.c3-bookmarks-dialog form { display: grid; gap: 14px; padding-top: 18px; border-top: 1px solid var(--line); }
+.c3-bookmarks-dialog h3 { margin: 0; font-size: 14px; font-weight: 650; }
+.c3-bookmarks-dialog label { display: grid; gap: 7px; min-width: 0; font-size: 12px; }
+.c3-bookmarks-dialog label > span:first-child { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 10px; }
+.c3-bookmarks-dialog label small { color: var(--muted); font-size: 11px; }
+.c3-bookmarks-dialog input { width: 100%; min-width: 0; }
+.c3-bookmarks-dialog footer { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.c3-bookmarks-dialog footer > span:empty { flex: 1; }
+.c3-bookmark-error { margin: 0; color: var(--danger); font-size: 12px; }
+.c3-bookmark-note { margin: 18px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }

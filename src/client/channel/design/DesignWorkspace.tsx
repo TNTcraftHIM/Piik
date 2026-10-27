@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { Glyph } from "../../ui/icons";
-import { BrandMark } from "../../components/living/BrandMark";
 import { WelcomeLine } from "../../components/living/WelcomeLine";
 import { ChannelAction } from "../components/ChannelMedia";
 import { ChannelNameEditor } from "../components/ChannelNameEditor";
+import { ChannelBookmarks } from "../components/ChannelBookmarks";
 import { DesignArtwork } from "./DesignArtwork";
 import { DesignRoomDialog } from "./DesignRoomDialog";
 import { DesignChannelDialog } from "./DesignChannelDialog";
@@ -64,15 +64,8 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
 
   return <DesignNames.Provider value={name}>
     <div className="cd-workspace" data-pane={mobilePane}>
-      <nav className="cd-channel-rail" aria-label={copy("频道", "Channels")}>
-        <span className="cd-rail-brand" aria-label="Piik"><BrandMark size={30} /></span>
-        <span className="cd-rail-rule" />
-        <button type="button" className="lr-btn cd-channel-icon is-on" aria-label={channelTitle}
-          onClick={() => { setRoomId("games"); setMobilePane("rooms"); }}>
-          <DesignIdentityMark value={channelIdentity} size={28} />
-        </button>
-        <span className="cd-rail-bottom">3.0</span>
-      </nav>
+      <ChannelBookmarks className="cd-channel-rail" currentName={channelTitle} currentIcon={<DesignIdentityMark value={channelIdentity} size={28} />}
+        onCurrent={() => { setRoomId("games"); setMobilePane("rooms"); }} />
 
       <aside className="cd-rooms" aria-label={copy("房间", "Rooms")}>
         <header className="cd-channel-heading c3-editable">

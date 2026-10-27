@@ -14,6 +14,7 @@ import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
 import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelRoomControls, ChannelRoomEntry } from "../channel/components/ChannelRoomControls";
+import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
 import "./channel-preview.css";
 
 export function ChannelPreviewPage() {
@@ -85,6 +86,7 @@ export function ChannelPreviewPage() {
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
     <main className="c3-shell">
+      <ChannelBookmarks currentName={state?.channel.name ?? location.host} onCurrent={() => { if (rooms[0]) setSelected(rooms[0].id); }} />
       <aside className="c3-sidebar" aria-label={copy("频道和房间", "Channel and rooms")}>
         <div className="c3-channel-title"><h1>{state?.channel.name ?? copy("你的频道", "Your channel")}</h1>
           <span className="c3-channel-caption">{copy("频道", "Channel")}</span></div>

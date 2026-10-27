@@ -51,6 +51,14 @@ existing components. Conversations, pictures and interactions are local samples;
 they do not create rooms or transmit media. The functional prototype keeps its
 existing layout until the owner accepts the visual direction.
 
+Both surfaces share the domain-bookmark rail. Its plus button opens saved addresses:
+add a URL and optional local label, edit an address after a move, or remove a bookmark.
+Addresses without a scheme use HTTPS; use explicit `http://` for a local HTTP
+prototype. Pasted URLs save only their origin, without invitation secrets.
+Opening a bookmark uses a new tab at `/__channel-preview`, preserving the current
+activity. The list survives refresh in this Browser origin; it does not yet sync
+between sites. A bookmark grants no access to a private channel.
+
 The room's compact couch shares the heading with its title and actions; narrow
 layouts place it beneath them. It stays visible above conversation and screens.
 Seats keep a readable size in one horizontally scrollable row, with your own seat

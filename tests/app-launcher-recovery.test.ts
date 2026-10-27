@@ -6,7 +6,7 @@ import ts from "typescript";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { LauncherForm } from "../src/client/components/living/LauncherForm";
-import { siteEntryOrigin } from "../src/client/components/living/SiteAddressEntry";
+import { siteEntryOrigin } from "../src/client/lib/site-address";
 import { clientLaunchURL } from "../src/client/lib/session";
 
 // Run the page's actual state-read effect, including cleanup, without a DOM.

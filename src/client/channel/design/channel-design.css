@@ -26,11 +26,6 @@
 .cd-workspace h3 { font-size: 13px; }
 .cd-workspace button { -webkit-tap-highlight-color: transparent; }
 .cd-workspace .lr-comic-tip-wrap { display: inline-flex; min-width: 0; }
-.cd-channel-rail { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 20px 9px; background: var(--wall-2); }
-.cd-rail-brand { display: flex; color: var(--muted); }
-.cd-rail-rule { width: 24px; height: 1px; background: var(--line); margin-block: 2px 0; }
-.cd-channel-icon.lr-btn { --button-size: 46px; --button-padding: 0; width: 46px; border-radius: 17px; }
-.cd-rail-bottom { margin-top: auto; color: var(--muted); font: 10px var(--mono); }
 .cd-rooms { display: flex; flex-direction: column; min-width: 0; background: var(--wall); border-right: 1px solid var(--line); }
 .cd-channel-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 24px 22px 20px; min-height: 91px; }
 .cd-channel-heading-text { min-width: 0; flex: 1; }
@@ -185,7 +180,6 @@
 }
 @container channel-board (max-width: 1120px) {
   .cd-workspace { grid-template-columns: 58px 196px minmax(0, 1fr) 180px; }
-  .cd-channel-rail { padding-inline: 5px; }
   .cd-members { padding-inline: 11px; }
   .cd-channel-heading { padding-inline: 18px; }
   .cd-room-heading { padding-inline: 18px; }

@@ -50,13 +50,13 @@ own behavior; research and Git/PRs own evidence and completed history.
   Assess [further decentralization](./research/channel-network-design.md#further-decentralization-assessment):
   sharer-owned route computation and reuse of existing control paths, with
   authority handoff evaluated separately. Discuss the comparison before implementation.
-  Complete editable URL bookmarks and channel backup/restore, preserving stored
-  identity and separating the data directory from program updates. Remove whole-
-  channel checkpoint rewrites from individual chat sends. The
-  [persistence and discovery assessment](./research/channel-network-design.md#persistence-and-discovery-assessment)
-  owns the proposed peer-history copies, attachment retention and stable-address
-  design. Keep replication, persistent App identity and automatic discovery on
-  design hold until their lifecycle and Browser identity model are agreed.
+  Complete channel backup/restore and incremental room/message persistence,
+  separating the data directory from program updates. The
+  [storage and identity design](./research/channel-storage-and-identity.md) owns
+  peer-history copies, attachment retention and fixed-client address discovery.
+  Agree persistent App hosting, authority trust and offline write/download behavior
+  before implementing replication or automatic discovery. URL bookmarks are a
+  local client feature, not an identity or access grant.
   Rust is the selected core language; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes

@@ -1,11 +1,12 @@
 /* Layout belongs to the channel; palette, controls, cast and motion stay shared. */
 .c3-app { height: 100dvh; min-height: 600px; }
 .c3-app > .lr-top { flex: none; padding-block: 16px; }
-.c3-shell { flex: 1; min-height: 0; width: min(1480px, calc(100% - 40px)); margin: 0 auto 24px; display: grid; grid-template-columns: 220px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); }
+.c3-shell { flex: 1; min-height: 0; width: min(1480px, calc(100% - 40px)); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 220px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); }
+.c3-shell > .c3-domain-rail { border-radius: 22px 0 0 22px; }
 .c3-shell :is(h1,h2,h3,p), .c3-people-panel h3 { margin: 0; }
 .c3-shell button { cursor: pointer; }
 .c3-shell button:disabled { cursor: default; }
-.c3-sidebar { min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 28px 14px 14px; background: var(--wall); border-inline-end: 1px solid var(--line); border-radius: 22px 0 0 22px; }
+.c3-sidebar { min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 28px 14px 14px; background: var(--wall); border-inline-end: 1px solid var(--line); }
 .c3-channel-title { padding-inline: 10px; }
 .c3-channel-title h1 { font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow-wrap: anywhere; }
 .c3-channel-caption { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
@@ -132,7 +133,7 @@
 .c3-offline-users summary { color: var(--muted); cursor: pointer; font-size: 12px; padding: 6px 10px; }
 .c3-visual .c3-channel-caption, .c3-visual .c3-welcome :is(h3,p) { display: none; }
 @media (max-width: 1180px) {
-  .c3-shell { grid-template-columns: 194px minmax(0, 1fr); width: calc(100% - 28px); }
+  .c3-shell { grid-template-columns: 54px 194px minmax(0, 1fr); width: calc(100% - 28px); }
   .c3-room-heading { gap: 10px; padding: 16px 18px; }
   .c3-room-actions { gap: 6px; }
   .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content minmax(188px, 1fr); overflow-y: auto; }
@@ -146,8 +147,11 @@
   .c3-app { min-height: 100dvh; height: 100dvh; }
   .c3-app > .lr-top { display: flex; flex-wrap: nowrap; padding-block: 10px; }
   .c3-app > .lr-top > .lr-top-right { display: flex; flex-wrap: nowrap; }
-  .c3-shell { width: calc(100% - 20px); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); margin-bottom: 10px; border-radius: 18px; }
-  .c3-sidebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; border-inline-end: 0; border-bottom: 1px solid var(--line); border-radius: 18px 18px 0 0; padding: 14px; }
+  .c3-shell { width: calc(100% - 20px); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); margin-bottom: 10px; border-radius: 18px; }
+  .c3-shell > .c3-domain-rail { flex-direction: row; gap: 12px; padding: 8px 12px; min-width: 0; border-radius: 18px 18px 0 0; border-bottom: 1px solid var(--line); }
+  .c3-shell > .c3-domain-rail .c3-domain-brand, .c3-shell > .c3-domain-rail .c3-domain-rule, .c3-shell > .c3-domain-rail .c3-domain-version { display: none; }
+  .c3-shell > .c3-domain-rail .c3-domain-saved { flex-direction: row; overflow-x: auto; }
+  .c3-sidebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; border-inline-end: 0; border-bottom: 1px solid var(--line); padding: 14px; }
   .c3-channel-title { padding: 0; align-self: center; }
   .c3-channel-title h1 { font-size: 16px; }
   .c3-channel-caption, .c3-identity, .c3-rooms { display: none; }

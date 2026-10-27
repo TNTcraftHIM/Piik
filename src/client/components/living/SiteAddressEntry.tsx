@@ -3,16 +3,7 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Btn } from "./primitives";
 import { useAnchoredPopover } from "./use-anchored-popover";
-
-// Permission belongs to an exact origin, never to an invitation path or fragment.
-export function siteEntryOrigin(value: string): string | null {
-  try {
-    const address = value.trim();
-    const url = new URL(address.includes("://") ? address : `https://${address}`);
-    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password &&
-      !/\s/.test(decodeURIComponent(url.hostname)) ? url.origin : null;
-  } catch { return null; }
-}
+import { siteEntryOrigin } from "../../lib/site-address";
 
 export function SiteAddressEntry({ initialAddress = "", onSelect }: {
   initialAddress?: string; onSelect: (origin: string) => void;
