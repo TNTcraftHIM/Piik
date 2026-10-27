@@ -47,8 +47,8 @@ runtime changes. The following describes only the current executable prototype.
 - Mapping each channel to an existing room could reuse its single-picture route
   controller, but current Host authority and picture publisher are coupled.
   That mapping alone cannot deliver arbitrary participants sharing in a channel.
-  A Rust implementation must explicitly separate channel authority, publication,
-  subscription and the existing P2P-first graph/serial-operation semantics.
+  The linked proposal separates channel authority, publication and subscription,
+  and identifies which 2.x route constraints need to change for multiple sources.
 - Axum/Tokio own HTTP/WebSocket/runtime mechanics. This crate implements no media
   router, SFU, quality algorithm, NAT traversal, persistence or native adapter.
   Mature media components must be evaluated separately; a Rust client SDK is

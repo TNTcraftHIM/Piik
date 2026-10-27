@@ -9,10 +9,12 @@ today; [TODO](../todo.md) owns remaining work.
 ## Recommendation
 
 Use one service authority for a space containing channels. Separate management,
-membership, publishing, watching and forwarding. Within each channel, one route
-coordinator owns all publications and subscriptions; each publication has its own
-distribution tree, and compatible flows reuse physical peer connections. Each
-media runtime admits its aggregate work across channels and service connections.
+membership, publishing, watching and forwarding. Channels own access and their
+publication directory. Each publication owns its distribution plan and recovery;
+different publications and channels can progress independently. Compatible flows
+reuse physical peer connections. Each media runtime accounts for the actual work
+it hosts across those flows. The space has no fixed media allowance to divide
+among its channels or members.
 
 An App can host a temporary space; a self-hosted Server can keep a space available.
 Both use the same Rust core and Web UI. The service owns metadata and permissions;
@@ -29,6 +31,7 @@ Participants can publish without becoming the space administrator.
 | Discord's [permission model](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx) distinguishes channel visibility, connection and publishing. | Keep those authority boundaries, with a small member/admin policy. Piik does not need the full role and category-overwrite hierarchy. |
 | Mumble distinguishes registered identity from live session and has separate [Enter, Listen and Speak permissions](https://github.com/mumble-voip/mumble/blob/master/src/ACL.h). | A new WebSocket is not a new person; receiving voice need not require microphone access. |
 | [Spacebar](https://docs.spacebar.chat/setup/server/installation/generic/voice/) separates service and media responsibilities. Discord's [voice architecture article](https://discord.com/blog/how-discord-handles-two-and-half-million-concurrent-voice-users-using-webrtc) describes server-mediated media. | These inform responsibility boundaries. Their central media topology is not evidence for Piik's peer-forwarding design. |
+| mediasoup distinguishes room-like routers, individual producers/consumers, and the workers that supply [actual processing capacity](https://mediasoup.org/documentation/v3/scalability/). Its [transport API](https://mediasoup.org/documentation/v3/mediasoup/api/#Transport) owns connection bitrate limits. | Separate logical conversation, individual media demand and physical capacity. Shared implementation does not require one global scheduling instance or a fixed room-wide bitrate pool. |
 
 These are design inputs. The proposed Piik topology below is our choice, derived
 from the current controller and the multiple-publisher requirement.
@@ -75,24 +78,24 @@ they affect. Endpoint limits still count actual active sessions and media work.
 
 ## Interaction And Lifecycle
 
-Recommend one active media channel per endpoint in the first UI, with independent
-voice participation, microphone, picture publication and picture subscriptions
-inside it. Reading another channel never moves them. This is a UI scope choice
-for discussion: the current local prototype permits voice and picture in different
-channels. Publication and subscription records always carry their own channel;
-the wire model does not encode a permanent one-channel limitation.
+Allow explicit participation and watching across channels. Each activity names
+its channel; browsing or joining another channel does not move existing activity.
+Watching more pictures increases receiving and decoding work. This is expected
+usage, not a reason to impose a one-channel restriction. Microphone destinations
+remain explicit: browsing or listening to a channel does not broadcast into it.
 
-The active media channel is derived from active participation; it is not another
-room or connection state machine. Starting a picture does not require joining
-voice. Joining voice can be listen-only. Microphone mute preserves participation,
-and headphone mute changes local listening. Voice is available according to channel
-policy rather than an administrator's microphone lifetime. No active media demand
-means no media connections, encoders or decoders.
+There is no single active-media-channel field controlling all resources. Starting
+a picture does not require joining voice. Joining voice can be listen-only.
+Microphone mute preserves participation, and headphone mute changes local
+listening. Controls identify the activity and channel they affect. Voice is
+available according to channel policy rather than an administrator's microphone
+lifetime. No active media demand means no media connections, encoders or decoders.
 
 | User action or event | Result |
 | --- | --- |
-| Read another channel | Show its conversation; keep current media and a compact control strip identifying its channel. |
-| Explicitly change media channel | First admit the destination; failure keeps the current context. On commit, leave old-channel voice, stop its picture publication and unsubscribe its pictures. Reuse the permitted microphone and mute setting if continuing voice. Sharing a picture in the destination requires an explicit action and new publication authority. |
+| Read another channel | Show its conversation; keep current media and controls identifying their activity and channel. |
+| Join or watch in another channel | Authorize and add that participation or subscription. Existing channels continue; additional media adds actual resource demand. |
+| Explicitly move an activity | First admit its destination; failure keeps the original activity. Commit replaces only that activity's channel authorization. Reuse a permitted microphone and its mute setting; sharing a picture to a new audience requires an explicit destination choice. Other activities remain where they are. |
 | Stop a picture / leave voice | Retire only that activity. Chat, other members' pictures and independent activities continue. |
 | Watch several pictures | Subscribe to selected publications and render them in one grid. Focus one picture for a larger view; use existing media adaptation for representations. |
 | Switch a picture source | Keep the publication identity with a new source generation; retire old generation input grants and media callbacks. Current authorized subscribers follow the replacement. |
@@ -128,7 +131,7 @@ while one picture is reconnecting, and a quiet channel is not a failed network.
 | Model | Benefit | Cost and decision |
 | --- | --- | --- |
 | One shared bidirectional tree | Simple unique paths; closest to current voice projection. | Different publishers and selective viewers can force unnecessary forwarding through common cuts. Keep as a comparison baseline. |
-| One distribution tree per publication, one channel coordinator | Paths follow actual recipients; existing transports can carry several sources. | Requires shared capacity admission and per-publication parent identity. Recommended. |
+| One distribution plan per publication | Paths and recovery follow actual recipients; independent publications progress concurrently and reuse eligible transports. | Requires per-publication route ownership and admission at the actual shared resource. Recommended. |
 | Several simultaneous paths for the same publication | Could distribute one source over multiple paths. | Adds duplicate suppression, ordering and repair ownership. Not needed for this baseline. |
 
 Today, [`projectVoiceFlows`](../../internal/server/signal/voice_plan.go) already
@@ -154,8 +157,8 @@ Most importantly, C has one child but sends it two pictures.
 
 ```mermaid
 flowchart LR
-  A[Space authority] -. channel plan .-> B[B publishes]
-  A -. channel plan .-> C[C publishes]
+  A[Space authority] -. authorize B publication .-> B[B publishes]
+  A -. authorize C publication .-> C[C publishes]
   A -. admission .-> D[D watches B]
   A -. admission .-> E[E watches B and C]
   B -->|B picture| D
@@ -163,24 +166,28 @@ flowchart LR
   C -->|C picture| E
 ```
 
-### Preserve The Controller, Generalize Its Subject
+### Put Scheduling At The Activity That Changes
 
-One channel coordinator owns the committed plan and one bounded route transition
-at a time. The plan contains all publication trees. No publication, voice adapter,
-SFU client or UI starts a competing optimizer. Different channels may proceed
-independently, subject to actual endpoint reservations.
+Reuse one route-controller implementation, with state and operations scoped to
+each publication. The channel owns admission and the publication directory; it
+does not impose a queue that makes B's healthy share wait for A's ICE timeout.
+Each publication has one owner for its committed distribution plan and bounded
+route transitions. Different publications and channels proceed independently.
+Voice, SFU and UI adapters cannot start competing optimizers for the same flow.
 
-Group flows sharing the same physical preparation into one transition; do not
-spend a separate connection timeout on every publication. Availability repair
-takes priority over optional route improvement. The coordinator serializes plan
-changes, while media I/O and unaffected activities continue asynchronously.
+Serialize mutations of a publication's own plan and physical operations on the
+same transport. Media preparation does not hold a channel or space lock while
+waiting for network I/O. Flows using the same physical connection preparation
+share that work rather than spending separate ICE timeouts. Availability repair
+takes priority over optional improvements within the affected operation owner.
 
 Each receiver has one committed input per publication. That publication's
 forwarding edges are acyclic. The combined physical graph can contain cycles or
-opposite flows belonging to different publications. Preserve the single owner,
-serial operation, bounded opportunity and rollback model of
-[ADR-0005](../adr/0005-automatic-hybrid-media-routing.md); replace its single Host
-source and single upstream per Viewer in a new decision after owner agreement.
+opposite flows belonging to different publications. Preserve exclusive state
+ownership, bounded opportunities and rollback from
+[ADR-0005](../adr/0005-automatic-hybrid-media-routing.md). Its single Host source,
+single upstream per Viewer and room-wide serial operation are 2.x constraints;
+the proposed 3.0 decision replaces them with publication-scoped ownership.
 
 Reuse peer connections only within compatible authority/session boundaries.
 Every carried flow identifies its publication and generation. One connection
@@ -189,7 +196,7 @@ other flows. A replacement transition owns only its reservations; an old callbac
 cannot release the new generation's resources.
 
 The runtime is the sole physical transport owner and serializes its negotiation,
-ICE recovery and close operations. Channel coordinators submit flow requests;
+ICE recovery and close operations. Publication controllers submit flow requests;
 they cannot independently mutate a shared PeerConnection. Capacity is returned
 when the corresponding physical work has retired, not merely when a map entry
 has been removed. This transport execution queue is not another route planner.
@@ -205,7 +212,7 @@ Picture needs a decoded frame; silent or muted voice must not wait for audible
 speech as proof. Voice readiness combines negotiated transport and installed
 publication forwarding. When overlap has no capacity, the same operation chooses
 a bounded interruption instead. WebRTC owns congestion adaptation, ICE recovery
-and transport feedback; the route coordinator owns which permitted path is used.
+and transport feedback; each publication controller owns its permitted paths.
 
 Voice uses the same publication/subscription mechanism. Joining voice expresses
 subscriptions to the other joined speakers, without receiving one's own audio.
@@ -219,18 +226,37 @@ Private-channel media and metadata must never be offered to an unauthorized rela
 
 ### Count Actual Work
 
+Scheduling scope, observed resource use and configured limits have different jobs:
+
+| Scope | Responsibility |
+| --- | --- |
+| Space / channel | Membership, permissions and publication discovery. Being present does not allocate a share of a fixed media bitrate pool. |
+| Publication / subscription | Select, recover and stop that source's delivery; express each receiver's actual demand. |
+| Transport / encoder / runtime | Execute and account for real shared work. Coordinate only operations competing for those resources. |
+| Optional relay allowance | Bound forwarding undertaken for other people. Do not treat it as a limit on how many pictures the user may watch. |
+
+For example, selecting two 4 Mbps pictures requests about 8 Mbps of media payload
+at that receiver, plus overhead, and two decoding paths. A receiver with capacity
+can consume both at the requested quality. It does not receive half of an invented
+4 Mbps room allowance. Another member who has not subscribed consumes neither
+picture merely by joining the space. A shared relay or SFU counts the copies it
+actually sends; additional channels do not create additional physical uplink.
+
 Child count alone cannot admit multi-source forwarding. Account for connections,
 outbound publication/representation copies, active encoders/decoders and admitted
 transition overlap. Outbound rate includes every copy, whichever direction it
 travels in the logical tree, plus protocol overhead and retransmission.
 
-The channel coordinator requests work; the Browser or App media runtime atomically
-reserves and accepts or rejects it. Its one resource owner covers all work it
-actually hosts. An App serving several authorized sites shares that native budget;
-a Browser page owns its own runtime, not the physical computer's entire uplink.
-Do not claim that independent browser origins or unrelated services know each
-other's traffic. Existing configured limits and measured transport information
-guide admission; mature senders still handle changing available bandwidth.
+Publication controllers request work; the Browser or App media runtime accounts
+for it and admits finite resources such as encoder slots and relay commitments.
+Accounting is not a fixed bandwidth quota or an equal split between channels.
+Watching, publishing and volunteering to relay are distinct user intents; the 2.x
+single-picture outbound-copy default is not a universal 3.0 activity limit.
+An App serving several sites has one native resource owner. A Browser page owns
+its own runtime, not the physical computer's entire uplink. Independent browser
+origins and unrelated services do not know each other's traffic. Capability,
+explicit resource limits and actual transport feedback govern admission and
+adaptation; changing bandwidth remains the mature media implementation's job.
 
 Reuse compatible source encodings rather than re-encode once per recipient.
 Browser relay can still involve decoding and encoding; it is not a transparent
@@ -242,7 +268,7 @@ apply it as a cap on the entire source. Preserve unaffected outputs; common upli
 bottlenecks, relay ingress or limited encoders can still require related
 subscriptions to reduce quality, pause or be refused.
 
-SFU fallback enters the same plan and admission accounting. Count each ingested
+SFU fallback enters the affected publication plan and actual resource accounting. Count each ingested
 publication/representation and each outgoing copy. A configured SFU URL is not
 evidence of reachable media. If a path is unavailable, report the affected
 subscription and preserve working paths.
@@ -330,9 +356,10 @@ the [versioning standard](../standards/versioning.md).
    Resolve that boundary before committing the transport interface.
 2. Complete a Browser vertical slice: A hosts, B publishes, C watches and speaks;
    A need not publish. Browsing, mute, stop and reconnect exercise the real owners.
-3. Extend the same planner to two simultaneous sources and selective multi-view;
+3. Run independent instances of the shared planner for simultaneous sources and selective multi-view;
    compare shared-tree and per-publication routing under the same constrained
-   endpoints. Exercise relay exit and recovery without disturbing healthy sources.
+   endpoints. Exercise relay exit and a stalled source while another source starts,
+   across both one channel and different channels. Healthy sources must continue.
 4. Admit Native and SFU backends through the chosen media implementation. Verify
    aggregate capacity, source replacement, authorization and transport retirement.
 5. Add the agreed attachment scope and finish the shared channel controls and
@@ -346,13 +373,12 @@ chat/local-capture prototype is the starting point, not that delivered baseline.
 
 ## Decisions For Owner Discussion
 
-- **Network:** recommend per-publication trees inside one channel coordinator,
-  retaining shared admission and operation ownership. This deliberately replaces
-  the old single-publisher, single-parent constraint.
-- **First UI scope:** recommend one active media channel per endpoint, with free
-  browsing and multiple pictures inside it. If simultaneous voice in A and sharing
-  in B is required immediately, expose those destinations explicitly; the proposed
-  identities and runtime budget already support that extension.
+- **Network:** recommend independent publication-scoped route controllers with
+  one shared implementation. Coordinate actual shared resources at their owners,
+  without imposing a space-wide media quota or channel-wide network wait queue.
+- **Interaction:** support explicit activities and subscriptions across channels.
+  Expose voice and picture destinations clearly; extra selections add actual
+  resource demand rather than consuming a fixed per-room entitlement.
 - **Persistence:** recommend temporary App spaces and durable Server spaces.
   Begin file exchange with online offers for App spaces and stored attachments
   for configured Servers; do not add federation or automatic host takeover.

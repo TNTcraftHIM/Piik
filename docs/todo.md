@@ -38,7 +38,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Piik 3.0 channels and Rust prototype.** Discuss the
   [network and lifecycle proposal](./research/channel-network-design.md) with the
   owner before implementing it, as requested on 2026-10-26. Resolve the proposed
-  multi-source route model, first UI media scope and attachment/storage behavior.
+  publication-scoped routing, actual shared-resource ownership, cross-channel
+  interaction and attachment/storage behavior.
   Then complete the real multi-publisher/voice baseline in the isolated experiment.
   Rust is the selected core language; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
