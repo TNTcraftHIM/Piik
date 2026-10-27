@@ -369,6 +369,14 @@ func TestInputFailureDiagnosticsPreserveExecutionAuthority(t *testing.T) {
 			if record["event"] != stage+"-failed" || record["connectionId"] != diagnostics.ID(c.edgeID) || record["inputGeneration"] != diagnostics.ID(c.epoch) {
 				t.Fatalf("failure stage or generation missing: %v", record)
 			}
+			if stage == "apply" {
+				if record["operation"] != "text" || record["sourceKind"] != c.owner.target.Kind {
+					t.Fatal("failure lost its operation or target kind")
+				}
+				if _, ok := record["targetReady"].(bool); !ok {
+					t.Fatal("failure lost its target observation")
+				}
+			}
 			for _, private := range []string{grant, c.intent, c.edgeID, c.epoch, "KeyA", "private committed text"} {
 				if strings.Contains(logs.String(), private) {
 					t.Fatal("failure diagnostic recorded private input or authority")

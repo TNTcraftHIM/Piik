@@ -4,9 +4,32 @@ package remoteinput
 
 import (
 	"context"
+	"errors"
+	"strings"
+	"syscall"
 	"testing"
 	"unsafe"
+
+	"golang.org/x/sys/windows"
 )
+
+func TestRejectedWindowsInputDiagnostics(t *testing.T) {
+	for _, want := range []syscall.Errno{0, windows.ERROR_ACCESS_DENIED} {
+		err := rejectedWindowsInput(0, 1, want)
+		var code syscall.Errno
+		if !errors.As(err, &code) || code != want {
+			t.Fatalf("Windows rejection lost its system code: %v", err)
+		}
+		for _, fact := range []string{"Windows accepted 0 of 1", "input desktop accessible=", "input desktop matches thread=", "foreground present=", "foreground higher integrity="} {
+			if !strings.Contains(err.Error(), fact) {
+				t.Fatalf("Windows rejection lost %q: %v", fact, err)
+			}
+		}
+	}
+	if level, ok := tokenIntegrity(windows.GetCurrentProcessToken()); !ok || level == 0 {
+		t.Fatalf("current process integrity was not observed: %d %v", level, ok)
+	}
+}
 
 func TestNativeStopShortcutRegistrationLifetime(t *testing.T) {
 	// Reserve an available chord through the OS API without injecting input.

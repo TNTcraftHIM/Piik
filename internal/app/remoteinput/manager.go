@@ -620,7 +620,8 @@ func (m *Manager) receive(c *connection, message webrtc.DataChannelMessage, epoc
 			err = m.applyHeld(c, b, event)
 		}
 		if err != nil {
-			slog.Debug("remote-input", "event", "apply-failed", "connectionId", diagnostics.ID(c.edgeID), "inputGeneration", diagnostics.ID(c.epoch), diagnostics.Error(err))
+			slog.Debug("remote-input", "event", "apply-failed", "connectionId", diagnostics.ID(c.edgeID), "inputGeneration", diagnostics.ID(c.epoch),
+				"operation", event.Type, "sourceKind", c.owner.target.Kind, "targetReady", focused && b.width > 0 && b.height > 0, diagnostics.Error(err))
 		}
 		m.noteInputResult(c, err)
 	}

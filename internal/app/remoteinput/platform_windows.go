@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"math"
 	"runtime"
+	"syscall"
 	"unicode/utf16"
 	"unsafe"
 
@@ -49,15 +50,105 @@ func newPlatformSink(bool) (inputSink, error) {
 
 func (*windowsSink) Authorize() error { return nil }
 
+type windowsInputError struct {
+	accepted, requested  uintptr
+	code                 syscall.Errno
+	desktopAccessible    bool
+	desktopMatchesThread string
+	foregroundPresent    bool
+	higherIntegrity      string
+}
+
+func (e *windowsInputError) Error() string {
+	return fmt.Sprintf("Windows accepted %d of %d input events (system code %d; input desktop accessible=%t; input desktop matches thread=%s; foreground present=%t; foreground higher integrity=%s)",
+		e.accepted, e.requested, e.code, e.desktopAccessible, e.desktopMatchesThread, e.foregroundPresent, e.higherIntegrity)
+}
+
+func (e *windowsInputError) Unwrap() error { return e.code }
+
+// Observe permission boundaries only after a rejected operation. These facts do
+// not identify UIPI as the cause, and contain no window, process or desktop names.
+func rejectedWindowsInput(accepted, requested uintptr, code syscall.Errno) error {
+	result := &windowsInputError{accepted: accepted, requested: requested, code: code, higherIntegrity: "unknown", desktopMatchesThread: "unknown"}
+	desktop, _, _ := user32.NewProc("OpenInputDesktop").Call(0, 0, 1) // DESKTOP_READOBJECTS
+	result.desktopAccessible = desktop != 0
+	if desktop != 0 {
+		threadDesktop, _, _ := user32.NewProc("GetThreadDesktop").Call(uintptr(windows.GetCurrentThreadId()))
+		inputName, inputOK := desktopName(desktop)
+		threadName, threadOK := desktopName(threadDesktop)
+		if inputOK && threadOK {
+			result.desktopMatchesThread = fmt.Sprint(inputName == threadName)
+		}
+		user32.NewProc("CloseDesktop").Call(desktop)
+	}
+	foreground, _, _ := user32.NewProc("GetForegroundWindow").Call()
+	result.foregroundPresent = foreground != 0
+	if foreground == 0 {
+		return result
+	}
+	var pid uint32
+	user32.NewProc("GetWindowThreadProcessId").Call(foreground, uintptr(unsafe.Pointer(&pid)))
+	process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
+	if err != nil {
+		return result
+	}
+	defer windows.CloseHandle(process)
+	var token windows.Token
+	if windows.OpenProcessToken(process, windows.TOKEN_QUERY, &token) != nil {
+		return result
+	}
+	defer token.Close()
+	own, ownOK := tokenIntegrity(windows.GetCurrentProcessToken())
+	other, otherOK := tokenIntegrity(token)
+	if ownOK && otherOK {
+		result.higherIntegrity = fmt.Sprint(other > own)
+	}
+	return result
+}
+
+func desktopName(desktop uintptr) (string, bool) {
+	if desktop == 0 {
+		return "", false
+	}
+	query := user32.NewProc("GetUserObjectInformationW")
+	var size uint32
+	query.Call(desktop, 2, 0, 0, uintptr(unsafe.Pointer(&size))) // UOI_NAME
+	if size == 0 {
+		return "", false
+	}
+	buffer := make([]uint16, (size+1)/2)
+	ok, _, _ := query.Call(desktop, 2, uintptr(unsafe.Pointer(&buffer[0])), uintptr(len(buffer)*2), uintptr(unsafe.Pointer(&size)))
+	return windows.UTF16ToString(buffer), ok != 0
+}
+
+func tokenIntegrity(token windows.Token) (uint32, bool) {
+	var size uint32
+	if err := windows.GetTokenInformation(token, windows.TokenIntegrityLevel, nil, 0, &size); err != windows.ERROR_INSUFFICIENT_BUFFER {
+		return 0, false
+	}
+	buffer := make([]byte, size)
+	if windows.GetTokenInformation(token, windows.TokenIntegrityLevel, &buffer[0], size, &size) != nil {
+		return 0, false
+	}
+	label := (*windows.Tokenmandatorylabel)(unsafe.Pointer(&buffer[0]))
+	sid := label.Label.Sid
+	if sid == nil || sid.SubAuthorityCount() == 0 {
+		return 0, false
+	}
+	return sid.SubAuthority(uint32(sid.SubAuthorityCount() - 1)), true
+}
+
 func inject(inputs ...winInput) error {
+	// Keep failure observations on the OS thread that attempted the operation.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	n, _, err := sendInput.Call(uintptr(len(inputs)), uintptr(unsafe.Pointer(&inputs[0])), unsafe.Sizeof(inputs[0]))
 	if n != uintptr(len(inputs)) {
 		// Windows does not identify UIPI blocking through GetLastError. Preserve
 		// the accepted count and any reported code without inventing that cause.
-		if err != windows.ERROR_SUCCESS {
-			return fmt.Errorf("Windows accepted %d of %d input events: %w", n, len(inputs), err)
-		}
-		return fmt.Errorf("Windows accepted %d of %d input events", n, len(inputs))
+		var code syscall.Errno
+		errors.As(err, &code)
+		return rejectedWindowsInput(n, uintptr(len(inputs)), code)
 	}
 	return nil
 }

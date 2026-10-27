@@ -2,6 +2,7 @@ package remoteinput
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -74,7 +75,9 @@ func TestRejectedInputKeepsGrantAndDoesNotReplay(t *testing.T) {
 			if c.grant != grant || !m.pendingKeys["KeyB"] || c.keys["KeyB"] {
 				t.Fatal("failed release lost cleanup debt or grant")
 			}
-			sendTestInput(m, c, inputEvent{Type: "move", X: .7, Y: .4})
+			if err := m.applyHeld(c, bounds{}, inputEvent{Type: "move", X: .7, Y: .4}); !errors.Is(err, sink.applyErr) || !strings.Contains(err.Error(), "key release retry") {
+				t.Fatalf("cleanup hid the rejected release: %v", err)
+			}
 			if len(sink.events) != 0 {
 				t.Fatal("new action ran before cleanup")
 			}
@@ -115,6 +118,9 @@ func TestPlayerCleanupFailurePreservesSiblingGrant(t *testing.T) {
 	m.releaseConnection(a)
 	if b.grant != grant || m.owner != s {
 		t.Fatal("disconnect cleanup revoked sibling")
+	}
+	if err := m.applyHeld(b, bounds{}, inputEvent{Type: "move", X: .5, Y: .5}); !errors.Is(err, sink.applyErr) || !strings.Contains(err.Error(), "button release retry") {
+		t.Fatalf("shared cleanup hid the rejected button release: %v", err)
 	}
 	sink.applyErr = nil
 	m.retryReleases()
