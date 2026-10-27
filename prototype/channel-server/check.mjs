@@ -55,7 +55,7 @@ test("authenticated users, role authority, attributed chat and selective source 
   const other = await connect(t, { key: inviteKey, name: "Other check" });
   for (const client of [owner, friend, other]) assert.equal(client.welcome.type, "welcome");
   const state = owner.welcome.state;
-  assert(Number.isSafeInteger(state.channel.historyLimit) && state.channel.historyLimit > 0);
+  assert(Number.isSafeInteger(state.channel.historyWindow) && state.channel.historyWindow > 0);
   const ownerSession = state.sessions.find(session => session.id === owner.welcome.sessionId);
   assert.equal(ownerSession.userId, state.channel.ownerId);
   assert.notEqual(friend.welcome.sessionId, other.welcome.sessionId);
@@ -122,7 +122,7 @@ test("authenticated users, role authority, attributed chat and selective source 
   assert(olderPage.messages.every(message => message.seq < olderCursor));
   assert(Number.isSafeInteger(history.oldestSeq));
   assert(history.messages.every(message => message.seq >= history.oldestSeq));
-  assert(history.messages.length <= returning.welcome.state.channel.historyLimit);
+  assert(history.messages.length <= returning.welcome.state.channel.historyWindow);
   assert(history.messages.every(message => Number.isSafeInteger(message.seq) && Array.isArray(message.attachments)));
 
   const stolen = await connect(t, { credential: other.welcome.credential, sessionId: friend.welcome.sessionId });

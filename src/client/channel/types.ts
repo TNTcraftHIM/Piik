@@ -7,7 +7,7 @@ export interface ChannelView {
   self: ChannelUser | null;
   connection: "connecting" | "connected" | "reconnecting" | "closed";
   messagesByRoom: Record<string, ChannelMessage[]>;
-  historyByRoom: Record<string, { hasMore: boolean; before?: number }>;
+  historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean }>;
   streams: ReadonlyMap<string, MediaStream>;
   error: string | null;
   inviteURL: string | null;
@@ -18,6 +18,7 @@ export interface ChannelActions {
   browse(roomId: string): void;
   sendMessage(roomId: string, text: string, attachments?: string[]): Promise<void>;
   loadHistory(roomId: string): Promise<void>;
+  loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;
   renameSelf(name: string): Promise<void>;
   createRoom(settings: RoomSettings): Promise<string>;

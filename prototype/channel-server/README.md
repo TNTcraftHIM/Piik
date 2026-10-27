@@ -102,11 +102,13 @@ users. Private rooms require a room invitation or password, and hidden rooms do
 not appear in an unauthorized user's directory. Changing a password or invitation
 controls new admission; existing grants require explicit revocation.
 
-Messages are attributed and ordered by the authority. History keeps the latest
-1,000 messages per room and loads in pages of up to 100. Each message supports
-2,000 Unicode characters and up to eight attachments. The interface keeps read
-pages and drafts in memory; refreshing retrieves history from the host. There is
-no separate offline history database or peer history replication.
+Messages have a confirmed order within their room. The room store retains
+confirmed history and loads pages of up to 100; it does not automatically discard
+old messages. The interface keeps a reading window of up to 1,000 messages and
+lets readers move through earlier pages or return to the latest messages.
+Each message supports 2,000 Unicode characters and up to eight attachments.
+Read pages and drafts stay in memory; refreshing retrieves history from the host.
+There is no separate offline history database or peer history replication.
 
 Browse rooms without moving an existing call, share or subscription. Join voice
 with a microphone or listen-only. Microphone mute controls your outgoing room
@@ -134,11 +136,17 @@ Authoritative saved data belongs to the hosting coordinator, on the local device
 or configured server running it. This Server prototype defaults to
 `build/channel-prototype-data/channel.sqlite`. `PIIK_CHANNEL_DATA_DIR` chooses a
 different directory; `:memory:` selects an explicitly temporary instance.
-Catalog, identities, room policy/grants, retained history and retry deduplication
-are checkpointed together before successful operations are acknowledged. A write
-failure rolls back the live change. User credentials/invitations are stored as
-digests and room passwords as password hashes. Sessions, captures and routes are
-not restored after a process restart.
+Catalog, identities and room policy/grants use a metadata checkpoint. Messages
+commit individually: their room order, send identity and attachment references
+are saved in one transaction before confirmation or distribution. A retry returns
+the original confirmed message without rebroadcasting it, including after restart.
+Storage failure leaves the send unconfirmed and preserves existing records.
+User credentials/invitations are stored as digests and room passwords as password
+hashes. Sessions, captures and routes are not restored after a process restart.
+
+This unpublished prototype uses checkpoint version 2. Older experimental
+checkpoints are rejected rather than silently discarding their history. Keep any
+old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
 
 UI preferences belong to the client; the Browser also keeps its user credential
 locally. Read pages and drafts stay in memory, as do the design board's sample
@@ -171,12 +179,11 @@ The resource owner exposes actual limits through
 The UI reads the limits rather than maintaining another size policy. Recognized
 PNG/JPEG/GIF/WebP content can be previewed; other content is downloaded, with
 attachment disposition and `nosniff`. Unsent uploads older than one hour are
-cleaned on the next save/upload/startup. Content referenced only by messages
-that leave retained history is removed with that checkpoint. Explicit deletion
-also releases storage.
+cleaned on the next upload. Committed content remains until explicitly deleted;
+deleting its bytes does not remove the confirmed message or its retry identity.
 
-SQLite BLOBs and bounded checkpoint writes keep this prototype self-contained;
-they are not an unlimited file service or an incremental storage engine.
+Incremental room-message transactions, metadata checkpoints and bounded SQLite
+BLOB storage keep this prototype self-contained.
 Authority-hosted uploads/downloads consume the host's bandwidth. P2P file offers,
 replicated history, federation and authority handoff are outside this slice.
 Other current resource bounds are 20 live endpoints, 64 stored users, 32 rooms
@@ -206,6 +213,8 @@ real Browser peers and relay recovery; `--rooms` exercises room access and files
 replace only the system picker, not business state, routing or peer connections.
 The storage check owns an isolated temporary database and tests real HTTP,
 WebSocket, process restart and failed-write rollback.
+Both runners accept `CHANNEL_EXECUTABLE` to test a separate build while an older
+preview remains running; otherwise they use the normal debug executable.
 
 For a WebSocket-only check against an already running isolated instance, use
 `node --test prototype/channel-server/check.mjs` with its local key/endpoint

@@ -29,7 +29,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf,
     createRoom: session.createRoom, updateRoom: session.updateRoom, enterRoom: session.enterRoom,
     createRoomInvite: session.createRoomInvite, revokeRoomAccess: session.revokeRoomAccess,
-    attachments: session.attachments, loadHistory: session.loadHistory,
+    attachments: session.attachments, loadHistory: session.loadHistory, loadLatestHistory: session.loadLatestHistory,
     setRoles: session.setRoles, startScreen: session.startScreen,
     stopScreen: session.stopScreen, watch: session.watch, unwatch: session.unwatch,
     joinVoice: session.joinVoice, leaveVoice: session.leaveVoice, setMuted: session.setMuted,

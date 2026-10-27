@@ -1,9 +1,13 @@
-//! The local Server experiment's durable checkpoint and bounded attachment store.
+//! The local Server experiment's metadata, confirmed room history and attachments.
 //! Media sessions and routes never enter this database.
-use rusqlite::{params, Connection, OptionalExtension};
+use piik_channel_prototype::{
+    history::{HistoryRequest, HistoryResult, HISTORY_PAGE},
+    wire::ChatMessage,
+};
+use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
 use serde::Serialize;
 use serde_json::Value;
-use std::{collections::BTreeSet, path::Path};
+use std::path::Path;
 use uuid::Uuid;
 
 #[derive(Clone, Copy, Serialize)]
@@ -54,6 +58,12 @@ impl Storage {
         connection.execute_batch(
             "PRAGMA foreign_keys=ON;
              CREATE TABLE IF NOT EXISTS checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
+             CREATE TABLE IF NOT EXISTS message (
+               room_id TEXT NOT NULL, seq INTEGER NOT NULL, id TEXT NOT NULL UNIQUE,
+               user_id TEXT NOT NULL, nonce TEXT NOT NULL, text TEXT NOT NULL,
+               time INTEGER NOT NULL, attachments TEXT NOT NULL,
+               PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
+             );
              CREATE TABLE IF NOT EXISTS attachment (
                id TEXT PRIMARY KEY, room_id TEXT NOT NULL, user_id TEXT NOT NULL,
                name TEXT NOT NULL, media_type TEXT NOT NULL, created_at INTEGER NOT NULL,
@@ -73,40 +83,127 @@ impl Storage {
             .transpose()
     }
 
-    /// Commit authority state before publishing its events. Previously referenced
-    /// content follows retained history; unfinished uploads expire after one hour.
-    pub fn save(
-        &mut self,
-        state: &Value,
-        references: &BTreeSet<Uuid>,
-        now: u64,
-    ) -> StoreResult<()> {
+    /// This checkpoint contains authority metadata, never confirmed messages.
+    pub fn save(&mut self, state: &Value) -> StoreResult<()> {
         let body = serde_json::to_string(state)?;
-        let transaction = self.connection.transaction()?;
-        transaction.execute("INSERT INTO checkpoint(id,body) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [body])?;
-        let rows = {
-            let mut query =
-                transaction.prepare("SELECT id,committed,created_at FROM attachment")?;
-            let rows = query
-                .query_map([], |row| {
-                    Ok((
-                        row.get::<_, String>(0)?,
-                        row.get::<_, bool>(1)?,
-                        row.get::<_, u64>(2)?,
-                    ))
-                })?
-                .collect::<Result<Vec<_>, _>>()?;
-            rows
-        };
-        for (id, committed, created_at) in rows {
-            if references.contains(&Uuid::parse_str(&id)?) {
-                transaction.execute("UPDATE attachment SET committed=1 WHERE id=?1", [&id])?;
-            } else if committed || now.saturating_sub(created_at) >= PENDING_LIFETIME_MS {
-                transaction.execute("DELETE FROM attachment WHERE id=?1", [&id])?;
-            }
-        }
-        transaction.commit()?;
+        self.connection.execute("INSERT INTO checkpoint(id,body) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [body])?;
         Ok(())
+    }
+
+    /// Resolve one already-authorized operation before publishing its result.
+    /// Sequence, retry identity and attachment publication commit together.
+    pub fn history(&mut self, request: &HistoryRequest) -> Result<HistoryResult, &'static str> {
+        let behavior = match request {
+            HistoryRequest::Read { .. } => TransactionBehavior::Deferred,
+            HistoryRequest::Send { .. } => TransactionBehavior::Immediate,
+        };
+        let transaction = self
+            .connection
+            .transaction_with_behavior(behavior)
+            .map_err(|_| "storage_failed")?;
+        let result = match request {
+            HistoryRequest::Read { room_id, before } => {
+                let newest = before
+                    .map(|seq| seq.saturating_sub(1))
+                    .unwrap_or(u64::MAX)
+                    .min(i64::MAX as u64);
+                let mut messages = {
+                    let mut query = transaction
+                        .prepare(
+                            "SELECT seq,id,user_id,text,time,attachments FROM message
+                         WHERE room_id=?1 AND seq<=?2
+                         ORDER BY seq DESC LIMIT ?3",
+                        )
+                        .map_err(|_| "storage_failed")?;
+                    let rows = query
+                        .query_map(params![room_id, newest, HISTORY_PAGE + 1], read_message)
+                        .map_err(|_| "storage_failed")?
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(|_| "storage_failed")?;
+                    rows
+                };
+                let has_more = messages.len() > HISTORY_PAGE;
+                messages.truncate(HISTORY_PAGE);
+                messages.reverse();
+                let oldest_seq = transaction
+                    .query_row(
+                        "SELECT min(seq) FROM message WHERE room_id=?1",
+                        [room_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|_| "storage_failed")?;
+                HistoryResult::Page {
+                    messages,
+                    has_more,
+                    oldest_seq,
+                    before: *before,
+                }
+            }
+            HistoryRequest::Send { room_id, draft } => {
+                let previous = transaction
+                    .query_row(
+                        "SELECT seq,id,user_id,text,time,attachments FROM message
+                         WHERE room_id=?1 AND user_id=?2 AND nonce=?3",
+                        params![room_id, draft.user_id.to_string(), draft.nonce],
+                        read_message,
+                    )
+                    .optional()
+                    .map_err(|_| "storage_failed")?;
+                if let Some(message) = previous {
+                    // Confirmed metadata remains authoritative even when its bytes
+                    // were removed. A retry never revalidates the original upload.
+                    HistoryResult::Sent {
+                        message,
+                        inserted: false,
+                    }
+                } else {
+                    for id in &draft.attachments {
+                        let found = transaction
+                            .execute(
+                                "UPDATE attachment SET committed=1
+                             WHERE id=?1 AND room_id=?2 AND user_id=?3",
+                                params![id.to_string(), room_id, draft.user_id.to_string()],
+                            )
+                            .map_err(|_| "storage_failed")?;
+                        if found != 1 {
+                            return Err("attachment_unavailable");
+                        }
+                    }
+                    // No owner-history deletion exists in this slice. The last
+                    // persisted row is the room's order, independent of other rooms.
+                    let seq: u64 = transaction
+                        .query_row(
+                            "SELECT coalesce(max(seq),0)+1 FROM message WHERE room_id=?1",
+                            [room_id],
+                            |row| row.get(0),
+                        )
+                        .map_err(|_| "storage_failed")?;
+                    let message = ChatMessage {
+                        seq,
+                        id: Uuid::new_v4(),
+                        user_id: draft.user_id,
+                        text: draft.text.clone(),
+                        time: draft.time,
+                        attachments: draft.attachments.clone(),
+                    };
+                    let attachments = serde_json::to_string(&message.attachments)
+                        .map_err(|_| "storage_failed")?;
+                    transaction.execute(
+                        "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments)
+                         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+                        params![room_id, message.seq, message.id.to_string(),
+                            message.user_id.to_string(), draft.nonce, message.text,
+                            message.time, attachments],
+                    ).map_err(|_| "storage_failed")?;
+                    HistoryResult::Sent {
+                        message,
+                        inserted: true,
+                    }
+                }
+            }
+        };
+        transaction.commit().map_err(|_| "storage_failed")?;
+        Ok(result)
     }
 
     pub fn put(&mut self, attachment: &Attachment, content: &[u8], now: u64) -> StoreResult<()> {
@@ -190,16 +287,28 @@ impl Storage {
             [id.to_string()],
         )? == 1)
     }
+}
 
-    pub fn validate(&self, room_id: &str, user_id: Uuid, ids: &[Uuid]) -> StoreResult<()> {
-        for id in ids {
-            let attachment = self.metadata(*id)?.ok_or("attachment_unavailable")?;
-            if attachment.room_id != room_id || attachment.user_id != user_id {
-                return Err("attachment_unavailable".into());
-            }
-        }
-        Ok(())
-    }
+fn read_message(row: &Row<'_>) -> rusqlite::Result<ChatMessage> {
+    use rusqlite::types::Type;
+    let id = |index| -> rusqlite::Result<Uuid> {
+        let text: String = row.get(index)?;
+        Uuid::parse_str(&text).map_err(|error| {
+            rusqlite::Error::FromSqlConversionFailure(index, Type::Text, Box::new(error))
+        })
+    };
+    let attachments: String = row.get(5)?;
+    let attachments = serde_json::from_str(&attachments).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(error))
+    })?;
+    Ok(ChatMessage {
+        seq: row.get(0)?,
+        id: id(1)?,
+        user_id: id(2)?,
+        text: row.get(3)?,
+        time: row.get(4)?,
+        attachments,
+    })
 }
 
 /// Only recognized raster formats receive image MIME types. Everything else is
@@ -221,6 +330,7 @@ pub fn media_type(bytes: &[u8]) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use piik_channel_prototype::history::MessageDraft;
     use serde_json::json;
     fn attachment(id: Uuid) -> Attachment {
         Attachment {
@@ -234,31 +344,113 @@ mod tests {
         }
     }
 
+    fn copy_draft(draft: &MessageDraft) -> MessageDraft {
+        MessageDraft {
+            user_id: draft.user_id,
+            nonce: draft.nonce.clone(),
+            text: draft.text.clone(),
+            attachments: draft.attachments.clone(),
+            time: draft.time,
+        }
+    }
+
+    fn confirmed(store: &mut Storage, room: &str, draft: &MessageDraft) -> (ChatMessage, bool) {
+        match store
+            .history(&HistoryRequest::Send {
+                room_id: room.into(),
+                draft: copy_draft(draft),
+            })
+            .unwrap()
+        {
+            HistoryResult::Sent { message, inserted } => (message, inserted),
+            _ => panic!("send returned a history page"),
+        }
+    }
+
+    fn page(
+        store: &mut Storage,
+        room: &str,
+        before: Option<u64>,
+    ) -> (Vec<ChatMessage>, bool, Option<u64>) {
+        match store
+            .history(&HistoryRequest::Read {
+                room_id: room.into(),
+                before,
+            })
+            .unwrap()
+        {
+            HistoryResult::Page {
+                messages,
+                has_more,
+                oldest_seq,
+                before: cursor,
+            } => {
+                assert_eq!(cursor, before);
+                (messages, has_more, oldest_seq)
+            }
+            _ => panic!("read returned a message confirmation"),
+        }
+    }
+
     #[test]
-    fn checkpoint_reopens_without_live_state_and_attachments_follow_history_retention() {
+    fn room_order_and_original_confirmation_survive_restart_and_removed_bytes() {
         let path = std::env::temp_dir().join(format!("piik-storage-{}.sqlite", Uuid::new_v4()));
         let id = Uuid::new_v4();
         let file = attachment(id);
+        let mut draft = MessageDraft {
+            user_id: file.user_id,
+            nonce: "same-send".into(),
+            text: "original".into(),
+            attachments: vec![id],
+            time: 2,
+        };
+        let original;
         {
             let mut store = Storage::open(&path, Limits::default()).unwrap();
             store.put(&file, b"abc", 1).unwrap();
+            store.save(&json!({"channelId":"same"})).unwrap();
+            let (message, inserted) = confirmed(&mut store, "living", &draft);
+            assert!(inserted);
+            assert_eq!(message.seq, 1);
+            original = serde_json::to_value(&message).unwrap();
+            let other_room = MessageDraft {
+                text: "quiet".into(),
+                attachments: vec![],
+                ..copy_draft(&draft)
+            };
+            assert_eq!(confirmed(&mut store, "quiet", &other_room).0.seq, 1);
+            let other_author = MessageDraft {
+                user_id: Uuid::new_v4(),
+                ..other_room
+            };
+            assert_eq!(confirmed(&mut store, "living", &other_author).0.seq, 2);
+            // Metadata saves cannot reclaim another room's confirmed content.
             store
-                .save(
-                    &json!({"channelId":"same", "history":["saved"]}),
-                    &BTreeSet::from([id]),
-                    2,
-                )
+                .save(&json!({"channelId":"same", "name":"changed"}))
                 .unwrap();
+            assert_eq!(store.content(id).unwrap().unwrap(), b"abc");
+            store.delete(id).unwrap();
+            draft.text = "different retry payload".into();
+            draft.attachments = vec![Uuid::new_v4()];
+            draft.time = 999;
+            let (retried, inserted) = confirmed(&mut store, "living", &draft);
+            assert!(!inserted);
+            assert_eq!(serde_json::to_value(retried).unwrap(), original);
         }
         {
             let mut store = Storage::open(&path, Limits::default()).unwrap();
             assert_eq!(store.load().unwrap().unwrap()["channelId"], "same");
-            assert_eq!(store.content(id).unwrap().unwrap(), b"abc");
-            assert!(store.validate("other-room", file.user_id, &[id]).is_err());
-            store
-                .save(&json!({"history":[]}), &BTreeSet::new(), 3)
-                .unwrap();
             assert!(store.metadata(id).unwrap().is_none());
+            let (retried, inserted) = confirmed(&mut store, "living", &draft);
+            assert!(!inserted);
+            assert_eq!(serde_json::to_value(retried).unwrap(), original);
+            let (messages, more, oldest) = page(&mut store, "living", None);
+            assert_eq!(messages.len(), 2);
+            assert!(!more);
+            assert_eq!(oldest, Some(1));
+            draft.nonce = "next-send".into();
+            draft.attachments.clear();
+            assert_eq!(confirmed(&mut store, "living", &draft).0.seq, 3);
         }
         std::fs::remove_file(path).unwrap();
     }
@@ -266,19 +458,118 @@ mod tests {
     #[test]
     fn failed_commit_does_not_replace_checkpoint_and_pending_uploads_expire() {
         let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
-        store
-            .save(&json!({"saved":1}), &BTreeSet::new(), 0)
-            .unwrap();
+        store.save(&json!({"saved":1})).unwrap();
         store.connection.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'disk failure'); END;").unwrap();
-        assert!(store
-            .save(&json!({"saved":2}), &BTreeSet::new(), 1)
-            .is_err());
+        assert!(store.save(&json!({"saved":2})).is_err());
         assert_eq!(store.load().unwrap().unwrap()["saved"], 1);
         let first = attachment(Uuid::new_v4());
         store.put(&first, b"abc", 1).unwrap();
         let second = attachment(Uuid::new_v4());
         store.put(&second, b"abc", PENDING_LIFETIME_MS + 2).unwrap();
         assert!(store.metadata(first.id).unwrap().is_none());
+    }
+
+    #[test]
+    fn confirmed_history_exceeds_one_thousand_and_reads_bounded_room_pages() {
+        let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
+        let user_id = Uuid::new_v4();
+        for seq in 1..=1010 {
+            let draft = MessageDraft {
+                user_id,
+                nonce: format!("send-{seq}"),
+                text: format!("retained-{seq}"),
+                attachments: vec![],
+                time: seq,
+            };
+            assert_eq!(confirmed(&mut store, "living", &draft).0.seq, seq);
+        }
+        let (latest, more, oldest) = page(&mut store, "living", None);
+        assert_eq!((latest.len(), more, oldest), (100, true, Some(1)));
+        assert_eq!((latest[0].seq, latest[99].seq), (911, 1010));
+        let (older, more, oldest) = page(&mut store, "living", Some(11));
+        assert_eq!((older.len(), more, oldest), (10, false, Some(1)));
+        assert_eq!((older[0].seq, older[9].seq), (1, 10));
+        let (empty, more, oldest) = page(&mut store, "living", Some(1));
+        assert!(empty.is_empty());
+        assert!(!more);
+        assert_eq!(oldest, Some(1));
+        let (empty, more, oldest) = page(&mut store, "other-room", None);
+        assert!(empty.is_empty());
+        assert!(!more);
+        assert_eq!(oldest, None);
+    }
+
+    #[test]
+    fn failed_commit_preserves_previous_history_order_and_unpublished_attachment() {
+        let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
+        let file = attachment(Uuid::new_v4());
+        let mut draft = MessageDraft {
+            user_id: file.user_id,
+            nonce: "first".into(),
+            text: "saved".into(),
+            attachments: vec![],
+            time: 1,
+        };
+        let original = serde_json::to_value(confirmed(&mut store, "living", &draft).0).unwrap();
+        store.put(&file, b"abc", 1).unwrap();
+        // The INSERT and attachment UPDATE succeed. The deferred constraint
+        // fails COMMIT itself, exercising the whole transaction's rollback.
+        store.connection.execute_batch(
+            "CREATE TABLE commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
+             CREATE TRIGGER reject_message AFTER INSERT ON message
+             BEGIN INSERT INTO commit_failure VALUES('missing-message'); END;",
+        ).unwrap();
+        draft.nonce = "retry-after-failure".into();
+        draft.attachments = vec![file.id];
+        assert!(matches!(
+            store.history(&HistoryRequest::Send {
+                room_id: "living".into(),
+                draft: copy_draft(&draft),
+            }),
+            Err("storage_failed")
+        ));
+        assert!(store.connection.is_autocommit());
+        let (retained, _, _) = page(&mut store, "living", None);
+        assert_eq!(retained.len(), 1);
+        assert_eq!(serde_json::to_value(&retained[0]).unwrap(), original);
+        assert!(!store.readable(file.id, Uuid::new_v4()).unwrap());
+        store
+            .connection
+            .execute_batch("DROP TRIGGER reject_message")
+            .unwrap();
+        let (retried, inserted) = confirmed(&mut store, "living", &draft);
+        assert!(inserted);
+        assert_eq!(retried.seq, 2);
+        assert!(store.readable(file.id, Uuid::new_v4()).unwrap());
+    }
+
+    #[test]
+    fn unavailable_attachment_rolls_back_other_attachment_publication() {
+        let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
+        let file = attachment(Uuid::new_v4());
+        store.put(&file, b"abc", 1).unwrap();
+        let mut other = attachment(Uuid::new_v4());
+        other.user_id = file.user_id;
+        other.room_id = "quiet".into();
+        store.put(&other, b"abc", 1).unwrap();
+        let mut draft = MessageDraft {
+            user_id: file.user_id,
+            nonce: "send".into(),
+            text: String::new(),
+            attachments: vec![file.id, other.id],
+            time: 1,
+        };
+        assert!(matches!(
+            store.history(&HistoryRequest::Send {
+                room_id: "living".into(),
+                draft: copy_draft(&draft),
+            }),
+            Err("attachment_unavailable")
+        ));
+        assert!(!store.readable(file.id, Uuid::new_v4()).unwrap());
+        assert!(page(&mut store, "living", None).0.is_empty());
+        draft.attachments = vec![file.id];
+        assert_eq!(confirmed(&mut store, "living", &draft).0.seq, 1);
     }
 
     #[test]

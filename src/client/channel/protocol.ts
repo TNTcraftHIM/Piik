@@ -17,7 +17,7 @@ export const messageSchema = z.object({
 });
 export const snapshotSchema = z.object({
   channel: z.object({
-    id, name: z.string(), ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyLimit: z.number().int().positive(),
+    id, name: z.string(), ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(),
     roles: z.array(z.object({ id, name: z.string(), permissions: z.array(z.string()) })),
   }),
   users: z.array(userSchema).max(64),
@@ -40,6 +40,7 @@ export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("room_created"), roomId: id, requestId: id.optional() }),
   z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
   z.object({ type: z.literal("message"), roomId: id, message: messageSchema }),
+  z.object({ type: z.literal("message_confirmed"), roomId: id, message: messageSchema, requestId: id.optional() }),
   z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: signalSchema }),
   z.object({ type: z.literal("ack"), requestId: id }),
   z.object({ type: z.literal("error"), code: z.string(), requestId: id.optional() }),

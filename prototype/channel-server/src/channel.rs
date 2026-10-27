@@ -1,4 +1,5 @@
 use crate::access::{RoomPermission, RoomState};
+use crate::history::{HistoryRequest, MessageDraft, HISTORY_WINDOW};
 use crate::identity::StoredUser;
 use crate::{
     identity::{Admission, Admitted, Identity},
@@ -7,12 +8,11 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 const MAX_PUBLICATIONS: usize = 80;
 const MAX_OUTGOING: usize = 160;
-pub const HISTORY_LIMIT: usize = 1000;
 
 #[derive(Clone, Default)]
 struct Activity {
@@ -35,17 +35,15 @@ pub struct Channel {
     rooms: BTreeMap<String, RoomState>,
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
-    history: BTreeMap<String, VecDeque<ChatMessage>>,
-    nonces: BTreeMap<Uuid, VecDeque<(String, String)>>,
     pairs: BTreeMap<PairKey, Uuid>,
     ice_servers: Vec<Value>,
-    next_seq: u64,
 }
 
 pub struct Outcome {
     pub events: Vec<(Uuid, Event)>,
     pub broadcast: bool,
     pub leave: bool,
+    pub history: Option<HistoryRequest>,
 }
 
 impl Channel {
@@ -78,11 +76,8 @@ impl Channel {
             rooms,
             activity: BTreeMap::new(),
             publications: BTreeMap::new(),
-            history: BTreeMap::new(),
-            nonces: BTreeMap::new(),
             pairs: BTreeMap::new(),
             ice_servers,
-            next_seq: 1,
         }
     }
 
@@ -150,6 +145,7 @@ impl Channel {
         let mut events = Vec::new();
         let mut broadcast = false;
         let mut leave = false;
+        let mut history = None;
         match command {
             Command::Join { .. } => return Err("already_joined"),
             Command::SetName { name } => {
@@ -163,11 +159,14 @@ impl Channel {
             Command::Browse { room_id } => {
                 self.authorize(user_id, &room_id, RoomPermission::Read)?;
                 self.activity.get_mut(&session_id).unwrap().browse = Some(room_id.clone());
-                events.push((session_id, self.history_page(&room_id, None)));
+                history = Some(HistoryRequest::Read {
+                    room_id,
+                    before: None,
+                });
             }
             Command::History { room_id, before } => {
                 self.authorize(user_id, &room_id, RoomPermission::Read)?;
-                events.push((session_id, self.history_page(&room_id, before)));
+                history = Some(HistoryRequest::Read { room_id, before });
             }
             Command::Chat {
                 room_id,
@@ -176,53 +175,10 @@ impl Channel {
                 attachments,
             } => {
                 self.authorize(user_id, &room_id, RoomPermission::Write)?;
-                if attachments.len() > MAX_MESSAGE_ATTACHMENTS
-                    || attachments.iter().copied().collect::<BTreeSet<_>>().len()
-                        != attachments.len()
-                {
-                    return Err("invalid_attachments");
-                }
-                if (text.trim().is_empty() && attachments.is_empty())
-                    || text.chars().count() > 2000
-                    || !valid_id(&nonce)
-                {
-                    return Err("invalid_message");
-                }
-                let nonces = self.nonces.entry(user_id).or_default();
-                if !nonces
-                    .iter()
-                    .any(|(room, seen)| room == &room_id && seen == &nonce)
-                {
-                    nonces.push_back((room_id.clone(), nonce));
-                    if nonces.len() > 256 {
-                        nonces.pop_front();
-                    }
-                    let message = ChatMessage {
-                        seq: self.next_seq,
-                        attachments,
-                        id: Uuid::new_v4(),
-                        user_id,
-                        text: text.trim().to_owned(),
-                        time: now,
-                    };
-                    self.next_seq += 1;
-                    let history = self.history.entry(room_id.clone()).or_default();
-                    history.push_back(message.clone());
-                    if history.len() > HISTORY_LIMIT {
-                        history.pop_front();
-                    }
-                    for (endpoint, state) in &self.activity {
-                        if state.browse.as_deref() == Some(room_id.as_str()) {
-                            events.push((
-                                *endpoint,
-                                Event::Message {
-                                    room_id: room_id.clone(),
-                                    message: message.clone(),
-                                },
-                            ));
-                        }
-                    }
-                }
+                history = Some(HistoryRequest::Send {
+                    room_id,
+                    draft: MessageDraft::new(user_id, nonce, text, attachments, now)?,
+                });
             }
             Command::CreateRoom {
                 name,
@@ -517,6 +473,7 @@ impl Channel {
             events,
             broadcast,
             leave,
+            history,
         })
     }
 
@@ -580,35 +537,12 @@ impl Channel {
         }
     }
 
-    fn history_page(&self, room_id: &str, before: Option<u64>) -> Event {
-        let all: Vec<_> = self
-            .history
-            .get(room_id)
-            .into_iter()
-            .flatten()
-            .filter(|message| before.is_none_or(|seq| message.seq < seq))
-            .collect();
-        let has_more = all.len() > 100;
-        let messages: Vec<_> = all
-            .into_iter()
-            .rev()
-            .take(100)
-            .cloned()
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        Event::History {
-            room_id: room_id.to_owned(),
-            messages,
-            has_more,
-            before,
-            oldest_seq: self
-                .history
-                .get(room_id)
-                .and_then(|messages| messages.front())
-                .map(|message| message.seq),
-        }
+    pub fn history_audience(&self, room_id: &str) -> Vec<Uuid> {
+        self.activity
+            .iter()
+            .filter(|(_, activity)| activity.browse.as_deref() == Some(room_id))
+            .filter_map(|(session, _)| self.identity.sessions[session].connection)
+            .collect()
     }
 
     fn prune_access(&mut self) {
@@ -732,25 +666,16 @@ impl Channel {
 
     pub fn export_state(&self) -> DurableState {
         DurableState {
-            version: 1,
+            version: 2,
             id: self.id,
             owner_id: self.identity.owner_id,
             users: self.identity.export_users(),
             rooms: self.rooms.clone(),
-            history: self.history.clone(),
-            nonces: self.nonces.clone(),
-            next_seq: self.next_seq,
         }
     }
 
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
-        if state.version != 1
-            || state.rooms.len() > 32
-            || state
-                .history
-                .values()
-                .any(|history| history.len() > HISTORY_LIMIT)
-        {
+        if state.version != 2 || state.rooms.len() > 32 {
             return Err("invalid_state");
         }
         let mut identity = Identity::new(
@@ -761,21 +686,10 @@ impl Channel {
         self.identity = identity;
         self.id = state.id;
         self.rooms = state.rooms;
-        self.history = state.history;
-        self.nonces = state.nonces;
-        self.next_seq = state.next_seq;
         self.activity.clear();
         self.publications.clear();
         self.pairs.clear();
         Ok(())
-    }
-
-    pub fn referenced_attachments(&self) -> BTreeSet<Uuid> {
-        self.history
-            .values()
-            .flatten()
-            .flat_map(|m| m.attachments.iter().copied())
-            .collect()
     }
 
     pub fn peer(&self, endpoint: Uuid, pair_id: Uuid) -> Option<Uuid> {
@@ -825,7 +739,7 @@ impl Channel {
         };
         Snapshot {
             channel: ChannelInfo {
-                history_limit: HISTORY_LIMIT,
+                history_window: HISTORY_WINDOW,
                 id: self.id,
                 name: "Piik friends".into(),
                 owner_id: Some(self.identity.owner_id),
@@ -893,9 +807,6 @@ pub struct DurableState {
     owner_id: Uuid,
     users: Vec<StoredUser>,
     rooms: BTreeMap<String, RoomState>,
-    history: BTreeMap<String, VecDeque<ChatMessage>>,
-    nonces: BTreeMap<Uuid, VecDeque<(String, String)>>,
-    next_seq: u64,
 }
 
 fn pair_key(first: Uuid, second: Uuid) -> PairKey {

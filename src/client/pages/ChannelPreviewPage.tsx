@@ -169,7 +169,8 @@ export function ChannelPreviewPage() {
             onStop={id => run(channel.stopScreen(id))} />
           {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} messages={channel.messagesByRoom[roomId] ?? []}
             users={state?.users ?? []} canSend={connected && !!roomId && can("chat")} sending={busy("chat", roomId)}
-            attachments={channel.attachments} history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)} onHistory={channel.loadHistory}
+            attachments={channel.attachments} history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
+            onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
             onSend={channel.sendMessage} hidden={visibleScreens.length > 0 && !chatOpen} />}
         </div>
         <ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={setSelected} />

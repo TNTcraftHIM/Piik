@@ -259,17 +259,45 @@ async function roomsAndFiles() {
   console.log("Private entry, composer upload, image preview and file cards use real room authorization");
 
   await browser(0, "click", '.c3-room-link[aria-label="Living room"]');
-  await evaluate(1, `(async () => {
-    for (let index = 0; index < 120; index++) await ${hook}.session.sendMessage(${JSON.stringify(room.id)}, 'history-' + index);
-    return true;
-  })()`);
+  for (let start = 0; start < 1020; start += 40) {
+    await evaluate(1, `(async () => {
+      for (let index = ${start}; index < ${Math.min(start + 40, 1020)}; index++) await ${hook}.session.sendMessage(${JSON.stringify(room.id)}, 'history-' + index);
+      return true;
+    })()`);
+  }
   await browser(0, "click", '.c3-room-link[aria-label="Movie night"]');
   await until("returning loads the latest contiguous history page", () => evaluate(0,
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.length`), count => count === 100);
-  await browser(0, "find", "role", "button", "click", "--name", "Earlier messages", "--exact");
-  await until("older page fills the history gap", () => evaluate(0,
-    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.length`), count => count === 122);
-  console.log("Room navigation refreshes the latest page; older-page loading restores the complete retained conversation");
+  for (let page = 0; page < 10; page++) {
+    const anchor = page === 9 ? await evaluate(0, `(() => {
+      const log = document.querySelector('.c3-message-log'); log.scrollTop = 0;
+      const message = log.querySelector('[data-message-id]');
+      return { id: message.dataset.messageId, offset: message.getBoundingClientRect().top - log.getBoundingClientRect().top };
+    })()`) : null;
+    await browser(0, "find", "role", "button", "click", "--name", "Earlier messages", "--exact");
+    await until("older page advances the reading window", () => evaluate(0,
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.[0]?.seq`), seq => seq === Math.max(1, 923 - (page + 1) * 100));
+    if (anchor) {
+      await until("full-window pagination preserves the visible message", () => evaluate(0, `(() => {
+        const log = document.querySelector('.c3-message-log');
+        const message = [...log.querySelectorAll('[data-message-id]')].find(element => element.dataset.messageId === ${JSON.stringify(anchor.id)});
+        return message.getBoundingClientRect().top - log.getBoundingClientRect().top;
+      })()`), offset => Math.abs(offset - anchor.offset) <= 2);
+    }
+  }
+  assert.equal(await evaluate(0, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}].length`), 1000);
+  assert.equal(await evaluate(0, `${hook}.snapshot().historyByRoom[${JSON.stringify(room.id)}].atLatest`), false);
+  await browser(0, "screenshot", join(output, "room-history-desktop.png"), "--full");
+  await browser(0, "set", "viewport", "390", "844");
+  assert.equal((await sample(0)).overflow, false);
+  await browser(0, "screenshot", join(output, "room-history-mobile.png"), "--full");
+  await browser(0, "set", "viewport", "1280", "900");
+  await action(1, `sendMessage(${JSON.stringify(room.id)}, 'Latest response')`);
+  assert.equal(await evaluate(0, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}][0].seq`), 1);
+  await browser(0, "find", "role", "button", "click", "--name", "Latest messages", "--exact");
+  await until("reader can return to current conversation", () => evaluate(0,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.at(-1)?.text`), text => text === "Latest response");
+  console.log("Room history retains old messages, advances a bounded reading window and returns to latest without live interruptions");
 
   await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
   await browser(0, "find", "label", "Hide from users without access", "check");

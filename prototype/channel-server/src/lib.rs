@@ -1,11 +1,13 @@
 //! Temporary channel authority shared by App and Server entry points.
 //!
-//! The caller supplies connection identities and time, then delivers returned
-//! effects in order. This core owns no sockets, queues, locks or timers.
+//! The caller supplies connection identities and time, completes room-storage
+//! effects, then delivers their events before admitting another command.
+//! This core owns no sockets, queues, locks or timers.
 //! Use a fresh connection UUID for each transport and Unix milliseconds for time.
 
 mod access;
 mod channel;
+pub mod history;
 mod identity;
 mod routes;
 pub mod wire;
@@ -13,7 +15,6 @@ pub mod wire;
 pub use access::RoomPermission;
 pub use channel::DurableState;
 pub use identity::User;
-use std::collections::BTreeSet;
 pub use wire::MAX_MESSAGE_ATTACHMENTS;
 
 use channel::Channel;
@@ -28,6 +29,7 @@ use wire::{Command, Event, Request};
 pub struct Effects {
     pub events: Vec<(Uuid, Event)>,
     pub close: Vec<Uuid>,
+    pub history: Option<history::HistoryEffect>,
 }
 
 #[derive(Clone)]
@@ -49,16 +51,13 @@ impl Authority {
         })
     }
 
-    /// Checkpoint durable identity, room access and retained messages, without live media.
+    /// Checkpoint identity and room policy. Room history has its own storage owner.
     pub fn export_state(&self) -> DurableState {
         self.channel.export_state()
     }
     /// Restore before admitting connections. Transport rollback should use a live clone.
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
         self.channel.import_state(state)
-    }
-    pub fn referenced_attachments(&self) -> BTreeSet<Uuid> {
-        self.channel.referenced_attachments()
     }
     pub fn authorize_user(
         &self,
@@ -74,22 +73,6 @@ impl Authority {
         self.channel.authorize(user, room, permission)?;
         Ok(user)
     }
-    pub fn authorize_connection(
-        &self,
-        connection: Uuid,
-        room: &str,
-        permission: RoomPermission,
-    ) -> Result<Uuid, &'static str> {
-        let session = self
-            .channel
-            .identity
-            .session_for_connection(connection)
-            .ok_or("join_required")?;
-        let user = self.channel.identity.sessions[&session].user_id;
-        self.channel.authorize(user, room, permission)?;
-        Ok(user)
-    }
-
     /// Apply a validated request only through its current connection binding.
     pub fn handle(&mut self, connection: Uuid, request: Request, now: u64) -> Effects {
         let mut effects = self.expire(now);
@@ -99,6 +82,15 @@ impl Authority {
         };
         match self.channel.handle(session_id, request.command, now) {
             Ok(outcome) => {
+                if let Some(history) = outcome.history {
+                    let audience = self.channel.history_audience(history.room_id());
+                    effects.history = Some(history::HistoryEffect {
+                        request: history,
+                        connection,
+                        request_id: request.request_id.clone(),
+                        audience,
+                    });
+                }
                 for (recipient, mut event) in outcome.events {
                     match &mut event {
                         Event::RoomCreated { request_id, .. }
@@ -120,7 +112,7 @@ impl Authority {
                         },
                     ));
                 }
-                if let Some(request_id) = request.request_id {
+                if let Some(request_id) = request.request_id.filter(|_| effects.history.is_none()) {
                     effects.events.push((connection, Event::Ack { request_id }));
                 }
                 if outcome.leave {

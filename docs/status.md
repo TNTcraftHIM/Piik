@@ -18,7 +18,9 @@ bounded source-rooted convergence. The [data model](./research/channel-storage-a
 records durable room history and attachment metadata with whole-file verification
 and demand-driven shared delivery over existing room paths. The 2.x core routing
 and lifecycle audit has closed its confirmed defects. The next implementation
-starts from a semantic/module map, then separate room owners and shared paths.
+follows the semantic/module map. Confirmed chat now has per-room order,
+incremental storage and idempotent confirmation, separate from domain checkpoints.
+Moving the room runtime to its actual owner and establishing shared paths remain next.
 The visual proposal and functional prototype share editable URL bookmarks; automatic address
 discovery is not planned. Work stays on `feat/channel-prototype`.
 Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.

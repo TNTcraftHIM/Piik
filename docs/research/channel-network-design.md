@@ -376,9 +376,10 @@ through WASM, and actual local persistence/recovery verification.
 
 ## Implementation Boundary
 
-The current prototype still keeps all room authority, chat confirmation and
-SQLite storage in the domain coordinator. It plans both screen and voice
-publications independently, shares physical media pairs, and transfers files
+The current prototype still hosts domain and room authority in one process.
+Confirmed messages now use room-scoped incremental storage outside the domain
+metadata checkpoint; they have not moved to their owners' devices. It plans
+screen and voice publications independently, shares physical media pairs, and transfers files
 through authenticated HTTP. It has no room base DataChannel tree. Those are
 implementation facts, not evidence that this new model is already integrated.
 Its simplified screen plan currently uses subscribers as relay candidates and
@@ -431,7 +432,12 @@ frame/voice delay and bytes at the actual forwarding endpoints.
 
 Native encoded forwarding, SFU integration and a Rust media-library selection
 remain separate implementation stages. str0m and webrtc-rs are candidates, not
-selected dependencies. The current 2.x Native media core is not automatically
+selected dependencies. Full ICE, candidate gathering on the media socket,
+reliable DataChannel backpressure and encoded forwarding are separate selection
+requirements. In particular, str0m supplies the ICE agent but leaves local
+interface and STUN address discovery to its caller
+([published ICE boundary](https://github.com/algesten/str0m/blob/95e5038c6f45de6646d8e3f4c2bca6207a5bedde/crates/is/README.md)).
+The current 2.x Native media core is not automatically
 replaced by having a Rust coordinator.
 
 ## Design References

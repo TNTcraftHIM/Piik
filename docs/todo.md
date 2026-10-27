@@ -7,11 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 room-owner runtime.** Establish the existing semantic/module map,
-  then implement the accepted [network model](./research/channel-network-design.md)
+- [ ] **3.0 room-owner runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Begin with domain directory and authenticated runtime bindings,
-  room-owned confirmation/storage, and the room base tree. Reuse mature components
+  Rust owners. Bind the domain directory to authenticated room runtimes, place
+  room confirmation/storage with its actual operator, and establish the room base tree. Reuse mature components
   and the shared frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab

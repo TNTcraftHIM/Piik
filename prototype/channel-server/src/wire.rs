@@ -129,12 +129,11 @@ fn nullable_password<'de, D: serde::Deserializer<'de>>(
 }
 
 impl Request {
-    pub fn changes_durable_state(&self) -> bool {
+    pub fn changes_metadata(&self) -> bool {
         matches!(
             self.command,
             Command::Join { .. }
                 | Command::SetName { .. }
-                | Command::Chat { .. }
                 | Command::CreateRoom { .. }
                 | Command::UpdateRoom { .. }
                 | Command::EnterRoom { .. }
@@ -308,7 +307,7 @@ pub struct RoleInfo {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelInfo {
-    pub history_limit: usize,
+    pub history_window: usize,
     pub id: Uuid,
     pub name: String,
     pub owner_id: Option<Uuid>,
@@ -380,6 +379,12 @@ pub enum Event {
     Message {
         room_id: String,
         message: ChatMessage,
+    },
+    MessageConfirmed {
+        room_id: String,
+        message: ChatMessage,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     Signal {
         pair_id: Uuid,

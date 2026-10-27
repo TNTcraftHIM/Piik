@@ -36,7 +36,7 @@ async function ready(process, url) {
   throw new Error(`Acceptance service did not become ready: ${process.output()}`);
 }
 try {
-  const core = start(resolve(`prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), []);
+  const core = start(resolve(process.env.CHANNEL_EXECUTABLE ?? `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), []);
   await ready(core, `http://127.0.0.1:${corePort}/healthz`);
   const web = start(process.execPath, ["node_modules/vite/bin/vite.js", "--config", "prototype/channel-server/vite.config.ts"]);
   await ready(web, origin);

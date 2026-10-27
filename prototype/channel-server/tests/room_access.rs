@@ -1,4 +1,5 @@
 use piik_channel_prototype::{
+    history::HistoryRequest,
     wire::{Event, Request, Snapshot},
     Authority, Effects, RoomPermission,
 };
@@ -58,6 +59,7 @@ fn invite(core: &mut Authority, connection: Uuid, room: &str) -> String {
     .unwrap()
 }
 fn rejected(effects: Effects) {
+    assert!(effects.history.is_none());
     assert!(effects
         .events
         .iter()
@@ -190,6 +192,12 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     assert!(core
         .authorize_user(&credential, &room, RoomPermission::Read)
         .is_err());
+    for value in [
+        json!({"type":"history","roomId":room}),
+        json!({"type":"chat","roomId":room,"text":"Revoked","nonce":"revoked"}),
+    ] {
+        rejected(command(&mut core, guest, value));
+    }
     assert!(core
         .authorize_user(&outsider_credential, &room, RoomPermission::Manage)
         .is_err());
@@ -298,7 +306,7 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
 }
 
 #[test]
-fn checkpoint_restores_access_history_and_credentials_but_no_live_media_or_sessions() {
+fn checkpoint_restores_access_and_credentials_but_no_live_media_or_sessions() {
     let mut original = core();
     let creator = Uuid::new_v4();
     let owner = Uuid::new_v4();
@@ -314,14 +322,21 @@ fn checkpoint_restores_access_history_and_credentials_but_no_live_media_or_sessi
     );
     let room = room(&mut original, creator, "private", true);
     let key = invite(&mut original, creator, &room);
-    let attachment = Uuid::new_v4();
-    for i in 0..105 {
+    command(
+        &mut original,
+        creator,
+        json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","muted":false}}),
+    );
+    let active = state(
         command(
             &mut original,
             creator,
-            json!({"type":"chat","roomId":room,"text":format!("Message {i}"),"nonce":format!("n{i}"),"attachments":[attachment]}),
-        );
-    }
+            json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
+        ),
+        creator,
+    );
+    assert_eq!(active.publications.len(), 1);
+    assert_eq!(active.voice.len(), 1);
     let checkpoint = serde_json::to_string(&original.export_state()).unwrap();
     assert!(!checkpoint.contains(&credential));
     assert!(!checkpoint.contains(&owner_credential));
@@ -330,7 +345,6 @@ fn checkpoint_restores_access_history_and_credentials_but_no_live_media_or_sessi
     restored
         .import_state(serde_json::from_str(&checkpoint).unwrap())
         .unwrap();
-    assert!(restored.referenced_attachments().contains(&attachment));
     let new_page = Uuid::new_v4();
     let (_, _, initial) = admit(
         &mut restored,
@@ -341,38 +355,21 @@ fn checkpoint_restores_access_history_and_credentials_but_no_live_media_or_sessi
     assert!(initial.publications.is_empty());
     assert!(initial.pairs.is_empty());
     assert!(initial.voice.is_empty());
+    assert!(initial
+        .channel
+        .rooms
+        .iter()
+        .any(|candidate| candidate.id == room && candidate.authorized && candidate.can_manage));
     let history = command(
         &mut restored,
         new_page,
         json!({"type":"browse","roomId":room}),
     );
-    let before = history
-        .events
-        .into_iter()
-        .find_map(|(_, e)| match e {
-            Event::History {
-                messages,
-                has_more,
-                before,
-                ..
-            } => {
-                assert_eq!(messages.len(), 100);
-                assert!(has_more);
-                assert!(before.is_none());
-                messages.first().map(|message| message.seq)
-            }
-            _ => None,
-        })
-        .unwrap();
-    let older = command(
-        &mut restored,
-        new_page,
-        json!({"type":"history","roomId":room,"before":before}),
-    );
-    assert!(older
-        .events
-        .iter()
-        .any(|(_, e)| matches!(e,Event::History{messages,has_more:false,..} if messages.len()==5)));
+    assert!(history.events.is_empty());
+    assert!(matches!(
+        history.history.unwrap().request,
+        HistoryRequest::Read { room_id, before: None } if room_id == room
+    ));
     let (_, again, _) = admit(
         &mut restored,
         Uuid::new_v4(),

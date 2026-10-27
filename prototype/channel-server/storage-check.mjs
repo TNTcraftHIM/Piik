@@ -18,7 +18,7 @@ await new Promise(resolve => listener.close(resolve));
 const base = `http://127.0.0.1:${port}/prototype/channel`;
 const origin = "http://127.0.0.1:8790";
 const ownerKey = randomUUID(), inviteKey = randomUUID();
-const executable = resolve("prototype/channel-server/target/debug/piik-channel-prototype" + (process.platform === "win32" ? ".exe" : ""));
+const executable = resolve(process.env.CHANNEL_EXECUTABLE || "prototype/channel-server/target/debug/piik-channel-prototype" + (process.platform === "win32" ? ".exe" : ""));
 let child;
 const clients = [];
 async function start() {
@@ -61,7 +61,7 @@ async function connect(input) {
   socket.send(JSON.stringify({ type: "join", name: "Storage check", ...input }));
   const welcome = await wait(event => event.type === "welcome" || event.type === "error");
   assert.equal(welcome.type, "welcome");
-  const client = { socket, welcome, wait, request: async command => {
+  const client = { socket, welcome, wait, inbox, request: async command => {
     const requestId = randomUUID(), result = wait(event => event.requestId === requestId && ["ack", "error"].includes(event.type));
     socket.send(JSON.stringify({ ...command, requestId })); return result;
   } }; clients.push(client); return client;
@@ -74,6 +74,11 @@ async function history(client, roomId, before) {
   const result = client.wait(event => event.type === "history" && event.roomId === roomId);
   assert.equal((await client.request({ type: "history", roomId, before })).type, "ack");
   return result;
+}
+async function confirmed(client, command) {
+  const ack = await client.request(command);
+  assert.equal(ack.type, "ack");
+  return (await client.wait(event => event.type === "message_confirmed" && event.requestId === ack.requestId)).message;
 }
 
 try {
@@ -108,7 +113,10 @@ try {
   assert.equal((await fetch(`${base}/attachments/${draft.id}`, { headers: headers(member) })).status, 404);
 
   const nonce = randomUUID();
-  assert.equal((await member.request({ type: "chat", roomId, text: "", nonce, attachments: [attachment.id] })).type, "ack");
+  const original = await confirmed(member, { type: "chat", roomId, text: "", nonce, attachments: [attachment.id] });
+  assert.equal(original.seq, 1);
+  const otherRoom = await confirmed(member, { type: "chat", roomId: "living", text: "independent order", nonce });
+  assert.equal(otherRoom.seq, 1, "each room owns its confirmed order and nonce association");
   assert.equal((await fetch(`${base}/attachments/${attachment.id}`, { headers: headers(owner) })).status, 200);
   const publishedFile = await fetch(`${base}/attachments/${attachment.id}/content`, { headers: headers(owner) });
   assert.equal(publishedFile.status, 200); await publishedFile.arrayBuffer();
@@ -119,20 +127,46 @@ try {
   assert.equal(intact.status, 200);
   assert.deepEqual(Buffer.from(await intact.arrayBuffer()), png);
   assert.equal((await member.request({ type: "chat", roomId: "living", text: "wrong room", nonce: randomUUID(), attachments: [attachment.id] })).type, "error");
-  for (let index = 0; index < 104; index++) assert.equal((await member.request({ type: "chat", roomId, text: `saved-${index}`, nonce: randomUUID() })).type, "ack");
+  for (let index = 0; index < 1004; index++) assert.equal((await member.request({ type: "chat", roomId, text: `saved-${index}`, nonce: randomUUID() })).type, "ack");
   const page = await history(member, roomId);
   assert.equal(page.messages.length, 100); assert.equal(page.hasMore, true);
+  assert.equal(page.oldestSeq, 1, "confirmed owner history is not evicted at the UI window limit");
+  assert.equal(page.messages.at(-1).seq, 1005);
   const earlier = await history(member, roomId, page.messages[0].seq);
-  assert.equal(earlier.messages.length, 5);
+  assert.equal(earlier.messages.length, 100);
   assert(earlier.messages.at(-1).seq < page.messages[0].seq);
+  const first = await history(member, roomId, 12);
+  assert.equal(first.messages.length, 11); assert.equal(first.hasMore, false);
+  assert.deepEqual(first.messages[0], original);
   const stableUser = member.welcome.state.sessions.find(session => session.id === member.welcome.sessionId).userId;
   const credential = member.welcome.credential, oldSession = member.welcome.sessionId;
   const database = new DatabaseSync(join(directory, "channel.sqlite"));
+  assert.equal(database.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(roomId).count, 1005);
   database.exec("CREATE TRIGGER fail_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'test write failure'); END;");
   const failedWrite = await owner.request({ type: "set_name", name: "must-not-save" });
   assert.equal(failedWrite.type, "error"); assert.equal(failedWrite.code, "storage_failed");
   assert(!database.prepare("SELECT body FROM checkpoint WHERE id=1").get().body.includes("must-not-save"));
-  database.exec("DROP TRIGGER fail_checkpoint"); database.close();
+  database.exec("DROP TRIGGER fail_checkpoint");
+  const failedUpload = await upload(member, roomId, "commit-retry.bin", Buffer.from("retry"));
+  assert.equal(failedUpload.status, 200);
+  const failedAttachment = await failedUpload.json();
+  assert.equal((await member.request({ type: "browse", roomId })).type, "ack");
+  database.exec(`CREATE TABLE fail_message_commit (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
+    CREATE TRIGGER fail_message AFTER INSERT ON message BEGIN INSERT INTO fail_message_commit VALUES('missing'); END;`);
+  const failedNonce = randomUUID();
+  const failedMessage = await member.request({ type: "chat", roomId, text: "must-not-confirm", nonce: failedNonce, attachments: [failedAttachment.id] });
+  assert.equal(failedMessage.type, "error"); assert.equal(failedMessage.code, "storage_failed");
+  assert.equal(database.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(roomId).count, 1005);
+  assert.equal((await fetch(`${base}/attachments/${failedAttachment.id}`, { headers: headers(owner) })).status, 403,
+    "failed COMMIT must leave the attachment private to its uploader");
+  const afterFailure = await history(member, roomId);
+  assert(!afterFailure.messages.some(message => message.text === "must-not-confirm"));
+  assert(!member.inbox.some(event => ["message", "message_confirmed"].includes(event.type) && event.message.text === "must-not-confirm"),
+    "the failed send must not publish a message or confirmation before its error/history barrier");
+  database.exec("DROP TRIGGER fail_message"); database.close();
+  const recoveredMessage = await confirmed(member, { type: "chat", roomId, text: "saved after failure", nonce: failedNonce, attachments: [failedAttachment.id] });
+  assert.equal(recoveredMessage.seq, 1006, "failed storage must not consume room order or retry identity");
+  assert.equal(recoveredMessage.text, "saved after failure");
   const restoredLive = owner.wait(event => event.type === "state" && event.state.users.some(user => user.name === "Still present"));
   assert.equal((await member.request({ type: "set_name", name: "Still present" })).type, "ack");
   assert(!(await restoredLive).state.users.some(user => user.name === "must-not-save"), "failed storage must roll back live state before events/ack");
@@ -145,14 +179,18 @@ try {
   assert.equal(member.welcome.state.publications.length, 0);
   assert(member.welcome.state.channel.rooms.some(room => room.id === roomId && room.authorized));
   assert.equal(member.welcome.state.sessions.find(session => session.id === member.welcome.sessionId).userId, stableUser);
-  assert.equal((await member.request({ type: "chat", roomId, text: "", nonce, attachments: [attachment.id] })).type, "ack");
+  assert.deepEqual(await confirmed(member, { type: "chat", roomId, text: "different retry", nonce, attachments: [randomUUID()] }), original);
   const retained = await history(member, roomId, page.messages[0].seq);
-  assert.equal(retained.messages.length, 5, "nonce retry after restart must not duplicate the attachment message");
+  assert.equal(retained.messages.length, 100, "nonce retry after restart must not duplicate the attachment message");
+  assert.deepEqual((await history(member, roomId, 2)).messages, [original]);
   assert.equal((await fetch(`${base}/attachments/${attachment.id}`, { headers: headers(member) })).status, 200);
+  assert.equal((await fetch(`${base}/attachments/${attachment.id}`, { method: "DELETE", headers: headers(member) })).status, 204);
+  assert.deepEqual(await confirmed(member, { type: "chat", roomId, text: "retry after bytes were removed", nonce, attachments: [attachment.id] }), original,
+    "a retained confirmation survives removal of its file bytes");
   assert.equal((await owner.request({ type: "revoke_room_access", roomId, userId: stableUser })).type, "ack");
-  assert.equal((await fetch(`${base}/attachments/${attachment.id}/content`, { headers: headers(member) })).status, 403);
-  assert.equal((await fetch(`${base}/attachments/${attachment.id}`, { method: "DELETE", headers: headers(owner) })).status, 204);
-  assert.equal((await fetch(`${base}/attachments/${attachment.id}`, { headers: headers(owner) })).status, 404);
+  assert.equal((await fetch(`${base}/attachments/${failedAttachment.id}/content`, { headers: headers(member) })).status, 403);
+  assert.equal((await fetch(`${base}/attachments/${failedAttachment.id}`, { method: "DELETE", headers: headers(owner) })).status, 204);
+  assert.equal((await fetch(`${base}/attachments/${failedAttachment.id}`, { headers: headers(owner) })).status, 404);
   let quotaRejected = false;
   for (let index = 0; index < 6; index++) {
     const response = await upload(owner, roomId, `budget-${index}.bin`, Buffer.alloc(1024));
@@ -160,7 +198,7 @@ try {
     assert.equal(response.status, 200);
   }
   assert(quotaRejected, "actual HTTP upload must enforce the advertised total byte budget");
-  console.log("Isolated HTTP/WS/restart passed: identity/catalog/grants/history/nonce, pagination, attachments, quotas and revocation");
+  console.log("Isolated HTTP/WS/restart passed: room order, retained original confirmations, 1000+ history, commit rollback, pagination, attachments, quotas and revocation");
 } finally {
   await stop();
   assert(relative(tmpdir(), directory).startsWith("piik-channel-store-"));

@@ -11,11 +11,12 @@ import { type AttachmentLimits, type ChannelAttachment as Attachment, type Chann
 interface DraftFile { id: string; file: File; uploaded?: Attachment }
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, messages, users, canSend, sending, onSend, hidden, attachments, history, loadingHistory, onHistory }: {
+export function ChannelConversation({ roomId, roomName, messages, users, canSend, sending, onSend, hidden, attachments, history, loadingHistory, onHistory, onLatest }: {
   roomId: string; roomName: string; messages: ChannelMessage[]; users: ChannelUser[];
   canSend: boolean; sending: boolean; hidden: boolean;
-  attachments: ChannelAttachments; history?: { hasMore: boolean }; loadingHistory: boolean;
+  attachments: ChannelAttachments; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
+  onLatest: (roomId: string) => Promise<void>;
   onSend: (roomId: string, text: string, attachments?: string[]) => Promise<void>;
 }) {
   const { lang } = useCopy();
@@ -31,7 +32,7 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
   const follow = useRef(true);
-  const readingAnchor = useRef<{ room: string; height: number; top: number } | null>(null);
+  const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
   const draft = drafts[roomId] ?? "";
   const files = filesByRoom[roomId] ?? [];
   const working = sending || filesBusy;
@@ -45,15 +46,19 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
   useEffect(() => () => { upload.current?.abort(); }, []);
   useEffect(() => { setFileError(""); readingAnchor.current = null; }, [roomId]);
   useEffect(() => { follow.current = true; }, [roomId]);
+  useEffect(() => { if (history?.atLatest) follow.current = true; }, [history?.atLatest]);
   useEffect(() => {
     const anchor = readingAnchor.current;
     if (anchor?.room === roomId && !loadingHistory && log.current) {
-      log.current.scrollTop = anchor.top + log.current.scrollHeight - anchor.height;
+      const node = log.current;
+      const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
+        .find(element => element.dataset.messageId === anchor.message);
+      if (message) node.scrollTop += message.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset;
       readingAnchor.current = null;
       return;
     }
     if (!hidden && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
-  }, [roomId, messages.length, hidden, loadingHistory]);
+  }, [roomId, messages.length, hidden, loadingHistory, history?.atLatest]);
   function addFiles(incoming: File[]) {
     if (!limits || working || !canSend) return;
     if (files.length + incoming.length > limits.maxAttachmentsPerMessage) {
@@ -107,7 +112,12 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
       {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={zh ? "更早的消息" : "Earlier messages"}
         busy={loadingHistory} onClick={() => {
           const node = log.current;
-          if (node) readingAnchor.current = { room: roomId, height: node.scrollHeight, top: node.scrollTop };
+          if (node) {
+            const top = node.getBoundingClientRect().top;
+            const message = [...node.querySelectorAll<HTMLElement>("[data-message-id]")]
+              .find(element => element.getBoundingClientRect().bottom > top);
+            readingAnchor.current = message ? { room: roomId, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
+          }
           follow.current = false;
           void onHistory(roomId).catch(() => { readingAnchor.current = null; });
         }} /></div>}
@@ -121,7 +131,7 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
         const previous = messages[index - 1];
         const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
         const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
-        return <article className={`c3-message${grouped ? " is-continuation" : ""}`} key={message.id}>
+        return <article className={`c3-message${grouped ? " is-continuation" : ""}`} key={message.id} data-message-id={message.id}>
           {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} />}
           <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
             <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(zh ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
@@ -130,6 +140,12 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
         </article>;
       })}
     </div>
+    {history?.atLatest === false && <div className="c3-history-more"><ChannelAction icon="arrowDown" quiet
+      label={zh ? "最新消息" : "Latest messages"} busy={loadingHistory} onClick={() => {
+        readingAnchor.current = null;
+        follow.current = true;
+        void onLatest(roomId).catch(() => {});
+      }} /></div>}
     {files.length > 0 && <div className="c3-draft-files">{files.map(entry => <div key={entry.id}>
       <Glyph name="save" size={15} /><span>{entry.file.name}</span><small>{fileSize(entry.file.size)}</small>
       <ChannelAction icon="x" iconOnly quiet label={zh ? "移除文件" : "Remove file"} disabled={working} hint="hint-close"

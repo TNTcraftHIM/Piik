@@ -1,4 +1,5 @@
 use piik_channel_prototype::{
+    history::HistoryRequest,
     wire::{Event, Request, Snapshot},
     Authority, Effects,
 };
@@ -96,6 +97,14 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
         60,
     );
     assert_eq!(stale.close, vec![old]);
+    let stale_send = apply(
+        &mut core,
+        old,
+        json!({"type":"chat", "roomId":"living", "text":"Stale", "nonce":"stale"}),
+        60,
+    );
+    assert!(stale_send.history.is_none());
+    assert_eq!(stale_send.close, vec![old]);
     assert!(core.disconnect(old, 70).events.is_empty());
     let updated = apply(
         &mut core,
@@ -126,6 +135,62 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
         .sessions
         .iter()
         .any(|endpoint| endpoint.id == session));
+}
+
+#[test]
+fn history_requests_carry_authenticated_author_and_defer_confirmation() {
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let connection = Uuid::new_v4();
+    let (session, _, joined) = join(&mut core, connection, false, 0);
+    let author = joined
+        .sessions
+        .iter()
+        .find(|endpoint| endpoint.id == session)
+        .unwrap()
+        .user_id;
+
+    let browse = apply(
+        &mut core,
+        connection,
+        json!({"type":"browse", "roomId":"studio", "requestId":"browse"}),
+        1,
+    );
+    assert!(browse.events.is_empty());
+    assert!(matches!(
+        browse.history.unwrap().request,
+        HistoryRequest::Read { room_id, before: None } if room_id == "studio"
+    ));
+
+    let attachment = Uuid::new_v4();
+    let send = apply(
+        &mut core,
+        connection,
+        json!({"type":"chat", "roomId":"living", "text":"  Hello  ", "nonce":"send-once", "attachments":[attachment], "requestId":"send"}),
+        2,
+    );
+    assert!(send.events.is_empty());
+    assert!(send.close.is_empty());
+    let HistoryRequest::Send { room_id, draft } = send.history.unwrap().request else {
+        panic!("authorized chat must produce a store request");
+    };
+    assert_eq!(room_id, "living");
+    assert_eq!(draft.user_id, author);
+    assert_eq!(draft.nonce, "send-once");
+    assert_eq!(draft.text, "Hello");
+    assert_eq!(draft.attachments, vec![attachment]);
+    assert_eq!(draft.time, 2);
+
+    let older = apply(
+        &mut core,
+        connection,
+        json!({"type":"history", "roomId":"living", "before":12, "requestId":"older"}),
+        3,
+    );
+    assert!(older.events.is_empty());
+    assert!(matches!(
+        older.history.unwrap().request,
+        HistoryRequest::Read { room_id, before: Some(12) } if room_id == "living"
+    ));
 }
 
 #[test]
@@ -175,6 +240,17 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
     assert!(
         matches!(forbidden.events.as_slice(), [(target, Event::Error { code, request_id:Some(request_id) })] if *target == guest && code == "forbidden" && request_id == "create")
     );
+    let denied_send = apply(
+        &mut core,
+        guest,
+        json!({"type":"chat", "roomId":"living", "text":"Denied", "nonce":"denied"}),
+        2,
+    );
+    assert!(denied_send.history.is_none());
+    assert!(matches!(
+        denied_send.events.as_slice(),
+        [(target, Event::Error { code, .. })] if *target == guest && code == "forbidden"
+    ));
 
     let left = apply(
         &mut core,

@@ -1,60 +1,6 @@
 use super::*;
 
 #[test]
-fn history_reports_retained_floor_even_when_requesting_an_older_page() {
-    let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
-    let user = join(&mut channel, false);
-    assert_eq!(
-        channel.snapshot(user.session_id).channel.history_limit,
-        HISTORY_LIMIT
-    );
-    assert_eq!(
-        serde_json::to_value(channel.history_page("living", None)).unwrap()["oldestSeq"],
-        serde_json::Value::Null
-    );
-    for seq in 0..HISTORY_LIMIT + 5 {
-        channel
-            .handle(
-                user.session_id,
-                Command::Chat {
-                    room_id: "living".into(),
-                    text: "message".into(),
-                    nonce: seq.to_string(),
-                    attachments: vec![],
-                },
-                0,
-            )
-            .unwrap();
-    }
-    match channel.history_page("living", Some(6)) {
-        Event::History {
-            messages,
-            oldest_seq,
-            has_more,
-            before,
-            ..
-        } => {
-            assert!(messages.is_empty());
-            assert!(!has_more);
-            assert_eq!(oldest_seq, Some(6));
-            assert_eq!(before, Some(6));
-        }
-        _ => unreachable!(),
-    }
-    let fresh = serde_json::to_value(channel.history_page("living", None)).unwrap();
-    assert!(fresh.get("before").is_none());
-    let first = fresh["messages"][0]["seq"].as_u64().unwrap();
-    let older = serde_json::to_value(channel.history_page("living", Some(first))).unwrap();
-    assert_eq!(older["before"].as_u64(), Some(first));
-    assert!(older["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|message| message["seq"].as_u64().unwrap() < first));
-    assert_eq!(channel.history["living"].len(), HISTORY_LIMIT);
-}
-
-#[test]
 fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
     let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
     let source = join(&mut channel, false);
@@ -393,7 +339,7 @@ fn deafen_preserves_voice_routes_and_role_revocation_preserves_identity() {
 }
 
 #[test]
-fn scoped_history_nonce_dedup_and_signal_tracks_use_the_actual_authority() {
+fn history_requests_and_signal_tracks_use_the_actual_authority() {
     let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
     let first = join(&mut channel, true);
     let second = join(&mut channel, false);
@@ -427,23 +373,19 @@ fn scoped_history_nonce_dedup_and_signal_tracks_use_the_actual_authority() {
             10,
         )
         .unwrap();
-    assert_eq!(message.events.len(), 1);
-    assert_eq!(message.events[0].0, first.session_id);
-    assert_eq!(channel.history["living"][0].user_id, first.user_id);
-    let repeated = channel
-        .handle(
-            first.session_id,
-            Command::Chat {
-                attachments: vec![],
-                room_id: "living".into(),
-                text: "Hello".into(),
-                nonce: "once".into(),
-            },
-            10,
-        )
-        .unwrap();
-    assert!(repeated.events.is_empty());
-    assert_eq!(channel.history["living"].len(), 1);
+    assert!(message.events.is_empty());
+    let Some(HistoryRequest::Send { room_id, draft }) = message.history else {
+        panic!("chat must be committed by the room store");
+    };
+    assert_eq!(room_id, "living");
+    assert_eq!(draft.user_id, first.user_id);
+    assert_eq!(draft.nonce, "once");
+    assert_eq!(
+        channel.history_audience("living"),
+        vec![channel.identity.sessions[&first.session_id]
+            .connection
+            .unwrap()]
+    );
     let source = publish(&mut channel, first.session_id, Kind::Screen);
     let own = publish(&mut channel, second.session_id, Kind::Screen);
     watch(&mut channel, second.session_id, source);

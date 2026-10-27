@@ -1,5 +1,5 @@
 import { ChannelMedia } from "./media";
-import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelReply, type ChannelSnapshot, type RoomSettings } from "./protocol";
+import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type RoomSettings } from "./protocol";
 import { ChannelAttachments } from "./attachments";
 import type { ChannelView } from "./types";
 
@@ -11,6 +11,11 @@ function stored(key: string, value?: string): string | null {
     if (value !== undefined) localStorage.setItem(key, value);
     return localStorage.getItem(key);
   } catch { return null; }
+}
+
+function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
+  return [...new Map(messages.map(message => [message.id, message])).values()]
+    .sort((a, b) => a.seq - b.seq);
 }
 
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
@@ -122,18 +127,21 @@ export class ChannelSession {
       const state = this.view.state;
       if (!state?.channel.rooms.some(room => room.id === event.roomId && room.authorized)) return;
       const existing = event.before === undefined ? [] : this.view.messagesByRoom[event.roomId] ?? [];
-      const messages = [...new Map([...existing, ...event.messages].map(message => [message.id, message])).values()]
-        .filter(message => event.oldestSeq !== null && message.seq >= event.oldestSeq)
-        .sort((a, b) => a.seq - b.seq).slice(-state.channel.historyLimit);
+      const merged = mergeMessages([...existing, ...event.messages]
+        .filter(message => event.oldestSeq !== null && message.seq >= event.oldestSeq));
+      const latest = event.before === undefined;
+      const messages = latest ? merged.slice(-state.channel.historyWindow) : merged.slice(0, state.channel.historyWindow);
+      const atLatest = latest || ((this.view.historyByRoom[event.roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
       this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [event.roomId]: messages },
-        historyByRoom: { ...this.view.historyByRoom, [event.roomId]: { hasMore: event.hasMore, before: messages[0]?.seq } } });
-    } else if (event.type === "message") {
+        historyByRoom: { ...this.view.historyByRoom, [event.roomId]: { hasMore: event.hasMore, before: messages[0]?.seq, atLatest } } });
+    } else if (event.type === "message" || event.type === "message_confirmed") {
       const state = this.view.state;
       if (!state?.channel.rooms.some(room => room.id === event.roomId && room.authorized)) return;
+      // A bounded historical window stays put until its reader requests latest.
+      if (this.view.historyByRoom[event.roomId]?.atLatest === false) return;
       const messages = this.view.messagesByRoom[event.roomId] ?? [];
-      if (!messages.some(message => message.id === event.message.id)) {
-        this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [event.roomId]: [...messages, event.message].slice(-state.channel.historyLimit) } });
-      }
+      this.patch({ messagesByRoom: { ...this.view.messagesByRoom,
+        [event.roomId]: mergeMessages([...messages, event.message]).slice(-state.channel.historyWindow) } });
     } else if (event.type === "room_created" || event.type === "room_invite") {
       if (event.requestId) this.requests.get(event.requestId)?.result?.(event);
     } else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
@@ -257,8 +265,10 @@ export class ChannelSession {
     this.outgoingMessages.set(roomId, attempt);
     await this.request({ type: "chat", roomId, text, attachments, nonce: attempt.nonce });
     this.outgoingMessages.delete(roomId);
+    if (this.view.historyByRoom[roomId]?.atLatest === false) void this.loadLatestHistory(roomId).catch(() => {});
   });
   loadHistory = (roomId: string): Promise<void> => this.action(`history:${roomId}`, () => this.request({ type: "history", roomId, before: this.view.historyByRoom[roomId]?.before }));
+  loadLatestHistory = (roomId: string): Promise<void> => this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }));
   renameSelf = (name: string): Promise<void> => this.action("rename", async () => {
     await this.request({ type: "set_name", name });
     stored(nameKey, name.trim());

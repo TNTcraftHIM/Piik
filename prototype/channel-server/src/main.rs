@@ -12,7 +12,7 @@ use axum::{
     Router,
 };
 use piik_channel_prototype::{
-    wire::{Command, Event, Request},
+    wire::{Event, Request},
     Authority, Effects,
 };
 use std::{
@@ -36,60 +36,19 @@ struct Hub {
 
 impl Hub {
     fn request(&mut self, connection: Uuid, request: Request) {
-        let durable = request.changes_durable_state();
+        let metadata = request.changes_metadata();
         let request_id = request.request_id.clone();
-        if let Command::Chat {
-            room_id,
-            attachments,
-            ..
-        } = &request.command
-        {
-            if !attachments.is_empty() {
-                let valid = self
-                    .authority
-                    .authorize_connection(
-                        connection,
-                        room_id,
-                        piik_channel_prototype::RoomPermission::Write,
-                    )
-                    .map_err(|_| ())
-                    .and_then(|user| {
-                        self.storage
-                            .lock()
-                            .unwrap()
-                            .validate(room_id, user, attachments)
-                            .map_err(|_| ())
-                    });
-                if valid.is_err() {
-                    self.send(
-                        connection,
-                        Event::Error {
-                            code: "attachment_unavailable".into(),
-                            request_id,
-                        },
-                    );
-                    return;
-                }
-            }
-        }
-        let before = durable.then(|| self.authority.clone());
+        let before = metadata.then(|| self.authority.clone());
         let effects = self.authority.handle(connection, request, now());
         let failed = effects
             .events
             .iter()
             .any(|(target, event)| *target == connection && matches!(event, Event::Error { .. }));
-        if durable && !failed {
+        if metadata && !failed {
             let checkpoint =
-                serde_json::to_value(self.authority.export_state()).expect("typed durable state");
-            let references = self.authority.referenced_attachments();
-            if self
-                .storage
-                .lock()
-                .unwrap()
-                .save(&checkpoint, &references, now())
-                .is_err()
-            {
-                self.authority = before.expect("durable request checkpoint");
+                serde_json::to_value(self.authority.export_state()).expect("typed metadata");
+            if self.storage.lock().unwrap().save(&checkpoint).is_err() {
+                self.authority = before.expect("metadata request checkpoint");
                 self.send(
                     connection,
                     Event::Error {
@@ -111,7 +70,11 @@ impl Hub {
         }
     }
 
-    fn apply(&mut self, effects: Effects) {
+    fn apply(&mut self, mut effects: Effects) {
+        if let Some(history) = effects.history.take() {
+            let result = self.storage.lock().unwrap().history(&history.request);
+            effects.events.extend(history.finish(result).events);
+        }
         for (connection, event) in effects.events {
             self.send(connection, event);
         }
@@ -301,11 +264,7 @@ async fn main() {
             .expect("restore channel authority");
     }
     storage
-        .save(
-            &serde_json::to_value(authority.export_state()).expect("typed durable state"),
-            &authority.referenced_attachments(),
-            now(),
-        )
+        .save(&serde_json::to_value(authority.export_state()).expect("typed durable state"))
         .expect("initialize channel checkpoint");
     let storage = Arc::new(Mutex::new(storage));
     let state = AppState {
@@ -358,3 +317,6 @@ async fn main() {
         .await
         .unwrap();
 }
+
+#[cfg(test)]
+mod runtime_tests;

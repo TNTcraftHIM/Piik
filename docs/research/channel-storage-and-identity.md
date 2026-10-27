@@ -351,14 +351,18 @@ introduce a mandatory fixed website.
 
 ## Current Implementation And Next Check
 
-The prototype currently keeps domain and all room authority/history in one Rust
-coordinator, with SQLite checkpoints and authenticated HTTP attachments. It
-already saves before emitting successful effects and paginates retained history.
-Its deduplication records do not identify the original confirmed result; history
-pages have no fixed synchronization boundary or restore generation. Preserve the
-commit-before-confirm behavior while moving incremental storage to each room
-owner. Native persistent room hosting, Browser-local room authority, peer file
-transfer and local history copies are not implemented.
+The prototype still hosts domain and room authority in one process and uses
+authenticated HTTP attachments. Its Rust core authorizes typed room-history
+operations; the runtime commits messages, room-local order and retry identity in
+incremental SQLite transactions before sending confirmation. Retrying returns the
+original message without another broadcast. Confirmed history is retained, while
+the Browser reads a bounded window with earlier-page and latest-page navigation.
+Domain metadata checkpoints no longer contain messages or their retry records.
+The current synchronous runtime finishes a history read and queues its response
+before processing another room command. Moving these operations to remote room
+owners still requires an explicit synchronization boundary and restore generation.
+Native persistent room hosting, Browser-local room authority, peer file transfer
+and local history copies are not implemented.
 
 After agreement, validate one domain owner A and a different room owner B:
 B alone confirms and retains its room history; C and D receive it along their
