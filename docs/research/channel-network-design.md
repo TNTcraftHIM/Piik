@@ -20,8 +20,9 @@ source-rooted delivery through bounded background transitions. All authorized,
 capable room peers can be relay candidates; only viewers and necessary transit
 nodes receive the picture. Both stages use the same route state and transports.
 The owner accepted this routing foundation and durable room records with cached
-attachments. Shared file delivery and cache policy are the current design
-discussion; the new runtime is not yet implemented.
+attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
+shared file delivery on those same paths. The new runtime is not yet implemented;
+the implementation hold and maintenance prerequisite are owned by TODO.
 
 ## Terminology And Roles
 

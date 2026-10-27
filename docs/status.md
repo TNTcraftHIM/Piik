@@ -15,9 +15,9 @@ focused lifecycle gate covers revocation, offline stop and session expiry.
 The [accepted routing foundation](./research/channel-network-design.md) assigns
 each room to its actual operator and starts video on usable room paths before
 bounded source-rooted convergence. The [data model](./research/channel-storage-and-identity.md)
-records durable room history and attachment metadata with whole-file verification;
-shared file delivery over existing paths and cache policy are the current discussion.
-Runtime and business/UI integration wait for that design discussion. The visual
+records durable room history and attachment metadata with whole-file verification
+and demand-driven shared delivery over existing room paths. Core implementation
+waits for the 2.x routing and lifecycle maintenance audit to close. The visual
 proposal and functional prototype share editable URL bookmarks; automatic address
 discovery is not planned. Work stays on `feat/channel-prototype`.
 Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.

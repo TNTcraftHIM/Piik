@@ -5,7 +5,8 @@ owns responsibilities, routing and live lifecycles. This document records the
 accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
 behavior; [TODO](../todo.md) owns pending decisions and implementation.
-Discuss this data model before implementing its storage and transfer mechanisms.
+The first version keeps one room data owner and reuses established room paths.
+Implementation follows the 2.x maintenance closure recorded in TODO.
 
 ## Ownership And Placement
 
@@ -33,7 +34,10 @@ without retaining the whole file.
 The owner accepted durable room history and attachment metadata, participant-held
 file copies and whole-file hash verification. Images and ordinary files share
 one attachment model. Content becomes unavailable when its copies disappear;
-its history record remains. Delivery and cache policy below remain proposals.
+its history record remains. The first delivery model is demand-driven sharing on
+the existing room tree, with complete verified copies reusable as sources. It
+does not add a swarm, per-piece hashes, a second route planner or a storage service.
+Detailed cache limits and transfer encoding remain implementation decisions.
 These responsibilities add local data to existing runtimes, not a separately
 configured storage role.
 
@@ -162,7 +166,7 @@ No per-piece verification metadata is required for this model.
 
 ### Shared Delivery On Existing Room Paths
 
-Recommend demand-driven distribution over the room base tree. Project an admitted
+Use demand-driven distribution over the room base tree. Project an admitted
 source's flow to the interested recipients, reusing the existing unique paths.
 The [network model](./channel-network-design.md#one-base-tree-per-participating-room)
 owns route admission and repair; file work adds range demand and progress, not
@@ -246,7 +250,7 @@ Adopting a full swarm would add scheduling and discovery alongside Piik's room
 network. Exchanging incomplete copies would also benefit from verified piece
 identities; a whole-file hash only identifies corruption after assembly.
 
-The narrower recommendation borrows cooperative distribution, while using Piik's
+This initial model borrows cooperative distribution, while using Piik's
 existing tree and complete-copy cache index. Concurrent request aggregation has
 a separate published precedent in [CCNx section 2.4.2](https://www.rfc-editor.org/rfc/rfc8569.html#section-2.4.2);
 this is an experimental protocol reference, not a proposed Piik dependency.

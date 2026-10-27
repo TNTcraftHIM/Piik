@@ -35,35 +35,21 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Piik 3.0 channels, rooms and Rust prototype.** The owner authorized a
-  usable Browser prototype on 2026-10-27: Rust channel authority, rooms, multiple
-  user roles, chat, independent screen publications, selective watching and voice.
-  The [accepted network and lifecycle design](./research/channel-network-design.md)
-  owns room-operated base paths, staged screen delivery and bounded source-rooted
-  convergence. The [room-data model](./research/channel-storage-and-identity.md)
-  records accepted durable history/attachment metadata, participant caches and
-  whole-file hash verification. Next discuss shared delivery over existing room
-  paths: aggregate concurrent range demand, reuse complete copies and isolate
-  slow/cancelled recipients. Reuse overlapping delivery instead of defaulting to
-  an independent upload per requester. Set cache and recovery scope before
-  implementation; peer-served history and persistent download resumption are
-  not prerequisites.
-  Then prove separate domain/room hosts and shared room paths before integrating
-  the visual design: persistent navigation, conversation, room access, attachments,
-  selective multi-picture viewing, identity images and person/message reactions.
-  Complete local persistence, bounded history copies and scoped export/import
-  without adding a configurable storage service. Automatic address discovery
-  and a mandatory fixed public Web client were declined; keep ordinary URLs and
-  manual bookmarks. Cross-origin identity recovery is separate from URL editing.
-  Rust is the selected core language. Keep this on the isolated prototype; the
-  current 2.x contract remains unchanged. The
-  [prototype README](../prototype/channel-server/README.md) owns executable scope.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
 
 ## Held By Owner
 
+- [ ] **Piik 3.0 core implementation.** Held on 2026-10-27 until the 2.x
+  maintenance audit closes its core routing, recovery and lifecycle defects.
+  Review the [network design](./research/channel-network-design.md) and
+  [room-data model](./research/channel-storage-and-identity.md) without expanding
+  their first-version scope. Preserve the isolated Rust prototype and visual
+  proposal; its [README](../prototype/channel-server/README.md) owns runnable scope.
+  After maintenance closure, establish the existing module/semantic map before
+  implementing separate room owners and shared paths in Rust. Reuse mature Rust
+  components and the shared frontend rather than translating Go mechanically.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session
