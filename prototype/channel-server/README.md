@@ -122,8 +122,9 @@ stay muted, and pausing a player does not stop forwarding its source.
 
 Each publication has its own bounded distribution tree: the source first serves
 two subscribers, then ready subscribers can relay. Compatible flows reuse physical
-peer connections. Stopping one share keeps unrelated received and forwarded media
-alive. Browser relays can decode and re-encode; Native encoded forwarding and SFU
+peer connections. A relay can stop watching while continuing to serve downstream
+viewers; its transit ends when that demand ends. Stopping one share keeps unrelated
+received and forwarded media alive. Browser relays can decode and re-encode; Native encoded forwarding and SFU
 fallback are not implemented here. Browser WebRTC owns ICE and congestion control.
 Optional `PIIK_CHANNEL_ICE_SERVERS` supplies an ICE-server JSON array; local checks
 do not establish public-NAT connectivity or reliable background Browser service.

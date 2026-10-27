@@ -376,6 +376,14 @@ try {
   await progressing(4, primaryPublication);
   console.log("Two simultaneous sources; D receives only B; E decodes both");
 
+  const initialRoutes = await Promise.all([0, 3, 4].map(index => view(index)));
+  const leaf = [0, 3, 4][initialRoutes.findIndex(value => !value.state.pairs.some(pair => pair.outgoing.includes(secondPublication)))];
+  assert(leaf !== undefined, "distribution must have a leaf viewer");
+  await action(leaf, `unwatch(${JSON.stringify(secondPublication)})`);
+  await until("leaf stops watching", () => view(leaf), value => !value.state.subscriptions.includes(secondPublication));
+  await action(leaf, `watch(${JSON.stringify(secondPublication)})`);
+  await progressing(leaf, secondPublication);
+
   for (const index of [0, 1, 4]) await action(index,
     `joinVoice(${JSON.stringify(roomId)}, false, await navigator.mediaDevices.getUserMedia({audio:true}))`);
   await until("real voice audio energy", () => evaluate(4, "window.__channelProbe.sample()"),
@@ -409,6 +417,19 @@ try {
   assert(relayView.state.pairs.some(pair => pair.outgoing.includes(primaryPublication)), "own source retirement must retain another source's forwarding");
   console.log(`Browser ${relay} stopped its own source and keeps receiving/forwarding C`);
 
+  const downstream = relayView.state.pairs.find(pair => pair.outgoing.includes(primaryPublication)).peerId;
+  const downstreamIndex = routed.findIndex(value => value.sessionId === downstream);
+  assert(downstreamIndex >= 0);
+  const transitPairs = relayView.state.pairs.filter(pair => pair.incoming.includes(primaryPublication) || pair.outgoing.includes(primaryPublication)).map(pair => pair.id).sort();
+  await action(relay, `unwatch(${JSON.stringify(primaryPublication)})`);
+  const transit = await until("relay stops local consumption", () => view(relay), value => !value.state.subscriptions.includes(primaryPublication));
+  assert.deepEqual(transit.state.pairs.filter(pair => pair.incoming.includes(primaryPublication) || pair.outgoing.includes(primaryPublication)).map(pair => pair.id).sort(), transitPairs);
+  await until("transit has no local player", () => picture(relay, primaryPublication), value => value.frames === 0);
+  await progressing(downstreamIndex, primaryPublication);
+  await action(relay, `watch(${JSON.stringify(primaryPublication)})`);
+  await progressing(relay, primaryPublication);
+  console.log("Unwatch stops the relay's local player and preserves its downstream frames and pair IDs");
+
   await browser(4, "click", `.c3-room-link[aria-label=${JSON.stringify(initial[0].state.channel.rooms[1].name)}]`);
   await progressing(4, primaryPublication);
   assert((await view(4)).state.subscriptions.includes(primaryPublication));
@@ -420,9 +441,6 @@ try {
   await progressing(4, primaryPublication);
   console.log("Room browsing and signaling reconnect preserve current media");
 
-  const downstream = routed[relay].state.pairs.find(pair => pair.outgoing.includes(primaryPublication)).peerId;
-  const downstreamIndex = routed.findIndex(value => value.sessionId === downstream);
-  assert(downstreamIndex >= 0);
   await browser(relay, "close");
   await progressing(downstreamIndex, primaryPublication);
   const repaired = await until("relay exit is removed from recovered route", () => view(downstreamIndex), value =>
@@ -447,7 +465,7 @@ try {
     await browser(layoutIndex, "screenshot", join(output, `${lang}-${theme}-390.png`), "--full");
   }
   await writeFile(join(output, "result.json"), JSON.stringify({ scenarios: ["two sources", "selective watching", "voice", "fanout relay",
-    "independent source stop", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px"],
+    "independent source stop", "transit without local watching", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px"],
     sourceCopies, relay, downstreamIndex }, null, 2));
   console.log(`Browser acceptance passed; evidence: ${output}`);
   }

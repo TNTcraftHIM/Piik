@@ -20,6 +20,8 @@ and demand-driven shared delivery over existing room paths. The 2.x core routing
 and lifecycle audit has closed its confirmed defects. The next implementation
 follows the semantic/module map. Confirmed chat now has per-room order,
 incremental storage and idempotent confirmation, separate from domain checkpoints.
+Domain admission, room activities/plans and shared transport leases now have
+separate Rust owners within the coordinator process.
 Moving the room runtime to its actual owner and establishing shared paths remain next.
 The visual proposal and functional prototype share editable URL bookmarks; automatic address
 discovery is not planned. Work stays on `feat/channel-prototype`.

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 const FANOUT: usize = 2;
-const ATTEMPTS: usize = 4;
+const FAILED_PARENTS: usize = 4;
 
 /// One source owns one acyclic tree. Shared physical transport ownership lives
 /// above these plans: a source retiring must not close another source's pair.
@@ -11,7 +11,7 @@ pub struct Plan {
     pub source: Uuid,
     pub parents: BTreeMap<Uuid, Uuid>,
     ready: BTreeSet<Uuid>,
-    attempted: BTreeMap<Uuid, BTreeSet<Uuid>>,
+    failed_parents: BTreeMap<Uuid, BTreeSet<Uuid>>,
 }
 
 impl Plan {
@@ -20,7 +20,7 @@ impl Plan {
             source,
             parents: BTreeMap::new(),
             ready: BTreeSet::new(),
-            attempted: BTreeMap::new(),
+            failed_parents: BTreeMap::new(),
         }
     }
 
@@ -34,16 +34,29 @@ impl Plan {
             .parents
             .iter()
             .filter_map(|(child, parent)| {
-                (!requested.contains(child)
-                    || !available.contains(child)
-                    || !available.contains(parent))
-                .then_some(*child)
+                (!available.contains(child) || !available.contains(parent)).then_some(*child)
             })
             .collect();
         for child in remove {
             self.detach(child);
         }
-        self.attempted.retain(|child, _| requested.contains(child));
+        // Consumption owns demand; the ancestors still needed to deliver it
+        // retain their transport and proof even when they stop watching locally.
+        let mut needed = requested.clone();
+        for receiver in requested {
+            let mut child = *receiver;
+            while let Some(parent) = self.parents.get(&child) {
+                if *parent == self.source {
+                    break;
+                }
+                needed.insert(*parent);
+                child = *parent;
+            }
+        }
+        self.parents.retain(|child, _| needed.contains(child));
+        self.ready.retain(|child| self.parents.contains_key(child));
+        self.failed_parents
+            .retain(|child, _| available.contains(child));
         if !connected.contains(&self.source) {
             return;
         }
@@ -54,14 +67,14 @@ impl Plan {
             {
                 continue;
             }
-            let tried = self.attempted.entry(*child).or_default();
-            if tried.len() >= ATTEMPTS {
+            let failed = self.failed_parents.entry(*child).or_default();
+            if failed.len() >= FAILED_PARENTS {
                 continue;
             }
             let candidates = std::iter::once(self.source).chain(self.ready.iter().copied());
             let parent = candidates
                 .filter(|parent| {
-                    parent != child && connected.contains(parent) && !tried.contains(parent)
+                    parent != child && connected.contains(parent) && !failed.contains(parent)
                 })
                 .find(|parent| {
                     self.parents
@@ -71,7 +84,6 @@ impl Plan {
                         < FANOUT
                 });
             if let Some(parent) = parent {
-                tried.insert(parent);
                 self.parents.insert(*child, parent);
             }
         }
@@ -108,6 +120,10 @@ impl Plan {
             None
         };
         if let Some(child) = child {
+            self.failed_parents
+                .entry(child)
+                .or_default()
+                .insert(self.parents[&child]);
             self.detach(child);
         }
     }
@@ -173,15 +189,56 @@ mod tests {
     }
 
     #[test]
-    fn unsubscribing_a_relay_cannot_leave_an_orphan_or_create_a_cycle() {
+    fn unwatch_keeps_required_transit_until_its_last_downstream_leaves() {
         let mut plan = Plan::new(id(1));
         let available = set(&[1, 2, 3, 4]);
         plan.reconcile(&set(&[2, 3, 4]), &available, &available);
         plan.mark_ready(id(2), id(1));
         plan.reconcile(&set(&[2, 3, 4]), &available, &available);
+        let before = plan.parents.clone();
         plan.reconcile(&set(&[3, 4]), &available, &available);
+        assert_eq!(plan.parents, before);
+        assert!(
+            !plan.mark_ready(id(2), id(1)),
+            "existing transit proof is retained"
+        );
+        plan.reconcile(&set(&[3]), &available, &available);
         assert!(!plan.parents.contains_key(&id(2)));
         assert!(!plan.parents.values().any(|parent| *parent == id(2)));
         assert!(!plan.mark_ready(id(2), id(1)));
+        assert_eq!(plan.parents, BTreeMap::from([(id(3), id(1))]));
+    }
+
+    #[test]
+    fn view_toggles_do_not_retry_a_failed_parent() {
+        let mut plan = Plan::new(id(1));
+        let available = set(&[1, 2]);
+        plan.reconcile(&set(&[2]), &available, &available);
+        plan.failed(id(1), id(2));
+        plan.reconcile(&set(&[]), &available, &available);
+        plan.reconcile(&set(&[2]), &available, &available);
+        assert!(plan.parents.is_empty());
+    }
+
+    #[test]
+    fn healthy_unwatch_rewatch_and_ancestor_loss_do_not_mark_a_leg_failed() {
+        let mut plan = Plan::new(id(1));
+        let available = set(&[1, 2, 3, 4]);
+        plan.reconcile(&set(&[2]), &available, &available);
+        plan.mark_ready(id(2), id(1));
+        plan.reconcile(&set(&[]), &available, &available);
+        plan.reconcile(&set(&[2]), &available, &available);
+        assert_eq!(plan.parents[&id(2)], id(1));
+
+        plan.mark_ready(id(2), id(1));
+        plan.reconcile(&set(&[2, 3, 4]), &available, &available);
+        assert_eq!(plan.parents[&id(4)], id(2));
+        plan.failed(id(1), id(2));
+        assert!(plan.failed_parents[&id(2)].contains(&id(1)));
+        assert!(plan.failed_parents[&id(4)].is_empty());
+        plan.mark_ready(id(3), id(1));
+        plan.reconcile(&set(&[2, 3, 4]), &available, &available);
+        assert_eq!(plan.parents[&id(2)], id(3));
+        assert!(plan.parents.contains_key(&id(4)));
     }
 }

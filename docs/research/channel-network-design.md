@@ -384,13 +384,12 @@ Changing one room's activity cannot retire a pair still used by another room.
 Confirmed messages now use room-scoped incremental storage outside the domain
 metadata checkpoint; they have not moved to their owners' devices. It plans
 screen and voice publications independently, shares physical media pairs, and transfers files
-through authenticated HTTP. It has no room base DataChannel tree. Those are
-implementation facts, not evidence that this new model is already integrated.
-Its simplified screen plan currently uses subscribers as relay candidates and
-detaches an unsubscribed relay's descendants. Separate local subscription from
-required transit demand before integrating the shared graph; a unique reachable
-bridge must not disappear just because its user stops watching. The prototype
-does not yet inherit the full 2.x transition and media-proof machinery.
+through authenticated HTTP. The room base DataChannel tree remains to be built.
+Its simplified screen plan starts with subscribers as relay candidates and
+retains existing transit while downstream demand needs it. Stopping local
+watching does not dismantle those paths. A failed edge marks only its own parent
+candidate; a voluntary stop or an ancestor's failure does not mark a healthy leg
+as failed. The full 2.x transition and media-proof machinery remains to be integrated.
 
 Before implementing the next slice, map its user-visible behavior, authority,
 state transitions, resource lifetime and recovery. Existing code is evidence of
