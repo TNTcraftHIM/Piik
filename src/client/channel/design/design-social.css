@@ -5,11 +5,6 @@
 .cd-room-link > .cd-identity-mark { flex-shrink: 0; }
 .cd-room-content { position: relative; }
 .cd-chat { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
-.cd-avatar-button { padding: 0; border: 0; border-radius: 10px; background: transparent; color: inherit; transition: background-color 150ms ease; }
-.cd-avatar-button:hover, .cd-avatar-button:focus-visible { background: var(--control-hover); }
-.cd-message > .cd-avatar-action { flex: none; margin-top: -4px; }
-.cd-member-button { width: 100%; text-align: left; padding: 0; border: 0; border-radius: 12px; color: inherit; background: transparent; }
-.cd-member-button:hover, .cd-member-button:focus-visible { background: var(--control-hover); }
 .cd-members-foot .lr-welcome { margin-top: 10px; font-size: 11px; font-weight: 400; white-space: normal; overflow: visible; line-height: 1.8; text-wrap: pretty; }
 .cd-members-foot .lr-welcome-text { width: auto; min-width: 0; }
 .cd-members-foot .lr-welcome-text::before { content: none; }
@@ -43,17 +38,14 @@
 .cd-file-drop { position: absolute; inset: 9px 14px 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; border: 2px dashed var(--action); border-radius: 17px; background: color-mix(in srgb, var(--paper) 95%, transparent); color: var(--action-text); pointer-events: none; z-index: 3; }
 .cd-file-drop strong { font-size: 20px; }
 .cd-file-drop > span { font-size: 12px; color: var(--muted); }
-.cd-live-interaction { position: absolute; right: 22px; bottom: 78px; pointer-events: none; z-index: 3; }
-.cd-live-interaction .lr-interaction-activity { position: relative; inset: auto; max-width: none; }
 @container channel-board (max-width: 620px) {
   .cd-draft-files { margin-inline: 14px; max-height: 110px; }
   .cd-chat .cd-composer { gap: 1px; }
   .cd-chat .cd-composer .lr-btn { --button-size: 30px; --button-padding: 4px; }
-  .cd-live-interaction { right: 12px; bottom: 122px; }
 }
 @media (hover: none) {
   .cd-add-reaction { opacity: 1; pointer-events: auto; border-color: transparent; background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cd-avatar-button, .cd-add-reaction { transition: none; }
+  .cd-add-reaction { transition: none; }
 }

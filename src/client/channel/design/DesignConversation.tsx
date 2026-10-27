@@ -9,7 +9,7 @@ import { useAnchoredPopover } from "../../components/living/use-anchored-popover
 import { downloadBlob } from "../../lib/download";
 import { fileSize } from "../attachments";
 import { ChannelAction } from "../components/ChannelMedia";
-import { DesignAvatar, type DesignPersonAction } from "./DesignAvatar";
+import { DesignAvatar } from "./DesignAvatar";
 import { DesignArtwork } from "./DesignArtwork";
 import { DesignIdentityMark } from "./DesignIdentityPicker";
 import { designPeople, type DesignCopy, type DesignRoom } from "./fixtures";
@@ -62,12 +62,12 @@ function LocalAttachment({ entry, copy, onRemove }: { entry: DesignFile; copy: D
   </div>;
 }
 
-function Message({ index, time, children, copy, onInteract, initialLaugh }: {
-  index: number; time: string; children: ReactNode; copy: DesignCopy; onInteract: DesignPersonAction; initialLaugh?: boolean;
+function Message({ index, time, children, copy, initialLaugh }: {
+  index: number; time: string; children: ReactNode; copy: DesignCopy; initialLaugh?: boolean;
 }) {
   const person = designPeople[index];
   return <article className="cd-message">
-    <DesignAvatar index={index} onInteract={onInteract} />
+    <DesignAvatar index={index} />
     <div><header><strong>{copy(person.name, person.english)}</strong><time>{time}</time></header>
       {children}<MessageReactions copy={copy} initialLaugh={initialLaugh} />
     </div>
@@ -75,8 +75,8 @@ function Message({ index, time, children, copy, onInteract, initialLaugh }: {
 }
 
 /** Drafts and dropped files stay in their room; this design surface sends no network requests. */
-export function DesignConversation({ room, roomName, showingScreens, copy, onInteract }: {
-  room: DesignRoom; roomName: string; showingScreens: boolean; copy: DesignCopy; onInteract: DesignPersonAction;
+export function DesignConversation({ room, roomName, showingScreens, copy }: {
+  room: DesignRoom; roomName: string; showingScreens: boolean; copy: DesignCopy;
 }) {
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, DesignMessage[]>>({});
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -89,7 +89,7 @@ export function DesignConversation({ room, roomName, showingScreens, copy, onInt
   const draft = drafts[room.id] ?? "";
   const files = filesByRoom[room.id] ?? [];
   const demoRoom = room.id === "games";
-  useEffect(() => { if (messages.length) log.current?.scrollTo({ top: log.current.scrollHeight }); }, [messages.length, room.id]);
+  useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [messages.length, room.id]);
   function addFiles(incoming: File[]) {
     setFilesByRoom(previous => ({ ...previous, [room.id]: [...(previous[room.id] ?? []), ...incoming.map(file => ({ id: crypto.randomUUID(), file }))] }));
   }
@@ -105,14 +105,14 @@ export function DesignConversation({ room, roomName, showingScreens, copy, onInt
       </div>}
       {demoRoom && <>
         <div className="cd-date"><span>{copy("今天", "Today")}</span></div>
-        <Message index={0} time="20:42" copy={copy} onInteract={onInteract}><p>{copy("都到齐了吗？就差一个人了。", "Everyone here? We need one more.")}</p></Message>
-        <Message index={1} time="20:43" copy={copy} onInteract={onInteract}>
+        <Message index={0} time="20:42" copy={copy}><p>{copy("都到齐了吗？就差一个人了。", "Everyone here? We need one more.")}</p></Message>
+        <Message index={1} time="20:43" copy={copy}>
           <p>{copy("来了。这次绝对不跳空。", "Here. Definitely making that jump this time.")}</p>
           {!showingScreens && <div className="cd-inline-preview"><DesignArtwork /><span><Glyph name="gamepad" size={16} />{copy("今晚的目标：过第一关", "Tonight's ambition: finish level one")}</span></div>}
         </Message>
-        <Message index={2} time="20:44" copy={copy} onInteract={onInteract} initialLaugh><p>{copy("这句话我截图了。", "Saving this for the highlight reel.")}</p></Message>
+        <Message index={2} time="20:44" copy={copy} initialLaugh><p>{copy("这句话我截图了。", "Saving this for the highlight reel.")}</p></Message>
       </>}
-      {messages.map(message => <Message key={message.id} index={3} time={copy("刚刚", "Just now")} copy={copy} onInteract={onInteract}>
+      {messages.map(message => <Message key={message.id} index={3} time={copy("刚刚", "Just now")} copy={copy}>
         {message.text && <p>{message.text}</p>}
         {message.files.map(entry => <LocalAttachment key={entry.id} entry={entry} copy={copy} />)}
       </Message>)}
@@ -132,11 +132,6 @@ export function DesignConversation({ room, roomName, showingScreens, copy, onInt
       <input aria-label={copy("发送消息", "Message")} value={draft} onChange={event => setDrafts(previous => ({ ...previous, [room.id]: event.target.value }))}
         onPaste={event => { if (event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
         placeholder={copy("聊点什么，", "Message ") + roomName + "…"} />
-      <Tooltip kind="hint-reaction-picker" text={copy("发表情", "Express yourself")}>
-        <button type="button" className="lr-btn is-compact is-quiet" aria-label={copy("发表情", "Express yourself")} onClick={event => onInteract(3, event.currentTarget)}>
-          <Glyph name="smile" size={18} />
-        </button>
-      </Tooltip>
       <ChannelAction icon="send" label={copy("发送", "Send")} hint="hint-chat-send" iconOnly quiet type="submit" disabled={!draft.trim() && !files.length} />
     </form>
     {dragging && <div className="cd-file-drop"><Glyph name="arrowUp" size={30} /><strong>{copy("放开，添加到消息", "Drop to attach")}</strong><span>{copy("图片和文件都可以", "Images and files are welcome")}</span></div>}

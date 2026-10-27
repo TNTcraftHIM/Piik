@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
-import { REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../../shared/room-interactions";
 import { Glyph } from "../../ui/icons";
 import { BrandMark } from "../../components/living/BrandMark";
 import { WelcomeLine } from "../../components/living/WelcomeLine";
-import { RoomQuickReactions } from "../../components/living/RoomQuickReactions";
-import { RoomReactionActivity } from "../../components/living/RoomReactionActivity";
-import type { RoomInteraction } from "../../lib/room-interactions";
 import { ChannelAction } from "../components/ChannelMedia";
 import { DesignArtwork } from "./DesignArtwork";
 import { DesignRoomDialog } from "./DesignRoomDialog";
 import { DesignChannelDialog } from "./DesignChannelDialog";
 import { DesignAvatar as Avatar } from "./DesignAvatar";
 import { DesignConversation } from "./DesignConversation";
+import { DesignCouch } from "./DesignCouch";
 import { DesignIdentityMark, type DesignIdentity } from "./DesignIdentityPicker";
 import { designPeople, designRooms, type DesignCopy, type DesignScene } from "./fixtures";
 
@@ -34,8 +31,6 @@ export function DesignWorkspace({ copy, scene, onScene }: {
   const [channelName, setChannelName] = useState<string>();
   const [channelIdentity, setChannelIdentity] = useState<DesignIdentity>({ icon: "couch" });
   const [editingChannel, setEditingChannel] = useState(false);
-  const [personMenu, setPersonMenu] = useState<{ index: number; trigger: HTMLElement } | null>(null);
-  const [activity, setActivity] = useState<(RoomInteraction & { expiresAt: number }) | null>(null);
   const room = rooms.find(item => item.id === roomId)!;
   const roomName = designRooms(copy).find(item => item.id === roomId)?.name ?? room.name;
   const demoRoom = roomId === "games";
@@ -48,20 +43,7 @@ export function DesignWorkspace({ copy, scene, onScene }: {
   const name = (index: number) => copy(designPeople[index].name, designPeople[index].english);
 
   const channelTitle = channelName ?? copy("下班以后", "After hours");
-  const interact = (index: number, trigger: HTMLElement) => setPersonMenu({ index, trigger });
-  const participants = designPeople.map((person, index) => ({ peerId: person.id, displayName: name(index) }));
-  useEffect(() => { setMobilePane("room"); setScreensHidden(false); setPersonMenu(null); setActivity(null); }, [scene, roomId]);
-  useEffect(() => {
-    if (!activity) return;
-    const timer = setTimeout(() => setActivity(null), Math.max(0, activity.expiresAt - Date.now()));
-    return () => clearTimeout(timer);
-  }, [activity]);
-  function react(reaction: ReactionId, targetPeerId?: string) {
-    const occurredAt = Date.now();
-    setActivity({ type: "room-interaction", id: crypto.randomUUID(), requestId: crypto.randomUUID(), occurredAt,
-      sender: { peerId: designPeople[3].id, role: "viewer", displayName: name(3) },
-      payload: { kind: "reaction", reaction, targetPeerId }, expiresAt: occurredAt + REACTION_DURATION_MS });
-  }
+  useEffect(() => { setMobilePane("room"); setScreensHidden(false); }, [scene, roomId]);
 
   return <>
     <div className="cd-workspace" data-pane={mobilePane}>
@@ -104,7 +86,7 @@ export function DesignWorkspace({ copy, scene, onScene }: {
                 hint={joined ? "hint-voice-leave" : "hint-voice-join"} onClick={() => setJoined(!joined)} /></div>
           </div>
           <div className="cd-self">
-            <Avatar index={3} voice={selfVoice} onInteract={interact} /><div className="cd-self-name"><strong>{name(3)}</strong><small>{copy("在线", "Online")}</small></div>
+            <Avatar index={3} voice={selfVoice} /><div className="cd-self-name"><strong>{name(3)}</strong><small>{copy("在线", "Online")}</small></div>
             <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={muted ? copy("开启麦克风", "Unmute microphone") : copy("关闭麦克风", "Mute microphone")}
               pressed={muted} hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} quiet iconOnly onClick={() => setMuted(!muted)} />
             <ChannelAction icon={deafened ? "headphonesOff" : "headphones"} label={deafened ? copy("开启收听", "Undeafen") : copy("关闭收听", "Deafen")}
@@ -127,6 +109,7 @@ export function DesignWorkspace({ copy, scene, onScene }: {
         </header>
 
         <div className="cd-room-content">
+          <DesignCouch key={roomId} people={here} selfVoice={selfVoice} copy={copy} />
           {showingScreens ? <section className={"cd-stage" + (scene === "focus" ? " is-focused" : "")} aria-label={copy("分享的画面", "Shared screens")}>
             <div className="cd-stage-heading"><span><Glyph name="display" size={16} />{copy("正在观看", "Watching")} <b>{screenIds.length}</b></span>
               <button type="button" className="lr-btn is-dense is-quiet" onClick={() => setScreensHidden(true)}><Glyph name="x" size={16} /><span>{copy("收起画面", "Hide screens")}</span></button>
@@ -145,8 +128,7 @@ export function DesignWorkspace({ copy, scene, onScene }: {
             <ChannelAction icon="play" label={copy("观看", "Watch")} onClick={() => { setScreensHidden(false); onScene("screens"); }} />
           </div> : null}
 
-          <DesignConversation room={room} roomName={roomName} copy={copy} showingScreens={showingScreens} onInteract={interact} />
-          {activity && <div className="cd-live-interaction"><RoomReactionActivity key={activity.id} reaction={activity} participants={participants} hostPeerId={designPeople[0].id} now={Date.now} /></div>}
+          <DesignConversation room={room} roomName={roomName} copy={copy} showingScreens={showingScreens} />
           <div className="cd-mobile-voice" data-connected={joined}>
             <span><Glyph name="headphones" size={15} />{joined ? copy("语音已连接", "Voice connected") : copy("尚未加入语音", "Not in voice")}</span>
             <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={copy("麦克风", "Microphone")} pressed={muted} quiet iconOnly onClick={() => setMuted(!muted)} />
@@ -159,14 +141,13 @@ export function DesignWorkspace({ copy, scene, onScene }: {
         <header><h2>{copy("成员", "Members")} <span>5</span></h2>
           <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} quiet iconOnly onClick={() => setMobilePane("room")} /></span></header>
         <div className="cd-member-group"><h3>{copy("这个房间", "In this room")}<span>{here.length}</span></h3>
-          {here.map(index => <button type="button" className="cd-member cd-member-button" key={index} aria-label={copy("与", "Interact with ") + name(index) + copy("互动", "")}
-            onClick={event => interact(index, event.currentTarget)}>
+          {here.map(index => <div className="cd-member" key={index}>
             <Avatar index={index} voice={index === 3 ? selfVoice : true} />
             <div><strong>{name(index)}</strong><small>
               {index === 0 ? copy("正在分享", "Sharing screen") : index === 1 ? copy("正在说话", "Speaking") : index === 2 ? copy("麦克风已关闭", "Microphone muted") : copy("就是你", "That's you")}
             </small></div>
             {index === 0 ? <Glyph name="display" size={16} /> : index === 1 ? <span className="cd-speaking" aria-hidden="true"><i /><i /><i /></span> : null}
-          </button>)}
+          </div>)}
         </div>
         <div className="cd-member-group"><h3>{copy("其他房间", "Elsewhere")}<span>{elsewhere.length}</span></h3>
           {elsewhere.map(index => <div className="cd-member is-away" key={index}><Avatar index={index} /><div><strong>{name(index)}</strong><small>{index === 4 ? copy("在客厅", "In the living room") : copy("在再来一局", "In One more round")}</small></div></div>)}
@@ -179,8 +160,5 @@ export function DesignWorkspace({ copy, scene, onScene }: {
     }} />}
     {editingChannel && <DesignChannelDialog copy={copy} name={channelTitle} identity={channelIdentity} onClose={() => setEditingChannel(false)}
       onSave={(newName, identity) => { setChannelName(newName); setChannelIdentity(identity); setEditingChannel(false); }} />}
-    {personMenu && <RoomQuickReactions id="cd-person-actions" trigger={personMenu.trigger} person={participants[personMenu.index]}
-      selfPeerId={designPeople[3].id} hostPeerId={designPeople[0].id} reactionIds={REACTION_IDS} canSend
-      onSend={react} onClose={() => setPersonMenu(null)} />}
   </>;
 }

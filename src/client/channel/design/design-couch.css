@@ -1,0 +1,16 @@
+.cd-lounge { flex: none; padding: 14px 22px 8px; border-bottom: 1px solid var(--line); background: var(--wall); }
+.cd-lounge-width { min-width: 0; }
+.cd-couch-scene { position: relative; height: 116px; max-width: 100%; margin: auto; }
+.cd-couch-bench { position: absolute; inset: 8px 0 0; pointer-events: none; }
+.cd-couch-bench > svg { display: block; width: 100%; height: 108px; }
+.cd-couch-people { position: relative; display: grid; gap: 0; margin: 0 32px; padding-top: 25px; }
+.cd-couch-seat { display: grid; min-width: 0; justify-items: center; }
+.cd-couch-seat > .lr-comic-tip-wrap { max-width: 100%; }
+.cd-couch-seat .lr-pawn { min-width: 0; max-width: 100%; }
+.cd-couch-seat .cd-avatar, .cd-couch-seat .lr-person { width: 48px; height: 56px; }
+.cd-couch-seat .lr-pawn-name { max-width: 100%; }
+@container channel-board (max-width: 620px) {
+  .cd-lounge { padding: 10px 8px 5px; }
+  .cd-couch-people { margin-inline: 26px; }
+  .cd-couch-seat .lr-pawn-name { font-size: 10px; padding-inline: 4px; }
+}

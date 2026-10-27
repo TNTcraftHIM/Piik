@@ -5,6 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { useElementWidth } from "../../lib/use-element-width";
 import { PawnSvg } from "./Pawn";
+import { CouchBench } from "./CouchBench";
 import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
@@ -95,15 +96,7 @@ export function Couch({
     <div ref={couchRef} className="lr-couch">
       <div className="lr-couch-seating" style={{ width, minHeight: rows * 108 }}>
         <div className="lr-couch-benches" aria-hidden="true">
-          {Array.from({ length: rows }, (_, row) => <svg key={row} viewBox={`0 0 ${width} 108`}>
-            <path d={`M38 98v7m${width - 76} -7v7`} stroke="var(--frame)" strokeWidth="6" strokeLinecap="round" />
-            <rect x="18" y="32" width={width - 36} height="65" rx="24" fill="var(--couch-dark)" />
-            <rect x="28" y="24" width={width - 56} height="60" rx="23" fill="var(--couch)" />
-            <rect x="28" y="76" width={width - 56} height="24" rx="10" fill="var(--couch)" />
-            <path d={`M${width / 3} 79v16m${width / 3} -16v16`} stroke="var(--couch-dark)" strokeWidth="2" strokeLinecap="round" />
-            <rect x="14" y="59" width="25" height="39" rx="12" fill="var(--couch-dark)" />
-            <rect x={width - 39} y="59" width="25" height="39" rx="12" fill="var(--couch-dark)" />
-          </svg>)}
+          {Array.from({ length: rows }, (_, row) => <CouchBench key={row} width={width} />)}
         </div>
         <div
           className="lr-pawns"

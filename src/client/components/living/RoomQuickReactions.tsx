@@ -9,16 +9,17 @@ const QUICK_REACTIONS: readonly ReactionId[] = ["thumbsup", "thumbsdown", "tomat
 const SELF_QUICK_REACTIONS: readonly ReactionId[] = ["thumbsup", "thumbsdown", "laugh", "heart"];
 
 /** Brief person actions leave the conversation and composer available. */
-export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId, reactionIds, canSend, onSend, onClose }: {
+export function RoomQuickReactions({ id, trigger, person, selfPeerId, hostPeerId, reactionIds, canSend, onSend, onClose, side = "above" }: {
   id: string; trigger: HTMLElement; person: InteractionParticipant; selfPeerId: string | null; hostPeerId?: string;
   reactionIds: readonly ReactionId[]; canSend: boolean;
   onSend: (reaction: ReactionId, targetPeerId?: string) => void; onClose: () => void;
+  side?: "above" | "below";
 }) {
   const { t } = useCopy();
   const [expanded, setExpanded] = useState(false);
   const anchor = useMemo(() => ({ current: trigger }), [trigger]);
   const panel = useRef<HTMLDivElement>(null);
-  useAnchoredPopover(anchor, panel, { side: "above", align: "center" });
+  useAnchoredPopover(anchor, panel, { side, align: "center" });
   useLayoutEffect(() => {
     const menu = panel.current!;
     if (menu.matches(":popover-open")) menu.hidePopover();
