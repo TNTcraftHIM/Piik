@@ -1,5 +1,17 @@
 .c3-name-editor { display: inline-flex; flex: none; }
-.c3-name-popover { width: min(300px, calc(100vw - 32px)); padding: 20px; }
-.c3-name-popover form, .c3-name-popover label { display: grid; gap: 12px; }
-.c3-name-popover label { font-size: 13px; }
-.c3-name-popover footer { display: flex; justify-content: flex-end; gap: 8px; }
+.c3-edit-action { display: inline-flex; flex: none; }
+.c3-editable .c3-edit-action .lr-btn { --button-size: 32px; --button-padding: 4px; }
+.c3-name-popover { width: min(320px, calc(100vw - 24px)); padding: 16px; }
+.c3-name-popover form { display: grid; gap: 8px; }
+.c3-name-popover label { color: var(--muted); font-size: 12px; font-weight: 600; }
+.c3-name-entry { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.c3-name-entry .lr-input { flex: 1; min-width: 0; }
+.c3-name-entry .lr-input input { width: 100%; }
+@media (hover: hover) and (pointer: fine) {
+  .c3-editable .c3-edit-action { opacity: 0; pointer-events: none; transition: opacity 120ms; }
+  .c3-editable:is(:hover, :focus-within) .c3-edit-action { opacity: 1; pointer-events: auto; }
+  .c3-editable .c3-edit-action .lr-btn { --button-size: 28px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .c3-editable .c3-edit-action { transition: none; }
+}

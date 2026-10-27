@@ -26,7 +26,7 @@ export function DesignRoomPanel({ room, roomName, people, conversation, reaction
       <button ref={trigger} type="button" className="lr-btn is-compact is-quiet" aria-label={label}
         aria-haspopup="dialog" aria-expanded={surface.open} popoverTarget={detached ? undefined : id}
         onClick={detached ? () => surface.document?.defaultView?.focus() : undefined}>
-        <Glyph name="pip" size={19} />
+        <Glyph name="couch" size={19} />
         {!vis && <span className="lr-cap">{copy("小窗", "Mini window")}</span>}
       </button>
     </Tooltip>

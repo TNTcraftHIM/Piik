@@ -16,7 +16,7 @@ export function ChannelUser({ id, name, self, owner, roles, online, voice, activ
   const roleName = (role: string) => role === "member" ? (zh ? "成员" : "Member")
     : role === "moderator" ? (zh ? "主持人" : "Moderator") : role;
   return <div className={`c3-user${online ? "" : " is-offline"}`} data-user-id={id}>
-    <div className="c3-person">
+    <div className="c3-person c3-editable">
       <PawnSvg color={participantColor(id)} identity={id} host={owner} voice={voice} />
       <div>
         <strong>{name}{self && <span className="c3-you">{zh ? "你" : "you"}</span>}</strong>

@@ -18,11 +18,11 @@ export function ChannelNameEditor({ name, disabled, onSave }: {
   useAnchoredPopover(trigger, panel, { side: "above" });
   useEffect(() => { panel.current?.hidePopover(); setDraft(name); }, [name]);
   return <>
-    <span ref={trigger} className="c3-name-editor">
+    <span ref={trigger} className="c3-name-editor c3-edit-action">
       <Btn icon="pencil" title="common.edit" hint="hint-rename" size="compact" quiet
         disabled={disabled} popoverTarget={id} controls={id} expanded={editing} onClick={() => setDraft(name)} />
     </span>
-    <div ref={panel} id={id} popover="auto" role="dialog" aria-label={zh ? "你的名字" : "Your name"}
+    <div ref={panel} id={id} popover="auto" role="dialog" aria-label={zh ? "修改昵称" : "Edit nickname"}
       className="lr-anchored-card c3-name-popover" onToggle={event => {
         const open = event.newState === "open";
         setEditing(open);
@@ -34,17 +34,16 @@ export function ChannelNameEditor({ name, disabled, onSave }: {
         onSave(draft.trim());
         if (draft.trim() === name) panel.current?.hidePopover();
       }}>
-        <label><span>{zh ? "你的名字" : "Your name"}</span>
-          <span className="lr-input"><input ref={input} maxLength={40} autoComplete="off"
+        <label htmlFor={`${id}-name`}>{zh ? "昵称" : "Nickname"}</label>
+        <div className="c3-name-entry">
+          <span className="lr-input"><input ref={input} id={`${id}-name`} maxLength={40} autoComplete="nickname"
             value={draft} onChange={event => setDraft(event.target.value)} disabled={disabled}
             onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
           </span>
-        </label>
-        <footer>
-          <Btn icon="x" size="compact" quiet title="common.cancel" cap="common.cancel" onClick={() => panel.current?.hidePopover()} />
-          <Btn icon="check" type="submit" size="compact" tone="primary" title={{ text: zh ? "保存" : "Save" }} cap={{ text: zh ? "保存" : "Save" }}
+          <Btn icon="check" type="submit" size="dense" tone="primary" title={{ text: zh ? "保存昵称" : "Save nickname" }}
             disabled={disabled || !draft.trim()} />
-        </footer>
+          <Btn icon="x" size="dense" quiet title="common.cancel" onClick={() => panel.current?.hidePopover()} />
+        </div>
       </form>
     </div>
   </>;

@@ -32,9 +32,10 @@
 .cd-channel-icon.lr-btn { --button-size: 46px; --button-padding: 0; width: 46px; border-radius: 17px; }
 .cd-rail-bottom { margin-top: auto; color: var(--muted); font: 10px var(--mono); }
 .cd-rooms { display: flex; flex-direction: column; min-width: 0; background: var(--wall); border-right: 1px solid var(--line); }
-.cd-channel-heading { display: flex; align-items: center; justify-content: space-between; padding: 24px 22px 20px; min-height: 91px; }
+.cd-channel-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 24px 22px 20px; min-height: 91px; }
+.cd-channel-heading-text { min-width: 0; flex: 1; }
 .cd-channel-heading small { color: var(--muted); font-size: 10px; display: block; margin-bottom: 5px; }
-.cd-channel-heading h2 { font-size: 20px; font-weight: 700; letter-spacing: -.025em; }
+.cd-channel-heading h2 { font-size: 20px; font-weight: 700; letter-spacing: -.025em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-room-nav { padding: 0 13px; flex: 1; overflow-y: auto; }
 .cd-section-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 9px 5px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .cd-section-label .lr-btn { --button-size: 32px; --button-padding: 5px; }
@@ -58,7 +59,6 @@
 .cd-self-name strong { display: block; font-size: 12px; }
 .cd-self-heading { display: flex; align-items: center; min-width: 0; }
 .cd-self-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-self-heading .c3-name-editor .lr-btn { --button-size: 24px; --button-padding: 3px; }
 .cd-self-name small { font-size: 10px; color: var(--muted); }
 .cd-self .lr-btn { --button-size: 32px; --button-padding: 4px; }
 .cd-self .cd-avatar { width: 29px; }
@@ -72,9 +72,8 @@
 .cd-room-heading-text { flex: 1; min-width: 0; }
 .cd-room-heading-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .cd-room-heading-name h2 { min-width: 0; }
-.cd-room-heading-name .lr-btn { --button-size: 26px; --button-padding: 4px; }
 .cd-room-heading h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cd-room-heading-text > span { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; }
+.cd-room-heading-text > span { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-header-action .lr-btn { --button-size: 36px; --button-padding: 12px; font-size: 12px; }
 .cd-header-action .lr-cap { font-size: 12px; }
 .cd-room-content { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -181,7 +180,7 @@
 .cd-hide-setting p { margin-top: 5px; font-size: 11px; color: var(--muted); line-height: 1.7; }
 .cd-create-dialog footer { display: flex; align-items: center; justify-content: end; gap: 10px; margin-top: 25px; padding-top: 19px; border-top: 1px solid var(--line); }
 .cd-create-dialog footer .lr-btn { min-width: 108px; }
-@container design-room (max-width: 660px) {
+@container design-room (max-width: 780px) {
   .cd-room-heading { grid-template-areas: "title actions" "company company"; grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
 }
 @container channel-board (max-width: 1120px) {

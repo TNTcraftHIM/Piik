@@ -75,9 +75,9 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
       </nav>
 
       <aside className="cd-rooms" aria-label={copy("房间", "Rooms")}>
-        <header className="cd-channel-heading">
-          <div><small>{copy("一个属于朋友的频道", "A place for your people")}</small><h2>{channelTitle}</h2></div>
-          <ChannelAction icon="pencil" label={copy("频道外观", "Channel appearance")} iconOnly quiet hint="hint-rename" onClick={() => setEditingChannel(true)} />
+        <header className="cd-channel-heading c3-editable">
+          <div className="cd-channel-heading-text"><small>{copy("一个属于朋友的频道", "A place for your people")}</small><h2>{channelTitle}</h2></div>
+          <span className="c3-edit-action"><ChannelAction icon="pencil" label={copy("频道外观", "Channel appearance")} iconOnly quiet hint="hint-rename" onClick={() => setEditingChannel(true)} /></span>
           <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} quiet iconOnly onClick={() => setMobilePane("room")} /></span>
         </header>
         <div className="cd-room-nav">
@@ -101,7 +101,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
           </div>
           <div className="cd-self">
             <Avatar index={3} voice={selfVoice} /><div className="cd-self-name">
-              <div className="cd-self-heading"><strong>{name(3)}</strong><ChannelNameEditor name={name(3)} disabled={false} onSave={setSelfName} /></div>
+              <div className="cd-self-heading c3-editable"><strong>{name(3)}</strong><ChannelNameEditor name={name(3)} disabled={false} onSave={setSelfName} /></div>
               <small>{copy("在线", "Online")}</small></div>
             <DesignVoiceControls voice={voice} />
           </div>
@@ -113,8 +113,8 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
           <div className="cd-room-title">
             <span className="cd-mobile-rooms"><ChannelAction icon="arrowLeft" label={copy("房间列表", "Rooms")} quiet iconOnly onClick={() => setMobilePane("rooms")} /></span>
             <span className="cd-room-heading-icon"><DesignIdentityMark value={room} size={23} /></span>
-            <div className="cd-room-heading-text"><div className="cd-room-heading-name"><h2>{roomName}</h2>
-              <ChannelAction icon="pencil" label={copy("房间设置", "Room settings")} hint="hint-rename" iconOnly quiet onClick={() => setEditingRoom(true)} />
+            <div className="cd-room-heading-text"><div className="cd-room-heading-name c3-editable"><h2>{roomName}</h2>
+              <span className="c3-edit-action"><ChannelAction icon="pencil" label={copy("房间设置", "Room settings")} hint="hint-rename" iconOnly quiet onClick={() => setEditingRoom(true)} /></span>
             </div><span>{demoRoom ? copy("输赢不重要，人在就好。", "Good company. Questionable skills.") : copy("留个地方，一起聊聊。", "A place to get together.")}</span></div>
           </div>
           <DesignCouch key={roomId} people={here} selfVoice={selfVoice} copy={copy} reactions={reactions} />
