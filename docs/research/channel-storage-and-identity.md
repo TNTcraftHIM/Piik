@@ -118,6 +118,39 @@ verified copy can become another source while its holder remains admitted and
 able to read it. The room runtime keeps this online source index in live state;
 holders announce their actual copies again after reconnecting.
 
+### File Identity And Untrusted Copies
+
+A holder announcement is a claim of availability, not evidence of correct bytes.
+The original sender supplies the content identity through its authenticated send;
+the room owner confirms it with the attachment record. The receiver authenticates
+that record through the shared room-control boundary, independently of the holder
+or intermediate relays. A provider cannot replace the expected size, digest or
+verification data. Changing file contents creates a new attachment, not an update
+to copies of the existing one.
+
+The same boundary must protect verification metadata across hops. Per-hop WebRTC
+encryption alone does not stop a participating relay from substituting both the
+bytes and a self-reported checksum. [RFC 9530 section 6](https://www.rfc-editor.org/rfc/rfc9530.html#section-6)
+explains this distinction between content digests and authenticated metadata.
+Use the common authority mechanism and maintained cryptographic primitives;
+do not invent file-specific identity or a second trust system.
+
+For large transfers, recommend a flat list of block hashes authenticated by the
+confirmed descriptor, alongside the whole-file digest. Fetch the list when a
+download starts and verify its binding before using it. Verify each block before
+counting it as reusable progress; intermediate, unverified bytes stay temporary
+and are not opened, previewed or offered to another user. The whole-file check
+still guards completion. [Syncthing's block protocol](https://docs.syncthing.net/specs/bep-v1.html#index-and-index-update)
+is a reference for block descriptions and requested-byte verification, not for
+adopting its folder replication or version-merging model.
+
+This adds one bounded verification list, not multi-source assembly or a Merkle
+tree. For scale, 1 GiB in 4 MiB blocks needs 256 SHA-256 values, or 8 KiB of hash
+data; that example does not fix Piik's block size. The flat-list format and limits
+remain part of the pending transfer design.
+
+### One Selected Source, Existing Room Paths
+
 A transfer uses the room base tree's existing path from holder to recipient.
 It creates a bounded transfer task, not a new route planner or a mandatory direct
 ICE connection between those two users. The [network model](./channel-network-design.md#one-base-tree-per-participating-room)
@@ -127,18 +160,29 @@ recipient's written progress and its own bounded buffers:
 1. Authorize message attachments against current room access and the retained
    message. Identity images follow their domain/room visibility rules through
    the same transfer mechanism. A digest identifies bytes, not permission.
-2. Select one known online holder using existing reachability and capacity facts.
-   Keep a working source; do not probe every participant or split a file among
-   several sources.
+2. The room runtime selects one admitted online holder using existing reachability
+   and capacity facts. Prefer the original sender when eligible; keep a working
+   source. Address the transfer to that endpoint. Intermediate relays forward
+   the request and response, rather than opportunistically substituting their
+   own copies. Do not probe every participant or split a file among several sources.
 3. Pull a bounded window of chunks. The recipient advances the window after
    writing; each hop also observes DataChannel queue and message-size limits.
    `bufferedAmount` alone measures the local queue, not downstream consumption.
 4. Repair a broken path through the room controller. If the holder leaves,
-   select another complete source and resume from the written contiguous prefix.
-   The attachment and transfer remain the same work across a route change.
+   select another complete source and resume from the written, verified prefix.
+   Discard any unfinished or invalid block before resuming. The attachment and
+   transfer remain the same work across a route change.
 5. Verify the final content digest before marking the copy complete or offering
    it to others. Cancel retires the task and releases its buffers and temporary
    data; late chunks cannot revive it.
+
+A verification failure stops the current source/path attempt; preserve verified
+progress and try another available candidate. Exhausting those candidates ends
+the attempt rather than accepting unchecked content or retrying forever.
+End-to-end corruption does not identify whether the source
+or an intermediate relay caused it, so it does not justify an automatic global
+ban of the claimed holder. An admitted malicious node can still withhold delivery;
+integrity checks prevent acceptance of substituted bytes, not denial of service.
 
 The [WebRTC DataChannel API](https://www.w3.org/TR/webrtc/#rtcdatachannel) supplies
 per-hop queue signals; the receiver's bounded pull supplies end-to-end flow

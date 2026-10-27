@@ -42,7 +42,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   owns room-operated base paths, staged screen delivery and bounded source-rooted
   convergence. Next discuss [room data and hosting](./research/channel-storage-and-identity.md):
   room-confirmed history with bounded local copies, recent-history synchronization,
-  retained file sources and sequential transfer through existing room paths.
+  retained file sources and sequential transfer through existing room paths,
+  with authenticated content identity and verified-block recovery.
   Set the first retention/recovery scope before implementing these mechanisms;
   peer-served history and persistent download resumption are not prerequisites.
   Then prove separate domain/room hosts and shared room paths before integrating
