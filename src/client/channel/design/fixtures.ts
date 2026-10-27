@@ -10,6 +10,16 @@ export const designPeople = [
   { id: "design-half-crisps", name: "半包薯片", english: "Half a Crisp", status: "muted" },
   { id: "design-you", name: "你", english: "You", status: "listening" },
   { id: "design-coming", name: "马上就来", english: "One More Minute", status: "away" },
+  ...([
+    ["手柄没电", "Low Battery"], ["最后一把", "Last Round"],
+    ["先存个档", "Quick Save"], ["奶茶半糖", "Half Sweet"],
+    ["地图反了", "Wrong Way"], ["网络很好", "Zero Lag"],
+    ["锅里有饭", "Dinner Ready"], ["等我换装", "New Outfit"],
+    ["按错技能", "Wrong Button"], ["满血撤退", "Full HP Retreat"],
+    ["刚好路过", "Just Passing"], ["猫在键盘上", "Keyboard Cat"],
+    ["月亮不睡", "Night Owl"], ["小饼干", "Cookie"],
+    ["先喝口水", "Water Break"], ["明天早起", "Early Bird"],
+  ] as const).map(([name, english], index) => ({ id: `design-friend-${index}`, name, english, status: "listening" as const })),
 ] as const;
 
 export function designRooms(copy: DesignCopy): DesignRoom[] {

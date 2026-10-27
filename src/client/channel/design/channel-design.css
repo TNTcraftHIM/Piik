@@ -11,6 +11,9 @@
 .cd-book-intro h1 { margin: 12px 0 10px; font-size: clamp(24px, 3vw, 34px); font-weight: 700; letter-spacing: -.035em; line-height: 1.4; text-wrap: balance; }
 .cd-book-intro > p { color: var(--muted); font-size: 14px; max-width: 76ch; line-height: 1.8; }
 .cd-book-tools { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.cd-preview-options { display: flex; align-items: center; gap: 12px; }
+.cd-people-picker { --selection-item-size: var(--control-dense-size); box-shadow: none; border-color: var(--line); }
+.cd-people-picker button { padding-inline: 12px; font-size: 12px; white-space: nowrap; }
 .cd-scene-picker { --selection-item-size: var(--control-dense-size); box-shadow: none; border-color: var(--line); }
 .cd-scene-picker button { gap: 8px; padding-inline: 21px; }
 .cd-scene-number { font: 10px var(--mono); opacity: .65; }
@@ -121,10 +124,11 @@
 .cd-stage.is-focused .cd-screen.is-focused > svg { max-height: 230px; }
 .cd-stage.is-focused .cd-screen:not(.is-focused) { grid-column: 2; }
 .cd-stage.is-focused + .cd-chat .cd-conversation { padding-top: 17px; }
-.cd-members { display: flex; flex-direction: column; min-width: 0; padding: 0 16px; background: color-mix(in srgb, var(--wall) 60%, var(--paper)); border-left: 1px solid var(--line); }
-.cd-members > header { display: flex; justify-content: space-between; align-items: center; min-height: 72px; }
+.cd-members { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding: 0 16px; background: color-mix(in srgb, var(--wall) 60%, var(--paper)); border-left: 1px solid var(--line); }
+.cd-members > header { display: flex; flex: none; justify-content: space-between; align-items: center; min-height: 72px; }
 .cd-members > header h2 { font-size: 13px; font-weight: 600; }
 .cd-members > header h2 > span { font-size: 11px; color: var(--muted); font-weight: 400; margin-left: 7px; }
+.cd-member-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
 .cd-member-group { margin-bottom: 22px; }
 .cd-member-group > h3 { display: flex; align-items: center; gap: 7px; margin: 8px 0 10px 5px; font-size: 10px; font-weight: 550; color: var(--muted); }
 .cd-member-group > h3 > span { font-size: 10px; opacity: .8; }
@@ -138,7 +142,7 @@
 .cd-speaking i { display: block; width: 2px; height: 7px; border-radius: 2px; background: var(--live); }
 .cd-speaking i:nth-child(2) { height: 14px; }
 .cd-speaking i:nth-child(3) { height: 10px; }
-.cd-members-foot { display: flex; flex-direction: column; align-items: center; margin-top: auto; padding-bottom: 23px; color: var(--muted); opacity: .7; }
+.cd-members-foot { display: flex; flex: none; flex-direction: column; align-items: center; margin-top: auto; padding-block: 14px 23px; color: var(--muted); opacity: .7; }
 .cd-members-foot p { font-size: 10px; margin-top: 7px; }
 .cd-mobile-rooms, .cd-mobile-members, .cd-mobile-voice, .cd-pane-back { display: none; }
 .cd-book-notes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 34px; margin: 34px 2px 28px; }
@@ -252,6 +256,8 @@
   .cd-book-intro { margin-top: 30px; }
   .cd-book-notes { gap: 25px; grid-template-columns: 1fr; }
   .cd-book-notes article { max-width: 60ch; }
+  .cd-book-tools { flex-wrap: wrap; }
+  .cd-preview-options { margin-left: auto; }
 }
 @media (max-width: 560px) {
   .cd-book { padding: 15px 12px; }

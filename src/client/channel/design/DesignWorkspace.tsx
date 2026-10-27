@@ -16,8 +16,8 @@ import "../../components/living/floating-panel.css";
 import "../../components/living/room-interactions.css";
 import "./design-social.css";
 
-export function DesignWorkspace({ copy, scene, onScene }: {
-  copy: DesignCopy; scene: DesignScene; onScene(scene: DesignScene): void;
+export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
+  copy: DesignCopy; scene: DesignScene; peopleCount: number; onScene(scene: DesignScene): void;
 }) {
   const [rooms, setRooms] = useState(() => designRooms(copy));
   const [roomId, setRoomId] = useState("games");
@@ -38,8 +38,9 @@ export function DesignWorkspace({ copy, scene, onScene }: {
   const screenIds = [...(demoRoom ? [0, 1] : []), ...(sharing ? [3] : [])];
   const showingScreens = screenIds.length > 0 && !screensHidden && (scene === "screens" || scene === "focus" || sharing);
   const selfVoice = joined ? { microphone: !muted, deafened } : false;
-  const here = demoRoom ? [0, 1, 2, 3] : [3];
-  const elsewhere = demoRoom ? [4] : [0, 1, 2, 4];
+  const demoPeople = [0, 1, 2, 3, ...Array.from({ length: peopleCount - 4 }, (_, index) => index + 5)];
+  const here = demoRoom ? demoPeople : [3];
+  const elsewhere = demoRoom ? [4] : [...demoPeople.filter(index => index !== 3), 4];
   const name = (index: number) => copy(designPeople[index].name, designPeople[index].english);
 
   const channelTitle = channelName ?? copy("下班以后", "After hours");
@@ -73,7 +74,7 @@ export function DesignWorkspace({ copy, scene, onScene }: {
               onClick={() => { setRoomId(item.id); setMobilePane("room"); setFocused(item.id === "games" ? 0 : 3); }}>
               <DesignIdentityMark value={item} size={21} />
               <span>{designRooms(copy).find(preset => preset.id === item.id)?.name ?? item.name}</span>
-              {item.id === "games" ? <small>4</small> : item.private ? <Glyph name={item.hidden ? "eyeOff" : "lock"} size={14} /> : null}
+              {item.id === "games" ? <small>{demoPeople.length - Number(!demoRoom)}</small> : item.private ? <Glyph name={item.hidden ? "eyeOff" : "lock"} size={14} /> : null}
             </button>)}
           </nav>
         </div>
@@ -142,19 +143,21 @@ export function DesignWorkspace({ copy, scene, onScene }: {
       </main>
 
       <aside className="cd-members" aria-label={copy("频道成员", "Channel members")}>
-        <header><h2>{copy("成员", "Members")} <span>5</span></h2>
+        <header><h2>{copy("成员", "Members")} <span>{here.length + elsewhere.length}</span></h2>
           <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} quiet iconOnly onClick={() => setMobilePane("room")} /></span></header>
-        <div className="cd-member-group"><h3>{copy("这个房间", "In this room")}<span>{here.length}</span></h3>
-          {here.map(index => <div className="cd-member" key={index}>
-            <Avatar index={index} voice={index === 3 ? selfVoice : true} />
-            <div><strong>{name(index)}</strong><small>
-              {index === 0 ? copy("正在分享", "Sharing screen") : index === 1 ? copy("正在说话", "Speaking") : index === 2 ? copy("麦克风已关闭", "Microphone muted") : copy("就是你", "That's you")}
-            </small></div>
-            {index === 0 ? <Glyph name="display" size={16} /> : index === 1 ? <span className="cd-speaking" aria-hidden="true"><i /><i /><i /></span> : null}
-          </div>)}
-        </div>
-        <div className="cd-member-group"><h3>{copy("其他房间", "Elsewhere")}<span>{elsewhere.length}</span></h3>
-          {elsewhere.map(index => <div className="cd-member is-away" key={index}><Avatar index={index} /><div><strong>{name(index)}</strong><small>{index === 4 ? copy("在客厅", "In the living room") : copy("在再来一局", "In One more round")}</small></div></div>)}
+        <div className="cd-member-list">
+          <div className="cd-member-group"><h3>{copy("这个房间", "In this room")}<span>{here.length}</span></h3>
+            {here.map(index => <div className="cd-member" key={index}>
+              <Avatar index={index} voice={index === 3 ? selfVoice : true} />
+              <div><strong>{name(index)}</strong><small>
+                {index === 0 ? copy("正在分享", "Sharing screen") : index === 1 ? copy("正在说话", "Speaking") : index === 2 ? copy("麦克风已关闭", "Microphone muted") : index === 3 ? copy("就是你", "That's you") : copy("正在收听", "Listening")}
+              </small></div>
+              {index === 0 ? <Glyph name="display" size={16} /> : index === 1 ? <span className="cd-speaking" aria-hidden="true"><i /><i /><i /></span> : null}
+            </div>)}
+          </div>
+          <div className="cd-member-group"><h3>{copy("其他房间", "Elsewhere")}<span>{elsewhere.length}</span></h3>
+            {elsewhere.map(index => <div className="cd-member is-away" key={index}><Avatar index={index} /><div><strong>{name(index)}</strong><small>{index === 4 ? copy("在客厅", "In the living room") : copy("在再来一局", "In One more round")}</small></div></div>)}
+          </div>
         </div>
         <div className="cd-members-foot"><Glyph name="couch" size={26} /><WelcomeLine still /></div>
       </aside>

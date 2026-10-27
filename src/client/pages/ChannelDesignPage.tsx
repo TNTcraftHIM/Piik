@@ -7,12 +7,18 @@ import { DesignWorkspace } from "../channel/design/DesignWorkspace";
 import { designScenes, readDesignScene, type DesignScene } from "../channel/design/fixtures";
 import "../channel/design/channel-design.css";
 
+const PEOPLE_PRESETS = [4, 12, 20];
+
 /** A visual proposal; no channel, session or media state is changed here. */
 export function ChannelDesignPage() {
   const { lang } = useCopy();
   const copy = (chinese: string, english: string) => lang === "zh" ? chinese : english;
   const [scene, setScene] = useState(readDesignScene);
   const [phone, setPhone] = useState(false);
+  const [people, setPeople] = useState(() => {
+    const count = Number(new URLSearchParams(location.search).get("people"));
+    return PEOPLE_PRESETS.includes(count) ? count : 4;
+  });
   const [boardKey, setBoardKey] = useState(0);
   const current = designScenes.find(item => item.id === scene)!;
   useEffect(() => {
@@ -42,13 +48,23 @@ export function ChannelDesignPage() {
           <span className="cd-scene-number">0{index + 1}</span>{copy(...item.name)}
         </button>)}
       </nav>
-      <div className="lr-toggle cd-size-picker" role="group" aria-label={copy("预览尺寸", "Preview size")}>
-        <button type="button" className={!phone ? "is-selected" : undefined} aria-label={copy("桌面", "Desktop")} aria-pressed={!phone} onClick={() => setPhone(false)}><Glyph name="display" size={19} /></button>
-        <button type="button" className={phone ? "is-selected" : undefined} aria-label={copy("窄屏", "Narrow screen")} aria-pressed={phone} onClick={() => setPhone(true)}><Glyph name="window" size={18} /></button>
+      <div className="cd-preview-options">
+        <div className="lr-toggle cd-people-picker" role="group" aria-label={copy("房间人数预览", "Room size preview")}
+          style={{ "--lr-segments": PEOPLE_PRESETS.length } as CSSProperties}>
+          {PEOPLE_PRESETS.map(count => <button type="button" key={count} className={people === count ? "is-selected" : undefined}
+            aria-pressed={people === count} onClick={() => {
+              setPeople(count);
+              const url = new URL(location.href); url.searchParams.set("people", String(count)); history.replaceState(null, "", url);
+            }}>{copy(`${count} 人`, `${count} people`)}</button>)}
+        </div>
+        <div className="lr-toggle cd-size-picker" role="group" aria-label={copy("预览尺寸", "Preview size")}>
+          <button type="button" className={!phone ? "is-selected" : undefined} aria-label={copy("桌面", "Desktop")} aria-pressed={!phone} onClick={() => setPhone(false)}><Glyph name="display" size={19} /></button>
+          <button type="button" className={phone ? "is-selected" : undefined} aria-label={copy("窄屏", "Narrow screen")} aria-pressed={phone} onClick={() => setPhone(true)}><Glyph name="window" size={18} /></button>
+        </div>
       </div>
     </div>
     <div className={"cd-board" + (phone ? " is-phone" : "")}>
-      <DesignWorkspace key={boardKey} copy={copy} scene={scene} onScene={navigate} />
+      <DesignWorkspace key={`${boardKey}-${people}`} copy={copy} scene={scene} peopleCount={people} onScene={navigate} />
     </div>
     <div className="cd-book-notes">
       <article><span>01</span><div><h2>{copy("空间先稳定下来", "A steady sense of place")}</h2><p>{copy("左侧找房间，中央一起聊和看，右侧找朋友。成员列表有自己的位置，不再悬浮在画面上。", "Rooms, conversation and people each have a home. The member list belongs to the layout, not a floating window.")}</p></div></article>

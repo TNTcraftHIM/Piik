@@ -39,7 +39,8 @@ have independent live sessions. The default loopback ports are 8791 for Rust and
 Open `/__channel-design` on the same Vite service for the interactive design
 boards. This route needs no channel credential or running Rust service. Direct
 links `#chat`, `#screens`, `#focus` and `#create` select the four studies; the
-toolbar compares desktop/narrow layouts and the shared light/dark themes.
+toolbar compares desktop/narrow layouts, the shared light/dark themes and rooms
+with 4, 12 or 20 people. `?people=20#chat` opens the crowded-room study directly.
 
 The proposal places room navigation on the left, conversation and selected
 screens in the middle, and a persistent member list on the right. Narrow layouts
@@ -51,8 +52,11 @@ existing layout until the owner accepts the visual direction.
 
 The room's compact couch shares the heading with its title and actions; narrow
 layouts place it beneath them. It stays visible above conversation and screens.
-Select a seated person to send reactions or throw props along the sender-to-recipient
-path. Chat avatars and the member list are informational; message reactions stay
+Seats keep a readable size in one horizontally scrollable row, with your own seat
+fixed on the right. Arrow controls and touch scrolling reach the other people;
+the full member list scrolls independently. Select a seated person to send
+reactions or throw props along the sender-to-recipient path.
+Chat avatars and the member list are informational; message reactions stay
 below their message. The composer supports the attachment button, file drop and image
 paste, with a draft preview before sending. Channel appearance and room creation
 share preset icons and custom image selection. These design-board changes stay
