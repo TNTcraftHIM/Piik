@@ -15,6 +15,8 @@ mod room;
 mod routes;
 #[cfg(feature = "server")]
 pub mod storage;
+#[cfg(feature = "server")]
+mod stored_room;
 mod transport;
 pub mod wire;
 
@@ -22,6 +24,8 @@ pub use access::{RoomPermission, RoomState};
 pub use channel::DurableState;
 pub use identity::{Endpoint, Member, User};
 pub use room::{RoomRuntime, RoomSnapshot};
+#[cfg(feature = "server")]
+pub use stored_room::StoredRoomHost;
 pub use wire::MAX_MESSAGE_ATTACHMENTS;
 
 use channel::Channel;

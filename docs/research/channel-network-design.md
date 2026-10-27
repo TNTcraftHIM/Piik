@@ -451,9 +451,10 @@ Its [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc3895
 owns sockets, candidate gathering and protocol deadlines. Its
 [interceptor registry](https://github.com/webrtc-rs/rtc/blob/2a732df55ca4bcf26b80914fa0f570cfaf74cfcb/src/peer_connection/configuration/interceptor_registry.rs)
 provides RTCP, GCC/TWCC and pacing; congestion control needs explicit configuration.
-The existing DataChannel/Opus proof did not enable it. Enable those components
-and verify feedback-driven pacing before integrating the adapter. Piik owns
-encoder demand, bounded queued work and the source's RTP timeline, rather than
+The configured Native/Browser proof now receives real sender reports and TWCC
+feedback that updates the GCC target; a deterministic library check verifies
+the pacer's finite queue and rate-dependent release timing. Piik owns encoder
+demand, bounded queued work and the source's RTP timeline, rather than
 reimplementing those network algorithms.
 
 Native encoded forwarding and SFU integration remain later stages. This candidate

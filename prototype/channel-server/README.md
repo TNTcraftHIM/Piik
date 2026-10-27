@@ -173,8 +173,11 @@ history survive reopening, while captures and voice do not restart automatically
 Changing rooms keeps hosted rooms running. Closing the owning page pauses them
 after the recovery window; Server does not take over.
 
-Native App hosting/persistence remains a design step under the
+Native App hosting follows the
 [room-data model](../../docs/research/channel-storage-and-identity.md).
+`StoredRoomHost` supplies the shared Rust room core's SQLite execution adapter:
+one database per room, with confirmations emitted after commit. It owns no
+network endpoint or hosting-session lifetime; that Native integration is next.
 The Server prototype's saved database does not implement that App lifecycle or
 add distribution packages. A new service URL can use the same database, but a
 new Browser origin cannot read the previous origin's saved login or bookmarks.

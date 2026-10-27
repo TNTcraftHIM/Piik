@@ -1,8 +1,6 @@
 use piik_channel_prototype::{
-    host::RoomHost,
-    storage,
     wire::{Event, Request, RoomAccess, Snapshot},
-    Authority, Effects, RoomState,
+    Authority, Effects, RoomState, StoredRoomHost,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, VecDeque};
@@ -11,8 +9,7 @@ use uuid::Uuid;
 
 struct HostedRoom {
     connection: Uuid,
-    host: RoomHost,
-    store: storage::Storage,
+    host: StoredRoomHost,
 }
 
 /// Delivers the production room protocol between separate authority and hosts.
@@ -58,18 +55,7 @@ impl RoomNetwork {
                             .get_mut(&room_id)
                             .expect("registered room runtime");
                         assert_eq!(hosted.connection, connection);
-                        let work = hosted.host.dispatch(input).unwrap();
-                        if let Some(policy) = work.policy {
-                            hosted
-                                .store
-                                .save(&serde_json::to_value(policy).unwrap())
-                                .unwrap();
-                        }
-                        let history = work
-                            .history
-                            .as_ref()
-                            .map(|request| hosted.store.history(request).unwrap());
-                        let output = hosted.host.finish(history).unwrap();
+                        let output = hosted.host.dispatch(input).unwrap();
                         pending.push_back(self.authority.handle(connection, Request::parse(
                             &json!({"type":"host_output", "roomId":room_id, "output":output}).to_string(),
                         ).unwrap(), 100));
@@ -117,21 +103,10 @@ impl RoomNetwork {
 
     pub fn restore_room(&mut self, connection: Uuid, policy: RoomState) -> String {
         let id = policy.id.clone();
-        let host = RoomHost::new(policy);
+        let host = StoredRoomHost::create(Path::new(":memory:"), policy).unwrap();
         let summary = host.summary();
-        let mut store =
-            storage::Storage::open(Path::new(":memory:"), storage::Limits::default()).unwrap();
-        store
-            .save(&serde_json::to_value(host.policy()).unwrap())
-            .unwrap();
-        self.hosts.insert(
-            id.clone(),
-            HostedRoom {
-                connection,
-                host,
-                store,
-            },
-        );
+        self.hosts
+            .insert(id.clone(), HostedRoom { connection, host });
         let registered = self.command(
             connection,
             json!({"type":"host_register", "room":summary, "requestId":"create"}),
@@ -149,7 +124,7 @@ impl RoomNetwork {
     }
 
     pub fn policy(&self, room: &str) -> RoomState {
-        serde_json::from_value(self.hosts[room].store.load().unwrap().unwrap()).unwrap()
+        self.hosts[room].host.policy().clone()
     }
 
     pub fn state(&self, connection: Uuid) -> &Snapshot {
