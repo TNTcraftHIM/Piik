@@ -7,6 +7,13 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **2.x routing and lifecycle maintenance closure.** Fully review the route
+  controller, signaling, Browser/App transports and media recovery before 3.0
+  core implementation. Reproduce and fix reachable defects at their owner, then
+  cross-review fixes and run the affected controlled network/lifecycle scenarios.
+  Include join/rejoin, source and session replacement, pause, departure, capacity,
+  P2P/SFU transitions, voice-only paths and cancellation. Keep coverage and raw
+  evidence under ignored build output; this ledger owns unfinished work.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -37,18 +44,17 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Piik 3.0 channel prototype.** Rust is the selected implementation target.
-  Develop independent channel, chat, voice and screen-share lifecycles on
-  `feat/channel-prototype`, retaining P2P-first routing and shared endpoint
-  capacity. Reuse the existing frontend and validate media/native migration
-  boundaries. The [hosting and subscription assessment](./research/room-interactions.md#multi-room-and-distributed-hosting-assessment)
-  owns the model; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
 
 ## Held By Owner
 
+- [ ] **Maintenance publication.** Held on 2026-10-27. Commit completed fixes
+  to the maintenance branch; publish only on the owner's next instruction.
+- [ ] **Piik 3.0 core implementation.** Held on 2026-10-27 until the 2.x routing
+  and lifecycle maintenance audit closes. Keep the design and Rust prototype
+  isolated on `feat/channel-prototype`; do not migrate unresolved 2.x defects.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session

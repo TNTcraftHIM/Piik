@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-26
+Last updated: 2026-10-27
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -38,7 +38,9 @@ Release artifacts and operator records own delivery completion.
 ## Current Work
 
 The maintenance line preserves published protocols, compatibility and route
-ownership. [TODO](./todo.md) is the only unfinished-work ledger; Git and PRs own
+ownership. Routing and lifecycle review precedes 3.0 core implementation;
+maintenance publication awaits the owner's instruction.
+[TODO](./todo.md) is the only unfinished-work ledger; Git and PRs own
 completed fixes. [Verification status](./verification-status.md) owns material
 acceptance and platform boundaries.
 
