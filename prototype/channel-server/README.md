@@ -145,7 +145,7 @@ locally. Read pages and drafts stay in memory, as do the design board's sample
 data and edits. They are not a second authoritative store.
 
 Native App hosting/persistence remains a design step under the
-[room-data proposal](../../docs/research/channel-storage-and-identity.md).
+[room-data model](../../docs/research/channel-storage-and-identity.md).
 The Server prototype's saved database does not implement that App lifecycle or
 add distribution packages. A new service URL can use the same database, but a
 new Browser origin cannot read the previous origin's saved login or bookmarks.

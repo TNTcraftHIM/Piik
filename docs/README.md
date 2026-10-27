@@ -94,7 +94,7 @@ and [website preview and publishing](./operations/website.md).
 | Camera and Host microphone | [Capture scope and limits](./research/camera-and-microphone.md) |
 | Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
 | Accepted 3.0 channel/room foundation, Rust direction and multi-source routing | [Channel and network design](./research/channel-network-design.md) |
-| Proposed 3.0 room-data ownership, file copies and manual domain entry | [Room data and hosting](./research/channel-storage-and-identity.md) |
+| 3.0 room-data ownership, cached attachments and file-delivery design | [Room data and hosting](./research/channel-storage-and-identity.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 
 ## Shared conventions

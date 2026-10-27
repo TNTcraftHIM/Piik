@@ -1,8 +1,8 @@
 # Piik 3.0 Room Data And Hosting
 
 Reviewed 2026-10-27. The [accepted network model](./channel-network-design.md)
-owns responsibilities, routing and live lifecycles. This document develops the
-next proposal: data placement, synchronization and recovery. The
+owns responsibilities, routing and live lifecycles. This document records the
+accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
 behavior; [TODO](../todo.md) owns pending decisions and implementation.
 Discuss this data model before implementing its storage and transfer mechanisms.
@@ -30,9 +30,11 @@ A local history copy grants no write authority. File forwarding and permanent
 storage are different work: an intermediate peer can relay bounded chunks
 without retaining the whole file.
 
-The operating-owner boundary is accepted. The retention and synchronization
-choices below are recommendations for the next discussion, not implemented
-product guarantees. They add local data to existing runtimes, not a separately
+The owner accepted durable room history and attachment metadata, participant-held
+file copies and whole-file hash verification. Images and ordinary files share
+one attachment model. Content becomes unavailable when its copies disappear;
+its history record remains. Delivery and cache policy below remain proposals.
+These responsibilities add local data to existing runtimes, not a separately
 configured storage role.
 
 ## Metadata And Local Copies
@@ -51,6 +53,20 @@ Recommend room admission also permits reading its retained conversation. Do not
 add a separate history permission or per-user storage configuration in this
 first model. Joining a room fetches its recent history, not every room in the
 channel or every attachment's bytes.
+
+### Messages And Attachments
+
+| Record | Durable information |
+| --- | --- |
+| Message | Stable identity, authenticated author, room-confirmed order and send time, text and attachment references. |
+| Attachment | Stable identity, filename, media type, byte size and expected whole-file digest. |
+| Image presentation | Optional dimensions and preview reference on the same attachment; no separate image storage or delivery lifecycle. |
+
+Send time and author belong to the message rather than a second copy on every
+attachment. A text message can contain attachments, and an attachment message
+can have a caption. The room owner saves these records transactionally and
+restores them on ordinary restart. Serving availability is derived from current
+readable copies, not a permanent `available` flag on the saved message.
 
 ## Confirmed History
 
@@ -111,12 +127,12 @@ history off the domain owner without adding consensus or per-user signed logs.
 
 ## File Sources And Reachability
 
-A confirmed attachment description identifies its message, name, size and content
-digest. Recipients fetch bytes on demand; they are not pushed to every member.
-The sender prepares a readable source before submitting the description. A complete,
-verified copy can become another source while its holder remains admitted and
-able to read it. The room runtime keeps this online source index in live state;
-holders announce their actual copies again after reconnecting.
+Attachment records are distributed with chat; file bytes use the existing room
+network. The sender prepares a readable source before submitting the description.
+A complete, verified copy can become another source while its holder remains
+admitted and able to read it. The room runtime keeps this source index in live
+state; holders announce their actual copies again after reconnecting. The original
+sender has no permanent priority over other usable copies.
 
 ### File Identity And Untrusted Copies
 
@@ -135,59 +151,65 @@ explains this distinction between content digests and authenticated metadata.
 Use the common authority mechanism and maintained cryptographic primitives;
 do not invent file-specific identity or a second trust system.
 
-For large transfers, recommend a flat list of block hashes authenticated by the
-confirmed descriptor, alongside the whole-file digest. Fetch the list when a
-download starts and verify its binding before using it. Verify each block before
-counting it as reusable progress; intermediate, unverified bytes stay temporary
-and are not opened, previewed or offered to another user. The whole-file check
-still guards completion. [Syncthing's block protocol](https://docs.syncthing.net/specs/bep-v1.html#index-and-index-update)
-is a reference for block descriptions and requested-byte verification, not for
-adopting its folder replication or version-merging model.
+Use the confirmed whole-file digest for the initial model. Network chunks are
+transport units, not independently verified pieces. A relay may forward the
+in-flight stream before receiving the whole file; a receiving client keeps its
+copy temporary until its final size and digest match. Only then may it open or
+preview that copy, publish it as a complete source, or mark the download successful.
+No per-piece verification metadata is required for this model.
 
-This adds one bounded verification list, not multi-source assembly or a Merkle
-tree. For scale, 1 GiB in 4 MiB blocks needs 256 SHA-256 values, or 8 KiB of hash
-data; that example does not fix Piik's block size. The flat-list format and limits
-remain part of the pending transfer design.
+### Shared Delivery On Existing Room Paths
 
-### One Selected Source, Existing Room Paths
-
-A transfer uses the room base tree's existing path from holder to recipient.
-It creates a bounded transfer task, not a new route planner or a mandatory direct
-ICE connection between those two users. The [network model](./channel-network-design.md#one-base-tree-per-participating-room)
-owns route admission and repair. A transfer keeps one selected holder, its
-recipient's written progress and its own bounded buffers:
+Recommend demand-driven distribution over the room base tree. Project an admitted
+source's flow to the interested recipients, reusing the existing unique paths.
+The [network model](./channel-network-design.md#one-base-tree-per-participating-room)
+owns route admission and repair; file work adds range demand and progress, not
+another topology planner or mandatory direct ICE connections.
 
 1. Authorize message attachments against current room access and the retained
    message. Identity images follow their domain/room visibility rules through
    the same transfer mechanism. A digest identifies bytes, not permission.
-2. The room runtime selects one admitted online holder using existing reachability
-   and capacity facts. Prefer the original sender when eligible; keep a working
-   source. Address the transfer to that endpoint. Intermediate relays forward
-   the request and response, rather than opportunistically substituting their
-   own copies. Do not probe every participant or split a file among several sources.
-3. Pull a bounded window of chunks. The recipient advances the window after
-   writing; each hop also observes DataChannel queue and message-size limits.
-   `bufferedAmount` alone measures the local queue, not downstream consumption.
-4. Repair a broken path through the room controller. If the holder leaves,
-   select another complete source and resume from the written, verified prefix.
-   Discard any unfinished or invalid block before resuming. The attachment and
-   transfer remain the same work across a route change.
-5. Verify the final content digest before marking the copy complete or offering
-   it to others. Cancel retires the task and releases its buffers and temporary
-   data; late chunks cannot revive it.
+2. Reuse an active distribution or a suitable complete cached source using known
+   room connectivity and capacity. Keep a working flow. Source changes are
+   explicit and admitted; an intermediate peer cannot silently substitute its
+   copy or expected digest.
+3. Aggregate concurrent requests for the same attachment, range and authorized
+   distribution. A shared upstream path carries one response, copied only at
+   branches with demand. Keep recipients' progress separate from this shared work.
+4. Forward through bounded windows and buffers. A relay need not download or
+   retain the whole file to forward it; an interested recipient may retain its
+   completed copy and later become a source.
+5. Repair a broken edge through the room controller and reconcile the affected
+   range requests. Cancel removes that recipient's demand; it does not retire
+   delivery still needed by others. Release a shared flow after its last demand.
 
-A verification failure stops the current source/path attempt; preserve verified
-progress and try another available candidate. Exhausting those candidates ends
-the attempt rather than accepting unchecked content or retrying forever.
-End-to-end corruption does not identify whether the source
-or an intermediate relay caused it, so it does not justify an automatic global
-ban of the claimed holder. An admitted malicious node can still withhold delivery;
-integrity checks prevent acceptance of substituted bytes, not denial of service.
+For S-R with R-D1, R-D2 and R-D3, aligned concurrent downloads can share one copy
+of each range over S-R; R forwards to the three branches. Independent downloads
+from S would send three copies over S-R. This is a topology example, not a measured
+speedup. When S itself has several required outgoing branches, its upload follows
+that fan-out; a base tree does not guarantee one total upload for every shape.
+If all usable paths pass through S, changing file sources alone cannot remove
+that transit work. Any new edge belongs to the existing room router's admission
+and optimization, not file-specific probing.
+
+One-copy sharing applies to overlapping range demand while the data remains in
+flight or cached. A late recipient may require another read. Keep per-branch
+windows bounded: a slow recipient resumes from its retained offset or an available
+complete cache instead of forcing every other branch to wait or retain unlimited
+data. File traffic still consumes the real forwarding capacity of each endpoint.
+
+Ordinary disconnection may resume a temporary download from its written offset,
+but that prefix is not yet verified. Final digest failure discards the temporary
+copy before retrying; whole-file verification cannot identify a good prefix or
+the particular source/relay responsible for corruption. Try other available
+candidates finitely, then report failure. Do not promote bad content or ban a
+claimed holder solely from an end-to-end mismatch.
 
 The [WebRTC DataChannel API](https://www.w3.org/TR/webrtc/#rtcdatachannel) supplies
-per-hop queue signals; the receiver's bounded pull supplies end-to-end flow
-control. Keep bulk data out of the ordered control queue, while sharing transport
-ownership and admission. Separate queues do not isolate physical bandwidth.
+per-hop queue signals; each recipient's bounded pull limits its in-flight demand.
+`bufferedAmount` does not prove downstream storage consumption. Keep bulk data
+out of the ordered control queue, while sharing transport ownership and admission.
+Separate queues do not isolate physical bandwidth.
 Closing a chat panel or stopping video does not cancel a file transfer's needed
 connection; completion releases only that transfer's resources.
 
@@ -202,7 +224,8 @@ file. The availability boundary is simple:
 | Situation | Result |
 | --- | --- |
 | Original sender leaves; an admitted holder remains online | That holder can supply the file through the room network. |
-| No holder is online | Keep its history entry; downloading waits for a source. |
+| No holder is currently online | Keep its history entry and show that content is currently unavailable. A returning source can serve it again. |
+| Every readable copy has been removed | The bytes are lost until someone supplies the same content again; keep the original message and attachment card. |
 | The room runtime stops | Pause remote room operations and delivery; existing local copies remain readable. |
 | Access is removed or the attachment is withdrawn | Stop authorized delivery. Previously downloaded copies remain with their recipients. |
 
@@ -210,6 +233,28 @@ file. The availability boundary is simple:
 separation between a file announcement, on-demand download and retained peer
 copies. Piik's proposed tree path supplies the carrier; it does not adopt Jami's
 discovery or replicated-history architecture.
+
+### Torrent Comparison And Scope
+
+[BitTorrent BEP 3](https://www.bittorrent.org/beps/bep_0003.html) distributes load
+by letting downloaders exchange pieces. It includes piece availability, request
+selection and piece hashes; a [magnet link](https://www.bittorrent.org/beps/bep_0009.html)
+identifies content and enables metadata retrieval, rather than supplying a route.
+Adopting a full swarm would add scheduling and discovery alongside Piik's room
+network. Exchanging incomplete copies would also benefit from verified piece
+identities; a whole-file hash only identifies corruption after assembly.
+
+The narrower recommendation borrows cooperative distribution, while using Piik's
+existing tree and complete-copy cache index. Concurrent request aggregation has
+a separate published precedent in [CCNx section 2.4.2](https://www.rfc-editor.org/rfc/rfc8569.html#section-2.4.2);
+this is an experimental protocol reference, not a proposed Piik dependency.
+Implementing the bounded shared-flow behavior still needs acceptance evidence.
+
+Publish attachment metadata to the room, but request large file bodies only for
+interested consumers and necessary relays. Proactively filling every participant's
+cache would spend bandwidth and storage even when nobody wants the file. Keep
+whole-room push and a torrent-style multi-source piece scheduler out of the initial
+recommendation; discuss them only if shared-tree delivery leaves a concrete gap.
 
 ### Retained Files And Images
 
@@ -236,7 +281,7 @@ differ without creating another transport or external storage service.
 
 ## Persistence And Recovery
 
-Recommend durable domain and room data for the 3.0 communication model, kept
+Keep durable domain and room data for the 3.0 communication model, stored
 outside program/update files. This does not change the published 2.x App's
 process-only room behavior.
 
@@ -316,6 +361,9 @@ every message or file. Restart B with its data and restore the same room.
 A file must reach D through an intermediate peer when C-D direct connectivity
 is unavailable. Lost message confirmation must not duplicate a committed send;
 refreshing a participant must recover confirmed history. File delivery must
-resume after path/source loss without disturbing voice or picture playback.
+share upstream ranges for simultaneous consumers, handle a slow or cancelled
+branch independently, and resume after path/source loss. Corrupted downloads
+must fail whole-file verification. Exercise file traffic alongside voice and
+picture playback through the same resource owner.
 These checks establish the ownership and carrier model before expanding the
 business interface.

@@ -19,8 +19,9 @@ files. Pictures start on usable existing paths, then converge locally towards
 source-rooted delivery through bounded background transitions. All authorized,
 capable room peers can be relay candidates; only viewers and necessary transit
 nodes receive the picture. Both stages use the same route state and transports.
-The owner accepted this routing foundation. Data persistence and transfer details
-are the next design discussion; the new runtime is not yet implemented.
+The owner accepted this routing foundation and durable room records with cached
+attachments. Shared file delivery and cache policy are the current design
+discussion; the new runtime is not yet implemented.
 
 ## Terminology And Roles
 
@@ -93,7 +94,7 @@ Do not expose long-lived admission credentials to intermediate peers. Establish
 that control boundary using maintained primitives before moving authoritative
 commands onto a multi-hop carrier.
 
-The [room-data proposal](./channel-storage-and-identity.md) owns persistence,
+The [room-data model](./channel-storage-and-identity.md) owns persistence,
 history copies, file retention and manual address replacement. Domain and room
 data may reside on different users' devices. When one App operates both, compose
 the same runtimes locally rather than requiring another deployment.
@@ -139,7 +140,7 @@ are ready; an open candidate DataChannel alone does not retire active media work
 | --- | --- |
 | Room commands and confirmed chat | Send to the room owner for authorization/confirmation, then distribute confirmed changes to authorized room participants. |
 | Voice | Project each joined source to its listeners over the base tree's unique paths; send each source at most once over a required directed edge. |
-| File bytes | An admitted holder supplies one requesting recipient over the existing unique path; this creates a transfer, not another route planner. |
+| File bytes | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
 
 Current 2.x [projectVoiceFlows](../../internal/server/signal/voice_plan.go) already

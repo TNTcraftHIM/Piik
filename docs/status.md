@@ -14,9 +14,10 @@ room voice. Its five-endpoint gate covers relay continuity and recovery; the
 focused lifecycle gate covers revocation, offline stop and session expiry.
 The [accepted routing foundation](./research/channel-network-design.md) assigns
 each room to its actual operator and starts video on usable room paths before
-bounded source-rooted convergence. Current design work covers
-[history synchronization, local copies and file delivery](./research/channel-storage-and-identity.md).
-Runtime and business/UI integration wait for that data-model discussion. The visual
+bounded source-rooted convergence. The [data model](./research/channel-storage-and-identity.md)
+records durable room history and attachment metadata with whole-file verification;
+shared file delivery over existing paths and cache policy are the current discussion.
+Runtime and business/UI integration wait for that design discussion. The visual
 proposal and functional prototype share editable URL bookmarks; automatic address
 discovery is not planned. Work stays on `feat/channel-prototype`.
 Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.

@@ -436,7 +436,7 @@ or room owner changes. This needs no new room protocol or major version.
 
 The [accepted channel and network design](./channel-network-design.md) owns the Rust
 direction, responsibility boundaries, activity lifecycles and multi-source routing.
-The [room-data proposal](./channel-storage-and-identity.md) owns persistence and
+The [room-data model](./channel-storage-and-identity.md) owns persistence and
 file availability. The [3.0 vocabulary](./channel-network-design.md#terminology-and-roles)
 defines channels containing rooms, users with multiple roles and concurrent
 sharing, watching and forwarding. Data-model discussion precedes its implementation;

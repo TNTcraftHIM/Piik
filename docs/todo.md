@@ -40,12 +40,14 @@ own behavior; research and Git/PRs own evidence and completed history.
   user roles, chat, independent screen publications, selective watching and voice.
   The [accepted network and lifecycle design](./research/channel-network-design.md)
   owns room-operated base paths, staged screen delivery and bounded source-rooted
-  convergence. Next discuss [room data and hosting](./research/channel-storage-and-identity.md):
-  room-confirmed history with bounded local copies, recent-history synchronization,
-  retained file sources and sequential transfer through existing room paths,
-  with authenticated content identity and verified-block recovery.
-  Set the first retention/recovery scope before implementing these mechanisms;
-  peer-served history and persistent download resumption are not prerequisites.
+  convergence. The [room-data model](./research/channel-storage-and-identity.md)
+  records accepted durable history/attachment metadata, participant caches and
+  whole-file hash verification. Next discuss shared delivery over existing room
+  paths: aggregate concurrent range demand, reuse complete copies and isolate
+  slow/cancelled recipients. Reuse overlapping delivery instead of defaulting to
+  an independent upload per requester. Set cache and recovery scope before
+  implementation; peer-served history and persistent download resumption are
+  not prerequisites.
   Then prove separate domain/room hosts and shared room paths before integrating
   the visual design: persistent navigation, conversation, room access, attachments,
   selective multi-picture viewing, identity images and person/message reactions.
