@@ -27,6 +27,11 @@ valuable. Duplicate work already independently resolved, personal preferences or
 low-value changes may be declined; merging is not an attribution mechanism.
 Retain authorship for accepted contributions and credit substantive discoveries
 accurately, without attributing independently written code to a PR author.
+Before merging an external contribution, obtain the project owner's explicit
+approval of the specific PR and accepted changes. This also applies when
+extracting or cherry-picking its code into a maintainer PR. General permission
+to investigate, fix issues or release does not authorize accepting external
+contributions; review and verification may proceed before approval.
 Keep contributor patches limited to their necessary changes. Integrate accepted
 external contributions through their own focused PRs, preserving their authors
 separately from a larger maintainer phase. A focused PR may land on `main`
@@ -40,6 +45,8 @@ do not maintain a separate thanks list or manufacture empty credit commits.
 评审看实际价值、证据和产品定位，不看代码行数。发现并解决真实问题的小修复同样值得接纳；
 已经独立解决的重复工作、个人偏好或收益很低的改动可以不合并，不为增加贡献者名单而合并。
 保留已接纳贡献的作者信息，如实说明有价值的问题发现；独立编写的代码不应冒记为他人共同编写。
+合并外部贡献前，必须得到项目所有者对具体 PR 和接纳范围的明确同意；抽取或 cherry-pick
+到维护者自己的 PR 也适用。检查、修复问题或发版的总体授权不等于接纳外部贡献；评审和验证可以先做。
 接纳的外部贡献单独以小范围 PR 合入，保留作者身份，不混入维护者的大批改动。
 合入 main 不要求立即发版；暂不发布时，合并前先暂停自动发布。共同署名作用于整个提交，不能按行分配；
 验收署名以最终进入默认分支的提交为准，不另设鸣谢名单或空提交补贡献计数。
