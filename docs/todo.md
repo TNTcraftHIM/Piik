@@ -46,10 +46,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network and lifecycle proposal](./research/channel-network-design.md) owns
   that model; [room data and hosting](./research/channel-storage-and-identity.md)
   owns data placement, copies and recovery. Runtime changes wait for this review.
-  Resolve the hosting lifetime before integration: recommend an explicit room
-  session, with no implicit App takeover after its owning page closes. Separate
-  local viewing from required forwarding, retain reachable transit nodes, and
-  use the existing route admission/commit rules instead of a shortest-path layer.
+  Review staged video delivery on base paths followed by bounded source-rooted
+  convergence. Separate room-wide relay eligibility from actual media delivery,
+  retain necessary transit nodes, and change only affected branches. Reuse the
+  existing admission/commit rules; no-overlap optional optimization must preserve
+  working playback. App sessions and Server service lifetime follow the model.
   Then prove separate domain/room hosts and shared room paths before integrating
   the visual design: persistent navigation, conversation, room access, attachments,
   selective multi-picture viewing, identity images and person/message reactions.

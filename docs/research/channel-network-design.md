@@ -11,11 +11,15 @@ The owner defines the room owner as the user who actually operates the room:
 its detailed state, management and distribution belong together. A separate
 configurable file-storage service is not wanted. Ordinary URLs and manual
 bookmarks remain the entry model; automatic address discovery is not planned.
+The App is an interactive client. Unattended hosting belongs to Server; a
+standby App must not keep an abandoned owner session running.
 
 Recommend one room routing owner: a base tree carries conversation, voice and
-files; screen subscriptions use reachable paths and retain necessary relays.
-Both use the same connection facts and transport implementation. This routing
-choice is for owner review, not an implemented change.
+files. Pictures start on usable existing paths, then converge locally towards
+source-rooted delivery through bounded background transitions. All authorized,
+capable room peers can be relay candidates; only viewers and necessary transit
+nodes receive the picture. Both stages use the same route state and transports.
+This routing proposal remains under review, not an implemented change.
 
 ## Terminology And Roles
 
@@ -34,13 +38,15 @@ forward, and an ordinary user can publish without becoming the room owner.
 A file sender supplies that file; sending never transfers room management to them.
 
 Changing the selected room or closing an in-page panel does not end a hosting
-session. Closing the page that owns that session is a different event. Recommend
-keeping ordinary App-linked hosting tied to that explicit session: reconcile a
+session. Closing the page that owns that session is a different event. Keep
+ordinary App-linked operation tied to that explicit session: reconcile a
 reload/reconnect within the existing recovery window, then pause the room if its
 owner session expires. A running standby App does not silently take over ownership.
-Independent background hosting would need an explicit product decision and a
-visible lifetime; it is not the default in this proposal. Explicit room ownership
-transfer would also transfer hosting responsibility; automatic takeover is not selected.
+Server-owned domain/room runtimes instead follow the deliberately started service;
+closing an administration page does not stop that service. Both wrappers use the
+same core and routing rules. A Server does not automatically inherit an App-owned
+room. Explicit ownership transfer would also transfer its operation and state;
+automatic takeover is not selected.
 
 ## Authority And Information Boundaries
 
@@ -110,7 +116,7 @@ those forwarding endpoints.
 | --- | --- | --- |
 | One tree for every kind of traffic | One stable set of paths; any connected members can exchange data. | Some pictures incur extra hops. Use established paths as the baseline; a non-viewing relay can still be essential for connectivity. |
 | A new distribution plan for every source or transfer | Paths can follow each source's recipients. | Repeats planning for room-wide voice and ordinary files. Keep source-specific demand only where it changes useful forwarding work. |
-| One room base tree with selective screen flows | Reuses room connectivity; sends each picture only along branches serving its viewers. | Needs distinct local-viewing and forwarding demand. Recommended; optional route changes use the same admission and transition owner. |
+| Base paths for startup, then selective source-rooted convergence | Reuses room connectivity where media can be admitted; improves affected paths while preserving playback. | Needs distinct viewing/transit demand and temporary transition resources. Recommended; both stages use the same admission and transition owner. |
 
 This compares topology and work, not measured performance. A routing root owns
 coordination; it need not forward every media byte. Only nodes on an admitted
@@ -129,7 +135,7 @@ sharing begins; browsing the channel directory does not connect every room.
 | Room commands and confirmed chat | Send to the room owner for authorization/confirmation, then distribute confirmed changes to authorized room participants. |
 | Voice | Project each joined source to its listeners over the base tree's unique paths; send each source at most once over a required directed edge. |
 | File bytes | An admitted holder supplies one requesting recipient over the existing unique path; this creates a transfer, not another route planner. |
-| Screen picture and source audio | One demand-driven distribution plan per publication, rooted at its sharer and serving its selected viewers. |
+| Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
 
 Current 2.x [projectVoiceFlows](../../internal/server/signal/voice_plan.go) already
 builds bidirectional adjacency from the committed room tree, finds paths from
@@ -162,8 +168,8 @@ Do not add a shortest-path optimizer above the existing router or derive an edge
 from a pair of nicknames on a diagram. A reachable A-B and B-C do not prove A-C.
 New candidates follow the same availability/direct-convergence rules, ICE checks,
 source-path admission, capacity reservation and commit proof. A healthy route stays
-until an admitted replacement is proved; no overlap capacity means following the
-existing bounded-gap policy, not silently dropping the old path.
+until an admitted replacement is proved. Optional optimization without overlap
+capacity waits or stops; it cannot interrupt working playback.
 Viewing changes alone do not trigger a global rewire or remove a needed bridge.
 
 The room runtime owns one routing controller. Its base topology, voice/file
@@ -172,6 +178,15 @@ Each flow retains its own replacement and completion state; it does not get its
 own probing, reconnection or optimization subsystem. The sharer owns capture
 and declares publication demand, while this controller selects distribution.
 An ICE timeout for one picture cannot block another picture or ordinary chat.
+
+The relay candidate pool may include every authorized room participant with the
+required capability and capacity. This does not deliver video to all of them.
+Publication metadata can advertise a share without its bytes, as illustrated by
+[LiveKit's publication/subscription model](https://docs.livekit.io/transport/media/subscribe/).
+For a fixed A-B-C-D tree, if A sends 4 Mbps and only B watches, the needed edge
+carries 4 Mbps; broadcasting to C and D as well adds two copies, making 12 Mbps
+of summed hop traffic. This is an arithmetic example, not a measurement. When D
+also watches, C is necessary transit even if C never displays the picture.
 
 For example, a room's base tree may be:
 
@@ -189,6 +204,47 @@ and enough actual capacity; an existing control link alone does not prove this.
 The source and viewers determine a screen plan, while the room owner manages
 the plan's lifecycle. Different publications can reuse a physical pair. Stopping
 one publication removes its work, not an unrelated call, file transfer or base link.
+
+### Start On Existing Paths, Then Converge
+
+The room tree's root owns coordination. Its edges are bidirectional, so projecting
+a flow from its sharer already makes that sharer the logical media source; no new
+PeerConnection or change of room owner is needed merely to reverse flow direction.
+Renaming the root cannot shorten the tree's unique paths. A shorter path requires
+different, actually usable edges.
+
+1. A new viewer first attaches to a usable existing publication branch or an
+   admitted source-to-viewer path on the base tree. Install media forwarding and
+   prove picture readiness; an open control DataChannel is not a decoded frame.
+2. While that path plays, the same controller may prepare a bounded alternative
+   parent or branch using room-wide eligible peers. Existing 2.x availability,
+   direct-convergence and quality principles supply candidate filtering and
+   transition ownership; there is no separate fallback or shortest-path router.
+3. Reserve the actual overlap resources, prepare the candidate, and require its
+   media proof and the applicable non-regression evidence before committing.
+   Replace one affected branch, then release only its old media work. The player
+   renders one committed input; source sound switches with its picture.
+4. Keep the base connections needed by conversation, voice, files or other
+   publications. They remain available to attempt media recovery, but do not
+   continuously carry a second copy of an already-converged picture.
+
+These are stages of one publication plan, not two complete live video networks.
+Fallback after a later failure still needs media preparation on its selected path;
+keeping the base connection is not a promise of instant hot-standby video.
+
+Reconcile on relevant demand, connectivity or capacity changes. A new viewer adds
+a branch; stopping viewing removes only demand that no downstream still needs;
+a departed relay repairs only affected paths. Preserve healthy unrelated branches.
+Viewing toggles and unrelated membership updates must not reset spent candidate
+opportunities. Once useful attempts finish, keep the working route rather
+than probing periodically for a mathematical global optimum.
+
+Availability work takes priority over optional optimization. Without overlap
+capacity, leave healthy playback in place and defer or finish the optional
+attempt. A bounded-gap change belongs only to necessary availability repair,
+under the [existing transition rules](../adr/0005-automatic-hybrid-media-routing.md).
+Source generation, current route and operation identity fence late callbacks;
+new work cannot inherit completion from a retired candidate.
 
 ### One Owner For Actual Connections
 
@@ -265,6 +321,7 @@ no desktop control. Changing the focused picture never retargets an input grant.
 | --- | --- |
 | Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
 | The page owning an App-linked room session closes or loses connection | Allow the existing session recovery window; expiry pauses the live room. An idle App does not replace the missing owner session. |
+| An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
 | Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
 | Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
 | Same owner restarts using saved room data | Restore room identity/history and establish new live sessions. Captures require explicit activation; reopening data does not resume a saved call. |

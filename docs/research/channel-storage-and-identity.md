@@ -98,6 +98,9 @@ network model's recovery window and does not grant an idle App independent hosti
 When the session ends, the room pauses and retains its data. Restarting with the
 same data restores that room's identity and history.
 Recreating a same-named room without its data creates a new room.
+Unattended operation belongs to Server and follows its service lifetime; this is
+not an extra App background mode. Stored data and the shared core are independent
+of that wrapper distinction. No service takes over another user's room implicitly.
 
 The domain directory can retain the unavailable room's summary and owner binding.
 It does not automatically become a substitute room host or recover data it never
