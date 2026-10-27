@@ -71,6 +71,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
+- **Further decentralized hosting.** After the basic 3.0 channel model is
+  established, assess coordination handoff and distributed authority against its
+  actual costs and user benefit. The current baseline is independently hosted
+  spaces with distributed media; this research does not block that baseline.
+  [Design boundary](./research/channel-network-design.md#recommendation).
 - **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The

@@ -21,6 +21,13 @@ Both use the same Rust core and Web UI. The service owns metadata and permission
 ordinary media remains P2P-first with bounded peer forwarding and an optional SFU.
 Participants can publish without becoming the space administrator.
 
+The baseline aims for anyone to host a space without a mandatory Piik-operated
+account or coordination service, with media work distributed among participants.
+Each space retains one coordination authority. The owner requested that further
+decentralization be researched after the basic model is established; automatic
+authority takeover, replicated room state and publisher-side route computation
+are not prerequisites for this baseline.
+
 ## Lessons From Mature Systems
 
 | Evidence | Application to Piik |
