@@ -20,6 +20,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
   if (!activity || !state) return null;
   const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
   const { roomId, muted, deafened } = activity;
+  const available = channel.connection === "connected" && !!state.channel.rooms.find(room => room.id === roomId)?.available;
   const participants = state.users.flatMap(user => {
     const appearance = voiceAppearance(state, user.id, roomId);
     return appearance ? [{ user, ...appearance }] : [];
@@ -44,10 +45,10 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>
     <div className="c3-voice-controls">
-      <VoiceMicrophoneButton active={!muted} disabled={channel.connection !== "connected"} busy={busy} quiet
+      <VoiceMicrophoneButton active={!muted} disabled={!available} busy={busy} quiet
         hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"}
         onClick={() => run(channel.setMuted(roomId, !muted))} />
-      <VoiceListeningButton deafened={deafened} disabled={channel.connection !== "connected"} busy={busy} quiet
+      <VoiceListeningButton deafened={deafened} disabled={!available} busy={busy} quiet
         hint={deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
         onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       <span className="c3-control-divider" />

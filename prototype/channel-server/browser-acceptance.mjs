@@ -5,6 +5,7 @@ import { spawn } from "node:child_process";
 import { mkdir, mkdtemp, rmdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 // On Windows the daemon can inherit a CLI pipe. Wait for the command's exit,
 // rather than execFile's close event, which would also wait for that daemon.
 function run(executable, args, options = {}) {
@@ -36,7 +37,8 @@ const sessionPrefix = (await run(executable, ["session", "id", "--scope", "workt
 const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}`);
 const lifecycleOnly = process.argv.includes("--lifecycle");
 const roomsOnly = process.argv.includes("--rooms");
-const active = lifecycleOnly || roomsOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const hostsOnly = process.argv.includes("--hosts");
+const active = lifecycleOnly || roomsOnly || hostsOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   const { stdout } = await run(executable, ["--session", sessions[index], "--json", ...args], {
     timeout: 35_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
@@ -65,13 +67,22 @@ function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
-    const peers = [], sockets = [], captures = [], contexts = [];
+    const peers = [], sockets = [], captures = [], contexts = [], protocol = [];
+    const record = (direction, data) => {
+      const event = JSON.parse(data);
+      protocol.push({ direction, type:event.type, room:event.roomId, request:event.requestId,
+        action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
+        binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
+        result:event.result?.type ?? event.output?.reply?.result?.type, code:event.code });
+      if (protocol.length > 64) protocol.shift();
+    };
     const NativePC = window.RTCPeerConnection, NativeWS = window.WebSocket;
     window.RTCPeerConnection = class extends NativePC {
       constructor(...args) { super(...args); peers.push(this); }
     };
     window.WebSocket = class extends NativeWS {
-      constructor(...args) { super(...args); sockets.push(this); }
+      constructor(...args) { super(...args); sockets.push(this); this.addEventListener('message', event => record('received', event.data)); }
+      send(data) { record('sent', data); return super.send(data); }
     };
     const microphone = () => {
       const context = new AudioContext(), oscillator = context.createOscillator();
@@ -109,7 +120,7 @@ function captureProbe(name) {
             if (stat.type === 'outbound-rtp') outbound.push({ kind: stat.kind, bytes: stat.bytesSent, frames: stat.framesEncoded });
           }
         }
-        return { inbound, outbound, connections: peers.map(pc => pc.connectionState),
+        return { inbound, outbound, protocol, connections: peers.map(pc => pc.connectionState),
           videos: [...document.querySelectorAll('video')].map(video => ({ time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),
           captures: captures.flatMap(stream => stream.getTracks().map(track => ({ kind: track.kind, state: track.readyState }))),
@@ -149,12 +160,122 @@ const publishScreen = (index, roomId) => action(index,
   `publish('screen', ${JSON.stringify(roomId)}, await navigator.mediaDevices.getDisplayMedia({video:true}))`);
 async function capturedScreen(index, roomId) {
   await action(index, `startScreen(${JSON.stringify(roomId)})`);
-  const current = await view(index);
-  return current.state.publications.find(publication => publication.sessionId === current.sessionId && publication.kind === "screen").id;
+  const current = await until("captured screen is admitted", () => view(index), value => value.state.publications.some(publication =>
+    publication.sessionId === value.sessionId && publication.roomId === roomId && publication.kind === "screen"));
+  return current.state.publications.find(publication => publication.sessionId === current.sessionId && publication.roomId === roomId && publication.kind === "screen").id;
 }
 const sample = index => evaluate(index, "window.__channelProbe.sample()");
+async function assertNoError(index, flow) {
+  const current = await view(index);
+  if (current.error === null) return;
+  assert.fail(`${flow} left an unexpected error in browser ${index}: ${JSON.stringify({
+    error: current.error, protocol: (await sample(index)).protocol,
+  })}`);
+}
 const dropSignaling = index => evaluate(index,
   "window.__channelProbe.sockets.filter(socket => socket.readyState === WebSocket.OPEN && new URL(socket.url).pathname === '/prototype/channel').forEach(socket => socket.close())");
+
+async function roomOwner(initial, serverRoom) {
+  const room = await action(1, "createRoom({name:'Browser-owned room',access:'private',hidden:true,password:'browser-room-password'})");
+  const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
+  await action(2, "close()");
+  await evaluate(2, "localStorage.removeItem('piik.channel.prototype.credential')");
+  await browser(2, "open", invite);
+  await browser(2, "reload");
+  await until("fresh user joins the Browser-owned private room", () => view(2), value => value.connection === "connected" &&
+    value.state.channel.rooms.some(entry => entry.id === room && entry.authorized));
+  await action(1, `browse(${JSON.stringify(room)})`);
+  await action(2, `sendMessage(${JSON.stringify(room)}, 'Confirmed on B')`);
+  await until("owner receives confirmed room history", () => evaluate(1,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), value => value?.some(message => message.text === "Confirmed on B"));
+
+  const stored = await evaluate(1, `(async () => {
+    const databases = await indexedDB.databases();
+    for (const database of databases) {
+      if (!database.name?.startsWith('piik.channel.rooms.')) continue;
+      const db = await new Promise((resolve, reject) => { const request = indexedDB.open(database.name);
+        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+      try {
+        const tx = db.transaction(['rooms','messages']);
+        const policy = tx.objectStore('rooms').get(${JSON.stringify(room)});
+        const messages = tx.objectStore('messages').getAll(IDBKeyRange.bound([${JSON.stringify(room)}], [${JSON.stringify(room)}, Infinity]));
+        await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+        if (policy.result) return { policy: JSON.parse(policy.result.policy), messages: messages.result };
+      } finally { db.close(); }
+    }
+    return null;
+  })()`);
+  assert(stored?.messages.some(message => message.text === "Confirmed on B"));
+  assert.equal(stored.policy.creatorId, initial[1].self.id);
+  const db = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
+  try {
+    assert.equal(db.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
+    const checkpoint = db.prepare("SELECT body FROM checkpoint WHERE id=1").get().body;
+    assert(!checkpoint.includes(stored.policy.passwordHash), "domain must not retain Browser room password hashes");
+    assert(!checkpoint.includes("Confirmed on B"), "domain must not checkpoint Browser room history");
+  } finally { db.close(); }
+
+  const serverPicture = await capturedScreen(0, serverRoom);
+  await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
+  await action(2, `watch(${JSON.stringify(serverPicture)})`);
+  await playing(2, serverPicture);
+  const viewerSession = (await view(2)).sessionId;
+  const sharedPair = (await view(0)).state.pairs.find(pair => pair.peerId === viewerSession).id;
+  const roomPicture = await capturedScreen(2, room);
+  for (const index of [0, 1]) {
+    await browser(index, "click", '.c3-room-link[aria-label="Browser-owned room"]');
+    await action(index, `watch(${JSON.stringify(roomPicture)})`);
+    await playing(index, roomPicture);
+  }
+  assert.equal((await view(0)).state.pairs.find(pair => pair.peerId === viewerSession).id, sharedPair);
+  await action(1, `joinVoice(${JSON.stringify(room)})`);
+  await action(2, `joinVoice(${JSON.stringify(room)})`);
+  await until("Browser room voice reaches a remote participant", () => sample(2), value => value.inbound.some(row => row.kind === "audio" && row.samples > 0));
+  const ownerSession = (await view(1)).sessionId;
+  await dropSignaling(1);
+  await action(1, "reconnect()");
+  await until("same Browser room owner resumes", () => view(1), value => value.connection === "connected" && value.sessionId === ownerSession &&
+    value.state.publications.some(publication => publication.id === roomPicture));
+  await progressing(0, roomPicture);
+
+  await action(1, "close()");
+  await until("stopped owner pauses its room", () => view(2), value => !value.state.publications.some(publication => publication.roomId === room), 25_000);
+  assert((await view(2)).state.channel.rooms.some(entry => entry.id === room && entry.authorized && !entry.available),
+    "a paused private room remains visible to an already admitted participant");
+  assert((await sample(0)).captures.some(track => track.kind === "video" && track.state === "live"));
+  assert.equal((await view(0)).state.pairs.find(pair => pair.peerId === viewerSession).id, sharedPair);
+  await progressing(2, serverPicture);
+  await browser(1, "open", `${origin}/__channel-preview`);
+  await until("reopened owner restores the saved room", () => view(1), value => value.connection === "connected" &&
+    value.state.channel.rooms.some(entry => entry.id === room && entry.authorized && entry.available !== false));
+  await action(1, `browse(${JSON.stringify(room)})`);
+  await until("reopened owner reads its own retained history", () => evaluate(1,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), value => value?.some(message => message.text === "Confirmed on B"));
+  assert(!(await view(1)).state.publications.some(publication => publication.roomId === room));
+  assert(!(await view(1)).state.voice.some(member => member.roomId === room));
+  await progressing(2, serverPicture);
+  for (let start = 0; start < 100; start += 20) {
+    await evaluate(2, `(async () => {
+      for (let index = ${start}; index < ${start + 20}; index++) {
+        await ${hook}.session.sendMessage(${JSON.stringify(room)}, String.fromCharCode(1).repeat(2000));
+      }
+      return true;
+    })()`);
+  }
+  await action(2, `loadLatestHistory(${JSON.stringify(room)})`);
+  const page = await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].map(message => message.text.length)`);
+  assert.deepEqual(page, Array(100).fill(2000), "a full valid history page must fit the host-to-domain WebSocket envelope");
+  await browser(1, "click", '.c3-room-link[aria-label="Browser-owned room"]');
+  for (const index of [0, 1, 2]) await assertNoError(index, "normal Browser room lifecycle");
+  await browser(1, "screenshot", join(output, "browser-owned-room.png"), "--full");
+  await writeFile(join(output, "room-owner-result.json"), JSON.stringify({ passed: true,
+    scenarios: ["private invitation initial admission", "owner IndexedDB history", "no room data in domain SQLite",
+      "cross-room shared transport", "room voice", "owner signaling resume", "scoped shutdown", "retained paused directory",
+      "owner reopen without capture revival", "maximum valid history page"],
+    domainMessageCopies: 0, maximumHistoryPage: { messages: 100, charactersPerMessage: 2000 } }, null, 2));
+  console.log("Browser owns policy/history and room activities; domain only retains its directory; unrelated media survives owner shutdown");
+}
+
 async function lifecycle(initial, roomId) {
   await action(1, `joinVoice(${JSON.stringify(roomId)}, true)`);
   assert.equal((await sample(1)).captures.filter(track => track.kind === "audio" && track.state === "live").length, 0);
@@ -245,7 +366,10 @@ async function roomsAndFiles() {
   await browser(1, "fill", ".c3-composer textarea", "Hello from the private room");
   await browser(1, "click", ".c3-composer button[type=submit]");
   await until("private chat reaches its reader", () => evaluate(0, "document.querySelector('.c3-message-log').textContent"), text => text.includes("Hello from the private room"));
+  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), false,
+    "Browser rooms must not route file storage through the domain");
 
+  for (const index of [0, 1]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
   const png = join(temporary, "picture.png"), text = join(temporary, "notes.txt");
   await writeFile(png, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=", "base64"));
   await writeFile(text, "A file shared through the actual composer.");
@@ -255,10 +379,11 @@ async function roomsAndFiles() {
   await until("attachment metadata arrives in chat", () => evaluate(0, "document.querySelector('.c3-message-log').textContent"), text => text.includes("picture.png") && text.includes("notes.txt"));
   await browser(0, "find", "role", "button", "click", "--name", "View image", "--exact");
   await until("PNG preview decodes", () => evaluate(0, "[...document.querySelectorAll('.c3-attachment img')].some(image => image.complete && image.naturalWidth > 0)"), Boolean);
-  await browser(0, "screenshot", join(output, "private-room-files-desktop.png"), "--full");
-  console.log("Private entry, composer upload, image preview and file cards use real room authorization");
+  for (const index of [0, 1]) await assertNoError(index, "normal room entry, chat and file flow");
+  await browser(0, "screenshot", join(output, "server-room-files-desktop.png"), "--full");
+  console.log("Private Browser room entry uses its actual owner; Server room composer files retain their storage capability");
 
-  await browser(0, "click", '.c3-room-link[aria-label="Living room"]');
+  await browser(1, "click", '.c3-room-link[aria-label="Movie night"]');
   for (let start = 0; start < 1020; start += 40) {
     await evaluate(1, `(async () => {
       for (let index = ${start}; index < ${Math.min(start + 40, 1020)}; index++) await ${hook}.session.sendMessage(${JSON.stringify(room.id)}, 'history-' + index);
@@ -276,7 +401,7 @@ async function roomsAndFiles() {
     })()`) : null;
     await browser(0, "find", "role", "button", "click", "--name", "Earlier messages", "--exact");
     await until("older page advances the reading window", () => evaluate(0,
-      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.[0]?.seq`), seq => seq === Math.max(1, 923 - (page + 1) * 100));
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.[0]?.seq`), seq => seq === Math.max(1, 922 - (page + 1) * 100));
     if (anchor) {
       await until("full-window pagination preserves the visible message", () => evaluate(0, `(() => {
         const log = document.querySelector('.c3-message-log');
@@ -349,7 +474,10 @@ try {
   }
   const roomId = initial[0].state.channel.rooms[0].id;
   assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
-  if (roomsOnly) {
+  if (hostsOnly) {
+    await roomOwner(initial, roomId);
+    console.log(`Browser room-owner acceptance passed; evidence: ${output}`);
+  } else if (roomsOnly) {
     await roomsAndFiles();
     console.log(`Room and file Browser acceptance passed; evidence: ${output}`);
   } else if (lifecycleOnly) {
@@ -470,8 +598,11 @@ try {
   console.log(`Browser acceptance passed; evidence: ${output}`);
   }
 } catch (error) {
-  const evidence = await Promise.all(active.map(index => evaluate(index,
-    "window.__channelProbe?.sample() ?? { text: document.body.innerText.slice(-1800) }").catch(failure => ({ error: String(failure) }))));
+  const evidence = await Promise.all(active.map(async index => ({
+    view: await view(index).catch(failure => ({ error: String(failure) })),
+    probe: await evaluate(index, "window.__channelProbe?.sample() ?? { text: document.body.innerText.slice(-1800) }")
+      .catch(failure => ({ error: String(failure) })),
+  })));
   await writeFile(join(output, "failure.json"), JSON.stringify({ error: String(error), evidence }, null, 2));
   throw error;
 } finally {

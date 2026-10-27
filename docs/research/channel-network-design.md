@@ -21,8 +21,9 @@ capable room peers can be relay candidates; only viewers and necessary transit
 nodes receive the picture. Both stages use the same route state and transports.
 The owner accepted this routing foundation and durable room records with cached
 attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
-shared file delivery on those same paths. The new runtime is not yet implemented;
-TODO owns the next implementation stage.
+shared file delivery on those same paths. Browser-owned rooms now run the shared
+Rust core with local confirmation/storage; domain rendezvous currently carries
+their commands. TODO owns the base-tree and Native integration still to implement.
 
 ## Terminology And Roles
 
@@ -376,17 +377,19 @@ through WASM, and actual local persistence/recovery verification.
 
 ## Implementation Boundary
 
-The current prototype still hosts domain and room authority in one process.
-Within that process, each room runtime owns policy, activities and publication
-plans. Domain admission supplies a credential-free member/session projection;
-a separate transport book combines logical flows into shared physical pairs.
-Changing one room's activity cannot retire a pair still used by another room.
-Confirmed messages now use room-scoped incremental storage outside the domain
-metadata checkpoint. A [Browser adapter](../../prototype/channel-browser/README.md)
-also runs the shared room core in WASM with IndexedDB persistence; the normal
-channel interface has not yet moved room execution to that adapter. It plans
-screen and voice publications independently, shares physical media pairs, and transfers files
-through authenticated HTTP. The room base DataChannel tree remains to be built.
+The normal prototype interface creates rooms in their actual owner's
+[Browser runtime](../../prototype/channel-browser/README.md). The shared Rust
+core owns policy, activities, publication plans and confirmed history; IndexedDB
+stores that room's data. The domain supplies credential-free identity facts,
+binds the current runtime and projects authorized directory views. Its own
+default rooms use the same core with SQLite. A failed directory save cannot
+undo a policy already committed by its room owner.
+
+A shared transport book combines logical flows into physical pairs. Changing
+one room's activity cannot retire a pair still used by another room. Domain
+rendezvous currently carries Browser-room commands and replies. Screen and
+voice publications use independent plans; files use authenticated HTTP only in
+Server-owned rooms. The room base DataChannel tree remains to be built.
 Its simplified screen plan starts with subscribers as relay candidates and
 retains existing transit while downstream demand needs it. Stopping local
 watching does not dismantle those paths. A failed edge marks only its own parent
@@ -402,10 +405,10 @@ Implement the resulting concepts in Rust using suitable mature components;
 module and function parity with Go is not an acceptance criterion. Verify the
 same complete user flows and failure cases against the new ownership model.
 
-The next architectural change moves a cohesive room runtime to its actual owner:
-room permissions and confirmed state, persistence, base planning and per-screen
-planning. Domain runtime keeps directory, membership and authenticated rendezvous.
-Use one Rust core with thin App/Server and Browser adapters. Evaluate
+The next slice connects shared room paths and Native hosting to those owners.
+Domain runtime keeps directory, membership and authenticated rendezvous;
+room execution and storage remain with the explicit room host. Use one Rust
+core with thin App/Server and Browser adapters. Evaluate
 capture, encoding and input at their platform boundaries; retain native helpers
 only where platform APIs or a proven component require them. Do not add a
 separate storage service.

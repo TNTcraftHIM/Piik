@@ -86,7 +86,7 @@ try {
   let owner = await connect({ key: ownerKey }), member = await connect({ key: inviteKey });
   const outsider = await connect({ key: inviteKey });
   const channelId = owner.welcome.state.channel.id;
-  assert.equal((await owner.request({ type: "create_room", name: "Private retained room", access: "private", hidden: true, password: "local-test-password" })).type, "ack");
+  assert.equal((await owner.request({ type: "update_room", roomId: "studio", name: "Private retained room", access: "private", hidden: true, password: "local-test-password" })).type, "ack");
   const privateState = await owner.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.name === "Private retained room"));
   const roomId = privateState.state.channel.rooms.find(room => room.name === "Private retained room").id;
   assert.equal((await member.request({ type: "enter_room", roomId, password: "local-test-password" })).type, "ack");

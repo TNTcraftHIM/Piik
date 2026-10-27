@@ -5,20 +5,21 @@ interface, and real Browser WebRTC. It does not replace the production 2.x
 App or Server. The [network design](../../docs/research/channel-network-design.md)
 owns the accepted routing foundation; this file describes what currently runs.
 
-The current coordinator still runs every room and saves its history/files.
-Room policy, activities and publication plans have their own Rust runtime;
-domain admission and the shared transport book compose their results. A physical
-pair remains while any room needs it. The Browser protocol and UI are unchanged.
-Moving those responsibilities to the actual room owner, and sharing a base
-room network beneath media, are the next integration under the accepted model.
-The [Browser room adapter](../channel-browser/README.md) already executes this
-Rust core in WASM with IndexedDB storage. It shares confirmation and pagination
-rules with SQLite; it is not yet connected to this coordinator's room directory.
+The three initial rooms belong to Server. Rooms created in the interface run
+in their owner's Browser, using the same Rust room core through
+[WASM and IndexedDB](../channel-browser/README.md). That runtime owns admission,
+policy, activities, publication plans and confirmed history. The domain binds
+authenticated runtimes to directory entries and combines their transport demand;
+a physical pair remains while any room needs it. Domain WebSocket rendezvous
+currently carries room commands and replies. The shared room base tree, Native
+hosting and peer file delivery are the next integration.
 
 ## Run
 
 Use Rust 1.86 or newer, the repository's Node/npm environment and installed npm
-dependencies. From the repository root, start Rust in one terminal:
+dependencies. Build the [Browser adapter](../channel-browser/README.md)
+first, and rebuild it after changing the shared Rust core. From the repository
+root, start Rust in one terminal:
 
 ```powershell
 $env:PIIK_CHANNEL_OWNER_KEY = "<private stable owner key>"
@@ -138,11 +139,12 @@ stop, unwatch and leave take effect locally and are reconciled on reconnect.
 
 ## Saved data and files
 
-Authoritative saved data belongs to the hosting coordinator, on the local device
-or configured server running it. This Server prototype defaults to
+Saved data belongs to its domain or room runtime. This Server prototype defaults to
 `build/channel-prototype-data/channel.sqlite`. `PIIK_CHANNEL_DATA_DIR` chooses a
 different directory; `:memory:` selects an explicitly temporary instance.
-Catalog, identities and room policy/grants use a metadata checkpoint. Messages
+Catalog, identities and Server-owned room policy/grants use a metadata checkpoint.
+Browser-owned room policy and history stay in that Browser's IndexedDB; the
+domain retains only its directory summary. Messages
 commit individually: their room order, send identity and attachment references
 are saved in one transaction before confirmation or distribution. A retry returns
 the original confirmed message without rebroadcasting it, including after restart.
@@ -155,8 +157,11 @@ checkpoints are rejected rather than silently discarding their history. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
 
 UI preferences belong to the client; the Browser also keeps its user credential
-locally. Read pages and drafts stay in memory, as do the design board's sample
-data and edits. They are not a second authoritative store.
+locally. Participant reading windows and drafts stay in memory, as do the design
+board's sample data and edits. Hosting a room is separate: its saved policy and
+history survive reopening, while captures and voice do not restart automatically.
+Changing rooms keeps hosted rooms running. Closing the owning page pauses them
+after the recovery window; Server does not take over.
 
 Native App hosting/persistence remains a design step under the
 [room-data model](../../docs/research/channel-storage-and-identity.md).
@@ -164,7 +169,9 @@ The Server prototype's saved database does not implement that App lifecycle or
 add distribution packages. A new service URL can use the same database, but a
 new Browser origin cannot read the previous origin's saved login or bookmarks.
 
-Files use authenticated HTTP to the authority, independently of media routes.
+Server-owned rooms use authenticated HTTP attachments, independently of media
+routes. Browser-owned rooms omit attachment controls until peer delivery is
+connected; their files must not silently fall back to domain storage.
 The uploader can preview an uploaded draft; other authorized room users can read
 it only after its message commits. Removing a draft uses a conditional discard
 that cannot delete an already-sent attachment. Committed files remain available
@@ -192,8 +199,8 @@ Incremental room-message transactions, metadata checkpoints and bounded SQLite
 BLOB storage keep this prototype self-contained.
 Authority-hosted uploads/downloads consume the host's bandwidth. P2P file offers,
 replicated history, federation and authority handoff are outside this slice.
-Other current resource bounds are 20 live endpoints, 64 stored users, 32 rooms
-and 80 publications; connection counts are not a bandwidth guarantee.
+Other current resource bounds are 20 live endpoints, 64 stored users and 32
+rooms. Each endpoint may publish one screen and one voice source per room.
 
 ## Checks
 
@@ -203,11 +210,14 @@ Build the executable before running the finite integration checks:
 cargo test --manifest-path prototype/channel-server/Cargo.toml
 cargo test --manifest-path prototype/channel-server/Cargo.toml --no-default-features --lib
 cargo build --manifest-path prototype/channel-server/Cargo.toml
+node prototype/channel-browser/build.mjs
 npm run typecheck
 node prototype/channel-server/storage-check.mjs
+node prototype/channel-server/run-browser-check.mjs --protocol
 node prototype/channel-server/run-browser-check.mjs
 node prototype/channel-server/run-browser-check.mjs --rooms
 node prototype/channel-server/run-browser-check.mjs --lifecycle
+node prototype/channel-server/run-browser-check.mjs --hosts
 ```
 
 Browser checks require `agent-browser` and its installed Chromium. The runner
@@ -215,15 +225,18 @@ chooses free loopback ports and temporary test keys, starts its own Rust/Vite
 services, runs acceptance, and stops them on exit. It does not leave a preview
 service running or restart another instance. Default acceptance covers multiple
 real Browser peers and relay recovery; `--rooms` exercises room access and files;
-`--lifecycle` focuses on capture, offline intent and expiry. Generated captures
+`--lifecycle` focuses on capture, offline intent and expiry; `--hosts` exercises
+separate domain/Browser ownership, private admission, room recovery, cross-room
+media and actual IndexedDB/SQLite placement. Generated captures
 replace only the system picker, not business state, routing or peer connections.
 The storage check owns an isolated temporary database and tests real HTTP,
 WebSocket, process restart and failed-write rollback.
 Both runners accept `CHANNEL_EXECUTABLE` to test a separate build while an older
 preview remains running; otherwise they use the normal debug executable.
 
-For a WebSocket-only check against an already running isolated instance, use
-`node --test prototype/channel-server/check.mjs` with its local key/endpoint
+`--protocol` runs the WebSocket check with its own temporary service. Against
+an already running isolated instance, use
+`node --import tsx --test prototype/channel-server/check.mjs` with its local key/endpoint
 environment variables. `browser-acceptance.mjs` is the corresponding Browser
 driver; prefer `run-browser-check.mjs` for automatic service cleanup. The preview
 route and observation hook are development-only. The shared Rust library builds

@@ -1,19 +1,19 @@
 import init, { create_room_policy, RoomHost } from "../pkg/piik_channel_browser.js";
-import type { ChannelMessage, ChannelRoom, ChannelSnapshot } from "../../../src/client/channel/protocol";
+import type { ChannelMessage, RoomSummary } from "../../../src/client/channel/protocol";
 
-/** Supplied by the authenticated domain connection, never by a peer command. */
-export interface RoomMember { userId: string; participates: boolean; domainOwner: boolean }
 export interface NewRoomPolicy {
-  id: string; name: string; creatorId: string; access: "public" | "private"; hidden: boolean; password?: string;
+  id: string; name: string; creatorId: string; access: "public" | "private"; hidden: boolean; password?: string | null;
 }
 export interface AttachmentRecord { id: string; roomId: string; userId: string; committed: boolean }
+interface RoomRecord { id: string; policy: string; bindingId?: string }
 interface StoredMessage extends ChannelMessage { roomId: string; nonce: string }
 export interface SentResult { type: "sent"; message: ChannelMessage; inserted: boolean }
 export interface PageResult {
   type: "page"; messages: ChannelMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
-export type RoomSnapshot = Pick<ChannelSnapshot, "publications" | "voice" | "subscriptions"> & { room: ChannelRoom };
 interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; attachments: string[] } }
+interface ReadRequest { type: "read"; roomId: string; before: number | null }
+interface HostWork { policy: object | null; history: SendRequest | ReadRequest | null }
 
 const failure = (error: unknown): Error => error instanceof Error ? error : new Error(String(error));
 function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (error: Error) => void): void {
@@ -44,7 +44,21 @@ export async function createRoomPolicy(input: NewRoomPolicy): Promise<string> {
 export class BrowserRoomHost {
   private tail: Promise<void> = Promise.resolve();
   private closing = false;
+  private bindingId: string | undefined;
+  private storedBindingId: string | undefined;
   private constructor(private db: IDBDatabase, private room: RoomHost) {}
+
+  static async storedPolicies(databaseName: string): Promise<string[]> {
+    const db = await openDatabase(databaseName);
+    try {
+      return await new Promise((resolve, reject) => {
+        const tx = db.transaction("rooms", "readonly");
+        const request = tx.objectStore("rooms").getAll();
+        tx.oncomplete = () => resolve(request.result.map((record: { policy: string }) => record.policy));
+        tx.onabort = () => reject(tx.error ?? new Error("storage_failed"));
+      });
+    } finally { db.close(); }
+  }
 
   static async open(databaseName: string, policy: string): Promise<BrowserRoomHost> {
     await init();
@@ -53,7 +67,7 @@ export class BrowserRoomHost {
     try {
       db = await openDatabase(databaseName);
       const host = new BrowserRoomHost(db, room);
-      let saved: { policy: string } | undefined;
+      let saved: RoomRecord | undefined;
       await host.transaction(["rooms"], "readwrite", (tx, abort) => {
         const rooms = tx.objectStore("rooms");
         read(rooms.get(room.room_id()), value => {
@@ -62,19 +76,48 @@ export class BrowserRoomHost {
         }, abort);
       }, () => {});
       if (saved) { host.room = new RoomHost(saved.policy); room.free(); }
+      host.storedBindingId = saved?.bindingId;
       return host;
     } catch (error) { room.free(); db?.close(); throw error; }
   }
 
   get roomId(): string { return this.room.room_id(); }
-  exportPolicy(): string { return this.room.policy(); }
-  snapshot(member: RoomMember, sessionId: string): RoomSnapshot | null {
-    return JSON.parse(this.room.snapshot(JSON.stringify(member), sessionId));
+  summary(): RoomSummary { return JSON.parse(this.room.summary()); }
+
+  /** Claim only the stored owner observed by this instance, then reload its policy. */
+  bind(bindingId: string): Promise<void> {
+    return this.enqueue(async () => {
+      let replacement: RoomHost | undefined;
+      try {
+        await this.transaction(["rooms"], "readwrite", (tx, abort) => {
+          const rooms = tx.objectStore("rooms");
+          read<RoomRecord | undefined>(rooms.get(this.roomId), record => {
+            if (!record) throw new Error("storage_failed");
+            if (record.bindingId !== this.storedBindingId) throw new Error("room_host_conflict");
+            if (this.bindingId !== bindingId) replacement = new RoomHost(record.policy);
+            if (record.bindingId !== bindingId) rooms.put({ ...record, bindingId });
+          }, abort);
+        }, () => {
+          if (replacement) {
+            const previous = this.room;
+            this.room = replacement;
+            replacement = undefined;
+            previous.free();
+          }
+          this.bindingId = bindingId;
+          this.storedBindingId = bindingId;
+        });
+      } catch (error) {
+        this.bindingId = undefined;
+        replacement?.free();
+        throw error;
+      }
+    });
   }
 
   private enqueue<T>(work: () => Promise<T>): Promise<T> {
     if (this.closing) return Promise.reject(new Error("closed"));
-    const result = this.tail.then(work).catch(error => { this.room.abort(); throw failure(error); });
+    const result = this.tail.then(work).catch(error => { throw failure(error); });
     this.tail = result.then(() => {}, () => {});
     return result;
   }
@@ -96,11 +139,45 @@ export class BrowserRoomHost {
     });
   }
 
-  send(member: RoomMember, text: string, nonce: string, attachments: string[] = [], signal?: AbortSignal): Promise<SentResult> {
+  /** Read the owner and execute all work in one transaction with a competing claim. */
+  private roomTransaction<T>(stores: string[], mode: IDBTransactionMode,
+    start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
+    complete: () => T, signal?: AbortSignal): Promise<T> {
+    return this.transaction(stores, mode, (tx, abort) => {
+      read<RoomRecord | undefined>(tx.objectStore("rooms").get(this.roomId), record => {
+        if (!this.bindingId || record?.bindingId !== this.bindingId) throw new Error("stale_room_host");
+        start(tx, abort);
+      }, abort);
+    }, complete, signal);
+  }
+
+  dispatch(input: unknown, signal?: AbortSignal): Promise<unknown> {
     return this.enqueue(async () => {
-      const request: SendRequest = JSON.parse(this.room.begin_send(JSON.stringify(member), text, nonce,
-        JSON.stringify(attachments), BigInt(Date.now())));
-      return this.transaction(["messages", "attachments"], "readwrite", (tx, abort) => {
+      if (!this.bindingId || (input as { bindingId?: string } | null)?.bindingId !== this.bindingId) {
+        throw new Error("stale_room_host");
+      }
+      const work: HostWork = JSON.parse(this.room.dispatch(JSON.stringify(input)));
+      try {
+        if (work.history?.type === "send") return await this.send(work.history, work.policy, signal);
+        if (work.history?.type === "read") return await this.history(work.history, work.policy, signal);
+        if (work.policy) return await this.roomTransaction(["rooms"], "readwrite", tx => {
+          this.savePolicy(tx, work.policy!);
+        }, () => JSON.parse(this.room.finish()), signal);
+        return await this.roomTransaction(["rooms"], "readonly", () => {}, () => JSON.parse(this.room.finish()), signal);
+      } catch (error) {
+        const cause = failure(error);
+        return JSON.parse(this.room.abort(cause.name === "AbortError" ? cause.name : cause.message));
+      }
+    });
+  }
+
+  private savePolicy(tx: IDBTransaction, policy: object | null): void {
+    if (policy) tx.objectStore("rooms").put({ id: this.roomId, policy: JSON.stringify(policy), bindingId: this.bindingId });
+  }
+
+  private send(request: SendRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {
+      return this.roomTransaction(["rooms", "messages", "attachments"], "readwrite", (tx, abort) => {
+        this.savePolicy(tx, policy);
         const messages = tx.objectStore("messages"), files = tx.objectStore("attachments");
         const prepare = (input: object, records: AttachmentRecord[] = []) => {
           const result: Omit<SentResult, "type"> = JSON.parse(this.room.prepare_confirmation(JSON.stringify(input)));
@@ -123,16 +200,13 @@ export class BrowserRoomHost {
           }, abort);
         }, abort);
       }, () => JSON.parse(this.room.finish_send()), signal);
-    });
   }
 
-  history(member: RoomMember, before?: number, signal?: AbortSignal): Promise<PageResult> {
-    return this.enqueue(async () => {
-      const request: { roomId: string; before: number | null } = JSON.parse(this.room.begin_read(JSON.stringify(member),
-        before === undefined ? undefined : BigInt(before)));
+  private history(request: ReadRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {
       const rows: StoredMessage[] = [];
       let oldest: number | undefined;
-      return this.transaction(["messages"], "readonly", (tx, abort) => {
+      return this.roomTransaction(["rooms", "messages"], policy ? "readwrite" : "readonly", (tx, abort) => {
+        this.savePolicy(tx, policy);
         const messages = tx.objectStore("messages");
         const range = IDBKeyRange.bound([request.roomId], [request.roomId, request.before ?? Infinity], false, request.before !== null);
         const cursor = messages.openCursor(range, "prev");
@@ -145,16 +219,6 @@ export class BrowserRoomHost {
           oldest = value?.value.seq;
         }, abort);
       }, () => JSON.parse(this.room.finish_read(JSON.stringify(rows), oldest === undefined ? undefined : BigInt(oldest))), signal);
-    });
-  }
-
-  stageAttachment(member: RoomMember, id: string): Promise<void> {
-    return this.enqueue(async () => {
-      this.room.authorize_attachment(JSON.stringify(member));
-      return this.transaction(["attachments"], "readwrite", tx => {
-        tx.objectStore("attachments").add({ id, roomId: this.roomId, userId: member.userId, committed: false });
-      }, () => {});
-    });
   }
 
   async close(): Promise<void> {

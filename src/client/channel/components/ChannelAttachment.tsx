@@ -5,7 +5,7 @@ import { downloadBlob } from "../../lib/download";
 import { type ChannelAttachment as Attachment, type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelAction } from "./ChannelMedia";
 
-export function ChannelAttachment({ id, client }: { id: string; client: ChannelAttachments }) {
+export function ChannelAttachment({ roomId, id, client }: { roomId: string; id: string; client: ChannelAttachments }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
   const [file, setFile] = useState<Attachment | null>(null);
@@ -18,17 +18,17 @@ export function ChannelAttachment({ id, client }: { id: string; client: ChannelA
     const current = { request: new AbortController(), url: null as string | null };
     resource.current = current;
     setFile(null); setFailed(false); setBusy(false); setPreview(null);
-    void client.metadata(id, current.request.signal).then(value => {
+    void client.metadata(roomId, id, current.request.signal).then(value => {
       if (!current.request.signal.aborted) setFile(value);
     }).catch(() => { if (!current.request.signal.aborted) setFailed(true); });
     return () => { current.request.abort(); if (current.url) URL.revokeObjectURL(current.url); };
-  }, [id, client, retry]);
+  }, [roomId, id, client, retry]);
   async function open(inline: boolean) {
     const current = resource.current;
     if (!file || !current || busy) return;
     setBusy(true); setFailed(false);
     try {
-      const blob = await client.content(id, current.request.signal);
+      const blob = await client.content(roomId, id, current.request.signal);
       if (current.request.signal.aborted) return;
       if (inline) {
         if (current.url) URL.revokeObjectURL(current.url);

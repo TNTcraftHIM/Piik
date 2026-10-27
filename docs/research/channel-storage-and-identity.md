@@ -357,25 +357,22 @@ introduce a mandatory fixed website.
 
 ## Current Implementation And Next Check
 
-The prototype still hosts domain and room authority in one process and uses
-authenticated HTTP attachments. Its Rust core authorizes typed room-history
-operations; the runtime commits messages, room-local order and retry identity in
-incremental SQLite transactions before sending confirmation. Retrying returns the
-original message without another broadcast. Confirmed history is retained, while
-the Browser reads a bounded window with earlier-page and latest-page navigation.
-Domain metadata checkpoints no longer contain messages or their retry records.
-The current synchronous runtime finishes a history read and queues its response
-before processing another room command. The [Browser adapter](../../prototype/channel-browser/README.md)
-runs the same room core in WASM and stores room policy, ordered history and
-attachment ownership in IndexedDB. It serializes authorization, storage and
-completion; SQLite and IndexedDB share confirmation and pagination rules.
-The existing channel UI still uses the coordinator. Remote room binding,
-App hosting, peer file bytes and participant history caches remain integration work.
+The prototype's normal create-room action starts a Browser-owned Rust/WASM
+runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
+only its directory summary. The initial Server-owned rooms use the same room
+command core with SQLite. Both adapters commit before confirmation and share
+retry and pagination rules. Participant reading windows remain separate from
+the owner's retained history. Reopening a room restores its data without
+restarting captures or voice.
 
-After agreement, validate one domain owner A and a different room owner B:
-B alone confirms and retains its room history; C and D receive it along their
-admitted room paths. A holds directory and membership facts without receiving
-every message or file. Restart B with its data and restore the same room.
+Domain WebSocket rendezvous currently carries authenticated room commands and
+replies. Server-owned rooms retain HTTP attachments; Browser-owned rooms wait for
+peer file delivery rather than storing their content on the domain. App hosting,
+shared room paths, peer file bytes and participant history caches remain integration work.
+
+The next carrier check extends the separate A-domain/B-room-owner model:
+C and D receive history along admitted room paths, so A no longer carries every
+room message. Preserve B's existing confirmation, restart and retry semantics.
 A file must reach D through an intermediate peer when C-D direct connectivity
 is unavailable. Lost message confirmation must not duplicate a committed send;
 refreshing a participant must recover confirmed history. File delivery must

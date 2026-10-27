@@ -11,10 +11,10 @@ import { type AttachmentLimits, type ChannelAttachment as Attachment, type Chann
 interface DraftFile { id: string; file: File; uploaded?: Attachment }
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, messages, users, canSend, sending, onSend, hidden, attachments, history, loadingHistory, onHistory, onLatest }: {
+export function ChannelConversation({ roomId, roomName, messages, users, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest }: {
   roomId: string; roomName: string; messages: ChannelMessage[]; users: ChannelUser[];
-  canSend: boolean; sending: boolean; hidden: boolean;
-  attachments: ChannelAttachments; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
+  canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
+  attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
   onLatest: (roomId: string) => Promise<void>;
   onSend: (roomId: string, text: string, attachments?: string[]) => Promise<void>;
@@ -37,12 +37,13 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
   const files = filesByRoom[roomId] ?? [];
   const working = sending || filesBusy;
   useEffect(() => {
+    if (!attachmentsAvailable) { setLimits(null); setLimitsFailed(false); return; }
     const request = new AbortController();
     setLimitsFailed(false);
     void attachments.limits(request.signal).then(value => { if (!request.signal.aborted) setLimits(value); })
       .catch(() => { if (!request.signal.aborted) setLimitsFailed(true); });
     return () => { request.abort(); };
-  }, [attachments, limitsRetry]);
+  }, [attachments, attachmentsAvailable, limitsRetry]);
   useEffect(() => () => { upload.current?.abort(); }, []);
   useEffect(() => { setFileError(""); readingAnchor.current = null; }, [roomId]);
   useEffect(() => { follow.current = true; }, [roomId]);
@@ -60,7 +61,7 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
     if (!hidden && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
   }, [roomId, messages.length, hidden, loadingHistory, history?.atLatest]);
   function addFiles(incoming: File[]) {
-    if (!limits || working || !canSend) return;
+    if (!attachmentsAvailable || !limits || working || !canSend) return;
     if (files.length + incoming.length > limits.maxAttachmentsPerMessage) {
       setFileError(zh ? `每条消息最多附带 ${limits.maxAttachmentsPerMessage} 个文件。` : `Add up to ${limits.maxAttachmentsPerMessage} files per message.`);
       return;
@@ -99,7 +100,7 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
     if (working) return;
     setFilesBusy(true); setFileError("");
     try {
-      if (entry.uploaded) await attachments.discardDraft(entry.uploaded.id);
+      if (entry.uploaded) await attachments.discardDraft(roomId, entry.uploaded.id);
       setFilesByRoom(previous => ({ ...previous, [roomId]: (previous[roomId] ?? []).filter(value => value.id !== entry.id) }));
     } catch { setFileError(zh ? "未能移除文件，请重试。" : "Couldn't remove the file. Try again."); }
     finally { setFilesBusy(false); }
@@ -110,7 +111,7 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
     <div className="c3-message-log" ref={log} role="log" aria-label={zh ? "消息" : "Messages"}
       onScroll={event => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < 60; }}>
       {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={zh ? "更早的消息" : "Earlier messages"}
-        busy={loadingHistory} onClick={() => {
+        busy={loadingHistory} disabled={!available} onClick={() => {
           const node = log.current;
           if (node) {
             const top = node.getBoundingClientRect().top;
@@ -136,12 +137,12 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
           <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
             <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(zh ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
           </div>}{message.text && <p>{message.text}</p>}
-          {message.attachments.map(id => <ChannelAttachment key={id} id={id} client={attachments} />)}</div>
+          {attachmentsAvailable && message.attachments.map(id => <ChannelAttachment key={id} roomId={roomId} id={id} client={attachments} />)}</div>
         </article>;
       })}
     </div>
     {history?.atLatest === false && <div className="c3-history-more"><ChannelAction icon="arrowDown" quiet
-      label={zh ? "最新消息" : "Latest messages"} busy={loadingHistory} onClick={() => {
+      label={zh ? "最新消息" : "Latest messages"} busy={loadingHistory} disabled={!available} onClick={() => {
         readingAnchor.current = null;
         follow.current = true;
         void onLatest(roomId).catch(() => {});
@@ -152,17 +153,18 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
         onClick={() => { void removeFile(entry); }} />
     </div>)}</div>}
     {fileError && <p className="c3-file-error" role="status">{fileError}</p>}
+    {roomId && !attachmentsAvailable && <p className="c3-file-retry">{zh ? "这间房间的文件传输尚未接入。" : "File transfer is not connected in this room yet."}</p>}
     {limitsFailed && <div className="c3-file-retry"><span>{zh ? "文件服务暂时未连接" : "File service unavailable"}</span>
       <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
     <form className="c3-composer" onSubmit={event => { void send(event); }}
       onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
       onDrop={event => { event.preventDefault(); addFiles([...event.dataTransfer.files]); }}>
-      <input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
-      <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
-        disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} />
+      {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
+        <ChannelAction icon="plus" label={zh ? "添加文件" : "Add files"} iconOnly quiet hint="hint-file-add"
+          disabled={!canSend || working || !limits} onClick={() => chooser.current?.click()} /></>}
       <textarea rows={1} maxLength={2000} aria-label={zh ? "消息内容" : "Message"} value={draft}
         placeholder={zh ? "说点什么…" : "Say something…"} disabled={!roomId}
-        onPaste={event => { if (event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
+        onPaste={event => { if (attachmentsAvailable && event.clipboardData.files.length) { event.preventDefault(); addFiles([...event.clipboardData.files]); } }}
         onChange={event => setDrafts(previous => ({ ...previous, [roomId]: event.target.value }))}
         onKeyDown={event => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
           event.preventDefault(); event.currentTarget.form?.requestSubmit();

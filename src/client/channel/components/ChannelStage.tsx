@@ -14,6 +14,7 @@ export interface ChannelStageSource {
   subscribed: boolean;
   stream?: MediaStream;
   pending?: boolean;
+  available?: boolean;
 }
 
 export interface ChannelStageProps {
@@ -47,7 +48,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
           <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
           <div><strong>{source.name}</strong><small>{source.roomName}</small></div>
           <ChannelAction icon="eye" label={copy("观看", "Watch")}
-            iconOnly={vis} disabled={!canSubscribe} busy={source.pending}
+            iconOnly={vis} disabled={!canSubscribe || source.available === false} busy={source.pending}
             onClick={() => onWatch(source.id)} />
         </div>)}
       </div>

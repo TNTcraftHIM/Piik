@@ -7,6 +7,8 @@ export const roomSchema = z.object({
   id, name: z.string().max(64), creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
   members: z.array(id).optional(),
+  available: z.boolean(),
+  capabilities: z.object({ attachments: z.boolean() }),
 });
 export const publicationSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
@@ -22,9 +24,9 @@ export const snapshotSchema = z.object({
   }),
   users: z.array(userSchema).max(64),
   sessions: z.array(z.object({ id, userId: id, online: z.boolean() })).max(20),
-  publications: z.array(publicationSchema).max(80),
-  voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })).max(160),
-  subscriptions: z.array(id).max(80),
+  publications: z.array(publicationSchema),
+  voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
+  subscriptions: z.array(id),
   pairs: z.array(z.object({ id, peerId: id, outgoing: z.array(id), incoming: z.array(id) })).max(19),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
@@ -37,10 +39,12 @@ export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
   z.object({ type: z.literal("history"), roomId: id, messages: z.array(messageSchema).max(100), hasMore: z.boolean(), before: z.number().optional(), oldestSeq: z.number().nullable() }),
-  z.object({ type: z.literal("room_created"), roomId: id, requestId: id.optional() }),
   z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
   z.object({ type: z.literal("message"), roomId: id, message: messageSchema }),
   z.object({ type: z.literal("message_confirmed"), roomId: id, message: messageSchema, requestId: id.optional() }),
+  z.object({ type: z.literal("host_bound"), roomId: id, bindingId: id }),
+  z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id }).passthrough() }),
+  z.object({ type: z.literal("room_reply"), roomId: id, requestId: id.optional(), result: z.object({ type: z.string(), code: z.string().optional() }).passthrough() }),
   z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: signalSchema }),
   z.object({ type: z.literal("ack"), requestId: id }),
   z.object({ type: z.literal("error"), code: z.string(), requestId: id.optional() }),
@@ -51,20 +55,23 @@ export type ChannelPublication = z.infer<typeof publicationSchema>;
 export type ChannelMessage = z.infer<typeof messageSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
 export type ChannelRoom = z.infer<typeof roomSchema>;
+export type RoomSummary = Pick<ChannelRoom, "id" | "name" | "creatorId" | "access" | "hidden" | "hasPassword">;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
-export type ChannelReply = Extract<ChannelEvent, { type: "room_created" | "room_invite" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" }>;
 export interface RoomSettings {
   name: string; access: "public" | "private"; hidden: boolean; password?: string | null;
 }
 export type ChannelCommand =
   | { type: "join"; name: string; credential?: string; key?: string; roomId?: string; sessionId?: string }
   | { type: "set_name"; name: string }
+  | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
+  | { type: "host_output"; roomId: string; output: unknown }
+  | { type: "host_stop"; roomId: string; bindingId: string }
   | { type: "browse"; roomId: string }
   | { type: "history"; roomId: string; before?: number }
   | { type: "chat"; roomId: string; text: string; nonce: string; attachments: string[] }
-  | ({ type: "create_room" } & RoomSettings)
   | ({ type: "update_room"; roomId: string } & RoomSettings)
   | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }
   | { type: "room_invite"; roomId: string }

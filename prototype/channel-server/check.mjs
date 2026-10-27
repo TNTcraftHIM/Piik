@@ -3,6 +3,7 @@ import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import WebSocket from "ws";
+import { eventSchema } from "../../src/client/channel/protocol.ts";
 
 const endpoint = process.env.CHANNEL_WS_URL ?? "ws://127.0.0.1:8791/prototype/channel";
 const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
@@ -49,6 +50,32 @@ async function connect(t, join) {
   return client;
 }
 
+test("the frontend accepts real cross-room publications and subscriptions", { timeout: 30_000 }, async t => {
+  const clients = [];
+  try {
+    for (let index = 0; index < 20; index++) clients.push(await connect(t, { key: index === 0 ? ownerKey : inviteKey }));
+    for (const client of clients) assert.equal(client.welcome.type, "welcome");
+    const reader = clients[0], rooms = reader.welcome.state.channel.rooms;
+    assert.equal(rooms.length, 3);
+    for (const room of rooms) for (const client of clients) {
+      assert.equal((await client.request({ type: "voice", roomId: room.id, joined: true, muted: false, deafened: false })).type, "ack");
+      for (const kind of ["screen", "voice"]) {
+        const publicationId = randomUUID();
+        assert.equal((await client.request({ type: "publish", publication: { id: publicationId, roomId: room.id, kind, muted: false } })).type, "ack");
+        if (client !== reader && kind === "screen") assert.equal((await reader.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
+      }
+    }
+    const event = await reader.wait(event => event.type === "state" && event.state.publications.length === 120
+      && event.state.subscriptions.length === 114, "three rooms with independent activity");
+    assert.equal(event.state.voice.length, 60);
+    const parsed = eventSchema.safeParse(event);
+    assert(parsed.success, JSON.stringify(parsed.error?.issues));
+  } finally {
+    // Leave immediately so the following protocol cases have the same endpoint budget.
+    for (const client of clients) if (client.socket.readyState === WebSocket.OPEN) await client.request({ type: "leave" });
+  }
+});
+
 test("authenticated users, role authority, attributed chat and selective source ownership", { timeout: 30_000 }, async t => {
   const owner = await connect(t, { key: ownerKey, name: "Owner check" });
   const friend = await connect(t, { key: inviteKey, name: "Friend check" });
@@ -61,14 +88,8 @@ test("authenticated users, role authority, attributed chat and selective source 
   assert.notEqual(friend.welcome.sessionId, other.welcome.sessionId);
   const friendUser = friend.welcome.state.sessions.find(session => session.id === friend.welcome.sessionId).userId;
 
-  assert.equal((await friend.request({ type: "create_room", name: "Member room", access: "public", hidden: true })).type, "ack");
-  const created = await friend.wait(event => event.type === "room_created", "member-created room");
-  const catalog = await friend.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.id === created.roomId), "new room catalog");
-  assert.equal(catalog.state.channel.rooms.find(room => room.id === created.roomId).hidden, false);
-  assert.equal(catalog.state.channel.rooms.find(room => room.id === created.roomId).creatorId, friendUser);
   assert.equal((await friend.request({ type: "set_roles", userId: friendUser, roles: ["moderator"] })).type, "error");
   assert.equal((await owner.request({ type: "set_roles", userId: friendUser, roles: ["member", "moderator"] })).type, "ack");
-  assert.equal((await friend.request({ type: "create_room", name: `Check ${randomUUID().slice(0, 8)}`, access: "public", hidden: false })).type, "ack");
   assert.equal((await owner.request({ type: "set_roles", userId: friendUser, roles: ["member"] })).type, "ack");
 
   const roomId = state.channel.rooms[0].id;
@@ -135,11 +156,11 @@ test("authenticated users, role authority, attributed chat and selective source 
 });
 
 
-test("private invitations admit new users, conceal content and revoke room grants", { timeout: 30_000 }, async t => {
-  const creator = await connect(t, { key: inviteKey });
+test("Server-owned private invitations admit new users, conceal content and revoke room grants", { timeout: 30_000 }, async t => {
+  const creator = await connect(t, { key: ownerKey });
   const outsider = await connect(t, { key: inviteKey });
-  assert.equal((await creator.request({ type: "create_room", name: "Private check", access: "private", hidden: true, password: "test-room-password" })).type, "ack");
-  const { roomId } = await creator.wait(event => event.type === "room_created", "private room created");
+  const roomId = "studio";
+  assert.equal((await creator.request({ type: "update_room", roomId, name: "Private check", access: "private", hidden: true, password: "test-room-password" })).type, "ack");
   const concealed = await outsider.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "hidden room excluded");
   assert(!concealed.state.publications.some(p => p.roomId === roomId));
   assert.equal((await outsider.request({ type: "browse", roomId })).type, "error");
@@ -165,4 +186,5 @@ test("private invitations admit new users, conceal content and revoke room grant
   assert(revoked.state.pairs.every(pair => !pair.incoming.includes(privatePublication) && !pair.outgoing.includes(privatePublication)));
   assert.equal((await guest.request({ type: "history", roomId })).type, "error");
   assert.equal((await creator.request({ type: "unpublish", publicationId: privatePublication })).type, "ack");
+  assert.equal((await creator.request({ type: "update_room", roomId, name: "Studio", access: "public", hidden: false })).type, "ack");
 });

@@ -3,7 +3,9 @@ import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, join, relative, resolve } from "node:path";
 
 async function freePort() {
   const socket = createServer();
@@ -14,8 +16,12 @@ async function freePort() {
 }
 const corePort = await freePort(), uiPort = await freePort();
 const origin = `http://127.0.0.1:${uiPort}`;
+const protocolOnly = process.argv.includes("--protocol");
+const directory = process.argv.includes("--hosts") ? await mkdtemp(join(tmpdir(), "piik-room-host-check-")) : null;
 const env = { ...process.env, PIIK_CHANNEL_PORT: String(corePort), PIIK_CHANNEL_UI_PORT: String(uiPort),
-  PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: ":memory:",
+  PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: directory ?? ":memory:",
+  CHANNEL_WS_URL: `ws://127.0.0.1:${corePort}/prototype/channel`,
+  ...(directory ? { CHANNEL_DATA_FILE: join(directory, "channel.sqlite") } : {}),
   PIIK_CHANNEL_OWNER_KEY: randomUUID(), PIIK_CHANNEL_INVITE_KEY: randomUUID() };
 const children = [];
 function start(command, args) {
@@ -38,9 +44,12 @@ async function ready(process, url) {
 try {
   const core = start(resolve(process.env.CHANNEL_EXECUTABLE ?? `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), []);
   await ready(core, `http://127.0.0.1:${corePort}/healthz`);
-  const web = start(process.execPath, ["node_modules/vite/bin/vite.js", "--config", "prototype/channel-server/vite.config.ts"]);
-  await ready(web, origin);
-  const check = spawn(process.execPath, ["prototype/channel-server/browser-acceptance.mjs", ...process.argv.slice(2)], {
+  if (!protocolOnly) {
+    const web = start(process.execPath, ["node_modules/vite/bin/vite.js", "--config", "prototype/channel-server/vite.config.ts"]);
+    await ready(web, origin);
+  }
+  const check = spawn(process.execPath, protocolOnly ? ["--import", "tsx", "--test", "prototype/channel-server/check.mjs"]
+    : ["prototype/channel-server/browser-acceptance.mjs", ...process.argv.slice(2)], {
     env, windowsHide: true, stdio: "inherit", timeout: 300_000,
   });
   children.push(check);
@@ -51,5 +60,11 @@ try {
     const exited = once(child, "exit");
     child.kill();
     await exited;
+  }
+  if (directory) {
+    if (relative(tmpdir(), directory).startsWith("..") || !basename(directory).startsWith("piik-room-host-check-")) {
+      throw new Error("Unexpected acceptance data directory");
+    }
+    await rm(directory, { recursive: true, force: true });
   }
 }

@@ -50,7 +50,15 @@ export function ChannelPreviewPage() {
   const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? copy("用户", "User");
   const voiceStreams = publications.filter(value => value.kind === "voice" && value.sessionId !== sessionId &&
     state?.subscriptions.includes(value.id) && streams.has(value.id));
-  const failure = channel.error ? /password/i.test(channel.error)
+  const failure = channel.error ? channel.error === "room_runtime_unavailable"
+    ? copy("房间运行组件尚未构建。请先构建 Browser room adapter，再刷新原型。", "Room runtime is not built. Build the Browser room adapter, then reload the prototype.")
+    : channel.error === "directory_storage_failed"
+      ? copy("房间操作已成功，但域目录保存失败。", "The room operation succeeded, but the domain directory could not be saved.")
+    : channel.error === "room_host_conflict"
+      ? copy("另一个页面已接管这间房间。请关闭多余页面，再刷新本页。", "Another page has taken over this room. Close the extra page, then reload this page.")
+    : channel.error === "room_host_offline"
+      ? copy("房主暂时离线，请等待房主恢复房间。", "The room owner is offline. Wait for them to bring the room back.")
+    : /password/i.test(channel.error)
     ? copy("房间密码不正确，请重新输入。", "The room password is incorrect. Please try again.")
     : /room_access|room_forbidden/i.test(channel.error)
       ? copy("你还没有这间房间的访问权限。", "You don't have access to this room.")
@@ -69,7 +77,7 @@ export function ChannelPreviewPage() {
     if (!roomId) return;
     setSelected(roomId);
     channel.browse(roomId);
-  }, [roomId, room?.authorized]);
+  }, [roomId, room?.authorized, room?.available]);
   useEffect(() => { setCopied(false); setCopyError(false); }, [channel.inviteURL]);
   function copyInvite() {
     if (!channel.inviteURL) return;
@@ -134,8 +142,8 @@ export function ChannelPreviewPage() {
           <div className="c3-room-name"><Glyph name="couch" size={25} /><h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2></div>
           <div className="c3-room-actions">
             {room?.authorized && <><ChannelAction icon="cast" label={copy("分享屏幕", "Share screen")} primary hint="hint-share-start"
-              disabled={!connected || !can("publish")} busy={busy("screen", roomId)} onClick={() => run(channel.startScreen(roomId))} />
-              <ChannelJoinVoice joined={joined} disabled={!connected || !can("voice")} busy={busy("voice", roomId)}
+              disabled={!connected || !room.available || !can("publish")} busy={busy("screen", roomId)} onClick={() => run(channel.startScreen(roomId))} />
+              <ChannelJoinVoice joined={joined} disabled={!connected || !room.available || !can("voice")} busy={busy("voice", roomId)}
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
           <div className="c3-room-tools">
@@ -153,6 +161,8 @@ export function ChannelPreviewPage() {
         {!connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span>{connectionLabel}</span>
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" onClick={channel.reconnect} />}
         </div>}
+        {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
+          <span>{copy("房主暂时离线，房间会在房主回来后恢复。", "The room owner is offline. The room will return when they reconnect.")}</span></div>}
         {self && !owner && !permissions.size && <div className="c3-notice" role="status"><Glyph name="lock" size={20} />
           <span>{copy("当前为只读。请联系域主分配身份组。", "Read-only access. Ask the domain owner for a role to participate.")}</span></div>}
         {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
@@ -162,14 +172,16 @@ export function ChannelPreviewPage() {
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), local: publication.sessionId === sessionId,
+            available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id),
             pending: busy(publication.sessionId === sessionId ? "stop" : "watch", publication.id),
           }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected && can("subscribe")}
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
             onStop={id => run(channel.stopScreen(id))} />
           {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} messages={channel.messagesByRoom[roomId] ?? []}
-            users={state?.users ?? []} canSend={connected && !!roomId && can("chat")} sending={busy("chat", roomId)}
-            attachments={channel.attachments} history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
+            users={state?.users ?? []} canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
+            attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}
+            history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
             onSend={channel.sendMessage} hidden={visibleScreens.length > 0 && !chatOpen} />}
         </div>

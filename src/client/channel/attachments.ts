@@ -13,7 +13,12 @@ export type AttachmentLimits = z.infer<typeof attachmentLimitsSchema>;
 
 /** The existing channel credential authorizes HTTP transfer; it never enters a URL. */
 export class ChannelAttachments {
-  constructor(private credential: () => string | undefined) {}
+  constructor(private credential: () => string | undefined, private available: (roomId: string) => boolean = () => true) {}
+
+  private roomRequest(roomId: string, path: string, options: RequestInit = {}): Promise<Response> {
+    if (!this.available(roomId)) return Promise.reject(new Error("attachments_unavailable"));
+    return this.request(path, options);
+  }
 
   private async request(path: string, options: RequestInit = {}): Promise<Response> {
     const headers = new Headers(options.headers);
@@ -31,18 +36,18 @@ export class ChannelAttachments {
     attachmentLimitsSchema.parse(await (await this.request("limits", { signal })).json());
 
   upload = async (roomId: string, file: File, signal?: AbortSignal): Promise<ChannelAttachment> =>
-    attachmentSchema.parse(await (await this.request(`rooms/${encodeURIComponent(roomId)}/attachments`, {
+    attachmentSchema.parse(await (await this.roomRequest(roomId, `rooms/${encodeURIComponent(roomId)}/attachments`, {
       method: "POST", headers: { "X-File-Name": encodeURIComponent(file.name) }, body: file, signal,
     })).json());
 
-  metadata = async (id: string, signal?: AbortSignal): Promise<ChannelAttachment> =>
-    attachmentSchema.parse(await (await this.request(`attachments/${encodeURIComponent(id)}`, { signal })).json());
+  metadata = async (roomId: string, id: string, signal?: AbortSignal): Promise<ChannelAttachment> =>
+    attachmentSchema.parse(await (await this.roomRequest(roomId, `attachments/${encodeURIComponent(id)}`, { signal })).json());
 
-  content = async (id: string, signal?: AbortSignal): Promise<Blob> =>
-    (await this.request(`attachments/${encodeURIComponent(id)}/content`, { signal })).blob();
+  content = async (roomId: string, id: string, signal?: AbortSignal): Promise<Blob> =>
+    (await this.roomRequest(roomId, `attachments/${encodeURIComponent(id)}/content`, { signal })).blob();
 
-  discardDraft = async (id: string): Promise<void> => {
-    try { await this.request(`attachments/${encodeURIComponent(id)}?draft=true`, { method: "DELETE" }); }
+  discardDraft = async (roomId: string, id: string): Promise<void> => {
+    try { await this.roomRequest(roomId, `attachments/${encodeURIComponent(id)}?draft=true`, { method: "DELETE" }); }
     catch (error) {
       // A lost chat acknowledgement can leave an already-sent file in the composer.
       if (!(error instanceof Error) || !["attachment_already_sent", "attachment_unavailable"].includes(error.message)) throw error;

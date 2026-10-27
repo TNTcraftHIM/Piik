@@ -66,13 +66,14 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   const title = room ? (zh ? "房间设置" : "Room settings") : (zh ? "创建房间" : "Create room");
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
   useEffect(() => { setInvite(""); setCopied(false); panel.current?.hidePopover(); }, [room?.id, room?.access]);
-  const busy = channel.connection !== "connected" || channel.pending.has(room ? `room:${room.id}` : "create-room");
+  const available = channel.connection === "connected" && (!room || room.available);
+  const busy = !available || channel.pending.has(room ? `room:${room.id}` : "create-room");
   const members = room?.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const run = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return <>
     <Tooltip kind={room ? "hint-details" : "hint-create-room"} text={vis ? undefined : title}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" popoverTarget={id}
-        aria-label={title} aria-haspopup="dialog" disabled={channel.connection !== "connected"}>
+        aria-label={title} aria-haspopup="dialog" disabled={!available}>
         <Glyph name={room ? "sliders" : "plus"} size={18} />
       </button>
     </Tooltip>
@@ -85,7 +86,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
       }} />
       {room?.access === "private" && <section className="c3-room-invitation">
         <ChannelAction icon="link" label={invite ? (zh ? "更换邀请链接" : "Replace invitation") : (zh ? "创建房间邀请" : "Create room invitation")}
-          busy={channel.pending.has(`invite:${room.id}`)} hint="hint-copy-invite"
+          busy={channel.pending.has(`invite:${room.id}`)} disabled={!available} hint="hint-copy-invite"
           onClick={() => run(channel.createRoomInvite(room.id).then(value => { setInvite(value); setCopied(false); }))} />
         {invite && <div className="c3-invite-copy"><input className="c3-input" value={invite} readOnly
           aria-label={zh ? "房间邀请链接" : "Room invitation link"} onFocus={event => event.currentTarget.select()} />
@@ -97,7 +98,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
           {members.map(userId =>
             <div key={userId}><span>{channel.state?.users.find(user => user.id === userId)?.name ?? (zh ? "用户" : "User")}</span>
               <ChannelAction icon="x" quiet iconOnly label={zh ? "移除房间资格" : "Remove room access"} hint="hint-close"
-                busy={channel.pending.has(`revoke:${room.id}:${userId}`)}
+                busy={channel.pending.has(`revoke:${room.id}:${userId}`)} disabled={!available}
                 onClick={() => run(channel.revokeRoomAccess(room.id, userId))} /></div>)}
         </details>}
       </section>}</>}
@@ -109,16 +110,18 @@ export function ChannelRoomEntry({ channel, room }: { channel: ChannelController
   const { lang } = useCopy();
   const zh = lang === "zh";
   const [password, setPassword] = useState("");
+  const available = channel.connection === "connected" && room.available;
   return <section className="c3-locked-room"><Glyph name="lock" size={46} />
     <h3>{zh ? "这是一间私密房间" : "This room is private"}</h3>
     <p>{room.hasPassword ? (zh ? "输入房间密码，或使用房间邀请链接。" : "Enter its password or open a room invitation.")
       : (zh ? "请向房主索取邀请链接。" : "Ask the room owner for an invitation.")}</p>
     {room.hasPassword && <form onSubmit={event => {
       event.preventDefault();
+      if (!available) return;
       void channel.enterRoom(room.id, password).then(() => setPassword("")).catch(() => {});
     }}><input className="c3-input" type="password" maxLength={128} value={password} autoComplete="current-password"
       aria-label={zh ? "房间密码" : "Room password"} onChange={event => setPassword(event.target.value)} />
       <ChannelAction icon="door" type="submit" primary label={zh ? "进入房间" : "Enter room"}
-        busy={channel.pending.has(`enter:${room.id}`)} disabled={!password || channel.connection !== "connected"} /></form>}
+        busy={channel.pending.has(`enter:${room.id}`)} disabled={!password || !available} /></form>}
   </section>;
 }

@@ -11,18 +11,17 @@ and Git/PRs own completed history.
 The [channel prototype](../prototype/channel-server/README.md) has a Rust
 coordinator and real Browser chat, screen publications, selective watching and
 room voice. Domain admission, room activities/plans and shared transport leases
-have separate Rust owners. Confirmed history is incremental and idempotent,
-outside domain checkpoints. The [Browser room adapter](../prototype/channel-browser/README.md)
-runs the same core in WASM with IndexedDB; the channel UI still uses the coordinator.
+have separate Rust owners. Rooms created through the interface now run in their
+owner's [Browser adapter](../prototype/channel-browser/README.md), using the same
+Rust core in WASM with IndexedDB. The domain keeps their directory summaries and
+authenticated bindings; confirmed history and private policy stay with the room.
 The [accepted routing foundation](./research/channel-network-design.md) assigns
 each room to its actual operator and starts video on usable room paths before
 bounded source-rooted convergence. The [data model](./research/channel-storage-and-identity.md)
-owns history and file delivery. Remote room binding and shared room paths are
-the next integration. The 2.x core routing and lifecycle audit has closed its
-confirmed defects; unrelated platform reports remain in TODO.
-The visual proposal and functional prototype share editable URL bookmarks; automatic address
-discovery is not planned. Work stays on `feat/channel-prototype`.
-Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.
+owns history and file delivery. Shared room paths, Native hosting and peer file
+delivery are next. [TODO](./todo.md) owns remaining stages and platform reports.
+Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
+Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 
 ## Accepted Release Contract
 
