@@ -1,11 +1,11 @@
 # Piik 3.0 Channels, Rooms And Networking
 
-Reviewed 2026-10-27. This document owns the isolated 3.0 responsibility and
-networking proposal. The [prototype README](../../prototype/channel-server/README.md)
+Accepted direction 2026-10-27. This document owns the isolated 3.0 responsibility
+and networking design. The [prototype README](../../prototype/channel-server/README.md)
 describes running behavior; [TODO](../todo.md) owns implementation and decisions.
 The [2.x routing contract](../standards/routing-transport.md) remains unchanged.
 
-## Current Decisions And Recommendation
+## Accepted Direction
 
 The owner defines the room owner as the user who actually operates the room:
 its detailed state, management and distribution belong together. A separate
@@ -14,12 +14,13 @@ bookmarks remain the entry model; automatic address discovery is not planned.
 The App is an interactive client. Unattended hosting belongs to Server; a
 standby App must not keep an abandoned owner session running.
 
-Recommend one room routing owner: a base tree carries conversation, voice and
+Use one room routing owner: a base tree carries conversation, voice and
 files. Pictures start on usable existing paths, then converge locally towards
 source-rooted delivery through bounded background transitions. All authorized,
 capable room peers can be relay candidates; only viewers and necessary transit
 nodes receive the picture. Both stages use the same route state and transports.
-This routing proposal remains under review, not an implemented change.
+The owner accepted this routing foundation. Data persistence and transfer details
+are the next design discussion; the new runtime is not yet implemented.
 
 ## Terminology And Roles
 
@@ -108,7 +109,7 @@ Peer media forwarding terminates hop encryption at admitted relays. Room access
 must cover every relay; this model does not add end-to-end encryption against
 those forwarding endpoints.
 
-## Recommended Routing
+## Routing Foundation
 
 ### Choice And Cost
 
@@ -116,7 +117,7 @@ those forwarding endpoints.
 | --- | --- | --- |
 | One tree for every kind of traffic | One stable set of paths; any connected members can exchange data. | Some pictures incur extra hops. Use established paths as the baseline; a non-viewing relay can still be essential for connectivity. |
 | A new distribution plan for every source or transfer | Paths can follow each source's recipients. | Repeats planning for room-wide voice and ordinary files. Keep source-specific demand only where it changes useful forwarding work. |
-| Base paths for startup, then selective source-rooted convergence | Reuses room connectivity where media can be admitted; improves affected paths while preserving playback. | Needs distinct viewing/transit demand and temporary transition resources. Recommended; both stages use the same admission and transition owner. |
+| Base paths for startup, then selective source-rooted convergence | Reuses room connectivity where media can be admitted; improves affected paths while preserving playback. | Needs distinct viewing/transit demand and temporary transition resources. Selected; both stages use the same admission and transition owner. |
 
 This compares topology and work, not measured performance. A routing root owns
 coordination; it need not forward every media byte. Only nodes on an admitted
@@ -129,6 +130,10 @@ participants. Its root identifies the coordination owner; data may travel in
 both directions. A connected tree already provides a unique path between any
 two members. Room entry can establish this base path before microphone or screen
 sharing begins; browsing the channel directory does not connect every room.
+The base tree also considers better edges after relevant connectivity or capacity
+changes, using the same bounded admission and transition rules as screen plans.
+Replacing a base edge preserves its admitted flows until their replacement paths
+are ready; an open candidate DataChannel alone does not retire active media work.
 
 | Traffic | Route and lifecycle |
 | --- | --- |
@@ -231,6 +236,10 @@ different, actually usable edges.
 These are stages of one publication plan, not two complete live video networks.
 Fallback after a later failure still needs media preparation on its selected path;
 keeping the base connection is not a promise of instant hot-standby video.
+If a base path lacks the capability or capacity for that picture, retain its
+control traffic and let the same availability planner seek another admitted
+media path. Successful base-path playback is not a prerequisite for trying an
+alternative. A viewer remains connecting until a selected path proves ready.
 
 Reconcile on relevant demand, connectivity or capacity changes. A new viewer adds
 a branch; stopping viewing removes only demand that no downstream still needs;
@@ -238,6 +247,9 @@ a departed relay repairs only affected paths. Preserve healthy unrelated branche
 Viewing toggles and unrelated membership updates must not reset spent candidate
 opportunities. Once useful attempts finish, keep the working route rather
 than probing periodically for a mathematical global optimum.
+Repairing a base edge reconciles only flows using that edge. An independent,
+healthy screen branch stays in place while room authority remains valid; a
+change in the base plan does not reset every publication to its startup path.
 
 Availability work takes priority over optional optimization. Without overlap
 capacity, leave healthy playback in place and defer or finish the optional
@@ -317,7 +329,7 @@ The source owner and controlled device authorize remote input for a publication,
 source generation and controller session. Domain/room administration alone grants
 no desktop control. Changing the focused picture never retargets an input grant.
 
-| Event | Recommended outcome |
+| Event | Outcome |
 | --- | --- |
 | Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
 | The page owning an App-linked room session closes or loses connection | Allow the existing session recovery window; expiry pauses the live room. An idle App does not replace the missing owner session. |
@@ -380,8 +392,8 @@ inside every module. The [versioning standard](../standards/versioning.md) still
 separates build identity, wire compatibility, stored schema and live generations.
 A published cutover needs its own handshake and data-upgrade decision.
 
-After model agreement, verify the smallest complete slice: A operates a domain,
-B operates a room, and C/D join, chat, speak and transfer a file over connected
+After the data-model discussion, verify the smallest complete slice: A operates
+a domain, B operates a room, and C/D join, chat, speak and transfer a file over connected
 room links. Then add simultaneous screen publications and selective viewing.
 Include a sender/receiver pair with no direct ICE path but a working intermediate
 hop, relay departure, room-host restart and domain-authority loss. Compare shared
@@ -405,6 +417,6 @@ replaced by having a Rust coordinator.
 - [Jami file transfer](https://jami.net/swarm-file-transfers/) informs separating
   a file announcement from on-demand bytes and available copies.
 
-These references support individual boundaries. The proposed room-owner-operated
+These references support individual boundaries. The accepted room-owner-operated
 base tree and selective screen plans are Piik's design choice, to be checked
 against its existing routing behavior and actual runtime costs.

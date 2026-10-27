@@ -434,17 +434,17 @@ or room owner changes. This needs no new room protocol or major version.
 
 ## Piik 3.0 Channels, Rooms And Sharing
 
-The [channel and network proposal](./channel-network-design.md) owns the Rust
+The [accepted channel and network design](./channel-network-design.md) owns the Rust
 direction, responsibility boundaries, activity lifecycles and multi-source routing.
 The [room-data proposal](./channel-storage-and-identity.md) owns persistence and
 file availability. The [3.0 vocabulary](./channel-network-design.md#terminology-and-roles)
 defines channels containing rooms, users with multiple roles and concurrent
-sharing, watching and forwarding. The owner requested model discussion before
-implementation; these proposals do not change the accepted 2.x contract.
+sharing, watching and forwarding. Data-model discussion precedes its implementation;
+the isolated 3.0 design does not change the accepted 2.x contract.
 
 The isolated [Rust channel prototype](../../prototype/channel-server/README.md)
 currently supplies networked chat and local microphone/picture capture. Its README
-owns the runnable boundary; the proposal defines the next usable network baseline.
+owns the runnable boundary; the accepted design defines the next network baseline.
 
 ## Attended Remote-Control Prototype
 

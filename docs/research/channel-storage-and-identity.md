@@ -1,10 +1,11 @@
 # Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-10-27. This document owns the proposed data placement and recovery
-model. The [network model](./channel-network-design.md) owns responsibilities,
-routing and live lifecycles; the [prototype README](../../prototype/channel-server/README.md)
-describes running behavior. [TODO](../todo.md) owns decisions and implementation.
-Complete the foundation review before implementing storage or business features.
+Reviewed 2026-10-27. The [accepted network model](./channel-network-design.md)
+owns responsibilities, routing and live lifecycles. This document develops the
+next proposal: data placement, synchronization and recovery. The
+[prototype README](../../prototype/channel-server/README.md) describes running
+behavior; [TODO](../todo.md) owns pending decisions and implementation.
+Discuss this data model before implementing its storage and transfer mechanisms.
 
 ## Ownership And Placement
 
@@ -20,6 +21,7 @@ arrangement adds a storage server, a second application or a configuration task.
 | Identity images | Small retained assets at their domain or room owner; independent of the uploader's live session. |
 | Messages and attachment descriptions | Confirmed history at the room runtime; participants may keep readable local copies. |
 | File bytes | The sender and recipients that retain complete copies. The domain owner does not automatically receive or store them. |
+| Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
 | Live sessions, voice, pictures and route plans | Their active runtimes. Reconnection reconciles existing work; a runtime restart establishes new sessions and activities. Saved data does not restore a call. |
 | Drafts, display preferences and URL bookmarks | The local client, separate from domain/room authority. |
 
@@ -28,47 +30,126 @@ A local history copy grants no write authority. File forwarding and permanent
 storage are different work: an intermediate peer can relay bounded chunks
 without retaining the whole file.
 
-Data ownership is fixed here. Message editing UX, cache quotas, attachment
-previews and backup UI follow after the foundation is agreed.
+The operating-owner boundary is accepted. The retention and synchronization
+choices below are recommendations for the next discussion, not implemented
+product guarantees. They add local data to existing runtimes, not a separately
+configured storage role.
+
+## Metadata And Local Copies
+
+Persist stable identities, policy and confirmed content. Rebuild online presence,
+route plans and file-source availability from live sessions. Domain directory
+updates come from the room owner and contain only the summary a recipient may
+see; changing a room name does not introduce a second writer at the domain.
+
+Scope local copies by domain, room and authenticated user, never nickname or
+room title. Source URLs locate the runtime; they are not the room's identity.
+Cached content remains a local copy when the room is offline. It cannot reopen
+the room, confer management permission or become authoritative by being newer.
+
+Recommend room admission also permits reading its retained conversation. Do not
+add a separate history permission or per-user storage configuration in this
+first model. Joining a room fetches its recent history, not every room in the
+channel or every attachment's bytes.
 
 ## Confirmed History
 
-Keep one confirmed order at the actual room runtime. It authorizes a send and
-commits the message and retry identity before acknowledging or distributing it.
-A retry preserves its identity; an unconfirmed send remains pending.
+Keep one confirmed order at the actual room runtime:
+
+1. A participant sends a command along its room path with a stable send identity.
+   The authenticated user is its author; a relay's identity or a nickname cannot
+   replace that author.
+2. The room owner authorizes the command and commits the message, its order and
+   retry identity in one transaction. Failed storage means the send is not confirmed.
+3. Return the confirmed message identity and order, then distribute the result
+   over the room tree. A retry resolves to the same retained result.
+4. Participants replace their pending local echo with that result and cache only
+   confirmed history. An unconfirmed send stays separate from readable history.
+
+Confirmation means the room owner saved the message, not that every participant
+received it or that its attachment was copied. Keep retry association with the
+retained message rather than a permanent second ledger. Automatic retries stay
+within the advertised retention/recovery boundary; an expired pending send is
+not silently submitted again as a new message.
+
+[Matrix transaction identifiers](https://spec.matrix.org/latest/client-server-api/#transaction-identifiers)
+provide a reference for identifying a retransmission. This does not require
+Matrix federation, multi-writer merging or replicated confirmation.
 
 Use incremental transactions at the storage owner. Do not carry the prototype's
 whole-channel JSON rewrite into distributed room storage. Share the Rust room
 rules between native execution and any Browser/WASM adapter; use local SQLite
 or IndexedDB through that adapter rather than an external database service.
 
-Participants initially synchronize from the room owner over the established
-room path. Intermediate peers forward that response; they do not confirm it.
-Browser history copies belong in IndexedDB, with bounded retention; localStorage
-remains for small preferences and bookmarks. Original author departure does not
-erase confirmed messages.
+Participants synchronize from the room owner over the established room path.
+Intermediate peers forward the authenticated response; they do not confirm it.
+Load a bounded recent window at a fixed history boundary, then continue with
+confirmed changes after that boundary. Older pages are requested when needed.
+Snapshot and live delivery share the same room order so a message arriving during
+loading is neither missed nor rendered twice. The
+[Matrix sync model](https://spec.matrix.org/latest/client-server-api/#syncing)
+illustrates separating recent history, older pagination and subsequent events.
 
-The room owner supplies the current history boundary, including deletions.
-A peer with a higher timestamp or more cached messages cannot take over.
-Serving a cached history page from another participant is a later optimization:
-it requires authority-verifiable contents and a current history boundary.
-[Jami's history model](https://docs.jami.net/en_US/developer/jami-concepts/swarm.html)
-is a reference, not a reason to add multi-writer merging or a consensus system.
+Start with refreshing the retained local window on reconnect, replacing it with
+the room owner's current result, including removals. This avoids introducing a
+permanent change-replay service for the first local cache. Browser copies belong
+in bounded IndexedDB storage; localStorage remains for small preferences and
+bookmarks. Original author departure does not erase confirmed messages.
+
+The room owner supplies the current history generation and retention boundary.
+A higher timestamp or longer cached history is not proof of authority. Ordinary
+restart preserves that generation; restoring an older backup changes it and
+requires a fresh authoritative window. The shared room core owns synchronization
+identities and cursors; storage adapters supply atomic reads and writes.
+
+Do not silently evict the owner's confirmed history as if it were a participant
+cache. If storage cannot accept a message, report that failed send and preserve
+existing data. Participants may reclaim their reading cache independently.
+Peer-supplied history pages remain a later optimization: they require verifiable
+room confirmation and a current history boundary. The base model already keeps
+history off the domain owner without adding consensus or per-user signed logs.
 
 ## File Sources And Reachability
 
-A confirmed attachment description identifies its content, size and digest.
-Recipients fetch bytes on demand; they are not pushed to every member. A complete,
-verified copy can be another source while its holder remains admitted and online.
-The room runtime tracks available holders and authorizes the transfer.
+A confirmed attachment description identifies its message, name, size and content
+digest. Recipients fetch bytes on demand; they are not pushed to every member.
+The sender prepares a readable source before submitting the description. A complete,
+verified copy can become another source while its holder remains admitted and
+able to read it. The room runtime keeps this online source index in live state;
+holders announce their actual copies again after reconnecting.
 
 A transfer uses the room base tree's existing path from holder to recipient.
 It creates a bounded transfer task, not a new route planner or a mandatory direct
 ICE connection between those two users. The [network model](./channel-network-design.md#one-base-tree-per-participating-room)
-owns hop forwarding, backpressure and repair. The content digest detects altered
-bytes; it does not by itself establish who may receive them.
-The recipient also needs a bounded storage sink; a large download must not
-become an unbounded in-memory Blob when streaming file output is unavailable.
+owns route admission and repair. A transfer keeps one selected holder, its
+recipient's written progress and its own bounded buffers:
+
+1. Authorize message attachments against current room access and the retained
+   message. Identity images follow their domain/room visibility rules through
+   the same transfer mechanism. A digest identifies bytes, not permission.
+2. Select one known online holder using existing reachability and capacity facts.
+   Keep a working source; do not probe every participant or split a file among
+   several sources.
+3. Pull a bounded window of chunks. The recipient advances the window after
+   writing; each hop also observes DataChannel queue and message-size limits.
+   `bufferedAmount` alone measures the local queue, not downstream consumption.
+4. Repair a broken path through the room controller. If the holder leaves,
+   select another complete source and resume from the written contiguous prefix.
+   The attachment and transfer remain the same work across a route change.
+5. Verify the final content digest before marking the copy complete or offering
+   it to others. Cancel retires the task and releases its buffers and temporary
+   data; late chunks cannot revive it.
+
+The [WebRTC DataChannel API](https://www.w3.org/TR/webrtc/#rtcdatachannel) supplies
+per-hop queue signals; the receiver's bounded pull supplies end-to-end flow
+control. Keep bulk data out of the ordered control queue, while sharing transport
+ownership and admission. Separate queues do not isolate physical bandwidth.
+Closing a chat panel or stopping video does not cancel a file transfer's needed
+connection; completion releases only that transfer's resources.
+
+Use a writable local sink, not an unbounded in-memory Blob. Start with recovery
+of an active task across connection loss; persistent downloads across process
+restart are not required for the first transfer implementation.
 
 No optional configured file-host store is proposed. A room owner may hold a file
 as an ordinary sender or recipient; ownership does not require retaining every
@@ -85,6 +166,29 @@ file. The availability boundary is simple:
 separation between a file announcement, on-demand download and retained peer
 copies. Piik's proposed tree path supplies the carrier; it does not adopt Jami's
 discovery or replicated-history architecture.
+
+### Retained Files And Images
+
+Recommend one managed, bounded content store per participant runtime for sent
+files and reusable downloaded copies. Native execution uses local files;
+Browser execution can use its origin-private file system where available.
+Successful retention, not the platform name or a past download event, determines
+whether a copy can be offered after reopening. Cache reclamation withdraws the
+source announcement and leaves the history description intact. Explicitly saved
+user files are outside that cache's cleanup.
+
+Saving a browser download into the system's Downloads directory does not give
+the page automatic future read access. It can offer a source only through a
+currently readable selection, retained copy or granted handle. Browser-managed
+storage follows [origin, quota and persistence rules](https://storage.spec.whatwg.org/);
+the [File System Standard](https://fs.spec.whatwg.org/) supplies origin-private
+storage. A session-only source must not be presented as a retained copy.
+
+Images use this same attachment/transfer model. Loading a visible image requests
+its preview; it does not subscribe everyone to every original file. Small identity
+images remain with their domain/room owner, as specified in the ownership table,
+so an avatar does not disappear when its uploader leaves. Retention policy can
+differ without creating another transport or external storage service.
 
 ## Persistence And Recovery
 
@@ -153,14 +257,21 @@ introduce a mandatory fixed website.
 ## Current Implementation And Next Check
 
 The prototype currently keeps domain and all room authority/history in one Rust
-coordinator, with SQLite checkpoints and authenticated HTTP attachments. Native
-persistent room hosting, Browser-local room authority, peer file transfer and
-local history copies are not implemented.
+coordinator, with SQLite checkpoints and authenticated HTTP attachments. It
+already saves before emitting successful effects and paginates retained history.
+Its deduplication records do not identify the original confirmed result; history
+pages have no fixed synchronization boundary or restore generation. Preserve the
+commit-before-confirm behavior while moving incremental storage to each room
+owner. Native persistent room hosting, Browser-local room authority, peer file
+transfer and local history copies are not implemented.
 
 After agreement, validate one domain owner A and a different room owner B:
 B alone confirms and retains its room history; C and D receive it along their
 admitted room paths. A holds directory and membership facts without receiving
 every message or file. Restart B with its data and restore the same room.
 A file must reach D through an intermediate peer when C-D direct connectivity
-is unavailable. These checks establish the ownership and carrier model before
-expanding the business interface.
+is unavailable. Lost message confirmation must not duplicate a committed send;
+refreshing a participant must recover confirmed history. File delivery must
+resume after path/source loss without disturbing voice or picture playback.
+These checks establish the ownership and carrier model before expanding the
+business interface.

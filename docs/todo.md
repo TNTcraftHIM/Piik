@@ -38,19 +38,13 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Piik 3.0 channels, rooms and Rust prototype.** The owner authorized a
   usable Browser prototype on 2026-10-27: Rust channel authority, rooms, multiple
   user roles, chat, independent screen publications, selective watching and voice.
-  First review the foundation with the owner, before further business/UI work:
-  the domain owner operates membership/directory/rendezvous; each room owner
-  actually runs its room, confirms its state and retains its history. Review one
-  room routing controller with a bidirectional base tree for chat, voice and
-  files, selective screen paths, and shared physical transports. The
-  [network and lifecycle proposal](./research/channel-network-design.md) owns
-  that model; [room data and hosting](./research/channel-storage-and-identity.md)
-  owns data placement, copies and recovery. Runtime changes wait for this review.
-  Review staged video delivery on base paths followed by bounded source-rooted
-  convergence. Separate room-wide relay eligibility from actual media delivery,
-  retain necessary transit nodes, and change only affected branches. Reuse the
-  existing admission/commit rules; no-overlap optional optimization must preserve
-  working playback. App sessions and Server service lifetime follow the model.
+  The [accepted network and lifecycle design](./research/channel-network-design.md)
+  owns room-operated base paths, staged screen delivery and bounded source-rooted
+  convergence. Next discuss [room data and hosting](./research/channel-storage-and-identity.md):
+  room-confirmed history with bounded local copies, recent-history synchronization,
+  retained file sources and sequential transfer through existing room paths.
+  Set the first retention/recovery scope before implementing these mechanisms;
+  peer-served history and persistent download resumption are not prerequisites.
   Then prove separate domain/room hosts and shared room paths before integrating
   the visual design: persistent navigation, conversation, room access, attachments,
   selective multi-picture viewing, identity images and person/message reactions.

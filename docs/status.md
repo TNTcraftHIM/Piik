@@ -12,10 +12,11 @@ The [channel prototype](../prototype/channel-server/README.md) has a Rust
 coordinator and real Browser chat, screen publications, selective watching and
 room voice. Its five-endpoint gate covers relay continuity and recovery; the
 focused lifecycle gate covers revocation, offline stop and session expiry.
-Current work reviews the [responsibility and routing model](./research/channel-network-design.md):
-actual room-owner operation, base paths for startup and selective video convergence,
-with [data retained by its operating owner](./research/channel-storage-and-identity.md).
-Runtime and business/UI integration wait for this foundation review. The visual
+The [accepted routing foundation](./research/channel-network-design.md) assigns
+each room to its actual operator and starts video on usable room paths before
+bounded source-rooted convergence. Current design work covers
+[history synchronization, local copies and file delivery](./research/channel-storage-and-identity.md).
+Runtime and business/UI integration wait for that data-model discussion. The visual
 proposal and functional prototype share editable URL bookmarks; automatic address
 discovery is not planned. Work stays on `feat/channel-prototype`.
 Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.
