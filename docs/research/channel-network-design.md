@@ -38,6 +38,9 @@ discussion; the new runtime is not yet implemented.
 Management identities and activities overlap. A room owner can share, watch or
 forward, and an ordinary user can publish without becoming the room owner.
 A file sender supplies that file; sending never transfers room management to them.
+On P2P room paths, a relay is a participating endpoint doing forwarding work,
+not a separately deployed relay server. Sending, receiving and forwarding can
+coexist on the same user endpoint.
 
 Changing the selected room or closing an in-page panel does not end a hosting
 session. Closing the page that owns that session is a different event. Keep
@@ -150,6 +153,16 @@ its current Host/listening constraints are not automatically the 3.0 contract.
 
 Chat and files use reliable DataChannels; voice stays on WebRTC media tracks.
 Using one tree does not mean putting voice into an ordered file stream.
+The data stack is SCTP over DTLS over ICE/UDP. Configure ordered, fully reliable
+DataChannels for file delivery; SCTP supplies retransmission without adding a
+TCP file connection. Under BUNDLE, data and media can share the selected ICE
+transport for a compatible peer
+pair, as described in [RFC 8831](https://www.rfc-editor.org/rfc/rfc8831.html#section-1).
+An additional logical DataChannel does not require another exposed file port.
+Different peer connections can still use different UDP sockets; this is transport
+reuse within a connection, not a promise of one global socket for the room.
+Web delivery and HTTPS/WSS signaling retain their existing control transport;
+UDP-only refers to the selected peer media/data path, not every service in Piik.
 Receivers do not get their own microphone back. Muting local listening does not
 discard an admitted downstream flow; authorized forwarding need not activate
 the local microphone or loudspeaker.
@@ -159,6 +172,9 @@ content verification. DataChannel itself joins two endpoints, not a whole tree.
 A forwarding node need not save the complete file. Use negotiated message limits,
 bufferedAmount and bufferedamountlow for bounded sending under the
 [WebRTC DataChannel API](https://www.w3.org/TR/webrtc/#rtcdatachannel).
+Participant cooperation distributes transfer load and permits path/source repair
+where alternatives exist. Room confirmation and authority still belong to the
+room owner; replicated file bytes do not introduce automatic room-owner takeover.
 
 ### Screen Demand Uses Reachable Paths
 

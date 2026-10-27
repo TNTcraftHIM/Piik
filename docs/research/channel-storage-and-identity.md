@@ -152,10 +152,12 @@ Use the common authority mechanism and maintained cryptographic primitives;
 do not invent file-specific identity or a second trust system.
 
 Use the confirmed whole-file digest for the initial model. Network chunks are
-transport units, not independently verified pieces. A relay may forward the
-in-flight stream before receiving the whole file; a receiving client keeps its
-copy temporary until its final size and digest match. Only then may it open or
-preview that copy, publish it as a complete source, or mark the download successful.
+transport units, not independently verified pieces. Splitting a large transfer
+into bounded messages does not require fetching different pieces from several
+providers. A relay may forward the stream before receiving the whole file;
+a receiving client keeps its copy temporary until its final size and digest match.
+Only then may it open or preview that copy, publish it as a complete source, or
+mark the download successful.
 No per-piece verification metadata is required for this model.
 
 ### Shared Delivery On Existing Room Paths
