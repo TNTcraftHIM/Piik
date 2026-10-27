@@ -37,9 +37,11 @@ Release artifacts and operator records own delivery completion.
 
 ## Current Work
 
-The maintenance line preserves published protocols, compatibility and route
-ownership. Routing and lifecycle review precedes 3.0 core implementation;
-maintenance publication awaits the owner's instruction.
+The maintenance candidate preserves published protocols, compatibility and route
+ownership. Its routing, media recovery and input-lifecycle audit is complete;
+confirmed defects are repaired and cross-reviewed. Publication awaits the owner's
+instruction. Isolated 3.0 work proceeds from the accepted semantic model rather
+than a mechanical translation of the current implementation.
 [TODO](./todo.md) is the only unfinished-work ledger; Git and PRs own
 completed fixes. [Verification status](./verification-status.md) owns material
 acceptance and platform boundaries.
