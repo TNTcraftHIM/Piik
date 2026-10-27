@@ -1,38 +1,45 @@
+use crate::access::{RoomPermission, RoomState};
+use crate::identity::StoredUser;
 use crate::{
     identity::{Admission, Admitted, Identity},
     routes::Plan,
     wire::*,
 };
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use uuid::Uuid;
 
 const MAX_PUBLICATIONS: usize = 80;
 const MAX_OUTGOING: usize = 160;
+pub const HISTORY_LIMIT: usize = 1000;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct Activity {
     browse: Option<String>,
     watching: BTreeSet<Uuid>,
     voice: BTreeMap<String, VoiceInfo>,
 }
 
+#[derive(Clone)]
 struct Publication {
     info: PublicationInfo,
     plan: Plan,
 }
 type PairKey = (Uuid, Uuid);
 
+#[derive(Clone)]
 pub struct Channel {
     pub identity: Identity,
     id: Uuid,
-    rooms: BTreeMap<String, Room>,
+    rooms: BTreeMap<String, RoomState>,
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
     history: BTreeMap<String, VecDeque<ChatMessage>>,
     nonces: BTreeMap<Uuid, VecDeque<(String, String)>>,
     pairs: BTreeMap<PairKey, Uuid>,
     ice_servers: Vec<Value>,
+    next_seq: u64,
 }
 
 pub struct Outcome {
@@ -43,6 +50,7 @@ pub struct Outcome {
 
 impl Channel {
     pub fn new(owner_key: String, invite_key: String, ice_servers: Vec<Value>) -> Self {
+        let identity = Identity::new(owner_key, invite_key);
         let rooms = [
             ("living", "Living room"),
             ("studio", "Studio"),
@@ -52,15 +60,20 @@ impl Channel {
         .map(|(id, name)| {
             (
                 id.to_owned(),
-                Room {
-                    id: id.to_owned(),
-                    name: name.to_owned(),
-                },
+                RoomState::new(
+                    id.to_owned(),
+                    name.to_owned(),
+                    identity.owner_id,
+                    RoomAccess::Public,
+                    false,
+                    None,
+                )
+                .unwrap(),
             )
         })
         .collect();
         Self {
-            identity: Identity::new(owner_key, invite_key),
+            identity,
             id: Uuid::new_v4(),
             rooms,
             activity: BTreeMap::new(),
@@ -69,16 +82,54 @@ impl Channel {
             nonces: BTreeMap::new(),
             pairs: BTreeMap::new(),
             ice_servers,
+            next_seq: 1,
         }
     }
 
+    #[cfg(test)]
     pub fn join(
         &mut self,
         input: Admission<'_>,
         connection: Uuid,
         now: u64,
     ) -> Result<Admitted, &'static str> {
-        let admitted = self.identity.admit(input, connection, now)?;
+        self.join_room(input, connection, now, None)
+    }
+
+    pub fn join_room(
+        &mut self,
+        input: Admission<'_>,
+        connection: Uuid,
+        now: u64,
+        room_id: Option<&str>,
+    ) -> Result<Admitted, &'static str> {
+        let invited_room = room_id
+            .filter(|id| {
+                self.rooms
+                    .get(*id)
+                    .is_some_and(|room| input.key.is_some_and(|key| room.accepts_invite(key)))
+            })
+            .map(str::to_owned);
+        let key = if invited_room.is_some() {
+            Some(self.identity.invite_key.clone())
+        } else {
+            None
+        };
+        let admitted = self.identity.admit(
+            Admission {
+                key: key.as_deref().or(input.key),
+                ..input
+            },
+            connection,
+            now,
+        )?;
+        if let Some(id) = invited_room {
+            self.rooms
+                .get_mut(&id)
+                .unwrap()
+                .grants
+                .insert(admitted.user_id);
+        }
         self.activity.entry(admitted.session_id).or_default();
         self.reconcile();
         Ok(admitted)
@@ -110,28 +161,31 @@ impl Channel {
                 broadcast = true;
             }
             Command::Browse { room_id } => {
-                self.room(&room_id)?;
+                self.authorize(user_id, &room_id, RoomPermission::Read)?;
                 self.activity.get_mut(&session_id).unwrap().browse = Some(room_id.clone());
-                events.push((
-                    session_id,
-                    Event::History {
-                        messages: self
-                            .history
-                            .get(&room_id)
-                            .map(|items| items.iter().cloned().collect())
-                            .unwrap_or_default(),
-                        room_id,
-                    },
-                ));
+                events.push((session_id, self.history_page(&room_id, None)));
+            }
+            Command::History { room_id, before } => {
+                self.authorize(user_id, &room_id, RoomPermission::Read)?;
+                events.push((session_id, self.history_page(&room_id, before)));
             }
             Command::Chat {
                 room_id,
                 text,
                 nonce,
+                attachments,
             } => {
-                self.participate(user_id)?;
-                self.room(&room_id)?;
-                if text.trim().is_empty() || text.chars().count() > 2000 || !valid_id(&nonce) {
+                self.authorize(user_id, &room_id, RoomPermission::Write)?;
+                if attachments.len() > MAX_MESSAGE_ATTACHMENTS
+                    || attachments.iter().copied().collect::<BTreeSet<_>>().len()
+                        != attachments.len()
+                {
+                    return Err("invalid_attachments");
+                }
+                if (text.trim().is_empty() && attachments.is_empty())
+                    || text.chars().count() > 2000
+                    || !valid_id(&nonce)
+                {
                     return Err("invalid_message");
                 }
                 let nonces = self.nonces.entry(user_id).or_default();
@@ -144,14 +198,17 @@ impl Channel {
                         nonces.pop_front();
                     }
                     let message = ChatMessage {
+                        seq: self.next_seq,
+                        attachments,
                         id: Uuid::new_v4(),
                         user_id,
                         text: text.trim().to_owned(),
                         time: now,
                     };
+                    self.next_seq += 1;
                     let history = self.history.entry(room_id.clone()).or_default();
                     history.push_back(message.clone());
-                    if history.len() > 100 {
+                    if history.len() > HISTORY_LIMIT {
                         history.pop_front();
                     }
                     for (endpoint, state) in &self.activity {
@@ -167,25 +224,84 @@ impl Channel {
                     }
                 }
             }
-            Command::CreateRoom { name } => {
-                if !self.identity.may_manage(user_id) {
-                    return Err("forbidden");
-                }
-                let name = name.trim();
-                if name.is_empty() || name.encode_utf16().count() > 64 {
-                    return Err("invalid_room_name");
-                }
+            Command::CreateRoom {
+                name,
+                access,
+                hidden,
+                password,
+            } => {
+                self.participate(user_id)?;
                 if self.rooms.len() >= 32 {
                     return Err("room_limit");
                 }
                 let id = Uuid::new_v4().to_string();
-                self.rooms.insert(
-                    id.clone(),
-                    Room {
-                        id,
-                        name: name.to_owned(),
+                let room = RoomState::new(id.clone(), name, user_id, access, hidden, password)?;
+                self.rooms.insert(id.clone(), room);
+                events.push((
+                    session_id,
+                    Event::RoomCreated {
+                        room_id: id,
+                        request_id: None,
                     },
-                );
+                ));
+                broadcast = true;
+            }
+            Command::UpdateRoom {
+                room_id,
+                name,
+                access,
+                hidden,
+                password,
+            } => {
+                self.authorize(user_id, &room_id, RoomPermission::Manage)?;
+                self.rooms
+                    .get_mut(&room_id)
+                    .unwrap()
+                    .update(name, access, hidden, password)?;
+                self.prune_access();
+                broadcast = true;
+            }
+            Command::EnterRoom {
+                room_id,
+                password,
+                invite_key,
+            } => {
+                self.rooms
+                    .get_mut(&room_id)
+                    .ok_or("room_access_required")?
+                    .enter(
+                        user_id,
+                        self.identity.owner_id,
+                        password.as_deref(),
+                        invite_key.as_deref(),
+                    )?;
+                broadcast = true;
+            }
+            Command::RoomInvite { room_id } => {
+                self.authorize(user_id, &room_id, RoomPermission::Manage)?;
+                let key = self.rooms.get_mut(&room_id).unwrap().invite()?;
+                events.push((
+                    session_id,
+                    Event::RoomInvite {
+                        room_id,
+                        key,
+                        request_id: None,
+                    },
+                ));
+            }
+            Command::RevokeRoomAccess {
+                room_id,
+                user_id: target,
+            } => {
+                self.authorize(user_id, &room_id, RoomPermission::Manage)?;
+                let room = self.rooms.get_mut(&room_id).unwrap();
+                if room.access != RoomAccess::Private
+                    || room.manages(target, self.identity.owner_id)
+                {
+                    return Err("forbidden");
+                }
+                room.grants.remove(&target);
+                self.prune_access();
                 broadcast = true;
             }
             Command::SetRoles {
@@ -209,8 +325,7 @@ impl Channel {
                 broadcast = true;
             }
             Command::Publish { publication: input } => {
-                self.participate(user_id)?;
-                self.room(&input.room_id)?;
+                self.authorize(user_id, &input.room_id, RoomPermission::Write)?;
                 let muted = if input.kind == Kind::Voice {
                     self.activity[&session_id]
                         .voice
@@ -279,6 +394,7 @@ impl Channel {
                 {
                     return Err("invalid_subscription");
                 }
+                self.authorize(user_id, &publication.info.room_id, RoomPermission::Read)?;
                 let activity = self.activity.get_mut(&session_id).unwrap();
                 broadcast = if enabled {
                     activity.watching.insert(publication_id)
@@ -292,8 +408,7 @@ impl Channel {
                 muted,
                 deafened,
             } => {
-                self.participate(user_id)?;
-                self.room(&room_id)?;
+                self.authorize(user_id, &room_id, RoomPermission::Write)?;
                 if joined
                     && self
                         .activity
@@ -440,11 +555,101 @@ impl Channel {
         }
     }
 
-    fn room(&self, room_id: &str) -> Result<(), &'static str> {
-        if self.rooms.contains_key(room_id) {
-            Ok(())
-        } else {
-            Err("unknown_room")
+    pub fn authorize(
+        &self,
+        user: Uuid,
+        room_id: &str,
+        permission: RoomPermission,
+    ) -> Result<(), &'static str> {
+        if !self.identity.users.contains_key(&user) {
+            return Err("invalid_credential");
+        }
+        let room = self.rooms.get(room_id).ok_or("room_unavailable")?;
+        if !room.reads(user, self.identity.owner_id) {
+            return Err(if room.hidden {
+                "room_unavailable"
+            } else {
+                "room_access_required"
+            });
+        }
+        match permission {
+            RoomPermission::Read => Ok(()),
+            RoomPermission::Write => self.participate(user),
+            RoomPermission::Manage if room.manages(user, self.identity.owner_id) => Ok(()),
+            _ => Err("forbidden"),
+        }
+    }
+
+    fn history_page(&self, room_id: &str, before: Option<u64>) -> Event {
+        let all: Vec<_> = self
+            .history
+            .get(room_id)
+            .into_iter()
+            .flatten()
+            .filter(|message| before.is_none_or(|seq| message.seq < seq))
+            .collect();
+        let has_more = all.len() > 100;
+        let messages: Vec<_> = all
+            .into_iter()
+            .rev()
+            .take(100)
+            .cloned()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect();
+        Event::History {
+            room_id: room_id.to_owned(),
+            messages,
+            has_more,
+            before,
+            oldest_seq: self
+                .history
+                .get(room_id)
+                .and_then(|messages| messages.front())
+                .map(|message| message.seq),
+        }
+    }
+
+    fn prune_access(&mut self) {
+        let allowed: BTreeMap<_, BTreeSet<_>> = self
+            .identity
+            .sessions
+            .values()
+            .map(|session| {
+                (
+                    session.id,
+                    self.rooms
+                        .keys()
+                        .filter(|id| {
+                            self.authorize(session.user_id, id, RoomPermission::Read)
+                                .is_ok()
+                        })
+                        .cloned()
+                        .collect(),
+                )
+            })
+            .collect();
+        self.publications.retain(|_, publication| {
+            allowed
+                .get(&publication.info.session_id)
+                .is_some_and(|rooms| rooms.contains(&publication.info.room_id))
+        });
+        for (session, activity) in &mut self.activity {
+            let rooms = &allowed[session];
+            if activity
+                .browse
+                .as_ref()
+                .is_some_and(|id| !rooms.contains(id))
+            {
+                activity.browse = None;
+            }
+            activity.voice.retain(|id, _| rooms.contains(id));
+            activity.watching.retain(|id| {
+                self.publications
+                    .get(id)
+                    .is_some_and(|p| rooms.contains(&p.info.room_id))
+            });
         }
     }
 
@@ -525,6 +730,54 @@ impl Channel {
         }
     }
 
+    pub fn export_state(&self) -> DurableState {
+        DurableState {
+            version: 1,
+            id: self.id,
+            owner_id: self.identity.owner_id,
+            users: self.identity.export_users(),
+            rooms: self.rooms.clone(),
+            history: self.history.clone(),
+            nonces: self.nonces.clone(),
+            next_seq: self.next_seq,
+        }
+    }
+
+    pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
+        if state.version != 1
+            || state.rooms.len() > 32
+            || state
+                .history
+                .values()
+                .any(|history| history.len() > HISTORY_LIMIT)
+        {
+            return Err("invalid_state");
+        }
+        let mut identity = Identity::new(
+            self.identity.owner_key.clone(),
+            self.identity.invite_key.clone(),
+        );
+        identity.restore_users(state.owner_id, state.users)?;
+        self.identity = identity;
+        self.id = state.id;
+        self.rooms = state.rooms;
+        self.history = state.history;
+        self.nonces = state.nonces;
+        self.next_seq = state.next_seq;
+        self.activity.clear();
+        self.publications.clear();
+        self.pairs.clear();
+        Ok(())
+    }
+
+    pub fn referenced_attachments(&self) -> BTreeSet<Uuid> {
+        self.history
+            .values()
+            .flatten()
+            .flat_map(|m| m.attachments.iter().copied())
+            .collect()
+    }
+
     pub fn peer(&self, endpoint: Uuid, pair_id: Uuid) -> Option<Uuid> {
         self.pairs.iter().find_map(|((first, second), id)| {
             if *id != pair_id {
@@ -566,17 +819,29 @@ impl Channel {
                 incoming,
             });
         }
+        let user = self.identity.sessions.get(&session_id).map(|s| s.user_id);
+        let reads = |room: &str| {
+            user.is_some_and(|u| self.authorize(u, room, RoomPermission::Read).is_ok())
+        };
         Snapshot {
             channel: ChannelInfo {
+                history_limit: HISTORY_LIMIT,
                 id: self.id,
                 name: "Piik friends".into(),
                 owner_id: Some(self.identity.owner_id),
-                rooms: self.rooms.values().cloned().collect(),
+                rooms: user
+                    .map(|u| {
+                        self.rooms
+                            .values()
+                            .filter_map(|room| room.view(u, self.identity.owner_id))
+                            .collect()
+                    })
+                    .unwrap_or_default(),
                 roles: vec![
                     RoleInfo {
                         id: "member",
                         name: "Member",
-                        permissions: vec!["chat", "publish", "subscribe", "voice"],
+                        permissions: vec!["chat", "publish", "subscribe", "voice", "create_room"],
                     },
                     RoleInfo {
                         id: "moderator",
@@ -599,18 +864,38 @@ impl Channel {
             publications: self
                 .publications
                 .values()
+                .filter(|publication| reads(&publication.info.room_id))
                 .map(|publication| publication.info.clone())
                 .collect(),
             voice: self
                 .activity
                 .values()
-                .flat_map(|activity| activity.voice.values().cloned())
+                .flat_map(|activity| {
+                    activity
+                        .voice
+                        .values()
+                        .filter(|voice| reads(&voice.room_id))
+                        .cloned()
+                })
                 .collect(),
             subscriptions: self.desired(session_id).into_iter().collect(),
             pairs,
             ice_servers: self.ice_servers.clone(),
         }
     }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DurableState {
+    version: u32,
+    id: Uuid,
+    owner_id: Uuid,
+    users: Vec<StoredUser>,
+    rooms: BTreeMap<String, RoomState>,
+    history: BTreeMap<String, VecDeque<ChatMessage>>,
+    nonces: BTreeMap<Uuid, VecDeque<(String, String)>>,
+    next_seq: u64,
 }
 
 fn pair_key(first: Uuid, second: Uuid) -> PairKey {

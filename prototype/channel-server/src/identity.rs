@@ -1,4 +1,7 @@
-use serde::Serialize;
+use crate::access::digest;
+use hmac::{Hmac, Mac};
+use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -15,9 +18,10 @@ pub struct User {
     pub owner: bool,
     pub roles: BTreeSet<String>,
     #[serde(skip)]
-    credential: Uuid,
+    credential: [u8; 32],
 }
 
+#[derive(Clone)]
 pub struct Session {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -25,6 +29,7 @@ pub struct Session {
     pub disconnected_at: Option<u64>,
 }
 
+#[derive(Clone)]
 pub struct Identity {
     pub users: BTreeMap<Uuid, User>,
     pub sessions: BTreeMap<Uuid, Session>,
@@ -70,13 +75,7 @@ impl Identity {
         }
         let existing = input
             .credential
-            .and_then(|value| Uuid::parse_str(value).ok())
-            .and_then(|credential| {
-                self.users
-                    .values()
-                    .find(|user| user.credential == credential)
-                    .map(|user| user.id)
-            });
+            .and_then(|value| self.user_for_credential(value));
         let owner = input.key == Some(self.owner_key.as_str());
         let user_id = if owner {
             self.owner_id
@@ -109,15 +108,31 @@ impl Identity {
         if !self.users.contains_key(&user_id) && self.users.len() >= MAX_USERS {
             return Err("user_limit");
         }
+        let credential = if owner {
+            let mut mac = Hmac::<Sha256>::new_from_slice(self.owner_key.as_bytes())
+                .expect("HMAC accepts any key length");
+            mac.update(self.owner_id.as_bytes());
+            mac.finalize()
+                .into_bytes()
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<String>()
+        } else if existing.is_some() {
+            input.credential.unwrap().to_owned()
+        } else {
+            Uuid::new_v4().to_string()
+        };
         let user = self.users.entry(user_id).or_insert_with(|| User {
             id: user_id,
             name: name.to_owned(),
             owner,
             roles: BTreeSet::from(["member".to_owned()]),
-            credential: Uuid::new_v4(),
+            credential: digest(&credential),
         });
         user.name = name.to_owned();
-        let credential = user.credential.to_string();
+        if owner {
+            user.credential = digest(&credential);
+        }
         let session_id = resumed.unwrap_or_else(Uuid::new_v4);
         let session = self.sessions.entry(session_id).or_insert_with(|| Session {
             id: session_id,
@@ -133,6 +148,56 @@ impl Identity {
             credential,
             replaced_connection,
         })
+    }
+
+    pub fn user_for_credential(&self, credential: &str) -> Option<Uuid> {
+        if credential.len() > 128 {
+            return None;
+        }
+        let hash = digest(credential);
+        self.users
+            .values()
+            .find(|user| user.credential == hash)
+            .map(|user| user.id)
+    }
+
+    pub fn export_users(&self) -> Vec<StoredUser> {
+        self.users
+            .values()
+            .map(|u| StoredUser {
+                id: u.id,
+                name: u.name.clone(),
+                roles: u.roles.clone(),
+                credential: u.credential,
+            })
+            .collect()
+    }
+
+    pub fn restore_users(
+        &mut self,
+        owner_id: Uuid,
+        users: Vec<StoredUser>,
+    ) -> Result<(), &'static str> {
+        if users.len() > MAX_USERS {
+            return Err("invalid_state");
+        }
+        self.owner_id = owner_id;
+        self.users = users
+            .into_iter()
+            .map(|u| {
+                (
+                    u.id,
+                    User {
+                        id: u.id,
+                        name: u.name,
+                        owner: u.id == owner_id,
+                        roles: u.roles,
+                        credential: u.credential,
+                    },
+                )
+            })
+            .collect();
+        Ok(())
     }
 
     pub fn session_for_connection(&self, connection: Uuid) -> Option<Uuid> {
@@ -182,17 +247,20 @@ impl Identity {
         Ok(())
     }
 
-    pub fn may_manage(&self, user_id: Uuid) -> bool {
-        self.users
-            .get(&user_id)
-            .is_some_and(|user| user.owner || user.roles.contains("moderator"))
-    }
-
     pub fn may_participate(&self, user_id: Uuid) -> bool {
         self.users.get(&user_id).is_some_and(|user| {
             user.owner || user.roles.contains("member") || user.roles.contains("moderator")
         })
     }
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredUser {
+    pub id: Uuid,
+    pub name: String,
+    pub roles: BTreeSet<String>,
+    pub credential: [u8; 32],
 }
 
 #[cfg(test)]
@@ -319,7 +387,7 @@ mod tests {
             )
             .unwrap();
         assert!(identity.may_participate(owner.user_id));
-        assert!(identity.may_manage(friend.user_id));
+        assert!(identity.may_participate(friend.user_id));
         identity
             .assign_roles(owner.user_id, friend.user_id, BTreeSet::new())
             .unwrap();

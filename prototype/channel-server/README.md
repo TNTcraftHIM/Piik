@@ -1,95 +1,149 @@
 # Channel prototype
 
-A Rust channel coordinator with Piik's shared React interface and real Browser
-WebRTC media. It runs separately from the production 2.x App and Server.
+An isolated Piik 3.0 experiment: a shared Rust authority, the existing React
+interface, and real Browser WebRTC. It does not replace the production 2.x
+App or Server. The [network design](../../docs/research/channel-network-design.md)
+owns the proposed model; this file describes what currently runs.
 
 ## Run
 
-From the repository root, use two terminals:
+Use Rust 1.86 or newer, the repository's Node/npm environment and installed npm
+dependencies. From the repository root, start Rust in one terminal:
 
 ```powershell
+$env:PIIK_CHANNEL_OWNER_KEY = "<private stable owner key>"
+$env:PIIK_CHANNEL_INVITE_KEY = "<different private invitation key>"
 cargo run --manifest-path prototype/channel-server/Cargo.toml
+```
+
+The values above are placeholders. Supply independently generated keys through
+your local environment and keep them stable when reopening persistent data.
+Keep them out of committed files and saved logs. Rust does not print key-bearing URLs or
+store the raw startup keys in SQLite.
+
+In another terminal, start the development interface:
+
+```powershell
 node node_modules/vite/bin/vite.js --config prototype/channel-server/vite.config.ts
 ```
 
-Open the **owner URL printed by Rust**. It contains the private owner key; keep
-that URL for yourself. Use **Invite** in the interface to copy a member link.
-Open that link in another browser or browser profile for a separate user. Tabs
-in the same profile share a saved user identity but have independent live sessions.
-The coordinator and preview bind to loopback on ports 8791 and 8790 respectively.
+Open `http://127.0.0.1:8790/__channel-preview#owner=<owner-key>` with your own key.
+Use **Invite** in the interface to obtain a member link. Separate browser profiles
+represent separate users; tabs in one profile share a saved user credential but
+have independent live sessions. The default loopback ports are 8791 for Rust and
+8790 for the interface. `PIIK_CHANNEL_PORT`, `PIIK_CHANNEL_UI_PORT` and
+`PIIK_CHANNEL_WEB_ORIGIN` allow an isolated instance with matching ports/origin.
 
-## Try it
+## Rooms, conversation and media
 
-1. Open the user list beside the room actions to change your name. Send a
-   message, browse another room and return: each room has its own history and draft.
-2. Have two users share their screens. Select either picture or watch both.
-   The channel owner does not need to be a sharer.
-3. Join voice, or choose listen-only without opening a microphone. Each room
-   keeps its own mute and listening controls. Browsing another room leaves an
-   existing call or share running, with its destination visible in the interface.
-4. Stop your own share while watching someone else. Other publications and any
-   forwarding you provide for them continue independently.
-5. Reconnect one browser. Its live session and media survive a signaling outage
-   of up to 20 seconds. A longer outage releases its captures and peer connections.
+A channel contains rooms. Members can create rooms and manage their own rooms;
+the channel owner can manage all rooms and assign user roles. Moderator status
+does not grant access to another user's private room. Public rooms admit channel
+users. Private rooms require a room invitation or password, and hidden rooms do
+not appear in an unauthorized user's directory. Changing a password or invitation
+controls new admission; existing grants require explicit revocation.
 
-Chat fills the room until a screen is opened. Watched screens then take the main
-area, with chat alongside; narrow windows stack them. Chat can be tucked away
-without leaving the conversation. Voice controls stay at the bottom, and the
-room selector there chooses which joined call to control. User roles are edited
-from the user list rather than shown throughout the room.
+Messages are attributed and ordered by the authority. History keeps the latest
+1,000 messages per room and loads in pages of up to 100. Each message supports
+2,000 Unicode characters and up to eight attachments. The interface keeps read
+pages and drafts in memory; refreshing retrieves history from the host. There is
+no separate offline history database or peer history replication.
 
-Screen capture requires a desktop browser with `getDisplayMedia`. The browser
-chooses the source and permissions. Remote audio offers a Play action when the
-browser requires a user gesture. Local screen previews are muted.
+Browse rooms without moving an existing call, share or subscription. Join voice
+with a microphone or listen-only. Microphone mute controls your outgoing room
+voice; deafen controls local listening. Multiple users can share simultaneously.
+Watch selected pictures in
+a grid or focus one picture, with chat alongside or tucked away. These presentation
+choices do not implement media layering or a new quality policy. Local previews
+stay muted, and pausing a player does not stop forwarding its source.
 
-## Owners and limits
+Each publication has its own bounded distribution tree: the source first serves
+two subscribers, then ready subscribers can relay. Compatible flows reuse physical
+peer connections. Stopping one share keeps unrelated received and forwarded media
+alive. Browser relays can decode and re-encode; Native encoded forwarding and SFU
+fallback are not implemented here. Browser WebRTC owns ICE and congestion control.
+Optional `PIIK_CHANNEL_ICE_SERVERS` supplies an ICE-server JSON array; local checks
+do not establish public-NAT connectivity or reliable background Browser service.
 
-- A channel contains rooms. All participants are users; owner status, multiple
-  roles and concurrent sharing/watching/forwarding are separate.
-- Rust owns admission, role grants, the room directory, chat history, publication
-  authorization and independent route plans. Browser endpoints own capture,
-  WebRTC transports, playback and local resource retirement.
-- The Rust `Authority` library owns those decisions and returns ordered effects
-  for specific connections. The Axum adapter delivers them and owns sockets,
-  queues and clocks. Build the library with `--no-default-features` to exclude
-  the HTTP runtime when integrating another entry point.
-- Member links admit users; server-issued credentials preserve their identity.
-  Resume additionally checks the live session's ownership. The owner can assign
-  roles; an owner or moderator can create a room. This first slice has public
-  rooms within the admitted channel, not private-room overrides.
-- Each publication first connects to two subscribers, then uses ready subscribers
-  as bounded relays. Healthy paths stay in place. Compatible publications share
-  a physical peer connection; ending one removes its tracks rather than closing
-  the other publications' connection. Relay failure reassigns affected branches.
-- Browser relays receive and re-encode media through WebRTC. This proves routing
-  and lifecycle behavior; encoded-packet forwarding belongs to the later Native
-  and SFU integration. Browser WebRTC owns ICE and congestion control.
-- History retains 100 messages per room; messages allow 2,000 Unicode characters.
-  This temporary instance admits at most 20 live endpoints, 64 user identities,
-  32 rooms and 80 publications. These are prototype resource bounds, not a fixed
-  bandwidth allowance shared among rooms. Restarting Rust clears the channel.
+A signaling interruption has one 20-second recovery window. A resumed endpoint
+retains its committed media; expiry releases captures and transports. Offline
+stop, unwatch and leave take effect locally and are reconciled on reconnect.
 
-This slice does not include Native App linkage, SFU fallback, files, persistent
-channels, federation or coordinator handoff. The
-[network and lifecycle design](../../docs/research/channel-network-design.md)
-owns those later stages. Routing plans currently run in Rust at the coordinator;
-media forwarding is distributed among the Browser endpoints.
+## Saved data and files
+
+This Server prototype defaults to
+`build/channel-prototype-data/channel.sqlite`. `PIIK_CHANNEL_DATA_DIR` chooses a
+different directory; `:memory:` selects an explicitly temporary instance.
+Catalog, identities, room policy/grants, retained history and retry deduplication
+are checkpointed together before successful operations are acknowledged. A write
+failure rolls back the live change. User credentials/invitations are stored as
+digests and room passwords as password hashes. Sessions, captures and routes are
+not restored after a process restart.
+
+This is a configured host saving the conversation. It does not change the distinct
+planned lifetimes of temporary App hosting and persistent Server hosting, and it
+does not add Native App persistence or distribution packages.
+
+Files use authenticated HTTP to the authority, independently of media routes.
+The uploader can preview an uploaded draft; other authorized room users can read
+it only after its message commits. Removing a draft uses a conditional discard
+that cannot delete an already-sent attachment. Committed files remain available
+when the uploader leaves. Current room access is checked on metadata/content
+requests and during download; revocation or deletion interrupts remaining transfer.
+Already downloaded bytes cannot be revoked.
+
+The resource owner exposes actual limits through
+`GET /prototype/channel/limits`:
+
+| Budget | Prototype default | Configuration |
+| --- | --- | --- |
+| One file | 16 MiB | `PIIK_CHANNEL_FILE_LIMIT` in bytes |
+| Stored content | 128 MiB | `PIIK_CHANNEL_ATTACHMENT_BUDGET` in bytes |
+| Stored attachments | 256 | Prototype bound |
+| Concurrent byte transfers | 2 | Prototype bound |
+
+The UI reads the limits rather than maintaining another size policy. Recognized
+PNG/JPEG/GIF/WebP content can be previewed; other content is downloaded, with
+attachment disposition and `nosniff`. Unsent uploads older than one hour are
+cleaned on the next save/upload/startup. Content referenced only by messages
+that leave retained history is removed with that checkpoint. Explicit deletion
+also releases storage.
+
+SQLite BLOBs and bounded checkpoint writes keep this prototype self-contained;
+they are not an unlimited file service or an incremental storage engine.
+Authority-hosted uploads/downloads consume the host's bandwidth. P2P file offers,
+replicated history, federation and authority handoff are outside this slice.
+Other current resource bounds are 20 live endpoints, 64 stored users, 32 rooms
+and 80 publications; connection counts are not a bandwidth guarantee.
 
 ## Checks
+
+Build the executable before running the finite integration checks:
 
 ```powershell
 cargo test --manifest-path prototype/channel-server/Cargo.toml
 cargo test --manifest-path prototype/channel-server/Cargo.toml --no-default-features --lib
+cargo build --manifest-path prototype/channel-server/Cargo.toml
 npm run typecheck
-node --test prototype/channel-server/check.mjs
-node prototype/channel-server/browser-acceptance.mjs
-node prototype/channel-server/browser-acceptance.mjs --lifecycle
+node prototype/channel-server/storage-check.mjs
+node prototype/channel-server/run-browser-check.mjs
+node prototype/channel-server/run-browser-check.mjs --rooms
+node prototype/channel-server/run-browser-check.mjs --lifecycle
 ```
 
-The two live checks need the running service and local test keys in their
-environment; their source lists the variable names. The Browser check uses five
-isolated sessions and generated moving-picture/audio tracks, actual peer
-connections and receiver statistics. Generated captures replace only the system
-picker. They do not replace the coordinator, negotiation, routing or playback.
-The preview route and test hook are development-only. No production frontend
-dependencies were added.
+Browser checks require `agent-browser` and its installed Chromium. The runner
+chooses free loopback ports and temporary test keys, starts its own Rust/Vite
+services, runs acceptance, and stops them on exit. It does not leave a preview
+service running or restart another instance. Default acceptance covers multiple
+real Browser peers and relay recovery; `--rooms` exercises room access and files;
+`--lifecycle` focuses on capture, offline intent and expiry. Generated captures
+replace only the system picker, not business state, routing or peer connections.
+The storage check owns an isolated temporary database and tests real HTTP,
+WebSocket, process restart and failed-write rollback.
+
+For a WebSocket-only check against an already running isolated instance, use
+`node --test prototype/channel-server/check.mjs` with its local key/endpoint
+environment variables. `browser-acceptance.mjs` is the corresponding Browser
+driver; prefer `run-browser-check.mjs` for automatic service cleanup. The preview
+route and observation hook are development-only. The shared Rust library builds
+without the `server` feature, excluding Axum and SQLite from that core boundary.

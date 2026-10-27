@@ -3,17 +3,21 @@ import { z } from "zod";
 // This is the experimental channel wire boundary; production room contracts stay separate.
 const id = z.string().min(1).max(128);
 export const userSchema = z.object({ id, name: z.string().max(40), roles: z.array(id).max(16) });
-export const roomSchema = z.object({ id, name: z.string().max(64) });
+export const roomSchema = z.object({
+  id, name: z.string().max(64), creatorId: id, access: z.enum(["public", "private"]),
+  hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
+  members: z.array(id).optional(),
+});
 export const publicationSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   kind: z.enum(["screen", "voice"]), muted: z.boolean(),
 });
 export const messageSchema = z.object({
-  id, userId: id, text: z.string().max(4000), time: z.number(),
+  id, userId: id, text: z.string().max(4000), time: z.number(), seq: z.number().int().positive(), attachments: z.array(id),
 });
 export const snapshotSchema = z.object({
   channel: z.object({
-    id, name: z.string(), ownerId: id.nullable(), rooms: z.array(roomSchema).max(32),
+    id, name: z.string(), ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyLimit: z.number().int().positive(),
     roles: z.array(z.object({ id, name: z.string(), permissions: z.array(z.string()) })),
   }),
   users: z.array(userSchema).max(64),
@@ -32,7 +36,9 @@ export const signalSchema = z.object({
 export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
-  z.object({ type: z.literal("history"), roomId: id, messages: z.array(messageSchema).max(100) }),
+  z.object({ type: z.literal("history"), roomId: id, messages: z.array(messageSchema).max(100), hasMore: z.boolean(), before: z.number().optional(), oldestSeq: z.number().nullable() }),
+  z.object({ type: z.literal("room_created"), roomId: id, requestId: id.optional() }),
+  z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
   z.object({ type: z.literal("message"), roomId: id, message: messageSchema }),
   z.object({ type: z.literal("signal"), pairId: id, fromSessionId: id, payload: signalSchema }),
   z.object({ type: z.literal("ack"), requestId: id }),
@@ -47,12 +53,21 @@ export type ChannelRoom = z.infer<typeof roomSchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_created" | "room_invite" }>;
+export interface RoomSettings {
+  name: string; access: "public" | "private"; hidden: boolean; password?: string | null;
+}
 export type ChannelCommand =
-  | { type: "join"; name: string; credential?: string; key?: string; sessionId?: string }
+  | { type: "join"; name: string; credential?: string; key?: string; roomId?: string; sessionId?: string }
   | { type: "set_name"; name: string }
   | { type: "browse"; roomId: string }
-  | { type: "chat"; roomId: string; text: string; nonce: string }
-  | { type: "create_room"; name: string }
+  | { type: "history"; roomId: string; before?: number }
+  | { type: "chat"; roomId: string; text: string; nonce: string; attachments: string[] }
+  | ({ type: "create_room" } & RoomSettings)
+  | ({ type: "update_room"; roomId: string } & RoomSettings)
+  | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }
+  | { type: "room_invite"; roomId: string }
+  | { type: "revoke_room_access"; roomId: string; userId: string }
   | { type: "set_roles"; userId: string; roles: string[] }
   | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; muted: boolean } }
   | { type: "unpublish"; publicationId: string }

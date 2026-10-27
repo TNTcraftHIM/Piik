@@ -16,6 +16,7 @@ pub enum Command {
         credential: Option<String>,
         key: Option<String>,
         session_id: Option<String>,
+        room_id: Option<String>,
     },
     SetName {
         name: String,
@@ -27,9 +28,38 @@ pub enum Command {
         room_id: String,
         text: String,
         nonce: String,
+        #[serde(default)]
+        attachments: Vec<Uuid>,
     },
     CreateRoom {
         name: String,
+        access: RoomAccess,
+        hidden: bool,
+        password: Option<String>,
+    },
+    UpdateRoom {
+        room_id: String,
+        name: String,
+        access: RoomAccess,
+        hidden: bool,
+        #[serde(default, deserialize_with = "nullable_password")]
+        password: Option<Option<String>>,
+    },
+    EnterRoom {
+        room_id: String,
+        password: Option<String>,
+        invite_key: Option<String>,
+    },
+    RoomInvite {
+        room_id: String,
+    },
+    RevokeRoomAccess {
+        room_id: String,
+        user_id: Uuid,
+    },
+    History {
+        room_id: String,
+        before: Option<u64>,
     },
     SetRoles {
         user_id: Uuid,
@@ -88,6 +118,38 @@ impl Request {
             command,
         })
     }
+}
+
+pub const MAX_MESSAGE_ATTACHMENTS: usize = 8;
+
+fn nullable_password<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Option<Option<String>>, D::Error> {
+    Option::<String>::deserialize(d).map(Some)
+}
+
+impl Request {
+    pub fn changes_durable_state(&self) -> bool {
+        matches!(
+            self.command,
+            Command::Join { .. }
+                | Command::SetName { .. }
+                | Command::Chat { .. }
+                | Command::CreateRoom { .. }
+                | Command::UpdateRoom { .. }
+                | Command::EnterRoom { .. }
+                | Command::RoomInvite { .. }
+                | Command::RevokeRoomAccess { .. }
+                | Command::SetRoles { .. }
+        )
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoomAccess {
+    Public,
+    Private,
 }
 
 pub fn valid_id(value: &str) -> bool {
@@ -185,9 +247,18 @@ pub struct Track {
 }
 
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Room {
     pub id: String,
     pub name: String,
+    pub creator_id: Uuid,
+    pub access: RoomAccess,
+    pub hidden: bool,
+    pub has_password: bool,
+    pub authorized: bool,
+    pub can_manage: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub members: Option<Vec<Uuid>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -237,6 +308,7 @@ pub struct RoleInfo {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelInfo {
+    pub history_limit: usize,
     pub id: Uuid,
     pub name: String,
     pub owner_id: Option<Uuid>,
@@ -257,9 +329,11 @@ pub struct Snapshot {
     pub ice_servers: Vec<Value>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
+    pub seq: u64,
+    pub attachments: Vec<Uuid>,
     pub id: Uuid,
     pub user_id: Uuid,
     pub text: String,
@@ -286,6 +360,22 @@ pub enum Event {
     History {
         room_id: String,
         messages: Vec<ChatMessage>,
+        has_more: bool,
+        oldest_seq: Option<u64>,
+        // Echo the request cursor; omission identifies a fresh latest page.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        before: Option<u64>,
+    },
+    RoomCreated {
+        room_id: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
+    },
+    RoomInvite {
+        room_id: String,
+        key: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        request_id: Option<String>,
     },
     Message {
         room_id: String,

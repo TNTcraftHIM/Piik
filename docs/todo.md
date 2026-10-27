@@ -38,8 +38,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Piik 3.0 channels, rooms and Rust prototype.** The owner authorized a
   usable Browser prototype on 2026-10-27: Rust channel authority, rooms, multiple
   user roles, chat, independent screen publications, selective watching and voice.
-  Polish the shared frontend first and progress the Rust core in parallel;
-  present the five-endpoint Browser slice for owner trial. The
+  Present the polished Browser slice for owner trial, including room access,
+  host-saved paginated conversation, image/file attachments and selective
+  multi-picture viewing. Keep this isolated from the production 2.x line. The
   [network and lifecycle proposal](./research/channel-network-design.md) owns
   the model; the [prototype README](../prototype/channel-server/README.md) owns
   its executable scope and launch instructions.

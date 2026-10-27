@@ -35,7 +35,8 @@ assert(ownerKey && inviteKey, "Set the local server's PIIK_CHANNEL_OWNER_KEY and
 const sessionPrefix = (await run(executable, ["session", "id", "--scope", "worktree", "--prefix", "channel-acceptance"])).stdout.trim();
 const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}`);
 const lifecycleOnly = process.argv.includes("--lifecycle");
-const active = lifecycleOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const roomsOnly = process.argv.includes("--rooms");
+const active = lifecycleOnly || roomsOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   const { stdout } = await run(executable, ["--session", sessions[index], "--json", ...args], {
     timeout: 35_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
@@ -122,7 +123,8 @@ function captureProbe(name) {
 const hook = "window.__channelGate";
 const action = (index, expression) => evaluate(index, `${hook}.session.${expression}`);
 const view = index => evaluate(index, `(() => {
-  const value = ${hook}.snapshot();
+  const value = ${hook}?.snapshot();
+  if (!value) return { connection: 'connecting', state: null };
   return { sessionId: value.sessionId, connection: value.connection, self: value.self,
     state: value.state && { channel: value.state.channel, publications: value.state.publications,
       subscriptions: value.state.subscriptions, pairs: value.state.pairs, voice: value.state.voice },
@@ -226,6 +228,79 @@ async function lifecycle(initial, roomId) {
     recoveryMs: Date.now() - disconnectedAt }, null, 2));
 }
 
+async function roomsAndFiles() {
+  await browser(0, "find", "role", "button", "click", "--name", "Create room", "--exact");
+  await browser(0, "fill", ".c3-room-form input:not([type])", "Movie night");
+  await browser(0, "check", ".c3-room-form input[value=private]");
+  await browser(0, "fill", ".c3-room-form input[type=password]", "movie-night-test");
+  await browser(0, "click", ".c3-room-form button[type=submit]");
+  const created = await until("new private room is selected", () => view(0), value => value.state.channel.rooms.some(room => room.name === "Movie night"));
+  const room = created.state.channel.rooms.find(room => room.name === "Movie night");
+  await browser(1, "click", '.c3-room-link[aria-label="Movie night"]');
+  await until("unadmitted user sees password entry", () => evaluate(1, "!!document.querySelector('.c3-locked-room input')"), Boolean);
+  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer')"), false);
+  await browser(1, "fill", ".c3-locked-room input", "movie-night-test");
+  await browser(1, "click", ".c3-locked-room button[type=submit]");
+  await until("room grant opens the conversation", () => evaluate(1, "!!document.querySelector('.c3-composer textarea')"), Boolean);
+  await browser(1, "fill", ".c3-composer textarea", "Hello from the private room");
+  await browser(1, "click", ".c3-composer button[type=submit]");
+  await until("private chat reaches its reader", () => evaluate(0, "document.querySelector('.c3-message-log').textContent"), text => text.includes("Hello from the private room"));
+
+  const png = join(temporary, "picture.png"), text = join(temporary, "notes.txt");
+  await writeFile(png, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=", "base64"));
+  await writeFile(text, "A file shared through the actual composer.");
+  await browser(1, "upload", '.c3-composer input[type="file"]', png, text);
+  await until("two draft files", () => evaluate(1, "document.querySelectorAll('.c3-draft-files > div').length"), count => count === 2);
+  await browser(1, "click", ".c3-composer button[type=submit]");
+  await until("attachment metadata arrives in chat", () => evaluate(0, "document.querySelector('.c3-message-log').textContent"), text => text.includes("picture.png") && text.includes("notes.txt"));
+  await browser(0, "find", "role", "button", "click", "--name", "View image", "--exact");
+  await until("PNG preview decodes", () => evaluate(0, "[...document.querySelectorAll('.c3-attachment img')].some(image => image.complete && image.naturalWidth > 0)"), Boolean);
+  await browser(0, "screenshot", join(output, "private-room-files-desktop.png"), "--full");
+  console.log("Private entry, composer upload, image preview and file cards use real room authorization");
+
+  await browser(0, "click", '.c3-room-link[aria-label="Living room"]');
+  await evaluate(1, `(async () => {
+    for (let index = 0; index < 120; index++) await ${hook}.session.sendMessage(${JSON.stringify(room.id)}, 'history-' + index);
+    return true;
+  })()`);
+  await browser(0, "click", '.c3-room-link[aria-label="Movie night"]');
+  await until("returning loads the latest contiguous history page", () => evaluate(0,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.length`), count => count === 100);
+  await browser(0, "find", "role", "button", "click", "--name", "Earlier messages", "--exact");
+  await until("older page fills the history gap", () => evaluate(0,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]?.length`), count => count === 122);
+  console.log("Room navigation refreshes the latest page; older-page loading restores the complete retained conversation");
+
+  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "label", "Hide from users without access", "check");
+  await browser(0, "click", ".c3-room-form button[type=submit]");
+  await until("unadmitted user loses hidden directory entry", () => view(2), value => !value.state.channel.rooms.some(value => value.id === room.id));
+  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Create room invitation", "--exact");
+  const invite = await until("room invitation is ready", () => evaluate(0, "document.querySelector('.c3-invite-copy input')?.value"), value => !!value);
+  const invitedSession = (await view(2)).sessionId;
+  await browser(2, "open", invite);
+  await until("open page enters hidden room from room invitation", () => view(2), value => value.connection === "connected" && value.state.channel.rooms.some(value => value.id === room.id && value.authorized));
+  assert.equal((await view(2)).sessionId, invitedSession, "invitation navigation must retain the live endpoint");
+  await evaluate(2, "localStorage.removeItem('piik.channel.prototype.credential')");
+  await browser(2, "reload");
+  await until("fresh user enters hidden room from room invitation", () => view(2), value => value.connection === "connected" && value.state.channel.rooms.some(value => value.id === room.id && value.authorized));
+  await browser(0, "press", "Escape");
+
+  await capturedScreen(1, room.id);
+  const member = (await view(1)).self.id;
+  await action(0, `revokeRoomAccess(${JSON.stringify(room.id)}, ${JSON.stringify(member)})`);
+  await until("revocation retires capture and history", async () => ({ view: await view(1), probe: await sample(1),
+    history: await evaluate(1, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room.id)}]`) }),
+    value => !value.view.state.channel.rooms.some(value => value.id === room.id) && !value.history && value.probe.captures.every(track => track.state === "ended"));
+  console.log("Hidden-room invitation admits a new user; revocation clears private history and capture");
+  await browser(0, "set", "viewport", "390", "844");
+  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  assert.equal((await sample(0)).overflow, false);
+  await browser(0, "screenshot", join(output, "private-room-settings-mobile.png"), "--full");
+  await browser(0, "press", "Escape");
+}
+
 // The scenario below is bound to the prototype's real session API, never a
 // parallel test implementation of room state, routing or signaling.
 await mkdir(output, { recursive: true });
@@ -246,7 +321,10 @@ try {
   }
   const roomId = initial[0].state.channel.rooms[0].id;
   assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
-  if (lifecycleOnly) {
+  if (roomsOnly) {
+    await roomsAndFiles();
+    console.log(`Room and file Browser acceptance passed; evidence: ${output}`);
+  } else if (lifecycleOnly) {
     await lifecycle(initial, roomId);
     console.log(`Focused lifecycle acceptance passed; evidence: ${output}`);
   } else {
@@ -260,6 +338,14 @@ try {
   await Promise.all([playing(3, secondPublication), playing(4, secondPublication), playing(4, primaryPublication)]);
   assert(!(await view(3)).streams.includes(primaryPublication), "selective watcher D must not receive C's screen");
   await browser(4, "screenshot", join(output, "desktop-two-sources.png"), "--full");
+  await evaluate(4, "(() => { window.__focusPlayers = [...document.querySelectorAll('video')]; return true; })()");
+  const subscriptionsBeforeFocus = (await view(4)).state.subscriptions;
+  await browser(4, "click", `[data-publication-id="${primaryPublication}"] button[aria-label^="Focus"]`);
+  assert.equal(await evaluate(4, "document.querySelectorAll('.c3-monitor-grid.is-focused').length"), 1);
+  assert.equal(await evaluate(4, "window.__focusPlayers.every(video => video.isConnected)"), true);
+  assert.deepEqual((await view(4)).state.subscriptions, subscriptionsBeforeFocus);
+  await browser(4, "find", "role", "button", "click", "--name", "Grid view", "--exact");
+  await progressing(4, primaryPublication);
   console.log("Two simultaneous sources; D receives only B; E decodes both");
 
   for (const index of [0, 1, 4]) await action(index,
@@ -344,6 +430,6 @@ try {
   throw error;
 } finally {
   await Promise.allSettled(active.map(index => browser(index, "close")));
-  await Promise.allSettled(active.map(index => unlink(join(temporary, `${index}.js`))));
+  await Promise.allSettled([...active.map(index => `${index}.js`), "picture.png", "notes.txt"].map(name => unlink(join(temporary, name))));
   await rmdir(temporary);
 }

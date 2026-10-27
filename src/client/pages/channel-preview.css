@@ -43,21 +43,14 @@
 .c3-join-voice > .lr-comic-tip-wrap:last-of-type > button { width: 28px; }
 .c3-voice-joined { display: inline-flex; align-items: center; gap: 7px; padding: 8px 4px; color: var(--live); font-size: 13px; font-weight: 650; white-space: nowrap; }
 .c3-join-options { padding: 8px; }
-.c3-create-panel { width: 300px; padding: 18px; }
-.c3-create-panel form { display: grid; gap: 14px; }
-.c3-create-panel label { font-size: 14px; font-weight: 650; }
-.c3-create-panel .lr-btn { justify-self: end; }
 .c3-input { min-width: 0; width: 100%; color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 10px; padding: 10px 11px; font: inherit; font-size: 13px; }
 .c3-input:focus { outline: 2px solid var(--action); outline-offset: 2px; }
 .c3-copy-fallback { display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
-.c3-available-screens { flex: none; display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 24px; border-bottom: 1px solid var(--line); max-height: 180px; overflow: auto; }
-.c3-available-screen { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; min-width: 0; max-width: 100%; }
-.c3-available-screen > svg { flex: none; width: 25px; height: 32px; }
-.c3-available-screen > span { flex: 1; min-width: 0; }
-.c3-available-screen strong { display: block; font-size: 12px; overflow-wrap: anywhere; }
-.c3-available-screen small { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); }
 .c3-workspace { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); }
+.c3-workspace:not(.has-screens):has(> .c3-monitor) { grid-template-rows: auto minmax(0, 1fr); }
+.c3-workspace:not(.has-screens) > .c3-monitor { max-height: 180px; border-bottom: 1px solid var(--line); }
 .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) 300px; }
+.c3-workspace.has-screens > .c3-monitor { background: var(--wall); border-inline-end: 1px solid var(--line); }
 .c3-workspace.has-screens.chat-collapsed { grid-template-columns: minmax(0, 1fr); }
 .c3-conversation { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; }
 .c3-conversation[hidden] { display: none; }
@@ -86,17 +79,25 @@
 .c3-message.is-continuation { margin-top: -14px; padding-inline-start: 40px; }
 .c3-composer { display: flex; align-items: flex-end; gap: 10px; border: 1px solid var(--line); background: var(--wall); border-radius: 16px; padding: 10px; flex: none; }
 .c3-composer:focus-within { border-color: var(--action); }
+.c3-history-more { display: flex; justify-content: center; margin-bottom: 14px; }
+.c3-draft-files { display: grid; gap: 6px; max-height: 150px; overflow-y: auto; }
+.c3-draft-files > div { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px; background: var(--wall); border-radius: 10px; font-size: 12px; }
+.c3-draft-files > div > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.c3-draft-files > div > svg { flex: none; }
+.c3-draft-files small { color: var(--muted); white-space: nowrap; }
+.c3-draft-files .lr-btn { width: var(--control-compact-size); padding-inline: 0; }
+.c3-file-error { font-size: 12px; line-height: 1.6; color: var(--danger); }
+.c3-file-retry { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+.c3-attachment { display: grid; gap: 8px; max-width: 440px; border: 1px solid var(--line); border-radius: 12px; background: var(--wall); padding: 10px; margin-top: 8px; }
+.c3-attachment-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.c3-attachment-file > svg { flex: none; color: var(--muted); }
+.c3-attachment-file > div { flex: 1; min-width: 0; }
+.c3-attachment-file strong { display: block; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
+.c3-attachment small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.c3-attachment > .lr-btn { justify-self: start; }
+.c3-attachment img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; object-fit: contain; }
 .c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; padding: 7px 4px; min-height: 36px; max-height: 140px; resize: none; field-sizing: content; }
 .c3-composer textarea:focus { outline: 0; }
-.c3-stage { min-width: 0; min-height: 0; overflow-y: auto; background: var(--wall); padding: 18px; border-inline-end: 1px solid var(--line); scrollbar-width: thin; }
-.c3-screen-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; align-content: start; }
-.c3-screen { min-width: 0; align-self: start; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; }
-.c3-screen > footer { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
-.c3-screen > footer > svg { width: 24px; height: 30px; flex: none; }
-.c3-screen > footer > div { flex: 1; min-width: 0; }
-.c3-screen > footer strong { display: block; font-size: 12px; overflow-wrap: anywhere; }
-.c3-screen > footer small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
-.c3-screen-placeholder { aspect-ratio: 16 / 9; background: var(--stage); border-radius: 14px 14px 0 0; color: var(--muted); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-size: 12px; }
 .c3-voice-dock { flex: none; display: flex; align-items: center; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--line); }
 .c3-voice-dock > svg { color: var(--live); flex: none; }
 .c3-voice-destination { min-width: 0; flex: 1; }
@@ -138,10 +139,10 @@
   .c3-room-actions { gap: 6px; }
   .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content minmax(188px, 1fr); overflow-y: auto; }
   .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
-  .c3-stage { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .c3-workspace.has-screens .c3-conversation { min-height: 188px; padding: 12px 18px; gap: 10px; }
   .c3-workspace.has-screens .c3-welcome > svg { display: none; }
-  .c3-workspace.chat-collapsed .c3-stage { overflow-y: auto; }
+  .c3-workspace.chat-collapsed .c3-monitor { overflow-y: auto; }
 }
 @media (max-width: 700px) {
   .c3-app { min-height: 100dvh; height: 100dvh; }
@@ -169,10 +170,7 @@
   .c3-conversation { padding: 14px; gap: 12px; }
   .c3-welcome h3 { font-size: 19px; }
   .c3-welcome > svg { width: 48px; height: 48px; margin-bottom: 12px; }
-  .c3-stage { padding: 10px; }
-  .c3-screen-grid { gap: 10px; }
-  .c3-available-screens { padding: 10px 12px; max-height: 100px; }
-  .c3-available-screen { flex: 1; }
+  .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 140px; overflow-y: auto; }
   .c3-voice-dock { padding: 10px 14px; gap: 8px; }
   .c3-voice-controls { gap: 2px; }
   .c3-voice-participants { display: none; }

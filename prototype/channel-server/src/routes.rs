@@ -6,6 +6,7 @@ const ATTEMPTS: usize = 4;
 
 /// One source owns one acyclic tree. Shared physical transport ownership lives
 /// above these plans: a source retiring must not close another source's pair.
+#[derive(Clone)]
 pub struct Plan {
     pub source: Uuid,
     pub parents: BTreeMap<Uuid, Uuid>,

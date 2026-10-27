@@ -6,9 +6,14 @@ declare global {
   interface Window { __channelGate?: { session: ChannelSession; snapshot: () => ReturnType<ChannelSession["getSnapshot"]> } }
 }
 
-export function useChannel(): ChannelController {
+export function useChannel(onInvitation?: (roomId: string) => void): ChannelController {
   const [session] = useState(() => new ChannelSession());
   const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  useEffect(() => {
+    const accept = () => { void session.acceptRoomInvitation().then(room => { if (room) onInvitation?.(room); }).catch(() => {}); };
+    window.addEventListener("hashchange", accept);
+    return () => window.removeEventListener("hashchange", accept);
+  }, [session, onInvitation]);
   useEffect(() => {
     session.start();
     const close = () => session.close();
@@ -22,7 +27,10 @@ export function useChannel(): ChannelController {
   }, [session]);
   return { ...view,
     browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf,
-    createRoom: session.createRoom, setRoles: session.setRoles, startScreen: session.startScreen,
+    createRoom: session.createRoom, updateRoom: session.updateRoom, enterRoom: session.enterRoom,
+    createRoomInvite: session.createRoomInvite, revokeRoomAccess: session.revokeRoomAccess,
+    attachments: session.attachments, loadHistory: session.loadHistory,
+    setRoles: session.setRoles, startScreen: session.startScreen,
     stopScreen: session.stopScreen, watch: session.watch, unwatch: session.unwatch,
     joinVoice: session.joinVoice, leaveVoice: session.leaveVoice, setMuted: session.setMuted,
     setDeafened: session.setDeafened, clearError: session.clearError, reconnect: session.reconnect,

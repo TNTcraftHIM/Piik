@@ -1,3 +1,6 @@
+mod attachments;
+mod storage;
+
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -5,15 +8,16 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use piik_channel_prototype::{
-    wire::{Event, Request},
+    wire::{Command, Event, Request},
     Authority, Effects,
 };
 use std::{
     collections::BTreeMap,
+    path::PathBuf,
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -27,9 +31,78 @@ struct Client {
 struct Hub {
     authority: Authority,
     clients: BTreeMap<Uuid, Client>,
+    storage: Arc<Mutex<storage::Storage>>,
 }
 
 impl Hub {
+    fn request(&mut self, connection: Uuid, request: Request) {
+        let durable = request.changes_durable_state();
+        let request_id = request.request_id.clone();
+        if let Command::Chat {
+            room_id,
+            attachments,
+            ..
+        } = &request.command
+        {
+            if !attachments.is_empty() {
+                let valid = self
+                    .authority
+                    .authorize_connection(
+                        connection,
+                        room_id,
+                        piik_channel_prototype::RoomPermission::Write,
+                    )
+                    .map_err(|_| ())
+                    .and_then(|user| {
+                        self.storage
+                            .lock()
+                            .unwrap()
+                            .validate(room_id, user, attachments)
+                            .map_err(|_| ())
+                    });
+                if valid.is_err() {
+                    self.send(
+                        connection,
+                        Event::Error {
+                            code: "attachment_unavailable".into(),
+                            request_id,
+                        },
+                    );
+                    return;
+                }
+            }
+        }
+        let before = durable.then(|| self.authority.clone());
+        let effects = self.authority.handle(connection, request, now());
+        let failed = effects
+            .events
+            .iter()
+            .any(|(target, event)| *target == connection && matches!(event, Event::Error { .. }));
+        if durable && !failed {
+            let checkpoint =
+                serde_json::to_value(self.authority.export_state()).expect("typed durable state");
+            let references = self.authority.referenced_attachments();
+            if self
+                .storage
+                .lock()
+                .unwrap()
+                .save(&checkpoint, &references, now())
+                .is_err()
+            {
+                self.authority = before.expect("durable request checkpoint");
+                self.send(
+                    connection,
+                    Event::Error {
+                        code: "storage_failed".into(),
+                        request_id,
+                    },
+                );
+                return;
+            }
+        }
+        self.apply(effects);
+    }
+
     fn send(&self, connection: Uuid, event: Event) {
         if let Some(client) = self.clients.get(&connection) {
             if client.events.try_send(event).is_err() {
@@ -60,6 +133,8 @@ struct AppState {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
     origin: String,
+    storage: Arc<Mutex<storage::Storage>>,
+    transfers: Arc<Semaphore>,
 }
 
 async fn upgrade(
@@ -120,8 +195,7 @@ async fn session(mut socket: WebSocket, state: AppState) {
     {
         let mut hub = state.hub.lock().unwrap();
         hub.clients.insert(connection, Client { events, close });
-        let effects = hub.authority.handle(connection, request, now());
-        hub.apply(effects);
+        hub.request(connection, request);
     }
     let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
     let mut last_seen = tokio::time::Instant::now();
@@ -151,8 +225,7 @@ async fn session(mut socket: WebSocket, state: AppState) {
                             }
                         };
                         let mut hub = state.hub.lock().unwrap();
-                        let effects = hub.authority.handle(connection, request, now());
-                        hub.apply(effects);
+                        hub.request(connection, request);
                     }
                     Some(Ok(Message::Ping(bytes))) => { if !send_frame(&mut socket, Message::Pong(bytes)).await { break; } }
                     Some(Ok(Message::Pong(_))) => {},
@@ -189,24 +262,62 @@ async fn main() {
         .expect("PIIK_CHANNEL_PORT must be a port");
     let origin =
         std::env::var("PIIK_CHANNEL_WEB_ORIGIN").unwrap_or_else(|_| "http://127.0.0.1:8790".into());
-    let owner =
-        std::env::var("PIIK_CHANNEL_OWNER_KEY").unwrap_or_else(|_| Uuid::new_v4().to_string());
-    let invite =
-        std::env::var("PIIK_CHANNEL_INVITE_KEY").unwrap_or_else(|_| Uuid::new_v4().to_string());
+    let owner = std::env::var("PIIK_CHANNEL_OWNER_KEY")
+        .expect("Set PIIK_CHANNEL_OWNER_KEY to a private stable startup key");
+    let invite = std::env::var("PIIK_CHANNEL_INVITE_KEY")
+        .expect("Set PIIK_CHANNEL_INVITE_KEY to a separate stable invitation key");
     let ice_servers = std::env::var("PIIK_CHANNEL_ICE_SERVERS")
         .map(|value| {
             serde_json::from_str::<Vec<serde_json::Value>>(&value)
                 .expect("PIIK_CHANNEL_ICE_SERVERS must be a JSON array")
         })
         .unwrap_or_default();
+    let directory = std::env::var("PIIK_CHANNEL_DATA_DIR")
+        .unwrap_or_else(|_| "build/channel-prototype-data".into());
+    let database = if directory == ":memory:" {
+        PathBuf::from(":memory:")
+    } else {
+        let directory = PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).expect("channel data directory");
+        directory.join("channel.sqlite")
+    };
+    let mut limits = storage::Limits::default();
+    if let Ok(value) = std::env::var("PIIK_CHANNEL_FILE_LIMIT") {
+        limits.max_file_bytes = value
+            .parse()
+            .expect("PIIK_CHANNEL_FILE_LIMIT must be bytes");
+    }
+    if let Ok(value) = std::env::var("PIIK_CHANNEL_ATTACHMENT_BUDGET") {
+        limits.total_bytes = value
+            .parse()
+            .expect("PIIK_CHANNEL_ATTACHMENT_BUDGET must be bytes");
+    }
+    let mut storage = storage::Storage::open(&database, limits).expect("open channel storage");
+    let mut authority =
+        Authority::new(owner, invite, ice_servers).expect("valid channel admission keys");
+    if let Some(checkpoint) = storage.load().expect("read channel checkpoint") {
+        authority
+            .import_state(serde_json::from_value(checkpoint).expect("valid channel checkpoint"))
+            .expect("restore channel authority");
+    }
+    storage
+        .save(
+            &serde_json::to_value(authority.export_state()).expect("typed durable state"),
+            &authority.referenced_attachments(),
+            now(),
+        )
+        .expect("initialize channel checkpoint");
+    let storage = Arc::new(Mutex::new(storage));
     let state = AppState {
         hub: Arc::new(Mutex::new(Hub {
-            authority: Authority::new(owner.clone(), invite.clone(), ice_servers)
-                .expect("valid channel admission keys"),
+            authority,
             clients: BTreeMap::new(),
+            storage: storage.clone(),
         })),
         sockets: Arc::new(Semaphore::new(40)),
         origin: origin.clone(),
+        storage,
+        transfers: Arc::new(Semaphore::new(2)),
     };
     let timer_state = state.clone();
     tokio::spawn(async move {
@@ -219,13 +330,27 @@ async fn main() {
     let app = Router::new()
         .route("/healthz", get(|| async { "piik-channel-prototype" }))
         .route("/prototype/channel", get(upgrade))
+        .route("/prototype/channel/limits", get(attachments::limits))
+        .route(
+            "/prototype/channel/rooms/{room}/attachments",
+            post(attachments::upload),
+        )
+        .route(
+            "/prototype/channel/attachments/{id}",
+            get(attachments::metadata).delete(attachments::delete),
+        )
+        .route(
+            "/prototype/channel/attachments/{id}/content",
+            get(attachments::download),
+        )
         .with_state(state);
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
         .await
         .expect("prototype listener");
     println!("Piik Rust channel prototype: http://127.0.0.1:{port}");
-    println!("Owner: {origin}/__channel-preview#owner={owner}");
-    println!("Invite: {origin}/__channel-preview#invite={invite}");
+    println!(
+        "Web interface: {origin}/__channel-preview (use your configured owner or invitation key)"
+    );
     axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;

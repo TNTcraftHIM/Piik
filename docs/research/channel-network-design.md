@@ -106,6 +106,32 @@ Revoking an invitation stops new admission; removing a user ends that user's
 access. Server membership survives restart until revoked; temporary channel
 membership ends with its channel. These credentials remain scoped to their service.
 
+The current room-access experiment uses two policies. Public rooms admit every
+channel user; private rooms admit their creator, the channel owner and explicitly
+granted users. Ordinary members may create and manage their own rooms. Moderator
+membership alone does not grant private-room reading or management. Hidden is a
+private-room directory setting: unauthorized users receive neither its directory
+entry nor its history, publications, voice or routes. Public rooms normalize
+hidden to false. A peer without room access cannot relay that room's media.
+
+A private-room invitation can admit a new channel user and grant that room in
+one operation. A room password grants an existing channel user entry. Successful
+entry records a user grant; rotating or removing the password/invitation affects
+new admission, while existing grants require explicit revocation. Revoking a
+grant alone is not a ban on redeeming a still-valid admission secret. Public to
+private preserves explicit grants and creator/owner access, without converting
+past public visitors into private members. Revocation retires only that room's
+activities; unrelated flows sharing a physical pair continue.
+
+The checkpoint contains channel identity, user credential digests, room policy,
+salted password hashes, invitation digests, grants and bounded message history.
+It excludes live sessions, captures, publications and routes. Startup admission
+keys remain external configuration. Password hashing uses the maintained
+[RustCrypto Argon2 implementation](https://docs.rs/argon2/0.5.3/argon2/).
+Room privacy borrows the separation between visibility and access from
+[mature permission models](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx),
+without importing a permission-override matrix.
+
 Recommend allowing a user's distinct devices/tabs without silently taking over
 an existing call. Media starts only through an explicit action on that endpoint.
 The roster groups activity under the user; controls identify which endpoint

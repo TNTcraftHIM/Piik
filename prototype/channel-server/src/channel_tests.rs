@@ -1,5 +1,142 @@
 use super::*;
 
+#[test]
+fn history_reports_retained_floor_even_when_requesting_an_older_page() {
+    let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
+    let user = join(&mut channel, false);
+    assert_eq!(
+        channel.snapshot(user.session_id).channel.history_limit,
+        HISTORY_LIMIT
+    );
+    assert_eq!(
+        serde_json::to_value(channel.history_page("living", None)).unwrap()["oldestSeq"],
+        serde_json::Value::Null
+    );
+    for seq in 0..HISTORY_LIMIT + 5 {
+        channel
+            .handle(
+                user.session_id,
+                Command::Chat {
+                    room_id: "living".into(),
+                    text: "message".into(),
+                    nonce: seq.to_string(),
+                    attachments: vec![],
+                },
+                0,
+            )
+            .unwrap();
+    }
+    match channel.history_page("living", Some(6)) {
+        Event::History {
+            messages,
+            oldest_seq,
+            has_more,
+            before,
+            ..
+        } => {
+            assert!(messages.is_empty());
+            assert!(!has_more);
+            assert_eq!(oldest_seq, Some(6));
+            assert_eq!(before, Some(6));
+        }
+        _ => unreachable!(),
+    }
+    let fresh = serde_json::to_value(channel.history_page("living", None)).unwrap();
+    assert!(fresh.get("before").is_none());
+    let first = fresh["messages"][0]["seq"].as_u64().unwrap();
+    let older = serde_json::to_value(channel.history_page("living", Some(first))).unwrap();
+    assert_eq!(older["before"].as_u64(), Some(first));
+    assert!(older["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|message| message["seq"].as_u64().unwrap() < first));
+    assert_eq!(channel.history["living"].len(), HISTORY_LIMIT);
+}
+
+#[test]
+fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
+    let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
+    let source = join(&mut channel, false);
+    let peers: Vec<_> = (0..3).map(|_| join(&mut channel, false)).collect();
+    let id = "private".to_owned();
+    let mut room = RoomState::new(
+        id.clone(),
+        "Private".into(),
+        source.user_id,
+        RoomAccess::Private,
+        true,
+        None,
+    )
+    .unwrap();
+    room.grants.extend(peers.iter().map(|p| p.user_id));
+    channel.rooms.insert(id.clone(), room);
+    let private = Uuid::new_v4();
+    channel
+        .handle(
+            source.session_id,
+            Command::Publish {
+                publication: PublicationInput {
+                    id: private,
+                    room_id: id.clone(),
+                    kind: Kind::Screen,
+                    muted: false,
+                },
+            },
+            0,
+        )
+        .unwrap();
+    let public = publish(&mut channel, source.session_id, Kind::Screen);
+    for peer in peers.iter().take(2) {
+        watch(&mut channel, peer.session_id, private);
+    }
+    let relay = peers[0].session_id;
+    let pair = channel.snapshot(relay).pairs[0].id;
+    channel
+        .handle(
+            relay,
+            Command::FlowState {
+                publication_id: private,
+                pair_id: pair,
+                ready: true,
+            },
+            0,
+        )
+        .unwrap();
+    watch(&mut channel, peers[2].session_id, private);
+    assert_eq!(
+        channel.publications[&private].plan.parents[&peers[2].session_id],
+        relay
+    );
+    watch(&mut channel, relay, public);
+    let public_pair = channel
+        .snapshot(relay)
+        .pairs
+        .iter()
+        .find(|p| p.incoming.contains(&public))
+        .unwrap()
+        .id;
+    channel
+        .handle(
+            source.session_id,
+            Command::RevokeRoomAccess {
+                room_id: id,
+                user_id: peers[0].user_id,
+            },
+            0,
+        )
+        .unwrap();
+    let plan = &channel.publications[&private].plan;
+    assert!(!plan.parents.contains_key(&relay));
+    assert!(!plan.parents.values().any(|parent| *parent == relay));
+    assert!(plan.parents.contains_key(&peers[2].session_id));
+    assert!(channel
+        .snapshot(relay)
+        .pairs
+        .iter()
+        .any(|p| p.id == public_pair && p.incoming.contains(&public)));
+}
+
 fn join(channel: &mut Channel, owner: bool) -> Admitted {
     channel
         .join(
@@ -245,7 +382,10 @@ fn deafen_preserves_voice_routes_and_role_revocation_preserves_identity() {
         .handle(
             friend.session_id,
             Command::CreateRoom {
-                name: "Forbidden".into()
+                name: "Forbidden".into(),
+                access: RoomAccess::Public,
+                hidden: false,
+                password: None
             },
             0
         )
@@ -279,6 +419,7 @@ fn scoped_history_nonce_dedup_and_signal_tracks_use_the_actual_authority() {
         .handle(
             first.session_id,
             Command::Chat {
+                attachments: vec![],
                 room_id: "living".into(),
                 text: "Hello".into(),
                 nonce: "once".into(),
@@ -293,6 +434,7 @@ fn scoped_history_nonce_dedup_and_signal_tracks_use_the_actual_authority() {
         .handle(
             first.session_id,
             Command::Chat {
+                attachments: vec![],
                 room_id: "living".into(),
                 text: "Hello".into(),
                 nonce: "once".into(),
@@ -383,6 +525,7 @@ fn text_limits_match_browser_utf16_snapshots_and_unicode_chat() {
         .handle(
             owner.session_id,
             Command::Chat {
+                attachments: vec![],
                 room_id: "living".into(),
                 text: "😀".repeat(2000),
                 nonce: "limit".into()
@@ -394,6 +537,7 @@ fn text_limits_match_browser_utf16_snapshots_and_unicode_chat() {
         .handle(
             owner.session_id,
             Command::Chat {
+                attachments: vec![],
                 room_id: "living".into(),
                 text: "😀".repeat(2001),
                 nonce: "excess".into()

@@ -55,15 +55,20 @@ test("authenticated users, role authority, attributed chat and selective source 
   const other = await connect(t, { key: inviteKey, name: "Other check" });
   for (const client of [owner, friend, other]) assert.equal(client.welcome.type, "welcome");
   const state = owner.welcome.state;
+  assert(Number.isSafeInteger(state.channel.historyLimit) && state.channel.historyLimit > 0);
   const ownerSession = state.sessions.find(session => session.id === owner.welcome.sessionId);
   assert.equal(ownerSession.userId, state.channel.ownerId);
   assert.notEqual(friend.welcome.sessionId, other.welcome.sessionId);
   const friendUser = friend.welcome.state.sessions.find(session => session.id === friend.welcome.sessionId).userId;
 
-  assert.equal((await friend.request({ type: "create_room", name: "Not authorized" })).type, "error");
+  assert.equal((await friend.request({ type: "create_room", name: "Member room", access: "public", hidden: true })).type, "ack");
+  const created = await friend.wait(event => event.type === "room_created", "member-created room");
+  const catalog = await friend.wait(event => event.type === "state" && event.state.channel.rooms.some(room => room.id === created.roomId), "new room catalog");
+  assert.equal(catalog.state.channel.rooms.find(room => room.id === created.roomId).hidden, false);
+  assert.equal(catalog.state.channel.rooms.find(room => room.id === created.roomId).creatorId, friendUser);
   assert.equal((await friend.request({ type: "set_roles", userId: friendUser, roles: ["moderator"] })).type, "error");
   assert.equal((await owner.request({ type: "set_roles", userId: friendUser, roles: ["member", "moderator"] })).type, "ack");
-  assert.equal((await friend.request({ type: "create_room", name: `Check ${randomUUID().slice(0, 8)}` })).type, "ack");
+  assert.equal((await friend.request({ type: "create_room", name: `Check ${randomUUID().slice(0, 8)}`, access: "public", hidden: false })).type, "ack");
   assert.equal((await owner.request({ type: "set_roles", userId: friendUser, roles: ["member"] })).type, "ack");
 
   const roomId = state.channel.rooms[0].id;
@@ -109,6 +114,16 @@ test("authenticated users, role authority, attributed chat and selective source 
   assert.equal((await returning.request({ type: "browse", roomId })).type, "ack");
   const history = await returning.wait(event => event.type === "history" && event.roomId === roomId, "authorized history");
   assert.equal(history.messages.filter(message => message.text === text).length, 1);
+  assert.equal(typeof history.hasMore, "boolean");
+  assert.equal(history.before, undefined, "fresh browse omits the older-page cursor");
+  const olderCursor = history.messages[0].seq;
+  assert.equal((await returning.request({ type: "history", roomId, before: olderCursor })).type, "ack");
+  const olderPage = await returning.wait(event => event.type === "history" && event.roomId === roomId && event.before === olderCursor, "echoed older cursor");
+  assert(olderPage.messages.every(message => message.seq < olderCursor));
+  assert(Number.isSafeInteger(history.oldestSeq));
+  assert(history.messages.every(message => message.seq >= history.oldestSeq));
+  assert(history.messages.length <= returning.welcome.state.channel.historyLimit);
+  assert(history.messages.every(message => Number.isSafeInteger(message.seq) && Array.isArray(message.attachments)));
 
   const stolen = await connect(t, { credential: other.welcome.credential, sessionId: friend.welcome.sessionId });
   if (stolen.welcome.type === "welcome") {
@@ -117,4 +132,37 @@ test("authenticated users, role authority, attributed chat and selective source 
 
   const anonymous = await connect(t, { key: "invalid-test-invitation" });
   assert.equal(anonymous.welcome.type, "error");
+});
+
+
+test("private invitations admit new users, conceal content and revoke room grants", { timeout: 30_000 }, async t => {
+  const creator = await connect(t, { key: inviteKey });
+  const outsider = await connect(t, { key: inviteKey });
+  assert.equal((await creator.request({ type: "create_room", name: "Private check", access: "private", hidden: true, password: "test-room-password" })).type, "ack");
+  const { roomId } = await creator.wait(event => event.type === "room_created", "private room created");
+  const concealed = await outsider.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "hidden room excluded");
+  assert(!concealed.state.publications.some(p => p.roomId === roomId));
+  assert.equal((await outsider.request({ type: "browse", roomId })).type, "error");
+  assert.equal((await outsider.request({ type: "enter_room", roomId, password: "wrong" })).type, "error");
+  assert.equal((await creator.request({ type: "room_invite", roomId })).type, "ack");
+  const invitation = await creator.wait(event => event.type === "room_invite" && event.roomId === roomId, "room invitation");
+  assert.equal(typeof invitation.requestId, "string");
+  const guest = await connect(t, { key: invitation.key, roomId });
+  assert.equal(guest.welcome.type, "welcome");
+  assert(guest.welcome.state.channel.rooms.some(room => room.id === roomId && room.authorized));
+  const guestUser = guest.welcome.state.sessions.find(session => session.id === guest.welcome.sessionId).userId;
+  assert.equal((await creator.request({ type: "chat", roomId, text: "private-content", nonce: randomUUID() })).type, "ack");
+  const privatePublication = randomUUID();
+  assert.equal((await creator.request({ type: "publish", publication: { id: privatePublication, roomId, kind: "screen", muted: false } })).type, "ack");
+  assert.equal((await outsider.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "error");
+  assert.equal((await guest.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "ack");
+  assert.equal((await guest.request({ type: "browse", roomId })).type, "ack");
+  const history = await guest.wait(event => event.type === "history" && event.roomId === roomId, "private history");
+  assert(history.messages.some(message => message.text === "private-content"));
+  assert.equal((await creator.request({ type: "revoke_room_access", roomId, userId: guestUser })).type, "ack");
+  const revoked = await guest.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "private grant revoked");
+  assert(!revoked.state.publications.some(p => p.id === privatePublication));
+  assert(revoked.state.pairs.every(pair => !pair.incoming.includes(privatePublication) && !pair.outgoing.includes(privatePublication)));
+  assert.equal((await guest.request({ type: "history", roomId })).type, "error");
+  assert.equal((await creator.request({ type: "unpublish", publicationId: privatePublication })).type, "ack");
 });
