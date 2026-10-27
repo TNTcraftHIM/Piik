@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-26
+Last reviewed: 2026-10-27
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -38,7 +38,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **Piik 3.0 channels, rooms and Rust prototype.** The owner authorized a
   usable Browser prototype on 2026-10-27: Rust channel authority, rooms, multiple
   user roles, chat, independent screen publications, selective watching and voice.
-  Present the accepted five-endpoint Browser slice for owner trial. The
+  Polish the shared frontend first and progress the Rust core in parallel;
+  present the five-endpoint Browser slice for owner trial. The
   [network and lifecycle proposal](./research/channel-network-design.md) owns
   the model; the [prototype README](../prototype/channel-server/README.md) owns
   its executable scope and launch instructions.

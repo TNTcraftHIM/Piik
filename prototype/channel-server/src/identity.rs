@@ -44,6 +44,7 @@ pub struct Admitted {
     pub user_id: Uuid,
     pub session_id: Uuid,
     pub credential: String,
+    pub replaced_connection: Option<Uuid>,
 }
 
 impl Identity {
@@ -124,19 +125,21 @@ impl Identity {
             connection: None,
             disconnected_at: None,
         });
-        session.connection = Some(connection);
+        let replaced_connection = session.connection.replace(connection);
         session.disconnected_at = None;
         Ok(Admitted {
             user_id,
             session_id,
             credential,
+            replaced_connection,
         })
     }
 
-    pub fn current(&self, session_id: Uuid, connection: Uuid) -> bool {
+    pub fn session_for_connection(&self, connection: Uuid) -> Option<Uuid> {
         self.sessions
-            .get(&session_id)
-            .is_some_and(|session| session.connection == Some(connection))
+            .values()
+            .find(|session| session.connection == Some(connection))
+            .map(|session| session.id)
     }
 
     pub fn disconnect(&mut self, session_id: Uuid, connection: Uuid, now: u64) {
@@ -275,7 +278,10 @@ mod tests {
             .unwrap();
         assert_eq!(first.session_id, next.session_id);
         identity.disconnect(first.session_id, first_connection, 3_000);
-        assert!(identity.current(first.session_id, second_connection));
+        assert_eq!(
+            identity.session_for_connection(second_connection),
+            Some(first.session_id)
+        );
         identity.disconnect(first.session_id, second_connection, 4_000);
         identity.disconnect(first.session_id, second_connection, 15_000);
         assert_eq!(identity.expired(24_000), vec![first.session_id]);

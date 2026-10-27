@@ -1,0 +1,233 @@
+use piik_channel_prototype::{
+    wire::{Event, Request, Snapshot},
+    Authority, Effects,
+};
+use serde_json::{json, Value};
+use uuid::Uuid;
+
+fn apply(core: &mut Authority, connection: Uuid, command: Value, now: u64) -> Effects {
+    core.handle(
+        connection,
+        Request::parse(&command.to_string()).unwrap(),
+        now,
+    )
+}
+
+fn welcome(effects: Effects, connection: Uuid) -> (Uuid, String, Snapshot) {
+    effects
+        .events
+        .into_iter()
+        .find_map(|(target, event)| match event {
+            Event::Welcome {
+                session_id,
+                credential,
+                state,
+                ..
+            } if target == connection => Some((session_id, credential, state)),
+            _ => None,
+        })
+        .expect("successful admission")
+}
+
+fn join(core: &mut Authority, connection: Uuid, owner: bool, now: u64) -> (Uuid, String, Snapshot) {
+    welcome(
+        apply(
+            core,
+            connection,
+            json!({"type":"join", "key":if owner {"owner"} else {"invite"}, "name":"Friend"}),
+            now,
+        ),
+        connection,
+    )
+}
+
+fn state(effects: &Effects, connection: Uuid) -> &Snapshot {
+    effects
+        .events
+        .iter()
+        .find_map(|(target, event)| match event {
+            Event::State { state } if *target == connection => Some(state),
+            _ => None,
+        })
+        .expect("personalized state")
+}
+
+#[test]
+fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() {
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    let old = Uuid::new_v4();
+    let current = Uuid::new_v4();
+    let watcher = Uuid::new_v4();
+    join(&mut core, owner, true, 0);
+    let (session, credential, _) = join(&mut core, old, false, 0);
+    join(&mut core, watcher, false, 0);
+    let own_source = Uuid::new_v4();
+    let other_source = Uuid::new_v4();
+    for (connection, source) in [(owner, own_source), (old, other_source)] {
+        apply(
+            &mut core,
+            connection,
+            json!({"type":"publish", "publication":{"id":source, "roomId":"living", "kind":"screen", "muted":false}}),
+            0,
+        );
+    }
+    let watching = apply(
+        &mut core,
+        watcher,
+        json!({"type":"subscribe", "publicationId":own_source, "enabled":true}),
+        0,
+    );
+    let healthy_pair = state(&watching, watcher).pairs[0].id;
+    let resumed = apply(
+        &mut core,
+        current,
+        json!({"type":"join", "name":"Friend", "credential":credential, "sessionId":session}),
+        50,
+    );
+    assert_eq!(resumed.close, vec![old]);
+    assert!(resumed.events.iter().all(|(target, _)| *target != old));
+    assert_eq!(welcome(resumed, current).0, session);
+
+    let stale = apply(
+        &mut core,
+        old,
+        json!({"type":"unpublish", "publicationId":other_source}),
+        60,
+    );
+    assert_eq!(stale.close, vec![old]);
+    assert!(core.disconnect(old, 70).events.is_empty());
+    let updated = apply(
+        &mut core,
+        owner,
+        json!({"type":"set_name", "name":"Owner"}),
+        80,
+    );
+    assert!(state(&updated, current)
+        .publications
+        .iter()
+        .any(|source| source.id == other_source));
+
+    core.disconnect(current, 100);
+    assert!(core.disconnect(current, 15_000).events.is_empty());
+    assert!(core.expire(20_099).events.is_empty());
+    let expired = core.expire(20_100);
+    let remaining = state(&expired, watcher);
+    assert!(!remaining
+        .publications
+        .iter()
+        .any(|source| source.id == other_source));
+    assert!(remaining
+        .publications
+        .iter()
+        .any(|source| source.id == own_source));
+    assert_eq!(remaining.pairs[0].id, healthy_pair);
+    assert!(!remaining
+        .sessions
+        .iter()
+        .any(|endpoint| endpoint.id == session));
+}
+
+#[test]
+fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
+    assert!(matches!(
+        Authority::new("same".into(), "same".into(), vec![]),
+        Err("invalid_admission_keys")
+    ));
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    let guest = Uuid::new_v4();
+    join(&mut core, owner, true, 0);
+    let (guest_session, _, joined) = join(&mut core, guest, false, 0);
+    let guest_user = joined
+        .sessions
+        .iter()
+        .find(|endpoint| endpoint.id == guest_session)
+        .unwrap()
+        .user_id;
+    let revoked = apply(
+        &mut core,
+        owner,
+        json!({"type":"set_roles", "userId":guest_user, "roles":[], "requestId":"roles"}),
+        1,
+    );
+    assert!(
+        matches!(revoked.events.last(), Some((target, Event::Ack { request_id })) if *target == owner && request_id == "roles")
+    );
+    assert!(state(&revoked, guest)
+        .users
+        .iter()
+        .find(|user| user.id == guest_user)
+        .unwrap()
+        .roles
+        .is_empty());
+    assert!(state(&revoked, guest)
+        .sessions
+        .iter()
+        .any(|endpoint| endpoint.id == guest_session && endpoint.online));
+    let forbidden = apply(
+        &mut core,
+        guest,
+        json!({"type":"create_room", "name":"Denied", "requestId":"create"}),
+        2,
+    );
+    assert!(forbidden.close.is_empty());
+    assert!(
+        matches!(forbidden.events.as_slice(), [(target, Event::Error { code, request_id:Some(request_id) })] if *target == guest && code == "forbidden" && request_id == "create")
+    );
+
+    let left = apply(
+        &mut core,
+        guest,
+        json!({"type":"leave", "requestId":"leave"}),
+        3,
+    );
+    assert_eq!(left.close, vec![guest]);
+    assert!(
+        matches!(left.events.last(), Some((target, Event::Ack { request_id })) if *target == guest && request_id == "leave")
+    );
+    assert!(!state(&left, owner)
+        .sessions
+        .iter()
+        .any(|endpoint| endpoint.id == guest_session));
+    assert!(core.disconnect(guest, 4).events.is_empty());
+}
+
+#[test]
+fn admission_expires_old_endpoint_without_requiring_a_transport_timer() {
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let owner = Uuid::new_v4();
+    join(&mut core, owner, true, 0);
+    let old = Uuid::new_v4();
+    let (old_session, credential, _) = join(&mut core, old, false, 0);
+    for _ in 0..18 {
+        join(&mut core, Uuid::new_v4(), false, 0);
+    }
+    core.disconnect(old, 100);
+    let waiting = Uuid::new_v4();
+    let full = apply(
+        &mut core,
+        waiting,
+        json!({"type":"join", "key":"invite", "name":"Waiting"}),
+        20_099,
+    );
+    assert_eq!(full.close, vec![waiting]);
+    assert!(full
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "channel_full")));
+    let current = Uuid::new_v4();
+    let renewed = apply(
+        &mut core,
+        current,
+        json!({"type":"join", "credential":credential, "sessionId":old_session, "name":"Friend"}),
+        20_100,
+    );
+    let (new_session, _, state) = welcome(renewed, current);
+    assert_ne!(old_session, new_session);
+    assert_eq!(state.sessions.len(), 20);
+    assert!(!state
+        .sessions
+        .iter()
+        .any(|session| session.id == old_session));
+}

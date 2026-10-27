@@ -19,7 +19,7 @@ export function ChannelNameEditor({ name, disabled, onSave }: {
     <input className="c3-input" autoFocus maxLength={40} aria-label={zh ? "你的名字" : "Your name"}
       value={draft} onChange={event => setDraft(event.target.value)} disabled={disabled}
       onKeyDown={event => { if (event.key === "Escape" && !event.nativeEvent.isComposing) setEditing(false); }} />
-    <ChannelAction icon="check" type="submit" label={zh ? "保存名字" : "Save name"}
+    <ChannelAction icon="check" type="submit" label={zh ? "保存名字" : "Save name"} iconOnly hint="hint-rename"
       disabled={disabled || !draft.trim()} />
     <Btn icon="x" size="compact" title="common.cancel" onClick={() => setEditing(false)} />
   </form> : <Btn icon="pencil" title="common.edit" hint="hint-rename" size="compact" quiet

@@ -1,0 +1,59 @@
+import { PawnSvg } from "../../components/living/Pawn";
+import { participantColor } from "../../components/living/participant-color";
+import { Tooltip } from "../../components/living/Tooltip";
+import { Glyph } from "../../ui/icons";
+import { useCopy } from "../../ui/copy";
+import type { ChannelController } from "../types";
+import { voiceAppearance } from "../presentation";
+import { ChannelAction } from "./ChannelMedia";
+
+/** One persistent control surface for this endpoint's independently joined rooms. */
+export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
+  channel: ChannelController; selected: string; onSelect: (id: string) => void; onBrowse: (id: string) => void;
+}) {
+  const { lang } = useCopy();
+  const zh = lang === "zh";
+  const state = channel.state;
+  const joined = state?.voice.filter(value => value.sessionId === channel.sessionId) ?? [];
+  const activity = joined.find(value => value.roomId === selected) ?? joined[0];
+  if (!activity || !state) return null;
+  const nameOfRoom = (id: string) => state.channel.rooms.find(room => room.id === id)?.name ?? id;
+  const { roomId, muted, deafened } = activity;
+  const participants = state.users.flatMap(user => {
+    const appearance = voiceAppearance(state, user.id, roomId);
+    return appearance ? [{ user, ...appearance }] : [];
+  });
+  const busy = channel.pending.has(`voice:${roomId}`);
+  const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
+  return <section className="c3-voice-dock" aria-label={zh ? "语音控制" : "Voice controls"}>
+    <Glyph name="headphones" size={22} />
+    <div className="c3-voice-destination">
+      <small>{zh ? "语音已加入" : "Voice joined"}</small>
+      {joined.length === 1 ? <button type="button" onClick={() => onBrowse(roomId)}>{nameOfRoom(roomId)}</button>
+        : <select aria-label={zh ? "选择要控制的语音房间" : "Choose a voice room to control"} value={roomId}
+          onChange={event => onSelect(event.target.value)}>
+          {joined.map(value => <option key={value.roomId} value={value.roomId}>{nameOfRoom(value.roomId)}</option>)}
+        </select>}
+    </div>
+    <div className="c3-voice-participants" aria-label={zh ? "当前语音用户" : "Voice participants"}>
+      {participants.slice(0, 4).map(({ user, ...voice }) => <Tooltip key={user.id}
+        kind={voice.deafened ? "hint-voice-deafen" : voice.microphone ? "hint-voice-microphone-on" : "hint-voice-microphone-off"} text={user.name}>
+        <span aria-label={user.name}><PawnSvg color={participantColor(user.id)} identity={user.id} voice={voice} /></span>
+      </Tooltip>)}
+      {participants.length > 4 && <small>+{participants.length - 4}</small>}
+    </div>
+    <div className="c3-voice-controls">
+      <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={muted ? (zh ? "打开麦克风" : "Unmute") : (zh ? "关闭麦克风" : "Mute")}
+        pressed={muted} disabled={channel.connection !== "connected"} busy={busy} iconOnly quiet
+        hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"}
+        onClick={() => run(channel.setMuted(roomId, !muted))} />
+      <ChannelAction icon={deafened ? "headphonesOff" : "headphones"} label={deafened ? (zh ? "恢复收听" : "Resume listening") : (zh ? "暂停收听" : "Deafen")}
+        pressed={deafened} disabled={channel.connection !== "connected"} busy={busy} iconOnly quiet
+        hint={deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
+        onClick={() => run(channel.setDeafened(roomId, !deafened))} />
+      <span className="c3-control-divider" />
+      <ChannelAction icon="door" label={zh ? "离开语音" : "Leave voice"} hint="hint-voice-leave" iconOnly quiet
+        busy={busy} onClick={() => run(channel.leaveVoice(roomId))} />
+    </div>
+  </section>;
+}

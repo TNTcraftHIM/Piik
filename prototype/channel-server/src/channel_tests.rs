@@ -350,7 +350,7 @@ fn session_retirement_does_not_close_another_sources_surviving_pair() {
     watch(&mut channel, c.session_id, source);
     watch(&mut channel, c.session_id, other_source);
     let other_pair = channel.snapshot(b.session_id).pairs[0].id;
-    channel.remove_session(a.session_id);
+    channel.handle(a.session_id, Command::Leave, 0).unwrap();
     assert!(!channel.publications.contains_key(&source));
     assert!(channel.publications.contains_key(&other_source));
     assert_eq!(channel.snapshot(b.session_id).pairs[0].id, other_pair);

@@ -390,7 +390,7 @@ impl Channel {
                 };
             }
             Command::Leave => {
-                self.remove_session(session_id);
+                self.retire_session(session_id);
                 broadcast = true;
                 leave = true;
             }
@@ -405,11 +405,22 @@ impl Channel {
         })
     }
 
-    pub fn remove_session(&mut self, session_id: Uuid) {
+    fn retire_session(&mut self, session_id: Uuid) {
         self.retire_media(session_id);
         self.activity.remove(&session_id);
         self.identity.sessions.remove(&session_id);
+    }
+
+    pub fn expire_sessions(&mut self, now: u64) -> bool {
+        let expired = self.identity.expired(now);
+        if expired.is_empty() {
+            return false;
+        }
+        for session_id in expired {
+            self.retire_session(session_id);
+        }
         self.reconcile();
+        true
     }
 
     fn retire_media(&mut self, session_id: Uuid) {

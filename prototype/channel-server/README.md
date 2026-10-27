@@ -20,8 +20,8 @@ The coordinator and preview bind to loopback on ports 8791 and 8790 respectively
 
 ## Try it
 
-1. Change your name and send a message. Browse another room and return: each
-   room has its own history and draft.
+1. Open the user list beside the room actions to change your name. Send a
+   message, browse another room and return: each room has its own history and draft.
 2. Have two users share their screens. Select either picture or watch both.
    The channel owner does not need to be a sharer.
 3. Join voice, or choose listen-only without opening a microphone. Each room
@@ -31,6 +31,12 @@ The coordinator and preview bind to loopback on ports 8791 and 8790 respectively
    forwarding you provide for them continue independently.
 5. Reconnect one browser. Its live session and media survive a signaling outage
    of up to 20 seconds. A longer outage releases its captures and peer connections.
+
+Chat fills the room until a screen is opened. Watched screens then take the main
+area, with chat alongside; narrow windows stack them. Chat can be tucked away
+without leaving the conversation. Voice controls stay at the bottom, and the
+room selector there chooses which joined call to control. User roles are edited
+from the user list rather than shown throughout the room.
 
 Screen capture requires a desktop browser with `getDisplayMedia`. The browser
 chooses the source and permissions. Remote audio offers a Play action when the
@@ -43,6 +49,10 @@ browser requires a user gesture. Local screen previews are muted.
 - Rust owns admission, role grants, the room directory, chat history, publication
   authorization and independent route plans. Browser endpoints own capture,
   WebRTC transports, playback and local resource retirement.
+- The Rust `Authority` library owns those decisions and returns ordered effects
+  for specific connections. The Axum adapter delivers them and owns sockets,
+  queues and clocks. Build the library with `--no-default-features` to exclude
+  the HTTP runtime when integrating another entry point.
 - Member links admit users; server-issued credentials preserve their identity.
   Resume additionally checks the live session's ownership. The owner can assign
   roles; an owner or moderator can create a room. This first slice has public
@@ -69,6 +79,7 @@ media forwarding is distributed among the Browser endpoints.
 
 ```powershell
 cargo test --manifest-path prototype/channel-server/Cargo.toml
+cargo test --manifest-path prototype/channel-server/Cargo.toml --no-default-features --lib
 npm run typecheck
 node --test prototype/channel-server/check.mjs
 node prototype/channel-server/browser-acceptance.mjs

@@ -1,0 +1,65 @@
+.c3-video.c3-mini-player {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 14px 14px 0 0;
+  background: var(--stage, var(--wall-2));
+  isolation: isolate;
+  container-type: inline-size;
+}
+.c3-mini-player > video { display: block; width: 100%; height: 100%; object-fit: contain; outline-offset: -4px; }
+.c3-mini-controls {
+  position: absolute;
+  inset: auto 10px 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
+  max-width: calc(100% - 20px);
+  margin-inline: auto;
+  padding: 5px;
+  border: 1px solid var(--control-edge);
+  border-radius: 999px;
+  color: var(--ink);
+  background: var(--paper-translucent);
+  box-shadow: var(--control-shadow);
+  backdrop-filter: blur(14px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.c3-mini-controls .lr-btn { flex: 0 0 auto; }
+.c3-mini-space { flex: 1 1 0; min-width: 4px; }
+.c3-mini-volume {
+  width: clamp(40px, 18cqi, 88px);
+  min-width: 0;
+  height: 28px;
+  accent-color: var(--action);
+  cursor: pointer;
+}
+.c3-mini-volume:disabled { opacity: .35; cursor: default; }
+.c3-mini-player[data-controls-hidden="true"] .c3-mini-controls:not(:focus-within):not(:hover) {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+}
+.c3-mini-message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.c3-mini-message .lr-btn { pointer-events: auto; }
+.c3-mini-message .c3-frame-wait {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 12px;
+}
+.c3-mini-player:fullscreen { width: 100%; height: 100%; aspect-ratio: auto; border-radius: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .c3-mini-controls { transition: none; }
+}

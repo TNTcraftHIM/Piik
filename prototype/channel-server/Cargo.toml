@@ -5,9 +5,18 @@ edition = "2021"
 rust-version = "1.86"
 publish = false
 
+[features]
+default = ["server"]
+server = ["dep:axum", "dep:tokio"]
+
+[[bin]]
+name = "piik-channel-prototype"
+path = "src/main.rs"
+required-features = ["server"]
+
 [dependencies]
-axum = { version = "0.8", features = ["ws"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"] }
+axum = { version = "0.8", features = ["ws"], optional = true }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"], optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }

@@ -1,8 +1,3 @@
-mod channel;
-mod identity;
-mod routes;
-mod wire;
-
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -13,8 +8,10 @@ use axum::{
     routing::get,
     Router,
 };
-use channel::Channel;
-use identity::Admission;
+use piik_channel_prototype::{
+    wire::{Event, Request},
+    Authority, Effects,
+};
 use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
@@ -22,63 +19,39 @@ use std::{
 };
 use tokio::sync::{mpsc, watch, Semaphore};
 use uuid::Uuid;
-use wire::{Command, Event, Request};
 
 struct Client {
-    connection: Uuid,
     events: mpsc::Sender<Event>,
     close: watch::Sender<bool>,
 }
 struct Hub {
-    channel: Channel,
+    authority: Authority,
     clients: BTreeMap<Uuid, Client>,
 }
 
 impl Hub {
-    fn send(&self, endpoint: Uuid, event: Event) {
-        if let Some(client) = self.clients.get(&endpoint) {
+    fn send(&self, connection: Uuid, event: Event) {
+        if let Some(client) = self.clients.get(&connection) {
             if client.events.try_send(event).is_err() {
                 let _ = client.close.send(true);
             }
         }
     }
 
-    fn broadcast(&self, except: Option<Uuid>) {
-        for endpoint in self
-            .clients
-            .keys()
-            .filter(|endpoint| Some(**endpoint) != except)
-        {
-            self.send(
-                *endpoint,
-                Event::State {
-                    state: self.channel.snapshot(*endpoint),
-                },
-            );
+    fn apply(&mut self, effects: Effects) {
+        for (connection, event) in effects.events {
+            self.send(connection, event);
         }
-    }
-
-    fn disconnect(&mut self, endpoint: Uuid, connection: Uuid) {
-        if !self.channel.identity.current(endpoint, connection) {
-            return;
+        for connection in effects.close {
+            if let Some(client) = self.clients.remove(&connection) {
+                let _ = client.close.send(true);
+            }
         }
-        self.clients.remove(&endpoint);
-        self.channel
-            .identity
-            .disconnect(endpoint, connection, now());
-        self.broadcast(None);
     }
 
     fn expire(&mut self) {
-        let expired = self.channel.identity.expired(now());
-        if expired.is_empty() {
-            return;
-        }
-        for endpoint in expired {
-            self.clients.remove(&endpoint);
-            self.channel.remove_session(endpoint);
-        }
-        self.broadcast(None);
+        let effects = self.authority.expire(now());
+        self.apply(effects);
     }
 }
 
@@ -111,12 +84,12 @@ async fn upgrade(
 
 async fn send(socket: &mut WebSocket, event: &Event) -> bool {
     let text = serde_json::to_string(event).expect("typed channel event");
+    send_frame(socket, Message::Text(text.into())).await
+}
+
+async fn send_frame(socket: &mut WebSocket, frame: Message) -> bool {
     matches!(
-        tokio::time::timeout(
-            Duration::from_secs(5),
-            socket.send(Message::Text(text.into()))
-        )
-        .await,
+        tokio::time::timeout(Duration::from_secs(5), socket.send(frame)).await,
         Ok(Ok(()))
     )
 }
@@ -141,88 +114,27 @@ async fn session(mut socket: WebSocket, state: AppState) {
             return;
         }
     };
-    let Command::Join {
-        name,
-        credential,
-        key,
-        session_id,
-    } = request.command
-    else {
-        send(
-            &mut socket,
-            &Event::Error {
-                code: "join_required".into(),
-                request_id: request.request_id,
-            },
-        )
-        .await;
-        return;
-    };
     let connection = Uuid::new_v4();
-    let join_request_id = request.request_id.clone();
     let (events, mut queue) = mpsc::channel(64);
     let (close, mut closing) = watch::channel(false);
-    let admitted = {
+    {
         let mut hub = state.hub.lock().unwrap();
-        hub.expire();
-        hub.channel
-            .join(
-                Admission {
-                    name: &name,
-                    credential: credential.as_deref(),
-                    key: key.as_deref(),
-                    resume: session_id.as_deref(),
-                },
-                connection,
-                now(),
-            )
-            .map(|admitted| {
-                if let Some(old) = hub.clients.insert(
-                    admitted.session_id,
-                    Client {
-                        connection,
-                        events,
-                        close,
-                    },
-                ) {
-                    let _ = old.close.send(true);
-                }
-                let owner = hub.channel.identity.users[&admitted.user_id].owner;
-                hub.send(
-                    admitted.session_id,
-                    Event::Welcome {
-                        credential: admitted.credential,
-                        session_id: admitted.session_id,
-                        state: hub.channel.snapshot(admitted.session_id),
-                        invite_key: owner.then(|| hub.channel.identity.invite_key.clone()),
-                    },
-                );
-                if let Some(request_id) = request.request_id {
-                    hub.send(admitted.session_id, Event::Ack { request_id });
-                }
-                hub.broadcast(Some(admitted.session_id));
-                admitted.session_id
-            })
-    };
-    let endpoint = match admitted {
-        Ok(endpoint) => endpoint,
-        Err(code) => {
-            send(
-                &mut socket,
-                &Event::Error {
-                    code: code.into(),
-                    request_id: join_request_id,
-                },
-            )
-            .await;
-            return;
-        }
-    };
+        hub.clients.insert(connection, Client { events, close });
+        let effects = hub.authority.handle(connection, request, now());
+        hub.apply(effects);
+    }
     let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
     let mut last_seen = tokio::time::Instant::now();
     loop {
         tokio::select! {
-            _ = closing.changed() => break,
+            _ = closing.changed() => {
+                // Leave/error responses may be queued before close. Give the
+                // whole flush one write budget, not one budget per queued event.
+                let _ = tokio::time::timeout(Duration::from_secs(5), async {
+                    while let Ok(event) = queue.try_recv() { if !send(&mut socket, &event).await { break; } }
+                }).await;
+                break;
+            },
             event = queue.recv() => {
                 let Some(event) = event else { break; };
                 if !send(&mut socket, &event).await { break; }
@@ -238,51 +150,28 @@ async fn session(mut socket: WebSocket, state: AppState) {
                                 continue;
                             }
                         };
-                        let leave = {
-                            let mut hub = state.hub.lock().unwrap();
-                            if !hub.channel.identity.current(endpoint, connection) { break; }
-                            match hub.channel.handle(endpoint, request.command, now()) {
-                                Ok(outcome) => {
-                                    for (recipient, event) in outcome.events { hub.send(recipient, event); }
-                                    if outcome.broadcast { hub.broadcast(None); }
-                                    if let Some(request_id) = request.request_id { hub.send(endpoint, Event::Ack { request_id }); }
-                                    outcome.leave
-                                }
-                                Err(code) => { hub.send(endpoint, Event::Error { code: code.into(), request_id: request.request_id }); false }
-                            }
-                        };
-                        if leave {
-                            // Finish the explicit leave acknowledgement before retiring the socket.
-                            while let Ok(event) = queue.try_recv() { if !send(&mut socket, &event).await { break; } }
-                            break;
-                        }
+                        let mut hub = state.hub.lock().unwrap();
+                        let effects = hub.authority.handle(connection, request, now());
+                        hub.apply(effects);
                     }
-                    Some(Ok(Message::Ping(bytes))) => { if socket.send(Message::Pong(bytes)).await.is_err() { break; } }
+                    Some(Ok(Message::Ping(bytes))) => { if !send_frame(&mut socket, Message::Pong(bytes)).await { break; } }
                     Some(Ok(Message::Pong(_))) => {},
                     _ => break,
                 }
             }
             _ = heartbeat.tick() => {
                 if last_seen.elapsed() >= Duration::from_secs(20) { break; }
-                if socket.send(Message::Ping(Vec::new().into())).await.is_err() { break; }
+                if !send_frame(&mut socket, Message::Ping(Vec::new().into())).await { break; }
             }
         }
     }
     {
         let mut hub = state.hub.lock().unwrap();
-        if !hub.channel.identity.sessions.contains_key(&endpoint) {
-            if hub
-                .clients
-                .get(&endpoint)
-                .is_some_and(|client| client.connection == connection)
-            {
-                hub.clients.remove(&endpoint);
-            }
-        } else {
-            hub.disconnect(endpoint, connection);
-        }
+        hub.clients.remove(&connection);
+        let effects = hub.authority.disconnect(connection, now());
+        hub.apply(effects);
     }
-    let _ = socket.send(Message::Close(None)).await;
+    send_frame(&mut socket, Message::Close(None)).await;
 }
 
 fn now() -> u64 {
@@ -304,10 +193,6 @@ async fn main() {
         std::env::var("PIIK_CHANNEL_OWNER_KEY").unwrap_or_else(|_| Uuid::new_v4().to_string());
     let invite =
         std::env::var("PIIK_CHANNEL_INVITE_KEY").unwrap_or_else(|_| Uuid::new_v4().to_string());
-    assert!(
-        wire::valid_id(&owner) && wire::valid_id(&invite) && owner != invite,
-        "Owner and invite keys must be different nonempty values up to 128 bytes"
-    );
     let ice_servers = std::env::var("PIIK_CHANNEL_ICE_SERVERS")
         .map(|value| {
             serde_json::from_str::<Vec<serde_json::Value>>(&value)
@@ -316,7 +201,8 @@ async fn main() {
         .unwrap_or_default();
     let state = AppState {
         hub: Arc::new(Mutex::new(Hub {
-            channel: Channel::new(owner.clone(), invite.clone(), ice_servers),
+            authority: Authority::new(owner.clone(), invite.clone(), ice_servers)
+                .expect("valid channel admission keys"),
             clients: BTreeMap::new(),
         })),
         sockets: Arc::new(Semaphore::new(40)),
