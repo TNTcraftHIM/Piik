@@ -58,8 +58,10 @@
 .cd-self .cd-avatar { width: 29px; }
 .cd-avatar { display: inline-flex; width: 34px; height: 40px; align-items: center; justify-content: center; flex-shrink: 0; }
 .cd-avatar .lr-person { width: 34px; height: 40px; }
-.cd-room { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.cd-room-heading { display: flex; align-items: center; gap: 12px; min-height: 72px; padding: 13px 24px; border-bottom: 1px solid var(--line); }
+.cd-room { container: design-room / inline-size; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.cd-room-heading { display: grid; grid-template-areas: "title company actions"; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 16px; padding: 10px 24px; border-bottom: 1px solid var(--line); }
+.cd-room-title { grid-area: title; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.cd-room-actions { grid-area: actions; display: flex; align-items: center; gap: 6px; }
 .cd-room-heading-icon { color: var(--muted); display: inline-flex; }
 .cd-room-heading-text { flex: 1; min-width: 0; }
 .cd-room-heading h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -169,6 +171,9 @@
 .cd-hide-setting p { margin-top: 5px; font-size: 11px; color: var(--muted); line-height: 1.7; }
 .cd-create-dialog footer { display: flex; align-items: center; justify-content: end; gap: 10px; margin-top: 25px; padding-top: 19px; border-top: 1px solid var(--line); }
 .cd-create-dialog footer .lr-btn { min-width: 108px; }
+@container design-room (max-width: 660px) {
+  .cd-room-heading { grid-template-areas: "title actions" "company company"; grid-template-columns: minmax(0, 1fr) auto; row-gap: 4px; }
+}
 @container channel-board (max-width: 1120px) {
   .cd-workspace { grid-template-columns: 58px 196px minmax(0, 1fr) 180px; }
   .cd-channel-rail { padding-inline: 5px; }
@@ -200,7 +205,8 @@
   .cd-workspace { display: flex; height: 718px; border-radius: 18px; }
   .cd-channel-rail, .cd-rooms { display: none; }
   .cd-room { width: 100%; }
-  .cd-room-heading { padding: 10px 12px; min-height: 61px; gap: 6px; }
+  .cd-room-heading { padding: 10px 12px 8px; gap: 4px 6px; }
+  .cd-room-title { gap: 6px; }
   .cd-room-heading-icon { display: none; }
   .cd-room-heading h2 { font-size: 14px; }
   .cd-header-action .lr-btn { --button-size: 34px; --button-padding: 8px; gap: 4px; }

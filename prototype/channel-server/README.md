@@ -49,8 +49,9 @@ existing components. Conversations, pictures and interactions are local samples;
 they do not create rooms or transmit media. The functional prototype keeps its
 existing layout until the owner accepts the visual direction.
 
-The room's couch stays above the conversation and screen stage. Select a seated
-person to send reactions or throw props along the visible sender-to-recipient
+The room's compact couch shares the heading with its title and actions; narrow
+layouts place it beneath them. It stays visible above conversation and screens.
+Select a seated person to send reactions or throw props along the sender-to-recipient
 path. Chat avatars and the member list are informational; message reactions stay
 below their message. The composer supports the attachment button, file drop and image
 paste, with a draft preview before sending. Channel appearance and room creation

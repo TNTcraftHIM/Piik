@@ -97,19 +97,23 @@ export function DesignWorkspace({ copy, scene, onScene }: {
 
       <main className="cd-room">
         <header className="cd-room-heading">
-          <span className="cd-mobile-rooms"><ChannelAction icon="arrowLeft" label={copy("房间列表", "Rooms")} quiet iconOnly onClick={() => setMobilePane("rooms")} /></span>
-          <span className="cd-room-heading-icon"><DesignIdentityMark value={room} size={23} /></span>
-          <div className="cd-room-heading-text"><h2>{roomName}</h2><span>{demoRoom ? copy("输赢不重要，人在就好。", "Good company. Questionable skills.") : copy("留个地方，一起聊聊。", "A place to get together.")}</span></div>
-          <span className="cd-header-action"><ChannelAction icon={sharing ? "stop" : "share"} primary={!sharing} hint={sharing ? "hint-share-stop" : "hint-share-start"}
-            label={sharing ? copy("停止分享", "Stop sharing") : copy("分享屏幕", "Share screen")} onClick={() => {
-              setSharingRoom(sharing ? null : roomId); setScreensHidden(false);
-              setFocused(sharing ? 0 : 3);
-            }} /></span>
-          <span className="cd-mobile-members"><ChannelAction icon="users" label={copy("成员", "Members")} quiet iconOnly onClick={() => setMobilePane("members")} /></span>
+          <div className="cd-room-title">
+            <span className="cd-mobile-rooms"><ChannelAction icon="arrowLeft" label={copy("房间列表", "Rooms")} quiet iconOnly onClick={() => setMobilePane("rooms")} /></span>
+            <span className="cd-room-heading-icon"><DesignIdentityMark value={room} size={23} /></span>
+            <div className="cd-room-heading-text"><h2>{roomName}</h2><span>{demoRoom ? copy("输赢不重要，人在就好。", "Good company. Questionable skills.") : copy("留个地方，一起聊聊。", "A place to get together.")}</span></div>
+          </div>
+          <DesignCouch key={roomId} people={here} selfVoice={selfVoice} copy={copy} />
+          <div className="cd-room-actions">
+            <span className="cd-header-action"><ChannelAction icon={sharing ? "stop" : "share"} primary={!sharing} hint={sharing ? "hint-share-stop" : "hint-share-start"}
+              label={sharing ? copy("停止分享", "Stop sharing") : copy("分享屏幕", "Share screen")} onClick={() => {
+                setSharingRoom(sharing ? null : roomId); setScreensHidden(false);
+                setFocused(sharing ? 0 : 3);
+              }} /></span>
+            <span className="cd-mobile-members"><ChannelAction icon="users" label={copy("成员", "Members")} quiet iconOnly onClick={() => setMobilePane("members")} /></span>
+          </div>
         </header>
 
         <div className="cd-room-content">
-          <DesignCouch key={roomId} people={here} selfVoice={selfVoice} copy={copy} />
           {showingScreens ? <section className={"cd-stage" + (scene === "focus" ? " is-focused" : "")} aria-label={copy("分享的画面", "Shared screens")}>
             <div className="cd-stage-heading"><span><Glyph name="display" size={16} />{copy("正在观看", "Watching")} <b>{screenIds.length}</b></span>
               <button type="button" className="lr-btn is-dense is-quiet" onClick={() => setScreensHidden(true)}><Glyph name="x" size={16} /><span>{copy("收起画面", "Hide screens")}</span></button>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { REACTION_DURATION_MS, REACTION_IDS, type ReactionId } from "../../../shared/room-interactions";
 import { CouchBench } from "../../components/living/CouchBench";
 import { RoomQuickReactions } from "../../components/living/RoomQuickReactions";
@@ -19,7 +20,7 @@ export function DesignCouch({ people, selfVoice, copy }: {
   const area = useRef<HTMLDivElement>(null);
   const [target, setTarget] = useState<{ index: number; trigger: HTMLButtonElement } | null>(null);
   const [activity, setActivity] = useState<(RoomInteraction & { expiresAt: number }) | null>(null);
-  const width = Math.min(availableWidth, Math.max(240, people.length * 72 + 64));
+  const width = Math.min(availableWidth, Math.max(144, people.length * 70 + 48));
   const selected = target ? designPeople[target.index] : null;
   useEffect(() => {
     if (!activity) return;
@@ -35,7 +36,7 @@ export function DesignCouch({ people, selfVoice, copy }: {
   return <section className="cd-lounge" aria-label={copy("房间里的朋友", "Friends in this room")}>
     <div ref={container} className="cd-lounge-width">
       <div ref={area} className="cd-couch-scene" style={{ width }}>
-        <div className="cd-couch-bench"><CouchBench width={width} /></div>
+        <div className="cd-couch-bench"><CouchBench width={width / 0.75} /></div>
         <div className="cd-couch-people" style={{ gridTemplateColumns: `repeat(${people.length}, minmax(0, 1fr))` }}>
           {people.map(index => {
             const person = designPeople[index];
@@ -54,9 +55,13 @@ export function DesignCouch({ people, selfVoice, copy }: {
             </span>;
           })}
         </div>
-        {activity && <RoomReaction key={activity.id} reaction={activity} area={area} now={Date.now} />}
       </div>
     </div>
+    {/* Motion follows the seats without being clipped by the workspace frame. */}
+    {activity && area.current && createPortal(
+      <RoomReaction key={activity.id} reaction={activity} area={area} now={Date.now} />,
+      area.current.ownerDocument.body,
+    )}
     {target && selected && <RoomQuickReactions key={selected.id} id="cd-couch-reactions" trigger={target.trigger} side="below"
       person={{ peerId: selected.id, displayName: copy(selected.name, selected.english) }}
       selfPeerId={designPeople[3].id} hostPeerId={designPeople[0].id} reactionIds={REACTION_IDS} canSend
