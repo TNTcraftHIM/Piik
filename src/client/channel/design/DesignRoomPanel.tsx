@@ -38,7 +38,7 @@ export function DesignRoomPanel({ room, roomName, people, conversation, reaction
         <DesignConversation room={room} roomName={roomName} copy={copy} model={conversation} showingScreens={false} compact />
         <footer className="cd-mini-voice" data-connected={voice.joined}>
           <span><Glyph name="headphones" size={16} />{voice.joined ? copy("语音已连接", "Voice connected") : copy("尚未加入语音", "Not in voice")}</span>
-          <div><DesignVoiceControls voice={voice} copy={copy} /><DesignVoiceJoin voice={voice} copy={copy} /></div>
+          <div><DesignVoiceControls voice={voice} /><DesignVoiceJoin voice={voice} /></div>
         </footer>
       </>}
     </FloatingPanel>

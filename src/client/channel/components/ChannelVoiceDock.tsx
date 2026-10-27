@@ -1,11 +1,12 @@
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Tooltip } from "../../components/living/Tooltip";
+import { Btn } from "../../components/living/primitives";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
+import { VoiceListeningButton, VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 import type { ChannelController } from "../types";
 import { voiceAppearance } from "../presentation";
-import { ChannelAction } from "./ChannelMedia";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
 export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
@@ -43,17 +44,15 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>
     <div className="c3-voice-controls">
-      <ChannelAction icon={muted ? "microphoneOff" : "microphone"} label={muted ? (zh ? "打开麦克风" : "Unmute") : (zh ? "关闭麦克风" : "Mute")}
-        pressed={muted} disabled={channel.connection !== "connected"} busy={busy} iconOnly quiet
+      <VoiceMicrophoneButton active={!muted} disabled={channel.connection !== "connected"} busy={busy} quiet
         hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"}
         onClick={() => run(channel.setMuted(roomId, !muted))} />
-      <ChannelAction icon={deafened ? "headphonesOff" : "headphones"} label={deafened ? (zh ? "恢复收听" : "Resume listening") : (zh ? "暂停收听" : "Deafen")}
-        pressed={deafened} disabled={channel.connection !== "connected"} busy={busy} iconOnly quiet
+      <VoiceListeningButton deafened={deafened} disabled={channel.connection !== "connected"} busy={busy} quiet
         hint={deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
         onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       <span className="c3-control-divider" />
-      <ChannelAction icon="door" label={zh ? "离开语音" : "Leave voice"} hint="hint-voice-leave" iconOnly quiet
-        busy={busy} onClick={() => run(channel.leaveVoice(roomId))} />
+      <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
+        busy={busy} disabled={busy} onClick={() => run(channel.leaveVoice(roomId))} />
     </div>
   </section>;
 }

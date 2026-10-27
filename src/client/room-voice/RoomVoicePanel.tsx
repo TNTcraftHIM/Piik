@@ -13,6 +13,7 @@ import { useCopy } from "../ui/copy";
 import { Glyph } from "../ui/icons";
 import type { RoomVoiceSession } from "./session";
 import { MicrophoneLevel } from "./MicrophoneLevel";
+import { VoiceListeningButton, VoiceMicrophoneButton } from "./VoiceAudioButtons";
 import { describeVoiceParticipant } from "./participant-presentation";
 import "./room-voice.css";
 
@@ -54,12 +55,11 @@ export function RoomVoiceControls({ session }: Props) {
       {joined && <div className="lr-voice-quick-controls">
         <AudioVolumeMenu volume={state.input.volume} onVolume={volume => session.setVolume(volume)}
           label="host.microphone.volume" icon="microphone" disabled={microphoneUnavailable || state.capturePending}>
-        <Btn icon={state.microphone ? "microphone" : "microphoneOff"} title="host.device.microphone"
-          size="compact" draw="voice-microphone" hint={microphoneUnavailable ? host ? "hint-voice-host-microphone-unavailable" : "hint-voice-microphone-unavailable"
+        <VoiceMicrophoneButton active={state.microphone} level={levels.get(state.peerId) ?? 0}
+          hint={microphoneUnavailable ? host ? "hint-voice-host-microphone-unavailable" : "hint-voice-microphone-unavailable"
             : state.capturePending ? "hint-close" : undefined}
           hintText={microphoneUnavailable ? "voice.error.microphoneUnavailable" : "voice.captureCancel"}
-          pressed={state.microphone} busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
-          iconOverlay={state.microphone && !state.capturePending && <MicrophoneLevel level={levels.get(state.peerId) ?? 0} />}
+          busy={state.capturePending} disabled={!state.connected || microphoneUnavailable}
           onClick={() => {
             session.resumeAudio();
             if (state.microphone || state.capturePending) session.stopMicrophone(); else void session.startMicrophone();
@@ -67,9 +67,7 @@ export function RoomVoiceControls({ session }: Props) {
         </AudioVolumeMenu>
         <AudioVolumeMenu volume={state.listeningVolume} onVolume={volume => session.setListeningVolume(volume)}
           label="voice.listeningVolume" icon="headphones">
-        <Btn icon={state.deafened ? "headphonesOff" : "headphones"} title="voice.listening"
-          size="compact" draw="voice-listening"
-          pressed={!state.deafened} onClick={() => session.deafen(!state.deafened)} />
+        <VoiceListeningButton deafened={state.deafened} onClick={() => session.deafen(!state.deafened)} />
         </AudioVolumeMenu>
       </div>}
       <Btn icon={!joined ? "headphones" : host ? "stop" : "door"}

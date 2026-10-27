@@ -27,6 +27,8 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
   const [joined, setJoined] = useState(true);
   const [muted, setMuted] = useState(false);
   const [deafened, setDeafened] = useState(false);
+  const [inputVolume, setInputVolume] = useState(1);
+  const [listeningVolume, setListeningVolume] = useState(1);
   const [sharingRoom, setSharingRoom] = useState<string | null>(null);
   const [screensHidden, setScreensHidden] = useState(false);
   const [focused, setFocused] = useState(0);
@@ -35,7 +37,8 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
   const [editingChannel, setEditingChannel] = useState(false);
   const conversation = useDesignConversation();
   const reactions = useDesignReactions(roomId, copy);
-  const voice = { joined, muted, deafened, toggleJoined: () => { setJoined(!joined); if (joined) setMuted(true); },
+  const voice = { joined, muted, deafened, inputVolume, listeningVolume, setInputVolume, setListeningVolume,
+    toggleJoined: () => { setJoined(!joined); if (joined) setMuted(true); },
     toggleMuted: () => setMuted(!muted), toggleDeafened: () => setDeafened(!deafened) };
   const room = rooms.find(item => item.id === roomId)!;
   const roomName = designRooms(copy).find(item => item.id === roomId)?.name ?? room.name;
@@ -87,11 +90,11 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
         <div className="cd-nav-bottom">
           <div className="cd-voice-session" data-connected={joined}>
             <div className="cd-voice-title"><Glyph name="headphones" size={17} /><strong>{joined ? copy("语音已连接", "Voice connected") : copy("随时来聊聊", "Come hang out")}</strong></div>
-            <div className="cd-voice-detail"><span>{roomName}</span><DesignVoiceJoin voice={voice} copy={copy} /></div>
+            <div className="cd-voice-detail"><span>{roomName}</span><DesignVoiceJoin voice={voice} /></div>
           </div>
           <div className="cd-self">
             <Avatar index={3} voice={selfVoice} /><div className="cd-self-name"><strong>{name(3)}</strong><small>{copy("在线", "Online")}</small></div>
-            <DesignVoiceControls voice={voice} copy={copy} />
+            <DesignVoiceControls voice={voice} />
           </div>
         </div>
       </aside>
@@ -137,7 +140,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
           <DesignConversation room={room} roomName={roomName} copy={copy} showingScreens={showingScreens} model={conversation} />
           <div className="cd-mobile-voice" data-connected={joined}>
             <span><Glyph name="headphones" size={15} />{joined ? copy("语音已连接", "Voice connected") : copy("尚未加入语音", "Not in voice")}</span>
-            <DesignVoiceControls voice={voice} copy={copy} /><DesignVoiceJoin voice={voice} copy={copy} />
+            <DesignVoiceControls voice={voice} /><DesignVoiceJoin voice={voice} />
           </div>
         </div>
       </main>
