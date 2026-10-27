@@ -117,9 +117,14 @@ export class SfuSubscriber {
       this.restartPending || !this.peer
     )
       return false;
-    this.restartPending = true;
-    this.events.onState?.("reconnecting");
-    return this.peer.send({ kind: "subscribe" });
+    const sent = this.peer.send({ kind: "subscribe" });
+    // An unsent manual request cannot retire media that is still connected.
+    // A disconnected transport still needs reconciliation after signaling returns.
+    if (sent || this.peer.pc.connectionState !== "connected") {
+      this.restartPending = true;
+      this.events.onState?.("reconnecting");
+    }
+    return sent;
   }
 
   armDecodedFrameProof(requireProgress = false): void {

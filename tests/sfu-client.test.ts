@@ -650,6 +650,29 @@ describe("embedded SFU browser transport", () => {
     expect(onStream).toHaveBeenLastCalledWith(null);
   });
 
+  it("keeps a healthy subscription when a manual restart cannot be sent", async () => {
+    const send = vi.fn(() => true);
+    const onState = vi.fn(), onDisconnected = vi.fn();
+    const subscriber = new SfuSubscriber({ send, onStream: vi.fn(), onState, onDisconnected });
+    cleanups.push(() => subscriber.disconnect());
+    await subscriber.connect(config);
+    subscriber.activate();
+    const pc = FakePc.instances[0]!;
+    pc.state("connected");
+    onState.mockClear();
+    send.mockReturnValue(false);
+
+    expect(subscriber.reconnect()).toBe(false);
+    subscriber.resync();
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    expect(onState).not.toHaveBeenCalled();
+
+    send.mockReturnValue(true);
+    expect(subscriber.reconnect()).toBe(true);
+    expect(onState).toHaveBeenCalledExactlyOnceWith("reconnecting");
+  });
+
   it("reports Browser video rejection through the existing SFU failure owner", async () => {
     const send = vi.fn(() => true), onDisconnected = vi.fn();
     const subscriber = new SfuSubscriber({ send, onStream: vi.fn(), onDisconnected });
