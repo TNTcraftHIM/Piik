@@ -76,7 +76,7 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
   let versions: Array<{ browser: string; app: boolean; appPort: number | null }> = [];
   const result = { scenario: scenario.id, iteration: iteration + 1, passed: false, stage: "startup", error: "",
     versions: [] as typeof versions,
-    stages: [] as Array<{ name: string; firstPictureMs: number; route: string | null; peer: number }>,
+    stages: [] as Array<{ name: string; firstPictureMs: number; firstNewFrameMs?: number; recoveryMs?: number; route: string | null; peer: number }>,
     samples: [] as Array<{ stage: string; host: MediaSample; viewer: MediaSample }>, cleanup: [] as unknown[] };
   const stage = (name: string) => { result.stage = name; process.stdout.write(JSON.stringify({ case: scenario.id, stage: name }) + "\n"); };
   const sample = async () => {
@@ -85,16 +85,31 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
     result.samples.push({ stage: result.stage, host: host!, viewer: viewer! });
     return { host: host!, viewer: viewer! };
   };
-  const media = async (name: string, previousPeer?: number, expectedRoute = scenario.sfu ? "sfu" : "peer") => {
+  const media = async (name: string, previousPeer?: number, expectedRoute = scenario.sfu ? "sfu" : "peer",
+    recovery?: { baseline: MediaSample; started: number }) => {
     stage(name); const started = performance.now();
     let first: MediaSample | undefined, firstAt = 0;
+    let previous = recovery?.baseline, firstNewFrameAt: number | undefined, recoveryError = "No new decoded frame";
     while (performance.now() - started < 40_000) {
       const { viewer } = await sample();
       if (viewer.events.some(event => event.reason === "route-exhausted")) throw new Error("Route exhausted");
       if (hasPicture(viewer) && viewer.route === expectedRoute && viewer.playbackPeerId !== previousPeer) {
-        if (!first || first.playbackPeerId !== viewer.playbackPeerId) { first = viewer; firstAt = performance.now(); }
+        if (!first || first.playbackPeerId !== viewer.playbackPeerId) {
+          // Historical decoded counters survive an ICE restart. Recovery begins
+          // only after a new frame, then needs a complete continuity window.
+          if (!previous || viewer.frames > previous.frames) {
+            first = viewer; firstAt = performance.now(); firstNewFrameAt ??= firstAt;
+          }
+        }
         else if (performance.now() - firstAt >= 3000) {
-          checkContinuity(first, viewer);
+          try { checkContinuity(first, viewer); }
+          catch (error) {
+            if (!recovery) throw error;
+            recoveryError = error instanceof Error ? error.message : String(error);
+            first = undefined; previous = viewer;
+            await delay(250, undefined, { signal });
+            continue;
+          }
           if (viewer.errors.length) throw new Error(`Viewer errors: ${viewer.errors.join("; ")}`);
           const last = result.samples.at(-1)!;
           for (const [index, page] of [last.host, viewer].entries()) {
@@ -103,13 +118,15 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
           }
           if (scenario.host && expectedRoute === "peer") checkAppPath(last.host, "prepare-edge", localAddresses);
           if (scenario.viewer && expectedRoute === "peer") checkAppPath(viewer, "receive-offer", localAddresses);
-          result.stages.push({ name, firstPictureMs: firstAt - started, route: viewer.route, peer: viewer.playbackPeerId });
+          result.stages.push({ name, firstPictureMs: firstAt - started,
+            ...(recovery ? { firstNewFrameMs: firstNewFrameAt! - recovery.started, recoveryMs: performance.now() - recovery.started } : {}),
+            route: viewer.route, peer: viewer.playbackPeerId });
           return viewer;
         }
       } else first = undefined;
       await delay(250, undefined, { signal });
     }
-    throw new Error(`No sustained ${expectedRoute} media during ${name}`);
+    throw new Error(`No sustained ${expectedRoute} media during ${name}${recovery ? `: ${recoveryError}` : ""}`);
   };
   try {
     await waitForSample(deadline => {
@@ -150,12 +167,14 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
     if (!scenario.host && !scenario.sfu) {
       stage("ice-restart");
       const before = await sample();
+      const restartAt = performance.now();
       if (!await endpoints[1]!.call("restart-upstream")) throw new Error("No committed Peer route to restart");
       await waitForSample(sample, row => row.host.events.filter(event => event.type === "restart-request").length >
         before.host.events.filter(event => event.type === "restart-request").length && (!scenario.viewer ||
         row.viewer.controls.filter(command => command.type === "receive-offer").length >
         before.viewer.controls.filter(command => command.type === "receive-offer").length), 10_000);
-      const restarted = await media("same-edge-recovered");
+      const restarted = await media("same-edge-recovered", undefined, undefined,
+        { baseline: result.samples.at(-1)!.viewer, started: restartAt });
       if (restarted.playbackPeerId !== received.playbackPeerId) throw new Error("ICE restart replaced the playback connection");
       received = restarted;
     }
