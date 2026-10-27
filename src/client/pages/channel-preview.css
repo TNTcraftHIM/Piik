@@ -128,8 +128,6 @@
 .c3-role-options legend { padding-inline-end: 8px; color: var(--muted); font-size: 11px; }
 .c3-role-options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
 .c3-role-options input { accent-color: var(--action); cursor: pointer; }
-.c3-name-form { flex-basis: 100%; display: flex; gap: 6px; min-width: 0; }
-.c3-name-form .c3-input { flex: 1; }
 .c3-offline-users { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
 .c3-offline-users summary { color: var(--muted); cursor: pointer; font-size: 12px; padding: 6px 10px; }
 .c3-visual .c3-channel-caption, .c3-visual .c3-welcome :is(h3,p) { display: none; }

@@ -112,7 +112,7 @@ export function ChannelRoomEntry({ channel, room }: { channel: ChannelController
   return <section className="c3-locked-room"><Glyph name="lock" size={46} />
     <h3>{zh ? "这是一间私密房间" : "This room is private"}</h3>
     <p>{room.hasPassword ? (zh ? "输入房间密码，或使用房间邀请链接。" : "Enter its password or open a room invitation.")
-      : (zh ? "请向房间创建者索取邀请链接。" : "Ask the room creator for an invitation.")}</p>
+      : (zh ? "请向房主索取邀请链接。" : "Ask the room owner for an invitation.")}</p>
     {room.hasPassword && <form onSubmit={event => {
       event.preventDefault();
       void channel.enterRoom(room.id, password).then(() => setPassword("")).catch(() => {});

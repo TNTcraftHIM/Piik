@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { REACTION_IDS, type ReactionId } from "../../../shared/room-interactions";
 import { CouchBench } from "../../components/living/CouchBench";
@@ -10,6 +10,7 @@ import { RoomInteractionSession } from "../../lib/room-interactions";
 import { useElementWidth } from "../../lib/use-element-width";
 import { ChannelAction } from "../components/ChannelMedia";
 import { DesignAvatar } from "./DesignAvatar";
+import { DesignNames } from "./DesignNames";
 import { designPeople, type DesignCopy } from "./fixtures";
 import "./design-couch.css";
 
@@ -17,9 +18,9 @@ const SEAT_WIDTH = 70;
 const SEAT_GUTTER = 24;
 
 /** Only transport is simulated; the real session owns cooldown, acknowledgement and expiry. */
-export function useDesignReactions(roomId: string, copy: DesignCopy) {
-  const senderName = useRef(copy(designPeople[3].name, designPeople[3].english));
-  senderName.current = copy(designPeople[3].name, designPeople[3].english);
+export function useDesignReactions(roomId: string, name: string) {
+  const senderName = useRef(name);
+  senderName.current = name;
   const session = useMemo(() => {
     const session = new RoomInteractionSession(message => {
       if (message.type === "subscribe-room-interactions") {
@@ -55,6 +56,7 @@ export type DesignReactionsModel = ReturnType<typeof useDesignReactions>;
 export function DesignCouch({ people, selfVoice, copy, reactions }: {
   people: number[]; selfVoice: boolean | PawnVoice; copy: DesignCopy; reactions: DesignReactionsModel;
 }) {
+  const name = useContext(DesignNames);
   const [container, availableWidth] = useElementWidth();
   const guests = useRef<HTMLDivElement>(null);
   const [offset, setOffset] = useState(0);
@@ -80,16 +82,16 @@ export function DesignCouch({ people, selfVoice, copy, reactions }: {
   }
   function seat(index: number) {
     const person = designPeople[index];
-    const name = copy(person.name, person.english);
-    const action = index === 3 ? copy("发表情", "Express yourself") : copy(`和${name}互动`, `Interact with ${name}`);
+    const displayName = name(index);
+    const action = index === 3 ? copy("发表情", "Express yourself") : copy(`和${displayName}互动`, `Interact with ${displayName}`);
     return <span key={person.id} className="cd-couch-seat" data-room-peer={person.id}>
       <Tooltip kind="hint-reaction-picker" disabled={target?.index === index}
-        text={action} overflow={{ text: name, selector: ".lr-pawn-name" }}>
+        text={action} overflow={{ text: displayName, selector: ".lr-pawn-name" }}>
         <button type="button" className={"lr-pawn" + (index === 3 ? " is-you" : "")}
           aria-label={action} aria-expanded={target?.index === index} aria-controls={pickerId}
           onClick={event => setTarget({ index, trigger: event.currentTarget })}>
           <DesignAvatar index={index} voice={index === 3 ? selfVoice : true} />
-          <span className="lr-pawn-name">{name}</span>
+          <span className="lr-pawn-name">{displayName}</span>
         </button>
       </Tooltip>
     </span>;
@@ -128,7 +130,7 @@ export function DesignCouch({ people, selfVoice, copy, reactions }: {
       area.current.closest(".lr-floating-panel") ?? area.current.ownerDocument.body,
     )}
     {target && selected && <RoomQuickReactions key={selected.id} id={pickerId} trigger={target.trigger} side="below"
-      person={{ peerId: selected.id, displayName: copy(selected.name, selected.english) }}
+      person={{ peerId: selected.id, displayName: name(target.index) }}
       selfPeerId={designPeople[3].id} hostPeerId={designPeople[0].id} reactionIds={reactions.state.reactionIds} canSend={reactions.canSend}
       onSend={reactions.send} onClose={() => setTarget(null)} />}
   </section>;

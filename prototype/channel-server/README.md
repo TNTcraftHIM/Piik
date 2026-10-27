@@ -44,8 +44,9 @@ with 4, 12 or 20 people. `?people=20#chat` opens the crowded-room study directly
 
 The proposal places room navigation on the left, conversation and selected
 screens in the middle, and a persistent member list on the right. Narrow layouts
-use a full member/room pane. Room creation is one native dialog with conditional
-private options. Colours, controls, icons and animated people come from Piik's
+use a full member/room pane. Room creation and editing share one native dialog
+with conditional private options. Pencils beside the user, channel and room names
+open their corresponding editors. Colours, controls, icons and animated people come from Piik's
 existing components. Conversations, pictures and interactions are local samples;
 they do not create rooms or transmit media. The functional prototype keeps its
 existing layout until the owner accepts the visual direction.
@@ -80,8 +81,9 @@ The studies reinterpret those familiar patterns using Piik's visual language.
 
 ## Rooms, conversation and media
 
-A channel contains rooms. Members can create rooms and manage their own rooms;
-the channel owner can manage all rooms and assign user roles. Moderator status
+A channel contains rooms. Users can create and manage their own rooms as room owners (房主);
+the domain owner (域主) manages the channel, all rooms and user roles. Both remain
+users (用户), independently of sharing activity. Moderator status
 does not grant access to another user's private room. Public rooms admit channel
 users. Private rooms require a room invitation or password, and hidden rooms do
 not appear in an unauthorized user's directory. Changing a password or invitation
@@ -115,7 +117,8 @@ stop, unwatch and leave take effect locally and are reconciled on reconnect.
 
 ## Saved data and files
 
-This Server prototype defaults to
+Authoritative saved data belongs to the hosting coordinator, on the local device
+or configured server running it. This Server prototype defaults to
 `build/channel-prototype-data/channel.sqlite`. `PIIK_CHANNEL_DATA_DIR` chooses a
 different directory; `:memory:` selects an explicitly temporary instance.
 Catalog, identities, room policy/grants, retained history and retry deduplication
@@ -124,7 +127,11 @@ failure rolls back the live change. User credentials/invitations are stored as
 digests and room passwords as password hashes. Sessions, captures and routes are
 not restored after a process restart.
 
-This is a configured host saving the conversation. It does not change the distinct
+UI preferences belong to the client; the Browser also keeps its user credential
+locally. Read pages and drafts stay in memory, as do the design board's sample
+data and edits. They are not a second authoritative store.
+
+This coordinator saving the conversation does not change the distinct
 planned lifetimes of temporary App hosting and persistent Server hosting, and it
 does not add Native App persistence or distribution packages.
 

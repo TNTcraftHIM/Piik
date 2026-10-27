@@ -54,7 +54,7 @@ export function ChannelPreviewPage() {
     : /room_access|room_forbidden/i.test(channel.error)
       ? copy("你还没有这间房间的访问权限。", "You don't have access to this room.")
     : /invite|credential|unauthorized|join_required/i.test(channel.error)
-    ? copy("需要有效邀请。请打开频道主提供的完整邀请链接。", "A valid invitation is required. Open the full link from the channel owner.")
+    ? copy("需要有效邀请。请打开域主提供的完整邀请链接。", "A valid invitation is required. Open the full link from the domain owner.")
     : channel.error === "session_expired"
       ? copy("连接超时，采集已停止。重新连接后可再次分享或加入语音。", "Connection timed out. Capture stopped. Reconnect to share or join voice again.")
     : /permission|forbidden|denied|notallowed/i.test(channel.error)
@@ -122,7 +122,7 @@ export function ChannelPreviewPage() {
           </label>
         </div>
         {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} host={owner} />
-          <div><strong>{self.name}</strong><small>{owner ? copy("频道主", "Channel owner") : copy("你的名字", "Your name")}</small></div>
+          <div><strong>{self.name}</strong><small>{owner ? copy("域主", "Domain owner") : copy("你的名字", "Your name")}</small></div>
           <Tooltip kind="hint-rename" text={vis ? undefined : copy("查看用户与修改昵称", "Users and your profile")}><button type="button" className="lr-btn is-compact is-quiet"
             popoverTarget="c3-people" aria-label={copy("查看用户与修改昵称", "Users and your profile")}><Glyph name="pencil" size={17} /></button></Tooltip>
         </div>}
@@ -152,7 +152,7 @@ export function ChannelPreviewPage() {
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" onClick={channel.reconnect} />}
         </div>}
         {self && !owner && !permissions.size && <div className="c3-notice" role="status"><Glyph name="lock" size={20} />
-          <span>{copy("当前为只读。请联系频道主分配身份组。", "Read-only access. Ask the channel owner for a role to participate.")}</span></div>}
+          <span>{copy("当前为只读。请联系域主分配身份组。", "Read-only access. Ask the domain owner for a role to participate.")}</span></div>}
         {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
           <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
         </div>}

@@ -2,7 +2,7 @@ import type { GlyphName } from "../../ui/icons";
 
 export type DesignScene = "chat" | "screens" | "focus" | "create";
 export type DesignCopy = (chinese: string, english: string) => string;
-export type DesignRoom = { id: string; name: string; icon: GlyphName; image?: File; private?: boolean; hidden?: boolean };
+export type DesignRoom = { id: string; name: string; icon: GlyphName; image?: File; private?: boolean; hidden?: boolean; password?: string };
 
 export const designPeople = [
   { id: "design-xiaoman", name: "小满", english: "Mallow", status: "sharing", owner: true },

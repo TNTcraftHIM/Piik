@@ -20,7 +20,7 @@ export function ChannelUser({ id, name, self, owner, roles, online, voice, activ
       <PawnSvg color={participantColor(id)} identity={id} host={owner} voice={voice} />
       <div>
         <strong>{name}{self && <span className="c3-you">{zh ? "你" : "you"}</span>}</strong>
-        {(activity || owner || !online) && <small>{activity || (owner ? (zh ? "频道主" : "Channel owner") : (zh ? "离线" : "Offline"))}</small>}
+        {(activity || owner || !online) && <small>{activity || (owner ? (zh ? "域主" : "Domain owner") : (zh ? "离线" : "Offline"))}</small>}
       </div>
       {onRoles && !owner && <button type="button" className="lr-btn is-compact is-quiet" aria-expanded={editing}
         aria-label={zh ? `${name} 的身份组` : `Roles for ${name}`} onClick={() => setEditing(!editing)}>

@@ -3,6 +3,7 @@ import { Glyph } from "../../ui/icons";
 import { BrandMark } from "../../components/living/BrandMark";
 import { WelcomeLine } from "../../components/living/WelcomeLine";
 import { ChannelAction } from "../components/ChannelMedia";
+import { ChannelNameEditor } from "../components/ChannelNameEditor";
 import { DesignArtwork } from "./DesignArtwork";
 import { DesignRoomDialog } from "./DesignRoomDialog";
 import { DesignChannelDialog } from "./DesignChannelDialog";
@@ -12,7 +13,8 @@ import { DesignCouch, useDesignReactions } from "./DesignCouch";
 import { DesignRoomPanel } from "./DesignRoomPanel";
 import { DesignVoiceControls, DesignVoiceJoin } from "./DesignVoiceControls";
 import { DesignIdentityMark, type DesignIdentity } from "./DesignIdentityPicker";
-import { designPeople, designRooms, type DesignCopy, type DesignScene } from "./fixtures";
+import { DesignNames } from "./DesignNames";
+import { designPeople, designRooms, type DesignCopy, type DesignRoom, type DesignScene } from "./fixtures";
 
 import "../../components/living/floating-panel.css";
 import "../../components/living/room-interactions.css";
@@ -21,7 +23,10 @@ import "./design-social.css";
 export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
   copy: DesignCopy; scene: DesignScene; peopleCount: number; onScene(scene: DesignScene): void;
 }) {
-  const [rooms, setRooms] = useState(() => designRooms(copy));
+  const [roomChanges, setRoomChanges] = useState<Record<string, DesignRoom>>({});
+  const presetRooms = designRooms(copy);
+  const rooms = [...presetRooms.map(room => roomChanges[room.id] ?? room),
+    ...Object.values(roomChanges).filter(room => !presetRooms.some(preset => preset.id === room.id))];
   const [roomId, setRoomId] = useState("games");
   const [mobilePane, setMobilePane] = useState<"room" | "rooms" | "members">("room");
   const [joined, setJoined] = useState(true);
@@ -35,13 +40,16 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
   const [channelName, setChannelName] = useState<string>();
   const [channelIdentity, setChannelIdentity] = useState<DesignIdentity>({ icon: "couch" });
   const [editingChannel, setEditingChannel] = useState(false);
+  const [editingRoom, setEditingRoom] = useState(false);
+  const [selfName, setSelfName] = useState<string>();
+  const name = (index: number) => index === 3 && selfName !== undefined ? selfName : copy(designPeople[index].name, designPeople[index].english);
   const conversation = useDesignConversation();
-  const reactions = useDesignReactions(roomId, copy);
+  const reactions = useDesignReactions(roomId, name(3));
   const voice = { joined, muted, deafened, inputVolume, listeningVolume, setInputVolume, setListeningVolume,
     toggleJoined: () => { setJoined(!joined); if (joined) setMuted(true); },
     toggleMuted: () => setMuted(!muted), toggleDeafened: () => setDeafened(!deafened) };
   const room = rooms.find(item => item.id === roomId)!;
-  const roomName = designRooms(copy).find(item => item.id === roomId)?.name ?? room.name;
+  const roomName = room.name;
   const demoRoom = roomId === "games";
   const sharing = sharingRoom === roomId;
   const screenIds = [...(demoRoom ? [0, 1] : []), ...(sharing ? [3] : [])];
@@ -50,12 +58,11 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
   const demoPeople = [0, 1, 2, 3, ...Array.from({ length: peopleCount - 4 }, (_, index) => index + 5)];
   const here = demoRoom ? demoPeople : [3];
   const elsewhere = demoRoom ? [4] : [...demoPeople.filter(index => index !== 3), 4];
-  const name = (index: number) => copy(designPeople[index].name, designPeople[index].english);
 
   const channelTitle = channelName ?? copy("下班以后", "After hours");
   useEffect(() => { setMobilePane("room"); setScreensHidden(false); }, [scene, roomId]);
 
-  return <>
+  return <DesignNames.Provider value={name}>
     <div className="cd-workspace" data-pane={mobilePane}>
       <nav className="cd-channel-rail" aria-label={copy("频道", "Channels")}>
         <span className="cd-rail-brand" aria-label="Piik"><BrandMark size={30} /></span>
@@ -82,7 +89,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
               aria-current={roomId === item.id ? "page" : undefined}
               onClick={() => { setRoomId(item.id); setMobilePane("room"); setFocused(item.id === "games" ? 0 : 3); }}>
               <DesignIdentityMark value={item} size={21} />
-              <span>{designRooms(copy).find(preset => preset.id === item.id)?.name ?? item.name}</span>
+              <span>{item.name}</span>
               {item.id === "games" ? <small>{demoPeople.length - Number(!demoRoom)}</small> : item.private ? <Glyph name={item.hidden ? "eyeOff" : "lock"} size={14} /> : null}
             </button>)}
           </nav>
@@ -93,7 +100,9 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
             <div className="cd-voice-detail"><span>{roomName}</span><DesignVoiceJoin voice={voice} /></div>
           </div>
           <div className="cd-self">
-            <Avatar index={3} voice={selfVoice} /><div className="cd-self-name"><strong>{name(3)}</strong><small>{copy("在线", "Online")}</small></div>
+            <Avatar index={3} voice={selfVoice} /><div className="cd-self-name">
+              <div className="cd-self-heading"><strong>{name(3)}</strong><ChannelNameEditor name={name(3)} disabled={false} onSave={setSelfName} /></div>
+              <small>{copy("在线", "Online")}</small></div>
             <DesignVoiceControls voice={voice} />
           </div>
         </div>
@@ -104,7 +113,9 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
           <div className="cd-room-title">
             <span className="cd-mobile-rooms"><ChannelAction icon="arrowLeft" label={copy("房间列表", "Rooms")} quiet iconOnly onClick={() => setMobilePane("rooms")} /></span>
             <span className="cd-room-heading-icon"><DesignIdentityMark value={room} size={23} /></span>
-            <div className="cd-room-heading-text"><h2>{roomName}</h2><span>{demoRoom ? copy("输赢不重要，人在就好。", "Good company. Questionable skills.") : copy("留个地方，一起聊聊。", "A place to get together.")}</span></div>
+            <div className="cd-room-heading-text"><div className="cd-room-heading-name"><h2>{roomName}</h2>
+              <ChannelAction icon="pencil" label={copy("房间设置", "Room settings")} hint="hint-rename" iconOnly quiet onClick={() => setEditingRoom(true)} />
+            </div><span>{demoRoom ? copy("输赢不重要，人在就好。", "Good company. Questionable skills.") : copy("留个地方，一起聊聊。", "A place to get together.")}</span></div>
           </div>
           <DesignCouch key={roomId} people={here} selfVoice={selfVoice} copy={copy} reactions={reactions} />
           <div className="cd-room-actions">
@@ -159,16 +170,20 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
             </div>)}
           </div>
           <div className="cd-member-group"><h3>{copy("其他房间", "Elsewhere")}<span>{elsewhere.length}</span></h3>
-            {elsewhere.map(index => <div className="cd-member is-away" key={index}><Avatar index={index} /><div><strong>{name(index)}</strong><small>{index === 4 ? copy("在客厅", "In the living room") : copy("在再来一局", "In One more round")}</small></div></div>)}
+            {elsewhere.map(index => <div className="cd-member is-away" key={index}><Avatar index={index} /><div><strong>{name(index)}</strong>
+              <small>{copy("在", "In ")}{rooms.find(item => item.id === (index === 4 ? "lounge" : "games"))!.name}</small>
+            </div></div>)}
           </div>
         </div>
         <div className="cd-members-foot"><Glyph name="couch" size={26} /><WelcomeLine still /></div>
       </aside>
     </div>
-    {scene === "create" && <DesignRoomDialog copy={copy} onClose={() => onScene("chat")} onCreate={newRoom => {
-      setRooms([...rooms, newRoom]); setRoomId(newRoom.id); setFocused(3); setMobilePane("room"); onScene("chat");
+    {scene === "create" && <DesignRoomDialog copy={copy} onClose={() => onScene("chat")} onSave={newRoom => {
+      setRoomChanges(previous => ({ ...previous, [newRoom.id]: newRoom })); setRoomId(newRoom.id); setFocused(3); setMobilePane("room"); onScene("chat");
     }} />}
+    {editingRoom && <DesignRoomDialog key={room.id} copy={copy} room={room} onClose={() => setEditingRoom(false)}
+      onSave={updated => { setRoomChanges(previous => ({ ...previous, [updated.id]: updated })); setEditingRoom(false); }} />}
     {editingChannel && <DesignChannelDialog copy={copy} name={channelTitle} identity={channelIdentity} onClose={() => setEditingChannel(false)}
       onSave={(newName, identity) => { setChannelName(newName); setChannelIdentity(identity); setEditingChannel(false); }} />}
-  </>;
+  </DesignNames.Provider>;
 }

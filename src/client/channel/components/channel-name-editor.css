@@ -1,0 +1,5 @@
+.c3-name-editor { display: inline-flex; flex: none; }
+.c3-name-popover { width: min(300px, calc(100vw - 32px)); padding: 20px; }
+.c3-name-popover form, .c3-name-popover label { display: grid; gap: 12px; }
+.c3-name-popover label { font-size: 13px; }
+.c3-name-popover footer { display: flex; justify-content: flex-end; gap: 8px; }

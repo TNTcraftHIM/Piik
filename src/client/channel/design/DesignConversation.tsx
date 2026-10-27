@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { REACTION_IDS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
@@ -13,6 +13,7 @@ import { ChannelAction } from "../components/ChannelMedia";
 import { DesignAvatar } from "./DesignAvatar";
 import { DesignArtwork } from "./DesignArtwork";
 import { DesignIdentityMark } from "./DesignIdentityPicker";
+import { DesignNames } from "./DesignNames";
 import { designPeople, type DesignCopy, type DesignRoom } from "./fixtures";
 
 interface DesignFile { id: string; file: File }
@@ -64,6 +65,7 @@ function MessageReactions({ copy, selected, toggle, initialLaugh = false }: {
   copy: DesignCopy; selected: MessageReactionSelection; toggle: (reaction: ReactionId) => void; initialLaugh?: boolean;
 }) {
   const { t } = useCopy();
+  const name = useContext(DesignNames);
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
@@ -81,7 +83,7 @@ function MessageReactions({ copy, selected, toggle, initialLaugh = false }: {
     </Tooltip>
     <div ref={menu} id={id} popover="auto" className="lr-floating-surface cd-message-reaction-menu" aria-label={copy("消息表情", "Message reactions")}>
       <strong>{copy("回应这条消息", "React to this message")}</strong>
-      <RoomReactionGrid person={{ peerId: designPeople[3].id, displayName: copy("你", "You") }} selfPeerId={designPeople[3].id}
+      <RoomReactionGrid person={{ peerId: designPeople[3].id, displayName: name(3) }} selfPeerId={designPeople[3].id}
         reactionIds={messageReactionIds} canSend onSend={reaction => { toggle(reaction); menu.current?.hidePopover(); }} />
     </div>
   </div>;
@@ -108,10 +110,10 @@ function Message({ index, time, children, copy, initialLaugh, model, roomId, mes
   index: number; time: string; children: ReactNode; copy: DesignCopy; initialLaugh?: boolean;
   model: DesignConversationModel; roomId: string; messageId: string;
 }) {
-  const person = designPeople[index];
+  const name = useContext(DesignNames);
   return <article className="cd-message">
     <DesignAvatar index={index} />
-    <div><header><strong>{copy(person.name, person.english)}</strong><time>{time}</time></header>
+    <div><header><strong>{name(index)}</strong><time>{time}</time></header>
       {children}<MessageReactions copy={copy} initialLaugh={initialLaugh}
         selected={model.rooms[roomId]?.reactions[messageId] ?? {}}
         toggle={reaction => model.toggleReaction(roomId, messageId, reaction)} />

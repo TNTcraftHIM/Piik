@@ -14,21 +14,23 @@ and design; published 2.x Host/Viewer terminology keeps its existing scope.
 
 | English | Chinese | Meaning |
 | --- | --- | --- |
-| User | 用户 | Every participant, including the channel owner and anyone sharing, watching or forwarding. |
+| User | 用户 | Every participant, including domain owners, room owners and anyone sharing, watching or forwarding. |
 | Channel | 频道 | The top-level container for users, roles and rooms. |
 | Room | 房间 | A conversation and media scope inside a channel. |
-| Channel owner | 频道主 | The user who creates and owns the channel; this management identity can coexist with any permitted activity. |
+| Domain owner | 域主 | The user who creates and owns the channel, managing its users, roles and rooms. |
+| Room owner | 房主 | The user who creates and manages a room inside the channel. |
 | Role | 身份组 | A channel-scoped permission group. A user can belong to several roles at once. |
 | Sharer | 分享者 | A user originating a media publication, rather than merely initiating a peer connection. |
-| Coordinator | 协调服务 | The process enforcing channel policy and maintaining its directory; it is not the channel owner as a person. |
+| Coordinator | 协调服务 | The process enforcing channel policy and maintaining its directory; it is not the domain owner as a person. |
 
-Identity, permission and activity are independent. Roles describe what a user may
-do; sharing, watching, speaking and forwarding describe current activity. One
+Domain owners and room owners remain users; neither management identity depends
+on being a sharer. Identity, permission and activity are independent. Roles
+describe what a user may do; sharing, watching, speaking and forwarding describe current activity. One
 user can publish a picture, watch another user's picture and forward that received
 publication at the same time. Permission and actual resources govern each flow;
 there is no exclusive `owner | sharer | viewer | relay` user type.
 
-A denotes the channel owner in examples. References to A's processing or traffic
+A denotes the domain owner in examples. References to A's processing or traffic
 mean the coordinator hosted on A's device. A Server can host that coordinator
 independently of the owner's personal endpoint. Leaving as a user and stopping
 the coordination process are distinct lifecycle events.
@@ -46,7 +48,7 @@ among its rooms or users.
 An App can host a temporary channel; a self-hosted Server can keep a channel available.
 Both use the same Rust core and Web UI. The service owns metadata and permissions;
 ordinary media remains P2P-first with bounded peer forwarding and an optional SFU.
-Users can publish without becoming the channel owner.
+Users can publish without becoming the domain owner or room owner.
 
 The baseline aims for anyone to host a channel without a mandatory Piik-operated
 account or coordination service, with media work distributed among participants.
@@ -76,7 +78,7 @@ from the current controller and the multiple-source requirement.
 | Object | Owner and lifetime |
 | --- | --- |
 | Service instance | Rust process and storage adapter. A process restart creates a new live incarnation, even when durable channel identity survives. |
-| Channel | Service authority owns its room catalog, membership, role definitions and user-role assignments. A temporary App channel ends when its hosting service ends; a Server channel survives the channel owner's logout and service restart. |
+| Channel | Service authority owns its room catalog, membership, role definitions and user-role assignments. A temporary App channel ends when its hosting service ends; a Server channel survives the domain owner's logout and service restart. |
 | Category | Channel-owned display grouping. Moving a room between categories does not change access or interrupt media. |
 | Room | Authority owns conversation and media scope. Deletion retires that room's resources; an empty room remains available. |
 | User | Channel-scoped authenticated principal, separate from nickname and connection identity. Credentials or invitations establish access; no global account service is required. |
@@ -87,9 +89,9 @@ from the current controller and the multiple-source requirement.
 | Transport | Media runtime owns a physical peer connection shared by its admitted flows. Removing one flow closes the transport only when no flow still uses it. |
 | Attachment / transfer | Message metadata and available content belong to the attachment; a separate finite transfer owns each recipient's progress and cancellation. |
 
-Selected room, drafts, collapsed categories and focused picture are local UI
-state. They are not media authority. Browser and linked App are backends for the
-same participation, rather than two people in the participant list. Separate
+UI preferences belong to the client. Selected room, drafts, collapsed categories
+and focused picture are local UI state. They are not media authority. Browser and
+linked App are backends for the same participation, rather than two people in the participant list. Separate
 devices remain distinct live endpoints even when the same user uses both.
 
 The initial service hosts one channel with multiple rooms. Users join other
@@ -107,7 +109,7 @@ access. Server membership survives restart until revoked; temporary channel
 membership ends with its channel. These credentials remain scoped to their service.
 
 The current room-access experiment uses two policies. Public rooms admit every
-channel user; private rooms admit their creator, the channel owner and explicitly
+channel user; private rooms admit their room owner, the domain owner and explicitly
 granted users. Ordinary members may create and manage their own rooms. Moderator
 membership alone does not grant private-room reading or management. Hidden is a
 private-room directory setting: unauthorized users receive neither its directory
@@ -119,12 +121,14 @@ one operation. A room password grants an existing channel user entry. Successful
 entry records a user grant; rotating or removing the password/invitation affects
 new admission, while existing grants require explicit revocation. Revoking a
 grant alone is not a ban on redeeming a still-valid admission secret. Public to
-private preserves explicit grants and creator/owner access, without converting
+private preserves explicit grants and access for the room and domain owners, without converting
 past public visitors into private members. Revocation retires only that room's
 activities; unrelated flows sharing a physical pair continue.
 
-The checkpoint contains channel identity, user credential digests, room policy,
-salted password hashes, invitation digests, grants and bounded message history.
+The hosting coordinator owns authoritative saved data, on the local device or
+configured server running it. The checkpoint contains channel identity, user
+credential digests, room policy, salted password hashes, invitation digests, grants
+and bounded message history.
 It excludes live sessions, captures, publications and routes. Startup admission
 keys remain external configuration. Password hashing uses the maintained
 [RustCrypto Argon2 implementation](https://docs.rs/argon2/0.5.3/argon2/).
@@ -149,7 +153,7 @@ There is no single active-media-room field controlling all resources. Starting
 a picture does not require joining voice. Joining voice can be listen-only.
 Microphone mute preserves participation, and headphone mute changes local
 listening. Controls identify the activity and room they affect. Voice is
-available according to room policy rather than the channel owner's microphone
+available according to room policy rather than the domain owner's microphone
 lifetime. No active media demand means no media connections, encoders or decoders.
 
 | User action or event | Result |
@@ -166,7 +170,7 @@ lifetime. No active media demand means no media connections, encoders or decoder
 | Room access or role assignments change | Recompute effective permissions and retire only affected activities or room presence. Losing publishing permission does not end permitted viewing or forwarding; removing one role does not end work still permitted by the resulting policy. |
 | Service process restarts | Restore durable catalog/history where configured, create new live sessions and readmit media. Old transport/control grants cannot authorize the new incarnation. |
 | Close a page / quit an App | Retire resources owned by that runtime. A Native background sharing session continues only under its existing explicit background owner; linking an App alone does not transfer Browser capture ownership. |
-| Channel owner leaves | A Server channel and its users continue. Quitting the App that hosts a temporary channel ends its authority; ownership alone does not require the owner's personal endpoint to remain. |
+| Domain owner leaves | A Server channel and its users continue. Quitting the App that hosts a temporary channel ends its authority; ownership alone does not require the owner's personal endpoint to remain. |
 
 Start with the current 20-second signaling recovery policy for the experiment;
 the session owner starts one bounded recovery interval on loss of its authority
@@ -178,7 +182,7 @@ unreachable participants stop at their session deadline when revocation cannot
 reach them. Deleting server-side presence alone does not stop a P2P sender.
 
 Remote input is authorized by the source owner and local controlled device.
-Channel ownership and administrative roles do not grant desktop control. Grants
+Domain ownership and administrative roles do not grant desktop control. Grants
 name the publication, source generation and controller session. Focus changes do not silently retarget
 input; recovery releases pressed inputs before an authorized route resumes.
 
@@ -203,7 +207,7 @@ tree. It does not broadcast every source over every edge.
 to lead to the listening Host or its admitted SFU junction. These are concrete
 reuse and replacement boundaries, not a finished multi-source router.
 
-Consider five endpoints: channel owner A hosts the coordinator and can relay;
+Consider five endpoints: domain owner A hosts the coordinator and can relay;
 B and C each publish 4 Mbps, D watches B, and E watches both B and C.
 A shared tree has edges A-B, A-C,
 B-D and C-E. Count media payload here, excluding protocol and retransmission cost.
@@ -321,7 +325,7 @@ those roles separately from coordination. A coordinator-only App need not receiv
 or decode a picture merely to authorize its distribution. The authority's
 availability remains central: stopping a temporary hosting App ends the channel's
 authority under the existing session deadline. A persistent Server supplies that
-availability without requiring the channel owner's personal device to stay online.
+availability without requiring the domain owner's personal device to stay online.
 
 ### Count Actual Work
 
@@ -460,7 +464,7 @@ transport policy; do not silently introduce a different fallback protocol.
 
 Sharer delegation leaves the coordinator responsible for membership, permissions
 and the directory. Losing that process still invokes the session deadline above;
-the channel owner's personal endpoint leaving does not. B's source endpoint
+the domain owner's personal endpoint leaving does not. B's source endpoint
 exiting ends B's publication, not C's; no peer takes over a departed live source.
 
 For A to stop hosting the coordinator while the channel continues, another
@@ -504,8 +508,8 @@ performance improvement has been implemented or measured by this assessment.
 
 ## Access, History And Files
 
-Users may hold multiple channel-scoped roles. Channel ownership, role assignments
-and room access feed one permission evaluator; the result determines visibility,
+Users may hold multiple channel-scoped roles. Domain ownership, room ownership,
+role assignments and room access feed one permission evaluator; the result determines visibility,
 message sending, media receive/publish and management capabilities. Activity
 does not grant permission. Define the required role-combination and room-scope
 rules before implementation, rather than copying Discord's full override system.
@@ -605,7 +609,7 @@ selective watching, simultaneous voice and bounded peer forwarding, with observe
 recovery on relay exit. Its acceptance includes session reconnect, revocation,
 source replacement and cleanup without killing unrelated activities. The
 [prototype README](../../prototype/channel-server/README.md) records the runnable
-scope; Native integration, SFU and storage are subsequent stages.
+scope and current storage; Native integration and SFU are subsequent stages.
 
 ## Decisions For Owner Discussion
 
@@ -618,7 +622,7 @@ scope; Native integration, SFU and storage are subsequent stages.
 - **Interaction:** support explicit activities and subscriptions across rooms.
   Expose voice and picture destinations clearly; extra selections add actual
   resource demand rather than consuming a fixed per-room entitlement.
-- **Permissions:** users can hold multiple roles; channel ownership and live
+- **Permissions:** users can hold multiple roles; domain and room ownership and live
   sharing/watching/forwarding overlap. Keep permission evaluation separate from
   activity and define only the room overrides the agreed flows require.
 - **Persistence:** recommend temporary App channels and durable Server channels.

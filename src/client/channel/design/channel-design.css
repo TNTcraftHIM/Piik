@@ -56,6 +56,9 @@
 .cd-self { display: flex; align-items: center; gap: 3px; padding: 12px 10px; border-top: 1px solid var(--line); }
 .cd-self-name { flex: 1; min-width: 0; padding-inline: 4px; }
 .cd-self-name strong { display: block; font-size: 12px; }
+.cd-self-heading { display: flex; align-items: center; min-width: 0; }
+.cd-self-heading strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-self-heading .c3-name-editor .lr-btn { --button-size: 24px; --button-padding: 3px; }
 .cd-self-name small { font-size: 10px; color: var(--muted); }
 .cd-self .lr-btn { --button-size: 32px; --button-padding: 4px; }
 .cd-self .cd-avatar { width: 29px; }
@@ -67,6 +70,9 @@
 .cd-room-actions { grid-area: actions; display: flex; align-items: center; gap: 6px; }
 .cd-room-heading-icon { color: var(--muted); display: inline-flex; }
 .cd-room-heading-text { flex: 1; min-width: 0; }
+.cd-room-heading-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.cd-room-heading-name h2 { min-width: 0; }
+.cd-room-heading-name .lr-btn { --button-size: 26px; --button-padding: 4px; }
 .cd-room-heading h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-room-heading-text > span { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; }
 .cd-header-action .lr-btn { --button-size: 36px; --button-padding: 12px; font-size: 12px; }
