@@ -17,7 +17,7 @@ pub mod wire;
 pub use access::{RoomPermission, RoomState};
 pub use channel::DurableState;
 pub use identity::{Endpoint, Member, User};
-pub use room::RoomRuntime;
+pub use room::{RoomRuntime, RoomSnapshot};
 pub use wire::MAX_MESSAGE_ATTACHMENTS;
 
 use channel::Channel;

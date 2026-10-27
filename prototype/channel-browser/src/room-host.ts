@@ -1,5 +1,5 @@
 import init, { create_room_policy, RoomHost } from "../pkg/piik_channel_browser.js";
-import type { ChannelMessage } from "../../../src/client/channel/protocol";
+import type { ChannelMessage, ChannelRoom, ChannelSnapshot } from "../../../src/client/channel/protocol";
 
 /** Supplied by the authenticated domain connection, never by a peer command. */
 export interface RoomMember { userId: string; participates: boolean; domainOwner: boolean }
@@ -12,6 +12,7 @@ export interface SentResult { type: "sent"; message: ChannelMessage; inserted: b
 export interface PageResult {
   type: "page"; messages: ChannelMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
+export type RoomSnapshot = Pick<ChannelSnapshot, "publications" | "voice" | "subscriptions"> & { room: ChannelRoom };
 interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; attachments: string[] } }
 
 const failure = (error: unknown): Error => error instanceof Error ? error : new Error(String(error));
@@ -67,6 +68,9 @@ export class BrowserRoomHost {
 
   get roomId(): string { return this.room.room_id(); }
   exportPolicy(): string { return this.room.policy(); }
+  snapshot(member: RoomMember, sessionId: string): RoomSnapshot | null {
+    return JSON.parse(this.room.snapshot(JSON.stringify(member), sessionId));
+  }
 
   private enqueue<T>(work: () => Promise<T>): Promise<T> {
     if (this.closing) return Promise.reject(new Error("closed"));

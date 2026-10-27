@@ -1,6 +1,6 @@
 # Browser room adapter
 
-The same Rust `RoomRuntime` authorizes room history operations. IndexedDB supplies
+The shared Rust `RoomRuntime` owns authorized room views and history operations. IndexedDB supplies
 transactional storage; shared Rust prepares confirmations and history pages.
 The caller supplies authenticated domain member facts, without a credential database,
 and delivers returned results after commit. Domain rendezvous is not yet connected.

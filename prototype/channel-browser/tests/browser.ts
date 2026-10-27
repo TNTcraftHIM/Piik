@@ -30,6 +30,17 @@ window.runBrowserRoomCheck = async () => {
     access: "public", hidden: false });
   let host = await BrowserRoomHost.open(database, policy);
   try {
+    const session = crypto.randomUUID();
+    check(host.snapshot(owner, session)?.room.canManage, "room owner projection comes from shared Rust");
+    const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", creatorId: owner.userId,
+      access: "private", hidden: true });
+    const privateHost = await BrowserRoomHost.open(database, privatePolicy);
+    try {
+      const guest = { ...owner, userId: crypto.randomUUID() };
+      check(privateHost.snapshot(guest, crypto.randomUUID()) === null, "hidden-room projection does not expose its summary");
+      await rejected(privateHost.history(guest), "room_unavailable");
+      check((await privateHost.send(owner, "Private", "first")).message.seq === 1, "each room owns its order in the same database");
+    } finally { await privateHost.close(); }
     await rejected(host.send({ ...owner, participates: false }, "Denied", "denied"), "forbidden");
     const [first, second] = await Promise.all([host.send(owner, "Original", "first"), host.send(owner, "Second", "second")]);
     check(first.inserted && first.message.seq === 1 && second.message.seq === 2, "serialized room order");
@@ -87,7 +98,7 @@ window.runBrowserRoomCheck = async () => {
     return { passed: true, actualWasm: true, actualIndexedDB: true, serializedOrder: true,
       originalConfirmation: true, reopen: true, abortAfterInsertSuccess: insertSucceeded,
       abortConfirmed: confirmed, missingAttachmentRollback: true, latest: latest.messages.length, older: older.messages.length,
-      domainCredentialDatabaseProvided: false, beforeZero: true, versionChangeClearsPending: true };
+      domainCredentialDatabaseProvided: false, beforeZero: true, versionChangeClearsPending: true, privateRoomProjection: true };
   } finally {
     await host.close();
     await new Promise<void>((resolve, reject) => {

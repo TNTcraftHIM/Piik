@@ -463,23 +463,27 @@ impl Channel {
             .sessions
             .get(&session_id)
             .and_then(|session| self.identity.member(session.user_id).ok());
-        let reads = |room: &RoomRuntime| {
-            member.is_some_and(|member| room.authorize(member, RoomPermission::Read).is_ok())
-        };
+        let mut rooms = Vec::new();
+        let mut publications = Vec::new();
+        let mut voice = Vec::new();
+        let mut subscriptions = BTreeSet::new();
+        if let Some(member) = member {
+            for room in self.rooms.values() {
+                if let Some(snapshot) = room.snapshot(member, session_id) {
+                    rooms.push(snapshot.room);
+                    publications.extend(snapshot.publications);
+                    voice.extend(snapshot.voice);
+                    subscriptions.extend(snapshot.subscriptions);
+                }
+            }
+        }
         Snapshot {
             channel: ChannelInfo {
                 history_window: HISTORY_WINDOW,
                 id: self.id,
                 name: "Piik friends".into(),
                 owner_id: Some(self.identity.owner_id),
-                rooms: member
-                    .map(|member| {
-                        self.rooms
-                            .values()
-                            .filter_map(|room| room.view(member))
-                            .collect()
-                    })
-                    .unwrap_or_default(),
+                rooms,
                 roles: vec![
                     RoleInfo {
                         id: "member",
@@ -504,25 +508,9 @@ impl Channel {
                     online: session.connection.is_some(),
                 })
                 .collect(),
-            publications: self
-                .rooms
-                .values()
-                .filter(|room| reads(room))
-                .flat_map(|room| room.publications().cloned())
-                .collect(),
-            voice: self
-                .rooms
-                .values()
-                .filter(|room| reads(room))
-                .flat_map(|room| room.voice().cloned())
-                .collect(),
-            subscriptions: self
-                .rooms
-                .values()
-                .flat_map(|room| room.subscriptions(session_id))
-                .collect::<BTreeSet<_>>()
-                .into_iter()
-                .collect(),
+            publications,
+            voice,
+            subscriptions: subscriptions.into_iter().collect(),
             pairs: self.transports.snapshot(session_id),
             ice_servers: self.ice_servers.clone(),
         }

@@ -6,6 +6,7 @@ use crate::{
     transport::Flow,
     wire::{Kind, PublicationInfo, Room, RoomAccess, VoiceInfo},
 };
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
@@ -28,6 +29,15 @@ pub struct RoomRuntime {
     policy: RoomState,
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomSnapshot {
+    pub room: Room,
+    pub publications: Vec<PublicationInfo>,
+    pub voice: Vec<VoiceInfo>,
+    pub subscriptions: Vec<Uuid>,
 }
 
 impl RoomRuntime {
@@ -65,8 +75,20 @@ impl RoomRuntime {
         }
     }
 
-    pub fn view(&self, member: Member) -> Option<Room> {
-        self.policy.view(member.user_id, member.domain_owner)
+    pub fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
+        let room = self.policy.view(member.user_id, member.domain_owner)?;
+        let mut snapshot = RoomSnapshot {
+            room,
+            publications: Vec::new(),
+            voice: Vec::new(),
+            subscriptions: Vec::new(),
+        };
+        if snapshot.room.authorized {
+            snapshot.publications = self.publications().cloned().collect();
+            snapshot.voice = self.voice().cloned().collect();
+            snapshot.subscriptions = self.subscriptions(session).into_iter().collect();
+        }
+        Some(snapshot)
     }
 
     pub fn accepts_invite(&self, key: &str) -> bool {
@@ -377,5 +399,73 @@ impl RoomRuntime {
         } else {
             publication.plan.mark_unready(receiver, sender)
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn room_projection_obeys_private_access_before_exposing_activity() {
+        let owner = Member {
+            user_id: Uuid::new_v4(),
+            participates: true,
+            domain_owner: false,
+        };
+        let viewer = Member {
+            user_id: Uuid::new_v4(),
+            ..owner
+        };
+        let owner_session = Uuid::new_v4();
+        let viewer_session = Uuid::new_v4();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "private".into(),
+                "Friends".into(),
+                owner.user_id,
+                RoomAccess::Private,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        room.grant_invited(viewer.user_id);
+        let picture = Uuid::new_v4();
+        let voice = Uuid::new_v4();
+        room.publish(owner, owner_session, picture, Kind::Screen, false)
+            .unwrap();
+        room.set_voice(owner, owner_session, true, false, false)
+            .unwrap();
+        room.publish(owner, owner_session, voice, Kind::Voice, false)
+            .unwrap();
+        room.set_voice(viewer, viewer_session, true, false, false)
+            .unwrap();
+        room.subscribe(viewer, viewer_session, picture, true)
+            .unwrap();
+
+        let admitted = room.snapshot(viewer, viewer_session).unwrap();
+        assert!(admitted.room.authorized);
+        assert_eq!(admitted.publications.len(), 2);
+        assert_eq!(admitted.voice.len(), 2);
+        assert_eq!(
+            admitted.subscriptions.into_iter().collect::<BTreeSet<_>>(),
+            BTreeSet::from([picture, voice]),
+        );
+
+        room.revoke(owner, viewer).unwrap();
+        let locked = room.snapshot(viewer, viewer_session).unwrap();
+        assert!(!locked.room.authorized);
+        assert!(!locked.room.can_manage);
+        assert!(locked.publications.is_empty());
+        assert!(locked.voice.is_empty());
+        assert!(locked.subscriptions.is_empty());
+
+        room.update(owner, "Friends".into(), RoomAccess::Private, true, None)
+            .unwrap();
+        assert!(room.snapshot(viewer, viewer_session).is_none());
+        let own = room.snapshot(owner, owner_session).unwrap();
+        assert!(own.room.authorized && own.room.can_manage);
+        assert_eq!(own.publications.len(), 2);
     }
 }

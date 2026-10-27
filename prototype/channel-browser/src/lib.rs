@@ -73,6 +73,10 @@ impl RoomHost {
     pub fn policy(&self) -> Result<String, JsValue> {
         encode(self.room.policy())
     }
+    pub fn snapshot(&self, principal: &str, session_id: &str) -> Result<String, JsValue> {
+        let session = Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?;
+        encode(&self.room.snapshot(parse::<Member>(principal)?, session))
+    }
     pub fn page_size(&self) -> usize {
         HISTORY_PAGE
     }
