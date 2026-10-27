@@ -35,13 +35,12 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **Piik 3.0 channels and Rust prototype.** Validate independent channel,
-  chat, voice and screen-share lifecycles, with optional image/file exchange,
-  retaining the current topology and route-controller invariants. Rust is the
-  owner-selected 3.0 target; choose explicit media/native migration boundaries
-  before replacing production components. The current 2.x contract remains
-  unchanged. The [hosting and subscription assessment](./research/room-interactions.md#multi-room-and-distributed-hosting-assessment)
-  owns the design and isolated prototype boundary.
+- [ ] **Piik 3.0 channels and Rust prototype.** Discuss the
+  [network and lifecycle proposal](./research/channel-network-design.md) with the
+  owner before implementing it, as requested on 2026-10-26. Resolve the proposed
+  multi-source route model, first UI media scope and attachment/storage behavior.
+  Then complete the real multi-publisher/voice baseline in the isolated experiment.
+  Rust is the selected core language; the current 2.x contract remains unchanged.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
@@ -99,6 +98,3 @@ own behavior; research and Git/PRs own evidence and completed history.
   justifies the [pairing and input boundary](./research/camera-and-microphone.md#phone-microphone-assessment).
 - **Mobile controlled endpoints.** Separate scope from desktop keyboard/mouse
   control and desktop co-play.
-- **Multiple simultaneous sharers.** Define publication/subscription ownership
-  before prototyping. The [party-mode assessment](./research/room-interactions.md#multiple-sharers-assessment-not-implemented)
-  owns the proposal; the current one-Host contract remains.

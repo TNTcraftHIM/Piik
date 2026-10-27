@@ -93,6 +93,7 @@ and [website preview and publishing](./operations/website.md).
 | Measurements and platform limits | [Research](./research/) and [verification status](./verification-status.md) |
 | Camera and Host microphone | [Capture scope and limits](./research/camera-and-microphone.md) |
 | Text, reactions and floating room tools | [Room-interaction design](./research/room-interactions.md) |
+| Proposed 3.0 channels, Rust core and multi-source routing | [Channel and network design](./research/channel-network-design.md) |
 | Stereo verification and HDR-to-SDR assessment | [Media fidelity](./research/media-fidelity.md) |
 
 ## Shared conventions

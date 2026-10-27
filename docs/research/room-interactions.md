@@ -432,104 +432,16 @@ is incomplete, so unsupported pages retain the in-page panel. Video PiP and chat
 PiP may replace each other under the browser's single-window policy; no media
 or room owner changes. This needs no new room protocol or major version.
 
-## Multiple Sharers Assessment (Not Implemented)
+## Piik 3.0 Channels And Multiple Publishers
 
-The requested party mode lets several participants share their own screens while
-each Viewer chooses one picture to watch. Publishing and watching would be
-independent, with room administration separate from publication ownership.
-The existing one-Host workflow would remain the default.
+The [channel and network proposal](./channel-network-design.md) owns the Rust
+direction, independent activity lifecycles, multi-source routing, hosting and
+attachment design. The owner requested model discussion before implementation;
+these proposals do not change the accepted 2.x contract.
 
-This is a model change: the current route controller owns one Host and one
-picture publication. Each new publication would need its own source generation and
-subscription lifecycle, while endpoint upload limits remain shared across all
-publications. Creating a controller per source must not multiply that endpoint's
-outbound allowance. Switching pictures should replace the selected subscription,
-preserving room membership and chat. One selected picture is the initial scope;
-camera conferencing and room voice are separate features. No implementation or
-protocol change is accepted by this assessment.
-
-### Multi-room And Distributed Hosting Assessment
-
-Reviewed 2026-10-24. The proposed 3.0 direction separates room administration,
-service hosting and media publication. Chat, voice and screen sharing would have
-independent lifetimes; image/file exchange is a separate finite transfer concern.
-
-Distributed hosting has different implementation costs:
-
-| Model | Responsibility and tradeoff |
-| --- | --- |
-| Different instances host different rooms | Each room keeps one authority and route controller; clients join rooms across instances. An App can host a temporary room, while a self-hosted service can keep rooms available. |
-| Cross-instance identity and room admission | Users reach a room's owning service through their own provider. This adds inter-service authentication and admission without requiring replicated room authority. |
-| One room replicated across instances | Membership, permissions and history need conflict resolution, revocation and partition behavior. This is a substantially larger distributed-state design. |
-
-[XMPP multi-user chat](https://xmpp.org/extensions/xep-0045.html) provides a reference
-for service-owned rooms; [Matrix](https://spec.matrix.org/latest/#architecture)
-replicates room events across participating homeservers. These are alternatives,
-not a requirement to adopt either protocol. Direct joins across separately hosted
-rooms do not by themselves constitute federation.
-
-P2P-first media is independent of that hosting choice. Multiple publishers need
-explicit publication/subscription identities and an aggregate endpoint bandwidth
-budget. Reuse of traversal, recovery and forwarding does not make the current
-single-picture route planner a finished multi-source implementation.
-[Selective subscription](https://docs.livekit.io/transport/media/subscribe/#selective-subscription)
-separates available publications from the streams actually delivered. Multiple
-publishers with one selected primary picture is a smaller first UI than a live
-grid; the data model should represent subscriptions rather than hard-code one
-room-wide current publisher.
-
-The proposed starting point is one authority per room and many rooms per
-instance. The owner selected Rust as the 3.0 implementation target on 2026-10-26;
-the existing Go/media components remain the current 2.x implementation and the
-reference for required behavior. Automatic room migration and replicated
-authority remain separate decisions, not prerequisites.
-
-### Rust Channel Prototype Assessment
-
-Reviewed 2026-10-26. The owner's newer 3.0 direction targets Rust. The isolated
-[`prototype/channel-server`](../../prototype/channel-server/README.md) experiment
-uses Axum/Tokio for a real WebSocket chat authority and reuses the existing
-React visual primitives. Chat is networked; microphone and picture capture are
-local. Production admission, persistence and media transport are the next
-integration boundaries. The accepted 2.x protocol remains unchanged.
-
-Mature references support separating these responsibilities. Public
-[channel permission definitions](https://github.com/discord/discord-api-docs/blob/main/developers/topics/permissions.mdx)
-distinguish viewing, connecting, speaking and publishing; Piik can begin with
-explicit channel-scoped capabilities instead of adopting their complete role
-hierarchy. The separate [voice connection lifecycle](https://github.com/discord/discord-api-docs/blob/main/developers/topics/voice-connections.mdx)
-supports keeping browsing and joined voice distinct. The public
-[channel file-storage configuration](https://github.com/teamspeak/teamspeak6-server/blob/main/CONFIG.md)
-uses a separate transfer/storage path, including optional presigned object URLs;
-file bytes need not travel through chat signaling or the media route controller.
-
-The open [Spacebar server](https://github.com/spacebarchat/server) and
-[Mumble implementation](https://github.com/mumble-voip/mumble) are comparative
-references for channel authority and voice, respectively. Adopt their separation
-of responsibilities while keeping Piik's P2P-first routing and shared controls.
-
-Channel browsing, conversation, joined voice and picture publication have
-different lifetimes. The prototype retains per-channel drafts/history while
-browsing, and keeps local voice/picture capture in their originating channels.
-All prototype participants can access its three fixed channels. File exchange is
-deferred; its separate transfer owner must define recipients, size, retention
-and cancellation before implementation.
-
-The implementation boundary is:
-
-| Owner | Reuse or remaining Rust work |
-| --- | --- |
-| Web interface and Browser WebRTC | Reuse React components, Browser capture/playback and native `RTCPeerConnection`; channel/publication identities still need explicit integration. |
-| HTTP/WebSocket authority | [Axum](https://docs.rs/axum/latest/axum/extract/ws/) and [Tokio](https://docs.rs/tokio/latest/tokio/) supply the actual running prototype stack. Rust owns message attribution and bounded history. Production admission/storage remain unimplemented. |
-| P2P-first controller | Migrate the Go controller's single graph, reconciliation and serial child operations; preserve the aggregate capacity of each endpoint across publications. |
-| Native WebRTC | Evaluate [webrtc-rs](https://github.com/webrtc-rs/webrtc)'s async transport and [str0m](https://github.com/algesten/str0m)'s Sans-I/O transport against Browser codec interoperability, adaptation, forwarding, NAT and recovery. Both remain candidates. |
-| Embedded SFU and native media adapter | The [LiveKit Rust SDK](https://github.com/livekit/rust-sdks) supplies client and service APIs, rather than an SFU implementation. Separately evaluate a Rust replacement for the embedded Go forwarding/allocator components; retain the current media component during that comparison. |
-| Platform capture/encoding/input | Reuse the existing native helpers and OS capability boundaries through narrow Rust adapters. Verify their permissions, resource retirement and frame/input contracts. |
-
-The current Host owns both room authority and publication. Supporting multiple
-publishers requires separate channel, publication and subscription identities,
-with one aggregate capacity owner per endpoint. Preserve P2P-first routing and
-mature congestion control during the migration.
+The isolated [Rust channel prototype](../../prototype/channel-server/README.md)
+currently supplies networked chat and local microphone/picture capture. Its README
+owns the runnable boundary; the proposal defines the next usable network baseline.
 
 ## Attended Remote-Control Prototype
 

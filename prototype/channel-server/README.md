@@ -25,6 +25,10 @@ File exchange is deliberately absent until there is an authorised transfer owner
 
 ## Design boundary
 
+The [3.0 network and lifecycle proposal](../../docs/research/channel-network-design.md)
+owns the next model and implementation order. It awaits owner discussion before
+runtime changes. The following describes only the current executable prototype.
+
 - One local service owns the space and its three channels. Each WebSocket gets
   a server-issued, connection-scoped identity. All prototype participants have
   the same access to all three channels; there are no private channels or roles.
