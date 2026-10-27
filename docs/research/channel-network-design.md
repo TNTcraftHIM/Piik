@@ -382,7 +382,9 @@ plans. Domain admission supplies a credential-free member/session projection;
 a separate transport book combines logical flows into shared physical pairs.
 Changing one room's activity cannot retire a pair still used by another room.
 Confirmed messages now use room-scoped incremental storage outside the domain
-metadata checkpoint; they have not moved to their owners' devices. It plans
+metadata checkpoint. A [Browser adapter](../../prototype/channel-browser/README.md)
+also runs the shared room core in WASM with IndexedDB persistence; the normal
+channel interface has not yet moved room execution to that adapter. It plans
 screen and voice publications independently, shares physical media pairs, and transfers files
 through authenticated HTTP. The room base DataChannel tree remains to be built.
 Its simplified screen plan starts with subscribers as relay candidates and
@@ -403,7 +405,7 @@ same complete user flows and failure cases against the new ownership model.
 The next architectural change moves a cohesive room runtime to its actual owner:
 room permissions and confirmed state, persistence, base planning and per-screen
 planning. Domain runtime keeps directory, membership and authenticated rendezvous.
-Use one Rust core with thin App/Server and eventual Browser adapters. Evaluate
+Use one Rust core with thin App/Server and Browser adapters. Evaluate
 capture, encoding and input at their platform boundaries; retain native helpers
 only where platform APIs or a proven component require them. Do not add a
 separate storage service.
@@ -411,7 +413,7 @@ separate storage service.
 | Boundary | Responsibility |
 | --- | --- |
 | Shared Rust core | Domain and room rules, ordered state changes, publication/subscription demand and route planning. Drive these with typed events rather than sockets or timers inside the model. |
-| Runtime adapters | Native App/Server I/O, timers and storage; eventual Browser/WASM execution and IndexedDB. Validate external input at entry, with no second mutable authority in handlers. |
+| Runtime adapters | Native App/Server I/O, timers and storage; Browser/WASM execution and IndexedDB. Validate external input at entry, with no second mutable authority in handlers. |
 | Participant transport/media | Shared peer connections, native or Browser capture/playback, congestion feedback and encoded forwarding where supported. Route repair reuses capture. |
 | Web interface | Existing Piik controls and presentation, projecting current room/activity state. UI selection does not own media lifetime. |
 

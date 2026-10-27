@@ -53,7 +53,8 @@ pub struct Admitted {
 }
 
 /// The domain's current admission, without credentials or its user database.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Member {
     pub user_id: Uuid,
     pub participates: bool,

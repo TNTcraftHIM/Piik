@@ -11,6 +11,9 @@ domain admission and the shared transport book compose their results. A physical
 pair remains while any room needs it. The Browser protocol and UI are unchanged.
 Moving those responsibilities to the actual room owner, and sharing a base
 room network beneath media, are the next integration under the accepted model.
+The [Browser room adapter](../channel-browser/README.md) already executes this
+Rust core in WASM with IndexedDB storage. It shares confirmation and pagination
+rules with SQLite; it is not yet connected to this coordinator's room directory.
 
 ## Run
 

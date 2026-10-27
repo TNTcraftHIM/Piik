@@ -100,6 +100,12 @@ Use incremental transactions at the storage owner. Do not carry the prototype's
 whole-channel JSON rewrite into distributed room storage. Share the Rust room
 rules between native execution and any Browser/WASM adapter; use local SQLite
 or IndexedDB through that adapter rather than an external database service.
+Storage adapters read retry identity, room order and attachment ownership inside
+one transaction; the shared core prepares the confirmation. A Browser runtime
+serializes room operations through the transaction's
+[complete event](https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/complete_event),
+not an individual write's success. Failure ends that operation without advancing
+the confirmed order or blocking the next command.
 
 Participants synchronize from the room owner over the established room path.
 Intermediate peers forward the authenticated response; they do not confirm it.
@@ -359,10 +365,12 @@ original message without another broadcast. Confirmed history is retained, while
 the Browser reads a bounded window with earlier-page and latest-page navigation.
 Domain metadata checkpoints no longer contain messages or their retry records.
 The current synchronous runtime finishes a history read and queues its response
-before processing another room command. Moving these operations to remote room
-owners still requires an explicit synchronization boundary and restore generation.
-Native persistent room hosting, Browser-local room authority, peer file transfer
-and local history copies are not implemented.
+before processing another room command. The [Browser adapter](../../prototype/channel-browser/README.md)
+runs the same room core in WASM and stores room policy, ordered history and
+attachment ownership in IndexedDB. It serializes authorization, storage and
+completion; SQLite and IndexedDB share confirmation and pagination rules.
+The existing channel UI still uses the coordinator. Remote room binding,
+App hosting, peer file bytes and participant history caches remain integration work.
 
 After agreement, validate one domain owner A and a different room owner B:
 B alone confirms and retains its room history; C and D receive it along their

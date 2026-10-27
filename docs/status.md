@@ -10,19 +10,16 @@ and Git/PRs own completed history.
 
 The [channel prototype](../prototype/channel-server/README.md) has a Rust
 coordinator and real Browser chat, screen publications, selective watching and
-room voice. Its five-endpoint gate covers relay continuity and recovery; the
-focused lifecycle gate covers revocation, offline stop and session expiry.
+room voice. Domain admission, room activities/plans and shared transport leases
+have separate Rust owners. Confirmed history is incremental and idempotent,
+outside domain checkpoints. The [Browser room adapter](../prototype/channel-browser/README.md)
+runs the same core in WASM with IndexedDB; the channel UI still uses the coordinator.
 The [accepted routing foundation](./research/channel-network-design.md) assigns
 each room to its actual operator and starts video on usable room paths before
 bounded source-rooted convergence. The [data model](./research/channel-storage-and-identity.md)
-records durable room history and attachment metadata with whole-file verification
-and demand-driven shared delivery over existing room paths. The 2.x core routing
-and lifecycle audit has closed its confirmed defects. The next implementation
-follows the semantic/module map. Confirmed chat now has per-room order,
-incremental storage and idempotent confirmation, separate from domain checkpoints.
-Domain admission, room activities/plans and shared transport leases now have
-separate Rust owners within the coordinator process.
-Moving the room runtime to its actual owner and establishing shared paths remain next.
+owns history and file delivery. Remote room binding and shared room paths are
+the next integration. The 2.x core routing and lifecycle audit has closed its
+confirmed defects; unrelated platform reports remain in TODO.
 The visual proposal and functional prototype share editable URL bookmarks; automatic address
 discovery is not planned. Work stays on `feat/channel-prototype`.
 Production 2.x remains on its existing contract. [TODO](./todo.md) owns the next stages.
