@@ -74,33 +74,46 @@ func (source *Source) RateControlled(layer int32) bool {
 }
 
 func NewSource(options SourceOptions) (*Source, error) {
-	if options.ID == "" || options.StreamID == "" ||
-		options.Codec.ClockRate != 90_000 ||
-		(!strings.EqualFold(options.Codec.MimeType, webrtc.MimeTypeH264) &&
-			!strings.EqualFold(options.Codec.MimeType, webrtc.MimeTypeVP8)) {
-		return nil, errors.New("forwarded video source is invalid")
+	audio := strings.EqualFold(options.Codec.MimeType, webrtc.MimeTypeOpus) && options.Codec.ClockRate == 48_000
+	video := options.Codec.ClockRate == 90_000 && (strings.EqualFold(options.Codec.MimeType, webrtc.MimeTypeH264) ||
+		strings.EqualFold(options.Codec.MimeType, webrtc.MimeTypeVP8))
+	if options.ID == "" || options.StreamID == "" || (!audio && !video) {
+		return nil, errors.New("forwarded source is invalid")
+	}
+	minimum, defaultPackets := buffer.InitPacketBufferSizeVideo, encoded.MaxPacketWindow
+	if audio {
+		minimum, defaultPackets = buffer.InitPacketBufferSizeAudio, buffer.InitPacketBufferSizeAudio
 	}
 	if options.MaxPackets == 0 {
-		options.MaxPackets = encoded.MaxPacketWindow
+		options.MaxPackets = defaultPackets
 	}
-	if options.MaxPackets < buffer.InitPacketBufferSizeVideo || options.MaxPackets > 1<<16 {
-		return nil, errors.New("forwarded video packet bound is invalid")
+	if options.MaxPackets < minimum || options.MaxPackets > 1<<16 {
+		return nil, errors.New("forwarded packet bound is invalid")
 	}
 	info := &livekit.TrackInfo{
 		Sid: options.ID, Type: livekit.TrackType_VIDEO, Source: livekit.TrackSource_SCREEN_SHARE,
 		MimeType: options.Codec.MimeType,
 	}
-	if err := setLayerFormats(info, options.Formats); err != nil {
-		return nil, err
+	kind, layers := webrtc.RTPCodecTypeVideo, len(options.Formats)
+	if audio {
+		if len(options.Formats) != 0 {
+			return nil, errors.New("forwarded audio cannot declare video layers")
+		}
+		info.Type, info.Source = livekit.TrackType_AUDIO, livekit.TrackSource_MICROPHONE
+		kind, layers = webrtc.RTPCodecTypeAudio, 1
+	} else {
+		if err := setLayerFormats(info, options.Formats); err != nil {
+			return nil, err
+		}
 	}
 	source := &Source{
 		ReceiverBase: sfu.NewReceiverBase(sfu.ReceiverBaseParams{
 			TrackID: livekit.TrackID(options.ID), StreamID: options.StreamID,
-			Kind: webrtc.RTPCodecTypeVideo, Codec: options.Codec,
+			Kind: kind, Codec: options.Codec,
 			HeaderExtensions: canonicalHeaderExtensions(options.HeaderExtensions), Logger: diagnostics.MediaLogger("source").WithValues("trackId", diagnostics.ID(options.ID)),
 			StreamTrackerManagerConfig: sfu.DefaultStreamTrackerManagerConfig,
 		}, info, sfu.ReceiverCodecStateNormal),
-		buffers:    make([]*sourceBuffer, len(options.Formats)),
+		buffers:    make([]*sourceBuffer, layers),
 		maxPackets: options.MaxPackets, onRTCP: options.OnRTCP,
 	}
 	source.currentTrackInfo.Store(info)
@@ -119,9 +132,11 @@ func (source *Source) AddDownTrack(track sfu.TrackSender) error {
 	if err := source.ReceiverBase.AddDownTrack(track); err != nil {
 		return err
 	}
-	tracker := source.StreamTrackerManager()
-	track.UpTrackMaxPublishedLayerChange(tracker.GetMaxPublishedLayer())
-	track.UpTrackMaxTemporalLayerSeenChange(tracker.GetMaxTemporalLayerSeen())
+	if source.Kind() == webrtc.RTPCodecTypeVideo {
+		tracker := source.StreamTrackerManager()
+		track.UpTrackMaxPublishedLayerChange(tracker.GetMaxPublishedLayer())
+		track.UpTrackMaxTemporalLayerSeenChange(tracker.GetMaxTemporalLayerSeen())
+	}
 	for layer, input := range source.ReceiverBase.GetAllBuffers() {
 		if input != nil {
 			if report := input.GetSenderReportData(); report != nil {
@@ -188,7 +203,7 @@ func (source *Source) UpdateFormats(formats []LayerFormat) error {
 	if closed {
 		return sfu.ErrReceiverClosed
 	}
-	if len(formats) != count {
+	if source.Kind() != webrtc.RTPCodecTypeVideo || len(formats) != count {
 		return errors.New("forwarded video layer count changed")
 	}
 	info := source.TrackInfo()
@@ -209,7 +224,7 @@ func (source *Source) UpdateDimensions(layer int, width, height uint32) error {
 	if source.closed {
 		return sfu.ErrReceiverClosed
 	}
-	if layer < 0 || layer >= len(source.buffers) || width == 0 || height == 0 {
+	if source.Kind() != webrtc.RTPCodecTypeVideo || layer < 0 || layer >= len(source.buffers) || width == 0 || height == 0 {
 		return errors.New("forwarded video layer dimensions are invalid")
 	}
 	current := source.currentTrackInfo.Load()
@@ -245,16 +260,22 @@ func (source *Source) BindLayer(layer int, ssrc uint32, parameters webrtc.RTPPar
 		return candidate.PayloadType == codec.PayloadType && candidate.ClockRate == codec.ClockRate &&
 			strings.EqualFold(candidate.MimeType, codec.MimeType) && candidate.SDPFmtpLine == codec.SDPFmtpLine
 	}) || !slices.Equal(canonicalHeaderExtensions(parameters.HeaderExtensions), source.HeaderExtensions()) {
-		return errors.New("forwarded video layer codec does not match the source")
+		return errors.New("forwarded layer codec does not match the source")
 	}
 	for _, existing := range source.buffers {
 		if existing != nil && existing.SSRC() == ssrc {
 			return errors.New("forwarded video layers cannot share an SSRC")
 		}
 	}
-	input := &sourceBuffer{Buffer: buffer.NewBuffer(ssrc, source.maxPackets, buffer.InitPacketBufferSizeAudio)}
+	audioPackets, bitrate := buffer.InitPacketBufferSizeAudio, 0
+	if source.Kind() == webrtc.RTPCodecTypeAudio {
+		audioPackets = source.maxPackets
+	} else {
+		bitrate = int(source.TrackInfo().Layers[layer].Bitrate)
+	}
+	input := &sourceBuffer{Buffer: buffer.NewBuffer(ssrc, source.maxPackets, audioPackets)}
 	input.SetLogger(diagnostics.MediaLogger("rtp-buffer").WithValues("trackId", diagnostics.ID(string(source.TrackID()))))
-	if err := input.Bind(parameters, codec.RTPCodecCapability, int(source.TrackInfo().Layers[layer].Bitrate)); err != nil {
+	if err := input.Bind(parameters, codec.RTPCodecCapability, bitrate); err != nil {
 		_ = input.Close()
 		return err
 	}

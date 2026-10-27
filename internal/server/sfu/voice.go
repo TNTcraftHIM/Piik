@@ -158,6 +158,11 @@ func (media *Media) ConfigureVoice(plan VoiceConnectionPlan, emit func(VoiceMedi
 			delete(c.outgoing, id)
 		}
 	}
+	for _, input := range c.bindings {
+		if !slices.Contains(plan.Publish, input.publication) {
+			c.detachInputLocked(input.source)
+		}
+	}
 	v.mu.Unlock()
 	return func() error { return c.negotiate(false) }, nil
 }

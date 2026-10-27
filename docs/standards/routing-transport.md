@@ -132,6 +132,11 @@ branch. Voice uses a companion WebRTC audio connection on each selected edge;
 picture retains its existing Browser/Native sender and adaptation owners.
 There is no all-pairs mesh or second route planner. SFU voice reuses its existing
 UDP listener and admission, including on SFU-only sites.
+An audio input's lifetime is separate from its reusable listening output.
+Changing publishers preserves the negotiated output while the mature forwarding
+component maintains its RTP clock and feedback. Revoking a source stops both
+new and already-buffered delivery; stale source callbacks cannot affect its
+replacement.
 
 A candidate carrying picture and voice commits only after both decoded-picture
 proof and the required voice transports connect. A silent voice-only candidate
@@ -156,8 +161,10 @@ voice readiness never becomes evidence that a video frame has arrived.
 One room controller owns the committed graph and one bounded child transition.
 Healthy current edges remain sticky. When admitted overlap exists, a usable old
 route stays active until the exact candidate child decodes a first new frame;
-ICE connected alone is not commit proof. Availability repair may instead use the
-explicit bounded-gap plan defined by ADR-0005 when no overlap slot exists.
+the candidate must still be connected when that proof is accepted and when it
+replaces playback. ICE connected alone is not commit proof. Availability repair
+may instead use the explicit bounded-gap plan defined by ADR-0005 when no overlap
+slot exists.
 Failure or stale authority releases the candidate and preserves unaffected
 branches. An operation's purpose is immutable; availability work preempts a
 background operation by replacing it rather than changing its meaning. An
