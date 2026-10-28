@@ -212,7 +212,7 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	defer mux.Close()
 	serverSettings := settings
 	serverSettings.SetICEUDPMux(mux)
-	service := NewMedia(MediaOptions{Settings: serverSettings})
+	service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return serverSettings }})
 	defer service.Close()
 	a1, a2, b1 := VoicePublication{"voice_a1", "speaker_a"}, VoicePublication{"voice_a2", "speaker_c"}, VoicePublication{"voice_b1", "speaker_b"}
 	aPlan := VoiceConnectionPlan{RoomID: "1234", PeerID: "relay_a", SessionID: "session_a", ConnectionID: "connection_a", Publish: []VoicePublication{a1, a2}, Subscribe: []VoicePublication{b1}}
@@ -396,7 +396,7 @@ func TestVoiceSubscriptionReusesSlotAcrossIndependentPacketClocks(t *testing.T) 
 	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 	settings.SetIncludeLoopbackCandidate(true)
 	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
-	service := NewMedia(MediaOptions{Settings: settings})
+	service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return settings }})
 	t.Cleanup(func() { _ = service.Close() })
 	first, next := VoicePublication{"voice_first", "speaker_first"}, VoicePublication{"voice_next", "speaker_next"}
 	send := VoiceConnectionPlan{RoomID: "1234", PeerID: "sender", SessionID: "sender_session", ConnectionID: "sender_connection", Publish: []VoicePublication{first, next}}
@@ -599,7 +599,7 @@ func TestVoiceSilentTransportAcceptsLatePublicationOnSameConnection(t *testing.T
 	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 	settings.SetIncludeLoopbackCandidate(true)
 	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
-	service := NewMedia(MediaOptions{Settings: settings})
+	service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return settings }})
 	defer service.Close()
 	pub := VoicePublication{ID: "late_voice", PeerID: "speaker"}
 	aPlan := VoiceConnectionPlan{RoomID: "1234", PeerID: "a", SessionID: "session_a", ConnectionID: "connection_a"}

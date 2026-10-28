@@ -35,8 +35,9 @@ type MediaEvent struct {
 }
 
 type MediaOptions struct {
-	// Settings can contain the application-owned UDP mux. Media never closes it.
-	Settings webrtc.SettingEngine
+	// Settings returns a fresh, nonblocking snapshot for each peer. It may
+	// contain the application-owned UDP mux, which Media never closes.
+	Settings func() webrtc.SettingEngine
 	// Events run without media locks and hand exact handles back to room authority.
 	// Physical close must be scheduled asynchronously from these callbacks.
 	Events func(MediaEvent)
@@ -116,6 +117,9 @@ type mediaSubscription struct {
 }
 
 func NewMedia(options MediaOptions) *Media {
+	if options.Settings == nil {
+		options.Settings = func() webrtc.SettingEngine { return webrtc.SettingEngine{} }
+	}
 	return &Media{options: options, publications: make(map[ResourceFence]*mediaPublication), voice: newVoiceMedia(options.Settings)}
 }
 
@@ -173,7 +177,7 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 		return err
 	}
 	pc, err := webrtc.NewAPI(webrtc.WithMediaEngine(engine), webrtc.WithInterceptorRegistry(registry),
-		webrtc.WithSettingEngine(media.options.Settings)).NewPeerConnection(webrtc.Configuration{})
+		webrtc.WithSettingEngine(media.options.Settings())).NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		return err
 	}
@@ -594,7 +598,7 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		audio = publication.audio
 	}
 	transport, err := forwarding.NewTransport(forwarding.TransportOptions{
-		Source: source, Settings: media.options.Settings, ConnectionID: fence.ViewerPeerID + ":" + connectionID,
+		Source: source, Settings: media.options.Settings(), ConnectionID: fence.ViewerPeerID + ":" + connectionID,
 		InitialBitrate: int(metadata.Formats[len(metadata.Formats)-1].Bitrate), Audio: audio,
 		OnDemandChanged: publication.wakeDemand,
 	})

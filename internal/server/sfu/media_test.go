@@ -172,7 +172,7 @@ func runMediaFanout(t *testing.T, codec string, layerCount int) {
 		return *pc.LocalDescription()
 	}
 	stateEvents := make(chan MediaEvent, 128)
-	service := NewMedia(MediaOptions{Settings: settings, Events: func(event MediaEvent) {
+	service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return settings }, Events: func(event MediaEvent) {
 		select {
 		case stateEvents <- event:
 		default:

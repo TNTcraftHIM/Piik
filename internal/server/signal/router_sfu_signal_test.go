@@ -82,7 +82,7 @@ func TestEmbeddedSfuAuthenticatedWebSocketCarriesActualRTP(t *testing.T) {
 	settings.SetIncludeLoopbackCandidate(true)
 	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
 	var signaling atomic.Pointer[Server]
-	service := sfu.NewMedia(sfu.MediaOptions{Settings: settings, Events: func(event sfu.MediaEvent) {
+	service := sfu.NewMedia(sfu.MediaOptions{Settings: func() webrtc.SettingEngine { return settings }, Events: func(event sfu.MediaEvent) {
 		if server := signaling.Load(); server != nil {
 			server.HandleSfuMediaEvent(event)
 		}
