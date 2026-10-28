@@ -276,6 +276,10 @@ async fn pump(
           if drop {continue;}let e=endpoints.get_mut(&id).unwrap();
           if payload.resync==Some(true) {if e.pending {if let Some(original)=e.sent.clone(){native.signal(id,original).await?;}}continue;}
           if let Some(d)=payload.description {
+           if d.kind=="answer" {
+            let expected=if e.polite {"a=setup:passive"}else{"a=setup:active"};
+            for role in d.sdp.as_deref().unwrap_or_default().lines().filter(|line|line.starts_with("a=setup:")) {assert_eq!(role,expected,"renegotiation must preserve the initial DTLS role");}
+           }
            let offer=d.kind=="offer";
            let exchange=payload.exchange_id.unwrap();
            if !offer && (!e.pending||e.sent.as_ref().and_then(|sent|sent.exchange_id)!=Some(exchange)){continue;}
@@ -370,7 +374,9 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                     },
                 ]
             };
-            native.update(plans(false), vec![info.clone()]).await?;
+            native
+                .update(plans(false), vec![info.clone()], vec![])
+                .await?;
             let (stop_tx, stop_rx) = watch::channel(false);
             let (pause_tx, pause_rx) = watch::channel(false);
             let loss = Arc::new(Mutex::new(Loss::default()));
@@ -416,7 +422,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                         && receiver_pc
                             .current_remote_description()
                             .await
-                            .is_some_and(|d| d.sdp.contains("a=rtpmap:109 opus/48000"))
+                            .is_some_and(|d| d.sdp_type == rtc::peer_connection::sdp::RTCSdpType::Answer && d.sdp.contains("a=rtpmap:109 opus/48000"))
                     {
                         break;
                     }
@@ -438,7 +444,9 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
             assert_ne!(old_ssrc, 0x11111111);
             assert_eq!(first.header.payload_type, 109);
             assert!(first.payload.as_ref() == [0xf8, 0xff, 0xfe]);
-            native.update(plans(true), vec![info.clone()]).await?;
+            native
+                .update(plans(true), vec![info.clone()], vec![])
+                .await?;
             let eb = Endpoint {
                 pc: b_pc,
                 pending: false,
@@ -510,7 +518,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
             let updating = {
                 let native = native.clone();
                 let info = info.clone();
-                tokio::spawn(async move { native.update(crowded, vec![info]).await })
+                tokio::spawn(async move { native.update(crowded, vec![info], vec![]).await })
             };
             sleep(Duration::from_millis(150)).await;
             assert!(
@@ -551,7 +559,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                 ..Default::default()
             };
             native
-                .update(expanded, vec![info.clone(), second_info])
+                .update(expanded, vec![info.clone(), second_info], vec![])
                 .await?;
             let second_track = add_source(&eb, second, 0x33333333).await?;
             let second_sender = tokio::spawn(async move {
@@ -642,7 +650,9 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                 .unwrap()
                 .exchange_id
                 .unwrap();
-            native.update(plans(true), vec![info.clone()]).await?;
+            native
+                .update(plans(true), vec![info.clone()], vec![])
+                .await?;
             loss.lock().unwrap().inject_held = true;
             native.resync().await?;
             timeout(Duration::from_secs(5), async {
@@ -705,7 +715,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
             for pair in &mut no_input {
                 pair.incoming.clear();
             }
-            native.update(no_input, vec![info.clone()]).await?;
+            native.update(no_input, vec![info.clone()], vec![]).await?;
             sleep(Duration::from_millis(100)).await;
             while packets.try_recv().is_ok() {}
             assert!(timeout(Duration::from_millis(150), packets.recv())
@@ -742,6 +752,7 @@ async fn close_cancels_a_full_command_output() -> Result<()> {
                 incoming: vec![],
                 outgoing: vec![],
             }],
+            vec![],
             vec![],
         )
         .await?;

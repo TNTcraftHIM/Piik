@@ -413,9 +413,15 @@ impl FileDelivery {
                 }
             }
         }
+        effects.extend(self.dispatch(key));
+        effects
+    }
+
+    fn dispatch(&mut self, key: &FileKey) -> Vec<FileEffect> {
         let Some(file) = self.files.get_mut(key) else {
-            return effects;
+            return Vec::new();
         };
+        let mut effects = Vec::new();
         for (offset, range) in &mut file.ranges {
             if range.supplier != Supplier::Waiting {
                 continue;
@@ -486,49 +492,7 @@ impl FileDelivery {
                 return self.deliver(key, offset, bytes.clone());
             }
         }
-        // `pump` also examines the local receiver, so only dispatch this range here.
-        let range = self
-            .files
-            .get_mut(key)
-            .unwrap()
-            .ranges
-            .get_mut(&offset)
-            .unwrap();
-        if range.supplier != Supplier::Waiting {
-            return Vec::new();
-        }
-        let plan = &self.files[key].plan;
-        let (supplier, effect) = if plan.source_id == Some(self.session) {
-            (
-                Supplier::Local,
-                Some(FileEffect::Read {
-                    key: key.clone(),
-                    offset,
-                    length: range_length(plan, offset),
-                }),
-            )
-        } else if let Some(peer) = plan.upstream {
-            (
-                Supplier::Peer(peer),
-                Some(FileEffect::SendControl {
-                    peer,
-                    control: FileControl::Pull {
-                        key: key.clone(),
-                        offset,
-                    },
-                }),
-            )
-        } else {
-            (Supplier::Waiting, None)
-        };
-        self.files
-            .get_mut(key)
-            .unwrap()
-            .ranges
-            .get_mut(&offset)
-            .unwrap()
-            .supplier = supplier;
-        effect.into_iter().collect()
+        self.dispatch(key)
     }
 
     fn deliver(&mut self, key: &FileKey, offset: u64, bytes: Vec<u8>) -> Vec<FileEffect> {

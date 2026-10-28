@@ -5,6 +5,9 @@ transactional storage; shared Rust prepares confirmations and history pages.
 The caller supplies authenticated domain member facts, without a credential database,
 and delivers its returned projection/reply after commit. The channel prototype loads this adapter
 through its Vite entry; regular 2.x builds do not require generated WASM.
+The same module exposes incremental attachment hashing and the shared file-range
+engine. Browser adapters supply readable Files, temporary OPFS sinks and existing
+peer DataChannels; they do not implement another route or transfer controller.
 
 The current room binding also owns writes to the room store. Claiming it reloads
 policy in the same IndexedDB transaction; old pages cannot overwrite a successor.
@@ -27,5 +30,5 @@ node prototype/channel-browser/check.mjs
 loopback server and browser profile, then removes both. Evidence stays under
 `build/channel-browser-check/`. It tests real WASM and IndexedDB, including
 reopen, original nonce confirmation, abort after insert success and pagination.
-Browser-hosted rooms currently advertise attachments unavailable; no file bytes go to the domain.
-It does not provide a second room UI or file service.
+Browser-hosted rooms deliver files through their base paths; no file bytes go to
+the domain. This adapter does not provide a second room UI or file service.

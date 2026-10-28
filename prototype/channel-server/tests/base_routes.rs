@@ -415,6 +415,10 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
         network.state(source).pairs.is_empty(),
         "idle readable copy does not own a live base connection"
     );
+    assert!(
+        network.state(source).files.is_empty(),
+        "idle copies are not active delivery plans"
+    );
     command(
         &mut network,
         viewer,

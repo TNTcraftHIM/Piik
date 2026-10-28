@@ -1,6 +1,10 @@
 //! Native transport for authorized adjacent pairs. The domain supplies all leases.
-use crate::media::{Output, Relay, Source};
+use crate::{
+    file::{FileLink, Files, Lane},
+    media::{Output, Relay, Source},
+};
 use anyhow::{anyhow, Result};
+use piik_channel_prototype::file_room::FilePlan;
 use piik_channel_prototype::wire::{
     Candidate, Command, Description, LinkState, PairInfo, PublicationInfo, Signal,
     Track as WireTrack,
@@ -13,6 +17,7 @@ use rtc::{
                 configure_congestion_control, register_default_interceptors, CongestionFeedback,
             },
             media_engine::{MediaEngine, MIME_TYPE_OPUS},
+            setting_engine::{SctpMaxMessageSize, SettingEngineBuilder},
         },
         sdp::RTCSessionDescription,
     },
@@ -22,7 +27,7 @@ use rtc::{
 use std::{
     collections::{HashMap, HashSet},
     sync::{
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
         Arc,
     },
     time::{Duration, Instant},
@@ -50,6 +55,7 @@ enum Input {
     Update(
         Vec<PairInfo>,
         Vec<PublicationInfo>,
+        Vec<FilePlan>,
         oneshot::Sender<Result<()>>,
     ),
     Signal(Uuid, Signal, oneshot::Sender<Result<()>>),
@@ -62,6 +68,7 @@ enum Event {
     Track(Uuid, Arc<dyn TrackRemote>),
     Channel(Uuid, Arc<dyn DataChannel>),
     Dc(Uuid, Uuid, bool),
+    Bulk(Uuid, Uuid),
 }
 struct Audio {
     publication: Uuid,
@@ -72,6 +79,7 @@ struct Handler {
     pair: Uuid,
     events: mpsc::Sender<Event>,
     overflow: Arc<AtomicBool>,
+    state: Arc<AtomicU8>,
 }
 impl Handler {
     fn emit(&self, event: Event) {
@@ -99,6 +107,7 @@ impl PeerConnectionEventHandler for Handler {
         }
     }
     async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
+        self.state.store(state as u8, Ordering::Release);
         self.emit(Event::State(self.pair, state));
     }
     async fn on_track(&self, track: Arc<dyn TrackRemote>) {
@@ -122,12 +131,19 @@ struct Pair {
     outputs: HashMap<Uuid, Output>,
     tasks: HashMap<Uuid, JoinHandle<()>>,
     dc: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
-    connected: bool,
+    bulk: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
+    files: FileLink,
+    state: Arc<AtomicU8>,
     dc_open: bool,
     base_failed: bool,
     reported: HashSet<String>,
     deadline: Option<Instant>,
     overflow: Arc<AtomicBool>,
+}
+impl Pair {
+    fn connected(&self) -> bool {
+        self.state.load(Ordering::Acquire) == RTCPeerConnectionState::Connected as u8
+    }
 }
 struct Driver {
     session: Uuid,
@@ -140,6 +156,7 @@ struct Driver {
     publications: HashSet<Uuid>,
     sources: HashMap<Uuid, Source>,
     relay: Relay,
+    files: Files,
 }
 impl NativePeers {
     pub fn new(
@@ -165,6 +182,7 @@ impl NativePeers {
                 publications: HashSet::new(),
                 sources: HashMap::new(),
                 relay: Relay::default(),
+                files: Files::new(session_id),
             };
             let mut tick = tokio::time::interval(Duration::from_secs(1));
             enum Turn {
@@ -183,8 +201,8 @@ impl NativePeers {
                 };
                 let work = async {
                     match turn {
-                        Turn::Input(Input::Update(plans, info, done)) => {
-                            let result = d.update(plans, info).await;
+                        Turn::Input(Input::Update(plans, info, files, done)) => {
+                            let result = d.update(plans, info, files).await;
                             let _ = done.send(result);
                         }
                         Turn::Input(Input::Resync(done)) => {
@@ -205,7 +223,8 @@ impl NativePeers {
                                 | Event::State(id, _)
                                 | Event::Track(id, _)
                                 | Event::Channel(id, _)
-                                | Event::Dc(id, _, _) => *id,
+                                | Event::Dc(id, _, _)
+                                | Event::Bulk(id, _) => *id,
                             };
                             if let Err(error) = d.event(event).await {
                                 eprintln!("Native pair event failed: {error}");
@@ -225,6 +244,7 @@ impl NativePeers {
             for (_, pair) in d.pairs.drain() {
                 close_pair(pair).await;
             }
+            d.files.close().await;
         });
         Self {
             cancel,
@@ -236,10 +256,11 @@ impl NativePeers {
         &self,
         pairs: Vec<PairInfo>,
         publications: Vec<PublicationInfo>,
+        files: Vec<FilePlan>,
     ) -> Result<()> {
         let (tx, rx) = oneshot::channel();
         self.input
-            .send(Input::Update(pairs, publications, tx))
+            .send(Input::Update(pairs, publications, files, tx))
             .await?;
         rx.await?
     }
@@ -268,7 +289,7 @@ fn codec() -> RTCRtpCodec {
         rtcp_feedback: vec![],
     }
 }
-fn builder() -> Result<PeerConnectionBuilder<String>> {
+fn builder(polite: bool) -> Result<PeerConnectionBuilder<String>> {
     let mut media = MediaEngine::default();
     media.register_codec(
         RTCRtpCodecParameters {
@@ -295,7 +316,20 @@ fn builder() -> Result<PeerConnectionBuilder<String>> {
     Ok(PeerConnectionBuilder::new()
         .with_media_engine(media)
         .with_interceptor_registry(registry)
-        .with_data_channel_send_buffer_limit(2 * 1024 * 1024))
+        .with_data_channel_send_buffer_limit(2 * 1024 * 1024)
+        .with_setting_engine(
+            SettingEngineBuilder::new()
+                // Keep the role established by the initial DC offer/answer.
+                .with_answering_dtls_role(if polite {
+                    rtc::peer_connection::transport::RTCDtlsRole::Client
+                } else {
+                    rtc::peer_connection::transport::RTCDtlsRole::Server
+                })
+                .with_sctp_max_message_size(SctpMaxMessageSize::Bounded(
+                    piik_channel_prototype::file_delivery::FILE_FRAME_BYTES as u32,
+                ))
+                .build(),
+        ))
 }
 impl Driver {
     async fn send(&self, command: Command) {
@@ -309,7 +343,9 @@ impl Driver {
         &mut self,
         plans: Vec<PairInfo>,
         publications: Vec<PublicationInfo>,
+        files: Vec<FilePlan>,
     ) -> Result<()> {
+        self.files.update(files, &plans).await;
         self.publications = publications
             .into_iter()
             .filter(|p| p.kind == piik_channel_prototype::wire::Kind::Voice)
@@ -331,6 +367,7 @@ impl Driver {
             .collect();
         for id in removed {
             if let Some(pair) = self.pairs.remove(&id) {
+                self.files.detach(pair.plan.peer_id).await;
                 close_pair(pair).await;
             }
         }
@@ -339,12 +376,14 @@ impl Driver {
             let result = async {
                 if !self.pairs.contains_key(&plan.id) {
                     let overflow = Arc::new(AtomicBool::new(false));
+                    let state = Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8));
                     let pc: Arc<dyn PeerConnection> = Arc::new(
-                        builder()?
+                        builder(self.session > plan.peer_id)?
                             .with_handler(Arc::new(Handler {
                                 pair: plan.id,
                                 events: self.events.clone(),
                                 overflow: overflow.clone(),
+                                state: state.clone(),
                             }))
                             .with_configuration(
                                 RTCConfigurationBuilder::new()
@@ -371,7 +410,9 @@ impl Driver {
                             outputs: HashMap::new(),
                             tasks: HashMap::new(),
                             dc: None,
-                            connected: false,
+                            bulk: None,
+                            files: FileLink::new(plan.peer_id, state.clone(), &self.files).await,
+                            state,
                             dc_open: false,
                             base_failed: false,
                             reported: HashSet::new(),
@@ -419,14 +460,21 @@ impl Driver {
                     p.outputs.remove(&pub_id).unwrap().close(&*p.pc).await;
                 }
                 if p.plan.rooms.is_empty() {
-                    if let Some((_, dc, task)) = p.dc.take() {
+                    for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
                         task.abort();
                         let _ = task.await;
                         let _ = dc.close().await;
                     }
+                    p.files.unbind(Lane::Control);
+                    p.files.unbind(Lane::Bulk);
                     p.dc_open = false;
                 } else if !p.polite && !p.base_failed && p.dc.is_none() {
                     let dc = p.pc.create_data_channel("piik-room", None).await?;
+                    self.install_dc(id, dc).await?;
+                }
+                let p = self.pairs.get(&id).unwrap();
+                if !p.plan.rooms.is_empty() && !p.polite && !p.base_failed && p.bulk.is_none() {
+                    let dc = p.pc.create_data_channel("piik-file", None).await?;
                     self.install_dc(id, dc).await?;
                 }
                 Ok::<_, anyhow::Error>(())
@@ -608,7 +656,22 @@ impl Driver {
     }
     async fn install_dc(&mut self, id: Uuid, dc: Arc<dyn DataChannel>) -> Result<()> {
         let p = self.pairs.get_mut(&id).unwrap();
-        if p.dc.is_some() || p.plan.rooms.is_empty() || dc.label().await? != "piik-room" {
+        let label = match dc.label().await {
+            Ok(label) => label,
+            Err(_) => return Ok(()),
+        };
+        let lane = match label.as_str() {
+            "piik-room" => Lane::Control,
+            "piik-file" => Lane::Bulk,
+            _ => {
+                dc.close().await?;
+                return Ok(());
+            }
+        };
+        if p.plan.rooms.is_empty()
+            || (lane == Lane::Control && p.dc.is_some())
+            || (lane == Lane::Bulk && p.bulk.is_some())
+        {
             dc.close().await?;
             return Ok(());
         }
@@ -617,33 +680,67 @@ impl Driver {
             || dc.max_packet_life_time().await?.is_some()
         {
             dc.close().await?;
-            return Err(anyhow!("base DC must be reliable ordered"));
+            if lane == Lane::Control {
+                return Err(anyhow!("base DC must be reliable ordered"));
+            }
+            return Ok(());
         }
         let token = Uuid::new_v4();
+        let ready = p.files.bind(lane, token, dc.clone());
         let events = self.events.clone();
+        let files = self.files.receiver();
+        let peer = p.plan.peer_id;
+        let state = p.state.clone();
         let channel = dc.clone();
         let task = tokio::spawn(async move {
             while let Some(event) = channel.poll().await {
                 match event {
                     DataChannelEvent::OnOpen => {
-                        let _ = events.send(Event::Dc(id, token, true)).await;
+                        if ready.set(true) && lane == Lane::Control {
+                            let _ = events.send(Event::Dc(id, token, true)).await;
+                        }
+                    }
+                    DataChannelEvent::OnMessage(message) => {
+                        files
+                            .message(peer, lane, token, message.data.as_ref())
+                            .await
                     }
                     DataChannelEvent::OnClose | DataChannelEvent::OnError => {
-                        let _ = events.send(Event::Dc(id, token, false)).await;
+                        if ready.set(false) {
+                            files
+                                .closed(
+                                    peer,
+                                    lane,
+                                    token,
+                                    lane == Lane::Control || crate::file::terminal(&state),
+                                )
+                                .await;
+                            let event = if lane == Lane::Control {
+                                Event::Dc(id, token, false)
+                            } else {
+                                Event::Bulk(id, token)
+                            };
+                            let _ = events.send(event).await;
+                        }
                         break;
                     }
                     _ => {}
                 }
             }
         });
-        p.dc = Some((token, dc, task));
+        let value = Some((token, dc, task));
+        if lane == Lane::Control {
+            p.dc = value;
+        } else {
+            p.bulk = value;
+        }
         Ok(())
     }
     async fn base_ready(&mut self, id: Uuid) {
         let Some(p) = self.pairs.get_mut(&id) else {
             return;
         };
-        if p.connected && p.dc_open && !p.base_failed {
+        if p.connected() && p.dc_open && !p.base_failed {
             let rooms: Vec<_> = p
                 .plan
                 .rooms
@@ -661,9 +758,9 @@ impl Driver {
                 })
                 .await;
             }
-        } else if p.connected && (p.plan.rooms.is_empty() || p.base_failed) {
+        } else if p.connected() && (p.plan.rooms.is_empty() || p.base_failed) {
             p.deadline = None;
-        } else if p.connected && p.deadline.is_none() {
+        } else if p.connected() && p.deadline.is_none() {
             p.deadline = Some(Instant::now() + Duration::from_secs(20));
         }
     }
@@ -678,7 +775,10 @@ impl Driver {
         p.dc_open = false;
         p.reported.clear();
         let rooms = p.plan.rooms.clone();
-        if let Some((_, dc, task)) = p.dc.take() {
+        self.files.unavailable(p.plan.peer_id).await;
+        p.files.unbind(Lane::Control);
+        p.files.unbind(Lane::Bulk);
+        for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
             task.abort();
             let _ = task.await;
             let _ = dc.close().await;
@@ -708,7 +808,7 @@ impl Driver {
                 p.overflow.swap(false, Ordering::AcqRel)
                     || p.deadline.is_some_and(|d| Instant::now() >= d)
             })
-            .map(|(id, p)| (*id, p.connected))
+            .map(|(id, p)| (*id, p.connected()))
             .collect();
         for (id, connected) in expired {
             self.pairs.get_mut(&id).unwrap().deadline = None;
@@ -743,8 +843,7 @@ impl Driver {
             }
             Event::State(id, state) => {
                 if let Some(p) = self.pairs.get_mut(&id) {
-                    p.connected = state == RTCPeerConnectionState::Connected;
-                    if p.connected {
+                    if p.connected() {
                         self.send(Command::LinkState {
                             pair_id: id,
                             state: LinkState::Connected,
@@ -771,6 +870,21 @@ impl Driver {
                             self.base_ready(id).await;
                         } else {
                             self.fail_base(id).await;
+                        }
+                    }
+                }
+            }
+            Event::Bulk(id, token) => {
+                if let Some(p) = self.pairs.get_mut(&id) {
+                    if p.bulk
+                        .as_ref()
+                        .is_some_and(|(current, _, _)| *current == token)
+                    {
+                        p.files.unbind(Lane::Bulk);
+                        if let Some((_, dc, task)) = p.bulk.take() {
+                            task.abort();
+                            let _ = task.await;
+                            let _ = dc.close().await;
                         }
                     }
                 }
@@ -938,11 +1052,14 @@ fn ice_candidate(c: Candidate) -> rtc::peer_connection::transport::RTCIceCandida
     }
 }
 async fn close_pair(mut pair: Pair) {
+    pair.state
+        .store(RTCPeerConnectionState::Closed as u8, Ordering::Release);
     let _ = pair.pc.close().await;
-    if let Some((_, _, task)) = pair.dc.take() {
+    for (_, _, task) in [pair.dc.take(), pair.bulk.take()].into_iter().flatten() {
         task.abort();
         let _ = task.await;
     }
+    pair.files.close().await;
     for (_, task) in pair.tasks {
         task.abort();
         let _ = task.await;

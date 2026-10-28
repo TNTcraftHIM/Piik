@@ -97,11 +97,11 @@ impl RoomHost {
             .pending
             .as_mut()
             .ok_or_else(|| error("no_pending_operation"))?;
-        let Some(HistoryRequest::Send { room_id, draft }) = &pending.request else {
+        let Some(HistoryRequest::Send { draft, .. }) = &pending.request else {
             return Err(error("not_a_send"));
         };
         let confirmation = draft
-            .prepare_confirmation(room_id, parse::<ConfirmationInput>(input)?)
+            .prepare_confirmation(parse::<ConfirmationInput>(input)?)
             .map_err(error)?;
         let output = encode(&confirmation)?;
         pending.confirmation = Some(confirmation);
@@ -136,8 +136,113 @@ impl RoomHost {
         let result = HistoryResult::page(parse::<Vec<ChatMessage>>(rows)?, oldest_seq, before);
         encode(&self.room.finish(Some(result)).map_err(error)?)
     }
+    pub fn finish_attachment(&mut self, rows: &str) -> Result<String, JsValue> {
+        let pending = self
+            .pending
+            .take()
+            .ok_or_else(|| error("no_pending_operation"))?;
+        let request = pending
+            .request
+            .ok_or_else(|| error("not_an_attachment_read"))?;
+        let result = request
+            .attachment_result(parse::<Option<ChatMessage>>(rows)?)
+            .map_err(error)?;
+        encode(&self.room.finish(Some(result)).map_err(error)?)
+    }
     pub fn abort(&mut self, code: String) -> Result<String, JsValue> {
         self.pending = None;
         encode(&self.room.abort(code).map_err(error)?)
+    }
+}
+
+#[wasm_bindgen]
+pub struct AttachmentHash(piik_channel_prototype::attachment::AttachmentHash);
+#[wasm_bindgen]
+impl AttachmentHash {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self(Default::default())
+    }
+    pub fn update(&mut self, bytes: &[u8]) {
+        self.0.update(bytes);
+    }
+    pub fn finish(self) -> String {
+        self.0.finish()
+    }
+}
+#[wasm_bindgen]
+pub fn attachment_media_type(bytes: &[u8]) -> String {
+    piik_channel_prototype::attachment::sniff_media_type(bytes).into()
+}
+#[wasm_bindgen]
+pub fn attachment_limits() -> Result<String, JsValue> {
+    encode(&piik_channel_prototype::ATTACHMENT_LIMITS)
+}
+
+#[wasm_bindgen]
+pub struct FileDelivery(piik_channel_prototype::file_delivery::FileDelivery);
+#[wasm_bindgen]
+impl FileDelivery {
+    #[wasm_bindgen(constructor)]
+    pub fn new(session_id: &str) -> Result<Self, JsValue> {
+        Ok(Self(
+            piik_channel_prototype::file_delivery::FileDelivery::new(
+                Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
+            ),
+        ))
+    }
+    pub fn update(&mut self, plans: &str) -> Result<String, JsValue> {
+        encode(&self.0.update(parse(plans)?))
+    }
+    pub fn start(&mut self, key: &str) -> Result<String, JsValue> {
+        encode(&self.0.start(parse(key)?))
+    }
+    pub fn cancel(&mut self, key: &str) -> Result<String, JsValue> {
+        encode(&self.0.cancel(&parse(key)?))
+    }
+    pub fn control(&mut self, peer: &str, control: &str) -> Result<String, JsValue> {
+        encode(&self.0.control(
+            Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
+            parse(control)?,
+        ))
+    }
+    pub fn chunk(&mut self, peer: &str, bytes: &[u8]) -> Result<String, JsValue> {
+        encode(
+            &self
+                .0
+                .chunk(
+                    Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
+                    bytes,
+                )
+                .map_err(error)?,
+        )
+    }
+    pub fn read_result(
+        &mut self,
+        key: &str,
+        offset: u64,
+        bytes: Vec<u8>,
+    ) -> Result<String, JsValue> {
+        encode(&self.0.read_result(&parse(key)?, offset, bytes))
+    }
+    pub fn written(&mut self, key: &str, offset: u64, length: usize) -> Result<String, JsValue> {
+        encode(&self.0.written(&parse(key)?, offset, length))
+    }
+    pub fn fail(&mut self, key: &str, code: &str) -> Result<String, JsValue> {
+        encode(&self.0.fail(&parse(key)?, code))
+    }
+    pub fn peer_failed(&mut self, key: &str, peer: &str, code: &str) -> Result<String, JsValue> {
+        encode(&self.0.peer_failed(
+            &parse(key)?,
+            Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?,
+            code,
+        ))
+    }
+    pub fn peer_unavailable(&mut self, peer: &str) -> Result<String, JsValue> {
+        encode(
+            &self
+                .0
+                .peer_unavailable(Uuid::parse_str(peer).map_err(|_| error("invalid_peer"))?),
+        )
     }
 }

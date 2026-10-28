@@ -399,7 +399,8 @@ impl Session {
         if let Some(live) = &mut self.live {
             live.pairs = state.pairs.iter().map(|pair| pair.id).collect();
             await_peer(
-                live.peers.update(state.pairs, state.publications),
+                live.peers
+                    .update(state.pairs, state.publications, state.files),
                 &mut live.commands,
                 &live.pairs,
                 socket,

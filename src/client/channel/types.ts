@@ -1,5 +1,5 @@
 import type { ChannelMessage, ChannelSnapshot, ChannelUser, RoomSettings } from "./protocol";
-import type { ChannelAttachments } from "./attachments";
+import type { ChannelAttachments, DraftFile } from "./attachments";
 
 export interface ChannelView {
   state: ChannelSnapshot | null;
@@ -16,7 +16,7 @@ export interface ChannelView {
 
 export interface ChannelActions {
   browse(roomId: string): void;
-  sendMessage(roomId: string, text: string, attachments?: string[]): Promise<void>;
+  sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;
   loadHistory(roomId: string): Promise<void>;
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;

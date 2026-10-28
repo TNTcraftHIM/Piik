@@ -4,12 +4,14 @@ This isolated Rust participant operates rooms through the same `RoomHost` core
 as the Browser adapter. SQLite stores each room's policy and confirmed history;
 the domain supplies admission, directory views and transport leases. Its actual
 WebRTC endpoint carries room DataChannels and forwards encoded Opus between
-Browsers without opening a microphone or playing their sound locally.
+Browsers without opening a microphone or playing their sound locally. It also
+forwards requested file ranges on the same room paths, without retaining file
+contents in SQLite.
 
 The [network design](../../docs/research/channel-network-design.md) owns the model.
 This executable is an explicitly started development host. It does not make a
-standby Piik App take over a closed page's room. Native screen capture, video
-forwarding and peer file delivery remain outside this slice.
+standby Piik App take over a closed page's room. Native screen capture and video
+forwarding remain outside this slice.
 
 ## Run
 
@@ -59,5 +61,6 @@ temporary databases and Browser sessions, and stops them on completion.
 
 The peer check uses real WebRTC endpoints for source replacement, signaling
 recovery and forwarding while control output is backpressured. The Browser
-check covers actual Native-rooted voice, room-owned history, independent picture
-playback and process restart. Generated evidence stays under ignored `build/`.
+check covers actual Native-rooted voice and file forwarding, room-owned history,
+independent picture playback and process restart. Generated evidence stays under
+ignored `build/`.

@@ -22,7 +22,7 @@ window.runBrowserRoomCheck = async () => {
     bindingId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
   }, signal) as Promise<Output>;
-  const send = async (text: string, nonce: string, attachments: string[] = [], signal?: AbortSignal) => {
+  const send = async (text: string, nonce: string, attachments: SentResult["message"]["attachments"] = [], signal?: AbortSignal) => {
     const output = await dispatch({ type: "chat", roomId: host.roomId, text, nonce, attachments }, signal);
     check(output.reply?.result.type === "history" && output.reply.result.result?.type === "sent", "committed shared send result");
     return output.reply.result.result;
@@ -66,9 +66,14 @@ window.runBrowserRoomCheck = async () => {
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
-    const [first, second] = await Promise.all([send("Original", "first"), send("Second", "second")]);
+    const file = { id: crypto.randomUUID(), name: "file.bin", size: 3, mediaType: "application/octet-stream",
+      sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" };
+    const [first, second] = await Promise.all([send("Original", "first", [file]), send("Second", "second")]);
     check(first.inserted && first.message.seq === 1 && second.message.seq === 2, "serialized room order");
-    const retry = await send("Changed retry", "first");
+    check(JSON.stringify(first.message.attachments) === JSON.stringify([file]), "description committed inside message");
+    const offered = await dispatch({ type: "file_offer", roomId: host.roomId, messageSeq: 1, attachmentId: file.id, available: true });
+    check(offered.reply?.result.type === "done", "complete copy offered through confirmed message");
+    const retry = await send("Changed retry", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!retry.inserted && JSON.stringify(retry.message) === JSON.stringify(first.message), "original confirmation");
     await host.close();
     host = await BrowserRoomHost.open(database, policy);
@@ -89,8 +94,8 @@ window.runBrowserRoomCheck = async () => {
     } finally { IDBObjectStore.prototype.add = originalAdd; }
     check(insertSucceeded && (await history()).messages.length === 3, "real add success then abort rolled back");
     check((await send("Retry cancelled", "cancelled")).message.seq === 4, "aborted transaction consumes no sequence");
-    const unsupported = await dispatch({ type: "chat", roomId: host.roomId, text: "No domain upload", nonce: "file", attachments: [crypto.randomUUID()] });
-    check(unsupported.reply?.result.code === "attachments_unavailable" && (await history()).messages.length === 4, "shared capability rejects unsupported file delivery");
+    const unavailable = await dispatch({ type: "file_receive", roomId: host.roomId, messageSeq: 1, attachmentId: file.id, enabled: true });
+    check(unavailable.reply?.result.code === "attachment_unavailable" && (await history()).messages.length === 4, "runtime reopen does not revive complete copy sources");
     for (let index = 0; index < 106; index++) await send(`Message ${index}`, `page-${index}`);
     const latest = await history(), older = await history(latest.messages[0].seq), empty = await history(0);
     check(latest.messages.length === 100 && latest.hasMore && latest.oldestSeq === 1, "shared latest page");
@@ -100,7 +105,7 @@ window.runBrowserRoomCheck = async () => {
     host = await BrowserRoomHost.open(database, policy);
     await host.bind(bindingId);
     check(JSON.stringify(await history()) === JSON.stringify(latest), "history survives runtime/database reopen");
-    const original = await send("Changed again", "first");
+    const original = await send("Changed again", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!original.inserted && JSON.stringify(original.message) === JSON.stringify(first.message), "nonce survives reopen");
     await dispatch({ type: "publish", publication: { id: crypto.randomUUID(), roomId: host.roomId, kind: "screen", muted: false } });
     await host.close();
@@ -144,7 +149,7 @@ window.runBrowserRoomCheck = async () => {
       check((await send("After owner transfer", "after-bind")).message.seq === 111, "stale message consumed no sequence");
     } finally { await previousHost.close(); await lateClaim.close(); if (host !== replacement) await replacement.close(); }
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 2);
+      const upgrade = indexedDB.open(database, 3);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {
@@ -152,7 +157,7 @@ window.runBrowserRoomCheck = async () => {
       check(output.reply?.result.type === "error" && output.reply.result.code?.includes("transaction"), "closed DB aborts shared pending operation");
     }
     return { passed: true, actualWasm: true, actualIndexedDB: true, serializedOrder: true, originalConfirmation: true,
-      reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, attachmentsUnavailable: true,
+      reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true,
       latest: latest.messages.length, older: older.messages.length, beforeZero: true, versionChangeClearsPending: true,
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true, domainCredentialDatabaseProvided: false };
   } finally {

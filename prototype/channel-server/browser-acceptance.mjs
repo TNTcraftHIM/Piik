@@ -70,7 +70,9 @@ function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
-    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [];
+    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [];
+    const warn = console.warn.bind(console);
+    console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
     const blockedPeers = new Set(), pairPeers = new Map();
     let blockedOffers = 0;
     const record = (direction, data) => {
@@ -79,7 +81,8 @@ function captureProbe(name) {
       protocol.push({ direction, type:event.type, room:event.roomId, request:event.requestId,
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
         binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
-        result:event.result?.type ?? event.output?.reply?.result?.type, code:event.code });
+        result:event.result?.type ?? event.output?.reply?.result?.type, code:event.code,
+        pair:event.pairId, ready:event.ready, state:event.state && typeof event.state === 'string' ? event.state : undefined });
       if (protocol.length > 64) protocol.shift();
       return event;
     };
@@ -140,7 +143,7 @@ function captureProbe(name) {
             if (stat.type === 'outbound-rtp') outbound.push({ kind: stat.kind, bytes: stat.bytesSent, frames: stat.framesEncoded });
           }
         }
-        return { inbound, outbound, protocol, blockedOffers, connections: peers.map(pc => pc.connectionState),
+        return { inbound, outbound, protocol, warnings, blockedOffers, connections: peers.map(pc => pc.connectionState),
           channels: channels.map(channel => ({ label: channel.label, state: channel.readyState })),
           videos: [...document.querySelectorAll('video')].map(video => ({ time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),
@@ -159,7 +162,7 @@ const view = index => evaluate(index, `(() => {
   if (!value) return { connection: 'connecting', state: null };
   return { sessionId: value.sessionId, connection: value.connection, self: value.self,
     state: value.state && { channel: value.state.channel, publications: value.state.publications,
-      subscriptions: value.state.subscriptions, pairs: value.state.pairs, voice: value.state.voice },
+      subscriptions: value.state.subscriptions, pairs: value.state.pairs, voice: value.state.voice, files: value.state.files },
     streams: [...value.streams.keys()], error: value.error };
 })()`);
 const picture = (index, publicationId) => evaluate(index, `(() => {
@@ -464,12 +467,8 @@ async function roomsAndFiles() {
   await browser(1, "click", ".c3-locked-room button[type=submit]");
   await until("room grant opens the conversation", () => evaluate(1, "!!document.querySelector('.c3-composer textarea')"), Boolean);
   await browser(1, "fill", ".c3-composer textarea", "Hello from the private room");
-  await browser(1, "click", ".c3-composer button[type=submit]");
-  await until("private chat reaches its reader", () => evaluate(0, "document.querySelector('.c3-message-log').textContent"), text => text.includes("Hello from the private room"));
-  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), false,
-    "Browser rooms must not route file storage through the domain");
-
-  for (const index of [0, 1]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
+  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), true,
+    "Browser rooms use their real peer endpoint for files");
   const png = join(temporary, "picture.png"), text = join(temporary, "notes.txt");
   await writeFile(png, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1XcAAAAASUVORK5CYII=", "base64"));
   await writeFile(text, "A file shared through the actual composer.");
@@ -480,8 +479,11 @@ async function roomsAndFiles() {
   await browser(0, "find", "role", "button", "click", "--name", "View image", "--exact");
   await until("PNG preview decodes", () => evaluate(0, "[...document.querySelectorAll('.c3-attachment img')].some(image => image.complete && image.naturalWidth > 0)"), Boolean);
   for (const index of [0, 1]) await assertNoError(index, "normal room entry, chat and file flow");
-  await browser(0, "screenshot", join(output, "server-room-files-desktop.png"), "--full");
-  console.log("Private Browser room entry uses its actual owner; Server room composer files retain their storage capability");
+  await browser(0, "screenshot", join(output, "peer-room-files-desktop.png"), "--full");
+  for (const index of [0, 1]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
+  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), false,
+    "a Server room without a peer endpoint does not advertise file delivery");
+  console.log("Private Browser room owns chat and sends file bytes over its actual peer path");
 
   await browser(1, "click", '.c3-room-link[aria-label="Movie night"]');
   for (let start = 0; start < 1020; start += 40) {

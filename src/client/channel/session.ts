@@ -1,6 +1,6 @@
 import { ChannelMedia } from "./media";
 import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type RoomSettings } from "./protocol";
-import { ChannelAttachments } from "./attachments";
+import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
 
@@ -48,8 +48,9 @@ export class ChannelSession {
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
   private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream }>();
-  private media = new ChannelMedia(command => this.send(command), streams => this.patch({ streams }));
-  readonly attachments = new ChannelAttachments(() => this.credential, roomId => this.view.state?.channel.rooms.some(room => room.id === roomId && room.capabilities.attachments) ?? false);
+  private media = new ChannelMedia(command => this.send(command), streams => this.patch({ streams }),
+    (peer, kind, data) => this.attachments.data(peer, kind, data), (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer));
+  readonly attachments = new ChannelAttachments(command => this.request(command), (peer, kind, data) => this.media.sendData(peer, kind, data));
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -114,6 +115,7 @@ export class ChannelSession {
       });
       if (resumed) {
         this.media.resync();
+        this.attachments.resume();
         for (const publication of event.state.publications) {
           if (publication.sessionId === event.sessionId && !this.local.has(publication.id)) this.write({ type: "unpublish", publicationId: publication.id });
         }
@@ -178,6 +180,10 @@ export class ChannelSession {
     } else if (event.type === "message" || event.type === "message_confirmed") {
       const state = this.view.state;
       if (!state?.channel.rooms.some(room => room.id === event.roomId && room.authorized)) return;
+      if (event.type === "message_confirmed" && event.requestId) {
+        const request = this.requests.get(event.requestId);
+        if (request?.roomId === event.roomId) request.result?.(event);
+      }
       // A bounded historical window stays put until its reader requests latest.
       if (this.view.historyByRoom[event.roomId]?.atLatest === false) return;
       const messages = this.view.messagesByRoom[event.roomId] ?? [];
@@ -250,6 +256,7 @@ export class ChannelSession {
       }
     }
     this.media.update(sessionId, state);
+    this.attachments.update(sessionId, state.files, state.channel.rooms);
     this.releaseUnusedMicrophone();
   }
 
@@ -349,13 +356,20 @@ export class ChannelSession {
     }
     return roomId;
   };
-  sendMessage = (roomId: string, text: string, attachments: string[] = []): Promise<void> => this.action(`chat:${roomId}`, async () => {
-    if (attachments.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");
+  sendMessage = (roomId: string, text: string, files: DraftFile[] = [], signal?: AbortSignal): Promise<void> => this.action(`chat:${roomId}`, async () => {
+    if (files.length && !this.view.state?.channel.rooms.find(room => room.id === roomId)?.capabilities.attachments) throw new Error("attachments_unavailable");
+    const sessionId = this.view.sessionId;
+    const prepared = files.length ? await this.attachments.describe(files, signal) : [];
+    if (this.closed || this.view.sessionId !== sessionId) throw new Error("disconnected");
+    signal?.throwIfAborted();
+    const attachments = prepared.map(file => file.attachment);
     const content = JSON.stringify({ text, attachments });
     const previous = this.outgoingMessages.get(roomId);
     const attempt = previous?.content === content ? previous : { content, nonce: crypto.randomUUID() };
     this.outgoingMessages.set(roomId, attempt);
-    await this.request({ type: "chat", roomId, text, attachments, nonce: attempt.nonce });
+    await this.request({ type: "chat", roomId, text, attachments, nonce: attempt.nonce }, event => {
+      if (event.type === "message_confirmed") this.attachments.confirmed(roomId, event.message, prepared);
+    });
     this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.loadLatestHistory(roomId).catch(() => {});
   });
@@ -517,6 +531,7 @@ export class ChannelSession {
 
   private releaseMedia(): void {
     this.captureEpoch += 1;
+    this.attachments.reset();
     this.media.reset();
     this.local.clear();
     this.admittedPublications.clear();

@@ -1,19 +1,21 @@
 import init, { create_room_policy, RoomHost } from "../pkg/piik_channel_browser.js";
+export { AttachmentHash, FileDelivery, attachment_limits, attachment_media_type } from "../pkg/piik_channel_browser.js";
+export async function initializeFiles(): Promise<void> { await init(); }
 import type { ChannelMessage, RoomSummary } from "../../../src/client/channel/protocol";
 
 export interface NewRoomPolicy {
   id: string; name: string; creatorId: string; access: "public" | "private"; hidden: boolean; password?: string | null;
 }
-export interface AttachmentRecord { id: string; roomId: string; userId: string; committed: boolean }
 interface RoomRecord { id: string; policy: string; bindingId?: string }
 interface StoredMessage extends ChannelMessage { roomId: string; nonce: string }
 export interface SentResult { type: "sent"; message: ChannelMessage; inserted: boolean }
 export interface PageResult {
   type: "page"; messages: ChannelMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
-interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; attachments: string[] } }
+interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; attachments: ChannelMessage["attachments"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
-interface HostWork { policy: object | null; history: SendRequest | ReadRequest | null }
+interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
+interface HostWork { policy: object | null; history: SendRequest | ReadRequest | AttachmentRequest | null }
 
 const failure = (error: unknown): Error => error instanceof Error ? error : new Error(String(error));
 function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (error: Error) => void): void {
@@ -21,16 +23,17 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 1);
-    request.onupgradeneeded = () => {
+    const request = indexedDB.open(name, 2);
+    let unsupported = false;
+    request.onupgradeneeded = event => {
+      if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }
       const db = request.result;
       db.createObjectStore("rooms", { keyPath: "id" });
       const messages = db.createObjectStore("messages", { keyPath: ["roomId", "seq"] });
       messages.createIndex("send", ["roomId", "userId", "nonce"], { unique: true });
       messages.createIndex("id", "id", { unique: true });
-      db.createObjectStore("attachments", { keyPath: "id" });
     };
-    request.onerror = () => reject(request.error);
+    request.onerror = () => reject(unsupported ? new Error("unsupported_storage_version") : request.error);
     request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
   });
 }
@@ -159,6 +162,7 @@ export class BrowserRoomHost {
       const work: HostWork = JSON.parse(this.room.dispatch(JSON.stringify(input)));
       try {
         if (work.history?.type === "send") return await this.send(work.history, work.policy, signal);
+        if (work.history?.type === "attachment") return await this.attachment(work.history, work.policy, signal);
         if (work.history?.type === "read") return await this.history(work.history, work.policy, signal);
         if (work.policy) return await this.roomTransaction(["rooms"], "readwrite", tx => {
           this.savePolicy(tx, work.policy!);
@@ -176,30 +180,30 @@ export class BrowserRoomHost {
   }
 
   private send(request: SendRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {
-      return this.roomTransaction(["rooms", "messages", "attachments"], "readwrite", (tx, abort) => {
+      return this.roomTransaction(["rooms", "messages"], "readwrite", (tx, abort) => {
         this.savePolicy(tx, policy);
-        const messages = tx.objectStore("messages"), files = tx.objectStore("attachments");
-        const prepare = (input: object, records: AttachmentRecord[] = []) => {
+        const messages = tx.objectStore("messages");
+        const prepare = (input: object) => {
           const result: Omit<SentResult, "type"> = JSON.parse(this.room.prepare_confirmation(JSON.stringify(input)));
-          if (result.inserted) {
-            messages.add({ ...result.message, roomId: request.roomId, nonce: request.draft.nonce });
-            for (const file of records) files.put({ ...file, committed: true });
-          }
+          if (result.inserted) messages.add({ ...result.message, roomId: request.roomId, nonce: request.draft.nonce });
         };
         read<StoredMessage | undefined>(messages.index("send").get([request.roomId, request.draft.userId, request.draft.nonce]), previous => {
           if (previous) { prepare({ type: "existing", message: previous }); return; }
-          let remaining = request.draft.attachments.length + 1, lastSeq = 0;
-          const records: AttachmentRecord[] = [];
-          const ready = () => { if (--remaining === 0) prepare({ type: "new", lastSeq, attachments: records }, records); };
           read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity]), "prev"), cursor => {
-            lastSeq = cursor?.value.seq ?? 0; ready();
-          }, abort);
-          for (const id of request.draft.attachments) read<AttachmentRecord | undefined>(files.get(id), file => {
-            if (file) records.push(file);
-            ready();
+            prepare({ type: "new", lastSeq: cursor?.value.seq ?? 0 });
           }, abort);
         }, abort);
       }, () => JSON.parse(this.room.finish_send()), signal);
+  }
+
+  private attachment(request: AttachmentRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {
+    let message: StoredMessage | undefined;
+    return this.roomTransaction(["rooms", "messages"], policy ? "readwrite" : "readonly", (tx, abort) => {
+      this.savePolicy(tx, policy);
+      read<StoredMessage | undefined>(tx.objectStore("messages").get([request.roomId, request.messageSeq]), value => {
+        message = value;
+      }, abort);
+    }, () => JSON.parse(this.room.finish_attachment(JSON.stringify(message ?? null))), signal);
   }
 
   private history(request: ReadRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {

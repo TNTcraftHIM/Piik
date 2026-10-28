@@ -21,8 +21,10 @@ bounded source-rooted convergence. The [data model](./research/channel-storage-a
 owns history and file delivery. Browser-hosted rooms now share base connections
 for reading and media demand, with bidirectional voice on those paths. The
 explicit [Native participant](../prototype/channel-native/README.md) operates
-SQLite-backed rooms and forwards encoded Opus on the same base paths.
-App/Server integration and peer file delivery are next. [TODO](./todo.md) owns remaining stages
+SQLite-backed rooms and forwards encoded Opus and file ranges on the same base paths.
+File descriptions stay in confirmed history; selected and verified copies stay
+with their participants. App/Server integration and screen startup on the base
+paths are next. [TODO](./todo.md) owns remaining stages
 and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.

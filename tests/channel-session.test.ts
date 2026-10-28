@@ -3,6 +3,7 @@ import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
+import { ChannelAttachments } from "../src/client/channel/attachments";
 import { signalSchema, type ChannelCommand, type ChannelSignal } from "../src/client/channel/protocol";
 
 class ChannelSocket {
@@ -36,7 +37,7 @@ function setup(window = 1000) {
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         available: true, reading: id === "first", capabilities: { attachments: true } })), roles: [] },
     users: [{ id: "self", name: "Me", roles: [] }], sessions: [{ id: "endpoint", userId: "self", online: true }],
-    publications: [], voice: [], subscriptions: [], pairs: [], iceServers: [],
+    publications: [], voice: [], subscriptions: [], files: [], pairs: [], iceServers: [],
   } });
   return { session, socket };
 }
@@ -52,12 +53,12 @@ test("host binding precedes its first input and a failed binding retires that ho
     close: vi.fn(async () => {}),
   };
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
-    createRoomPolicy: async input => JSON.stringify(input),
+    createRoomPolicy: async (input: unknown) => JSON.stringify(input),
     BrowserRoomHost: {
-      open: async (_database, policy) => { host.roomId = (JSON.parse(policy) as { id: string }).id; return host; },
+      open: async (_database: string, policy: string) => { host.roomId = (JSON.parse(policy) as { id: string }).id; return host; },
       storedPolicies: async () => [],
     },
-  });
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = setup();
   try {
     const creating = session.createRoom({ name: "Hosted", access: "public", hidden: false });
@@ -218,16 +219,40 @@ test("a confirmed send returns a historical reader to latest without failing the
   } finally { session.close(); }
 });
 
-class RoomDataChannel {
+test("a confirmed file becomes a session source while its sender reads an older history window", async () => {
+  const { session, socket } = setup(1);
+  const file = new File(["saved"], "note.txt"), id = crypto.randomUUID();
+  const attachment = { id, name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  vi.spyOn(session.attachments, "describe").mockResolvedValue([{ id, file, attachment }]);
+  try {
+    socket.receive({ type: "history", roomId: "first", messages: [message(2)], hasMore: true, oldestSeq: 1 });
+    socket.receive({ type: "history", roomId: "first", messages: [message(1)], before: 2, hasMore: false, oldestSeq: 1 });
+    const sending = session.sendMessage("first", "file", [{ id, file }]);
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("chat"));
+    const request = socket.sent.at(-1)!;
+    expect(request.attachments).toEqual([attachment]);
+    socket.receive({ type: "message_confirmed", roomId: "first", requestId: request.requestId, message: { ...message(3), attachments: [attachment] } });
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
+    expect(socket.sent.at(-1)).toMatchObject({ type: "file_offer", roomId: "first", messageSeq: 3, attachmentId: id, available: true });
+    await expect(session.attachments.content({ roomId: "first", messageSeq: 3, attachmentId: id }, attachment, new AbortController().signal)).resolves.toBe(file);
+    socket.receive({ type: "ack", requestId: request.requestId });
+    await sending;
+  } finally { session.close(); }
+});
+
+class RoomDataChannel extends EventTarget {
   readyState = "connecting";
   onopen: (() => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  constructor(readonly label: string, readonly options: RTCDataChannelInit) {}
-  open() { this.readyState = "open"; this.onopen?.(); }
-  close() { if (this.readyState === "closed") return; this.readyState = "closed"; this.onclose?.(); }
+  bufferedAmount = 0;
+  bufferedAmountLowThreshold = 0;
+  send = vi.fn();
+  constructor(readonly label: string, readonly options: RTCDataChannelInit) { super(); }
+  open() { this.readyState = "open"; this.onopen?.(); this.dispatchEvent(new Event("open")); }
+  close() { if (this.readyState === "closed") return; this.readyState = "closed"; this.onclose?.(); this.dispatchEvent(new Event("close")); }
 }
-class RoomPeerConnection {
+class RoomPeerConnection extends EventTarget {
   static instances: RoomPeerConnection[] = [];
   connectionState = "new";
   signalingState = "stable";
@@ -241,7 +266,7 @@ class RoomPeerConnection {
   channels: RoomDataChannel[] = [];
   senders: Array<{ track: MediaStreamTrack }> = [];
   close = vi.fn(() => { this.connectionState = "closed"; });
-  constructor() { RoomPeerConnection.instances.push(this); }
+  constructor() { super(); RoomPeerConnection.instances.push(this); }
   createDataChannel(label: string, options: RTCDataChannelInit) {
     const channel = new RoomDataChannel(label, options); this.channels.push(channel); return channel;
   }
@@ -292,6 +317,72 @@ function setupRoomMedia() {
   media.update("a", state);
   return { session, socket, media, state, sent, pc: RoomPeerConnection.instances[0] };
 }
+
+test("bulk waits for its own open and buffer while control and media remain available", async () => {
+  const { session, media, sent, pc } = setupRoomMedia();
+  try {
+    const [control, bulk] = pc.channels;
+    pc.connected(); control.open();
+    const first = media.sendData("z", "chunk", new Uint8Array([1, 2]));
+    await media.sendData("z", "control", "pull");
+    expect(control.send).toHaveBeenLastCalledWith("pull");
+    expect(bulk.send).not.toHaveBeenCalled();
+    bulk.open(); await first;
+    bulk.bufferedAmount = 65536;
+    const blocked = media.sendData("z", "chunk", new Uint8Array([3]));
+    await media.sendData("z", "control", "cancel");
+    expect(bulk.send).toHaveBeenCalledOnce();
+    bulk.bufferedAmount = 0; bulk.dispatchEvent(new Event("bufferedamountlow"));
+    await blocked;
+    expect(bulk.send).toHaveBeenCalledTimes(2);
+    bulk.bufferedAmount = 65536;
+    const closing = media.sendData("z", "chunk", new Uint8Array([4]));
+    void closing.catch(() => {});
+    await new Promise(resolve => setTimeout(resolve, 0));
+    bulk.close();
+    await expect(closing).rejects.toThrow("file_transport_unavailable");
+    await media.sendData("z", "control", "still-open");
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(sent.some(command => command.type === "base_state" && !command.ready)).toBe(false);
+  } finally { media.reset(); session.close(); }
+});
+
+test("a connecting bulk channel has a bounded frame queue and releases admission after sending", async () => {
+  const { session, media, pc } = setupRoomMedia();
+  try {
+    pc.connected(); pc.channels[0].open();
+    const frames = Array.from({ length: 32 * 17 }, () => media.sendData("z", "chunk", new Uint8Array(8192)));
+    await expect(media.sendData("z", "chunk", new Uint8Array([1]))).rejects.toThrow("file_transfer_busy");
+    await media.sendData("z", "control", "independent");
+    expect(pc.channels[0].send).toHaveBeenCalledOnce();
+    pc.channels[1].open();
+    await Promise.all(frames);
+    await media.sendData("z", "chunk", new Uint8Array([2]));
+    expect(pc.channels[1].send).toHaveBeenCalledTimes(32 * 17 + 1);
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
+test("rejected file admission cancels its shared-core consumer and releases the temporary sink", async () => {
+  const cancel = vi.fn(() => "[]"), abort = vi.fn(async () => {}), removeEntry = vi.fn(async () => {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    initializeFiles: async () => {},
+    FileDelivery: class { start() { return "[]"; } update() { return "[]"; } cancel = cancel; free() {} },
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: async () => ({ createWritable: async () => ({ abort }) }), removeEntry,
+  }) }) } });
+  const files = new ChannelAttachments(async command => { if (command.type === "file_receive" && command.enabled) throw new Error("forbidden"); }, async () => {});
+  files.update("session", [], []);
+  const key = { roomId: "room", messageSeq: 1, attachmentId: crypto.randomUUID() };
+  const attachment = { id: key.attachmentId, name: "file", size: 1, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  try {
+    await expect(files.download(key, attachment)).rejects.toThrow("forbidden");
+    expect(cancel).toHaveBeenCalledWith(JSON.stringify(key));
+    expect(abort).toHaveBeenCalledOnce(); expect(removeEntry).toHaveBeenCalledOnce();
+    expect(files.status(key)).toEqual({ busy: false, error: "forbidden" });
+  } finally { files.reset(); }
+});
 
 test.each(["offer", "answer"])("resync recovers a lost %s on the same transport with its original track manifest", async lost => {
   RoomPeerConnection.instances = [];
@@ -474,12 +565,12 @@ test("data failure retires only the base attempt and does not retry unchanged de
     pc.connected(); pc.channels[0].open(); pc.channels[0].close();
     expect(sent.at(-1)).toEqual({ type: "base_state", pairId: "pair", roomId: "first", ready: false });
     media.update("a", state); media.update("a", state);
-    expect(pc.channels).toHaveLength(1);
+    expect(pc.channels).toHaveLength(2);
     expect(pc.close).not.toHaveBeenCalled();
     expect(sent.some(command => command.type === "link_state" && command.state === "failed")).toBe(false);
     state.pairs[0].rooms.push("second");
     media.update("a", state);
-    expect(pc.channels).toHaveLength(2);
+    expect(pc.channels).toHaveLength(3);
   } finally { media.reset(); session.close(); }
 });
 
@@ -517,7 +608,7 @@ test("connected media keeps its PC when the base channel exceeds the existing pr
     expect(sent.at(-1)).toEqual({ type: "base_state", pairId: "pair", roomId: "first", ready: false });
     expect(pc.close).not.toHaveBeenCalled();
     media.update("a", state);
-    expect(pc.channels).toHaveLength(1);
+    expect(pc.channels).toHaveLength(2);
     vi.advanceTimersByTime(20000);
     expect(sent.filter(command => command.type === "base_state")).toHaveLength(1);
   } finally { media.reset(); session.close(); }

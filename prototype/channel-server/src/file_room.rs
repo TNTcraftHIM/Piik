@@ -106,6 +106,9 @@ impl FileRoom {
         self.files
             .iter()
             .filter_map(|((seq, _), file)| {
+                if file.receivers.is_empty() {
+                    return None;
+                }
                 let paths = file
                     .source
                     .map(|source| base.project(source, &file.receivers))
@@ -119,7 +122,7 @@ impl FileRoom {
                     .collect();
                 let receiving = file.receivers.contains(&session);
                 if !receiving
-                    && !file.holders.contains(&session)
+                    && file.source != Some(session)
                     && upstream.is_none()
                     && downstream.is_empty()
                 {

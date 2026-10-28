@@ -13,7 +13,8 @@ authenticated runtimes to directory entries and combines their transport demand;
 a physical pair remains while any room needs it. Domain WebSocket rendezvous
 currently carries room commands and replies. Browser-hosted rooms and the
 explicit [Native participant](../channel-native/README.md) establish a shared
-base tree when an activity needs it. Peer file delivery is not connected yet.
+base tree when an activity needs it. Files reuse its admitted paths, with the
+same Rust range-delivery core running in Browser/WASM and Native participants.
 
 ## Run
 
@@ -91,7 +92,7 @@ its reading position when detached or returned.
 The composer supports the attachment button, file drop and image
 paste, with a draft preview before sending. Channel appearance and room creation
 share preset icons and custom image selection. These design-board changes stay
-in memory; room-scoped file upload is already implemented in the functional
+in memory; room-scoped file transfer is implemented in the functional
 prototype, while persistent identity images and reactions remain integration work.
 
 References for spatial hierarchy and viewing modes:
@@ -157,7 +158,7 @@ different directory; `:memory:` selects an explicitly temporary instance.
 Catalog, identities and Server-owned room policy/grants use a metadata checkpoint.
 Browser-owned room policy and history stay in that Browser's IndexedDB; the
 domain retains only its directory summary. Messages
-commit individually: their room order, send identity and attachment references
+commit individually: their room order, send identity and attachment descriptions
 are saved in one transaction before confirmation or distribution. A retry returns
 the original confirmed message without rebroadcasting it, including after restart.
 Storage failure leaves the send unconfirmed and preserves existing records.
@@ -186,36 +187,31 @@ default Server runtime remain separate integration work.
 A new service URL can use the same database, but a
 new Browser origin cannot read the previous origin's saved login or bookmarks.
 
-Server-owned rooms use authenticated HTTP attachments, independently of media
-routes. Browser-owned rooms omit attachment controls until peer delivery is
-connected; their files must not silently fall back to domain storage.
-The uploader can preview an uploaded draft; other authorized room users can read
-it only after its message commits. Removing a draft uses a conditional discard
-that cannot delete an already-sent attachment. Committed files remain available
-when the uploader leaves. Current room access is checked on metadata/content
-requests and during download; revocation or deletion interrupts remaining transfer.
-Already downloaded bytes cannot be revoked.
+Messages contain complete file descriptions and their SHA256 digest. The selected
+file stays with its sender; a confirmed message does not upload bytes to the domain
+or room database. Browser- and Native-hosted rooms authorize requests from retained
+messages and deliver bytes through the existing room base tree. Default Server
+rooms have no Native endpoint yet and do not advertise file delivery.
 
-The resource owner exposes actual limits through
-`GET /prototype/channel/limits`:
+Concurrent recipients share requested ranges through relays. Each recipient
+advances after its local write; cancellation only removes that recipient's demand.
+Network repair retains written progress. Completed copies may supply later
+requests, and idle copies alone do not keep room connections alive. If all copies
+disappear, the message remains but its file is unavailable.
 
-| Budget | Prototype default | Configuration |
-| --- | --- | --- |
-| One file | 16 MiB | `PIIK_CHANNEL_FILE_LIMIT` in bytes |
-| Stored content | 128 MiB | `PIIK_CHANNEL_ATTACHMENT_BUDGET` in bytes |
-| Stored attachments | 256 | Prototype bound |
-| Concurrent byte transfers | 2 | Prototype bound |
+The shared Rust limits owner supplies the composer with the prototype's 16 MiB
+file bound and eight attachments per message. The byte engine owns a bounded range
+window across rooms, separate from the media/control queues. The Browser writes
+temporary files through OPFS, then verifies the full size and digest before
+preview or download. Recognized PNG/JPEG/GIF/WebP images use the same file model.
+A receiving Browser needs secure-context file storage; there is no in-memory
+whole-file fallback. Selected and verified copies belong to the current session.
+Current access controls offers and downloads; already downloaded bytes cannot be revoked.
 
-The UI reads the limits rather than maintaining another size policy. Recognized
-PNG/JPEG/GIF/WebP content can be previewed; other content is downloaded, with
-attachment disposition and `nosniff`. Unsent uploads older than one hour are
-cleaned on the next upload. Committed content remains until explicitly deleted;
-deleting its bytes does not remove the confirmed message or its retry identity.
-
-Incremental room-message transactions, metadata checkpoints and bounded SQLite
-BLOB storage keep this prototype self-contained.
-Authority-hosted uploads/downloads consume the host's bandwidth. P2P file offers,
-replicated history, federation and authority handoff are outside this slice.
+This private prototype's new message shape requires fresh local SQLite/IndexedDB
+storage. Older prototype data is rejected without overwriting it; it is not a
+published 2.x storage migration. Replicated history, federation and authority
+handoff remain outside this slice.
 Other current resource bounds are 20 live endpoints, 64 stored users and 32
 rooms. Each endpoint may publish one screen and one voice source per room.
 
@@ -239,7 +235,7 @@ node prototype/channel-server/run-browser-check.mjs --base
 ```
 
 The [Native participant checks](../channel-native/README.md#checks) add
-`--native` for real Browser-to-Native voice, room storage and restart.
+`--native` for real Browser-to-Native voice, file forwarding, room storage and restart.
 
 Browser checks require `agent-browser` and its installed Chromium. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite

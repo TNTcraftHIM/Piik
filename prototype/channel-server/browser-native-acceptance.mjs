@@ -5,6 +5,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 
 // Exercise the normal interface against an actual Native room operator. The
 // Browser harness replaces only capture, retaining real Opus and WebRTC peers.
@@ -80,6 +81,47 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     for (const index of [1, 2]) assert((await view(index)).state.pairs.filter(pair =>
       pair.incoming.some(id => voiceIds.includes(id))).every(pair => pair.peerId === pairs[0].peerId));
 
+    const fileSize = 1024 * 1024 + 17;
+    const expected = createHash("sha256").update(Buffer.from(Array.from({ length: fileSize }, (_, index) => index % 251))).digest("hex");
+    await evaluate(1, `(async () => {
+      const bytes = Uint8Array.from({length:${fileSize}}, (_, index) => index % 251);
+      await ${hook}.session.sendMessage('${room}', 'Peer file through Native', [{id:crypto.randomUUID(),file:new File([bytes], 'peer-proof.bin')}]);
+      return true;
+    })()`);
+    const fileMessage = await until("confirmed peer file description", () => evaluate(2,
+      `${hook}.snapshot().messagesByRoom['${room}']?.find(message => message.text === 'Peer file through Native')`), Boolean);
+    assert.equal(fileMessage.attachments[0].sha256, expected);
+    await evaluate(2, `(() => {
+      const key = {roomId:'${room}',messageSeq:${fileMessage.seq},attachmentId:${JSON.stringify(fileMessage.attachments[0].id)}};
+      const create = FileSystemFileHandle.prototype.createWritable;
+      FileSystemFileHandle.prototype.createWritable = async function(...args) {
+        const stream = await create.apply(this,args), write = stream.write.bind(stream);
+        stream.write = async value => { await new Promise(resolve => setTimeout(resolve,40)); return write(value); };
+        return stream;
+      };
+      window.__fileCheck = {busy:true};
+      void ${hook}.session.attachments.content(key,${JSON.stringify(fileMessage.attachments[0])},new AbortController().signal).then(async file => {
+        const digest = await crypto.subtle.digest('SHA-256',await file.arrayBuffer());
+        window.__fileCheck = {busy:false,size:file.size,sha256:[...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('')};
+      },error => {window.__fileCheck = {busy:false,error:String(error)}}).finally(() => {FileSystemFileHandle.prototype.createWritable=create});
+      return true;
+    })()`);
+    await until("file uses the Native base path", () => view(2), value => value.state.files.some(file =>
+      file.attachment.id === fileMessage.attachments[0].id && file.upstream === pairs[0].peerId));
+    assert.equal((await evaluate(2, "window.__fileCheck")).busy, true, "the file must still be in flight");
+    await action(1, "reconnect()");
+    await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
+    const receivedFile = await until("peer bytes finish after switching the room view", () => evaluate(2, "window.__fileCheck"), value => !value.busy);
+    assert.equal(receivedFile.error, undefined, receivedFile.error);
+    assert.equal(receivedFile.size, fileSize); assert.equal(receivedFile.sha256, expected);
+    await advancing(2);
+    const fileStore = new DatabaseSync(database, { readOnly: true });
+    const fileDomain = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
+    try {
+      assert.equal(fileStore.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name='attachment'").get().count, 0);
+      assert.equal(fileDomain.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
+    } finally { fileStore.close(); fileDomain.close(); }
+
     const picture = await capturedScreen(0, serverRoom);
     await action(2, `watch(${JSON.stringify(picture)})`);
     await playing(2, picture);
@@ -112,6 +154,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await browser(2, "screenshot", join(output, "native-room.png"), "--full");
     await writeFile(join(output, "native-result.json"), JSON.stringify({ passed: true,
       scenarios: ["Native admitted root", "room SQLite owns confirmed history", "lost offer recovery on an existing pair", "bidirectional encoded Opus forwarding",
+        "peer file through Native with final digest", "signaling reconnect and view switch preserve file and voice", "no domain or Native file-byte store",
         "view changes retain voice", "capture replacement keeps base", "other-room picture survives",
         "Native process expiry", "history restore without activity revival"] }, null, 2));
   } finally {

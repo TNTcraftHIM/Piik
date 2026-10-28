@@ -18,7 +18,10 @@ export class ChannelMedia {
   private relayAudio = new Map<string, { tracks: MediaStreamTrack[]; audio: HTMLAudioElement }>();
 
   constructor(private send: (command: ChannelCommand) => void,
-    private changed: (streams: ReadonlyMap<string, MediaStream>) => void) {}
+    private changed: (streams: ReadonlyMap<string, MediaStream>) => void,
+    private data?: (peer: string, kind: "control" | "chunk", data: string | Uint8Array) => void,
+    private dataState?: (peer: string, ready: boolean) => void,
+    private bulkClosed?: (peer: string) => void) {}
 
   setLocal(id: string, stream: MediaStream): void {
     this.local.set(id, stream);
@@ -49,6 +52,9 @@ export class ChannelMedia {
           iceServers: state.iceServers,
           send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
           receive: (publicationId, stream) => this.receive(plan.id, publicationId, stream),
+          data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
+          dataState: ready => this.dataState?.(plan.peerId, ready),
+          bulkClosed: () => this.bulkClosed?.(plan.peerId),
           connected: () => {
             this.send({ type: "link_state", pairId: plan.id, state: "connected" });
             const current = this.peers.get(plan.id);
@@ -92,6 +98,16 @@ export class ChannelMedia {
 
   resync(): void {
     for (const peer of this.peers.values()) peer.transport.resync();
+  }
+
+  sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array): Promise<void> {
+    const peer = [...this.peers.values()].find(peer => peer.plan.peerId === peerId && peer.plan.rooms.length);
+    if (!peer) return Promise.reject(new Error("file_peer_unavailable"));
+    return peer.transport.sendData(kind, data).catch(error => {
+      // Retiring this exact pair already notified the delivery owner. A late
+      // send rejection must not retire a replacement to the same participant.
+      if (this.peers.get(peer.plan.id) === peer) throw error;
+    });
   }
 
   private receive(pairId: string, publicationId: string, stream: MediaStream): void {

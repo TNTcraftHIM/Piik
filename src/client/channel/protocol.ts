@@ -14,8 +14,18 @@ export const publicationSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
   kind: z.enum(["screen", "voice"]), muted: z.boolean(),
 });
+export const attachmentSchema = z.object({
+  id, name: z.string().min(1).max(240), size: z.number().int().nonnegative().safe(),
+  mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "application/octet-stream"]),
+  sha256: z.string().regex(/^[a-fA-F0-9]{64}$/),
+});
+export const fileKeySchema = z.object({ roomId: id, messageSeq: z.number().int().positive(), attachmentId: id });
+export const filePlanSchema = z.object({
+  roomId: id, messageSeq: z.number().int().positive(), attachment: attachmentSchema,
+  sourceId: id.nullable(), upstream: id.nullable(), downstream: z.array(id), receiving: z.boolean(),
+});
 export const messageSchema = z.object({
-  id, userId: id, text: z.string().max(4000), time: z.number(), seq: z.number().int().positive(), attachments: z.array(id),
+  id, userId: id, text: z.string().max(4000), time: z.number(), seq: z.number().int().positive(), attachments: z.array(attachmentSchema),
 });
 export const snapshotSchema = z.object({
   channel: z.object({
@@ -27,6 +37,7 @@ export const snapshotSchema = z.object({
   publications: z.array(publicationSchema),
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
+  files: z.array(filePlanSchema),
   pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(id), incoming: z.array(id) })).max(19),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
@@ -55,13 +66,16 @@ export const eventSchema = z.discriminatedUnion("type", [
 export type ChannelSnapshot = z.infer<typeof snapshotSchema>;
 export type ChannelPublication = z.infer<typeof publicationSchema>;
 export type ChannelMessage = z.infer<typeof messageSchema>;
+export type ChannelAttachment = z.infer<typeof attachmentSchema>;
+export type ChannelFileKey = z.infer<typeof fileKeySchema>;
+export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
 export type ChannelRoom = z.infer<typeof roomSchema>;
 export type RoomSummary = Pick<ChannelRoom, "id" | "name" | "creatorId" | "access" | "hidden" | "hasPassword">;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
-export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "message_confirmed" }>;
 export interface RoomSettings {
   name: string; access: "public" | "private"; hidden: boolean; password?: string | null;
 }
@@ -73,7 +87,9 @@ export type ChannelCommand =
   | { type: "host_stop"; roomId: string; bindingId: string }
   | { type: "browse"; roomId: string; active: boolean }
   | { type: "history"; roomId: string; before?: number }
-  | { type: "chat"; roomId: string; text: string; nonce: string; attachments: string[] }
+  | { type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[] }
+  | ({ type: "file_offer"; available: boolean } & ChannelFileKey)
+  | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
   | ({ type: "update_room"; roomId: string } & RoomSettings)
   | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }
   | { type: "room_invite"; roomId: string }
