@@ -1,7 +1,5 @@
 use piik_channel_prototype::{
-    history::{
-        ConfirmationInput, HistoryRequest, HistoryResult, MessageConfirmation, HISTORY_PAGE,
-    },
+    history::{ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, HISTORY_PAGE},
     host::{HostInput, RoomHost as SharedRoomHost},
     wire::{ChatMessage, RoomAccess},
     RoomState,
@@ -47,16 +45,44 @@ pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
     )
 }
 
-struct Pending {
-    request: Option<HistoryRequest>,
-    confirmation: Option<MessageConfirmation>,
+#[wasm_bindgen]
+pub fn prepare_confirmation(draft: &str, input: &str) -> Result<String, JsValue> {
+    let confirmation = parse::<MessageDraft>(draft)?
+        .prepare_confirmation(parse::<ConfirmationInput>(input)?)
+        .map_err(error)?;
+    encode(&HistoryResult::Sent(confirmation))
 }
 
-/// Browser bindings for the shared room dispatch and its one pending storage turn.
+#[wasm_bindgen]
+pub fn history_page_size() -> usize {
+    HISTORY_PAGE
+}
+
+#[wasm_bindgen]
+pub fn history_page(
+    rows: &str,
+    oldest_seq: Option<u64>,
+    before: Option<u64>,
+) -> Result<String, JsValue> {
+    encode(&HistoryResult::page(
+        parse::<Vec<ChatMessage>>(rows)?,
+        oldest_seq,
+        before,
+    ))
+}
+
+#[wasm_bindgen]
+pub fn attachment_result(request: &str, message: &str) -> Result<String, JsValue> {
+    let result = parse::<HistoryRequest>(request)?
+        .attachment_result(parse::<Option<ChatMessage>>(message)?)
+        .map_err(error)?;
+    encode(&result)
+}
+
+/// Browser bindings for the shared room dispatch; the core owns its pending turn.
 #[wasm_bindgen]
 pub struct RoomHost {
     room: SharedRoomHost,
-    pending: Option<Pending>,
 }
 
 #[wasm_bindgen]
@@ -65,7 +91,6 @@ impl RoomHost {
     pub fn new(policy: &str) -> Result<RoomHost, JsValue> {
         Ok(Self {
             room: SharedRoomHost::new(parse(policy)?),
-            pending: None,
         })
     }
     pub fn room_id(&self) -> String {
@@ -77,80 +102,22 @@ impl RoomHost {
     pub fn summary(&self) -> Result<String, JsValue> {
         encode(&self.room.summary())
     }
-    pub fn page_size(&self) -> usize {
-        HISTORY_PAGE
-    }
     pub fn dispatch(&mut self, input: &str) -> Result<String, JsValue> {
-        let mut work = self
-            .room
-            .dispatch(parse::<HostInput>(input)?)
-            .map_err(error)?;
-        let output = encode(&work)?;
-        self.pending = Some(Pending {
-            request: work.history.take(),
-            confirmation: None,
-        });
-        Ok(output)
-    }
-    pub fn prepare_confirmation(&mut self, input: &str) -> Result<String, JsValue> {
-        let pending = self
-            .pending
-            .as_mut()
-            .ok_or_else(|| error("no_pending_operation"))?;
-        let Some(HistoryRequest::Send { draft, .. }) = &pending.request else {
-            return Err(error("not_a_send"));
-        };
-        let confirmation = draft
-            .prepare_confirmation(parse::<ConfirmationInput>(input)?)
-            .map_err(error)?;
-        let output = encode(&confirmation)?;
-        pending.confirmation = Some(confirmation);
-        Ok(output)
-    }
-    /// Called only after requested storage completes; this binding sends no network ack.
-    pub fn finish(&mut self) -> Result<String, JsValue> {
-        self.pending = None;
-        encode(&self.room.finish(None).map_err(error)?)
-    }
-    pub fn finish_send(&mut self) -> Result<String, JsValue> {
-        let pending = self
-            .pending
-            .take()
-            .ok_or_else(|| error("no_pending_operation"))?;
-        let confirmation = pending.confirmation.ok_or_else(|| error("not_prepared"))?;
         encode(
             &self
                 .room
-                .finish(Some(HistoryResult::Sent(confirmation)))
+                .dispatch(parse::<HostInput>(input)?)
                 .map_err(error)?,
         )
     }
-    pub fn finish_read(&mut self, rows: &str, oldest_seq: Option<u64>) -> Result<String, JsValue> {
-        let pending = self
-            .pending
-            .take()
-            .ok_or_else(|| error("no_pending_operation"))?;
-        let Some(HistoryRequest::Read { before, .. }) = pending.request else {
-            return Err(error("not_a_read"));
-        };
-        let result = HistoryResult::page(parse::<Vec<ChatMessage>>(rows)?, oldest_seq, before);
-        encode(&self.room.finish(Some(result)).map_err(error)?)
-    }
-    pub fn finish_attachment(&mut self, rows: &str) -> Result<String, JsValue> {
-        let pending = self
-            .pending
-            .take()
-            .ok_or_else(|| error("no_pending_operation"))?;
-        let request = pending
-            .request
-            .ok_or_else(|| error("not_an_attachment_read"))?;
-        let result = request
-            .attachment_result(parse::<Option<ChatMessage>>(rows)?)
-            .map_err(error)?;
-        encode(&self.room.finish(Some(result)).map_err(error)?)
+    /// Called only after requested storage completes; this binding sends no network ack.
+    pub fn finish(&mut self, history: Option<String>) -> Result<String, JsValue> {
+        let result = history
+            .map(|value| parse::<HistoryResult>(&value))
+            .transpose()?;
+        encode(&self.room.finish(result).map_err(error)?)
     }
     pub fn abort(&mut self, code: String) -> Result<String, JsValue> {
-        self.pending = None;
         encode(&self.room.abort(code).map_err(error)?)
     }
 }

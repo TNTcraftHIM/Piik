@@ -1,4 +1,4 @@
-import init, { create_room_policy, RoomHost } from "../pkg/piik_channel_browser.js";
+import init, { attachment_result, create_room_policy, history_page, history_page_size, prepare_confirmation, RoomHost } from "../pkg/piik_channel_browser.js";
 export { AttachmentHash, FileDelivery, attachment_limits, attachment_media_type } from "../pkg/piik_channel_browser.js";
 export async function initializeFiles(): Promise<void> { await init(); }
 import type { ChannelMessage, RoomSummary } from "../../../src/client/channel/protocol";
@@ -12,10 +12,13 @@ export interface SentResult { type: "sent"; message: ChannelMessage; inserted: b
 export interface PageResult {
   type: "page"; messages: ChannelMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
-interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; attachments: ChannelMessage["attachments"] } }
+interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
+type HistoryResult = SentResult | PageResult | AttachmentResult;
+interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
-interface HostWork { policy: object | null; history: SendRequest | ReadRequest | AttachmentRequest | null }
+type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest;
+interface HostWork { policy: object | null; history: HistoryRequest | null }
 
 const failure = (error: unknown): Error => error instanceof Error ? error : new Error(String(error));
 function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (error: Error) => void): void {
@@ -161,13 +164,12 @@ export class BrowserRoomHost {
       }
       const work: HostWork = JSON.parse(this.room.dispatch(JSON.stringify(input)));
       try {
-        if (work.history?.type === "send") return await this.send(work.history, work.policy, signal);
-        if (work.history?.type === "attachment") return await this.attachment(work.history, work.policy, signal);
-        if (work.history?.type === "read") return await this.history(work.history, work.policy, signal);
-        if (work.policy) return await this.roomTransaction(["rooms"], "readwrite", tx => {
-          this.savePolicy(tx, work.policy!);
-        }, () => JSON.parse(this.room.finish()), signal);
-        return await this.roomTransaction(["rooms"], "readonly", () => {}, () => JSON.parse(this.room.finish()), signal);
+        let result: HistoryResult | undefined;
+        if (work.history) result = await this.executeHistory(work.history, work.policy, signal);
+        else await this.roomTransaction(["rooms"], work.policy ? "readwrite" : "readonly", tx => {
+          this.savePolicy(tx, work.policy);
+        }, () => {}, signal);
+        return JSON.parse(this.room.finish(result && JSON.stringify(result)));
       } catch (error) {
         const cause = failure(error);
         return JSON.parse(this.room.abort(cause.name === "AbortError" ? cause.name : cause.message));
@@ -179,13 +181,17 @@ export class BrowserRoomHost {
     if (policy) tx.objectStore("rooms").put({ id: this.roomId, policy: JSON.stringify(policy), bindingId: this.bindingId });
   }
 
-  private send(request: SendRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {
-      return this.roomTransaction(["rooms", "messages"], "readwrite", (tx, abort) => {
-        this.savePolicy(tx, policy);
-        const messages = tx.objectStore("messages");
+  private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
+    const rows: StoredMessage[] = [];
+    let oldest: number | undefined, result: HistoryResult;
+    return this.roomTransaction(["rooms", "messages"], request.type === "send" || policy ? "readwrite" : "readonly", (tx, abort) => {
+      this.savePolicy(tx, policy);
+      const messages = tx.objectStore("messages");
+      if (request.type === "send") {
         const prepare = (input: object) => {
-          const result: Omit<SentResult, "type"> = JSON.parse(this.room.prepare_confirmation(JSON.stringify(input)));
-          if (result.inserted) messages.add({ ...result.message, roomId: request.roomId, nonce: request.draft.nonce });
+          const confirmation: SentResult = JSON.parse(prepare_confirmation(JSON.stringify(request.draft), JSON.stringify(input)));
+          if (confirmation.inserted) messages.add({ ...confirmation.message, roomId: request.roomId, nonce: request.draft.nonce });
+          result = confirmation;
         };
         read<StoredMessage | undefined>(messages.index("send").get([request.roomId, request.draft.userId, request.draft.nonce]), previous => {
           if (previous) { prepare({ type: "existing", message: previous }); return; }
@@ -193,36 +199,25 @@ export class BrowserRoomHost {
             prepare({ type: "new", lastSeq: cursor?.value.seq ?? 0 });
           }, abort);
         }, abort);
-      }, () => JSON.parse(this.room.finish_send()), signal);
-  }
-
-  private attachment(request: AttachmentRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {
-    let message: StoredMessage | undefined;
-    return this.roomTransaction(["rooms", "messages"], policy ? "readwrite" : "readonly", (tx, abort) => {
-      this.savePolicy(tx, policy);
-      read<StoredMessage | undefined>(tx.objectStore("messages").get([request.roomId, request.messageSeq]), value => {
-        message = value;
-      }, abort);
-    }, () => JSON.parse(this.room.finish_attachment(JSON.stringify(message ?? null))), signal);
-  }
-
-  private history(request: ReadRequest, policy: object | null, signal?: AbortSignal): Promise<unknown> {
-      const rows: StoredMessage[] = [];
-      let oldest: number | undefined;
-      return this.roomTransaction(["rooms", "messages"], policy ? "readwrite" : "readonly", (tx, abort) => {
-        this.savePolicy(tx, policy);
-        const messages = tx.objectStore("messages");
+      } else if (request.type === "attachment") {
+        read<StoredMessage | undefined>(messages.get([request.roomId, request.messageSeq]), value => {
+          result = JSON.parse(attachment_result(JSON.stringify(request), JSON.stringify(value ?? null)));
+        }, abort);
+      } else {
         const range = IDBKeyRange.bound([request.roomId], [request.roomId, request.before ?? Infinity], false, request.before !== null);
         const cursor = messages.openCursor(range, "prev");
         read(cursor, value => {
           if (!value) return;
           rows.push(value.value);
-          if (rows.length < this.room.page_size() + 1) value.continue();
+          if (rows.length < history_page_size() + 1) value.continue();
         }, abort);
         read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity])), value => {
           oldest = value?.value.seq;
         }, abort);
-      }, () => JSON.parse(this.room.finish_read(JSON.stringify(rows), oldest === undefined ? undefined : BigInt(oldest))), signal);
+      }
+    }, () => request.type === "read"
+      ? JSON.parse(history_page(JSON.stringify(rows), oldest === undefined ? undefined : BigInt(oldest), request.before === null ? undefined : BigInt(request.before)))
+      : result, signal);
   }
 
   async close(): Promise<void> {

@@ -17,7 +17,8 @@ room again rather than letting that instance reclaim it. This uses IndexedDB's
 without holding a page-wide lock or adding a separate lease service.
 
 Requires the repository's Rust/Node environment, `wasm32-unknown-unknown`,
-`wasm-bindgen` CLI **0.2.129**, and installed `agent-browser` Chromium.
+`wasm-bindgen` CLI **0.2.129**, and a browser available to `agent-browser`.
+Set `AGENT_BROWSER_EXECUTABLE_PATH` to use an installed Chrome executable.
 Set `WASM_BINDGEN` to the CLI path if it is outside `PATH`. From the repository root:
 
 ```powershell
@@ -27,7 +28,7 @@ node prototype/channel-browser/check.mjs
 ```
 
 `pkg/` and Cargo `target/` are generated and ignored. The finite check owns its
-loopback server and browser profile, then removes both. Evidence stays under
+loopback server and isolated browser session, then closes both. Evidence stays under
 `build/channel-browser-check/`. It tests real WASM and IndexedDB, including
 reopen, original nonce confirmation, abort after insert success and pagination.
 Browser-hosted rooms deliver files through their base paths; no file bytes go to

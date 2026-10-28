@@ -137,10 +137,11 @@ test("authenticated users, role authority, attributed chat and selective source 
   assert.equal(returningUser, friendUser);
   assert.notEqual(returning.welcome.sessionId, friend.welcome.sessionId, "another page is another endpoint");
   assert.equal((await returning.request({ type: "browse", roomId, active: true })).type, "ack");
+  assert.equal((await returning.request({ type: "history", roomId })).type, "ack");
   const history = await returning.wait(event => event.type === "history" && event.roomId === roomId, "authorized history");
   assert.equal(history.messages.filter(message => message.text === text).length, 1);
   assert.equal(typeof history.hasMore, "boolean");
-  assert.equal(history.before, undefined, "fresh browse omits the older-page cursor");
+  assert.equal(history.before, undefined, "latest history omits the older-page cursor");
   const olderCursor = history.messages[0].seq;
   assert.equal((await returning.request({ type: "history", roomId, before: olderCursor })).type, "ack");
   const olderPage = await returning.wait(event => event.type === "history" && event.roomId === roomId && event.before === olderCursor, "echoed older cursor");
@@ -182,6 +183,7 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert.equal((await outsider.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "error");
   assert.equal((await guest.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "ack");
   assert.equal((await guest.request({ type: "browse", roomId, active: true })).type, "ack");
+  assert.equal((await guest.request({ type: "history", roomId })).type, "ack");
   const history = await guest.wait(event => event.type === "history" && event.roomId === roomId, "private history");
   assert(history.messages.some(message => message.text === "private-content"));
   assert.equal((await creator.request({ type: "revoke_room_access", roomId, userId: guestUser })).type, "ack");

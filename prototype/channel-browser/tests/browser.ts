@@ -75,6 +75,8 @@ window.runBrowserRoomCheck = async () => {
     check(JSON.stringify(first.message.attachments) === JSON.stringify([file]), "description committed inside message");
     const offered = await dispatch({ type: "file_offer", roomId: host.roomId, messageSeq: 1, attachmentId: file.id, available: true });
     check(offered.reply?.result.type === "done", "complete copy offered through confirmed message");
+    const missing = await dispatch({ type: "file_offer", roomId: host.roomId, messageSeq: 2, attachmentId: file.id, available: true });
+    check(missing.reply?.result.code === "attachment_unavailable", "missing attachment aborts the shared turn");
     const retry = await send("Changed retry", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!retry.inserted && JSON.stringify(retry.message) === JSON.stringify(first.message), "original confirmation");
     await host.close();
@@ -159,7 +161,7 @@ window.runBrowserRoomCheck = async () => {
       check(output.reply?.result.type === "error" && output.reply.result.code?.includes("transaction"), "closed DB aborts shared pending operation");
     }
     return { passed: true, actualWasm: true, actualIndexedDB: true, serializedOrder: true, originalConfirmation: true,
-      reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true,
+      reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true, missingAttachmentRejected: true,
       latest: latest.messages.length, older: older.messages.length, beforeZero: true, versionChangeClearsPending: true,
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true, domainCredentialDatabaseProvided: false };
   } finally {
