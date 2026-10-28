@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 const FANOUT: usize = 2;
-const FAILED_PARENTS: usize = 4;
 
 /// One source owns one acyclic tree. Shared physical transport ownership lives
 /// above these plans: a source retiring must not close another source's pair.
@@ -55,8 +54,10 @@ impl Plan {
         }
         self.parents.retain(|child, _| needed.contains(child));
         self.ready.retain(|child| self.parents.contains_key(child));
-        self.failed_parents
-            .retain(|child, _| available.contains(child));
+        self.failed_parents.retain(|child, parents| {
+            parents.retain(|parent| available.contains(parent));
+            available.contains(child)
+        });
         if !connected.contains(&self.source) {
             return;
         }
@@ -68,9 +69,6 @@ impl Plan {
                 continue;
             }
             let failed = self.failed_parents.entry(*child).or_default();
-            if failed.len() >= FAILED_PARENTS {
-                continue;
-            }
             let candidates = std::iter::once(self.source).chain(self.ready.iter().copied());
             let parent = candidates
                 .filter(|parent| {
@@ -344,5 +342,41 @@ mod tests {
         plan.reconcile(&set(&[2, 3, 4]), &available, &available);
         assert_eq!(plan.parents[&id(2)], id(3));
         assert!(plan.parents.contains_key(&id(4)));
+    }
+    #[test]
+    fn exhausted_old_parents_do_not_block_a_new_ready_candidate() {
+        let mut plan = Plan::new(id(1));
+        let mut requested = set(&[2, 3, 4, 5, 6, 7, 8, 9]);
+        let mut available = requested.clone();
+        available.insert(id(1));
+        for _ in 0..5 {
+            plan.reconcile(&requested, &available, &available);
+            for (child, parent) in plan.parents.clone() {
+                plan.mark_ready(child, parent);
+            }
+        }
+        for _ in 0..4 {
+            let parent = plan.parents[&id(9)];
+            plan.failed(parent, id(9));
+            plan.reconcile(&requested, &available, &available);
+        }
+        // Keep failing actual assigned candidates until the existing live pool
+        // has no free untried parent; a new endpoint must still get a chance.
+        while let Some(parent) = plan.parents.get(&id(9)).copied() {
+            plan.failed(parent, id(9));
+            plan.reconcile(&requested, &available, &available);
+        }
+        available.insert(id(10));
+        requested.insert(id(10));
+        plan.reconcile(&requested, &available, &available);
+        let parent = plan.parents[&id(10)];
+        plan.mark_ready(id(10), parent);
+        plan.reconcile(&requested, &available, &available);
+        assert_eq!(plan.parents[&id(9)], id(10));
+        // Session retirement removes its old candidate failure fact. Mere
+        // demand toggles retain it, as the existing regression above checks.
+        available.remove(&id(4));
+        plan.reconcile(&requested, &available, &available);
+        assert!(!plan.failed_parents[&id(9)].contains(&id(4)));
     }
 }

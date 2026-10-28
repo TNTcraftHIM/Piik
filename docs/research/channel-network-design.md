@@ -24,7 +24,7 @@ attachments. The [room-data model](./channel-storage-and-identity.md) owns simpl
 shared file delivery on those same paths. Browser-owned rooms now run the shared
 Rust core with local confirmation/storage; domain rendezvous currently carries
 their commands. Browser and Native room participants now establish base paths
-and voice; TODO owns the remaining carrier and platform integration.
+for voice and verified file ranges; TODO owns the remaining carrier and platform integration.
 
 ## Terminology And Roles
 
@@ -409,8 +409,8 @@ repairs base paths while preserving the pair's healthy media leases.
 
 Screens retain independent plans in this slice. Server-owned default rooms also
 retain publication plans; their domain process does not embed a Native media
-endpoint, and an administrator's page cannot substitute for one. Files use authenticated HTTP only
-in those Server-owned rooms.
+endpoint, and an administrator's page cannot substitute for one. Those rooms
+do not advertise peer file delivery until their hosting runtime supplies that endpoint.
 Its simplified screen plan starts with subscribers as relay candidates and
 retains existing transit while downstream demand needs it. Stopping local
 watching does not dismantle those paths. A failed edge marks only its own parent
@@ -433,7 +433,8 @@ capture. Its caller owns hosting lifetime; a command-line development host does
 not grant background hosting to an idle App. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The next slice connects peer data delivery and App/Server hosting to those owners.
+The next slice connects screen startup, authenticated room commands and
+App/Server hosting to those owners.
 Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Use one Rust
 core with thin App/Server and Browser adapters. Evaluate
