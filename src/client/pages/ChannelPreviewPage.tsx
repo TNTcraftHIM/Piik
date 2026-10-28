@@ -58,13 +58,13 @@ export function ChannelPreviewPage() {
     : channel.error === "directory_storage_failed"
       ? copy("房间操作已成功，但域目录保存失败。", "The room operation succeeded, but the domain directory could not be saved.")
     : channel.error === "app_disconnected"
-      ? copy("App 已断开。请重新打开 App，再重新连接。", "The App disconnected. Open it again, then reconnect.")
+      ? copy("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.")
     : channel.error === "owner_mismatch"
       ? copy("App 选择的数据不属于当前域或账号。请检查本机启动配置。", "The App data belongs to another domain or account. Check its local startup configuration.")
     : /room_host_conflict|room_storage_in_use/.test(channel.error)
-      ? copy("另一个页面已接管这间房间。请关闭多余页面，再刷新本页。", "Another page has taken over this room. Close the extra page, then reload this page.")
+      ? copy("这间房间已在另一处打开。请回到正在托管它的页面或 App。", "This room is already open elsewhere. Return to the page or App hosting it.")
     : channel.error === "room_host_offline"
-      ? copy("房主暂时离线，请等待房主恢复房间。", "The room owner is offline. Wait for them to bring the room back.")
+      ? copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")
     : /password/i.test(channel.error)
     ? copy("房间密码不正确，请重新输入。", "The room password is incorrect. Please try again.")
     : /room_access|room_forbidden/i.test(channel.error)
@@ -176,7 +176,7 @@ export function ChannelPreviewPage() {
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" onClick={channel.reconnect} />}
         </div>}
         {room && !room.available && <div className="c3-notice" role="status"><Glyph name="couch" size={20} />
-          <span>{copy("房主暂时离线，房间会在房主回来后恢复。", "The room owner is offline. The room will return when they reconnect.")}</span></div>}
+          <span>{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
         {self && !owner && !permissions.size && <div className="c3-notice" role="status"><Glyph name="lock" size={20} />
           <span>{copy("当前为只读。请联系域主分配身份组。", "Read-only access. Ask the domain owner for a role to participate.")}</span></div>}
         {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
