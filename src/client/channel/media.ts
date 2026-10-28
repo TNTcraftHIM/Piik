@@ -1,7 +1,7 @@
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
 import { decodedVideoFrameSamples } from "../webrtc/stats";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
-import { ChannelTransport } from "./transport";
+import { ChannelTransport, type OutgoingMedia } from "./transport";
 
 interface Peer {
   plan: ChannelPair;
@@ -63,6 +63,11 @@ export class ChannelMedia {
           send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
           receive: (flowId, stream) => this.receive(plan.id, flowId, stream),
           retire: flowId => this.retire(plan.id, flowId),
+          outgoingFailed: flowId => {
+            if (this.peers.get(plan.id)?.plan.outgoing.some(flow => flow.id === flowId)) {
+              this.send({ type: "flow_state", flowId, pairId: plan.id, ready: false });
+            }
+          },
           data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
           dataState: ready => this.dataState?.(plan.peerId, ready),
           bulkClosed: () => this.bulkClosed?.(plan.peerId),
@@ -219,10 +224,12 @@ export class ChannelMedia {
       }
     }
     for (const peer of this.peers.values()) {
-      const outgoing = new Map<string, MediaStream | null>();
+      const outgoing = new Map<string, OutgoingMedia>();
       for (const flow of peer.plan.outgoing) {
+        const publication = this.publications.find(publication => publication.id === flow.publicationId);
+        if (!publication) continue;
         const stream = streams.get(flow.publicationId);
-        outgoing.set(flow.id, stream ?? null);
+        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null });
         if (stream) {
           const sourceFlow = sourceFlows.get(flow.publicationId);
           if (sourceFlow) {

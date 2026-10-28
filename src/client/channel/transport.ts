@@ -1,6 +1,6 @@
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { decodedVideoFrameSamples } from "../webrtc/stats";
-import type { ChannelSignal } from "./protocol";
+import type { ChannelPublication, ChannelSignal } from "./protocol";
 
 const MAX_FILE_FRAME_BYTES = 8192;
 const MAX_CONTROL_FRAME_BYTES = 32768;
@@ -8,12 +8,18 @@ const DATA_SEND_BUFFER_BYTES = 65536;
 // Application memory queues, matching Native: 32 core ranges × at most 17 frames.
 const DATA_SEND_QUEUE_FRAMES = { control: 128, chunk: 32 * 17 };
 
+export interface OutgoingMedia {
+  kind: ChannelPublication["kind"];
+  stream: MediaStream | null;
+}
+
 interface TransportOptions {
   polite: boolean;
   iceServers: RTCIceServer[];
   send(payload: ChannelSignal): void;
   receive(flowId: string, stream: MediaStream): void;
   retire?(flowId: string): void;
+  outgoingFailed?(flowId: string): void;
   connected(): void;
   base(ready: boolean): void;
   failed(): void;
@@ -25,7 +31,7 @@ interface TransportOptions {
 /** One physical pair. Flows own stream bindings and senders, never source tracks. */
 export class ChannelTransport {
   readonly pc: RTCPeerConnection;
-  private sending = new Map<string, { stream: MediaStream; senders: RTCRtpSender[] }>();
+  private sending = new Map<string, { stream: MediaStream; senders: RTCRtpSender[]; failed: boolean }>();
   private remoteIds = new Map<string, string>();
   private frameBaselines = new Map<string, ReadonlyMap<string, number> | null>();
   private receiving = new Map<string, MediaStream>();
@@ -182,30 +188,50 @@ export class ChannelTransport {
     else this.fail();
   }
 
-  setOutgoing(streams: ReadonlyMap<string, MediaStream | null>): void {
+  setOutgoing(streams: ReadonlyMap<string, OutgoingMedia>): void {
     for (const [id, previous] of this.sending) {
-      const next = streams.get(id);
-      const tracks = next?.getTracks() ?? [];
-      previous.senders = previous.senders.filter(sender => {
+      if (streams.has(id)) continue;
+      for (const sender of previous.senders) this.pc.removeTrack(sender);
+      for (const track of previous.stream.getTracks()) previous.stream.removeTrack(track);
+      this.sending.delete(id);
+    }
+    for (const [id, { kind, stream }] of streams) {
+      let output = this.sending.get(id);
+      if (!output) {
+        output = { stream: new MediaStream(), senders: [], failed: false };
+        this.sending.set(id, output);
+      }
+      if (output.failed) continue;
+      const tracks = stream?.getTracks() ?? [];
+      const previous = [...output.senders];
+      let attached = true;
+      for (const track of tracks) {
+        if (!output.senders.some(sender => sender.track === track)) {
+          try {
+            output.stream.addTrack(track);
+            output.senders.push(this.pc.addTrack(track, output.stream));
+          } catch (error) {
+            attached = false;
+            const live = previous.filter(sender => sender.track?.readyState === "live");
+            const retained = live.some(sender => sender.track?.kind === (kind === "screen" ? "video" : "audio")) ? live : [];
+            for (const sender of output.senders) if (!retained.includes(sender)) this.pc.removeTrack(sender);
+            output.senders = retained;
+            for (const track of output.stream.getTracks()) {
+              if (!retained.some(sender => sender.track === track)) output.stream.removeTrack(track);
+            }
+            console.warn("Channel media sender attach failed", { flowId: id, kind: track.kind }, error);
+            output.failed = retained.length === 0;
+            if (output.failed) this.options.outgoingFailed?.(id);
+            break;
+          }
+        }
+      }
+      if (attached) output.senders = output.senders.filter(sender => {
         if (sender.track && tracks.includes(sender.track)) return true;
-        if (sender.track) previous.stream.removeTrack(sender.track);
+        if (sender.track) output.stream.removeTrack(sender.track);
         this.pc.removeTrack(sender);
         return false;
       });
-      if (!streams.has(id)) this.sending.delete(id);
-    }
-    for (const [id, stream] of streams) {
-      let output = this.sending.get(id);
-      if (!output) {
-        output = { stream: new MediaStream(), senders: [] };
-        this.sending.set(id, output);
-      }
-      for (const track of stream?.getTracks() ?? []) {
-        if (!output.senders.some(sender => sender.track === track)) {
-          output.stream.addTrack(track);
-          output.senders.push(this.pc.addTrack(track, output.stream));
-        }
-      }
     }
   }
 
@@ -282,13 +308,17 @@ export class ChannelTransport {
 
   private replayDescription(payload: ChannelSignal): void {
     // SDP completes its original exchange; only current flow bindings may travel with it.
-    this.options.send({ ...payload, tracks: payload.tracks?.filter(track => this.sending.get(track.flowId)?.stream.id === track.streamId) });
+    this.options.send({ ...payload, tracks: payload.tracks?.filter(track => {
+      const output = this.sending.get(track.flowId);
+      return output && !output.failed && output.stream.id === track.streamId;
+    }) });
   }
 
   private sendDescription(exchangeId: string = crypto.randomUUID()): void {
     const description = this.pc.localDescription;
     if (!description || (description.type !== "offer" && description.type !== "answer")) return;
-    const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks: [...this.sending].map(([flowId, { stream }]) => ({ flowId, streamId: stream.id })) };
+    const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks: [...this.sending]
+      .filter(([, output]) => !output.failed).map(([flowId, { stream }]) => ({ flowId, streamId: stream.id })) };
     if (description.type === "offer") this.pendingOffer = payload;
     else if (description.type === "answer") this.answer = payload;
     this.options.send(payload);

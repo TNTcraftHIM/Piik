@@ -606,6 +606,66 @@ test("a relay updates senders when audio joins and leaves the same remote screen
   } finally { media.reset(); session.close(); }
 });
 
+test.each(["new", "source", "audio", "ended"])("sender rejection rolls back its %s allocation without affecting healthy outputs", async mode => {
+  const replacing = mode !== "new";
+  const survives = replacing && mode !== "ended";
+  const { session, media, state, sent, pc } = await setupRoomMedia();
+  const oldVideo = remoteTrack("video"), video = mode === "audio" ? oldVideo : remoteTrack("video"), rejectedAudio = remoteTrack("audio");
+  const kept = remoteTrack("audio"), following = remoteTrack("audio");
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    pc.connected(); pc.channels[0].open();
+    state.publications = [
+      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false },
+      ...["kept", "following"].map(id => ({ id, roomId: "first", sessionId: "a", userId: "self", kind: "voice" as const, muted: false })),
+    ];
+    media.setLocal("kept", remoteStream("kept", [kept]));
+    media.setLocal("following", remoteStream("following", [following]));
+    if (replacing) media.setLocal("screen", remoteStream("old-screen", [oldVideo]));
+    state.pairs[0].outgoing = [
+      ...(replacing ? [{ id: "screen-output", publicationId: "screen" }] : []),
+      { id: "kept-output", publicationId: "kept" },
+    ];
+    media.update("a", state);
+    const keptSender = pc.senders.find(sender => sender.track === kept);
+    const oldBinding = pc.senders.find(sender => sender.track === oldVideo)?.stream;
+    if (mode === "ended") Object.defineProperty(oldVideo, "readyState", { value: "ended" });
+    const attach = pc.addTrack.bind(pc);
+    const add = vi.spyOn(pc, "addTrack").mockImplementation((track, stream) => {
+      if (track === rejectedAudio) throw new DOMException("sender attach rejected", "InvalidAccessError");
+      return attach(track, stream);
+    });
+    const source = remoteStream("new-screen", [video, rejectedAudio]);
+    if (!replacing) media.setLocal("screen", source);
+    state.pairs[0].outgoing = [{ id: "screen-output", publicationId: "screen" },
+      { id: "kept-output", publicationId: "kept" }, { id: "following-output", publicationId: "following" }];
+    expect(() => replacing ? media.setLocal("screen", source) : media.update("a", state)).not.toThrow();
+    expect(pc.senders.map(sender => sender.track)).toEqual(survives ? [oldVideo, kept, following] : [kept, following]);
+    expect(pc.senders.find(sender => sender.track === kept)).toBe(keptSender);
+    expect(oldBinding?.getTracks() ?? []).toEqual(survives ? [oldVideo] : []);
+    const failedBinding = add.mock.calls.find(([track]) => track === rejectedAudio)![1];
+    expect(failedBinding.getTracks()).toEqual(survives ? [oldVideo] : []);
+    expect(sent.filter(command => command.type === "flow_state")).toEqual(survives ? [] : [
+      { type: "flow_state", flowId: "screen-output", pairId: "pair", ready: false },
+    ]);
+    expect(warning).toHaveBeenCalledWith("Channel media sender attach failed", { flowId: "screen-output", kind: "audio" }, expect.any(DOMException));
+    if (!survives) {
+      const attempts = add.mock.calls.length;
+      media.update("a", state); media.update("a", state);
+      expect(add).toHaveBeenCalledTimes(attempts);
+    }
+    state.pairs[0].outgoing.shift(); media.update("a", state);
+    state.pairs[0].outgoing.push({ id: "renewed-screen-output", publicationId: "screen" });
+    add.mockImplementation(attach);
+    media.update("a", state);
+    expect(pc.senders.map(sender => sender.track)).toEqual([kept, following, video, rejectedAudio]);
+    expect(pc.senders.find(sender => sender.track === video)?.stream.id).not.toBe(failedBinding.id);
+    expect(sent.some(command => command.type === "link_state" && command.state === "failed")).toBe(false);
+    expect(pc.close).not.toHaveBeenCalled();
+    for (const track of [oldVideo, video, rejectedAudio, kept, following]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test.each(["ended", "removetrack", "unmapped"])("a proven screen withdraws readiness when its video is %s", async ending => {
   const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
@@ -761,20 +821,20 @@ test.each(["offer", "answer"])("resync recovers a lost %s on the same transport 
   const remoteA = vi.spyOn(pcA, "setRemoteDescription"), remoteB = vi.spyOn(pcB, "setRemoteDescription");
   const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }] }) as unknown as MediaStream;
   try {
-    a.setOutgoing(new Map([["voice-flow", stream("original")]]));
+    a.setOutgoing(new Map([["voice-flow", { kind: "voice", stream: stream("original") }]]));
     pcA.onnegotiationneeded?.();
     await vi.waitFor(() => expect(sent[0]).toHaveLength(1));
     const offer = structuredClone(sent[0].shift()!);
     let withheldAnswer: ChannelSignal | undefined;
     if (lost === "answer") {
-      b.setOutgoing(new Map([["reverse-flow", stream("revoked-reverse")]]));
+      b.setOutgoing(new Map([["reverse-flow", { kind: "voice", stream: stream("revoked-reverse") }]]));
       b.signal(offer);
       await vi.waitFor(() => expect(sent[1]).toHaveLength(1));
       withheldAnswer = sent[1].shift(); // The peer applied the offer, but its answer was lost.
       b.setOutgoing(new Map());
     }
     // A later demand must not rewrite the manifest of the offer already in flight.
-    a.setOutgoing(new Map([["replacement-flow", stream("replacement")]]));
+    a.setOutgoing(new Map([["replacement-flow", { kind: "voice", stream: stream("replacement") }]]));
     if (lost === "offer") {
       b.resync(); // Only the receiving peer reconnects; it cannot know A has an offer.
       await vi.waitFor(() => expect(sent[1]).toHaveLength(1));
@@ -816,7 +876,7 @@ test("an earlier answer cannot finish a newer exchange on the same transport", a
   const remoteA = vi.spyOn(pcA, "setRemoteDescription");
   const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }] }) as unknown as MediaStream;
   try {
-    a.setOutgoing(new Map([["voice-flow", stream("old")]]));
+    a.setOutgoing(new Map([["voice-flow", { kind: "voice", stream: stream("old") }]]));
     pcA.onnegotiationneeded?.();
     await vi.waitFor(() => expect(sent[0]).toHaveLength(1));
     const oldOffer = sent[0].shift()!;
@@ -825,7 +885,7 @@ test("an earlier answer cannot finish a newer exchange on the same transport", a
     const oldAnswer = sent[1].shift()!;
     a.signal(oldAnswer);
     await vi.waitFor(() => expect(pcA.signalingState).toBe("stable"));
-    a.setOutgoing(new Map([["voice-flow", stream("new")]]));
+    a.setOutgoing(new Map([["voice-flow", { kind: "voice", stream: stream("new") }]]));
     pcA.onnegotiationneeded?.();
     await vi.waitFor(() => expect(sent[0].some(signal => signal.description)).toBe(true));
     const newOffer = sent[0].find(signal => signal.description)!;
@@ -1054,7 +1114,10 @@ test("voice forwards without local listening and the same pair carries the rever
   const incoming = voice("a-stream", aTrack), local = voice("b-stream", bTrack);
   try {
     pc.connected(); pc.channels[0].open();
-    state.publications = [{ id: "voice-a", roomId: "first", sessionId: "z", userId: "other", kind: "voice", muted: false }];
+    state.publications = [
+      { id: "voice-a", roomId: "first", sessionId: "z", userId: "other", kind: "voice", muted: false },
+      { id: "voice-b", roomId: "first", sessionId: "a", userId: "self", kind: "voice", muted: false },
+    ];
     state.pairs[0].incoming = [{ id: "voice-a-in", publicationId: "voice-a" }];
     state.pairs[0].outgoing = [{ id: "voice-b-out", publicationId: "voice-b" }];
     state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-out", publicationId: "voice-a" }] });

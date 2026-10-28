@@ -290,6 +290,96 @@ async function assertNoError(index, flow) {
 const dropSignaling = index => evaluate(index,
   "window.__channelProbe.sockets.filter(socket => socket.readyState === WebSocket.OPEN && new URL(socket.url).pathname === '/prototype/channel').forEach(socket => socket.close())");
 
+async function senderAllocationFailure() {
+  const result = await evaluate(0, `(async () => {
+    const { ChannelTransport } = await import('/src/client/channel/transport.ts');
+    const deadline = Date.now() + 25000;
+    const check = (condition, message) => { if (!condition) throw new Error(message); };
+    const wait = async (label, sample) => {
+      while (Date.now() < deadline) { if (await sample()) return; await new Promise(resolve => setTimeout(resolve, 50)); }
+      throw new Error(label);
+    };
+    const context = new AudioContext(), oscillator = context.createOscillator();
+    const destination = context.createMediaStreamDestination(); oscillator.connect(destination); oscillator.start(); await context.resume();
+    const audio = destination.stream.getAudioTracks()[0];
+    const canvas = document.createElement('canvas'); canvas.width = 160; canvas.height = 90;
+    const paint = canvas.getContext('2d'); let frame = 0;
+    const timer = setInterval(() => { paint.fillStyle = 'hsl(' + (++frame * 13 % 360) + ' 80% 50%)'; paint.fillRect(0, 0, 160, 90); }, 50);
+    const video = canvas.captureStream(20).getVideoTracks()[0], secondVideo = video.clone();
+    const failures = [], errors = [], received = [], consumers = [], inputs = new Map();
+    const warn = console.warn;
+    console.warn = (...args) => { if (args[0] === 'Channel media sender attach failed') errors.push(args[2]?.name); warn(...args); };
+    let left, right;
+    const options = (polite, send) => ({ polite, iceServers: [], send, connected() {}, base() {},
+      failed() { failures.push('pair'); }, outgoingFailed(id) { failures.push(id); },
+      receive(id, stream) {
+        inputs.set(id, stream);
+        const element = document.createElement(stream.getVideoTracks().length ? 'video' : 'audio');
+        element.muted = true; element.autoplay = true; element.srcObject = stream;
+        element.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0'; document.body.append(element);
+        consumers.push(element); void element.play().catch(() => {});
+      }, data(kind, data) { received.push(data); },
+    });
+    const stats = async () => {
+      const values = [];
+      for (const [side, pc] of [['sender', left.pc], ['receiver', right.pc]]) {
+        for (const report of (await pc.getStats()).values()) {
+          if (report.type === (side === 'sender' ? 'outbound-rtp' : 'inbound-rtp') && (report.kind ?? report.mediaType) === 'audio') {
+            values.push({ side, id: report.id, packets: report.packetsSent ?? report.packetsReceived ?? 0 });
+          }
+        }
+      }
+      return values;
+    };
+    const advancing = (before, after) => ['sender', 'receiver'].every(side => before.some(old => old.side === side &&
+      after.some(next => next.side === side && next.id === old.id && next.packets > old.packets)));
+    const videoSample = async id => {
+      const track = inputs.get(id)?.getVideoTracks()[0];
+      const receiver = right.pc.getReceivers().find(receiver => receiver.track === track);
+      if (!receiver) return null;
+      const report = [...(await receiver.getStats()).values()].find(report => report.type === 'inbound-rtp' && report.kind === 'video');
+      return report ? { id: report.id, frames: report.framesDecoded ?? 0 } : null;
+    };
+    const voice = { kind: 'voice', stream: new MediaStream([audio]) };
+    try {
+      left = new ChannelTransport(options(false, signal => right.signal(signal)));
+      right = new ChannelTransport(options(true, signal => left.signal(signal)));
+      left.setRooms(['allocation-check']); right.setRooms(['allocation-check']);
+      left.setOutgoing(new Map([['voice', voice]]));
+      await wait('voice and base channels did not establish', async () => inputs.has('voice') && left.isBaseReady() && right.isBaseReady() && (await stats()).every(value => value.packets > 0) && (await stats()).length >= 2);
+      const before = await stats();
+      left.setOutgoing(new Map([['voice', voice], ['failed-screen', { kind: 'screen', stream: new MediaStream([video, audio]) }]]));
+      check(errors.length === 1 && errors[0] === 'InvalidAccessError', 'Chrome must reject the duplicate audio track itself');
+      check(failures.length === 1 && failures[0] === 'failed-screen', 'only the failed flow reports allocation failure');
+      check(left.pc.getSenders().filter(sender => sender.track).length === 1 && left.pc.getSenders().some(sender => sender.track === audio), 'partial video sender was not rolled back');
+      check([audio, video, secondVideo].every(track => track.readyState === 'live'), 'allocation failure stopped a source track');
+      const failed = { kind: 'screen', stream: new MediaStream([video]) };
+      for (let repeat = 0; repeat < 3; repeat++) left.setOutgoing(new Map([['voice', voice], ['failed-screen', failed]]));
+      check(errors.length === 1 && left.pc.getSenders().filter(sender => sender.track).length === 1, 'same failed lease was allocated again');
+      const good = { kind: 'screen', stream: new MediaStream([secondVideo]) };
+      left.setOutgoing(new Map([['voice', voice], ['failed-screen', failed], ['good-screen', good]]));
+      await wait('a later legal screen did not receive media', async () => (await videoSample('good-screen'))?.frames > 1);
+      left.setOutgoing(new Map([['voice', voice], ['good-screen', good]]));
+      left.setOutgoing(new Map([['voice', voice], ['good-screen', good], ['new-screen', failed]]));
+      await wait('a new lease could not allocate the retired flow source', async () => (await videoSample('new-screen'))?.frames > 0);
+      const pictureBefore = await videoSample('new-screen');
+      await wait('new lease picture did not advance on its own receiver', async () => {
+        const next = await videoSample('new-screen'); return next?.id === pictureBefore.id && next.frames > pictureBefore.frames;
+      });
+      await left.sendData('control', 'after-allocation-failure');
+      await wait('voice or base stopped after a flow allocation failure', async () => received.includes('after-allocation-failure') && advancing(before, await stats()));
+      check(failures.length === 1 && left.pc.connectionState === 'connected' && right.pc.connectionState === 'connected', 'flow allocation failed the shared pair');
+      return { passed: true, error: errors[0], failures, before, after: await stats(), baseMessage: true, retiredLeaseReallocated: true };
+    } finally {
+      left?.close(); right?.close(); console.warn = warn; clearInterval(timer);
+      for (const element of consumers) { element.pause(); element.srcObject = null; element.remove(); }
+      for (const track of [audio, video, secondVideo]) track.stop(); oscillator.stop(); oscillator.disconnect(); await context.close();
+    }
+  })()`);
+  await writeFile(join(output, 'sender-allocation-result.json'), JSON.stringify(result, null, 2));
+  return result;
+}
+
 async function roomBase(initial, serverRoom) {
   const source = await capturedScreen(1, serverRoom);
   await action(2, `watch(${JSON.stringify(source)})`);
@@ -782,6 +872,7 @@ try {
       capturedScreen, playing, progressing, assertNoError, hook, output });
     console.log(`Native room acceptance passed; evidence: ${output}`);
   } else if (baseOnly) {
+    await senderAllocationFailure();
     await roomBase(initial, roomId);
     console.log(`Room base acceptance passed; evidence: ${output}`);
   } else if (hostsOnly) {
