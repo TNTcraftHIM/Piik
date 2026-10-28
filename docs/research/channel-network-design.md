@@ -407,15 +407,17 @@ before an edge carries bidirectional voice. A non-listening participant may
 forward that voice; changing views retains necessary transit. DataChannel failure
 repairs base paths while preserving the pair's healthy media leases.
 
-Screens retain independent plans in this slice. Server-owned default rooms also
-retain publication plans; their domain process does not embed a Native media
-endpoint, and an administrator's page cannot substitute for one. Those rooms
-do not advertise peer file delivery until their hosting runtime supplies that endpoint.
-Its simplified screen plan starts with subscribers as relay candidates and
-retains existing transit while downstream demand needs it. Stopping local
-watching does not dismantle those paths. A failed edge marks only its own parent
-candidate; a voluntary stop or an ancestor's failure does not mark a healthy leg
-as failed. The full 2.x transition and media-proof machinery remains to be integrated.
+Screens retain independent plans and start on ready room paths, installing only
+the missing source-to-viewer suffix. Existing picture branches stay in place;
+base connectivity does not substitute for picture proof. Reverse flow may use
+all three neighbors of an internal base node. The small fanout policy for new
+branches is a topology choice, not a measurement of device media capacity.
+Failed picture preparation uses the same availability candidates without
+retiring the shared base connection. Necessary transit survives local unwatch.
+Server-owned default rooms have no Native endpoint and retain standalone screen
+plans; an administrator's page cannot substitute for that endpoint. They do not
+advertise peer file delivery. Actual participant resource admission and complete
+bounded route transitions remain to be integrated.
 
 Before implementing the next slice, map its user-visible behavior, authority,
 state transitions, resource lifetime and recovery. Existing code is evidence of
@@ -433,8 +435,8 @@ capture. Its caller owns hosting lifetime; a command-line development host does
 not grant background hosting to an idle App. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The next slice connects screen startup, authenticated room commands and
-App/Server hosting to those owners.
+The next slice connects authenticated room commands and App/Server hosting to
+those owners, then completes resource admission and bounded route transitions.
 Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Use one Rust
 core with thin App/Server and Browser adapters. Evaluate
@@ -483,8 +485,8 @@ Audio and video retain separate source identities within one publication. Each
 output uses its sender's negotiated codec mapping and keeps the source RTP clock
 and Sender Report correlation; replacing a source creates a new sender/SSRC.
 Removing the last incoming demand releases its reader even if the publication
-remains in the room directory. Native screen-route startup on the base paths,
-capture and SFU integration remain later stages. This isolated dependency does
+remains in the room directory. Native capture and SFU integration remain later
+stages. This isolated dependency does
 not replace the current 2.x Native media core.
 
 ## Design References

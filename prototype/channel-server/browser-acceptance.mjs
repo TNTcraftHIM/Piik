@@ -230,6 +230,13 @@ async function roomBase(initial, serverRoom) {
     "transit decoder consumers must remain silent and absent from local playback");
   await progressing(2, source);
 
+  const basePicture = await capturedScreen(3, room);
+  await action(1, `watch(${JSON.stringify(basePicture)})`);
+  await playing(1, basePicture);
+  assert((await view(1)).state.pairs.some(pair => pair.peerId === initial[2].sessionId && pair.incoming.includes(basePicture)),
+    "picture startup uses the reachable base transit despite a blocked direct path");
+  assert(!(await view(2)).state.subscriptions.includes(basePicture), "picture transit does not require local viewing");
+
   await action(1, `setMuted(${JSON.stringify(room)}, false)`);
   await until("reverse voice crosses the same base edges", () => sample(3), value =>
     value.inbound.some(report => report.kind === "audio" && report.samples > 0 && report.energy > 0));
@@ -258,7 +265,12 @@ async function roomBase(initial, serverRoom) {
   await progressing(2, source);
   assert((await view(2)).state.pairs.some(pair => pair.id === originalPair && pair.incoming.includes(source)), "a failed DataChannel must not close the same pair's healthy picture");
   assert((await view(0)).state.pairs.some(pair => pair.id === survivingPair && pair.incoming.includes(source)), "base repair preserves unrelated screen transport");
+  await progressing(1, basePicture);
   await browser(2, "close");
+  await until("picture repairs through the surviving base branch", () => view(1), value =>
+    value.state.pairs.some(pair => pair.peerId === initial[0].sessionId && pair.incoming.includes(basePicture)), 30_000);
+  await progressing(1, basePicture);
+  await action(3, `stopScreen(${JSON.stringify(basePicture)})`);
 
   for (const index of [1, 3]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
   await until("last voice stops without closing base connections", () => view(3), value =>
@@ -272,6 +284,7 @@ async function roomBase(initial, serverRoom) {
   for (const index of [0, 1, 3]) await assertNoError(index, "room base lifecycle");
   await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true,
     scenarios: ["room entry without capture", "media/base transport reuse", "unreachable direct edge",
+      "picture startup through non-viewing base transit", "picture recovery after transit departure",
       "bidirectional voice through a non-listener", "deafen keeps routes", "view change preserves transit",
       "failed DataChannel repairs voice without closing healthy RTP", "retired transit leaves independently",
       "repair preserves another room's picture", "voice stop keeps base", "last lease retirement"] }, null, 2));

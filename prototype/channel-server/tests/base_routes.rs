@@ -645,3 +645,207 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
         .iter()
         .any(|pair| pair.peer_id == viewer_session && pair.incoming.contains(&companion)));
 }
+
+#[test]
+fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonviewer_transit() {
+    let mut network = RoomNetwork::new();
+    let connections: Vec<_> = (0..7).map(|_| Uuid::new_v4()).collect();
+    let sessions: Vec<_> = connections
+        .iter()
+        .map(|connection| join(&mut network, *connection, None).0)
+        .collect();
+    let room = network.create(connections[0], RoomAccess::Public, false);
+    for connection in &connections[1..] {
+        browse(&mut network, *connection, &room, true);
+    }
+    // Establish the real bounded room tree through both endpoint DC proofs.
+    for _ in 0..4 {
+        let edges: Vec<_> = connections
+            .iter()
+            .flat_map(|connection| {
+                network
+                    .state(*connection)
+                    .pairs
+                    .iter()
+                    .filter(|pair| pair.rooms.contains(&room))
+                    .map(|pair| (*connection, pair.id))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        for (connection, pair_id) in edges {
+            command(
+                &mut network,
+                connection,
+                json!({"type":"base_state","roomId":room,"pairId":pair_id,"ready":true}),
+            );
+        }
+    }
+    let root_children: Vec<_> = network
+        .state(connections[0])
+        .pairs
+        .iter()
+        .filter(|pair| pair.rooms.contains(&room))
+        .map(|pair| pair.peer_id)
+        .collect();
+    assert_eq!(root_children.len(), 2);
+    let source_session = root_children[0];
+    let transit_session = root_children[1];
+    let connection_of = |session| {
+        connections[sessions
+            .iter()
+            .position(|candidate| *candidate == session)
+            .unwrap()]
+    };
+    let source = connection_of(source_session);
+    let transit = connection_of(transit_session);
+    assert_eq!(
+        network
+            .state(source)
+            .pairs
+            .iter()
+            .filter(|pair| pair.rooms.contains(&room))
+            .count(),
+        3
+    );
+    assert_eq!(
+        network
+            .state(transit)
+            .pairs
+            .iter()
+            .filter(|pair| pair.rooms.contains(&room))
+            .count(),
+        3
+    );
+    let picture = publish(&mut network, source, &room, "screen");
+    let viewers: Vec<_> = connections
+        .iter()
+        .copied()
+        .filter(|connection| *connection != source && *connection != transit)
+        .collect();
+    for connection in &viewers {
+        command(
+            &mut network,
+            *connection,
+            json!({"type":"subscribe","publicationId":picture,"enabled":true}),
+        );
+    }
+    let source_outputs: Vec<_> = network
+        .state(source)
+        .pairs
+        .iter()
+        .filter(|pair| pair.outgoing.contains(&picture))
+        .collect();
+    assert_eq!(
+        source_outputs.len(),
+        3,
+        "reverse base projection is not limited by its root-oriented branching policy"
+    );
+    for pair in source_outputs {
+        assert!(
+            pair.rooms.contains(&room),
+            "startup reuses existing physical base pairs"
+        );
+    }
+    let transit_view = network.state(transit);
+    assert!(!transit_view.subscriptions.contains(&picture));
+    assert_eq!(
+        transit_view
+            .pairs
+            .iter()
+            .filter(|pair| pair.incoming.contains(&picture))
+            .count(),
+        1
+    );
+    assert_eq!(
+        transit_view
+            .pairs
+            .iter()
+            .filter(|pair| pair.outgoing.contains(&picture))
+            .count(),
+        2
+    );
+    let copies: usize = connections
+        .iter()
+        .map(|connection| {
+            network
+                .state(*connection)
+                .pairs
+                .iter()
+                .filter(|pair| pair.outgoing.contains(&picture))
+                .count()
+        })
+        .sum();
+    assert_eq!(
+        copies, 6,
+        "two downstream viewers share each common suffix edge exactly once"
+    );
+    // Local unwatch does not retire the root's necessary forwarding duty.
+    command(
+        &mut network,
+        connections[0],
+        json!({"type":"subscribe","publicationId":picture,"enabled":false}),
+    );
+    assert!(!network
+        .state(connections[0])
+        .subscriptions
+        .contains(&picture));
+    assert!(network
+        .state(connections[0])
+        .pairs
+        .iter()
+        .any(|pair| pair.incoming.contains(&picture)));
+    assert!(network
+        .state(connections[0])
+        .pairs
+        .iter()
+        .any(|pair| pair.outgoing.contains(&picture)));
+    let before: Vec<_> = connections
+        .iter()
+        .map(|connection| {
+            network
+                .state(*connection)
+                .pairs
+                .iter()
+                .filter(|pair| pair.incoming.contains(&picture) || pair.outgoing.contains(&picture))
+                .map(|pair| {
+                    (
+                        pair.id,
+                        pair.incoming.contains(&picture),
+                        pair.outgoing.contains(&picture),
+                    )
+                })
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    let root_pair = network
+        .state(source)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == sessions[0])
+        .unwrap()
+        .id;
+    command(
+        &mut network,
+        source,
+        json!({"type":"base_state","roomId":room,"pairId":root_pair,"ready":false}),
+    );
+    for (index, connection) in connections.iter().enumerate() {
+        let after: Vec<_> = network
+            .state(*connection)
+            .pairs
+            .iter()
+            .filter(|pair| pair.incoming.contains(&picture) || pair.outgoing.contains(&picture))
+            .map(|pair| {
+                (
+                    pair.id,
+                    pair.incoming.contains(&picture),
+                    pair.outgoing.contains(&picture),
+                )
+            })
+            .collect();
+        assert_eq!(
+            after, before[index],
+            "base repair does not replace an independently healthy screen path"
+        );
+    }
+}

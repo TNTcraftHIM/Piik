@@ -28,6 +28,7 @@ impl Plan {
         requested: &BTreeSet<Uuid>,
         available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
+        base: Option<&BaseTree>,
     ) {
         let remove: Vec<_> = self
             .parents
@@ -61,11 +62,19 @@ impl Plan {
         if !connected.contains(&self.source) {
             return;
         }
+        let base_parents: BTreeMap<_, _> = base
+            .into_iter()
+            .flat_map(|base| base.project(self.source, requested))
+            .map(|(parent, child)| (child, parent))
+            .collect();
         for child in requested {
             if *child == self.source
                 || self.parents.contains_key(child)
                 || !connected.contains(child)
             {
+                continue;
+            }
+            if self.graft_base(*child, &base_parents, available, connected) {
                 continue;
             }
             let failed = self.failed_parents.entry(*child).or_default();
@@ -85,6 +94,42 @@ impl Plan {
                 self.parents.insert(*child, parent);
             }
         }
+    }
+
+    /// Reuse the existing physical path without applying the policy used to
+    /// construct new branches. Reversing a base tree can give its source three
+    /// required outputs; that is not a claim about the device's media capacity.
+    fn graft_base(
+        &mut self,
+        receiver: Uuid,
+        base_parents: &BTreeMap<Uuid, Uuid>,
+        available: &BTreeSet<Uuid>,
+        connected: &BTreeSet<Uuid>,
+    ) -> bool {
+        let mut suffix = Vec::new();
+        let mut child = receiver;
+        while child != self.source && !self.parents.contains_key(&child) {
+            let Some(parent) = base_parents.get(&child).copied() else {
+                return false;
+            };
+            if !available.contains(&child)
+                || !available.contains(&parent)
+                || !connected.contains(&child)
+                || !connected.contains(&parent)
+                || self
+                    .failed_parents
+                    .get(&child)
+                    .is_some_and(|failed| failed.contains(&parent))
+            {
+                return false;
+            }
+            suffix.push((child, parent));
+            child = parent;
+        }
+        for (child, parent) in suffix {
+            self.parents.insert(child, parent);
+        }
+        true
     }
 
     pub fn mark_ready(&mut self, child: Uuid, parent: Uuid) -> bool {
@@ -180,7 +225,7 @@ impl BaseTree {
         available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
     ) {
-        self.plan.reconcile(demand, available, connected);
+        self.plan.reconcile(demand, available, connected, None);
         self.prune_proofs();
     }
     fn prune_proofs(&mut self) {
@@ -259,13 +304,13 @@ mod tests {
         let mut plan = Plan::new(id(1));
         let requested = set(&[2, 3, 4, 5]);
         let available = set(&[1, 2, 3, 4, 5]);
-        plan.reconcile(&requested, &available, &available);
+        plan.reconcile(&requested, &available, &available, None);
         assert_eq!(plan.parents.len(), 2);
         assert!(plan.mark_ready(id(2), id(1)));
-        plan.reconcile(&requested, &available, &available);
+        plan.reconcile(&requested, &available, &available, None);
         assert_eq!(plan.parents[&id(4)], id(2));
         assert_eq!(plan.parents[&id(5)], id(2));
-        plan.reconcile(&requested, &available, &available);
+        plan.reconcile(&requested, &available, &available, None);
         assert_eq!(plan.parents[&id(3)], id(1));
         assert_eq!(plan.parents[&id(4)], id(2));
     }
@@ -276,15 +321,15 @@ mod tests {
         let mut second = Plan::new(id(2));
         let requested = set(&[2, 3, 4, 5]);
         let available = set(&[1, 2, 3, 4, 5]);
-        first.reconcile(&requested, &available, &available);
+        first.reconcile(&requested, &available, &available, None);
         first.mark_ready(id(2), id(1));
-        first.reconcile(&requested, &available, &available);
-        second.reconcile(&set(&[1, 3]), &available, &available);
+        first.reconcile(&requested, &available, &available, None);
+        second.reconcile(&set(&[1, 3]), &available, &available, None);
         let second_before = second.parents.clone();
         first.failed(id(1), id(2));
         assert_eq!(first.parents, BTreeMap::from([(id(3), id(1))]));
         first.mark_ready(id(3), id(1));
-        first.reconcile(&requested, &available, &available);
+        first.reconcile(&requested, &available, &available, None);
         assert_eq!(first.parents[&id(3)], id(1));
         assert_ne!(first.parents.get(&id(2)), Some(&id(1)));
         assert_eq!(second.parents, second_before);
@@ -294,17 +339,17 @@ mod tests {
     fn unwatch_keeps_required_transit_until_its_last_downstream_leaves() {
         let mut plan = Plan::new(id(1));
         let available = set(&[1, 2, 3, 4]);
-        plan.reconcile(&set(&[2, 3, 4]), &available, &available);
+        plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         plan.mark_ready(id(2), id(1));
-        plan.reconcile(&set(&[2, 3, 4]), &available, &available);
+        plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         let before = plan.parents.clone();
-        plan.reconcile(&set(&[3, 4]), &available, &available);
+        plan.reconcile(&set(&[3, 4]), &available, &available, None);
         assert_eq!(plan.parents, before);
         assert!(
             !plan.mark_ready(id(2), id(1)),
             "existing transit proof is retained"
         );
-        plan.reconcile(&set(&[3]), &available, &available);
+        plan.reconcile(&set(&[3]), &available, &available, None);
         assert!(!plan.parents.contains_key(&id(2)));
         assert!(!plan.parents.values().any(|parent| *parent == id(2)));
         assert!(!plan.mark_ready(id(2), id(1)));
@@ -315,10 +360,10 @@ mod tests {
     fn view_toggles_do_not_retry_a_failed_parent() {
         let mut plan = Plan::new(id(1));
         let available = set(&[1, 2]);
-        plan.reconcile(&set(&[2]), &available, &available);
+        plan.reconcile(&set(&[2]), &available, &available, None);
         plan.failed(id(1), id(2));
-        plan.reconcile(&set(&[]), &available, &available);
-        plan.reconcile(&set(&[2]), &available, &available);
+        plan.reconcile(&set(&[]), &available, &available, None);
+        plan.reconcile(&set(&[2]), &available, &available, None);
         assert!(plan.parents.is_empty());
     }
 
@@ -326,20 +371,20 @@ mod tests {
     fn healthy_unwatch_rewatch_and_ancestor_loss_do_not_mark_a_leg_failed() {
         let mut plan = Plan::new(id(1));
         let available = set(&[1, 2, 3, 4]);
-        plan.reconcile(&set(&[2]), &available, &available);
+        plan.reconcile(&set(&[2]), &available, &available, None);
         plan.mark_ready(id(2), id(1));
-        plan.reconcile(&set(&[]), &available, &available);
-        plan.reconcile(&set(&[2]), &available, &available);
+        plan.reconcile(&set(&[]), &available, &available, None);
+        plan.reconcile(&set(&[2]), &available, &available, None);
         assert_eq!(plan.parents[&id(2)], id(1));
 
         plan.mark_ready(id(2), id(1));
-        plan.reconcile(&set(&[2, 3, 4]), &available, &available);
+        plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         assert_eq!(plan.parents[&id(4)], id(2));
         plan.failed(id(1), id(2));
         assert!(plan.failed_parents[&id(2)].contains(&id(1)));
         assert!(plan.failed_parents[&id(4)].is_empty());
         plan.mark_ready(id(3), id(1));
-        plan.reconcile(&set(&[2, 3, 4]), &available, &available);
+        plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         assert_eq!(plan.parents[&id(2)], id(3));
         assert!(plan.parents.contains_key(&id(4)));
     }
@@ -350,7 +395,7 @@ mod tests {
         let mut available = requested.clone();
         available.insert(id(1));
         for _ in 0..5 {
-            plan.reconcile(&requested, &available, &available);
+            plan.reconcile(&requested, &available, &available, None);
             for (child, parent) in plan.parents.clone() {
                 plan.mark_ready(child, parent);
             }
@@ -358,25 +403,67 @@ mod tests {
         for _ in 0..4 {
             let parent = plan.parents[&id(9)];
             plan.failed(parent, id(9));
-            plan.reconcile(&requested, &available, &available);
+            plan.reconcile(&requested, &available, &available, None);
         }
         // Keep failing actual assigned candidates until the existing live pool
         // has no free untried parent; a new endpoint must still get a chance.
         while let Some(parent) = plan.parents.get(&id(9)).copied() {
             plan.failed(parent, id(9));
-            plan.reconcile(&requested, &available, &available);
+            plan.reconcile(&requested, &available, &available, None);
         }
         available.insert(id(10));
         requested.insert(id(10));
-        plan.reconcile(&requested, &available, &available);
+        plan.reconcile(&requested, &available, &available, None);
         let parent = plan.parents[&id(10)];
         plan.mark_ready(id(10), parent);
-        plan.reconcile(&requested, &available, &available);
+        plan.reconcile(&requested, &available, &available, None);
         assert_eq!(plan.parents[&id(9)], id(10));
         // Session retirement removes its old candidate failure fact. Mere
         // demand toggles retain it, as the existing regression above checks.
         available.remove(&id(4));
-        plan.reconcile(&requested, &available, &available);
+        plan.reconcile(&requested, &available, &available, None);
         assert!(!plan.failed_parents[&id(9)].contains(&id(4)));
+    }
+    #[test]
+    fn base_suffix_installs_transit_without_borrowing_its_media_proof() {
+        let available = set(&[1, 2, 3, 4]);
+        let mut base = BaseTree::new(id(1));
+        base.reconcile(&set(&[2, 3, 4]), &available, &available);
+        for peer in [id(2), id(3)] {
+            base.state(id(1), peer, true);
+            base.state(peer, id(1), true);
+        }
+        base.reconcile(&set(&[2, 3, 4]), &available, &available);
+        base.state(id(2), id(4), true);
+        base.state(id(4), id(2), true);
+        let mut screen = Plan::new(id(3));
+        screen.reconcile(&set(&[4]), &available, &available, Some(&base));
+        assert_eq!(
+            screen.parents,
+            BTreeMap::from([(id(1), id(3)), (id(2), id(1)), (id(4), id(2))])
+        );
+        assert_eq!(
+            screen.ready_edges().count(),
+            0,
+            "control readiness cannot prove picture delivery"
+        );
+        screen.reconcile(&set(&[2, 4]), &available, &available, Some(&base));
+        assert_eq!(
+            screen.parents.len(),
+            3,
+            "shared suffix is installed once before the first media proof"
+        );
+        screen.mark_ready(id(1), id(3));
+        assert_eq!(
+            screen.ready_edges().collect::<Vec<_>>(),
+            vec![(id(3), id(1))]
+        );
+        screen.failed(id(3), id(1));
+        screen.reconcile(&set(&[4]), &available, &available, Some(&base));
+        assert_eq!(
+            screen.parents,
+            BTreeMap::from([(id(4), id(3))]),
+            "failed base picture preparation uses the same availability fallback"
+        );
     }
 }

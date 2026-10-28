@@ -132,9 +132,12 @@ DataChannel at both endpoints. Voice follows the needed paths of that tree in
 either direction; a participant can forward without joining or hearing the call.
 Leaving the room view ends reading, while active media and necessary transit remain.
 
-Screens still use their own bounded distribution trees: the source first serves
-two subscribers, then ready subscribers can relay. Server-owned default rooms use
-these publication plans; their domain process does not embed a Native media endpoint.
+Each screen keeps its own distribution plan. Startup reuses ready base paths,
+including required non-viewing transit. If those paths cannot carry the picture,
+the same plan seeks an alternative through the source or ready media relays.
+Only newly constructed branches use the prototype's small fanout policy; reversing
+an existing base path does not discard its third direction. Server-owned default
+rooms have no Native endpoint and retain standalone publication plans.
 Compatible base and media flows reuse physical peer connections. A relay can stop
 watching while continuing to serve downstream viewers; its transit ends when that
 demand ends. A failed DataChannel repairs its room paths without closing healthy
@@ -235,7 +238,8 @@ node prototype/channel-server/run-browser-check.mjs --base
 ```
 
 The [Native participant checks](../channel-native/README.md#checks) add
-`--native` for real Browser-to-Native voice, file forwarding, room storage and restart.
+`--native` for concurrent Browser-to-Native picture, voice and file forwarding,
+room storage and restart.
 
 Browser checks require `agent-browser` and its installed Chromium. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite

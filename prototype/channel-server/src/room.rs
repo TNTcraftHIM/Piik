@@ -466,7 +466,7 @@ impl RoomRuntime {
                 .collect();
             publication
                 .plan
-                .reconcile(&subscribers, &available, &connected);
+                .reconcile(&subscribers, &available, &connected, self.base.as_ref());
         }
     }
 

@@ -81,6 +81,12 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     for (const index of [1, 2]) assert((await view(index)).state.pairs.filter(pair =>
       pair.incoming.some(id => voiceIds.includes(id))).every(pair => pair.peerId === pairs[0].peerId));
 
+    const nativePicture = await capturedScreen(1, room);
+    await action(2, `watch(${JSON.stringify(nativePicture)})`);
+    await playing(2, nativePicture);
+    assert((await view(2)).state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.includes(nativePicture)),
+      "picture startup must reuse the established Native base path");
+
     const fileSize = 1024 * 1024 + 17;
     const expected = createHash("sha256").update(Buffer.from(Array.from({ length: fileSize }, (_, index) => index % 251))).digest("hex");
     await evaluate(1, `(async () => {
@@ -122,6 +128,15 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
       assert.equal(fileDomain.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
     } finally { fileStore.close(); fileDomain.close(); }
 
+    await browser(2, "click", `.c3-room-link[aria-label="${name}"]`);
+    await progressing(2, nativePicture);
+    await action(1, `stopScreen(${JSON.stringify(nativePicture)})`);
+    await until("stopping Native-forwarded picture retains the voice pair", () => view(2), value =>
+      !value.state.publications.some(publication => publication.id === nativePicture)
+      && value.state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.some(id => voiceIds.includes(id))));
+    await advancing(2);
+    await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
+
     const picture = await capturedScreen(0, serverRoom);
     await action(2, `watch(${JSON.stringify(picture)})`);
     await playing(2, picture);
@@ -154,6 +169,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await browser(2, "screenshot", join(output, "native-room.png"), "--full");
     await writeFile(join(output, "native-result.json"), JSON.stringify({ passed: true,
       scenarios: ["Native admitted root", "room SQLite owns confirmed history", "lost offer recovery on an existing pair", "bidirectional encoded Opus forwarding",
+        "picture startup through Native base", "simultaneous picture voice and file forwarding", "picture stop preserves voice",
         "peer file through Native with final digest", "signaling reconnect and view switch preserve file and voice", "no domain or Native file-byte store",
         "view changes retain voice", "capture replacement keeps base", "other-room picture survives",
         "Native process expiry", "history restore without activity revival"] }, null, 2));

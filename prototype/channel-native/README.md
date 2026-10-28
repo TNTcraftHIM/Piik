@@ -11,8 +11,8 @@ capture, playback or transcoding.
 The [network design](../../docs/research/channel-network-design.md) owns the model.
 This executable is an explicitly started development host. It does not make a
 standby Piik App take over a closed page's room. Room voice and files use the
-base paths. Connecting screen plans to those Native paths and adding Native
-capture are subsequent stages.
+base paths, and screen startup reuses those paths through the same participant.
+Native capture and App/Server hosting-session integration remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs share a publication stream while owning separate SSRCs and
@@ -67,6 +67,6 @@ temporary databases and Browser sessions, and stops them on completion.
 
 The peer check uses real WebRTC endpoints for source replacement, signaling
 recovery, encoded audio/video forwarding and feedback under backpressure. The Browser
-check covers actual Native-rooted voice and file forwarding, room-owned history,
-independent picture playback and process restart. Generated evidence stays under
+check covers concurrent Native-rooted picture, voice and file forwarding,
+room-owned history, independent picture playback and process restart. Generated evidence stays under
 ignored `build/`.
