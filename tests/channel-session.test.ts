@@ -113,6 +113,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     const hello = app.sent.at(-1)!;
     expect(hello).toMatchObject({ type: "hello", channelId: "domain", userId: "self", credential: "credential", name: "Me" });
     app.receive({ id: hello.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register" && (command.room as { id: string }).id === localRoom.id)).toBe(true));
     const register = socket.sent.find(command => command.type === "host_register")!;
     socket.receive({ type: "host_bound", roomId: localRoom.id, bindingId: "browser-binding" });
@@ -135,7 +136,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(host.dispatch).not.toHaveBeenCalled();
 
     app.close();
-    expect(session.getSnapshot().error).toBe("app_disconnected");
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
     expect(host.close).not.toHaveBeenCalled();
     expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
     session.close();
@@ -144,6 +145,64 @@ test("App hosting uses its own participant while Browser rooms retain their page
       { type: "host_stop", roomId: localRoom.id, bindingId: "browser-binding" },
     ]);
     expect(app.sent.map(command => command.type)).toEqual(["hello", "open"]);
+  } finally { session.close(); }
+});
+
+test("remembered App intent does not prevent Browser hosting when no App is connected", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  const discovery = vi.spyOn(appRooms, "discoverChannelAppHealth").mockResolvedValue(null);
+  const host = {
+    roomId: "", summary: () => ({ id: host.roomId, name: "Browser room", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
+    bind: async () => {}, close: async () => {},
+  };
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    createRoomPolicy: async (input: unknown) => JSON.stringify(input),
+    BrowserRoomHost: { open: async (_database: string, policy: string) => { host.roomId = JSON.parse(policy).id; return host; } },
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  try {
+    expect(discovery).toHaveBeenCalledOnce();
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
+    const creating = session.createRoom({ name: "Browser room", access: "public", hidden: false });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
+    const register = socket.sent.find(command => command.type === "host_register")!;
+    socket.receive({ type: "host_bound", roomId: host.roomId, bindingId: "browser-binding" });
+    socket.receive({ type: "ack", requestId: register.requestId });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === host.roomId)).toBe(true));
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.roomId === host.roomId)!;
+    socket.receive({ type: "room_reply", roomId: host.roomId, requestId: browse.requestId, result: { type: "done" } });
+    await expect(creating).resolves.toBe(host.roomId);
+    expect(discovery).toHaveBeenCalledOnce();
+    await expect(session.activateApp()).rejects.toThrow("app_disconnected");
+    expect(session.getSnapshot().error).toBe("app_disconnected");
+  } finally { session.close(); }
+});
+
+test("an App failure during creation does not turn that request into a Browser room", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appRooms, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  let prepared!: (policy: string) => void;
+  let policy = "";
+  const browserOpen = vi.fn();
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    createRoomPolicy: (input: unknown) => { policy = JSON.stringify(input); return new Promise<string>(resolve => { prepared = resolve; }); },
+    BrowserRoomHost: { open: browserOpen },
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const creating = session.createRoom({ name: "App room", access: "public", hidden: false });
+    const failed = expect(creating).rejects.toThrow("app_disconnected");
+    await vi.waitFor(() => expect(prepared).toBeTypeOf("function"));
+    app.close();
+    prepared(policy);
+    await failed;
+    expect(browserOpen).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "host_register")).toBe(false);
+    expect(session.getSnapshot().appConnected).toBe(false);
   } finally { session.close(); }
 });
 

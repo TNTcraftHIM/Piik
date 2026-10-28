@@ -11,6 +11,7 @@ export interface ChannelScreenInput {
 export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export interface ChannelView {
+  appConnected: boolean;
   state: ChannelSnapshot | null;
   sessionId: string | null;
   self: ChannelUser | null;

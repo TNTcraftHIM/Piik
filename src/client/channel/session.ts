@@ -25,6 +25,7 @@ function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
+    appConnected: false,
     state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
     streams: new Map(), screenInputs: new Map(), error: null, inviteURL: null, pending: new Set(),
   };
@@ -78,7 +79,7 @@ export class ChannelSession {
   screenPresentation = (flowId: string, stream: MediaStream, state: ScreenPresentation): void => this.media.screenPresentation(flowId, stream, state);
 
   private patch(patch: Partial<ChannelView>): void {
-    this.view = { ...this.view, ...patch };
+    this.view = { ...this.view, ...patch, appConnected: this.appRooms?.connected ?? false };
     for (const listener of this.listeners) listener();
   }
 
@@ -139,9 +140,7 @@ export class ChannelSession {
       if (invite) inviteURL.hash = new URLSearchParams({ invite }).toString();
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
       this.applyState(event.state);
-      if (isClientActivated()) void this.connectApp().catch(error => {
-        if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "app_disconnected" });
-      });
+      if (isClientActivated()) void this.connectApp().catch(() => {});
       void this.restoreHosts(event.sessionId).catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
@@ -401,16 +400,17 @@ export class ChannelSession {
       if (!health) throw new Error("app_disconnected");
       if (this.closed || this.view.self?.id !== self.id || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
       if (!this.appRooms) {
-        const app = new AppRooms(health, state.channel.id, self.id, this.credential, self.name, error => {
+        const app = new AppRooms(health, state.channel.id, self.id, this.credential, self.name, () => {
           if (this.appRooms !== app) return;
           this.appRooms = undefined;
-          this.patch({ error: error.message });
+          this.patch({});
         });
         this.appRooms = app;
       }
     }
     const app = this.appRooms;
     await app.ready;
+    if (this.appRooms === app && !this.closed) this.patch({});
     return app;
   }
 
@@ -528,12 +528,12 @@ export class ChannelSession {
     stored(nameKey, name.trim());
   });
   createRoom = (settings: RoomSettings): Promise<string> => this.action("create-room", async () => {
+    const app = this.appRooms?.connected ? this.appRooms : undefined;
     const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
     if (!state || !self || !sessionId) throw new Error("disconnected");
     const runtime = await loadRoomHosting(), roomId = crypto.randomUUID();
     const policy = await runtime.createRoomPolicy({ ...settings, id: roomId, creatorId: self.id });
-    if (isClientActivated()) {
-      const app = await this.connectApp();
+    if (app) {
       const room = await app.open(policy);
       if (this.view.sessionId !== sessionId || this.closed) throw new Error("disconnected");
       await this.request({ type: "browse", roomId: room.id, active: true });

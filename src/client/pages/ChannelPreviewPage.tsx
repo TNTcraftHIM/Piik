@@ -63,7 +63,7 @@ export function ChannelPreviewPage() {
     : channel.error === "app_disconnected"
       ? copy("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.")
     : channel.error === "owner_mismatch"
-      ? copy("App 选择的数据不属于当前域或账号。请检查本机启动配置。", "The App data belongs to another domain or account. Check its local startup configuration.")
+      ? copy("App 中的房间数据属于另一个域或账号。请确认当前站点和登录账号。", "The App room data belongs to another domain or account. Check the current site and signed-in account.")
     : /room_host_conflict|room_storage_in_use/.test(channel.error)
       ? copy("这间房间已在另一处打开。请回到正在托管它的页面或 App。", "This room is already open elsewhere. Return to the page or App hosting it.")
     : channel.error === "room_host_offline"

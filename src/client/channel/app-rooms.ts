@@ -36,18 +36,22 @@ export class AppRooms {
   readonly ready: Promise<void>;
   private rejectReady!: (error: Error) => void;
   private timer: ReturnType<typeof setTimeout>;
+  private authenticated = false;
 
-  constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string, onClose: (error: Error) => void) {
+  get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
+
+  constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string, onClose: () => void) {
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
-    const lost = (error = new Error("app_disconnected")) => { this.close(); onClose(error); };
-    this.timer = setTimeout(() => lost(), 10000);
+    const lost = () => { this.close(); onClose(); };
+    this.timer = setTimeout(lost, 10000);
     this.ready = new Promise((resolve, reject) => {
       this.rejectReady = reject;
       socket.onopen = () => {
         void this.request({ type: "hello", channelId, userId, credential, name }).then(() => {
           clearTimeout(this.timer);
+          this.authenticated = true;
           resolve();
-        }, error => { reject(error); lost(error); });
+        }, error => { reject(error); lost(); });
       };
     });
     socket.onmessage = ({ data }) => {
@@ -60,7 +64,7 @@ export class AppRooms {
         else request.resolve(reply.result);
       } catch { lost(); }
     };
-    socket.onclose = () => lost();
+    socket.onclose = lost;
     socket.onerror = () => { /* Close retires the connection and its requests. */ };
   }
 
@@ -79,6 +83,7 @@ export class AppRooms {
   }
 
   close(): void {
+    this.authenticated = false;
     clearTimeout(this.timer);
     this.socket.onclose = null;
     this.socket.close();

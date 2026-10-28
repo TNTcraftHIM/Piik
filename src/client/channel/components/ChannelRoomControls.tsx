@@ -8,8 +8,8 @@ import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelMedia";
 import "./channel-room-controls.css";
 
-function RoomForm({ room, busy, onSave }: {
-  room?: ChannelRoom; busy: boolean; onSave: (settings: RoomSettings) => Promise<unknown>;
+function RoomForm({ room, appHosted, busy, onSave }: {
+  room?: ChannelRoom; appHosted: boolean; busy: boolean; onSave: (settings: RoomSettings) => Promise<unknown>;
 }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
@@ -24,6 +24,9 @@ function RoomForm({ room, busy, onSave }: {
     void onSave({ name: name.trim(), access, hidden: access === "private" && hidden,
       ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) }).catch(() => {});
   }}>
+    {!room && <p>{appHosted
+      ? (zh ? "由 App 托管，关闭网页后房间继续运行。" : "Hosted by App. The room keeps running when this page closes.")
+      : (zh ? "由此网页托管，关闭网页后房间暂停。" : "Hosted by this page. The room pauses when this page closes.")}</p>}
     <label><span>{zh ? "房间名称" : "Room name"}</span><input className="c3-input" required maxLength={64}
       value={name} disabled={busy} onChange={event => setName(event.target.value)} autoComplete="off" /></label>
     <fieldset className="lr-toggle c3-room-access" disabled={busy}>
@@ -79,7 +82,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => setOpen(event.newState === "open")}>
-      {open && <><h3>{title}</h3><RoomForm key={room?.id ?? "create"} room={room} busy={busy} onSave={async settings => {
+      {open && <><h3>{title}</h3><RoomForm key={room?.id ?? "create"} room={room} appHosted={channel.appConnected} busy={busy} onSave={async settings => {
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
         panel.current?.hidePopover();
