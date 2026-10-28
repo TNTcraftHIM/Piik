@@ -560,6 +560,9 @@ impl RoomRuntime {
         }
         Ok(if ready {
             publication.plan.mark_ready(receiver, sender)
+        } else if publication.info.kind == Kind::Screen {
+            publication.plan.failed(sender, receiver);
+            true
         } else {
             publication.plan.mark_unready(receiver, sender)
         })

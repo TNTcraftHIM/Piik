@@ -147,9 +147,11 @@ impl Channel {
                     pair_id,
                     ready,
                 } => {
-                    let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
+                    let (sender, receiver) = self
+                        .flow_direction(session_id, pair_id, publication_id, ready)
+                        .ok_or("unassigned_flow")?;
                     self.room_mut(&id)?
-                        .flow_state(publication_id, session_id, peer, ready)?;
+                        .flow_state(publication_id, receiver, sender, ready)?;
                     None
                 }
                 command => {
@@ -672,19 +674,37 @@ impl Channel {
                 pair_id,
                 ready,
             } => {
-                let sender = self
-                    .peer(context.session_id, pair_id)
-                    .ok_or("unassigned_pair")?;
+                let (sender, receiver) = self
+                    .flow_direction(context.session_id, pair_id, publication_id, ready)
+                    .ok_or("unassigned_flow")?;
                 HostAction::FlowState {
                     context,
                     publication_id,
                     sender,
+                    receiver,
                     ready,
                 }
             }
             command => HostAction::Command { context, command },
         };
         self.host_input(id, action)
+    }
+
+    fn flow_direction(
+        &self,
+        reporter: Uuid,
+        pair: Uuid,
+        publication: Uuid,
+        ready: bool,
+    ) -> Option<(Uuid, Uuid)> {
+        let peer = self.peer(reporter, pair)?;
+        if self.transports.allows(pair, peer, publication) {
+            Some((peer, reporter))
+        } else if !ready && self.transports.allows(pair, reporter, publication) {
+            Some((reporter, peer))
+        } else {
+            None
+        }
     }
 
     pub(crate) fn current_report(&self, session: Uuid, command: &Command) -> bool {
@@ -698,10 +718,10 @@ impl Channel {
             Command::FlowState {
                 publication_id,
                 pair_id,
-                ..
+                ready,
             } => self
-                .peer(session, *pair_id)
-                .is_some_and(|sender| self.transports.allows(*pair_id, sender, *publication_id)),
+                .flow_direction(session, *pair_id, *publication_id, *ready)
+                .is_some(),
             Command::LinkState { pair_id, .. } => self.peer(session, *pair_id).is_some(),
             _ => true,
         }

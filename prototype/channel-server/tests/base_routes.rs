@@ -499,3 +499,149 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     assert!(network.state(viewer).files.is_empty());
     assert!(network.state(viewer).pairs.is_empty());
 }
+
+#[test]
+fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
+    let mut network = RoomNetwork::new();
+    let source = Uuid::new_v4();
+    let relay = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let stranger = Uuid::new_v4();
+    let (source_session, _) = join(&mut network, source, None);
+    let (relay_session, _) = join(&mut network, relay, None);
+    let (viewer_session, _) = join(&mut network, viewer, None);
+    join(&mut network, stranger, None);
+    let room = network.create(source, RoomAccess::Public, false);
+    for connection in [relay, viewer] {
+        browse(&mut network, connection, &room, true);
+    }
+    for connection in [relay, viewer] {
+        let lease = pair(&network, connection, source_session, &room);
+        for endpoint in [source, connection] {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"base_state", "roomId":room, "pairId":lease.id, "ready":true}),
+            );
+        }
+    }
+    for connection in [source, viewer] {
+        voice(&mut network, connection, &room, true);
+        publish(&mut network, connection, &room, "voice");
+    }
+    let attachment = json!({"id":Uuid::new_v4(),"name":"live.bin","size":3,"mediaType":"application/octet-stream",
+        "sha256":piik_channel_prototype::attachment::sha256_hex(b"abc")});
+    command(
+        &mut network,
+        source,
+        json!({"type":"chat","roomId":room,"text":"","nonce":"retained","attachments":[attachment]}),
+    );
+    command(
+        &mut network,
+        source,
+        json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"available":true}),
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"file_receive","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"enabled":true}),
+    );
+    let picture = publish(&mut network, source, &room, "screen");
+    for connection in [relay, viewer] {
+        command(
+            &mut network,
+            connection,
+            json!({"type":"subscribe","publicationId":picture,"enabled":true}),
+        );
+    }
+    let root_relay = pair(&network, relay, source_session, &room);
+    let root_viewer = pair(&network, viewer, source_session, &room);
+    command(
+        &mut network,
+        relay,
+        json!({"type":"flow_state","publicationId":picture,"pairId":root_relay.id,"ready":true}),
+    );
+    let companion = publish(&mut network, viewer, &room, "screen");
+    command(
+        &mut network,
+        source,
+        json!({"type":"subscribe","publicationId":companion,"enabled":true}),
+    );
+    let before = network.state(viewer).clone();
+    // A sender cannot claim receiver readiness, nor can an unrelated endpoint
+    // report failure for somebody else's otherwise-current pair.
+    let ignored = network.command(
+        source,
+        json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":true}),
+    );
+    assert!(ignored.events.is_empty());
+    let ignored = network.command(
+        stranger,
+        json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":false}),
+    );
+    assert!(ignored.events.is_empty());
+    // This receiver has never supplied ready=true. A real add-track/codec failure
+    // at its sender must immediately admit the already-ready relay alternative.
+    command(
+        &mut network,
+        source,
+        json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":false}),
+    );
+    let repaired = network.state(viewer);
+    assert!(repaired
+        .pairs
+        .iter()
+        .any(|pair| pair.peer_id == relay_session && pair.incoming.contains(&picture)));
+    let retained = repaired
+        .pairs
+        .iter()
+        .find(|pair| pair.id == root_viewer.id)
+        .unwrap();
+    assert!(retained.rooms.contains(&room));
+    assert!(retained.outgoing.contains(&companion));
+    assert!(!retained.incoming.contains(&picture));
+    assert_eq!(
+        serde_json::to_value(&repaired.files).unwrap(),
+        serde_json::to_value(&before.files).unwrap()
+    );
+    assert_eq!(repaired.voice.len(), before.voice.len());
+    let voice_ids: Vec<_> = repaired
+        .publications
+        .iter()
+        .filter(|publication| publication.kind == piik_channel_prototype::wire::Kind::Voice)
+        .map(|publication| publication.id)
+        .collect();
+    for publication in voice_ids {
+        let old = before
+            .pairs
+            .iter()
+            .find(|pair| {
+                pair.incoming.contains(&publication) || pair.outgoing.contains(&publication)
+            })
+            .unwrap();
+        let current = repaired
+            .pairs
+            .iter()
+            .find(|pair| {
+                pair.incoming.contains(&publication) || pair.outgoing.contains(&publication)
+            })
+            .unwrap();
+        assert_eq!(current.id, old.id);
+    }
+    // The physical pair still serves other work, but its old picture lease no
+    // longer authorizes either endpoint to damage the replacement route.
+    for endpoint in [source, viewer] {
+        let ignored = network.command(endpoint, json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":false}));
+        assert!(ignored.events.is_empty());
+    }
+    assert!(network
+        .state(viewer)
+        .pairs
+        .iter()
+        .any(|pair| pair.peer_id == relay_session && pair.incoming.contains(&picture)));
+    assert!(network
+        .state(source)
+        .pairs
+        .iter()
+        .any(|pair| pair.peer_id == viewer_session && pair.incoming.contains(&companion)));
+}

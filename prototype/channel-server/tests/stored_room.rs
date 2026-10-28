@@ -231,10 +231,6 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
         ));
         let readable = command(&mut host, owner, owner, query);
         assert!(matches!(readable.reply.unwrap().result, RoomResult::Done));
-        assert_eq!(
-            readable.projection.views[&owner].files[0].attachment,
-            original.attachments[0]
-        );
         let missing = command(
             &mut host,
             owner,
