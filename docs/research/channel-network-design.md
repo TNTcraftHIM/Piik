@@ -126,6 +126,11 @@ The [room-data model](./channel-storage-and-identity.md) owns persistence,
 history copies, file retention and manual address replacement. Domain and room
 data may reside on different users' devices. When one App operates both, compose
 the same runtimes locally rather than requiring another deployment.
+The domain's public listener serves its Web UI and signaling; local approval and
+App control stay on a separate loopback listener. Local and public entries address
+the same domain, but only the local launcher receives its owner bootstrap.
+Invitations use the domain's advertised public entry, not the administrator's
+loopback address. Stopping that domain leaves unrelated approved sites running.
 
 A user and a live endpoint are different concepts. An App's Native participant
 and a Browser page are distinct endpoints of the same authenticated user, with
