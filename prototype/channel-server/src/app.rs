@@ -1,6 +1,10 @@
 //! Local approval owns site access; the App owns each admitted site's room hosts.
+#[path = "app_domain.rs"]
+mod hosted;
 #[path = "app_sites.rs"]
 mod sites;
+#[path = "app_tunnel.rs"]
+mod tunnel;
 
 use crate::web;
 use anyhow::{anyhow, bail, Result};
@@ -39,6 +43,8 @@ pub struct Config {
     pub data_root: PathBuf,
     pub assets: PathBuf,
     pub open_browser: bool,
+    pub cloudflared: PathBuf,
+    pub ice_servers: Vec<Value>,
 }
 fn entry_url(site: &str, port: u16) -> Result<String> {
     if site.is_empty() {
@@ -74,6 +80,16 @@ struct Registry {
     sites: sites::Sites,
     approvals: BTreeMap<String, Arc<Permission>>,
     hosts: BTreeMap<HostKey, Host>,
+    local: Option<(String, Arc<Permission>)>,
+}
+impl Registry {
+    fn permission(&self, site: &str) -> Option<&Arc<Permission>> {
+        self.local
+            .as_ref()
+            .filter(|(origin, _)| origin == site)
+            .map(|(_, permission)| permission)
+            .or_else(|| self.approvals.get(site))
+    }
 }
 struct App {
     config: Config,
@@ -81,6 +97,7 @@ struct App {
     token: String,
     registry: Mutex<Registry>,
     closing: watch::Sender<bool>,
+    launch: Mutex<Option<hosted::Launch>>,
 }
 
 impl App {
@@ -98,8 +115,7 @@ impl App {
             bail!("hosting_unavailable");
         }
         if !registry
-            .approvals
-            .get(site)
+            .permission(site)
             .is_some_and(|current| Arc::ptr_eq(current, permission))
         {
             bail!("site_not_approved");
@@ -186,9 +202,15 @@ impl App {
             for permission in registry.approvals.values() {
                 permission.revoked.send_replace(true);
             }
+            if let Some((_, permission)) = &registry.local {
+                permission.revoked.send_replace(true);
+            }
             std::mem::take(&mut registry.hosts).into_values().collect()
         };
         stop_hosts(hosts).await;
+        if let Some(launch) = self.launch.lock().await.take() {
+            launch.close().await;
+        }
     }
 }
 async fn stop_hosts(hosts: Vec<Host>) {
@@ -243,14 +265,17 @@ pub async fn serve(
             sites,
             approvals,
             hosts: BTreeMap::new(),
+            local: None,
         }),
         closing: watch::channel(false).0,
+        launch: Mutex::new(None),
     });
     let router = Router::new()
         .route("/connect-discovery", get(discovery))
         .route("/health", get(health))
         .route("/rooms", get(upgrade))
         .route("/api/client-launcher", get(launcher))
+        .route("/api/client-launcher/launch", post(hosted::launch))
         .route("/api/client-launcher/site", post(approve))
         .route("/api/client-launcher/startup-site", post(startup))
         .fallback_service(assets)
@@ -304,7 +329,7 @@ async fn access(
     let discovery = path == "/connect-discovery";
     let health = path == "/health";
     let allowed = match &origin {
-        Some(site) => app.registry.lock().await.approvals.contains_key(site),
+        Some(site) => app.registry.lock().await.permission(site).is_some(),
         None => false,
     };
     if path.starts_with("/api/client-launcher") {
@@ -383,7 +408,7 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     Ok(
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
-        "defaultMode":"link","modes":[],"siteAccess":"rooms","version":"development",
+        "defaultMode":"link","modes":["local","link"],"siteAccess":"rooms","version":"development",
         "revision":"development","controlPort":port}),
     )
 }
@@ -396,10 +421,14 @@ fn operation_failure(error: anyhow::Error) -> (StatusCode, Json<Value>) {
     )
 }
 async fn launcher(State(app): State<Arc<App>>) -> ApiResult {
-    let registry = app.registry.lock().await;
-    launcher_state(&registry, app.port)
-        .map(Json)
-        .map_err(operation_failure)
+    let mut state = {
+        let registry = app.registry.lock().await;
+        launcher_state(&registry, app.port).map_err(operation_failure)?
+    };
+    hosted::describe(&app, &mut state)
+        .await
+        .map_err(operation_failure)?;
+    Ok(Json(state))
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -477,7 +506,7 @@ async fn upgrade(
     let Some(site) = request_origin(&headers) else {
         return StatusCode::FORBIDDEN.into_response();
     };
-    let permission = app.registry.lock().await.approvals.get(&site).cloned();
+    let permission = app.registry.lock().await.permission(&site).cloned();
     let Some(permission) = permission else {
         return StatusCode::FORBIDDEN.into_response();
     };

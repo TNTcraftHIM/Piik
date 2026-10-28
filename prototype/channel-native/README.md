@@ -14,7 +14,8 @@ use the base paths, and screen startup reuses those paths through the same parti
 The default Server embeds one participant for its three rooms and owns its
 service lifetime. The [App composition](../channel-server/README.md#local-app-link) owns its Native hosting endpoint, separately
 from the Browser's personal activities. The App reuses the product's site approval
-and saved-site interface. Native capture, input and local/public-domain startup
+and saved-site interface, and starts its own domain through the shared
+Local/public-invitation launcher. Native capture, input and platform packaging
 remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report

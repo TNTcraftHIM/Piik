@@ -9,8 +9,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Complete native capture/input, App local/public-domain startup
-  and platform packaging over the shared UI and Native participant.
+  Rust owners. Complete native capture/input and platform packaging over the
+  shared UI and Native participant.
   Before native H.264 capture, complete equivalent-profile and directional level
   negotiation. Encoded forwarding must use the actual source format rather than
   treating the peer's receive parameters as the stream's SPS.

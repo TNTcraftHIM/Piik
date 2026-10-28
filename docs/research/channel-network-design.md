@@ -131,6 +131,9 @@ App control stay on a separate loopback listener. Local and public entries addre
 the same domain, but only the local launcher receives its owner bootstrap.
 Invitations use the domain's advertised public entry, not the administrator's
 loopback address. Stopping that domain leaves unrelated approved sites running.
+The App's own domain keeps one local identity and storage namespace independent
+of its listener port and temporary public URL. Only its currently bound local
+entry receives automatic App access; this does not merge external site approvals.
 
 A user and a live endpoint are different concepts. An App's Native participant
 and a Browser page are distinct endpoints of the same authenticated user, with

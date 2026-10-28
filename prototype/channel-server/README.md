@@ -11,7 +11,7 @@ Rust library used by Native and Browser/WASM. Its package and default binary rem
 The shared library is `piik-channel-core`.
 The [Domain service](./src/domain.rs) owns its HTTP, WebSocket and directory lifetime;
 the [Server composition](./src/lib.rs) adds deliberate Native room hosting. Local App
-composition can reuse the Domain without inheriting that unattended participant.
+composition reuses the Domain without inheriting that unattended participant.
 
 The Server starts one real [Native participant](../channel-native/README.md) in
 its process to operate the three initial rooms. Its lifetime follows the explicit
@@ -42,7 +42,7 @@ cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml
 
 The values above are placeholders. Supply independently generated keys through
 your local environment and keep them stable when reopening persistent data.
-Keep them out of committed files and saved logs. Rust does not print key-bearing URLs or
+Keep them out of committed files and saved logs. Server does not print key-bearing URLs or
 store the raw startup keys in SQLite.
 
 In another terminal, start the development interface:
@@ -84,6 +84,20 @@ cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --bin piik
 ```
 
 The App opens its local page in the system Browser, or the saved starred site.
+The shared launcher offers **Local network** and **Public invite**. Local uses a
+temporary certificate on the selected IPv4 address, including a virtual-LAN
+adapter; its fingerprint is printed locally. Follow the existing
+[LAN HTTPS instructions](../../docs/guide/troubleshooting.md#local-https-certificate-warning) before
+accepting that certificate on another device. Public invite uses Cloudflare Quick
+Tunnel. Set `PIIK_CHANNEL_CLOUDFLARED` to the installed `cloudflared` executable
+when it is not on PATH; bundling it belongs to the later platform packaging step.
+
+Both modes start one domain with a local owner entry and a separate advertised
+invitation entry. Only the loopback launcher receives the owner bootstrap; neither
+the LAN nor public listener exposes App approval or control. Returning to the
+launcher reopens the same running domain. Startup continues if that page closes;
+a failed attempt releases its resources before the next retry.
+
 On a running domain, click **App** and approve the site on that local page.
 New rooms then use the App's SQLite storage. The create-room form names the
 current hosting runtime. Existing Browser rooms remain in their pages and are
@@ -102,6 +116,14 @@ Revoking a site's approval stops that site's hosting and control connections,
 preserves its saved rooms and leaves other sites running. Reapproving the same
 site reuses its data; returning with the same domain account restores its rooms
 without restarting personal activities.
+
+The App's own local entry is approved for its current runtime. Its domain identity,
+private startup keys and storage namespace live in `app.sqlite`; the directory
+uses `domain/channel.sqlite`, and room databases stay under `rooms/`. A new local
+port or public tunnel address does not select another copy of those rooms.
+External sites retain their separate exact-origin approval boundary.
+App shutdown retires its Native hosts before the domain and tunnel. A local-domain
+failure leaves unrelated approved sites' hosting alone.
 
 The App uses the platform's local application-data directory under `Piik/channel-app`.
 `PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns
@@ -227,8 +249,10 @@ media on the same connection. Stopping one share keeps unrelated received and
 forwarded media alive. Browser relays can decode and re-encode. The Native
 participant forwards encoded Opus, VP8 and H264; Native capture and SFU fallback
 remain later work. WebRTC owns ICE and congestion control.
-Optional `PIIK_CHANNEL_ICE_SERVERS` supplies an ICE-server JSON array; local checks
-do not establish public-NAT connectivity or reliable background Browser service.
+App and Server use the existing public STUN choices by default. Optional
+`PIIK_CHANNEL_ICE_SERVERS` replaces them with an ICE-server JSON array; `[]` disables
+STUN for isolated loopback checks. The local checks do not establish a public-NAT
+success rate or reliable background Browser service.
 
 A signaling interruption has one 20-second recovery window. A resumed endpoint
 retains its committed media and resumes unfinished negotiation on the same
@@ -327,8 +351,8 @@ node prototype/channel-server/run-browser-check.mjs --base
 node prototype/channel-server/run-browser-check.mjs --app
 ```
 
-The three real Native session integration tests live in `tests/native_session.rs`
-in this crate, including App approval and storage ownership. They run the actual
+The real Native session integration tests live in `tests/native_session.rs`
+in this crate, including App approval, storage ownership and startup/retry. They run the actual
 Native executable for process-lock checks, so build it first. With a custom Cargo
 target directory, set `CHANNEL_NATIVE_EXECUTABLE` to that executable. Use
 `cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml --test native_session`

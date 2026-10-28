@@ -17,6 +17,10 @@ async fn main() -> Result<()> {
             env::var_os("PIIK_CHANNEL_APP_WEB_DIR").unwrap_or_else(|| "build/channel-web".into()),
         ),
         open_browser: env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none(),
+        cloudflared: PathBuf::from(
+            env::var_os("PIIK_CHANNEL_CLOUDFLARED").unwrap_or_else(|| "cloudflared".into()),
+        ),
+        ice_servers: piik_channel_prototype::ice_servers_from_environment()?,
     };
     anyhow::ensure!(
         config.assets.join("index.html").is_file(),

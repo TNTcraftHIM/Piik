@@ -2,10 +2,18 @@
 use crate::web::origin;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, OptionalExtension};
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
 use uuid::Uuid;
 
 pub(super) struct Sites(Connection);
+
+#[derive(Deserialize, Serialize)]
+pub(super) struct LocalIdentity {
+    pub owner: String,
+    pub invite: String,
+    pub namespace: Uuid,
+}
 
 impl Sites {
     pub fn open(directory: &Path) -> Result<Self> {
@@ -41,6 +49,29 @@ impl Sites {
             )
             .optional()?
             .unwrap_or_default())
+    }
+    pub fn local_identity(&self) -> Result<LocalIdentity> {
+        let saved: Option<String> = self
+            .0
+            .query_row(
+                "SELECT value FROM app_setting WHERE key = 'domain'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(saved) = saved {
+            return Ok(serde_json::from_str(&saved)?);
+        }
+        let identity = LocalIdentity {
+            owner: Uuid::new_v4().to_string(),
+            invite: Uuid::new_v4().to_string(),
+            namespace: Uuid::new_v4(),
+        };
+        self.0.execute(
+            "INSERT INTO app_setting(key,value) VALUES('domain',?1)",
+            [serde_json::to_string(&identity)?],
+        )?;
+        Ok(identity)
     }
     pub fn set_startup(&self, site: &str) -> Result<()> {
         if !site.is_empty()

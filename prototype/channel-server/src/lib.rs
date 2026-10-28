@@ -8,6 +8,16 @@ use piik_channel_native::session::{self as native, Config, RoomFile};
 use std::{future::Future, path::PathBuf};
 use tokio::sync::watch;
 
+pub fn ice_servers_from_environment() -> anyhow::Result<Vec<serde_json::Value>> {
+    match std::env::var("PIIK_CHANNEL_ICE_SERVERS") {
+        Ok(value) => Ok(serde_json::from_str(&value)?),
+        Err(std::env::VarError::NotPresent) => Ok(vec![serde_json::json!({ "urls": [
+            "stun:stun.cloudflare.com:3478", "stun:stun.miwifi.com:3478", "stun:stun.chat.bilibili.com:3478"
+        ] })]),
+        Err(error) => Err(error.into()),
+    }
+}
+
 /// Server owns its Native rooms for the explicitly started service lifetime.
 pub async fn serve_server(
     listener: tokio::net::TcpListener,

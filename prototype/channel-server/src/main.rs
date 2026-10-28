@@ -14,12 +14,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("Set PIIK_CHANNEL_OWNER_KEY to a private stable startup key");
     let invite = std::env::var("PIIK_CHANNEL_INVITE_KEY")
         .expect("Set PIIK_CHANNEL_INVITE_KEY to a separate stable invitation key");
-    let ice_servers = std::env::var("PIIK_CHANNEL_ICE_SERVERS")
-        .map(|value| {
-            serde_json::from_str::<Vec<serde_json::Value>>(&value)
-                .expect("PIIK_CHANNEL_ICE_SERVERS must be a JSON array")
-        })
-        .unwrap_or_default();
+    let ice_servers = piik_channel_prototype::ice_servers_from_environment()?;
     let directory = std::env::var("PIIK_CHANNEL_DATA_DIR")
         .unwrap_or_else(|_| "build/channel-prototype-data".into());
     let directory = PathBuf::from(directory);
