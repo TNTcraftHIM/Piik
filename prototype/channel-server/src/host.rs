@@ -54,6 +54,7 @@ pub struct RequestContext {
 )]
 pub enum HostAction {
     Sync,
+    RouteWake,
     Command {
         context: RequestContext,
         command: Command,
@@ -91,6 +92,7 @@ pub enum HostAction {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostInput {
+    pub now: u64,
     pub binding_id: Uuid,
     pub host_session_id: Uuid,
     pub revision: u64,
@@ -129,6 +131,7 @@ pub struct InviteVerification {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomProjection {
+    pub next_route_deadline: Option<u64>,
     pub summary: RoomSummary,
     pub views: BTreeMap<Uuid, RoomSnapshot>,
     pub flows: Vec<Flow>,
@@ -308,6 +311,7 @@ mod tests {
             ),
         ] {
             let input = HostInput {
+                now: 0,
                 binding_id: Uuid::new_v4(),
                 host_session_id: session,
                 revision: 1,
@@ -426,7 +430,7 @@ impl RoomHost {
             endpoints: input.endpoints.clone(),
         });
         self.room.set_host_session(input.host_session_id);
-        self.room.reconcile(&input.endpoints);
+        self.room.reconcile(&input.endpoints, input.now);
         let before = self.room.clone();
         let mut reply = None;
         let mut invitation = None;
@@ -455,6 +459,9 @@ impl RoomHost {
                 .transpose()?;
             match &input.action {
                 HostAction::Sync => {}
+                HostAction::RouteWake => {
+                    self.room.expire_media(input.now);
+                }
                 HostAction::BaseState {
                     context,
                     peer,
@@ -529,7 +536,7 @@ impl RoomHost {
         if let Some(context) = context {
             reply = Some(RoomReply { context, result });
         }
-        self.room.reconcile(&input.endpoints);
+        self.room.reconcile(&input.endpoints, input.now);
         self.pending = Some(Pending {
             before,
             input,
@@ -563,7 +570,8 @@ impl RoomHost {
                     pending.reply.as_mut().unwrap().result =
                         RoomResult::Error { code: code.into() };
                 }
-                self.room.reconcile(&pending.input.endpoints);
+                self.room
+                    .reconcile(&pending.input.endpoints, pending.input.now);
             } else {
                 pending.reply.as_mut().unwrap().result = RoomResult::History { result };
             }
@@ -595,6 +603,7 @@ impl RoomHost {
             binding_id: pending.input.binding_id,
             revision: pending.input.revision,
             projection: RoomProjection {
+                next_route_deadline: self.room.next_route_deadline(),
                 summary: self.summary(),
                 views,
                 flows: self.room.flows().collect(),

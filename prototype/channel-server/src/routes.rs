@@ -145,6 +145,13 @@ impl Plan {
             .filter_map(|(child, parent)| self.ready.contains(child).then_some((*parent, *child)))
     }
 
+    pub fn preparing_edges(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
+        self.parents.iter().filter_map(|(child, parent)| {
+            (!self.ready.contains(child) && (*parent == self.source || self.ready.contains(parent)))
+                .then_some((*parent, *child))
+        })
+    }
+
     pub fn mark_unready(&mut self, child: Uuid, parent: Uuid) -> bool {
         if self.parents.get(&child) != Some(&parent) || !self.ready.remove(&child) {
             return false;

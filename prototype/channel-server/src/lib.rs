@@ -297,6 +297,7 @@ impl Authority {
     }
 
     pub fn disconnect(&mut self, connection: Uuid, now: u64) -> Effects {
+        self.channel.now = now;
         let mut effects = Effects::default();
         if let Some(pending) = self.pending_joins.remove(&connection) {
             self.retire_pending(&pending);
@@ -314,9 +315,17 @@ impl Authority {
 
     /// Expire endpoint activities together, keeping unrelated publications alive.
     pub fn expire(&mut self, now: u64) -> Effects {
+        self.channel.now = now;
         let mut effects = Effects::default();
         if self.channel.expire_sessions(now) {
             self.sync_hosts(&mut effects, true);
+            self.broadcast(None, &mut effects);
+        }
+        let (media_changed, wakes) = self.channel.expire_media(now);
+        for (session, event) in wakes {
+            self.deliver(session, event, &mut effects);
+        }
+        if media_changed {
             self.broadcast(None, &mut effects);
         }
         let expired: Vec<_> = self
@@ -493,13 +502,13 @@ impl Authority {
         now: u64,
         effects: &mut Effects,
     ) -> Result<(), &'static str> {
-        let latest = self
+        let accepted = self
             .channel
             .accept_host(room_id, session, connection, &output)?;
-        if latest {
+        if accepted.projection_applied {
             self.broadcast(None, effects);
         }
-        if !latest {
+        if !accepted.context_current {
             if let Some(reply) = &mut output.reply {
                 reply.result = RoomResult::Error {
                     code: "room_context_changed".into(),

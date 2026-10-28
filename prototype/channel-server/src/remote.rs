@@ -14,7 +14,9 @@ pub(crate) struct Binding {
     pub session: Uuid,
     pub connection: Uuid,
     pub revision: u64,
-    pub minimum_revision: u64,
+    // Request authority and projection order advance independently.
+    pub context_floor: u64,
+    pub projection_floor: u64,
     pub replies: BTreeMap<u64, ReplyOwner>,
 }
 
@@ -22,6 +24,7 @@ pub(crate) struct Binding {
 pub(crate) enum ReplyOwner {
     Request(RequestContext),
     Invitation(Uuid),
+    RouteWake,
 }
 
 #[derive(Clone)]
@@ -35,6 +38,7 @@ impl RemoteRoom {
     pub fn pause(&mut self) {
         self.binding = None;
         if let Some(projection) = &mut self.projection {
+            projection.next_route_deadline = None;
             projection.flows.clear();
             projection.base_links.clear();
             for view in projection.views.values_mut() {
@@ -59,6 +63,7 @@ impl RemoteRoom {
         &mut self,
         endpoints: BTreeMap<Uuid, Endpoint>,
         action: HostAction,
+        now: u64,
     ) -> Result<(Uuid, HostInput), &'static str> {
         let binding = self.binding.as_mut().ok_or("room_host_offline")?;
         let owner = match &action {
@@ -67,6 +72,7 @@ impl RemoteRoom {
             | HostAction::FlowState { context, .. }
             | HostAction::BaseState { context, .. }
             | HostAction::GrantInvited { context } => Some(ReplyOwner::Request(context.clone())),
+            HostAction::RouteWake => Some(ReplyOwner::RouteWake),
             HostAction::VerifyInvite { ticket, .. } => Some(ReplyOwner::Invitation(*ticket)),
             _ => None,
         };
@@ -74,8 +80,11 @@ impl RemoteRoom {
             return Err("room_busy");
         }
         binding.revision += 1;
+        if matches!(action, HostAction::RouteWake) {
+            binding.projection_floor = binding.revision;
+        }
         if matches!(action, HostAction::PairFailed { .. }) {
-            binding.minimum_revision = binding.revision;
+            binding.context_floor = binding.revision;
         }
         if let Some(owner) = owner {
             binding.replies.insert(binding.revision, owner);
@@ -83,6 +92,7 @@ impl RemoteRoom {
         Ok((
             binding.session,
             HostInput {
+                now,
                 binding_id: binding.id,
                 host_session_id: binding.session,
                 revision: binding.revision,

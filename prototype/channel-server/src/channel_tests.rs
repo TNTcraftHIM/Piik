@@ -501,16 +501,20 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
             stream_id: "stream".into(),
         }]),
     };
-    assert!(channel
+    let filtered = channel
         .handle(
             first.session_id,
             Command::Signal {
                 pair_id,
-                payload: spoof
+                payload: spoof,
             },
-            0
+            0,
         )
-        .is_err());
+        .unwrap();
+    assert!(
+        matches!(&filtered.events[..], [(_, Event::Signal { payload, .. })]
+        if payload.tracks.as_ref().is_some_and(Vec::is_empty))
+    );
     let payload = Signal {
         resync: None,
         exchange_id: None,
@@ -635,4 +639,211 @@ fn text_limits_match_browser_utf16_snapshots_and_unicode_chat() {
             0
         )
         .is_err());
+}
+
+#[test]
+fn connected_screen_without_media_proof_expires_to_a_ready_relay() {
+    let mut authority = crate::Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let connections = [Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4()];
+    let mut sessions = Vec::new();
+    for connection in connections {
+        let effects = authority.handle(
+            connection,
+            Request::parse(
+                &serde_json::json!({
+                    "type":"join", "key":"invite", "name":"Screen participant",
+                    "signingKey":crate::conversation::SessionSigner::from_seed([1;32]).signing_key()
+                })
+                .to_string(),
+            )
+            .unwrap(),
+            0,
+        );
+        sessions.push(
+            effects
+                .events
+                .into_iter()
+                .find_map(|(_, event)| match event {
+                    Event::Welcome { session_id, .. } => Some(session_id),
+                    _ => None,
+                })
+                .unwrap(),
+        );
+    }
+    let publication = Uuid::new_v4();
+    let commands = [
+        (
+            connections[0],
+            serde_json::json!({"type":"publish", "publication":{"id":publication,"roomId":"living","kind":"screen","muted":false}}),
+        ),
+        (
+            connections[1],
+            serde_json::json!({"type":"subscribe","publicationId":publication,"enabled":true}),
+        ),
+        (
+            connections[2],
+            serde_json::json!({"type":"subscribe","publicationId":publication,"enabled":true}),
+        ),
+    ];
+    for (connection, command) in commands {
+        let effects =
+            authority.handle(connection, Request::parse(&command.to_string()).unwrap(), 0);
+        assert!(!effects
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Error { .. })));
+    }
+    let a = authority.channel.snapshot(sessions[1]).pairs[0].clone();
+    let b = authority.channel.snapshot(sessions[2]).pairs[0].clone();
+    let a_flow = a
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == publication)
+        .unwrap()
+        .id;
+    let b_flow = b
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == publication)
+        .unwrap()
+        .id;
+    for (connection, pair_id) in [
+        (connections[0], a.id),
+        (connections[1], a.id),
+        (connections[0], b.id),
+        (connections[2], b.id),
+    ] {
+        authority.handle(
+            connection,
+            Request {
+                request_id: None,
+                command: Command::LinkState {
+                    pair_id,
+                    state: LinkState::Connected,
+                },
+            },
+            0,
+        );
+    }
+    authority.handle(
+        connections[1],
+        Request {
+            request_id: None,
+            command: Command::FlowState {
+                flow_id: a_flow,
+                pair_id: a.id,
+                ready: true,
+            },
+        },
+        0,
+    );
+    authority.expire(20_000);
+    let retained = authority.channel.snapshot(sessions[1]);
+    assert!(
+        retained
+            .pairs
+            .iter()
+            .any(|pair| pair.id == a.id && pair.incoming.iter().any(|flow| flow.id == a_flow)),
+        "the proven source-to-A flow and physical pair survive"
+    );
+    let repaired = authority.channel.snapshot(sessions[2]);
+    assert!(
+        !repaired
+            .pairs
+            .iter()
+            .any(|pair| pair.incoming.iter().any(|flow| flow.id == b_flow)),
+        "connected PC without media proof must not retain its expired flow"
+    );
+    assert!(
+        repaired.pairs.iter().any(|pair| pair.peer_id == sessions[1]
+            && pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == publication)),
+        "B must try the already-proven A relay"
+    );
+}
+
+#[test]
+fn retired_screen_binding_does_not_block_shared_pair_voice_sdp() {
+    let mut channel = Channel::new("owner".into(), "invite".into(), vec![]);
+    let source = join(&mut channel, true);
+    let viewer = join(&mut channel, false);
+    for endpoint in [source.session_id, viewer.session_id] {
+        voice(&mut channel, endpoint, true, false, false);
+    }
+    let speaking = publish(&mut channel, source.session_id, Kind::Voice);
+    let picture = publish(&mut channel, source.session_id, Kind::Screen);
+    watch(&mut channel, viewer.session_id, picture);
+    let reverse = publish(&mut channel, viewer.session_id, Kind::Voice);
+    let shared = channel.snapshot(source.session_id).pairs[0].clone();
+    let mut tracks: Vec<_> = shared
+        .outgoing
+        .iter()
+        .map(|flow| Track {
+            flow_id: flow.id,
+            stream_id: flow.publication_id.to_string(),
+        })
+        .collect();
+    assert_eq!(tracks.len(), 2);
+    let reverse_flow = shared
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == reverse)
+        .unwrap()
+        .id;
+    tracks.push(Track {
+        flow_id: reverse_flow,
+        stream_id: "reverse-voice".into(),
+    });
+    tracks.push(Track {
+        flow_id: Uuid::new_v4(),
+        stream_id: "unknown".into(),
+    });
+    let voice_flow = shared
+        .outgoing
+        .iter()
+        .find(|flow| flow.publication_id == speaking)
+        .unwrap()
+        .id;
+    let exchange = Uuid::new_v4();
+    let payload = Signal {
+        resync: None,
+        exchange_id: Some(exchange),
+        description: Some(Description {
+            kind: "offer".into(),
+            sdp: Some("v=0\r\n".into()),
+        }),
+        candidate: None,
+        tracks: Some(tracks),
+    };
+    channel
+        .handle(
+            source.session_id,
+            Command::Unpublish {
+                publication_id: picture,
+            },
+            0,
+        )
+        .unwrap();
+    let retained = channel.snapshot(source.session_id).pairs[0].clone();
+    assert_eq!(retained.id, shared.id);
+    assert_eq!(retained.outgoing.len(), 1);
+    assert_eq!(retained.outgoing[0].id, voice_flow);
+    let forwarded = channel
+        .handle(
+            source.session_id,
+            Command::Signal {
+                pair_id: shared.id,
+                payload,
+            },
+            0,
+        )
+        .expect("a retired screen binding must not discard SDP for the still-assigned voice pair");
+    assert!(
+        matches!(&forwarded.events[..], [(recipient, Event::Signal { payload, .. })]
+        if *recipient == viewer.session_id && payload.exchange_id == Some(exchange)
+        && payload.description.as_ref().is_some_and(|description| description.kind == "offer" && description.sdp.as_deref() == Some("v=0\r\n"))
+        && payload.tracks.as_ref().is_some_and(|tracks|tracks.len()==1 && tracks[0].flow_id==voice_flow))
+    );
 }

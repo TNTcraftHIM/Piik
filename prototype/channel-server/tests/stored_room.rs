@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAction) -> HostInput {
     HostInput {
+        now: 0,
         binding_id: owner,
         host_session_id: owner,
         revision: 1,

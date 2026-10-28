@@ -136,6 +136,11 @@ Leaving the room view ends reading, while active media and necessary transit rem
 Each media flow has a lifetime separate from its publication and shared connection.
 Unwatching and watching again creates a new flow; late readiness or failure reports
 from the retired flow cannot change the replacement or close the room's base path.
+Each active picture-preparation attempt has 20 seconds to deliver its first frame,
+even on an already connected path. If it expires, the same plan tries another
+available path. A downstream hop waiting for its upstream does not spend that
+window early. This media timeout keeps unrelated pictures, voice and the room's
+base connections.
 
 Each screen keeps its own distribution plan. Startup reuses ready base paths,
 including required non-viewing transit. If those paths cannot carry the picture,

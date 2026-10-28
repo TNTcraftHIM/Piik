@@ -105,6 +105,9 @@ Peer requests use the same room authorization and storage operations as local
 execution. They run in the room owner's existing serialized turn without
 changing its routing state or becoming domain-issued turns. Their confirmations
 return to the request; domain revisions retain their authority/reply-fencing purpose.
+Projection order and request authority remain separate: an older room snapshot
+cannot replace newer routes, but an earlier authorized action can still complete.
+Only a changed authority context invalidates that action's confirmation.
 Chat reuses its persisted retry identity; history requests need response
 correlation, not another durable replay ledger. The room host signs live results,
 without creating a permanent signed history log. The shared transport owner
@@ -289,6 +292,14 @@ attempt. A bounded-gap change belongs only to necessary availability repair,
 under the [existing transition rules](../adr/0005-automatic-hybrid-media-routing.md).
 Source generation, current route and operation identity fence late callbacks;
 new work cannot inherit completion from a retired candidate.
+
+Screen preparation also has a finite lifetime when its shared connection is already
+connected. Each publication waits on one unproved frontier edge whose parent has
+the source; downstream nodes waiting for that parent are not blamed for missing
+frames. Reconciliation does not extend the current wait. Expiry retires that
+media attempt through the same plan, preserving unrelated flows and base paths.
+The room owns the deadline and the domain's existing clock wakes a remote room
+only when it is due; Browser and Native hosting do not add separate routing timers.
 
 ### One Owner For Actual Connections
 

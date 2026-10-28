@@ -85,6 +85,27 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
         0,
     );
     let healthy_pair = state(&watching, watcher).pairs[0].id;
+    let healthy_flow = state(&watching, watcher).pairs[0]
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == own_source)
+        .unwrap()
+        .id;
+    for connection in [owner, watcher] {
+        apply(
+            &mut core,
+            connection,
+            json!({"type":"link_state","pairId":healthy_pair,"state":"connected"}),
+            0,
+        );
+    }
+    apply(
+        &mut core,
+        watcher,
+        json!({"type":"flow_state","flowId":healthy_flow,"pairId":healthy_pair,"ready":true}),
+        0,
+    );
+
     let resumed = apply(
         &mut core,
         current,

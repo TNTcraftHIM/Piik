@@ -87,6 +87,20 @@ impl RoomNetwork {
         delivered
     }
 
+    #[allow(dead_code)]
+    pub fn host_turn(
+        &mut self,
+        room: &str,
+        input: piik_channel_prototype::host::HostInput,
+    ) -> piik_channel_prototype::host::HostOutput {
+        self.hosts
+            .get_mut(room)
+            .unwrap()
+            .host
+            .dispatch(input)
+            .unwrap()
+    }
+
     pub fn create(&mut self, connection: Uuid, access: RoomAccess, hidden: bool) -> String {
         let session = self.sessions[&connection];
         let user = self.states[&connection]

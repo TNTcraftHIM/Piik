@@ -78,7 +78,8 @@ function captureProbe(name) {
     const conversationWS = Object.create(null);
     const warn = console.warn.bind(console);
     console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
-    const blockedPeers = new Set(), pairPeers = new Map();
+    const blockedPeers = new Set(), pairPeers = new Map(), flowPublications = new Map(), senders = [], channelOwners = new Map();
+    let videoStall = null;
     let blockedOffers = 0;
     const record = (direction, data) => {
       const event = JSON.parse(data);
@@ -89,7 +90,10 @@ function captureProbe(name) {
         const counts = conversationWS[room] ??= { sent: { chat: 0, history: 0 }, received: { chat: 0, history: 0 } };
         counts[direction][type]++;
       }
-      for (const pair of event.state?.pairs ?? []) pairPeers.set(pair.id, pair.peerId);
+      for (const pair of event.state?.pairs ?? []) {
+        pairPeers.set(pair.id, pair.peerId);
+        for (const flow of [...pair.incoming, ...pair.outgoing]) flowPublications.set(flow.id, flow.publicationId);
+      }
       protocol.push({ direction, type:event.type, room:event.roomId, request:event.requestId,
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
         binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
@@ -99,9 +103,19 @@ function captureProbe(name) {
       return event;
     };
     const NativePC = window.RTCPeerConnection, NativeWS = window.WebSocket;
+    const recordChannel = (pc, channel) => {
+      channels.push(channel);
+      const owned = channelOwners.get(pc) ?? []; owned.push(channel); channelOwners.set(pc, owned);
+      return channel;
+    };
     window.RTCPeerConnection = class extends NativePC {
-      constructor(...args) { super(...args); peers.push(this); this.addEventListener('datachannel', event => channels.push(event.channel)); }
-      createDataChannel(...args) { const channel = super.createDataChannel(...args); channels.push(channel); return channel; }
+      constructor(...args) { super(...args); peers.push(this); this.addEventListener('datachannel', event => recordChannel(this, event.channel)); }
+      createDataChannel(...args) { return recordChannel(this, super.createDataChannel(...args)); }
+      addTrack(track, ...streams) {
+        const sender = super.addTrack(track, ...streams);
+        senders.push({ pc: this, sender, streams: streams.map(stream => stream.id) });
+        return sender;
+      }
     };
     window.WebSocket = class extends NativeWS {
       constructor(...args) { super(...args); sockets.push(this); this.addEventListener('message', message => {
@@ -113,6 +127,26 @@ function captureProbe(name) {
       }); }
       send(data) { const event = record('sent', data);
         if (event.type === 'signal' && blockedPeers.has(pairPeers.get(event.pairId))) return;
+        const fault = videoStall;
+        const binding = fault && event.type === 'signal' && event.payload?.description && pairPeers.get(event.pairId) === fault.peerId
+          && event.payload.tracks?.find(track => flowPublications.get(track.flowId) === fault.publicationId);
+        if (binding) {
+          if (!fault.pending) {
+            const output = senders.find(output => output.pc.localDescription?.sdp === event.payload.description.sdp
+              && output.streams.includes(binding.streamId) && output.sender.track?.kind === 'video');
+            fault.pending = (async () => {
+              if (!output || event.payload.description.type !== 'offer') throw new Error('Video stall requires its initial sender offer');
+              const parameters = output.sender.getParameters();
+              if (!parameters.encodings?.length) throw new Error('Video sender has no controllable encoding');
+              parameters.encodings.forEach(encoding => { encoding.active = false; });
+              await output.sender.setParameters(parameters);
+              Object.assign(fault, { output, pairId: event.pairId, flowId: binding.flowId, startedAt: Date.now() });
+            })();
+          }
+          // Install the real sender fault before its original offer can reach the receiver.
+          void fault.pending.then(() => super.send(data)).catch(error => { fault.error = String(error); });
+          return;
+        }
         return super.send(data);
       }
     };
@@ -145,6 +179,15 @@ function captureProbe(name) {
     window.__channelProbe = { peers, sockets, captures, contexts,
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
+      stallVideo(publicationId, peerId) { videoStall = { publicationId, peerId }; },
+      async restoreVideo() {
+        const fault = videoStall; videoStall = null;
+        await fault?.pending?.catch(() => {});
+        if (!fault?.output?.sender.track || fault.output.pc.connectionState === 'closed') return;
+        const parameters = fault.output.sender.getParameters();
+        parameters.encodings.forEach(encoding => { encoding.active = true; });
+        await fault.output.sender.setParameters(parameters);
+      },
       closeDataChannels() { for (const channel of channels) channel.close(); },
       async sample() {
         const inbound = [], outbound = [];
@@ -155,7 +198,18 @@ function captureProbe(name) {
             if (stat.type === 'outbound-rtp') outbound.push({ kind: stat.kind, bytes: stat.bytesSent, frames: stat.framesEncoded });
           }
         }
-        return { inbound, outbound, protocol, conversationWS, warnings, blockedOffers, connections: peers.map(pc => pc.connectionState),
+        const fault = videoStall, stalled = fault?.output;
+        let stalledBytes = 0;
+        if (stalled?.sender.track) for (const report of (await stalled.sender.getStats()).values()) {
+          if (report.type === 'outbound-rtp' && report.kind === 'video') stalledBytes += report.bytesSent ?? 0;
+        }
+        return { inbound, outbound, protocol, conversationWS, warnings, blockedOffers,
+          videoStall: fault && { publicationId: fault.publicationId, peerId: fault.peerId, pairId: fault.pairId,
+            flowId: fault.flowId, startedAt: fault.startedAt, error: fault.error, bytes: stalledBytes,
+            connected: stalled?.pc.connectionState === 'connected',
+            roomOpen: stalled && channelOwners.get(stalled.pc)?.some(channel => channel.label === 'piik-room' && channel.readyState === 'open'),
+            active: stalled?.sender.getParameters().encodings.map(encoding => encoding.active) },
+          connections: peers.map(pc => pc.connectionState),
           channels: channels.map(channel => ({ label: channel.label, state: channel.readyState })),
           videos: [...document.querySelectorAll('video')].map(video => ({ time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),
@@ -201,6 +255,31 @@ async function capturedScreen(index, roomId) {
   return current.state.publications.find(publication => publication.sessionId === current.sessionId && publication.roomId === roomId && publication.kind === "screen").id;
 }
 const sample = index => evaluate(index, "window.__channelProbe.sample()");
+async function voiceProgressing(index, publicationId) {
+  let previous = null;
+  return until(`browser ${index} receives advancing voice ${publicationId}`, () => evaluate(index, `(async () => {
+    const current = () => ${hook}.snapshot().streams.get(${JSON.stringify(publicationId)});
+    const track = current()?.getAudioTracks().find(track => track.readyState === 'live');
+    if (!track) return null;
+    const pc = window.__channelProbe.peers.find(pc => pc.connectionState === 'connected'
+      && pc.getReceivers().some(receiver => receiver.track === track));
+    const receiver = pc?.getReceivers().find(receiver => receiver.track === track);
+    if (!receiver) return null;
+    const stats = await receiver.getStats();
+    if (pc.connectionState !== 'connected' || !current()?.getAudioTracks().includes(track)) return null;
+    return { trackId: track.id, reports: [...stats.values()]
+      .filter(report => report.type === 'inbound-rtp' && report.kind === 'audio' && report.isRemote !== true)
+      .map(report => ({ id: report.id, samples: report.totalSamplesReceived, energy: report.totalAudioEnergy })) };
+  })()`), current => {
+    const advancing = current && previous?.trackId === current.trackId && current.reports.some(report => {
+      const before = previous.reports.find(before => before.id === report.id);
+      return before && Number.isFinite(report.samples) && Number.isFinite(report.energy)
+        && report.samples > before.samples && report.energy > before.energy;
+    });
+    previous = current;
+    return advancing;
+  });
+}
 async function assertNoError(index, flow) {
   const current = await view(index);
   if (current.error === null) return;
@@ -267,12 +346,63 @@ async function roomBase(initial, serverRoom) {
   await action(0, `watch(${JSON.stringify(source)})`);
   await playing(0, source);
   const survivingPair = (await view(0)).state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === source)).id;
+
+  // The media edge must time out independently of its connected room/voice transport.
+  const stalledPicture = await capturedScreen(1, room);
+  let mediaPrepare;
+  try {
+    await action(0, `watch(${JSON.stringify(stalledPicture)})`);
+    await playing(0, stalledPicture); // A is a real, already-supplied alternative parent.
+    await evaluate(1, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[3].sessionId)})`);
+    await evaluate(3, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[1].sessionId)})`);
+    await evaluate(2, `window.__channelProbe.stallVideo(${JSON.stringify(stalledPicture)}, ${JSON.stringify(initial[3].sessionId)})`);
+    await action(3, `watch(${JSON.stringify(stalledPicture)})`);
+    const blocked = await until("C disables only the new picture sender to D", () => sample(2), value =>
+      value.videoStall?.flowId || value.videoStall?.error);
+    const fault = blocked.videoStall;
+    assert.equal(fault.error, undefined);
+    assert(fault.connected && fault.roomOpen && fault.active.length > 0 && fault.active.every(active => active === false),
+      "the stalled video shares an already-connected PC and open room DataChannel");
+    assert.equal(fault.bytes, 0, "the disabled video sender emitted no RTP before its first proof");
+    const waiting = await view(3);
+    assert(waiting.state.pairs.some(pair => pair.id === fault.pairId && pair.rooms.includes(room)
+      && pair.incoming.some(flow => flow.id === fault.flowId && flow.publicationId === stalledPicture)),
+      "the unproved picture starts on the existing C-D base pair");
+    assert.equal((await picture(3, stalledPicture)).frames, 0);
+    const voiceIds = waiting.state.publications.filter(publication => publication.kind === "voice" && publication.roomId === room).map(publication => publication.id);
+    const bVoice = waiting.state.publications.find(publication => publication.kind === "voice" && publication.roomId === room
+      && publication.sessionId === initial[1].sessionId).id;
+    const voiceFlows = pair => [...pair.incoming, ...pair.outgoing].filter(flow => voiceIds.includes(flow.publicationId)).map(flow => flow.id).sort();
+    const originalBase = waiting.state.pairs.find(pair => pair.id === fault.pairId);
+    const repaired = await until("unproved video retires its flow and uses another supplied parent", () => view(3), value =>
+      !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === fault.flowId))
+      && value.state.pairs.some(pair => pair.peerId !== initial[2].sessionId
+        && pair.incoming.some(flow => flow.publicationId === stalledPicture)), 35_000);
+    const elapsedMs = Date.now() - fault.startedAt;
+    await progressing(3, stalledPicture);
+    const retainedBase = repaired.state.pairs.find(pair => pair.id === fault.pairId && pair.rooms.includes(room));
+    assert(retainedBase,
+      "a media prepare timeout preserves the original room/voice pair");
+    assert.deepEqual(voiceFlows(retainedBase), voiceFlows(originalBase), "video timeout does not replace the shared pair's voice flows");
+    await voiceProgressing(1, dVoice);
+    await voiceProgressing(3, bVoice);
+    const replacement = repaired.state.pairs.flatMap(pair => pair.incoming.filter(flow => flow.publicationId === stalledPicture)
+      .map(flow => ({ pairId: pair.id, peerId: pair.peerId, flowId: flow.id })));
+    mediaPrepare = { retiredFlow: fault.flowId, retainedBasePair: fault.pairId, replacement,
+      elapsedMs, blockedVideoBytes: fault.bytes, bidirectionalVoice: true };
+    await writeFile(join(output, "base-media-prepare.json"), JSON.stringify({ passed: true, ...mediaPrepare }, null, 2));
+  } finally {
+    try { await evaluate(2, "window.__channelProbe.restoreVideo()"); }
+    finally {
+      await action(1, `stopScreen(${JSON.stringify(stalledPicture)})`);
+      await evaluate(1, `window.__channelProbe.blockPeer(${JSON.stringify(initial[3].sessionId)})`);
+      await evaluate(3, `window.__channelProbe.blockPeer(${JSON.stringify(initial[1].sessionId)})`);
+    }
+  }
   await evaluate(2, "window.__channelProbe.closeDataChannels()");
   await until("D repairs through A after its transit DataChannel closes", () => view(3), value =>
     value.state.pairs.some(pair => pair.rooms.includes(room) && pair.peerId === initial[0].sessionId), 30_000);
-  const energyBefore = (await sample(1)).inbound.filter(report => report.kind === "audio").reduce((total, report) => total + (report.energy ?? 0), 0);
-  await until("voice resumes on the replacement base path", () => sample(1), value =>
-    value.inbound.filter(report => report.kind === "audio").reduce((total, report) => total + (report.energy ?? 0), 0) > energyBefore);
+  await voiceProgressing(1, dVoice);
   await progressing(0, source);
   await progressing(2, source);
   assert((await view(2)).state.pairs.some(pair => pair.id === originalPair && pair.incoming.some(flow => flow.publicationId === source)), "a failed DataChannel must not close the same pair's healthy picture");
@@ -294,11 +424,11 @@ async function roomBase(initial, serverRoom) {
   await action(1, `stopScreen(${JSON.stringify(source)})`);
   await until("last physical lease closes the pair", () => view(0), value => !value.state.pairs.some(pair => pair.id === survivingPair));
   for (const index of [0, 1, 3]) await assertNoError(index, "room base lifecycle");
-  await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true,
+  await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true, mediaPrepare,
     scenarios: ["room entry without capture", "media/base transport reuse", "unreachable direct edge",
       "picture startup through non-viewing base transit", "picture recovery after transit departure",
       "bidirectional voice through a non-listener", "deafen keeps routes", "view change preserves transit",
-      "failed DataChannel repairs voice without closing healthy RTP", "retired transit leaves independently",
+      "connected video without RTP times out without retiring base or voice", "failed DataChannel repairs voice without closing healthy RTP", "retired transit leaves independently",
       "repair preserves another room's picture", "voice stop keeps base", "last lease retirement"] }, null, 2));
   console.log("Room DataChannels, bidirectional voice transit and shared media leases passed real Browser acceptance");
 }

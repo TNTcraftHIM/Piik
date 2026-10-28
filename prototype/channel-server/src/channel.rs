@@ -18,11 +18,17 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct Channel {
     pub identity: Identity,
+    pub(crate) now: u64,
     id: Uuid,
     rooms: BTreeMap<String, RoomRuntime>,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
     ice_servers: Vec<Value>,
+}
+
+pub(crate) struct HostAcceptance {
+    pub projection_applied: bool,
+    pub context_current: bool,
 }
 
 pub struct Outcome {
@@ -56,6 +62,7 @@ impl Channel {
         .collect();
         Self {
             identity,
+            now: 0,
             id: Uuid::new_v4(),
             rooms,
             remote: BTreeMap::new(),
@@ -81,6 +88,7 @@ impl Channel {
         now: u64,
         room_id: Option<&str>,
     ) -> Result<Admitted, &'static str> {
+        self.now = now;
         let invited_room = room_id
             .filter(|id| {
                 self.rooms
@@ -115,6 +123,7 @@ impl Channel {
         command: Command,
         now: u64,
     ) -> Result<Outcome, &'static str> {
+        self.now = now;
         let user_id = self
             .identity
             .sessions
@@ -204,20 +213,22 @@ impl Channel {
                     .assign_roles(user_id, target, roles.into_iter().collect())?;
                 broadcast = true;
             }
-            Command::Signal { pair_id, payload } => {
+            Command::Signal {
+                pair_id,
+                mut payload,
+            } => {
                 if !payload.valid() {
                     return Err("invalid_signal");
                 }
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
-                if payload.tracks.as_ref().is_some_and(|tracks| {
-                    tracks.iter().any(|track| {
-                        !self
-                            .transports
+                if let Some(tracks) = &mut payload.tracks {
+                    // Retired media cannot bind a stream, but must not discard
+                    // an in-flight SDP exchange for this still-admitted pair.
+                    tracks.retain(|track| {
+                        self.transports
                             .flow(pair_id, track.flow_id)
                             .is_some_and(|flow| flow.sender == session_id)
-                    })
-                }) {
-                    return Err("unassigned_publication");
+                    });
                 }
                 events.push((
                     peer,
@@ -369,7 +380,7 @@ impl Channel {
     pub(crate) fn reconcile(&mut self) {
         let endpoints = self.identity.endpoints();
         for room in self.rooms.values_mut() {
-            room.reconcile(&endpoints);
+            room.reconcile(&endpoints, self.now);
         }
         for room in self.remote.values_mut() {
             if let Some(projection) = &mut room.projection {
@@ -606,7 +617,8 @@ impl Channel {
                 session,
                 connection,
                 revision: 0,
-                minimum_revision: 0,
+                context_floor: 0,
+                projection_floor: 0,
                 replies: BTreeMap::new(),
             });
             remote.projection = None;
@@ -628,7 +640,7 @@ impl Channel {
             .binding
             .as_mut()
             .unwrap();
-        binding.minimum_revision = binding.revision;
+        binding.context_floor = binding.revision;
         self.reconcile();
         Ok((id, events))
     }
@@ -643,7 +655,7 @@ impl Channel {
         if !Self::host_online(&self.identity, remote) {
             return Err("room_host_offline");
         }
-        let (session, input) = remote.input(endpoints, action)?;
+        let (session, input) = remote.input(endpoints, action, self.now)?;
         Ok((
             session,
             Event::HostInput {
@@ -736,6 +748,50 @@ impl Channel {
         }
     }
 
+    pub(crate) fn expire_media(&mut self, now: u64) -> (bool, Vec<(Uuid, Event)>) {
+        self.now = now;
+        let mut changed = false;
+        for room in self.rooms.values_mut() {
+            changed |= room.expire_media(now);
+        }
+        if changed {
+            self.reconcile();
+        }
+        let due: Vec<_> = self
+            .remote
+            .iter()
+            .filter_map(|(id, room)| {
+                room.projection
+                    .as_ref()
+                    .and_then(|p| p.next_route_deadline)
+                    .filter(|deadline| *deadline <= now)
+                    .map(|_| id.clone())
+            })
+            .collect();
+        let mut events = Vec::new();
+        for id in due {
+            if self.remote[&id].binding.as_ref().is_some_and(|binding| {
+                binding
+                    .replies
+                    .values()
+                    .any(|owner| matches!(owner, ReplyOwner::RouteWake))
+            }) {
+                continue;
+            }
+            if let Ok(event) = self.host_input(&id, HostAction::RouteWake) {
+                self.remote
+                    .get_mut(&id)
+                    .unwrap()
+                    .projection
+                    .as_mut()
+                    .unwrap()
+                    .next_route_deadline = None;
+                events.push(event);
+            }
+        }
+        (changed, events)
+    }
+
     pub(crate) fn sync_hosts(&mut self, invalidate: bool) -> Vec<(Uuid, Event)> {
         let ids: Vec<_> = self.remote.keys().cloned().collect();
         ids.into_iter()
@@ -743,7 +799,7 @@ impl Channel {
                 let event = self.host_input(&id, HostAction::Sync).ok()?;
                 if invalidate {
                     let binding = self.remote.get_mut(&id).unwrap().binding.as_mut().unwrap();
-                    binding.minimum_revision = binding.revision;
+                    binding.context_floor = binding.revision;
                 }
                 Some(event)
             })
@@ -776,7 +832,7 @@ impl Channel {
         session: Uuid,
         connection: Uuid,
         output: &HostOutput,
-    ) -> Result<bool, &'static str> {
+    ) -> Result<HostAcceptance, &'static str> {
         let room = self.remote.get(id).ok_or("room_unavailable")?;
         let binding = room.binding.as_ref().ok_or("stale_room_host")?;
         if binding.id != output.binding_id
@@ -796,6 +852,7 @@ impl Channel {
                     .is_some_and(|reply| &reply.context == context)
                     && output.invitation.is_none()
             }
+            Some(ReplyOwner::RouteWake) => output.reply.is_none() && output.invitation.is_none(),
             Some(ReplyOwner::Invitation(ticket)) => {
                 output
                     .invitation
@@ -808,7 +865,8 @@ impl Channel {
         if !reply_valid {
             return Err("invalid_room_reply");
         }
-        let latest = output.revision >= binding.minimum_revision;
+        let context_current = output.revision >= binding.context_floor;
+        let projection_applied = context_current && output.revision >= binding.projection_floor;
         self.remote
             .get_mut(id)
             .unwrap()
@@ -818,8 +876,11 @@ impl Channel {
             .replies
             .remove(&output.revision);
         let room = &self.remote[id];
-        if !latest {
-            return Ok(false);
+        if !projection_applied {
+            return Ok(HostAcceptance {
+                projection_applied,
+                context_current,
+            });
         }
         let projection = &output.projection;
         if projection.summary.id != id || projection.summary.creator_id != room.summary.creator_id {
@@ -937,17 +998,19 @@ impl Channel {
                 return Err("invalid_room_projection");
             }
         }
-        if latest {
-            let room = self.remote.get_mut(id).unwrap();
-            room.summary = projection.summary.clone();
-            let mut projection = projection.clone();
-            for view in projection.views.values_mut() {
-                view.room.available = true;
-            }
-            room.projection = Some(projection);
-            self.reconcile();
+        let room = self.remote.get_mut(id).unwrap();
+        room.binding.as_mut().unwrap().projection_floor = output.revision;
+        room.summary = projection.summary.clone();
+        let mut projection = projection.clone();
+        for view in projection.views.values_mut() {
+            view.room.available = true;
         }
-        Ok(latest)
+        room.projection = Some(projection);
+        self.reconcile();
+        Ok(HostAcceptance {
+            projection_applied,
+            context_current,
+        })
     }
 
     fn host_online(identity: &Identity, room: &RemoteRoom) -> bool {

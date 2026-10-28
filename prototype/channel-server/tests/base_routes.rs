@@ -1060,3 +1060,171 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
         );
     }
 }
+
+#[test]
+fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
+    use piik_channel_prototype::{host::HostAction, wire::Request};
+    let mut network = RoomNetwork::new();
+    let source = Uuid::new_v4();
+    let a = Uuid::new_v4();
+    let b = Uuid::new_v4();
+    let (source_session, _) = join(&mut network, source, None);
+    let (a_session, _) = join(&mut network, a, None);
+    join(&mut network, b, None);
+    let room = network.create(source, RoomAccess::Public, false);
+    for viewer in [a, b] {
+        browse(&mut network, viewer, &room, true);
+    }
+    for viewer in [a, b] {
+        let lease = pair(&network, viewer, source_session, &room);
+        for endpoint in [source, viewer] {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"base_state","roomId":room,"pairId":lease.id,"ready":true}),
+            );
+        }
+    }
+    for endpoint in [source, a] {
+        voice(&mut network, endpoint, &room, true);
+    }
+    publish(&mut network, source, &room, "voice");
+    let picture = publish(&mut network, source, &room, "screen");
+    command(
+        &mut network,
+        a,
+        json!({"type":"subscribe","publicationId":picture,"enabled":true}),
+    );
+    let proven = pair(&network, a, source_session, &room);
+    let proven_flow = proven
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == picture)
+        .unwrap()
+        .id;
+    command(
+        &mut network,
+        a,
+        json!({"type":"flow_state","flowId":proven_flow,"pairId":proven.id,"ready":true}),
+    );
+    let starting_effects = network.authority.handle(
+        b,
+        Request::parse(
+            &json!({"type":"subscribe","publicationId":picture,"enabled":true}).to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let starting_input = starting_effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let starting = network.host_turn(&room, starting_input);
+    // Execute an ordinary turn, but keep its valid domain reply in flight.
+    let effects = network.authority.handle(
+        a,
+        Request::parse(
+            &json!({"type":"browse","roomId":room,"active":true,"requestId":"earlier"}).to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let earlier = network.host_turn(&room, input);
+    // A newer input is already issued; the completed earlier projection must
+    // still install its first media deadline without waiting for the input queue.
+    command(
+        &mut network,
+        source,
+        json!({"type":"host_output","roomId":room,"output":starting}),
+    );
+    let before = network.state(b).clone();
+    let deadline = earlier.projection.next_route_deadline.unwrap();
+    assert_eq!(deadline, 20_100);
+    let effects = network.authority.expire(deadline);
+    assert!(
+        !effects
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::State { .. })),
+        "domain does not project a route replacement itself"
+    );
+    let wake = effects
+        .events
+        .iter()
+        .find_map(|(recipient, event)| match event {
+            Event::HostInput { input, .. } => {
+                assert_eq!(
+                    *recipient, source,
+                    "wake addresses the physical host connection"
+                );
+                Some(input.clone())
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert!(matches!(wake.action, HostAction::RouteWake));
+    assert_eq!(wake.now, deadline);
+    assert_eq!(
+        serde_json::to_value(&network.state(b).pairs).unwrap(),
+        serde_json::to_value(&before.pairs).unwrap(),
+        "domain wake does not choose or mutate room paths"
+    );
+    let mut stale_projection = earlier.clone();
+    stale_projection.reply = None;
+    let late = network.command(
+        source,
+        json!({"type":"host_output","roomId":room,"output":earlier}),
+    );
+    assert!(
+        late.events.iter().any(|(target, event)| *target == a
+            && matches!(event,Event::RoomReply{request_id:Some(id),..}if id=="earlier")),
+        "wake does not invalidate an earlier ordinary reply"
+    );
+    assert!(!network.authority.expire(deadline+1).events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if matches!(input.action,HostAction::RouteWake))),"old projection cannot reinsert a consumed wake deadline");
+    network.deliver(effects);
+    let repaired_pairs = serde_json::to_value(&network.state(b).pairs).unwrap();
+    assert!(network
+        .state(b)
+        .pairs
+        .iter()
+        .any(|pair| pair.peer_id == a_session
+            && pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == picture)));
+    let replay = network.command(
+        source,
+        json!({"type":"host_output","roomId":room,"output":stale_projection}),
+    );
+    assert!(
+        !replay
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::State { .. })),
+        "old projection is not re-applied"
+    );
+    assert_eq!(
+        serde_json::to_value(&network.state(b).pairs).unwrap(),
+        repaired_pairs
+    );
+    let retained = pair(&network, a, source_session, &room);
+    assert_eq!(retained.id, proven.id);
+    assert_eq!(retained.rooms, proven.rooms);
+    assert_eq!(
+        serde_json::to_value(retained.incoming).unwrap(),
+        serde_json::to_value(proven.incoming).unwrap(),
+        "proven picture and voice bindings remain"
+    );
+}

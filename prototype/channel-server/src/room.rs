@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
+const SCREEN_PREPARE_MS: u64 = 20_000;
+
 #[derive(Clone, Default)]
 struct Activity {
     reading: bool,
@@ -22,6 +24,39 @@ struct Publication {
     info: PublicationInfo,
     plan: Plan,
     leases: BTreeMap<(Uuid, Uuid), Uuid>,
+    preparing: Option<PrepareWait>,
+}
+
+#[derive(Clone)]
+struct PrepareWait {
+    flow: Uuid,
+    deadline: u64,
+}
+
+impl Publication {
+    fn preparing_flows(&self) -> impl Iterator<Item = (Uuid, (Uuid, Uuid))> + '_ {
+        self.plan
+            .preparing_edges()
+            .filter_map(|edge| self.leases.get(&edge).map(|flow| (*flow, edge)))
+    }
+
+    fn reconcile_preparation(&mut self, now: u64) {
+        if self.info.kind != Kind::Screen {
+            return;
+        }
+        if self
+            .preparing
+            .as_ref()
+            .is_some_and(|wait| self.preparing_flows().any(|(flow, _)| flow == wait.flow))
+        {
+            return;
+        }
+        let preparing = self.preparing_flows().next().map(|(flow, _)| PrepareWait {
+            flow,
+            deadline: now.saturating_add(SCREEN_PREPARE_MS),
+        });
+        self.preparing = preparing;
+    }
 }
 
 /// One room owns its policy, activities and logical flows. It neither owns
@@ -293,6 +328,7 @@ impl RoomRuntime {
                     },
                     plan: Plan::new(session),
                     leases: BTreeMap::new(),
+                    preparing: None,
                 },
             );
         }
@@ -396,7 +432,7 @@ impl RoomRuntime {
         self.activity.remove(&session);
     }
 
-    pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>) {
+    pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>, now: u64) {
         let readable: BTreeSet<_> = endpoints
             .iter()
             .filter_map(|(session, endpoint)| {
@@ -495,7 +531,37 @@ impl RoomRuntime {
             for path in paths {
                 publication.leases.entry(path).or_insert_with(Uuid::new_v4);
             }
+            publication.reconcile_preparation(now);
         }
+    }
+
+    pub fn next_route_deadline(&self) -> Option<u64> {
+        self.publications
+            .values()
+            .filter_map(|publication| publication.preparing.as_ref().map(|wait| wait.deadline))
+            .min()
+    }
+
+    pub fn expire_media(&mut self, now: u64) -> bool {
+        let mut changed = false;
+        for publication in self.publications.values_mut() {
+            let Some(wait) = &publication.preparing else {
+                continue;
+            };
+            if wait.deadline > now {
+                continue;
+            }
+            let expired = publication
+                .preparing_flows()
+                .find_map(|(flow, edge)| (flow == wait.flow).then_some(edge));
+            if let Some((parent, child)) = expired {
+                // A downstream node waiting for this source is not a failed edge.
+                publication.plan.failed(parent, child);
+                changed = true;
+            }
+            publication.preparing = None;
+        }
+        changed
     }
 
     pub fn flows(&self) -> impl Iterator<Item = Flow> + '_ {
@@ -573,6 +639,104 @@ impl RoomRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn media_preparation_waits_for_the_upstream_without_extending_its_own_deadline() {
+        let id = Uuid::from_u128;
+        let endpoints: BTreeMap<_, _> = (1..=4)
+            .map(|value| {
+                (
+                    id(value),
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member: Member {
+                            user_id: id(value),
+                            participates: true,
+                            domain_owner: value == 1,
+                        },
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "friends".into(),
+                "Friends".into(),
+                id(1),
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        room.set_host_session(id(1));
+        for (session, endpoint) in &endpoints {
+            room.browse(endpoint.member, *session, true).unwrap();
+        }
+        for _ in 0..2 {
+            room.reconcile(&endpoints, 0);
+            let links: Vec<_> = room.base_links().collect();
+            for link in links {
+                room.base_state(link.parent, link.child, true).unwrap();
+                room.base_state(link.child, link.parent, true).unwrap();
+            }
+        }
+        let publication = id(10);
+        room.publish(
+            endpoints[&id(3)].member,
+            id(3),
+            publication,
+            Kind::Screen,
+            false,
+        )
+        .unwrap();
+        room.subscribe(endpoints[&id(4)].member, id(4), publication, true)
+            .unwrap();
+        room.reconcile(&endpoints, 0);
+        let flows: BTreeMap<_, _> = room
+            .flows()
+            .map(|flow| ((flow.sender, flow.receiver), flow.id))
+            .collect();
+        assert_eq!(
+            flows.keys().copied().collect::<BTreeSet<_>>(),
+            BTreeSet::from([(id(3), id(1)), (id(1), id(2)), (id(2), id(4))])
+        );
+        assert_eq!(room.next_route_deadline(), Some(SCREEN_PREPARE_MS));
+        room.reconcile(&endpoints, 10_000);
+        assert_eq!(room.next_route_deadline(), Some(SCREEN_PREPARE_MS));
+
+        room.flow_state(flows[&(id(3), id(1))], id(1), id(3), true)
+            .unwrap();
+        room.reconcile(&endpoints, 19_000);
+        assert_eq!(room.next_route_deadline(), Some(39_000));
+        assert!(!room.expire_media(20_000));
+
+        room.flow_state(flows[&(id(1), id(2))], id(2), id(1), true)
+            .unwrap();
+        room.reconcile(&endpoints, 38_000);
+        assert_eq!(room.next_route_deadline(), Some(58_000));
+        assert!(!room.expire_media(39_000));
+        assert!(room.expire_media(58_000));
+        room.reconcile(&endpoints, 58_000);
+        assert!(room.flows().all(|flow| flow.id != flows[&(id(2), id(4))]));
+        assert!(room
+            .flows()
+            .any(|flow| flow.sender == id(3) && flow.receiver == id(4)));
+        assert_eq!(
+            room.base_links().count(),
+            3,
+            "media expiry keeps the room base"
+        );
+        assert_eq!(room.next_route_deadline(), Some(78_000));
+
+        room.subscribe(endpoints[&id(4)].member, id(4), publication, false)
+            .unwrap();
+        room.reconcile(&endpoints, 60_000);
+        assert!(room.flows().next().is_none());
+        assert_eq!(room.next_route_deadline(), None);
+        assert!(!room.expire_media(78_000));
+    }
 
     #[test]
     fn room_projection_obeys_private_access_before_exposing_activity() {

@@ -64,6 +64,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
             now: 0,
         };
         host.dispatch(HostInput {
+            now: 0,
             binding_id: binding,
             host_session_id: publisher,
             revision: 1,
@@ -94,6 +95,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         }
         let work = host
             .dispatch(HostInput {
+                now: 0,
                 binding_id: binding,
                 host_session_id: publisher,
                 revision: 2,

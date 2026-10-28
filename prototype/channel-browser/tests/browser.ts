@@ -25,7 +25,7 @@ window.runBrowserRoomCheck = async () => {
   let host = await BrowserRoomHost.open(database, policy);
   await host.bind(bindingId);
   const dispatch = async (command: object, signal?: AbortSignal, target = host): Promise<Output> => target.dispatch({
-    bindingId, hostSessionId: session, revision: ++revision, endpoints,
+    now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints,
     action: { type: "command", context: { connection, sessionId: session, requestId: crypto.randomUUID(), now: Date.now() }, command },
   }, signal) as Promise<Output>;
   const send = async (text: string, nonce: string, attachments: SentResult["message"]["attachments"] = [], signal?: AbortSignal) => {
@@ -52,20 +52,20 @@ window.runBrowserRoomCheck = async () => {
     await privateHost.bind(bindingId);
     try {
       const guestSession = crypto.randomUUID();
-      const output = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision,
+      const output = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision,
         endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true, signingKey: peerSigningKey } },
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: "hidden", now: Date.now() },
           command: { type: "history", roomId: privateHost.roomId } },
       }) as Output;
       check(!output.projection.views[guestSession] && output.reply?.result.type === "error", "shared private-room policy hides its view");
       const invitation = await dispatch({ type: "room_invite", roomId: privateHost.roomId }, undefined, privateHost);
-      const verified = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints,
+      const verified = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints,
         action: { type: "verify_invite", ticket: crypto.randomUUID(), key: invitation.reply!.result.key, member: null },
       }) as Output;
       check(verified.invitation?.accepted, "shared room verifies private invitation");
       const guest = { ...owner, userId: crypto.randomUUID() };
       const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, signingKey: peerSigningKey } };
-      const granted = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
+      const granted = await privateHost.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
         action: { type: "grant_invited", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() } },
       }) as Output;
       check(granted.reply?.result.type === "invited" && granted.projection.views[guestSession], "committed grant returns invited projection");
@@ -73,7 +73,7 @@ window.runBrowserRoomCheck = async () => {
       const reopened = await BrowserRoomHost.open(database, privatePolicy);
       await reopened.bind(bindingId);
       try {
-        const restored = await reopened.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
+        const restored = await reopened.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints, action: { type: "sync" } }) as Output;
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
@@ -151,7 +151,7 @@ window.runBrowserRoomCheck = async () => {
         { type: "chat", roomId: previousHost.roomId, text: "Stale message", nonce: "stale", attachments: [] },
         { type: "history", roomId: previousHost.roomId },
       ]) {
-        const stale = await previousHost.dispatch({ bindingId: previousBinding, hostSessionId: session, revision: ++revision, endpoints,
+        const stale = await previousHost.dispatch({ now: Date.now(), bindingId: previousBinding, hostSessionId: session, revision: ++revision, endpoints,
           action: { type: "command", context: { connection, sessionId: session, requestId: null, now: Date.now() }, command },
         }) as Output;
         check(stale.reply?.result.type === "error" && stale.reply.result.code === "stale_room_host", "old owner cannot write or confirm history");
@@ -181,7 +181,7 @@ window.runBrowserRoomCheck = async () => {
     check(page.length === 101 && page.slice(0, 100).every(reply => reply.record.type === "history_message")
       && page[100].record.type === "history_end" && page[100].record.hasMore, "history returns shared typed records and one end marker");
     peerMember.participates = false;
-    await host.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
+    await host.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
     const denied = await host.dispatchPeer(peerPacket({ type: "chat", text: "Not allowed", nonce: "peer-denied", attachments: [] }), Date.now());
     check(denied.length === 1 && denied[0].record.type === "error" && denied[0].record.code === "forbidden", "current domain write permission controls signed peer sends");
     const readable = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());

@@ -472,6 +472,7 @@ mod room_tests {
             ),
         ]);
         let input = |action, binding_id| HostInput {
+            now: 0,
             binding_id,
             host_session_id: host_session,
             revision: 1,
