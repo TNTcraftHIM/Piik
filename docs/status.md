@@ -37,7 +37,9 @@ App discovery and site approval reuse the shared product controls, with one
 local data namespace per approved site. The shared launcher starts an App-owned
 domain through Local HTTPS or Cloudflare Quick Tunnel; its rooms retain their
 identity and storage across local-port and invitation-address changes.
-Native capture/input and platform packaging remain. [TODO](./todo.md) owns remaining stages and platform reports.
+The Windows capture producer now outputs hardware-encoded H264 with its original
+presentation clock. App sharing integration, native input and platform packaging
+remain. [TODO](./todo.md) owns remaining stages and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 

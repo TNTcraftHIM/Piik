@@ -15,8 +15,12 @@ The default Server embeds one participant for its three rooms and owns its
 service lifetime. The [App composition](../channel-server/README.md#local-app-link) owns its Native hosting endpoint, separately
 from the Browser's personal activities. The App reuses the product's site approval
 and saved-site interface, and starts its own domain through the shared
-Local/public-invitation launcher. Native capture, input and platform packaging
-remain subsequent stages.
+Local/public-invitation launcher. Windows capture now has a separate Rust producer:
+WGC supplies GPU textures, D3D11 scales them, and Media Foundation encodes H264 on
+the same adapter. Its complete access units retain capture presentation time;
+one capture owner handles keyframe requests, bitrate changes and final stop.
+Connecting that producer to App sharing controls, native input and platform
+packaging remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs in one flow share a stream while owning separate SSRCs and
@@ -32,17 +36,23 @@ warm output, stream, SSRC, source clock and feedback owner.
 ## RTC Dependency
 
 Native and Server pin `rtc` to commit
-`20cce2480fc0975241e1590ea9d018f68d3fabcc` in the temporary
-[fork](https://github.com/TNTcraftHIM/rtc/tree/20cce2480fc0975241e1590ea9d018f68d3fabcc).
-It contains only [upstream PR #296](https://github.com/webrtc-rs/rtc/pull/296)
-on the published 0.21.1 baseline: retire stale RTP extension mappings and preserve
-the active section's negotiated IDs. Without this fix, changing voice and screen
-tracks on an existing connection can produce an SDP offer the Browser rejects.
+`32373f88e1d1e170b37f3725c8bb2ba57b251b5c` in the temporary
+[fork](https://github.com/TNTcraftHIM/rtc/tree/32373f88e1d1e170b37f3725c8bb2ba57b251b5c).
+It contains two submitted fixes on the published 0.21.1 baseline:
+
+- [PR #296](https://github.com/webrtc-rs/rtc/pull/296) retires stale RTP extension
+  mappings and preserves the active section's negotiated IDs. Changing voice and
+  screen tracks on a retained connection otherwise produces invalid Browser offers.
+- [PR #298](https://github.com/webrtc-rs/rtc/pull/298) keeps local H264 capabilities
+  separate from negotiated formats, matches equivalent profiles and applies
+  directional levels. Piik uses those formats for each output and checks the
+  actual encoded SPS at its input boundary. The [network design](../../docs/research/channel-network-design.md)
+  owns the distinction between a Browser's SDP level and its actual decoder.
 
 Cargo's patch belongs to each workspace root, so both executable manifests carry
 the same pin. The fork retains upstream MIT/Apache-2.0 licensing; no build-time
 source patch or registry-cache edit is used. When an upstream release includes
-the fix, update both pins, run the existing App and Native Browser checks, and
+both fixes, update both pins, run the existing App and Native Browser checks, and
 remove both patch entries.
 
 ## Run

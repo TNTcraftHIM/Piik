@@ -490,8 +490,8 @@ same complete user flows and failure cases against the new ownership model.
 
 The [Native participant](../../prototype/channel-native/README.md) now operates
 the same room core with one SQLite database per room, an admitted session and
-real base DataChannels. It forwards encoded media without local playback or
-capture. Its caller owns hosting lifetime. An OS file lock excludes another
+real base DataChannels. It forwards encoded media without local playback.
+Capture is a separate producer, not part of room hosting. Its caller owns hosting lifetime. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
 The App entry assigns room execution, storage, signing and peer connections to
@@ -569,8 +569,26 @@ Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each
 output uses its sender's negotiated codec mapping and keeps the source RTP clock
 and Sender Report correlation; replacing a source creates a new sender/SSRC.
+
+Local capture and received tracks feed that same encoded-output owner. A local
+source has no incoming route lease; its admitted publication supplies the outgoing
+flows. Capture presentation time owns both RTP and Sender Report clocks, so encoding
+or delivery delay cannot shift one of them independently. The Windows producer
+keeps raw frames on the GPU through conversion and hardware encoding, replaces
+only unencoded work and applies backpressure to complete encoded access units.
+
+Registered capabilities, negotiated SDP and the source's actual SPS are distinct
+facts. Match equivalent H.264 profiles and packetization using the SDK; inspect
+the actual SPS at the encoded-input boundary. Do not turn the SDP level alone
+into a forwarding ceiling: Chromium's
+[decoder factory](https://chromium.googlesource.com/chromium/src/+/c423d38b941d7e282dcfdf1238d942845553b644/third_party/blink/renderer/platform/peerconnection/rtc_video_decoder_factory.cc)
+advertises a fixed Level 3.1 baseline rather than its actual maximum. The
+controlled Level 4.0 capture played in two Browsers without rewriting their SDP.
+SDP negotiation and measured decoding retain their separate meanings. Keep the
+existing decoded-frame route proof; metadata alone must not retire a working
+connection or permanently reject its flow.
 Removing the last incoming demand releases its reader even if the publication
-remains in the room directory. Native capture and SFU integration remain later
+remains in the room directory. App capture and SFU integration remain later
 stages. This isolated dependency does
 not replace the current 2.x Native media core.
 

@@ -11,9 +11,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete native capture/input and platform packaging over the
   shared UI and Native participant.
-  Before native H.264 capture, complete equivalent-profile and directional level
-  negotiation. Encoded forwarding must use the actual source format rather than
-  treating the peer's receive parameters as the stream's SPS.
+  Connect the Windows capture producer to App sharing through the existing Native
+  endpoint, keeping personal sharing page-owned and hosted rooms process-owned.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
@@ -45,7 +44,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
 - [ ] **Return the 3.0 RTC dependency to an upstream release.** Follow
-  [upstream #296](https://github.com/webrtc-rs/rtc/pull/296). Native and Server use
+  [upstream #296](https://github.com/webrtc-rs/rtc/pull/296) and
+  [#298](https://github.com/webrtc-rs/rtc/pull/298). Native and Server use
   the same fixed 0.21.1 fork; [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the repair and removal criteria.
 

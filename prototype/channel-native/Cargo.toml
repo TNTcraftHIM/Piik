@@ -18,9 +18,15 @@ futures-util = "0.3"
 anyhow = "1"
 async-trait = "0.1"
 serde_json = "1"
+serde = { version = "1", features = ["derive"] }
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }
 getrandom = "=0.3.4"
 
-# Remove after upstream webrtc-rs/rtc#296 is released; provenance is in README.md.
+# Remove after upstream webrtc-rs/rtc#296 and #298 are released; see README.md.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "20cce2480fc0975241e1590ea9d018f68d3fabcc" }
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }
+
+[target.'cfg(windows)'.dependencies]
+windows-capture = "=2.0.1"
+windows-core = "=0.62.2"
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_Performance", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation"] }

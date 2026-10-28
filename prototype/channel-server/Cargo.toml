@@ -41,4 +41,4 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 
 # Cargo patches are workspace-root scoped; match channel-native/Cargo.toml.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "20cce2480fc0975241e1590ea9d018f68d3fabcc" }
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }

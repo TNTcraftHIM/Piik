@@ -3,8 +3,8 @@ use crate::{
     data::{self, DataLink, Lane},
     file::Files,
     media::{
-        supported, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source, TrackKey,
-        VIDEO_PACKETS,
+        supported, H264Sps, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source,
+        TrackKey, H264_RELAY_PROFILE, VIDEO_PACKETS,
     },
 };
 use anyhow::{anyhow, Result};
@@ -239,20 +239,32 @@ impl Pair {
     async fn confirm_outputs(&mut self, offered: HashSet<Uuid>) -> Result<()> {
         let mut stable = HashSet::new();
         for transceiver in self.pc.get_transceivers().await {
-            if matches!(
+            let sending = matches!(
                 transceiver.current_direction().await?,
                 rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendonly
                     | rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendrecv
-            ) {
-                if let Some(sender) = transceiver.sender().await? {
-                    stable.extend(
-                        self.outputs
-                            .values()
-                            .filter(|output| {
-                                offered.contains(&output.id) && output.sender.id() == sender.id()
-                            })
-                            .map(|output| output.id),
-                    );
+            );
+            if let Some(sender) = transceiver.sender().await? {
+                let codecs = if sending {
+                    sender.get_parameters().await?.rtp_parameters.codecs
+                } else {
+                    vec![]
+                };
+                for output in self.outputs.values().filter(|output| {
+                    offered.contains(&output.id) && output.sender.id() == sender.id()
+                }) {
+                    if sending {
+                        output.confirm(&codecs);
+                        stable.insert(output.id);
+                    } else if self
+                        .stable_outputs
+                        .as_ref()
+                        .is_some_and(|ids| ids.contains(&output.id))
+                    {
+                        // A remote offer need not include our unnegotiated additions.
+                        // Only an established sender can lose its sending direction.
+                        output.confirm(&[]);
+                    }
                 }
             }
         }
@@ -478,11 +490,11 @@ fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder
         RtpCodecKind::Audio,
     )?;
     for (payload_type, mime_type, fmtp) in [
-        (96, "video/VP8", ""),
+        (96, "video/VP8", String::new()),
         (
             102,
             "video/H264",
-            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+            format!("level-asymmetry-allowed=1;packetization-mode=1;profile-level-id={H264_RELAY_PROFILE}"),
         ),
     ] {
         media.register_codec(
@@ -490,7 +502,7 @@ fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder
                 rtp_codec: RTCRtpCodec {
                     mime_type: mime_type.into(),
                     clock_rate: 90000,
-                    sdp_fmtp_line: fmtp.into(),
+                    sdp_fmtp_line: fmtp,
                     ..Default::default()
                 },
                 payload_type,
@@ -1418,6 +1430,11 @@ impl Driver {
         p.tasks.retain(|_, reader| !reader.task.is_finished());
         let task = tokio::spawn(async move {
             let mut first = true;
+            let mut h264 = source
+                .codec
+                .mime_type
+                .eq_ignore_ascii_case("video/H264")
+                .then(H264Sps::default);
             loop {
                 let event = tokio::select! {
                     event = track.poll() => match event {
@@ -1439,6 +1456,12 @@ impl Driver {
                     TrackRemoteEvent::OnRtpPacket(packet)
                         if packet.header.ssrc == source.ssrc && !packet.payload.is_empty() =>
                     {
+                        if let Some(h264) = &mut h264 {
+                            if let Err(error) = h264.observe(&packet) {
+                                eprintln!("Native encoded input failed: {error}");
+                                break;
+                            }
+                        }
                         if first {
                             first = false;
                             if first_packets

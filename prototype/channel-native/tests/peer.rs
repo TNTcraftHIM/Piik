@@ -17,11 +17,11 @@ fn forwarding(publication_id: Uuid, pair: Uuid, input: Uuid) -> FlowBinding {
         ..binding(publication_id, pair)
     }
 }
-use piik_channel_native::peer::{NativeEvent, NativePeers};
 use piik_channel_core::wire::{
     Candidate, Command, Description, FlowBinding, FlowState, Kind, PairInfo, PublicationInfo,
     Signal, Track as WireTrack,
 };
+use piik_channel_native::peer::{NativeEvent, NativePeers};
 use rtc::interceptor::{Interceptor, NoopInterceptor, StreamInfo, TaggedPacket};
 use rtc::sansio::Protocol;
 use rtc::{
@@ -189,7 +189,16 @@ async fn endpoint_clock(
         },
         RtpCodecKind::Audio,
     )?;
-    for (pt, mime, fmtp) in [(96, "video/VP8", ""), (97, "video/rtx", "apt=96")] {
+    for (pt, mime, fmtp) in [
+        (96, "video/VP8", ""),
+        (97, "video/rtx", "apt=96"),
+        (
+            109,
+            "video/H264",
+            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+        ),
+        (110, "video/rtx", "apt=109"),
+    ] {
         media.register_codec(
             RTCRtpCodecParameters {
                 rtp_codec: RTCRtpCodec {
@@ -456,6 +465,153 @@ async fn next_matching(rx: &mut mpsc::Receiver<rtp::Packet>, ssrc: Option<u32>) 
     })
     .await
     .unwrap()
+}
+
+#[tokio::test]
+async fn h264_sps_reaches_two_children_with_default_receive_levels_on_retained_pairs() -> Result<()>
+{
+    timeout(Duration::from_secs(20), async {
+        let session = Uuid::nil();
+        let source_id = Uuid::new_v4();
+        let children = [Uuid::new_v4(), Uuid::new_v4()];
+        let publication = Uuid::new_v4();
+        let (commands, rx) = mpsc::channel(64);
+        let native = Arc::new(NativePeers::new(session, vec![], commands));
+        let (events, event_rx) = mpsc::channel(1024);
+        let (packets, mut packet_rx) = mpsc::channel(1024);
+        let (reports, mut report_rx) = mpsc::channel(256);
+        let source = endpoint(session, source_id, 111, events.clone(), packets.clone()).await?;
+        let first = endpoint(session, children[0], 111, events.clone(), packets.clone()).await?;
+        let second = endpoint(session, children[1], 111, events, packets).await?;
+        let child_pc = second.pc.clone();
+        let child_tracks = second.received.clone();
+        let stream = Uuid::new_v4().to_string();
+        source.tracks.lock().unwrap().push(WireTrack {
+            flow_id: binding(publication, source_id).id,
+            stream_id: stream.clone(),
+        });
+        let video = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
+            stream,
+            Uuid::new_v4().to_string(),
+            "H264 encoded source".into(),
+            RtpCodecKind::Video,
+            vec![RTCRtpEncodingParameters {
+                rtp_coding_parameters: RTCRtpCodingParameters { ssrc: Some(0x2222), ..Default::default() },
+                codec: RTCRtpCodec {
+                    mime_type: "video/H264".into(), clock_rate: 90000,
+                    sdp_fmtp_line: "packetization-mode=1;profile-level-id=42c028".into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+        )));
+        let sender = source.pc.add_track(video.clone()).await?;
+        for transceiver in source.pc.get_transceivers().await {
+            if transceiver.sender().await?.is_some_and(|s| s.id() == sender.id()) {
+                transceiver.set_codec_preferences(vec![RTCRtpCodecParameters {
+                    rtp_codec: RTCRtpCodec {
+                        mime_type: "video/H264".into(),
+                        clock_rate: 90000,
+                        sdp_fmtp_line: "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42c01f".into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }]).await?;
+            }
+        }
+        let plans = |both: bool| {
+            let mut plans = vec![PairInfo {
+                id: source_id, peer_id: source_id, rooms: vec!["screen".into()],
+                incoming: vec![binding(publication, source_id)], outgoing: vec![],
+            }];
+            for (index, child) in children.into_iter().enumerate() {
+                plans.push(PairInfo {
+                    id: child, peer_id: child, rooms: vec!["screen".into()], incoming: vec![],
+                    outgoing: if both || index == 1 { vec![forwarding(publication, child, binding(publication, source_id).id)] } else { vec![] },
+                });
+            }
+            plans
+        };
+        let info = PublicationInfo {
+            id: publication, room_id: "screen".into(), session_id: source_id,
+            user_id: source_id, kind: Kind::Screen, muted: false,
+        };
+        native.update(plans(true), vec![info.clone()], vec![]).await?;
+        let (stop, stopped) = watch::channel(false);
+        let (_pause, paused) = watch::channel(false);
+        let task = tokio::spawn(pump(
+            native.clone(), HashMap::from([(source_id, source), (children[0], first), (children[1], second)]),
+            rx, event_rx, stopped, paused, reports, Arc::new(Mutex::new(Loss::default())),
+        ));
+        let mut ready = std::collections::HashSet::new();
+        while ready.len() < 3 {
+            if let Some(Command::BaseState { pair_id, ready: true, .. }) = report_rx.recv().await {
+                ready.insert(pair_id);
+            }
+        }
+        let source_parameters = sender.get_parameters().await?;
+        let payload_type = source_parameters.rtp_parameters.codecs.iter()
+            .find(|c| c.rtp_codec.mime_type.eq_ignore_ascii_case("video/H264")).unwrap().payload_type;
+        // Actual 1920x1080 MF encoder SPS (CB/4.0). The endpoint's receive
+        // capability above remains the browser-style default CB/3.1.
+        let sps = vec![103, 66, 192, 40, 149, 160, 30, 0, 137, 249, 112, 22, 160,
+            32, 32, 40, 0, 0, 31, 64, 0, 7, 83, 0, 120, 225, 85];
+        let expected = sps.clone();
+        let sending = tokio::spawn(async move {
+            for sequence_number in 0..600u16 {
+                video.write_rtp(rtp::Packet {
+                    header: rtp::header::Header {
+                        version: 2, payload_type, ssrc: 0x2222, sequence_number,
+                        timestamp: 90_000 + sequence_number as u32 * 3000, marker: true,
+                        ..Default::default()
+                    },
+                    payload: sps.clone().into(),
+                }).await?;
+                sleep(Duration::from_millis(20)).await;
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+        let mut outputs = std::collections::HashSet::new();
+        while outputs.len() < 2 {
+            let packet = packet_rx.recv().await.unwrap();
+            assert_eq!(packet.payload.as_ref(), expected);
+            assert_ne!(packet.header.ssrc, 0x2222);
+            outputs.insert(packet.header.ssrc);
+        }
+        let track = child_tracks.lock().unwrap()[0].clone();
+        let ssrc = track.ssrcs().await[0];
+        let local_format = track.codec(ssrc).await.unwrap();
+        assert!(local_format.sdp_fmtp_line.contains("42e01f"));
+        // Another m-line negotiates on the same PC. Existing output identity and
+        // its actual packet format survive the exchange and a sibling retirement.
+        let previous_sdp = child_pc.current_local_description().await.unwrap().sdp;
+        child_pc.add_transceiver_from_kind(RtpCodecKind::Audio, None).await?;
+        timeout(Duration::from_secs(3), async {
+            while child_pc.current_local_description().await.as_ref().is_none_or(|sdp| sdp.sdp == previous_sdp) {
+                sleep(Duration::from_millis(10)).await;
+            }
+        }).await?;
+        native.update(plans(false), vec![info], vec![]).await?;
+        let before = next_matching(&mut packet_rx, Some(ssrc)).await.header.timestamp;
+        loop {
+            let packet = next_matching(&mut packet_rx, Some(ssrc)).await;
+            if packet.header.timestamp > before + 9000 {
+                assert_eq!(packet.payload.as_ref(), expected);
+                break;
+            }
+        }
+        while let Ok(report) = report_rx.try_recv() {
+            assert!(!matches!(report, Command::FlowState { state: FlowState::Failed, .. }
+                | Command::BaseState { ready: false, .. }
+                | Command::LinkState { state: piik_channel_core::wire::LinkState::Failed, .. }));
+        }
+        sending.abort();
+        let _ = sending.await;
+        stop.send(true)?;
+        task.await??;
+        Arc::try_unwrap(native).map_err(|_| anyhow::anyhow!("Native still borrowed"))?.close().await?;
+        Ok::<_, anyhow::Error>(())
+    }).await?
 }
 
 #[tokio::test]

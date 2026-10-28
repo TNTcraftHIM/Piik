@@ -9,6 +9,7 @@ use rtc::{
     },
     rtcp::sender_report::SenderReport,
     rtp,
+    rtp_transceiver::h264::H264ProfileLevelId,
     rtp_transceiver::rtp_sender::{
         RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters, RTCRtpEncodingParameters,
         RTCRtpRtxParameters, RtpCodecKind,
@@ -31,6 +32,7 @@ use webrtc::{
 };
 
 pub(crate) const VIDEO_PACKETS: usize = 256;
+pub(crate) const H264_RELAY_PROFILE: &str = "42e034";
 // One directed flow owns each kind; a publication can have several hop flows.
 pub(crate) type TrackKey = (Uuid, RtpCodecKind);
 pub(crate) type SourceReport = Arc<Mutex<Option<(SenderReport, std::time::Instant)>>>;
@@ -125,14 +127,13 @@ pub(crate) fn supported(codec: &RTCRtpCodec, kind: RtpCodecKind) -> bool {
             codec.mime_type.eq_ignore_ascii_case("video/VP8")
                 || (codec.mime_type.eq_ignore_ascii_case("video/H264")
                     && fmtp(codec, "packetization-mode") == Some("1")
-                    && fmtp(codec, "profile-level-id").is_some_and(|profile| {
-                        profile.len() == 6
-                            && u32::from_str_radix(profile, 16).is_ok()
-                            && profile[..4].eq_ignore_ascii_case("42e0")
-                    }))
+                    && h264_profile(codec).is_some_and(|profile| profile.is_constrained_baseline()))
         }
         _ => false,
     }
+}
+fn h264_profile(codec: &RTCRtpCodec) -> Option<H264ProfileLevelId> {
+    H264ProfileLevelId::parse(fmtp(codec, "profile-level-id").unwrap_or("42e01f"))
 }
 fn compatible(source: &RTCRtpCodec, negotiated: &RTCRtpCodec) -> bool {
     if !source.mime_type.eq_ignore_ascii_case(&negotiated.mime_type)
@@ -142,11 +143,89 @@ fn compatible(source: &RTCRtpCodec, negotiated: &RTCRtpCodec) -> bool {
     }
     if source.mime_type.eq_ignore_ascii_case("video/H264") {
         return supported(negotiated, RtpCodecKind::Video)
-            && fmtp(source, "profile-level-id").and_then(|s| u32::from_str_radix(s, 16).ok())
-                <= fmtp(negotiated, "profile-level-id")
-                    .and_then(|s| u32::from_str_radix(s, 16).ok());
+            && h264_profile(source)
+                .zip(h264_profile(negotiated))
+                .is_some_and(|(source, negotiated)| source.is_same_profile(negotiated));
     }
     true
+}
+
+// Only SPS carries the encoded profile/level. SDP describes the negotiated
+// format, and common browser receive levels are not measured decoder limits.
+// Keep three SPS octets, never an access unit or a history of parameter sets.
+#[derive(Default)]
+pub(crate) struct H264Sps {
+    last: Option<[u8; 3]>,
+    fragment: Option<(u32, u16, Vec<u8>)>,
+}
+impl H264Sps {
+    fn check(&mut self, bytes: &[u8]) -> Result<()> {
+        let bytes: [u8; 3] = bytes
+            .get(..3)
+            .ok_or_else(|| anyhow::anyhow!("truncated H264 SPS"))?
+            .try_into()?;
+        if self.last == Some(bytes) {
+            return Ok(());
+        }
+        let profile =
+            H264ProfileLevelId::parse(&format!("{:02x}{:02x}{:02x}", bytes[0], bytes[1], bytes[2]))
+                .ok_or_else(|| anyhow::anyhow!("invalid H264 SPS profile/level"))?;
+        anyhow::ensure!(
+            profile.is_constrained_baseline()
+                && profile.is_level_at_most(H264ProfileLevelId::parse(H264_RELAY_PROFILE).unwrap()),
+            "unsupported H264 SPS profile/level {profile}"
+        );
+        self.last = Some(bytes);
+        Ok(())
+    }
+
+    pub fn observe(&mut self, packet: &rtp::Packet) -> Result<()> {
+        let payload = &packet.payload;
+        match payload.first().map(|b| b & 0x1f) {
+            Some(7) => self.check(&payload[1..])?,
+            Some(24) => {
+                let mut units = &payload[1..];
+                while !units.is_empty() {
+                    anyhow::ensure!(units.len() >= 2, "truncated H264 STAP-A");
+                    let length = u16::from_be_bytes([units[0], units[1]]) as usize;
+                    let nal = units
+                        .get(2..2 + length)
+                        .ok_or_else(|| anyhow::anyhow!("truncated H264 STAP-A NAL"))?;
+                    if nal.first().is_some_and(|b| b & 0x1f == 7) {
+                        self.check(&nal[1..])?;
+                    }
+                    units = &units[2 + length..];
+                }
+            }
+            Some(28) if payload.len() >= 2 && payload[1] & 0x1f == 7 => {
+                if payload[1] & 0x80 != 0 {
+                    self.fragment = Some((
+                        packet.header.timestamp,
+                        packet.header.sequence_number,
+                        Vec::with_capacity(3),
+                    ));
+                }
+                if let Some((timestamp, sequence, prefix)) = &mut self.fragment {
+                    if *timestamp != packet.header.timestamp
+                        || *sequence != packet.header.sequence_number
+                    {
+                        self.fragment = None;
+                        return Ok(());
+                    }
+                    prefix.extend(payload[2..].iter().take(3 - prefix.len()));
+                    *sequence = sequence.wrapping_add(1);
+                    if prefix.len() == 3 {
+                        let (_, _, prefix) = self.fragment.take().unwrap();
+                        self.check(&prefix)?;
+                    } else if payload[1] & 0x40 != 0 {
+                        anyhow::bail!("truncated H264 SPS");
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
 }
 
 // The stock chain consumes network feedback. This final application hook exposes
@@ -202,6 +281,8 @@ pub(crate) struct Source {
     pub publication_id: Uuid,
     pub pair: Uuid,
     pub stream: String,
+    // Track SDP format, not a declaration of the encoded SPS. The reader checks
+    // actual H264 SPS separately before passing its packets to the relay.
     pub codec: RTCRtpCodec,
     pub ssrc: u32,
     pub kind: RtpCodecKind,
@@ -221,6 +302,8 @@ pub(crate) struct Output {
     pub source: Uuid,
     pub stream: String,
     pub sender: Arc<dyn RtpSender>,
+    source_codec: RTCRtpCodec,
+    negotiated: watch::Sender<Option<RTCRtpCodecParameters>>,
     packets: mpsc::Sender<rtp::Packet>,
     task: JoinHandle<()>,
     feedback: JoinHandle<()>,
@@ -252,6 +335,8 @@ impl Output {
                     }),
                     ..Default::default()
                 },
+                // The SDK uses this format identity to bind its SR/feedback
+                // interceptors. Actual source level still comes only from SPS.
                 codec: source.codec.clone(),
                 ..Default::default()
             }],
@@ -265,12 +350,18 @@ impl Output {
                         .await?
                         .is_some_and(|candidate| candidate.id() == sender.id())
                     {
-                        let parameters = sender.get_parameters().await?;
-                        let primary: Vec<RTCRtpCodecParameters> = parameters
-                            .rtp_parameters
+                        let capabilities = sender
+                            .get_capabilities(source.kind)
+                            .await?
+                            .ok_or_else(|| anyhow::anyhow!("missing local video capabilities"))?;
+                        let primary: Vec<RTCRtpCodecParameters> = capabilities
                             .codecs
                             .into_iter()
-                            .filter(|codec| compatible(&source.codec, &codec.rtp_codec))
+                            .filter(|codec| compatible(&source.codec, codec))
+                            .map(|rtp_codec| RTCRtpCodecParameters {
+                                rtp_codec,
+                                ..Default::default()
+                            })
                             .collect();
                         anyhow::ensure!(!primary.is_empty(), "no compatible encoded video codec");
                         // set_codec_preferences retains only repair codecs associated with the primary.
@@ -299,8 +390,7 @@ impl Output {
             } else {
                 1
             });
-        let negotiated = sender.clone();
-        let source_codec = source.codec.clone();
+        let (negotiated, mut format) = watch::channel(None::<RTCRtpCodecParameters>);
         let source_id = source.id;
         let feedback_track = track.clone();
         let upstream = source.clone();
@@ -316,21 +406,26 @@ impl Output {
         });
         let task = tokio::spawn(async move {
             let result = async {
-                while let Some(packet) = rx.recv().await {
-                    let parameters = negotiated.get_parameters().await?;
-                    let codec = parameters
-                        .rtp_parameters
-                        .codecs
-                        .iter()
-                        .find(|codec| compatible(&source_codec, &codec.rtp_codec))
-                        .ok_or_else(|| anyhow::anyhow!("encoded codec no longer negotiated"))?;
+                loop {
+                    let packet = tokio::select! {
+                        changed = format.changed() => {
+                            if changed.is_err() { break; }
+                            anyhow::ensure!(format.borrow().is_some(), "encoded codec no longer negotiated");
+                            continue;
+                        }
+                        packet = rx.recv(), if format.borrow().is_some() => {
+                            match packet { Some(packet) => packet, None => break }
+                        }
+                    };
+                    let payload_type = format.borrow().as_ref()
+                        .ok_or_else(|| anyhow::anyhow!("encoded codec no longer negotiated"))?.payload_type;
                     // The sender owns negotiated PT (e.g. a remote offer may use 109).
                     // Construct a hop-local header: no upstream TWCC/abs-send-time/CSRC.
                     let packet = rtp::Packet {
                         header: rtp::header::Header {
                             version: 2,
                             marker: packet.header.marker,
-                            payload_type: codec.payload_type,
+                            payload_type,
                             sequence_number: packet.header.sequence_number,
                             timestamp: packet.header.timestamp,
                             ssrc,
@@ -360,6 +455,8 @@ impl Output {
             source: source.id,
             stream,
             sender,
+            source_codec: source.codec.clone(),
+            negotiated,
             packets,
             task,
             feedback,
@@ -369,6 +466,14 @@ impl Output {
     }
     pub fn sink(&self) -> mpsc::Sender<rtp::Packet> {
         self.packets.clone()
+    }
+    pub fn confirm(&self, codecs: &[RTCRtpCodecParameters]) {
+        self.negotiated.send_replace(
+            codecs
+                .iter()
+                .find(|codec| compatible(&self.source_codec, &codec.rtp_codec))
+                .cloned(),
+        );
     }
     pub async fn close(self, pc: &dyn PeerConnection) {
         self.reports.0.lock().unwrap().remove(&self.ssrc);
@@ -404,5 +509,49 @@ impl Relay {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn h264_checks_actual_sps_without_retaining_a_historical_level_ceiling() -> Result<()> {
+        let codec = |profile: &str| RTCRtpCodec {
+            mime_type: "video/H264".into(),
+            clock_rate: 90000,
+            sdp_fmtp_line: format!("packetization-mode=1;profile-level-id={profile}"),
+            ..Default::default()
+        };
+        assert!(compatible(&codec("42c028"), &codec("42e01f")));
+        assert!(compatible(&codec("42f00b"), &codec("42c01f")));
+        assert!(!compatible(&codec("42c028"), &codec("42001f")));
+        let packet = |sequence_number, payload: Vec<u8>| rtp::Packet {
+            header: rtp::header::Header {
+                sequence_number,
+                ..Default::default()
+            },
+            payload: payload.into(),
+        };
+        let mut sps = H264Sps::default();
+        // A single-NAL 1080p SPS followed by a lower-level replacement is valid.
+        sps.observe(&packet(1, vec![0x67, 0x42, 0xc0, 0x28, 0x95]))?;
+        sps.observe(&packet(2, vec![0x67, 0x42, 0xc0, 0x1f, 0x95]))?;
+        assert_eq!(sps.last, Some([0x42, 0xc0, 0x1f]));
+        // An aggregated SPS/PPS and a fragmented SPS use the same profile parser.
+        sps.observe(&packet(
+            3,
+            vec![0x78, 0, 4, 0x67, 0x42, 0xc0, 0x34, 0, 2, 0x68, 0xce],
+        ))?;
+        sps.observe(&packet(4, vec![0x7c, 0x87, 0x42]))?;
+        sps.observe(&packet(5, vec![0x7c, 0x47, 0xc0, 0x28]))?;
+        assert_eq!(sps.last, Some([0x42, 0xc0, 0x28]));
+        // This is the actual relay format boundary, independent of remote SDP.
+        assert!(sps
+            .observe(&packet(6, vec![0x67, 0x42, 0xc0, 0x3c]))
+            .is_err());
+        assert!(sps.observe(&packet(7, vec![0x67, 0x64, 0, 0x28])).is_err());
+        Ok(())
     }
 }
