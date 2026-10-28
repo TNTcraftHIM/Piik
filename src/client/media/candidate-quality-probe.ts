@@ -41,7 +41,6 @@ function deliveredVideoSample(
     sampleWindowMs,
     frameWidth,
     frameHeight,
-    framesPerSecond,
     bitrateKbps,
     intervalFramesDecoded,
   } = metrics;
@@ -50,18 +49,16 @@ function deliveredVideoSample(
     sampleWindowMs === null ||
     frameWidth === null ||
     frameHeight === null ||
-    framesPerSecond === null ||
     intervalFramesDecoded === null ||
     !Number.isFinite(sampleTimestampMs) ||
     !Number.isFinite(sampleWindowMs) ||
     !Number.isFinite(frameWidth) ||
     !Number.isFinite(frameHeight) ||
-    !Number.isFinite(framesPerSecond) ||
+    !Number.isFinite(intervalFramesDecoded) ||
     frameWidth <= 0 ||
     frameHeight <= 0 ||
     sampleWindowMs < 1_000 ||
     sampleWindowMs > 5_000 ||
-    framesPerSecond <= 0 ||
     intervalFramesDecoded <= 0
   ) {
     return null;
@@ -70,7 +67,8 @@ function deliveredVideoSample(
     timestampMs: sampleTimestampMs,
     windowMs: sampleWindowMs,
     pixels: frameWidth * frameHeight,
-    framesPerSecond: Math.round(framesPerSecond),
+    // Native framesPerSecond covers the last second, not this comparison window.
+    framesPerSecond: Math.round((intervalFramesDecoded * 1_000) / sampleWindowMs),
     bitrateKbps:
       typeof bitrateKbps === "number" &&
       Number.isFinite(bitrateKbps) &&
