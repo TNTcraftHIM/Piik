@@ -1451,7 +1451,10 @@ describe("minimal route transition contracts", () => {
     for (const timestampMs of [1_100, 3_100, 5_100]) {
       currentMetrics = receiveMetrics(timestampMs - 100);
       subscriber.events.onStats(
-        receiveMetrics(timestampMs, { framesPerSecond: 30 }),
+        receiveMetrics(timestampMs, {
+          framesPerSecond: 30,
+          intervalFramesDecoded: 60,
+        }),
       );
     }
 
