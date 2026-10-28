@@ -38,13 +38,6 @@ pub enum Command {
         attachment_id: Uuid,
         enabled: bool,
     },
-    Chat {
-        room_id: String,
-        text: String,
-        nonce: String,
-        #[serde(default)]
-        attachments: Vec<crate::attachment::AttachmentDescriptor>,
-    },
     HostRegister {
         room: crate::host::RoomSummary,
         resume_binding: Option<Uuid>,
@@ -80,10 +73,6 @@ pub enum Command {
     RevokeRoomAccess {
         room_id: String,
         user_id: Uuid,
-    },
-    History {
-        room_id: String,
-        before: Option<u64>,
     },
     SetRoles {
         user_id: Uuid,

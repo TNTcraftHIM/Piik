@@ -1,6 +1,7 @@
 #![cfg(feature = "sqlite")]
 
 use piik_channel_core::{
+    conversation::{ConversationAddress, ConversationCommand, ConversationRequest, SessionSigner},
     history::HistoryResult,
     host::{HostAction, HostInput, HostOutput, RequestContext, RoomResult},
     wire::{Request, RoomAccess},
@@ -22,9 +23,7 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
                 (
                     session,
                     Endpoint {
-                        signing_key:
-                            piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
-                                .signing_key(),
+                        signing_key: SessionSigner::from_seed([1; 32]).signing_key(),
                         member: Member {
                             user_id: session,
                             participates: true,
@@ -57,11 +56,39 @@ fn policy(id: &str, owner: Uuid, access: RoomAccess) -> RoomState {
     RoomState::new(id.into(), id.into(), owner, access, false, None).unwrap()
 }
 
-fn sent(output: HostOutput) -> piik_channel_core::history::MessageConfirmation {
-    match output.reply.unwrap().result {
-        RoomResult::History {
-            result: HistoryResult::Sent(confirmation),
-        } => confirmation,
+fn peer(
+    host: &mut StoredRoomHost,
+    owner: Uuid,
+    actor: Uuid,
+    command: ConversationCommand,
+) -> Result<HistoryResult, &'static str> {
+    host.dispatch(input(owner, actor, |_| HostAction::Sync))
+        .unwrap();
+    let request = ConversationRequest {
+        address: ConversationAddress {
+            room_id: host.policy().id.clone(),
+            binding_id: owner,
+            sender: actor,
+            recipient: owner,
+            request_id: Uuid::new_v4().to_string(),
+        },
+        command,
+    };
+    host.dispatch_peer(
+        &SessionSigner::from_seed([1; 32])
+            .sign(actor, &request)
+            .unwrap(),
+        1,
+    )
+    .unwrap()
+    .result
+}
+
+fn sent(
+    result: Result<HistoryResult, &'static str>,
+) -> piik_channel_core::history::MessageConfirmation {
+    match result.unwrap() {
+        HistoryResult::Sent(confirmation) => confirmation,
         _ => panic!("expected committed message"),
     }
 }
@@ -104,11 +131,13 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     // Fail COMMIT after the message INSERT succeeded, using the production SQLite transaction.
     database.execute_batch("CREATE TABLE commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
         CREATE TRIGGER reject_message AFTER INSERT ON message BEGIN INSERT INTO commit_failure VALUES('missing'); END;").unwrap();
-    let message = json!({"type":"chat","roomId":"private","nonce":"same-send","text":"Original"});
-    let failed = command(&mut host, owner, viewer, message.clone());
-    assert!(
-        matches!(failed.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed")
-    );
+    let message = ConversationCommand::Chat {
+        text: "Original".into(),
+        nonce: "same-send".into(),
+        attachments: vec![],
+    };
+    let failed = peer(&mut host, owner, viewer, message.clone());
+    assert!(matches!(failed, Err("storage_failed")));
     assert_eq!(
         database
             .query_row("SELECT count(*) FROM message", [], |row| row
@@ -119,18 +148,22 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
     database
         .execute_batch("DROP TRIGGER reject_message;")
         .unwrap();
-    let original = sent(command(&mut host, owner, viewer, message));
+    let original = sent(peer(&mut host, owner, viewer, message));
     assert!(original.inserted);
     assert_eq!(original.message.seq, 1);
     drop(host);
 
     let mut restored = StoredRoomHost::open(&path).unwrap();
     assert!(restored.policy().grants.contains(&viewer));
-    let retry = sent(command(
+    let retry = sent(peer(
         &mut restored,
         owner,
         viewer,
-        json!({"type":"chat","roomId":"private","nonce":"same-send","text":"Changed retry"}),
+        ConversationCommand::Chat {
+            text: "Changed retry".into(),
+            nonce: "same-send".into(),
+            attachments: vec![],
+        },
     ));
     assert!(!retry.inserted);
     assert_eq!(
@@ -162,11 +195,15 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             owner,
             json!({"type":"update_room","roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false}),
         );
-        let result = sent(command(
+        let result = sent(peer(
             host,
             owner,
             owner,
-            json!({"type":"chat","roomId":room,"nonce":"same-send","text":room}),
+            ConversationCommand::Chat {
+                text: room.into(),
+                nonce: "same-send".into(),
+                attachments: vec![],
+            },
         ));
         assert_eq!(result.message.seq, 1);
         command(
@@ -187,17 +224,15 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         let mut restored = StoredRoomHost::open(path).unwrap();
         assert_eq!(restored.policy().id, room);
         assert_eq!(restored.summary().name, format!("Saved {room}"));
-        let output = command(
-            &mut restored,
-            owner,
-            owner,
-            json!({"type":"history","roomId":room}),
-        );
+        let output = restored
+            .dispatch(input(owner, owner, |_| HostAction::Sync))
+            .unwrap();
         assert!(!output.projection.views[&owner].room.reading);
         assert!(output.projection.views[&owner].publications.is_empty());
         assert!(output.projection.base_links.is_empty());
         assert!(
-            matches!(output.reply.unwrap().result, RoomResult::History { result: HistoryResult::Page { messages, .. } } if messages.len() == 1 && messages[0].text == room)
+            matches!(peer(&mut restored, owner, owner, ConversationCommand::History { before: None }).unwrap(),
+                HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].text == room)
         );
         drop(restored);
         std::fs::remove_file(path).unwrap();
@@ -215,12 +250,15 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
     {
         let mut host =
             StoredRoomHost::create(&path, policy("private", owner, RoomAccess::Private)).unwrap();
-        original = sent(command(
+        original = sent(peer(
             &mut host,
             owner,
             owner,
-            json!({"type":"chat", "roomId":"private",
-            "text":"Caption", "nonce":"file-send", "attachments":[attachment]}),
+            ConversationCommand::Chat {
+                text: "Caption".into(),
+                nonce: "file-send".into(),
+                attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
+            },
         ))
         .message;
         assert_eq!(
@@ -249,11 +287,15 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
         let mut host = StoredRoomHost::open(&path).unwrap();
         let mut changed = attachment.clone();
         changed["sha256"] = json!(piik_channel_core::attachment::sha256_hex(b"changed"));
-        let retry = sent(command(
+        let retry = sent(peer(
             &mut host,
             owner,
             owner,
-            json!({"type":"chat", "roomId":"private", "text":"Changed", "nonce":"file-send", "attachments":[changed]}),
+            ConversationCommand::Chat {
+                text: "Changed".into(),
+                nonce: "file-send".into(),
+                attachments: vec![serde_json::from_value(changed).unwrap()],
+            },
         ));
         assert!(!retry.inserted);
         assert_eq!(

@@ -604,7 +604,6 @@ impl Authority {
             }
             let mut completion = RoomResult::Done;
             match reply.result {
-                RoomResult::History { .. } => return Err("invalid_room_reply"),
                 RoomResult::Invite { key } => effects.events.push((
                     context.connection,
                     Event::RoomInvite {

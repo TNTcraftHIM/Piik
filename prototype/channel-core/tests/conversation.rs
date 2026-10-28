@@ -5,7 +5,7 @@ use piik_channel_core::{
         route, ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
         ConversationRequest, SessionSigner,
     },
-    wire::{Event, RoomAccess},
+    wire::{Event, Request, RoomAccess},
 };
 use serde_json::json;
 use support::RoomNetwork;
@@ -91,12 +91,10 @@ fn signed_conversation_routes_on_actual_authority_base_and_bounds_stale_projecti
         json!({"type":"history","roomId":room,"requestId":"blocked-history"}),
         json!({"type":"chat","roomId":room,"text":"No domain content","nonce":"blocked-chat","requestId":"blocked-chat"}),
     ] {
-        let rejected = network.command(connections[3], command);
-        assert!(rejected.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "room_data_channel_required")));
-        assert!(!rejected
-            .events
-            .iter()
-            .any(|(_, event)| matches!(event, Event::HostInput { .. })));
+        assert!(matches!(
+            Request::parse(&command.to_string()),
+            Err((_, "invalid_request"))
+        ));
     }
     let delivery = network
         .state(connections[3])

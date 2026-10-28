@@ -109,7 +109,6 @@ pub struct HostInput {
 pub enum RoomResult {
     Done,
     Invite { key: String },
-    History { result: HistoryResult },
     Invited,
     Error { code: String },
 }
@@ -168,7 +167,6 @@ impl RoomRuntime {
         member: Member,
         session: Uuid,
         command: Command,
-        now: u64,
     ) -> Result<RoomOperation, &'static str> {
         let mut op = RoomOperation {
             result: RoomResult::Done,
@@ -177,7 +175,6 @@ impl RoomRuntime {
         };
         match command {
             Command::Browse { active, .. } => self.browse(member, session, active)?,
-            Command::History { before, .. } => op.history = Some(self.history(member, before)?),
             Command::FileOffer {
                 message_seq,
                 attachment_id,
@@ -195,14 +192,6 @@ impl RoomRuntime {
             } => {
                 op.history =
                     self.file_command(member, session, message_seq, attachment_id, false, enabled)?
-            }
-            Command::Chat {
-                text,
-                nonce,
-                attachments: ids,
-                ..
-            } => {
-                op.history = Some(self.chat(member, text, nonce, ids, now)?);
             }
             Command::UpdateRoom {
                 name,
@@ -490,12 +479,9 @@ impl RoomHost {
                     return Ok(RoomResult::Invited);
                 }
                 HostAction::Command { context, command } => {
-                    let op = self.room.command(
-                        member.unwrap(),
-                        context.session_id,
-                        command.clone(),
-                        context.now,
-                    )?;
+                    let op =
+                        self.room
+                            .command(member.unwrap(), context.session_id, command.clone())?;
                     if op.policy_changed {
                         work.policy = Some(self.policy().clone());
                     }
@@ -556,27 +542,25 @@ impl RoomHost {
         }
         let mut pending = self.pending.take().unwrap();
         if let Some(result) = history {
-            if let HistoryResult::Attachment {
+            let HistoryResult::Attachment {
                 message_seq,
                 attachment,
             } = result
-            {
-                let HostAction::Command { context, command } = &pending.input.action else {
-                    return Err("invalid_file_operation");
-                };
-                let offer = matches!(command, Command::FileOffer { .. });
-                if let Err(code) =
-                    self.room
-                        .finish_file(context.session_id, message_seq, attachment, offer)
-                {
-                    pending.reply.as_mut().unwrap().result =
-                        RoomResult::Error { code: code.into() };
-                }
+            else {
+                return Err("invalid_file_operation");
+            };
+            let HostAction::Command { context, command } = &pending.input.action else {
+                return Err("invalid_file_operation");
+            };
+            let offer = matches!(command, Command::FileOffer { .. });
+            if let Err(code) =
                 self.room
-                    .reconcile(&pending.input.endpoints, pending.input.now);
-            } else {
-                pending.reply.as_mut().unwrap().result = RoomResult::History { result };
+                    .finish_file(context.session_id, message_seq, attachment, offer)
+            {
+                pending.reply.as_mut().unwrap().result = RoomResult::Error { code: code.into() };
             }
+            self.room
+                .reconcile(&pending.input.endpoints, pending.input.now);
         }
         Ok(self.output(pending))
     }

@@ -325,10 +325,8 @@ impl Channel {
         match command {
             Command::Browse { room_id, .. }
             | Command::BaseState { room_id, .. }
-            | Command::Chat { room_id, .. }
             | Command::FileOffer { room_id, .. }
             | Command::FileReceive { room_id, .. }
-            | Command::History { room_id, .. }
             | Command::UpdateRoom { room_id, .. }
             | Command::EnterRoom { room_id, .. }
             | Command::RoomInvite { room_id }
@@ -473,9 +471,6 @@ impl Channel {
         command: Command,
     ) -> Result<(Uuid, Event), &'static str> {
         let action = match command {
-            Command::Chat { .. } | Command::History { .. } => {
-                return Err("room_data_channel_required");
-            }
             Command::BaseState {
                 room_id,
                 pair_id,

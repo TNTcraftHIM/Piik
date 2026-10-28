@@ -188,11 +188,6 @@ fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation()
         .user_id;
     let room = core.create(owner, RoomAccess::Public, false);
     core.command(author, json!({"type":"browse","active":true,"roomId":room}));
-    let denied = core.command(
-        author,
-        json!({"type":"chat","roomId":room,"text":"WS","nonce":"ws"}),
-    );
-    assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "room_data_channel_required")));
     let send = |text: &str| ConversationCommand::Chat {
         text: text.into(),
         nonce: "send-once".into(),
@@ -282,17 +277,6 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
     assert!(
         matches!(forbidden.events.as_slice(), [(target, Event::Error { code, request_id:Some(request_id) })] if *target == guest && code == "forbidden" && request_id == "create")
     );
-    let denied_send = apply(
-        &mut core,
-        guest,
-        json!({"type":"chat", "roomId":"living", "text":"Denied", "nonce":"denied"}),
-        2,
-    );
-    assert!(matches!(
-        denied_send.events.as_slice(),
-        [(target, Event::Error { code, .. })] if *target == guest && code == "room_data_channel_required"
-    ));
-
     let left = apply(
         &mut core,
         guest,
