@@ -305,6 +305,13 @@ connection, but let independent room/publication operations progress independent
 Source replacement keeps its publication and changes its source generation;
 callbacks, input grants and reservations retain their original ownership.
 
+The room runtime gives each publication's directed media work its own live
+identity. It stays stable while the edge remains needed, including non-viewing
+transit. Removing and recreating that work creates a new identity even on the
+same physical connection. Transport aggregation, media resources, proof and
+cleanup retain that identity; a retired callback cannot act on its successor.
+The topology selects edges, while these identities record their actual lifetimes.
+
 A channel has no fixed media allowance divided among rooms. The participant
 runtime counts its actual connections, forwarded copies, encoders/decoders and
 transition overlap. Watching more pictures creates real additional work; being

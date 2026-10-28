@@ -21,6 +21,7 @@ struct Activity {
 struct Publication {
     info: PublicationInfo,
     plan: Plan,
+    leases: BTreeMap<(Uuid, Uuid), Uuid>,
 }
 
 /// One room owns its policy, activities and logical flows. It neither owns
@@ -291,6 +292,7 @@ impl RoomRuntime {
                         muted,
                     },
                     plan: Plan::new(session),
+                    leases: BTreeMap::new(),
                 },
             );
         }
@@ -456,21 +458,6 @@ impl RoomRuntime {
             base.reconcile(&demand, &readable, &base_connected);
         }
         for (id, publication) in &mut self.publications {
-            if self.base.is_some() && publication.info.kind == Kind::Voice {
-                continue;
-            }
-            let subscribers = requested
-                .iter()
-                .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
-                .collect();
-            publication
-                .plan
-                .reconcile(&subscribers, &available, &connected, self.base.as_ref());
-        }
-    }
-
-    pub fn flows(&self) -> impl Iterator<Item = Flow> + '_ {
-        self.publications.iter().flat_map(|(id, publication)| {
             let paths: BTreeSet<_> = if let Some(base) = self
                 .base
                 .as_ref()
@@ -487,6 +474,16 @@ impl RoomRuntime {
                         .collect(),
                 )
             } else {
+                let subscribers = requested
+                    .iter()
+                    .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
+                    .collect();
+                publication.plan.reconcile(
+                    &subscribers,
+                    &available,
+                    &connected,
+                    self.base.as_ref(),
+                );
                 publication
                     .plan
                     .parents
@@ -494,11 +491,24 @@ impl RoomRuntime {
                     .map(|(child, parent)| (*parent, *child))
                     .collect()
             };
-            paths.into_iter().map(move |(parent, child)| Flow {
-                publication_id: *id,
-                sender: parent,
-                receiver: child,
-            })
+            publication.leases.retain(|path, _| paths.contains(path));
+            for path in paths {
+                publication.leases.entry(path).or_insert_with(Uuid::new_v4);
+            }
+        }
+    }
+
+    pub fn flows(&self) -> impl Iterator<Item = Flow> + '_ {
+        self.publications.iter().flat_map(|(id, publication)| {
+            publication
+                .leases
+                .iter()
+                .map(move |((parent, child), lease)| Flow {
+                    id: *lease,
+                    publication_id: *id,
+                    sender: *parent,
+                    receiver: *child,
+                })
         })
     }
 
@@ -536,26 +546,18 @@ impl RoomRuntime {
 
     pub fn flow_state(
         &mut self,
-        id: Uuid,
+        flow_id: Uuid,
         receiver: Uuid,
         sender: Uuid,
         ready: bool,
     ) -> Result<bool, &'static str> {
-        if self.base.is_some() && self.publication(id).is_some_and(|p| p.kind == Kind::Voice) {
-            return if self.flows().any(|flow| {
-                flow.publication_id == id && flow.sender == sender && flow.receiver == receiver
-            }) {
-                Ok(false)
-            } else {
-                Err("not_assigned_receiver")
-            };
-        }
         let publication = self
             .publications
-            .get_mut(&id)
-            .ok_or("publication_unavailable")?;
-        if publication.plan.parents.get(&receiver) != Some(&sender) {
-            return Err("not_assigned_receiver");
+            .values_mut()
+            .find(|publication| publication.leases.get(&(sender, receiver)) == Some(&flow_id))
+            .ok_or("unassigned_flow")?;
+        if self.base.is_some() && publication.info.kind == Kind::Voice {
+            return Ok(false);
         }
         Ok(if ready {
             publication.plan.mark_ready(receiver, sender)

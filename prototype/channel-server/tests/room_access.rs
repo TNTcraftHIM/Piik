@@ -152,9 +152,22 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     );
     assert_eq!(after.pairs[0].id, pair);
     assert_eq!(after.pairs[0].incoming.len(), 2);
-    assert!(after.pairs[0].incoming.contains(&picture));
-    assert!(after.pairs[0].incoming.contains(&voices[0]));
-    assert_eq!(after.pairs[0].outgoing, vec![voices[1]]);
+    assert!(after.pairs[0]
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == picture));
+    assert!(after.pairs[0]
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == voices[0]));
+    assert_eq!(
+        after.pairs[0]
+            .outgoing
+            .iter()
+            .map(|flow| flow.publication_id)
+            .collect::<Vec<_>>(),
+        vec![voices[1]]
+    );
     assert!(after
         .voice
         .iter()
@@ -181,8 +194,22 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
         b,
     );
     assert_eq!(picture_stopped.pairs[0].id, pair);
-    assert_eq!(picture_stopped.pairs[0].incoming, vec![voices[0]]);
-    assert_eq!(picture_stopped.pairs[0].outgoing, vec![voices[1]]);
+    assert_eq!(
+        picture_stopped.pairs[0]
+            .incoming
+            .iter()
+            .map(|flow| flow.publication_id)
+            .collect::<Vec<_>>(),
+        vec![voices[0]]
+    );
+    assert_eq!(
+        picture_stopped.pairs[0]
+            .outgoing
+            .iter()
+            .map(|flow| flow.publication_id)
+            .collect::<Vec<_>>(),
+        vec![voices[1]]
+    );
 }
 
 #[test]
@@ -299,7 +326,14 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     assert!(!guest_state.channel.rooms.iter().any(|r| r.id == room));
     assert!(!guest_state.publications.iter().any(|p| p.id == private_pub));
     assert_eq!(guest_state.pairs[0].id, pair);
-    assert_eq!(guest_state.pairs[0].incoming, vec![public_pub]);
+    assert_eq!(
+        guest_state.pairs[0]
+            .incoming
+            .iter()
+            .map(|flow| flow.publication_id)
+            .collect::<Vec<_>>(),
+        vec![public_pub]
+    );
     assert_eq!(
         guest_state
             .sessions

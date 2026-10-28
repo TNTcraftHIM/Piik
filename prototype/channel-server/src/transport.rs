@@ -1,4 +1,4 @@
-use crate::wire::PairInfo;
+use crate::wire::{FlowBinding, PairInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -6,6 +6,7 @@ use uuid::Uuid;
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Flow {
+    pub id: Uuid,
     pub publication_id: Uuid,
     pub sender: Uuid,
     pub receiver: Uuid,
@@ -21,8 +22,8 @@ pub struct BaseLink {
 
 #[derive(Clone, Default)]
 struct Directions {
-    forward: BTreeSet<Uuid>,
-    reverse: BTreeSet<Uuid>,
+    forward: BTreeMap<Uuid, Uuid>,
+    reverse: BTreeMap<Uuid, Uuid>,
     rooms: BTreeSet<String>,
 }
 
@@ -57,7 +58,7 @@ impl TransportBook {
             } else {
                 &mut directions.reverse
             }
-            .insert(flow.publication_id);
+            .insert(flow.id, flow.publication_id);
         }
         for link in base {
             let key = if link.parent < link.child {
@@ -93,11 +94,23 @@ impl TransportBook {
         })
     }
 
-    pub fn allows(&self, id: Uuid, sender: Uuid, publication: Uuid) -> bool {
-        self.pairs.iter().any(|((first, second), pair)| {
-            pair.id == id
-                && ((*first == sender && pair.flows.forward.contains(&publication))
-                    || (*second == sender && pair.flows.reverse.contains(&publication)))
+    pub fn flow(&self, id: Uuid, flow_id: Uuid) -> Option<Flow> {
+        self.pairs.iter().find_map(|((first, second), pair)| {
+            if pair.id != id {
+                return None;
+            }
+            let (sender, receiver, publication_id) =
+                if let Some(publication) = pair.flows.forward.get(&flow_id) {
+                    (*first, *second, *publication)
+                } else {
+                    (*second, *first, *pair.flows.reverse.get(&flow_id)?)
+                };
+            Some(Flow {
+                id: flow_id,
+                publication_id,
+                sender,
+                receiver,
+            })
         })
     }
 
@@ -126,8 +139,20 @@ impl TransportBook {
                     id: pair.id,
                     peer_id: peer,
                     rooms: pair.flows.rooms.iter().cloned().collect(),
-                    outgoing: outgoing.iter().copied().collect(),
-                    incoming: incoming.iter().copied().collect(),
+                    outgoing: outgoing
+                        .iter()
+                        .map(|(id, publication_id)| FlowBinding {
+                            id: *id,
+                            publication_id: *publication_id,
+                        })
+                        .collect(),
+                    incoming: incoming
+                        .iter()
+                        .map(|(id, publication_id)| FlowBinding {
+                            id: *id,
+                            publication_id: *publication_id,
+                        })
+                        .collect(),
                 })
             })
             .collect()

@@ -64,7 +64,7 @@ pub enum HostAction {
     },
     FlowState {
         context: RequestContext,
-        publication_id: Uuid,
+        flow_id: Uuid,
         sender: Uuid,
         receiver: Uuid,
         ready: bool,
@@ -501,7 +501,7 @@ impl RoomHost {
                 }
                 HostAction::FlowState {
                     context,
-                    publication_id,
+                    flow_id,
                     sender,
                     receiver,
                     ready,
@@ -510,8 +510,7 @@ impl RoomHost {
                     {
                         return Err("unassigned_flow");
                     }
-                    self.room
-                        .flow_state(*publication_id, *receiver, *sender, *ready)?;
+                    self.room.flow_state(*flow_id, *receiver, *sender, *ready)?;
                 }
             }
             Ok(RoomResult::Done)

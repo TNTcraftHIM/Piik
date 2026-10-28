@@ -5,7 +5,7 @@ use crate::{
     identity::{Admission, Admitted, Identity, StoredUser},
     remote::{Binding, RemoteRoom, ReplyOwner},
     room::RoomRuntime,
-    transport::TransportBook,
+    transport::{Flow, TransportBook},
     wire::*,
 };
 use serde::{Deserialize, Serialize};
@@ -143,15 +143,15 @@ impl Channel {
                     None
                 }
                 Command::FlowState {
-                    publication_id,
+                    flow_id,
                     pair_id,
                     ready,
                 } => {
-                    let (sender, receiver) = self
-                        .flow_direction(session_id, pair_id, publication_id, ready)
+                    let flow = self
+                        .flow_direction(session_id, pair_id, flow_id, ready)
                         .ok_or("unassigned_flow")?;
                     self.room_mut(&id)?
-                        .flow_state(publication_id, receiver, sender, ready)?;
+                        .flow_state(flow.id, flow.receiver, flow.sender, ready)?;
                     None
                 }
                 command => {
@@ -213,7 +213,8 @@ impl Channel {
                     tracks.iter().any(|track| {
                         !self
                             .transports
-                            .allows(pair_id, session_id, track.publication_id)
+                            .flow(pair_id, track.flow_id)
+                            .is_some_and(|flow| flow.sender == session_id)
                     })
                 }) {
                     return Err("unassigned_publication");
@@ -514,25 +515,36 @@ impl Channel {
             | Command::RevokeRoomAccess { room_id, .. }
             | Command::Voice { room_id, .. } => Some(room_id.clone()),
             Command::Publish { publication } => Some(publication.room_id.clone()),
-            Command::Unpublish { publication_id }
-            | Command::Subscribe { publication_id, .. }
-            | Command::FlowState { publication_id, .. } => self
-                .publication_room(*publication_id)
-                .map(|room| room.policy().id.clone())
-                .or_else(|| {
-                    self.remote.iter().find_map(|(id, room)| {
-                        room.projection
-                            .as_ref()
-                            .is_some_and(|p| {
-                                p.views.values().any(|view| {
-                                    view.publications.iter().any(|p| p.id == *publication_id)
-                                })
-                            })
-                            .then(|| id.clone())
-                    })
-                }),
+            Command::Unpublish { publication_id } | Command::Subscribe { publication_id, .. } => {
+                self.publication_room_id(*publication_id)
+            }
+            Command::FlowState {
+                flow_id, pair_id, ..
+            } => self
+                .transports
+                .flow(*pair_id, *flow_id)
+                .and_then(|flow| self.publication_room_id(flow.publication_id)),
             _ => None,
         }
+    }
+
+    fn publication_room_id(&self, publication_id: Uuid) -> Option<String> {
+        self.publication_room(publication_id)
+            .map(|room| room.policy().id.clone())
+            .or_else(|| {
+                self.remote.iter().find_map(|(id, room)| {
+                    room.projection
+                        .as_ref()
+                        .is_some_and(|projection| {
+                            projection.views.values().any(|view| {
+                                view.publications
+                                    .iter()
+                                    .any(|publication| publication.id == publication_id)
+                            })
+                        })
+                        .then(|| id.clone())
+                })
+            })
     }
 
     pub(crate) fn register_host(
@@ -673,18 +685,18 @@ impl Channel {
                 target: self.identity.member(user_id)?,
             },
             Command::FlowState {
-                publication_id,
+                flow_id,
                 pair_id,
                 ready,
             } => {
-                let (sender, receiver) = self
-                    .flow_direction(context.session_id, pair_id, publication_id, ready)
+                let flow = self
+                    .flow_direction(context.session_id, pair_id, flow_id, ready)
                     .ok_or("unassigned_flow")?;
                 HostAction::FlowState {
                     context,
-                    publication_id,
-                    sender,
-                    receiver,
+                    flow_id,
+                    sender: flow.sender,
+                    receiver: flow.receiver,
                     ready,
                 }
             }
@@ -697,17 +709,11 @@ impl Channel {
         &self,
         reporter: Uuid,
         pair: Uuid,
-        publication: Uuid,
+        flow_id: Uuid,
         ready: bool,
-    ) -> Option<(Uuid, Uuid)> {
-        let peer = self.peer(reporter, pair)?;
-        if self.transports.allows(pair, peer, publication) {
-            Some((peer, reporter))
-        } else if !ready && self.transports.allows(pair, reporter, publication) {
-            Some((reporter, peer))
-        } else {
-            None
-        }
+    ) -> Option<Flow> {
+        let flow = self.transports.flow(pair, flow_id)?;
+        (flow.receiver == reporter || (!ready && flow.sender == reporter)).then_some(flow)
     }
 
     pub(crate) fn current_report(&self, session: Uuid, command: &Command) -> bool {
@@ -719,11 +725,11 @@ impl Channel {
                     && self.transports.serves_room(*pair_id, room_id)
             }
             Command::FlowState {
-                publication_id,
+                flow_id,
                 pair_id,
                 ready,
             } => self
-                .flow_direction(session, *pair_id, *publication_id, *ready)
+                .flow_direction(session, *pair_id, *flow_id, *ready)
                 .is_some(),
             Command::LinkState { pair_id, .. } => self.peer(session, *pair_id).is_some(),
             _ => true,
@@ -890,8 +896,22 @@ impl Channel {
                 }
             }
         }
+        let mut flow_ids: BTreeSet<_> = self
+            .rooms
+            .values()
+            .flat_map(RoomRuntime::flows)
+            .map(|flow| flow.id)
+            .chain(
+                self.remote
+                    .iter()
+                    .filter(|(other, _)| other.as_str() != id)
+                    .filter_map(|(_, room)| room.projection.as_ref())
+                    .flat_map(|projection| projection.flows.iter().map(|flow| flow.id)),
+            )
+            .collect();
         for flow in &projection.flows {
-            if flow.sender == flow.receiver
+            if !flow_ids.insert(flow.id)
+                || flow.sender == flow.receiver
                 || !endpoints.contains_key(&flow.sender)
                 || !endpoints.contains_key(&flow.receiver)
                 || !projection.views.get(&flow.sender).is_some_and(|v| {

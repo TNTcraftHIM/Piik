@@ -133,6 +133,10 @@ DataChannel at both endpoints. Voice follows the needed paths of that tree in
 either direction; a participant can forward without joining or hearing the call.
 Leaving the room view ends reading, while active media and necessary transit remain.
 
+Each media flow has a lifetime separate from its publication and shared connection.
+Unwatching and watching again creates a new flow; late readiness or failure reports
+from the retired flow cannot change the replacement or close the room's base path.
+
 Each screen keeps its own distribution plan. Startup reuses ready base paths,
 including required non-viewing transit. If those paths cannot carry the picture,
 the same plan seeks an alternative through the source or ready media relays.

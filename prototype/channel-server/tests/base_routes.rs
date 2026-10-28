@@ -100,7 +100,8 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     assert!(
         !pair(&network, host, viewer_session, &room)
             .incoming
-            .contains(&speaking),
+            .iter()
+            .any(|flow| flow.publication_id == speaking),
         "one endpoint report is insufficient"
     );
     command(
@@ -111,7 +112,8 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     assert!(
         pair(&network, host, viewer_session, &room)
             .incoming
-            .contains(&speaking),
+            .iter()
+            .any(|flow| flow.publication_id == speaking),
         "both reports establish the voice path"
     );
     voice(&mut network, host, &room, false);
@@ -183,11 +185,11 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
         json!({"type":"base_state", "roomId":room, "pairId":bc.id, "ready":true}),
     );
     assert!(
-        network
-            .state(c)
-            .pairs
+        network.state(c).pairs.iter().all(|p| !p
+            .incoming
             .iter()
-            .all(|p| !p.incoming.contains(&from_b) && !p.incoming.contains(&from_d)),
+            .any(|flow| flow.publication_id == from_b)
+            && !p.incoming.iter().any(|flow| flow.publication_id == from_d)),
         "one endpoint's open report cannot make a usable base edge"
     );
     command(
@@ -212,7 +214,7 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
             .state(d)
             .pairs
             .iter()
-            .all(|p| !p.incoming.contains(&from_b)),
+            .all(|p| !p.incoming.iter().any(|flow| flow.publication_id == from_b)),
         "the replacement also needs both endpoint reports"
     );
     command(
@@ -222,8 +224,14 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
     );
     let cb = pair(&network, c, bs, &room);
     let cd = pair(&network, c, ds, &room);
-    assert!(cb.incoming.contains(&from_b) && cb.outgoing.contains(&from_d));
-    assert!(cd.incoming.contains(&from_d) && cd.outgoing.contains(&from_b));
+    assert!(
+        cb.incoming.iter().any(|flow| flow.publication_id == from_b)
+            && cb.outgoing.iter().any(|flow| flow.publication_id == from_d)
+    );
+    assert!(
+        cd.incoming.iter().any(|flow| flow.publication_id == from_d)
+            && cd.outgoing.iter().any(|flow| flow.publication_id == from_b)
+    );
     assert!(
         !network.state(c).subscriptions.contains(&from_b)
             && !network.state(c).subscriptions.contains(&from_d)
@@ -234,11 +242,10 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
     );
     for (connection, own_voice) in [(b, from_b), (d, from_d)] {
         assert!(
-            network
-                .state(connection)
-                .pairs
+            network.state(connection).pairs.iter().all(|p| !p
+                .incoming
                 .iter()
-                .all(|p| !p.incoming.contains(&own_voice)),
+                .any(|flow| flow.publication_id == own_voice)),
             "a speaker never gets its own publication back"
         );
     }
@@ -258,7 +265,7 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
         .state(b)
         .pairs
         .iter()
-        .find(|p| p.incoming.contains(&screen))
+        .find(|p| p.incoming.iter().any(|flow| flow.publication_id == screen))
         .unwrap()
         .id;
     assert_eq!(
@@ -275,7 +282,7 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
             .state(b)
             .pairs
             .iter()
-            .find(|p| p.incoming.contains(&screen))
+            .find(|p| p.incoming.iter().any(|flow| flow.publication_id == screen))
             .unwrap()
             .id,
         independent,
@@ -334,7 +341,7 @@ fn failed_base_data_channel_repairs_its_lease_without_closing_a_shared_screen_pa
             .state(b)
             .pairs
             .iter()
-            .find(|p| p.incoming.contains(&screen))
+            .find(|p| p.incoming.iter().any(|flow| flow.publication_id == screen))
             .unwrap()
             .id,
         bc.id
@@ -357,7 +364,7 @@ fn failed_base_data_channel_repairs_its_lease_without_closing_a_shared_screen_pa
         .state(b)
         .pairs
         .iter()
-        .find(|p| p.incoming.contains(&screen))
+        .find(|p| p.incoming.iter().any(|flow| flow.publication_id == screen))
         .unwrap();
     assert_eq!(
         retained.id, bc.id,
@@ -512,6 +519,101 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
 }
 
 #[test]
+fn retired_picture_report_cannot_fail_recreated_flow_on_retained_base_pair() {
+    let mut network = RoomNetwork::new();
+    let source = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (source_session, _) = join(&mut network, source, None);
+    join(&mut network, viewer, None);
+    let room = network.create(source, RoomAccess::Public, false);
+    browse(&mut network, viewer, &room, true);
+    let lease = pair(&network, viewer, source_session, &room);
+    for endpoint in [source, viewer] {
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"base_state", "roomId":room, "pairId":lease.id, "ready":true}),
+        );
+    }
+    let picture = publish(&mut network, source, &room, "screen");
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":picture, "enabled":true}),
+    );
+    let old_flow = pair(&network, viewer, source_session, &room)
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == picture)
+        .unwrap()
+        .id;
+    assert!(pair(&network, viewer, source_session, &room)
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == picture));
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":picture, "enabled":false}),
+    );
+    let retired = pair(&network, viewer, source_session, &room);
+    assert_eq!(retired.id, lease.id);
+    assert!(!retired
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == picture));
+    assert!(retired.rooms.contains(&room));
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":picture, "enabled":true}),
+    );
+    assert!(pair(&network, viewer, source_session, &room)
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == picture));
+
+    // This callback belongs to the retired media reader, while its physical
+    // base pair and publication now serve a newly requested picture flow.
+    let recreated = pair(&network, viewer, source_session, &room)
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == picture)
+        .unwrap()
+        .id;
+    assert_ne!(recreated, old_flow);
+    for ready in [true, false] {
+        let ignored = network.command(
+            viewer,
+            json!({"type":"flow_state", "flowId":old_flow, "pairId":lease.id, "ready":ready}),
+        );
+        assert!(
+            ignored.events.is_empty(),
+            "retired reports are rejected before reaching the current route"
+        );
+    }
+    let current = pair(&network, viewer, source_session, &room);
+    assert_eq!(current.id, lease.id);
+    assert!(current.rooms.contains(&room));
+    assert!(
+        current
+            .incoming
+            .iter()
+            .any(|flow| flow.publication_id == picture),
+        "a retired failure must not remove the replacement picture flow"
+    );
+    assert_eq!(
+        current
+            .incoming
+            .iter()
+            .find(|flow| flow.publication_id == picture)
+            .unwrap()
+            .id,
+        recreated
+    );
+}
+
+#[test]
 fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     let mut network = RoomNetwork::new();
     let source = Uuid::new_v4();
@@ -578,7 +680,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     command(
         &mut network,
         relay,
-        json!({"type":"flow_state","publicationId":picture,"pairId":root_relay.id,"ready":true}),
+        json!({"type":"flow_state","flowId":root_relay.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_relay.id,"ready":true}),
     );
     let companion = publish(&mut network, viewer, &room, "screen");
     command(
@@ -591,12 +693,12 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     // report failure for somebody else's otherwise-current pair.
     let ignored = network.command(
         source,
-        json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":true}),
+        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":true}),
     );
     assert!(ignored.events.is_empty());
     let ignored = network.command(
         stranger,
-        json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":false}),
+        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":false}),
     );
     assert!(ignored.events.is_empty());
     // This receiver has never supplied ready=true. A real add-track/codec failure
@@ -604,21 +706,31 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     command(
         &mut network,
         source,
-        json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":false}),
+        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":false}),
     );
     let repaired = network.state(viewer);
     assert!(repaired
         .pairs
         .iter()
-        .any(|pair| pair.peer_id == relay_session && pair.incoming.contains(&picture)));
+        .any(|pair| pair.peer_id == relay_session
+            && pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == picture)));
     let retained = repaired
         .pairs
         .iter()
         .find(|pair| pair.id == root_viewer.id)
         .unwrap();
     assert!(retained.rooms.contains(&room));
-    assert!(retained.outgoing.contains(&companion));
-    assert!(!retained.incoming.contains(&picture));
+    assert!(retained
+        .outgoing
+        .iter()
+        .any(|flow| flow.publication_id == companion));
+    assert!(!retained
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == picture));
     assert_eq!(
         serde_json::to_value(&repaired.files).unwrap(),
         serde_json::to_value(&before.files).unwrap()
@@ -635,14 +747,26 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
             .pairs
             .iter()
             .find(|pair| {
-                pair.incoming.contains(&publication) || pair.outgoing.contains(&publication)
+                pair.incoming
+                    .iter()
+                    .any(|flow| flow.publication_id == publication)
+                    || pair
+                        .outgoing
+                        .iter()
+                        .any(|flow| flow.publication_id == publication)
             })
             .unwrap();
         let current = repaired
             .pairs
             .iter()
             .find(|pair| {
-                pair.incoming.contains(&publication) || pair.outgoing.contains(&publication)
+                pair.incoming
+                    .iter()
+                    .any(|flow| flow.publication_id == publication)
+                    || pair
+                        .outgoing
+                        .iter()
+                        .any(|flow| flow.publication_id == publication)
             })
             .unwrap();
         assert_eq!(current.id, old.id);
@@ -650,19 +774,27 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     // The physical pair still serves other work, but its old picture lease no
     // longer authorizes either endpoint to damage the replacement route.
     for endpoint in [source, viewer] {
-        let ignored = network.command(endpoint, json!({"type":"flow_state","publicationId":picture,"pairId":root_viewer.id,"ready":false}));
+        let ignored = network.command(endpoint, json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":false}));
         assert!(ignored.events.is_empty());
     }
     assert!(network
         .state(viewer)
         .pairs
         .iter()
-        .any(|pair| pair.peer_id == relay_session && pair.incoming.contains(&picture)));
+        .any(|pair| pair.peer_id == relay_session
+            && pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == picture)));
     assert!(network
         .state(source)
         .pairs
         .iter()
-        .any(|pair| pair.peer_id == viewer_session && pair.incoming.contains(&companion)));
+        .any(|pair| pair.peer_id == viewer_session
+            && pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == companion)));
 }
 
 #[test]
@@ -752,7 +884,11 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
         .state(source)
         .pairs
         .iter()
-        .filter(|pair| pair.outgoing.contains(&picture))
+        .filter(|pair| {
+            pair.outgoing
+                .iter()
+                .any(|flow| flow.publication_id == picture)
+        })
         .collect();
     assert_eq!(
         source_outputs.len(),
@@ -771,7 +907,10 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
         transit_view
             .pairs
             .iter()
-            .filter(|pair| pair.incoming.contains(&picture))
+            .filter(|pair| pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == picture))
             .count(),
         1
     );
@@ -779,7 +918,10 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
         transit_view
             .pairs
             .iter()
-            .filter(|pair| pair.outgoing.contains(&picture))
+            .filter(|pair| pair
+                .outgoing
+                .iter()
+                .any(|flow| flow.publication_id == picture))
             .count(),
         2
     );
@@ -790,7 +932,11 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
                 .state(*connection)
                 .pairs
                 .iter()
-                .filter(|pair| pair.outgoing.contains(&picture))
+                .filter(|pair| {
+                    pair.outgoing
+                        .iter()
+                        .any(|flow| flow.publication_id == picture)
+                })
                 .count()
         })
         .sum();
@@ -798,6 +944,14 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
         copies, 6,
         "two downstream viewers share each common suffix edge exactly once"
     );
+    let forwarding_before: Vec<_> = network
+        .state(connections[0])
+        .pairs
+        .iter()
+        .flat_map(|pair| pair.incoming.iter().chain(&pair.outgoing))
+        .filter(|flow| flow.publication_id == picture)
+        .map(|flow| flow.id)
+        .collect();
     // Local unwatch does not retire the root's necessary forwarding duty.
     command(
         &mut network,
@@ -808,16 +962,26 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
         .state(connections[0])
         .subscriptions
         .contains(&picture));
-    assert!(network
+    assert!(network.state(connections[0]).pairs.iter().any(|pair| pair
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == picture)));
+    assert!(network.state(connections[0]).pairs.iter().any(|pair| pair
+        .outgoing
+        .iter()
+        .any(|flow| flow.publication_id == picture)));
+    let forwarding_after: Vec<_> = network
         .state(connections[0])
         .pairs
         .iter()
-        .any(|pair| pair.incoming.contains(&picture)));
-    assert!(network
-        .state(connections[0])
-        .pairs
-        .iter()
-        .any(|pair| pair.outgoing.contains(&picture)));
+        .flat_map(|pair| pair.incoming.iter().chain(&pair.outgoing))
+        .filter(|flow| flow.publication_id == picture)
+        .map(|flow| flow.id)
+        .collect();
+    assert_eq!(
+        forwarding_after, forwarding_before,
+        "unwatch preserves necessary transit leases"
+    );
     let before: Vec<_> = connections
         .iter()
         .map(|connection| {
@@ -825,12 +989,26 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
                 .state(*connection)
                 .pairs
                 .iter()
-                .filter(|pair| pair.incoming.contains(&picture) || pair.outgoing.contains(&picture))
+                .filter(|pair| {
+                    pair.incoming
+                        .iter()
+                        .any(|flow| flow.publication_id == picture)
+                        || pair
+                            .outgoing
+                            .iter()
+                            .any(|flow| flow.publication_id == picture)
+                })
                 .map(|pair| {
                     (
                         pair.id,
-                        pair.incoming.contains(&picture),
-                        pair.outgoing.contains(&picture),
+                        pair.incoming
+                            .iter()
+                            .find(|flow| flow.publication_id == picture)
+                            .map(|flow| flow.id),
+                        pair.outgoing
+                            .iter()
+                            .find(|flow| flow.publication_id == picture)
+                            .map(|flow| flow.id),
                     )
                 })
                 .collect::<Vec<_>>()
@@ -853,12 +1031,26 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
             .state(*connection)
             .pairs
             .iter()
-            .filter(|pair| pair.incoming.contains(&picture) || pair.outgoing.contains(&picture))
+            .filter(|pair| {
+                pair.incoming
+                    .iter()
+                    .any(|flow| flow.publication_id == picture)
+                    || pair
+                        .outgoing
+                        .iter()
+                        .any(|flow| flow.publication_id == picture)
+            })
             .map(|pair| {
                 (
                     pair.id,
-                    pair.incoming.contains(&picture),
-                    pair.outgoing.contains(&picture),
+                    pair.incoming
+                        .iter()
+                        .find(|flow| flow.publication_id == picture)
+                        .map(|flow| flow.id),
+                    pair.outgoing
+                        .iter()
+                        .find(|flow| flow.publication_id == picture)
+                        .map(|flow| flow.id),
                 )
             })
             .collect();

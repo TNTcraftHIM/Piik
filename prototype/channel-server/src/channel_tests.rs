@@ -85,7 +85,17 @@ fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
         .handle(
             relay,
             Command::FlowState {
-                publication_id: private,
+                flow_id: channel
+                    .snapshot(relay)
+                    .pairs
+                    .iter()
+                    .find(|p| p.id == pair)
+                    .unwrap()
+                    .incoming
+                    .iter()
+                    .find(|flow| flow.publication_id == private)
+                    .unwrap()
+                    .id,
                 pair_id: pair,
                 ready: true,
             },
@@ -99,7 +109,7 @@ fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
         .snapshot(relay)
         .pairs
         .iter()
-        .find(|p| p.incoming.contains(&public))
+        .find(|p| p.incoming.iter().any(|flow| flow.publication_id == public))
         .unwrap()
         .id;
     channel
@@ -116,11 +126,9 @@ fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
     assert!(!plan.contains_key(&relay));
     assert!(!plan.values().any(|parent| *parent == relay));
     assert!(plan.contains_key(&peers[2].session_id));
-    assert!(channel
-        .snapshot(relay)
-        .pairs
-        .iter()
-        .any(|p| p.id == public_pair && p.incoming.contains(&public)));
+    assert!(channel.snapshot(relay).pairs.iter().any(
+        |p| p.id == public_pair && p.incoming.iter().any(|flow| flow.publication_id == public)
+    ));
 }
 
 fn join(channel: &mut Channel, owner: bool) -> Admitted {
@@ -207,8 +215,22 @@ fn concurrent_sources_share_one_pair_and_retire_independently() {
     watch(&mut channel, second.session_id, a);
     let before = channel.snapshot(first.session_id);
     assert_eq!(before.pairs.len(), 1);
-    assert_eq!(before.pairs[0].outgoing, vec![a]);
-    assert_eq!(before.pairs[0].incoming, vec![b]);
+    assert_eq!(
+        before.pairs[0]
+            .outgoing
+            .iter()
+            .map(|flow| flow.publication_id)
+            .collect::<Vec<_>>(),
+        vec![a]
+    );
+    assert_eq!(
+        before.pairs[0]
+            .incoming
+            .iter()
+            .map(|flow| flow.publication_id)
+            .collect::<Vec<_>>(),
+        vec![b]
+    );
     channel
         .handle(
             first.session_id,
@@ -218,7 +240,14 @@ fn concurrent_sources_share_one_pair_and_retire_independently() {
         .unwrap();
     let after = channel.snapshot(first.session_id);
     assert_eq!(after.pairs[0].id, before.pairs[0].id);
-    assert_eq!(after.pairs[0].incoming, vec![b]);
+    assert_eq!(
+        after.pairs[0]
+            .incoming
+            .iter()
+            .map(|flow| flow.publication_id)
+            .collect::<Vec<_>>(),
+        vec![b]
+    );
     assert!(after.pairs[0].outgoing.is_empty());
     assert!(channel
         .handle(
@@ -271,7 +300,12 @@ fn selective_subscriptions_ready_relays_and_failed_pair_ids_are_fenced() {
         .handle(
             relay,
             Command::FlowState {
-                publication_id: publication,
+                flow_id: source_pairs[0]
+                    .outgoing
+                    .iter()
+                    .find(|flow| flow.publication_id == publication)
+                    .unwrap()
+                    .id,
                 pair_id: source_pairs[0].id,
                 ready: true,
             },
@@ -281,10 +315,10 @@ fn selective_subscriptions_ready_relays_and_failed_pair_ids_are_fenced() {
     assert_eq!(parents(&channel, publication).len(), 3);
     assert_eq!(channel.snapshot(source.session_id).pairs.len(), 2);
     let relay_snapshot = channel.snapshot(relay);
-    assert!(relay_snapshot
-        .pairs
+    assert!(relay_snapshot.pairs.iter().any(|pair| pair
+        .outgoing
         .iter()
-        .any(|pair| pair.outgoing.contains(&publication)));
+        .any(|flow| flow.publication_id == publication)));
     let healthy = source_pairs[1].clone();
     channel
         .handle(
@@ -305,7 +339,12 @@ fn selective_subscriptions_ready_relays_and_failed_pair_ids_are_fenced() {
         .handle(
             relay,
             Command::FlowState {
-                publication_id: publication,
+                flow_id: source_pairs[0]
+                    .outgoing
+                    .iter()
+                    .find(|flow| flow.publication_id == publication)
+                    .unwrap()
+                    .id,
                 pair_id: source_pairs[0].id,
                 ready: true
             },
@@ -458,7 +497,7 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
         description: None,
         candidate: None,
         tracks: Some(vec![Track {
-            publication_id: own,
+            flow_id: own,
             stream_id: "stream".into(),
         }]),
     };
@@ -478,7 +517,12 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
         description: None,
         candidate: None,
         tracks: Some(vec![Track {
-            publication_id: source,
+            flow_id: channel.snapshot(first.session_id).pairs[0]
+                .outgoing
+                .iter()
+                .find(|flow| flow.publication_id == source)
+                .unwrap()
+                .id,
             stream_id: "stream".into(),
         }]),
     };
@@ -491,13 +535,14 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
     // A physical pair combines authorized flows across rooms.
     let tracks: Vec<_> = (0..100)
         .map(|_| Track {
-            publication_id: Uuid::new_v4(),
+            flow_id: Uuid::new_v4(),
             stream_id: Uuid::new_v4().to_string(),
         })
         .collect();
     channel.transports.reconcile(
         tracks.iter().map(|track| crate::transport::Flow {
-            publication_id: track.publication_id,
+            id: track.flow_id,
+            publication_id: Uuid::new_v4(),
             sender: first.session_id,
             receiver: second.session_id,
         }),

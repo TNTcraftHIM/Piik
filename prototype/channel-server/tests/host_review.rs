@@ -476,3 +476,156 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
     );
     assert!(state.publications.iter().any(|p|p.id==publication),"acknowledged capture vanished because an unrelated ordinary room command advanced revision");
 }
+
+#[test]
+fn host_projection_rejects_cross_room_and_duplicate_live_flow_ids() {
+    use piik_channel_prototype::{
+        wire::{Event, Request},
+        Authority,
+    };
+    for duplicate_in_room in [false, true] {
+        let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let source = Uuid::new_v4();
+        let viewer = Uuid::new_v4();
+        let source_session = review_admit(&mut core, source, "invite");
+        review_admit(&mut core, viewer, "invite");
+        let state = core
+            .handle(
+                source,
+                Request {
+                    request_id: None,
+                    command: Command::SetName {
+                        name: "Source".into(),
+                    },
+                },
+                0,
+            )
+            .events
+            .into_iter()
+            .find_map(|(_, e)| {
+                if let Event::State { state } = e {
+                    Some(state)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+        let user = state
+            .sessions
+            .iter()
+            .find(|s| s.id == source_session)
+            .unwrap()
+            .user_id;
+        let mut original_flow = None;
+        let mut original_pairs: Option<serde_json::Value> = None;
+        for room in ["first-review", "second-review"] {
+            let mut host = RoomHost::new(
+                RoomState::new(
+                    room.into(),
+                    room.into(),
+                    user,
+                    RoomAccess::Public,
+                    false,
+                    None,
+                )
+                .unwrap(),
+            );
+            let input = review_register(&mut core, source, &host);
+            host.dispatch(input).unwrap();
+            review_host_turn(&mut core, source, room, host.finish(None).unwrap());
+            let publication = Uuid::new_v4();
+            for (connection, command) in [
+                (
+                    source,
+                    Command::Publish {
+                        publication: PublicationInput {
+                            id: publication,
+                            room_id: room.into(),
+                            kind: Kind::Screen,
+                            muted: false,
+                        },
+                    },
+                ),
+                (
+                    viewer,
+                    Command::Subscribe {
+                        publication_id: publication,
+                        enabled: true,
+                    },
+                ),
+            ] {
+                let effects = core.handle(
+                    connection,
+                    Request {
+                        request_id: None,
+                        command,
+                    },
+                    1,
+                );
+                let input = effects
+                    .events
+                    .into_iter()
+                    .find_map(|(_, event)| {
+                        if let Event::HostInput { input, .. } = event {
+                            Some(input)
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap();
+                host.dispatch(input).unwrap();
+                let mut output = host.finish(None).unwrap();
+                if room == "second-review" && !output.projection.flows.is_empty() {
+                    if duplicate_in_room {
+                        output
+                            .projection
+                            .flows
+                            .push(output.projection.flows[0].clone());
+                    } else {
+                        output.projection.flows[0].id = original_flow.unwrap();
+                    }
+                    let effects = review_host_turn(&mut core, source, room, output);
+                    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")), "conflicting live flow ID must be rejected (same room: {duplicate_in_room})");
+                    let state = core
+                        .handle(
+                            source,
+                            Request {
+                                request_id: None,
+                                command: Command::SetName {
+                                    name: "Source".into(),
+                                },
+                            },
+                            2,
+                        )
+                        .events
+                        .into_iter()
+                        .find_map(|(target, e)| {
+                            if let Event::State { state } = e {
+                                (target == source).then_some(state)
+                            } else {
+                                None
+                            }
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        serde_json::to_value(&state.pairs).unwrap(),
+                        original_pairs.as_ref().unwrap().clone(),
+                        "rejected projection must preserve the original shared pair and flow"
+                    );
+                    break;
+                }
+                let effects = review_host_turn(&mut core, source, room, output.clone());
+                if room == "first-review" && !output.projection.flows.is_empty() {
+                    original_flow = Some(output.projection.flows[0].id);
+                    original_pairs = effects.events.into_iter().find_map(|(target, event)| {
+                        if let Event::State { state } = event {
+                            (target == source).then(|| serde_json::to_value(state.pairs).unwrap())
+                        } else {
+                            None
+                        }
+                    });
+                }
+            }
+        }
+    }
+}

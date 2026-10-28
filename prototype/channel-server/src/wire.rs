@@ -114,7 +114,7 @@ pub enum Command {
         state: LinkState,
     },
     FlowState {
-        publication_id: Uuid,
+        flow_id: Uuid,
         pair_id: Uuid,
         ready: bool,
     },
@@ -260,7 +260,7 @@ pub struct Candidate {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Track {
-    pub publication_id: Uuid,
+    pub flow_id: Uuid,
     pub stream_id: String,
 }
 
@@ -334,8 +334,15 @@ pub struct PairInfo {
     pub id: Uuid,
     pub peer_id: Uuid,
     pub rooms: Vec<String>,
-    pub outgoing: Vec<Uuid>,
-    pub incoming: Vec<Uuid>,
+    pub outgoing: Vec<FlowBinding>,
+    pub incoming: Vec<FlowBinding>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlowBinding {
+    pub id: Uuid,
+    pub publication_id: Uuid,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
