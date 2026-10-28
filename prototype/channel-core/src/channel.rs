@@ -1,10 +1,8 @@
 use crate::{
-    access::{RoomPermission, RoomState},
-    history::{HistoryRequest, HISTORY_WINDOW},
-    host::{HostAction, HostOutput, RequestContext, RoomResult, RoomSummary},
+    history::HISTORY_WINDOW,
+    host::{HostAction, HostOutput, RequestContext, RoomSummary},
     identity::{Admission, Admitted, Identity, StoredUser},
     remote::{Binding, RemoteRoom, ReplyOwner},
-    room::RoomRuntime,
     transport::{Flow, TransportBook},
     wire::*,
 };
@@ -13,14 +11,13 @@ use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use uuid::Uuid;
 
-/// Local composition of domain admission, room runtimes and shared transports.
+/// Domain admission, hosted-room directory and shared transport leases.
 /// Browsing selects a presentation; it never owns another room's activities.
 #[derive(Clone)]
 pub struct Channel {
     pub identity: Identity,
     pub(crate) now: u64,
     id: Uuid,
-    rooms: BTreeMap<String, RoomRuntime>,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
     ice_servers: Vec<Value>,
@@ -35,84 +32,29 @@ pub struct Outcome {
     pub events: Vec<(Uuid, Event)>,
     pub broadcast: bool,
     pub leave: bool,
-    pub history: Option<HistoryRequest>,
 }
 
 impl Channel {
     pub fn new(owner_key: String, invite_key: String, ice_servers: Vec<Value>) -> Self {
         let identity = Identity::new(owner_key, invite_key);
-        let rooms = [
-            ("living", "Living room"),
-            ("studio", "Studio"),
-            ("quiet", "Quiet corner"),
-        ]
-        .into_iter()
-        .map(|(id, name)| {
-            let policy = RoomState::new(
-                id.into(),
-                name.into(),
-                identity.owner_id,
-                RoomAccess::Public,
-                false,
-                None,
-            )
-            .unwrap();
-            (id.to_owned(), RoomRuntime::new(policy))
-        })
-        .collect();
         Self {
             identity,
             now: 0,
             id: Uuid::new_v4(),
-            rooms,
             remote: BTreeMap::new(),
             transports: TransportBook::default(),
             ice_servers,
         }
     }
 
-    #[cfg(test)]
     pub fn join(
         &mut self,
         input: Admission<'_>,
         connection: Uuid,
         now: u64,
     ) -> Result<Admitted, &'static str> {
-        self.join_room(input, connection, now, None)
-    }
-
-    pub fn join_room(
-        &mut self,
-        input: Admission<'_>,
-        connection: Uuid,
-        now: u64,
-        room_id: Option<&str>,
-    ) -> Result<Admitted, &'static str> {
         self.now = now;
-        let invited_room = room_id
-            .filter(|id| {
-                self.rooms
-                    .get(*id)
-                    .is_some_and(|room| input.key.is_some_and(|key| room.accepts_invite(key)))
-            })
-            .map(str::to_owned);
-        let key = invited_room
-            .as_ref()
-            .map(|_| self.identity.invite_key.clone());
-        let admitted = self.identity.admit(
-            Admission {
-                key: key.as_deref().or(input.key),
-                ..input
-            },
-            connection,
-            now,
-        )?;
-        if let Some(id) = invited_room {
-            self.rooms
-                .get_mut(&id)
-                .unwrap()
-                .grant_invited(admitted.user_id);
-        }
+        let admitted = self.identity.admit(input, connection, now)?;
         self.reconcile();
         Ok(admitted)
     }
@@ -130,68 +72,9 @@ impl Channel {
             .get(&session_id)
             .ok_or("session_expired")?
             .user_id;
-        let member = self.identity.member(user_id)?;
-        if let Some(id) = self
-            .command_room(&command)
-            .filter(|id| self.rooms.contains_key(id))
-        {
-            if let Command::Publish { publication } = &command {
-                if self
-                    .publication_room(publication.id)
-                    .is_some_and(|room| room.policy().id != id)
-                {
-                    return Err("publication_identity_conflict");
-                }
-            }
-            let reading_changed = matches!(&command, Command::Browse { .. });
-            let mut events = Vec::new();
-            let history = match command {
-                Command::RevokeRoomAccess { user_id, .. } => {
-                    let target = self.identity.member(user_id)?;
-                    self.room_mut(&id)?.revoke(member, target)?;
-                    None
-                }
-                Command::FlowState {
-                    flow_id,
-                    pair_id,
-                    state,
-                } => {
-                    let flow = self
-                        .flow_direction(session_id, pair_id, flow_id, state)
-                        .ok_or("unassigned_flow")?;
-                    self.room_mut(&id)?
-                        .flow_state(flow.id, flow.receiver, flow.sender, state, now)?;
-                    None
-                }
-                command => {
-                    let operation = self
-                        .room_mut(&id)?
-                        .command(member, session_id, command, now)?;
-                    if let RoomResult::Invite { key } = operation.result {
-                        events.push((
-                            session_id,
-                            Event::RoomInvite {
-                                room_id: id,
-                                key,
-                                request_id: None,
-                            },
-                        ));
-                    }
-                    operation.history
-                }
-            };
-            self.reconcile();
-            return Ok(Outcome {
-                events,
-                broadcast: reading_changed || history.is_none(),
-                leave: false,
-                history,
-            });
-        }
         let mut events = Vec::new();
         let mut broadcast = false;
         let mut leave = false;
-        let history = None;
         match command {
             Command::Join { .. } => return Err("already_joined"),
             Command::SetName { name } => {
@@ -243,9 +126,6 @@ impl Channel {
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
                 if matches!(state, LinkState::Failed) {
                     self.transports.retire(pair_id);
-                    for room in self.rooms.values_mut() {
-                        room.failed_pair(session_id, peer);
-                    }
                     let affected: Vec<_> = self
                         .remote
                         .iter_mut()
@@ -298,26 +178,10 @@ impl Channel {
             events,
             broadcast,
             leave,
-            history,
         })
     }
 
-    fn room(&self, id: &str) -> Result<&RoomRuntime, &'static str> {
-        self.rooms.get(id).ok_or("room_unavailable")
-    }
-    fn room_mut(&mut self, id: &str) -> Result<&mut RoomRuntime, &'static str> {
-        self.rooms.get_mut(id).ok_or("room_unavailable")
-    }
-    fn publication_room(&self, id: Uuid) -> Option<&RoomRuntime> {
-        self.rooms
-            .values()
-            .find(|room| room.publication(id).is_some())
-    }
-
     pub(crate) fn retire_session(&mut self, session_id: Uuid) {
-        for room in self.rooms.values_mut() {
-            room.retire_session(session_id);
-        }
         self.identity.sessions.remove(&session_id);
         for remote in self.remote.values_mut() {
             if remote
@@ -342,46 +206,8 @@ impl Channel {
         true
     }
 
-    pub fn authorize(
-        &self,
-        user: Uuid,
-        room_id: &str,
-        permission: RoomPermission,
-    ) -> Result<(), &'static str> {
-        if self.remote.contains_key(room_id) {
-            return Err("attachments_unavailable");
-        }
-        self.room(room_id)?
-            .authorize(self.identity.member(user)?, permission)
-    }
-
-    pub fn history_audience(&self, room_id: &str) -> Vec<Uuid> {
-        self.identity
-            .sessions
-            .values()
-            .filter(|session| {
-                if let Some(room) = self.rooms.get(room_id) {
-                    room.reading(session.id)
-                        && self.identity.member(session.user_id).is_ok_and(|member| {
-                            room.authorize(member, RoomPermission::Read).is_ok()
-                        })
-                } else {
-                    self.remote
-                        .get(room_id)
-                        .and_then(|room| room.projection.as_ref())
-                        .and_then(|projection| projection.views.get(&session.id))
-                        .is_some_and(|view| view.room.authorized && view.room.reading)
-                }
-            })
-            .filter_map(|session| session.connection)
-            .collect()
-    }
-
     pub(crate) fn reconcile(&mut self) {
         let endpoints = self.identity.endpoints();
-        for room in self.rooms.values_mut() {
-            room.reconcile(&endpoints, self.now);
-        }
         for room in self.remote.values_mut() {
             if let Some(projection) = &mut room.projection {
                 projection
@@ -444,37 +270,25 @@ impl Channel {
             }
         }
         self.transports.reconcile(
-            self.rooms.values().flat_map(|room| room.flows()).chain(
-                self.remote
-                    .values()
-                    .filter(|room| room.binding.is_some())
-                    .filter_map(|room| room.projection.as_ref())
-                    .flat_map(|p| p.flows.iter().cloned()),
-            ),
-            self.rooms
+            self.remote
                 .values()
-                .flat_map(|room| room.base_links())
-                .chain(
-                    self.remote
-                        .values()
-                        .filter(|room| room.binding.is_some())
-                        .filter_map(|room| room.projection.as_ref())
-                        .flat_map(|projection| projection.base_links.iter().cloned()),
-                ),
+                .filter(|room| room.binding.is_some())
+                .filter_map(|room| room.projection.as_ref())
+                .flat_map(|projection| projection.flows.iter().cloned()),
+            self.remote
+                .values()
+                .filter(|room| room.binding.is_some())
+                .filter_map(|room| room.projection.as_ref())
+                .flat_map(|projection| projection.base_links.iter().cloned()),
         );
     }
 
     pub fn export_state(&self) -> DurableState {
         DurableState {
-            version: 2,
+            version: 3,
             id: self.id,
             owner_id: self.identity.owner_id,
             users: self.identity.export_users(),
-            rooms: self
-                .rooms
-                .iter()
-                .map(|(id, room)| (id.clone(), room.policy().clone()))
-                .collect(),
             hosted_rooms: self
                 .remote
                 .iter()
@@ -484,7 +298,7 @@ impl Channel {
     }
 
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
-        if state.version != 2 || state.rooms.len() + state.hosted_rooms.len() > 32 {
+        if state.version != 3 || state.hosted_rooms.len() > 32 {
             return Err("invalid_state");
         }
         let mut identity = Identity::new(
@@ -494,11 +308,6 @@ impl Channel {
         identity.restore_users(state.owner_id, state.users)?;
         self.identity = identity;
         self.id = state.id;
-        self.rooms = state
-            .rooms
-            .into_iter()
-            .map(|(id, policy)| (id, RoomRuntime::new(policy)))
-            .collect();
         self.remote = state
             .hosted_rooms
             .into_iter()
@@ -540,22 +349,18 @@ impl Channel {
     }
 
     fn publication_room_id(&self, publication_id: Uuid) -> Option<String> {
-        self.publication_room(publication_id)
-            .map(|room| room.policy().id.clone())
-            .or_else(|| {
-                self.remote.iter().find_map(|(id, room)| {
-                    room.projection
-                        .as_ref()
-                        .is_some_and(|projection| {
-                            projection.views.values().any(|view| {
-                                view.publications
-                                    .iter()
-                                    .any(|publication| publication.id == publication_id)
-                            })
-                        })
-                        .then(|| id.clone())
+        self.remote.iter().find_map(|(id, room)| {
+            room.projection
+                .as_ref()
+                .is_some_and(|projection| {
+                    projection.views.values().any(|view| {
+                        view.publications
+                            .iter()
+                            .any(|publication| publication.id == publication_id)
+                    })
                 })
-            })
+                .then(|| id.clone())
+        })
     }
 
     pub(crate) fn register_host(
@@ -579,10 +384,7 @@ impl Channel {
         {
             return Err("invalid_room_name");
         }
-        if self.rooms.contains_key(&summary.id) {
-            return Err("room_identity_conflict");
-        }
-        if !self.remote.contains_key(&summary.id) && self.rooms.len() + self.remote.len() >= 32 {
+        if !self.remote.contains_key(&summary.id) && self.remote.len() >= 32 {
             return Err("room_limit");
         }
         let room_id = summary.id.clone();
@@ -748,15 +550,8 @@ impl Channel {
         }
     }
 
-    pub(crate) fn expire_media(&mut self, now: u64) -> (bool, Vec<(Uuid, Event)>) {
+    pub(crate) fn wake_hosts(&mut self, now: u64) -> Vec<(Uuid, Event)> {
         self.now = now;
-        let mut changed = false;
-        for room in self.rooms.values_mut() {
-            changed |= room.expire_media(now);
-        }
-        if changed {
-            self.reconcile();
-        }
         let due: Vec<_> = self
             .remote
             .iter()
@@ -789,7 +584,7 @@ impl Channel {
                 events.push(event);
             }
         }
-        (changed, events)
+        events
     }
 
     pub(crate) fn sync_hosts(&mut self, invalidate_projection: bool) -> Vec<(Uuid, Event)> {
@@ -948,7 +743,6 @@ impl Channel {
                     || !endpoints.get(&publication.session_id).is_some_and(|e| {
                         e.member.user_id == publication.user_id && e.member.participates
                     })
-                    || self.publication_room(publication.id).is_some()
                     || self.remote.iter().any(|(other_id, other)| {
                         other_id != id
                             && other.projection.as_ref().is_some_and(|p| {
@@ -963,7 +757,11 @@ impl Channel {
             }
         }
         let mut publications = BTreeMap::new();
-        for publication in projection.views.values().flat_map(|view| &view.publications) {
+        for publication in projection
+            .views
+            .values()
+            .flat_map(|view| &view.publications)
+        {
             let source = (
                 publication.session_id,
                 publication.user_id,
@@ -981,17 +779,11 @@ impl Channel {
             return Err("invalid_room_projection");
         }
         let mut flow_ids: BTreeSet<_> = self
-            .rooms
-            .values()
-            .flat_map(RoomRuntime::flows)
-            .map(|flow| flow.id)
-            .chain(
-                self.remote
-                    .iter()
-                    .filter(|(other, _)| other.as_str() != id)
-                    .filter_map(|(_, room)| room.projection.as_ref())
-                    .flat_map(|projection| projection.flows.iter().map(|flow| flow.id)),
-            )
+            .remote
+            .iter()
+            .filter(|(other, _)| other.as_str() != id)
+            .filter_map(|(_, room)| room.projection.as_ref())
+            .flat_map(|projection| projection.flows.iter().map(|flow| flow.id))
             .collect();
         let previous: BTreeMap<_, _> = room
             .projection
@@ -999,7 +791,11 @@ impl Channel {
             .flat_map(|projection| &projection.flows)
             .map(|flow| (flow.id, flow))
             .collect();
-        let flows: BTreeMap<_, _> = projection.flows.iter().map(|flow| (flow.id, flow)).collect();
+        let flows: BTreeMap<_, _> = projection
+            .flows
+            .iter()
+            .map(|flow| (flow.id, flow))
+            .collect();
         let mut inputs = BTreeSet::new();
         for flow in &projection.flows {
             if !flow_ids.insert(flow.id)
@@ -1114,15 +910,6 @@ impl Channel {
         let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
         if let Some(member) = member {
-            for room in self.rooms.values() {
-                if let Some(snapshot) = room.snapshot(member, session_id) {
-                    rooms.push(snapshot.room);
-                    publications.extend(snapshot.publications);
-                    voice.extend(snapshot.voice);
-                    files.extend(snapshot.files);
-                    subscriptions.extend(snapshot.subscriptions);
-                }
-            }
             for room in self.remote.values() {
                 if let Some(mut snapshot) =
                     room.snapshot(member, session_id, Self::host_online(&self.identity, room))
@@ -1232,8 +1019,6 @@ pub struct DurableState {
     id: Uuid,
     owner_id: Uuid,
     users: Vec<StoredUser>,
-    rooms: BTreeMap<String, RoomState>,
-    #[serde(default)]
     hosted_rooms: BTreeMap<String, RoomSummary>,
 }
 

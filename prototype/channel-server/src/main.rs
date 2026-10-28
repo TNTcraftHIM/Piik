@@ -8,14 +8,17 @@ use axum::{
     routing::get,
     Router,
 };
+use futures_util::{Sink, SinkExt, StreamExt};
 use piik_channel_core::{
     storage,
     wire::{Event, Request},
     Authority, Effects,
 };
+use piik_channel_native::session::{self as native, Config, RoomFile};
 use std::{
     collections::BTreeMap,
-    path::PathBuf,
+    future::{Future, IntoFuture},
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -26,6 +29,7 @@ struct Client {
     events: mpsc::Sender<Event>,
     close: watch::Sender<bool>,
 }
+
 struct Hub {
     authority: Authority,
     clients: BTreeMap<Uuid, Client>,
@@ -34,6 +38,13 @@ struct Hub {
 
 impl Hub {
     fn request(&mut self, connection: Uuid, request: Request) {
+        if !self
+            .clients
+            .get(&connection)
+            .is_some_and(|client| !*client.close.borrow())
+        {
+            return;
+        }
         let metadata = self.authority.changes_metadata(&request);
         // A host has already committed its room policy. The domain's directory
         // is a projection of that authority, not a second writer that may undo it.
@@ -93,11 +104,7 @@ impl Hub {
         }
     }
 
-    fn apply(&mut self, mut effects: Effects) {
-        if let Some(history) = effects.history.take() {
-            let result = self.storage.lock().unwrap().history(&history.request);
-            effects.events.extend(history.finish(result).events);
-        }
+    fn apply(&mut self, effects: Effects) {
         for (connection, event) in effects.events {
             self.send(connection, event);
         }
@@ -141,12 +148,18 @@ async fn upgrade(
         })
 }
 
-async fn send(socket: &mut WebSocket, event: &Event) -> bool {
+async fn send(
+    socket: &mut (impl Sink<Message, Error = axum::Error> + Unpin),
+    event: &Event,
+) -> bool {
     let text = serde_json::to_string(event).expect("typed channel event");
     send_frame(socket, Message::Text(text.into())).await
 }
 
-async fn send_frame(socket: &mut WebSocket, frame: Message) -> bool {
+async fn send_frame(
+    socket: &mut (impl Sink<Message, Error = axum::Error> + Unpin),
+    frame: Message,
+) -> bool {
     matches!(
         tokio::time::timeout(Duration::from_secs(5), socket.send(frame)).await,
         Ok(Ok(()))
@@ -176,49 +189,70 @@ async fn session(mut socket: WebSocket, state: AppState) {
     let connection = Uuid::new_v4();
     let (events, mut queue) = mpsc::channel(64);
     let (close, mut closing) = watch::channel(false);
+    let close_writer = close.clone();
     {
         let mut hub = state.hub.lock().unwrap();
         hub.clients.insert(connection, Client { events, close });
         hub.request(connection, request);
     }
-    let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
-    let mut last_seen = tokio::time::Instant::now();
-    loop {
-        tokio::select! {
-            _ = closing.changed() => {
-                // Leave/error responses may be queued before close. Give the
-                // whole flush one write budget, not one budget per queued event.
-                let _ = tokio::time::timeout(Duration::from_secs(5), async {
-                    while let Ok(event) = queue.try_recv() { if !send(&mut socket, &event).await { break; } }
-                }).await;
-                break;
-            },
-            event = queue.recv() => {
-                let Some(event) = event else { break; };
-                if !send(&mut socket, &event).await { break; }
+    let (mut writer, mut reader) = socket.split();
+    {
+        // A blocked write must not stop reading HostOutput: the room host may
+        // itself be waiting for us to drain its large response before reading.
+        let writing = async {
+            let mut heartbeat = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                tokio::select! {
+                    _ = closing.changed() => {
+                        let _ = tokio::time::timeout(Duration::from_secs(5), async {
+                            while let Ok(item) = queue.try_recv() {
+                                if !send(&mut writer, &item).await { break; }
+                            }
+                        }).await;
+                        break;
+                    }
+                    item = queue.recv() => {
+                        let Some(item) = item else { break; };
+                        if !send(&mut writer, &item).await { break; }
+                    }
+                    _ = heartbeat.tick() => {
+                        if !send_frame(&mut writer, Message::Ping(Vec::new().into())).await { break; }
+                    }
+                }
             }
-            incoming = socket.recv() => {
+            send_frame(&mut writer, Message::Close(None)).await;
+        };
+        let reading = async {
+            let mut last_seen = tokio::time::Instant::now();
+            loop {
+                let incoming = tokio::select! {
+                    _ = tokio::time::sleep_until(last_seen + Duration::from_secs(20)) => break,
+                    incoming = reader.next() => incoming,
+                };
                 last_seen = tokio::time::Instant::now();
                 match incoming {
-                    Some(Ok(Message::Text(text))) => {
-                        let request = match Request::parse(&text) {
-                            Ok(request) => request,
-                            Err((request_id, code)) => {
-                                if !send(&mut socket, &Event::Error { code: code.into(), request_id }).await { break; }
-                                continue;
-                            }
-                        };
-                        let mut hub = state.hub.lock().unwrap();
-                        hub.request(connection, request);
-                    }
-                    Some(Ok(Message::Ping(bytes))) => { if !send_frame(&mut socket, Message::Pong(bytes)).await { break; } }
-                    Some(Ok(Message::Pong(_))) => {},
+                    Some(Ok(Message::Text(text))) => match Request::parse(&text) {
+                        Ok(request) => state.hub.lock().unwrap().request(connection, request),
+                        Err((request_id, code)) => state.hub.lock().unwrap().send(
+                            connection,
+                            Event::Error {
+                                code: code.into(),
+                                request_id,
+                            },
+                        ),
+                    },
+                    // Axum replies to Ping automatically.
+                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
                     _ => break,
                 }
             }
-            _ = heartbeat.tick() => {
-                if last_seen.elapsed() >= Duration::from_secs(20) { break; }
-                if !send_frame(&mut socket, Message::Ping(Vec::new().into())).await { break; }
+        };
+        tokio::pin!(writing, reading);
+        tokio::select! {
+            _ = &mut writing => {},
+            _ = &mut reading => {
+                let _ = close_writer.send(true);
+                writing.await;
             }
         }
     }
@@ -228,7 +262,6 @@ async fn session(mut socket: WebSocket, state: AppState) {
         let effects = hub.authority.disconnect(connection, now());
         hub.apply(effects);
     }
-    send_frame(&mut socket, Message::Close(None)).await;
 }
 
 fn now() -> u64 {
@@ -238,8 +271,131 @@ fn now() -> u64 {
         .as_millis() as u64
 }
 
+fn open_state(
+    directory: &Path,
+    owner: &str,
+    invite: &str,
+    origin: String,
+    ice_servers: Vec<serde_json::Value>,
+) -> anyhow::Result<AppState> {
+    anyhow::ensure!(
+        directory != Path::new(":memory:"),
+        "PIIK_CHANNEL_DATA_DIR must be a real directory"
+    );
+    std::fs::create_dir_all(directory.join("rooms"))?;
+    let mut storage = storage::Storage::open(&directory.join("channel.sqlite"))
+        .map_err(anyhow::Error::from_boxed)?;
+    let mut authority =
+        Authority::new(owner.into(), invite.into(), ice_servers).map_err(anyhow::Error::msg)?;
+    if let Some(checkpoint) = storage.load().map_err(anyhow::Error::from_boxed)? {
+        authority
+            .import_state(serde_json::from_value(checkpoint)?)
+            .map_err(anyhow::Error::msg)?;
+    }
+    storage
+        .save(&serde_json::to_value(authority.export_state())?)
+        .map_err(anyhow::Error::from_boxed)?;
+    Ok(AppState {
+        hub: Arc::new(Mutex::new(Hub {
+            authority,
+            clients: BTreeMap::new(),
+            storage: Arc::new(Mutex::new(storage)),
+        })),
+        sockets: Arc::new(Semaphore::new(40)),
+        origin,
+    })
+}
+
+async fn serve(
+    listener: tokio::net::TcpListener,
+    state: AppState,
+    directory: PathBuf,
+    owner: String,
+    stop: impl Future<Output = ()>,
+) -> anyhow::Result<()> {
+    let config = Config {
+        url: format!("ws://{}/prototype/channel", listener.local_addr()?),
+        origin: state.origin.clone(),
+        name: state
+            .hub
+            .lock()
+            .unwrap()
+            .authority
+            .owner_name()
+            .unwrap_or("Piik Server")
+            .into(),
+        key: Some(owner),
+        credential: None,
+    };
+    let rooms = [
+        ("living", "Living room"),
+        ("studio", "Studio"),
+        ("quiet", "Quiet corner"),
+    ]
+    .into_iter()
+    .map(|(id, name)| RoomFile {
+        path: directory.join("rooms").join(format!("{id}.sqlite")),
+        id: id.into(),
+        name: name.into(),
+    })
+    .collect();
+    let app = Router::new()
+        .route("/healthz", get(|| async { "piik-channel-prototype" }))
+        .route("/prototype/channel", get(upgrade))
+        .route(
+            "/prototype/channel/limits",
+            get(|| async { axum::Json(piik_channel_core::ATTACHMENT_LIMITS) }),
+        )
+        .with_state(state.clone());
+    let (stop_native, mut native_stopped) = watch::channel(false);
+    let (stop_http, mut http_stopped) = watch::channel(false);
+    let hosting = native::run(config, rooms, async {
+        let _ = native_stopped.changed().await;
+    });
+    let mut http = tokio::spawn(
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let _ = http_stopped.changed().await;
+            })
+            .into_future(),
+    );
+    let expiry = async {
+        let mut timer = tokio::time::interval(Duration::from_secs(1));
+        loop {
+            timer.tick().await;
+            state.hub.lock().unwrap().expire();
+        }
+    };
+    tokio::pin!(hosting, stop, expiry);
+    let (result, finished_http) = tokio::select! {
+        _ = &mut stop => {
+            let _ = stop_native.send(true);
+            (hosting.await, None)
+        }
+        result = &mut hosting => (result.and_then(|()| Err(anyhow::anyhow!("Native hosting stopped unexpectedly"))), None),
+        result = &mut http => {
+            let _ = stop_native.send(true);
+            let closed = hosting.await;
+            (closed.and_then(|()| Err(anyhow::anyhow!("HTTP service stopped unexpectedly"))), Some(result))
+        }
+        _ = &mut expiry => unreachable!(),
+    };
+    // Native departure is acknowledged while its WebSocket service is live.
+    // Only then close the remaining clients and drain the HTTP service.
+    let _ = stop_http.send(true);
+    for client in state.hub.lock().unwrap().clients.values() {
+        let _ = client.close.send(true);
+    }
+    let http_result = match finished_http {
+        Some(result) => result,
+        None => http.await,
+    };
+    http_result??;
+    result
+}
+
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let port = std::env::var("PIIK_CHANNEL_PORT")
         .unwrap_or_else(|_| "8791".into())
         .parse::<u16>()
@@ -258,63 +414,17 @@ async fn main() {
         .unwrap_or_default();
     let directory = std::env::var("PIIK_CHANNEL_DATA_DIR")
         .unwrap_or_else(|_| "build/channel-prototype-data".into());
-    let database = if directory == ":memory:" {
-        PathBuf::from(":memory:")
-    } else {
-        let directory = PathBuf::from(directory);
-        std::fs::create_dir_all(&directory).expect("channel data directory");
-        directory.join("channel.sqlite")
-    };
-    let mut storage = storage::Storage::open(&database).expect("open channel storage");
-    let mut authority =
-        Authority::new(owner, invite, ice_servers).expect("valid channel admission keys");
-    if let Some(checkpoint) = storage.load().expect("read channel checkpoint") {
-        authority
-            .import_state(serde_json::from_value(checkpoint).expect("valid channel checkpoint"))
-            .expect("restore channel authority");
-    }
-    storage
-        .save(&serde_json::to_value(authority.export_state()).expect("typed durable state"))
-        .expect("initialize channel checkpoint");
-    let storage = Arc::new(Mutex::new(storage));
-    let state = AppState {
-        hub: Arc::new(Mutex::new(Hub {
-            authority,
-            clients: BTreeMap::new(),
-            storage: storage.clone(),
-        })),
-        sockets: Arc::new(Semaphore::new(40)),
-        origin: origin.clone(),
-    };
-    let timer_state = state.clone();
-    tokio::spawn(async move {
-        let mut timer = tokio::time::interval(Duration::from_secs(1));
-        loop {
-            timer.tick().await;
-            timer_state.hub.lock().unwrap().expire();
-        }
-    });
-    let app = Router::new()
-        .route("/healthz", get(|| async { "piik-channel-prototype" }))
-        .route("/prototype/channel", get(upgrade))
-        .route(
-            "/prototype/channel/limits",
-            get(|| async { axum::Json(piik_channel_core::ATTACHMENT_LIMITS) }),
-        )
-        .with_state(state);
-    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
-        .await
-        .expect("prototype listener");
+    let directory = PathBuf::from(directory);
+    let state = open_state(&directory, &owner, &invite, origin.clone(), ice_servers)?;
+    let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
     println!("Piik Rust channel prototype: http://127.0.0.1:{port}");
     println!(
         "Web interface: {origin}/__channel-preview (use your configured owner or invitation key)"
     );
-    axum::serve(listener, app)
-        .with_graceful_shutdown(async {
-            let _ = tokio::signal::ctrl_c().await;
-        })
-        .await
-        .unwrap();
+    serve(listener, state, directory, owner, async {
+        let _ = tokio::signal::ctrl_c().await;
+    })
+    .await
 }
 
 #[cfg(test)]

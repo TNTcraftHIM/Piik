@@ -1,10 +1,9 @@
 #![cfg(feature = "sqlite")]
 
 use piik_channel_core::{
-    history::HistoryRequest,
     host::RoomResult,
     wire::{Event, Snapshot},
-    Effects, RoomPermission,
+    Effects,
 };
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -67,7 +66,6 @@ fn invite(core: &mut RoomNetwork, connection: Uuid, room: &str) -> String {
     .unwrap()
 }
 fn rejected(effects: Effects) {
-    assert!(effects.history.is_none());
     assert!(effects.events.iter().any(|(_, e)| matches!(
         e,
         Event::Error { .. }
@@ -79,6 +77,44 @@ fn rejected(effects: Effects) {
 }
 fn core() -> RoomNetwork {
     RoomNetwork::new()
+}
+
+#[test]
+fn hosted_room_catalogs_keep_the_per_room_source_limit_without_a_domain_total() {
+    let mut core = core();
+    let peers: Vec<_> = (0..20).map(|index| {
+        let connection = Uuid::new_v4();
+        admit(&mut core, connection, json!({"type":"join","name":"Participant","key":if index == 0 {"owner"} else {"invite"}}));
+        connection
+    }).collect();
+    let rooms: Vec<_> = (0..3)
+        .map(|_| room(&mut core, peers[0], "public", false))
+        .collect();
+    for room in &rooms {
+        for connection in &peers {
+            command(
+                &mut core,
+                *connection,
+                json!({"type":"voice","roomId":room,"joined":true,"muted":false,"deafened":false}),
+            );
+            for kind in ["screen", "voice"] {
+                command(
+                    &mut core,
+                    *connection,
+                    json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":kind,"muted":false}}),
+                );
+            }
+        }
+        assert_eq!(
+            core.state(peers[0])
+                .publications
+                .iter()
+                .filter(|publication| &publication.room_id == room)
+                .count(),
+            40
+        );
+    }
+    assert_eq!(core.state(peers[0]).publications.len(), 120);
 }
 
 #[test]
@@ -96,8 +132,11 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
         b,
         json!({"type":"join","name":"B","key":"invite"}),
     );
+    let living = room(&mut core, a, "public", false);
+    let studio = room(&mut core, a, "public", false);
+    let quiet = room(&mut core, a, "public", false);
     let mut voices = Vec::new();
-    for room in ["living", "studio"] {
+    for room in [&living, &studio] {
         for connection in [a, b] {
             command(
                 &mut core,
@@ -113,11 +152,27 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
             );
         }
     }
+    for room in [&living, &studio] {
+        let pair = core
+            .state(b)
+            .pairs
+            .iter()
+            .find(|pair| pair.rooms.contains(room))
+            .unwrap()
+            .id;
+        for connection in [a, b] {
+            command(
+                &mut core,
+                connection,
+                json!({"type":"base_state","roomId":room,"pairId":pair,"ready":true}),
+            );
+        }
+    }
     let picture = Uuid::new_v4();
     command(
         &mut core,
         a,
-        json!({"type":"publish","publication":{"id":picture,"roomId":"studio","kind":"screen","muted":false}}),
+        json!({"type":"publish","publication":{"id":picture,"roomId":studio,"kind":"screen","muted":false}}),
     );
     let before = state(
         command(
@@ -135,18 +190,21 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     let browsing = command(
         &mut core,
         b,
-        json!({"type":"browse","active":true,"roomId":"quiet"}),
+        json!({"type":"browse","active":true,"roomId":quiet}),
     );
-    assert!(browsing.history.is_none());
-    let history = command(&mut core, b, json!({"type":"history","roomId":"quiet"}));
+    assert!(!browsing
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Error { .. })));
     assert!(
-        matches!(history.history.unwrap().request, HistoryRequest::Read { room_id, .. } if room_id == "quiet")
+        matches!(core.peer_request(b, &quiet, piik_channel_core::conversation::ConversationCommand::History { before: None }).result,
+        Ok(piik_channel_core::history::HistoryResult::Page { messages, .. }) if messages.is_empty())
     );
     let after = state(
         command(
             &mut core,
             b,
-            json!({"type":"voice","roomId":"studio","joined":false,"muted":true,"deafened":false}),
+            json!({"type":"voice","roomId":studio,"joined":false,"muted":true,"deafened":false}),
         ),
         b,
     );
@@ -171,11 +229,11 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     assert!(after
         .voice
         .iter()
-        .any(|voice| voice.session_id == b_session && voice.room_id == "living"));
+        .any(|voice| voice.session_id == b_session && voice.room_id == living));
     assert!(!after
         .voice
         .iter()
-        .any(|voice| voice.session_id == b_session && voice.room_id == "studio"));
+        .any(|voice| voice.session_id == b_session && voice.room_id == studio));
     assert!(after
         .publications
         .iter()
@@ -233,19 +291,22 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         .rooms
         .iter()
         .all(|room| room.access == piik_channel_core::wire::RoomAccess::Public));
+    let public_room = room(&mut core, creator, "public", false);
     let room = room(&mut core, creator, "private", true);
     let key = invite(&mut core, creator, &room);
-    let (_, outsider_credential, initial) = admit(
+    let (outsider_session, _, initial) = admit(
         &mut core,
         outsider,
         json!({"type":"join","name":"Outsider","key":"invite"}),
     );
     assert!(!initial.channel.rooms.iter().any(|r| r.id == room));
     // Promoting a channel collaborator does not bypass a room creator's privacy.
-    let outsider_user = core
-        .authority
-        .authorize_user(&outsider_credential, "living", RoomPermission::Read)
-        .unwrap();
+    let outsider_user = initial
+        .sessions
+        .iter()
+        .find(|session| session.id == outsider_session)
+        .unwrap()
+        .user_id;
     command(
         &mut core,
         owner,
@@ -294,7 +355,7 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     command(
         &mut core,
         creator,
-        json!({"type":"publish","publication":{"id":public_pub,"roomId":"living","kind":"screen","muted":false}}),
+        json!({"type":"publish","publication":{"id":public_pub,"roomId":public_room,"kind":"screen","muted":false}}),
     );
     command(
         &mut core,
@@ -567,11 +628,13 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert!(!browsing
         .events
         .iter()
-        .any(|(_, event)| matches!(event, Event::History { .. })));
-    assert!(
-        browsing.history.is_none(),
-        "domain storage must not receive hosted room history"
-    );
+        .any(|(_, event)| matches!(event, Event::Error { .. })));
+    assert!(restored
+        .state(new_page)
+        .channel
+        .rooms
+        .iter()
+        .any(|entry| entry.id == room && entry.reading));
     let history = restored.peer_request(
         new_page,
         &room,

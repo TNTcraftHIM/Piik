@@ -12,7 +12,9 @@ The [network design](../../docs/research/channel-network-design.md) owns the mod
 This executable is an explicitly started development host. It does not make a
 standby Piik App take over a closed page's room. Chat, history, room voice and files
 use the base paths, and screen startup reuses those paths through the same participant.
-Native capture and App/Server hosting-session integration remain subsequent stages.
+The default Server embeds one participant for its three rooms and owns its
+service lifetime. Native capture and App hosting-session integration remain
+subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs in one flow share a stream while owning separate SSRCs and

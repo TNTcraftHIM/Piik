@@ -1,6 +1,5 @@
 use crate::attachment::{AttachmentDescriptor, ATTACHMENT_LIMITS};
-use crate::wire::{valid_id, ChatMessage, Event};
-use crate::Effects;
+use crate::wire::{valid_id, ChatMessage};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use uuid::Uuid;
@@ -146,14 +145,6 @@ impl HistoryRequest {
             attachment,
         })
     }
-
-    pub fn room_id(&self) -> &str {
-        match self {
-            Self::Read { room_id, .. }
-            | Self::Send { room_id, .. }
-            | Self::Attachment { room_id, .. } => room_id,
-        }
-    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -191,80 +182,5 @@ impl HistoryResult {
             oldest_seq,
             before,
         }
-    }
-}
-
-/// The runtime executes and finishes this effect before admitting another command.
-/// Confirmation follows the room store's commit; no pending send enters core state.
-pub struct HistoryEffect {
-    pub request: HistoryRequest,
-    pub(crate) connection: Uuid,
-    pub(crate) request_id: Option<String>,
-    pub(crate) audience: Vec<Uuid>,
-}
-
-impl HistoryEffect {
-    pub fn finish(self, result: Result<HistoryResult, &'static str>) -> Effects {
-        let mut effects = Effects::default();
-        let room_id = self.request.room_id().to_owned();
-        match result {
-            Ok(HistoryResult::Attachment { .. }) => {
-                unreachable!("file operations finish at the room host")
-            }
-            Ok(HistoryResult::Page {
-                messages,
-                has_more,
-                oldest_seq,
-                before,
-            }) => effects.events.push((
-                self.connection,
-                Event::History {
-                    room_id,
-                    messages,
-                    has_more,
-                    oldest_seq,
-                    before,
-                },
-            )),
-            Ok(HistoryResult::Sent(MessageConfirmation { message, inserted })) => {
-                if inserted {
-                    effects
-                        .events
-                        .extend(self.audience.into_iter().map(|connection| {
-                            (
-                                connection,
-                                Event::Message {
-                                    room_id: room_id.clone(),
-                                    message: message.clone(),
-                                },
-                            )
-                        }));
-                }
-                effects.events.push((
-                    self.connection,
-                    Event::MessageConfirmed {
-                        room_id,
-                        message,
-                        request_id: self.request_id.clone(),
-                    },
-                ));
-            }
-            Err(code) => {
-                effects.events.push((
-                    self.connection,
-                    Event::Error {
-                        code: code.into(),
-                        request_id: self.request_id,
-                    },
-                ));
-                return effects;
-            }
-        }
-        if let Some(request_id) = self.request_id {
-            effects
-                .events
-                .push((self.connection, Event::Ack { request_id }));
-        }
-        effects
     }
 }

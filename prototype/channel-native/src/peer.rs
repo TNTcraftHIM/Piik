@@ -578,8 +578,10 @@ impl Driver {
             .filter(|id| !retained.contains(id))
             .copied()
             .collect();
+        let mut released = false;
         for id in removed {
             if let Some(pair) = self.pairs.remove(&id) {
+                released |= !pair.outputs.is_empty();
                 self.links.lock().unwrap().remove(&pair.plan.peer_id);
                 self.files.detach(pair.plan.peer_id).await;
                 close_pair(pair).await;
@@ -701,7 +703,7 @@ impl Driver {
                 self.fail(id).await;
             }
         }
-        self.refresh_media().await?;
+        self.refresh_media(released).await?;
         for id in self.pairs.keys().copied().collect::<Vec<_>>() {
             self.base_ready(id).await;
         }
@@ -1255,6 +1257,7 @@ impl Driver {
                             .iter()
                             .find(|flow| flow.id == key.0)
                             .copied();
+                        p.rejected_outputs.insert(key, source);
                         p.outputs.remove(&key).unwrap().close(&*p.pc).await;
                         if binding.is_some_and(|flow| {
                             !flow.selected
@@ -1374,8 +1377,7 @@ impl Driver {
         {
             if !binding.selected
                 || (kind == RtpCodecKind::Video
-                    && self.publications[&publication]
-                        == piik_channel_core::wire::Kind::Screen)
+                    && self.publications[&publication] == piik_channel_core::wire::Kind::Screen)
             {
                 self.send(Command::FlowState {
                     flow_id,
@@ -1513,7 +1515,7 @@ impl Driver {
             }
         }
         self.sources.insert(key, source.clone());
-        self.refresh_media().await?;
+        self.refresh_media(false).await?;
         self.relay.write(key, source.id, packet);
         // A screen's audio alone does not establish its picture transport.
         if source.kind == RtpCodecKind::Video
@@ -1528,29 +1530,35 @@ impl Driver {
         }
         Ok(())
     }
-    async fn refresh_media(&mut self) -> Result<()> {
-        self.refresh_outputs().await?;
-        let retry: Vec<_> = self
-            .pairs
-            .iter()
-            .filter_map(|(id, pair)| {
-                pair.failed_offer
-                    .as_ref()
-                    .filter(|previous| **previous != pair.offer_work())
-                    .map(|_| *id)
-            })
-            .collect();
+    async fn refresh_media(&mut self, released: bool) -> Result<()> {
+        let released = self.refresh_outputs().await? || released;
+        let mut retry = Vec::new();
         let mut partial = false;
-        for id in &retry {
-            let pair = self.pairs.get_mut(id).unwrap();
+        for (id, pair) in &mut self.pairs {
+            let changed = pair
+                .failed_offer
+                .as_ref()
+                .is_some_and(|previous| *previous != pair.offer_work());
+            if !released && !changed {
+                continue;
+            }
             let before = pair.rejected_outputs.len();
-            // A later real mutation may retry rejected companion audio while
-            // preserving the screen's established video and flow identity.
+            // Normal retirement on any pair permits one companion-audio retry.
+            // Failed primary/candidate flows still belong to the route owner.
             pair.rejected_outputs.retain(|(flow, kind), _| {
                 *kind != RtpCodecKind::Audio
                     || !pair.outputs.contains_key(&(*flow, RtpCodecKind::Video))
+                    || !pair
+                        .plan
+                        .outgoing
+                        .iter()
+                        .any(|binding| binding.id == *flow && binding.selected)
             });
-            partial |= pair.rejected_outputs.len() != before;
+            let retry_audio = pair.rejected_outputs.len() != before;
+            partial |= retry_audio;
+            if changed || retry_audio {
+                retry.push(*id);
+            }
         }
         if partial {
             self.refresh_outputs().await?;
@@ -1564,9 +1572,10 @@ impl Driver {
         Ok(())
     }
 
-    async fn refresh_outputs(&mut self) -> Result<()> {
+    async fn refresh_outputs(&mut self) -> Result<bool> {
         // Forward the exact admitted input, including shadow branches. Selection
         // belongs to local playback and cannot recreate a prewarmed sender.
+        let mut released = false;
         for pair in self.pairs.values_mut() {
             pair.rejected_outputs.retain(|key, rejected| {
                 pair.plan.outgoing.iter().any(|flow| {
@@ -1596,6 +1605,7 @@ impl Driver {
                 .collect();
             for key in retired {
                 pair.outputs.remove(&key).unwrap().close(&*pair.pc).await;
+                released = true;
             }
         }
         let mut failed = Vec::new();
@@ -1635,6 +1645,7 @@ impl Driver {
                             Ok(next) => next,
                             Err(error) => {
                                 eprintln!("Native encoded track attach failed: {error}");
+                                p.rejected_outputs.insert(output_key, source.id);
                                 if !binding.selected
                                     || source.kind == RtpCodecKind::Video
                                     || self.publications[publication]
@@ -1661,7 +1672,7 @@ impl Driver {
             })
             .await;
         }
-        Ok(())
+        Ok(released)
     }
 }
 fn ice_candidate(c: Candidate) -> rtc::peer_connection::transport::RTCIceCandidateInit {

@@ -573,6 +573,14 @@ impl Session {
 
     async fn state(&mut self, state: Snapshot, socket: &mut Socket) -> Result<()> {
         if let Some(live) = &mut self.live {
+            if let Some(user) = state
+                .sessions
+                .iter()
+                .find(|session| session.id == live.session)
+                .and_then(|session| state.users.iter().find(|user| user.id == session.user_id))
+            {
+                self.config.name.clone_from(&user.name);
+            }
             live.room.snapshot.send_replace(Some(state.clone()));
             live.pairs = state.pairs.iter().map(|pair| pair.id).collect();
             await_peer(

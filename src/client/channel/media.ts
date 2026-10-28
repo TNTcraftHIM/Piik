@@ -60,10 +60,11 @@ export class ChannelMedia {
     this.publications = state.publications;
     this.subscriptions = state.subscriptions;
     const plans = new Map(state.pairs.map(plan => [plan.id, plan]));
+    let released = false;
     for (const [id, peer] of this.peers) {
       if (!plans.has(id)) {
         this.peers.delete(id);
-        this.closePeer(peer);
+        released = this.closePeer(peer) || released;
       }
     }
     for (const plan of state.pairs) {
@@ -107,7 +108,7 @@ export class ChannelMedia {
         }
       }
     }
-    this.refresh();
+    this.refresh(released);
   }
 
   private reportBase(peer: Peer, ready: boolean): void {
@@ -313,7 +314,7 @@ export class ChannelMedia {
     void poll();
   }
 
-  private refresh(): void {
+  private refresh(released = false): void {
     const streams = new Map(this.local);
     const relayAudio = new Map<string, MediaStreamTrack[]>();
     for (const publication of this.publications) {
@@ -322,6 +323,7 @@ export class ChannelMedia {
       if (!current) continue;
       streams.set(publication.id, current.input.stream);
     }
+    const outgoingByPeer = new Map<ChannelTransport, Map<string, OutgoingMedia>>();
     for (const peer of this.peers.values()) {
       const outgoing = new Map<string, OutgoingMedia>();
       for (const flow of peer.plan.outgoing) {
@@ -340,8 +342,12 @@ export class ChannelMedia {
           if (tracks.length) relayAudio.set(flow.inputFlowId, tracks);
         }
       }
-      peer.transport.setOutgoing(outgoing);
+      outgoingByPeer.set(peer.transport, outgoing);
+      released = peer.transport.setOutgoing(outgoing) || released;
     }
+    // All pairs share this participant's actual resources. Failure rollback
+    // does not report a release; only normal retirement permits another try.
+    if (released) for (const [transport, outgoing] of outgoingByPeer) transport.setOutgoing(outgoing, true);
     this.syncRelayAudio(relayAudio);
     const changed = streams.size !== this.streams.size || [...streams].some(([id, stream]) => this.streams.get(id) !== stream);
     this.streams = streams;
@@ -393,9 +399,9 @@ export class ChannelMedia {
     }));
   }
 
-  private closePeer(peer: Peer): void {
+  private closePeer(peer: Peer): boolean {
     for (const input of peer.inputs.values()) input.release?.();
-    peer.transport.close();
+    return peer.transport.close();
   }
 
   reset(): void {

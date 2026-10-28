@@ -437,28 +437,9 @@ pub enum Event {
     State {
         state: Snapshot,
     },
-    History {
-        room_id: String,
-        messages: Vec<ChatMessage>,
-        has_more: bool,
-        oldest_seq: Option<u64>,
-        // Echo the request cursor; omission identifies a fresh latest page.
-        #[serde(skip_serializing_if = "Option::is_none")]
-        before: Option<u64>,
-    },
     RoomInvite {
         room_id: String,
         key: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        request_id: Option<String>,
-    },
-    Message {
-        room_id: String,
-        message: ChatMessage,
-    },
-    MessageConfirmed {
-        room_id: String,
-        message: ChatMessage,
         #[serde(skip_serializing_if = "Option::is_none")]
         request_id: Option<String>,
     },

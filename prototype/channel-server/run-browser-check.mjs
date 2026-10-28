@@ -17,22 +17,28 @@ async function freePort() {
 const corePort = await freePort(), uiPort = await freePort();
 const origin = `http://127.0.0.1:${uiPort}`;
 const protocolOnly = process.argv.includes("--protocol");
-const directory = process.argv.some(flag => ["--hosts", "--native"].includes(flag))
-  ? await mkdtemp(join(tmpdir(), "piik-room-host-check-")) : null;
+const directory = await mkdtemp(join(tmpdir(), "piik-room-host-check-"));
 const env = { ...process.env, PIIK_CHANNEL_PORT: String(corePort), PIIK_CHANNEL_UI_PORT: String(uiPort),
-  PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: directory ?? ":memory:",
+  PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: directory,
   CHANNEL_WS_URL: `ws://127.0.0.1:${corePort}/prototype/channel`,
-  ...(directory ? { CHANNEL_DATA_FILE: join(directory, "channel.sqlite") } : {}),
+  CHANNEL_DATA_FILE: join(directory, "channel.sqlite"),
   PIIK_CHANNEL_OWNER_KEY: randomUUID(), PIIK_CHANNEL_INVITE_KEY: randomUUID() };
 const children = [];
+const services = [];
+function redact(value) {
+  return value.replaceAll(env.PIIK_CHANNEL_OWNER_KEY, "[owner key]").replaceAll(env.PIIK_CHANNEL_INVITE_KEY, "[invite key]");
+}
 function start(command, args) {
   const child = spawn(command, args, { env, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
   let output = "";
-  child.stdout.on("data", chunk => { output += chunk; });
-  child.stderr.on("data", chunk => { output += chunk; });
-  child.on("error", error => { output += String(error); });
+  const append = chunk => { output = (output + chunk).slice(-65536); };
+  child.stdout.on("data", append);
+  child.stderr.on("data", append);
+  child.on("error", error => { append(String(error)); });
   children.push(child);
-  return { child, output: () => output };
+  const service = { child, output: () => redact(output) };
+  services.push(service);
+  return service;
 }
 async function ready(process, url) {
   for (let index = 0; index < 100; index++) {
@@ -55,17 +61,18 @@ try {
   });
   children.push(check);
   const [code] = await once(check, "exit");
-  if (code !== 0) process.exitCode = 1;
+  if (code !== 0) {
+    process.exitCode = 1;
+    for (const service of services) console.error(`Acceptance service exit=${service.child.exitCode} signal=${service.child.signalCode}\n${service.output()}`);
+  }
 } finally {
   for (const child of children.reverse()) if (child.exitCode === null && child.signalCode === null) {
     const exited = once(child, "exit");
     child.kill();
     await exited;
   }
-  if (directory) {
-    if (relative(tmpdir(), directory).startsWith("..") || !basename(directory).startsWith("piik-room-host-check-")) {
-      throw new Error("Unexpected acceptance data directory");
-    }
-    await rm(directory, { recursive: true, force: true });
+  if (relative(tmpdir(), directory).startsWith("..") || !basename(directory).startsWith("piik-room-host-check-")) {
+    throw new Error("Unexpected acceptance data directory");
   }
+  await rm(directory, { recursive: true, force: true });
 }

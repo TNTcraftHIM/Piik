@@ -189,32 +189,7 @@ export class ChannelSession {
       if (event.result.type === "error") request.reject(new Error(event.result.code ?? "operation_failed"));
       else request.resolve();
     } else if (event.type === "state") this.applyState(event.state);
-    else if (event.type === "history") {
-      const state = this.view.state;
-      if (!state?.channel.rooms.some(room => room.id === event.roomId && room.authorized)) return;
-      const current = this.view.messagesByRoom[event.roomId] ?? [];
-      const last = event.messages.at(-1)?.seq ?? 0;
-      const existing = event.before === undefined ? current.filter(message => message.seq > last) : current;
-      const merged = mergeMessages([...existing, ...event.messages]
-        .filter(message => event.oldestSeq === null || message.seq >= event.oldestSeq));
-      const latest = event.before === undefined;
-      const messages = latest ? merged.slice(-state.channel.historyWindow) : merged.slice(0, state.channel.historyWindow);
-      const atLatest = latest || ((this.view.historyByRoom[event.roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
-      this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [event.roomId]: messages },
-        historyByRoom: { ...this.view.historyByRoom, [event.roomId]: { hasMore: event.hasMore, before: messages[0]?.seq, atLatest } } });
-    } else if (event.type === "message" || event.type === "message_confirmed") {
-      const state = this.view.state;
-      if (!state?.channel.rooms.some(room => room.id === event.roomId && room.authorized)) return;
-      if (event.type === "message_confirmed" && event.requestId) {
-        const request = this.requests.get(event.requestId);
-        if (request?.roomId === event.roomId) request.result?.(event);
-      }
-      // A bounded historical window stays put until its reader requests latest.
-      if (this.view.historyByRoom[event.roomId]?.atLatest === false) return;
-      const messages = this.view.messagesByRoom[event.roomId] ?? [];
-      this.patch({ messagesByRoom: { ...this.view.messagesByRoom,
-        [event.roomId]: mergeMessages([...messages, event.message]).slice(-state.channel.historyWindow) } });
-    } else if (event.type === "room_invite") {
+    else if (event.type === "room_invite") {
       if (event.requestId) this.requests.get(event.requestId)?.result?.(event);
     } else if (event.type === "signal") this.media.signal(event.pairId, event.payload);
     else if (event.type === "ack" || event.type === "error") {
@@ -304,19 +279,18 @@ export class ChannelSession {
 
   private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command)): Promise<void> {
     const reading = this.reading;
-    if ((command.type === "chat" || command.type === "history") && reading && reading.roomId === roomId
-      && this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery) await reading.ready;
+    const conversation = command.type === "chat" || command.type === "history";
+    if (conversation && reading && reading.roomId === roomId) await reading.ready;
     if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
-    if ((command.type === "chat" || command.type === "history") && !room?.available) return Promise.reject(new Error("room_unavailable"));
+    const delivery = room?.delivery;
+    if (conversation && (!room?.available || !delivery)) return Promise.reject(new Error("room_unavailable"));
     const requestId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
-      const delivery = this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery;
-      const peer = (command.type === "chat" || command.type === "history") && delivery;
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
-        ...(peer ? { bindingId: delivery.bindingId, ...(command.type === "history" ? { history: [] } : {}) } : {}) });
-      if (peer && (command.type === "chat" || command.type === "history")) {
+        ...(conversation ? { bindingId: delivery!.bindingId, ...(command.type === "history" ? { history: [] } : {}) } : {}) });
+      if (conversation) {
         void this.conversation.send(command, requestId).catch(error => {
           const request = this.requests.get(requestId);
           if (!request) return;
@@ -330,7 +304,7 @@ export class ChannelSession {
   private receiveConversation(reply: ConversationReply): void {
     const record = reply.record;
     if (record.type === "live_message") {
-      this.receive({ type: "message", roomId: reply.roomId, message: record.message });
+      this.applyMessage(reply.roomId, record.message);
       return;
     }
     const request = this.requests.get(reply.requestId);
@@ -348,13 +322,38 @@ export class ChannelSession {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
         return;
       }
-      this.receive({ type: "history", roomId: reply.roomId, messages: request.history, hasMore: record.hasMore,
-        oldestSeq: record.oldestSeq, ...(record.before === null ? {} : { before: record.before }) });
+      this.applyHistory(reply.roomId, request.history, record);
     } else if (record.type === "confirmed") {
-      this.receive({ type: "message_confirmed", roomId: reply.roomId, message: record.message, requestId: reply.requestId });
+      request.result?.(record);
+      this.applyMessage(reply.roomId, record.message);
     }
     this.receive(record.type === "error" ? { type: "error", requestId: reply.requestId, code: record.code }
       : { type: "ack", requestId: reply.requestId });
+  }
+
+  private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>): void {
+    const state = this.view.state;
+    if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
+    const current = this.view.messagesByRoom[roomId] ?? [];
+    const last = page.at(-1)?.seq ?? 0;
+    const latest = result.before === null;
+    const existing = latest ? current.filter(message => message.seq > last) : current;
+    const merged = mergeMessages([...existing, ...page]
+      .filter(message => result.oldestSeq === null || message.seq >= result.oldestSeq));
+    const messages = latest ? merged.slice(-state.channel.historyWindow) : merged.slice(0, state.channel.historyWindow);
+    const atLatest = latest || ((this.view.historyByRoom[roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
+    this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages },
+      historyByRoom: { ...this.view.historyByRoom, [roomId]: { hasMore: result.hasMore, before: messages[0]?.seq, atLatest } } });
+  }
+
+  private applyMessage(roomId: string, message: ChannelMessage): void {
+    const state = this.view.state;
+    if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized)) return;
+    // A bounded historical window stays put until its reader requests latest.
+    if (this.view.historyByRoom[roomId]?.atLatest === false) return;
+    const messages = this.view.messagesByRoom[roomId] ?? [];
+    this.patch({ messagesByRoom: { ...this.view.messagesByRoom,
+      [roomId]: mergeMessages([...messages, message]).slice(-state.channel.historyWindow) } });
   }
 
   private commandRoom(command: ChannelCommand): string | undefined {
@@ -461,7 +460,7 @@ export class ChannelSession {
     const attempt = previous?.content === content ? previous : { content, nonce: crypto.randomUUID() };
     this.outgoingMessages.set(roomId, attempt);
     await this.request({ type: "chat", roomId, text, attachments, nonce: attempt.nonce }, event => {
-      if (event.type === "message_confirmed") this.attachments.confirmed(roomId, event.message, prepared);
+      if (event.type === "confirmed") this.attachments.confirmed(roomId, event.message, prepared);
     });
     this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.loadLatestHistory(roomId).catch(() => {});

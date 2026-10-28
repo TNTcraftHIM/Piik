@@ -386,7 +386,8 @@ no desktop control. Changing the focused picture never retargets an input grant.
 | Event | Outcome |
 | --- | --- |
 | Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
-| The page owning an App-linked room session closes or loses connection | Allow the existing session recovery window; expiry pauses the live room. An idle App does not replace the missing owner session. |
+| The page owning an App-linked room session closes | End hosting and pause the live room. An idle App does not replace the missing owner session. |
+| An owning page unexpectedly loses its connection | Retain the existing session recovery window; expiry pauses the live room. |
 | An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
 | Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
 | Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
@@ -417,10 +418,8 @@ defines an answer's independent SDP origin/version.
 App and Browser can operate the same logical room runtime through different
 execution/storage adapters, while obeying the same explicit hosting-session
 lifetime. Persistent data can outlive that session; background App execution
-alone does not extend it. A Browser-only room host
-is not implemented merely because the current UI can ask the central service to
-create a room. It requires the shared authority core running locally, potentially
-through WASM, and actual local persistence/recovery verification.
+alone does not extend it. Browser hosting runs the shared authority core locally
+through WASM, with IndexedDB persistence.
 
 ## Implementation Boundary
 
@@ -459,10 +458,10 @@ one finite operation. The first viewer's approval bounds the remaining wait to
 the existing quality-evidence lifetime. Failure or changed viewing demand cancels
 that candidate while preserving the required old paths. Each admitted session
 gets one direct attempt for that publication, independent of view toggles.
-Server-owned default rooms have no Native endpoint and retain standalone screen
-plans; an administrator's page cannot substitute for that endpoint. They do not
-advertise peer file delivery. Participant resource admission and App/Server
-hosting integration remain.
+The Server embeds one real Native participant for its default rooms. Those rooms
+use the same base paths, conversation carrier, file delivery and screen plans;
+an administrator's page is a separate endpoint. Domain state contains directory
+summaries and identity, not another implementation of room business rules.
 
 Before implementing the next slice, map its user-visible behavior, authority,
 state transitions, resource lifetime and recovery. Existing code is evidence of
@@ -480,11 +479,10 @@ capture. Its caller owns hosting lifetime; a command-line development host does
 not grant background hosting to an idle App. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The next slice completes participant resource admission before connecting
-App/Server hosting to those owners.
-Domain runtime keeps directory, membership and authenticated rendezvous;
-room execution and storage remain with the explicit room host. Use one Rust
-core with thin App/Server and Browser adapters. Evaluate
+The next slice connects the App's explicit hosting session to these owners.
+The shared Rust core has no HTTP runtime; Browser/WASM, Native and Server consume
+it directly. Domain runtime keeps directory, membership and authenticated rendezvous;
+room execution and storage remain with the explicit room host. Evaluate
 capture, encoding and input at their platform boundaries; retain native helpers
 only where platform APIs or a proven component require them. Do not add a
 separate storage service.
@@ -508,6 +506,14 @@ One participant runtime counts the work it actually owns; a Browser origin canno
 account for every unrelated tab or application on that computer. Reuse compatible
 source encodings, and preserve unaffected outputs rather than capping all viewers
 to the slowest request. WebRTC still adapts to real shared bottlenecks.
+
+Actual sender allocation and the existing finite route operation determine
+admission. On an established pair, a local offer failure that occurs before
+signaling and leaves the connection stable withdraws only its unconfirmed additions;
+existing picture, voice and room connections remain. Normal sender retirement
+on any pair allows rejected companion audio to retry once. Failure rollback is
+not a new opportunity, unchanged projections do not retry, and a retired failed
+flow is not revived. This needs no parallel capacity ledger or polling loop.
 
 The 3.0 experiment defines a new business contract without putting both models
 inside every module. The [versioning standard](../standards/versioning.md) still

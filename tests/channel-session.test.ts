@@ -5,7 +5,7 @@ import * as hosting from "../src/client/channel/hosting";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { ChannelAttachments } from "../src/client/channel/attachments";
-import { signalSchema, type ChannelCommand, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
+import { signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 
 class ChannelSocket {
@@ -31,11 +31,37 @@ beforeEach(() => {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function setup(window = 1000) {
+async function setup(window = 1000, read = true) {
   vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
+  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" }> & { requestId: string };
+  const sent: PeerRequest[] = [], pending: PeerRequest[] = [];
+  vi.spyOn(ChannelConversation.prototype, "send").mockImplementation(async (command, requestId) => {
+    const request = { ...command, requestId };
+    sent.push(request); pending.push(request);
+  });
+  const deliver = (reply: ConversationReply) => (session as unknown as { receiveConversation(value: ConversationReply): void }).receiveConversation(reply);
+  const peer = {
+    sent,
+    async next() { await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0)); return pending.shift()!; },
+    reply(request: PeerRequest, record: ConversationReply["record"]) {
+      deliver({ roomId: request.roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: request.requestId, record });
+    },
+    page(request: PeerRequest, messages: ChannelMessage[], hasMore = false, oldestSeq: number | null = 1) {
+      for (const message of messages) peer.reply(request, { type: "history_message", message });
+      peer.reply(request, { type: "history_end", count: messages.length, hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null });
+    },
+    live(message: ChannelMessage, roomId = "first") {
+      deliver({ roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: "live", record: { type: "live_message", message } });
+    },
+    async history(messages: ChannelMessage[], hasMore = false, older = false) {
+      const loading = older ? session.loadHistory("first") : session.loadLatestHistory("first");
+      peer.page(await peer.next(), messages, hasMore);
+      await loading;
+    },
+  };
   session.start();
   const socket = ChannelSocket.current;
   await socket.onopen?.();
@@ -43,11 +69,19 @@ async function setup(window = 1000) {
     channel: { id: "domain", name: "Friends", ownerId: "self", historyWindow: window,
       rooms: ["first", "second"].map(id => ({ id, name: id, creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
-        available: true, reading: id === "first", capabilities: { attachments: true } })), roles: [] },
+        available: true, reading: id === "first", capabilities: { attachments: true },
+        delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })), roles: [] },
     users: [{ id: "self", name: "Me", roles: [] }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
     publications: [], voice: [], subscriptions: [], files: [], pairs: [], iceServers: [],
   } });
-  return { session, socket };
+  if (read) {
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    peer.page(await peer.next(), [], false, null);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    peer.sent.length = 0;
+  }
+  return { session, socket, peer };
 }
 
 const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [] });
@@ -100,18 +134,17 @@ test("room replies settle only the request belonging to that room", async () => 
   const { session, socket } = await setup();
   try {
     let settled = false;
-    const sending = session.sendMessage("first", "Hello").then(() => { settled = true; });
+    const saving = session.updateRoom("first", { name: "Saved", access: "public", hidden: false }).then(() => { settled = true; });
     const request = socket.sent.at(-1)!;
     socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId, result: { type: "done" } });
     await Promise.resolve();
     expect(settled).toBe(false);
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(1), requestId: request.requestId });
     socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId,
-      result: { type: "history", result: { type: "sent", message: message(1), inserted: true }, browse: false } });
-    await sending;
-    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
-    const reading = session.loadLatestHistory("first");
-    const rejected = expect(reading).rejects.toThrow("room_host_offline");
+      result: { type: "done" } });
+    await saving;
+    expect(settled).toBe(true);
+    const updating = session.updateRoom("first", { name: "Unavailable", access: "public", hidden: false });
+    const rejected = expect(updating).rejects.toThrow("room_host_offline");
     socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
       result: { type: "error", code: "room_host_offline" } });
     await rejected;
@@ -122,38 +155,25 @@ test.each([
   ["missing record", [2]],
   ["duplicate sequence", [2, 2]],
 ] as const)("an incomplete peer history page (%s) preserves messages and permits a complete retry", async (_fault, sequences) => {
-  const { session, socket } = await setup();
-  let reply!: (record: ConversationReply["record"]) => void;
-  const send = vi.spyOn(ChannelConversation.prototype, "send").mockImplementation(async function (this: ChannelConversation, command, requestId) {
-    const options = (this as unknown as { options: { reply(value: ConversationReply): void } }).options;
-    reply = record => options.reply({ roomId: command.roomId, bindingId: "binding", sender: "host",
-      recipient: "endpoint", requestId, record });
-  });
+  const { session, peer } = await setup();
   try {
-    socket.receive({ type: "history", roomId: "first", messages: [message(1)], hasMore: false, oldestSeq: 1 });
-    const state = structuredClone(session.getSnapshot().state!);
-    state.channel.rooms[0].delivery = { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } };
-    state.sessions.push({ id: "host", userId: "self", online: true, signingKey: testSigningKey });
-    socket.receive({ type: "state", state });
+    await peer.history([message(1)]);
     const existing = session.getSnapshot().messagesByRoom.first;
     const incomplete = session.loadLatestHistory("first");
     const rejected = expect(incomplete).rejects.toThrow("incomplete_history");
-    expect(send).not.toHaveBeenCalled();
-    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
-    socket.receive({ type: "ack", requestId: browse.requestId });
-    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
-    for (const seq of sequences) reply({ type: "history_message", message: message(seq) });
-    reply({ type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
+    const request = await peer.next();
+    for (const seq of sequences) peer.reply(request, { type: "history_message", message: message(seq) });
+    peer.reply(request, { type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
     await rejected;
     expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
     expect(existing).toEqual([message(1)]);
 
     const complete = session.loadLatestHistory("first");
-    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
-    reply({ type: "history_message", message: message(2) });
-    reply({ type: "history_message", message: message(3) });
+    const retry = await peer.next();
+    peer.reply(retry, { type: "history_message", message: message(2) });
+    peer.reply(retry, { type: "history_message", message: message(3) });
     expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
-    reply({ type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
+    peer.reply(retry, { type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
     await complete;
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(2), message(3)]);
   } finally { session.close(); }
@@ -176,39 +196,39 @@ test("a separate directory storage error does not fail a committed room request"
   } finally { session.close(); }
 });
 
-test("confirms a send after browsing another room while only ack completes its request", async () => {
-  const { session, socket } = await setup();
+test("peer confirmation completes a send after browsing another room", async () => {
+  const { session, socket, peer } = await setup();
   try {
     session.browse("second");
     let settled = false;
     const sending = session.sendMessage("first", "Hello 1").then(() => { settled = true; });
     void sending.catch(() => {});
-    const request = socket.sent.findLast(command => command.type === "chat")!;
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(1), requestId: request.requestId });
-    await Promise.resolve();
-    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
-    expect(session.getSnapshot().messagesByRoom.second).toBeUndefined();
+    const request = await peer.next();
+    expect(request.type).toBe("chat");
+    expect(socket.sent.some(command => command.type === "chat")).toBe(false);
     expect(settled).toBe(false);
     expect(session.getSnapshot().pending.has("chat:first")).toBe(true);
-    socket.receive({ type: "ack", requestId: request.requestId });
+    peer.reply(request, { type: "confirmed", message: message(1), inserted: true });
     await sending;
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
+    expect(session.getSnapshot().messagesByRoom.second).toBeUndefined();
     expect(settled).toBe(true);
     expect(session.getSnapshot().pending.has("chat:first")).toBe(false);
   } finally { session.close(); }
 });
 
 test("merges live messages and original confirmations once in room order within the latest window", async () => {
-  const { session, socket } = await setup(2);
+  const { session, peer } = await setup(2);
   try {
-    socket.receive({ type: "history", roomId: "first", messages: [message(3), message(4)], hasMore: true, oldestSeq: 1 });
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(1) });
-    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(3), message(4)]);
-    socket.receive({ type: "message", roomId: "first", message: message(6) });
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(6) });
-    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(4), message(6)]);
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(5) });
-    socket.receive({ type: "message", roomId: "first", message: message(5) });
-    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(5), message(6)]);
+    await peer.history([message(3), message(4)], true);
+    for (const [seq, expected] of [[1, [3, 4]], [6, [4, 6]], [5, [5, 6]]] as const) {
+      const sending = session.sendMessage("first", message(seq).text);
+      const request = await peer.next();
+      peer.live(message(seq));
+      peer.reply(request, { type: "confirmed", message: message(seq), inserted: false });
+      await sending;
+      expect(session.getSnapshot().messagesByRoom.first).toEqual(expected.map(message));
+    }
   } finally { session.close(); }
 });
 
@@ -216,69 +236,63 @@ test.each([
   ["empty", [], null],
   ["older", [message(1)], 1],
 ] as const)("a delayed %s history page preserves a newer live message", async (_page, messages, oldestSeq) => {
-  const { session, socket } = await setup();
+  const { session, peer } = await setup();
   try {
     const loading = session.loadLatestHistory("first");
-    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("history"));
-    const request = socket.sent.at(-1)!;
-    socket.receive({ type: "message", roomId: "first", message: message(2) });
-    socket.receive({ type: "history", roomId: "first", messages, hasMore: false, oldestSeq });
-    socket.receive({ type: "ack", requestId: request.requestId });
+    const request = await peer.next();
+    peer.live(message(2));
+    peer.page(request, [...messages], false, oldestSeq);
     await loading;
     expect(session.getSnapshot().messagesByRoom.first).toEqual([...messages, message(2)]);
   } finally { session.close(); }
 });
 
 test("pages beyond a full window without live messages interrupting reading, then returns to latest", async () => {
-  const { session, socket } = await setup(3);
+  const { session, peer } = await setup(3);
   try {
-    socket.receive({ type: "history", roomId: "first", messages: [message(8), message(9)], hasMore: true, oldestSeq: 1 });
-    socket.receive({ type: "history", roomId: "first", messages: [message(7)], before: 8, hasMore: true, oldestSeq: 1 });
+    await peer.history([message(8), message(9)], true);
+    await peer.history([message(7)], true, true);
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(true);
     for (const first of [4, 1]) {
       const loading = session.loadHistory("first");
       void loading.catch(() => {});
-      const request = socket.sent.at(-1)!;
-      expect(request.before).toBe(first + 3);
-      socket.receive({ type: "history", roomId: "first", before: request.before,
-        messages: [message(first), message(first + 1), message(first + 2)], hasMore: first > 1, oldestSeq: 1 });
-      socket.receive({ type: "ack", requestId: request.requestId });
+      const request = await peer.next();
+      expect(request).toMatchObject({ type: "history", before: first + 3 });
+      peer.page(request, [message(first), message(first + 1), message(first + 2)], first > 1);
       await loading;
       expect(session.getSnapshot().messagesByRoom.first).toEqual([message(first), message(first + 1), message(first + 2)]);
       expect(session.getSnapshot().historyByRoom.first).toMatchObject({ before: first, atLatest: false });
     }
-    socket.receive({ type: "message", roomId: "first", message: message(10) });
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(4) });
+    peer.live(message(10));
+    peer.live(message(4));
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1), message(2), message(3)]);
     const latest = session.loadLatestHistory("first");
     void latest.catch(() => {});
-    const request = socket.sent.at(-1)!;
+    const request = await peer.next();
     expect(request).not.toHaveProperty("before");
-    socket.receive({ type: "history", roomId: "first", messages: [message(9), message(10), message(11)], hasMore: true, oldestSeq: 1 });
-    socket.receive({ type: "ack", requestId: request.requestId });
+    peer.page(request, [message(9), message(10), message(11)], true);
     await latest;
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(true);
-    socket.receive({ type: "message", roomId: "first", message: message(12) });
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(12) });
+    peer.live(message(12));
+    peer.live(message(12));
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(10), message(11), message(12)]);
   } finally { session.close(); }
 });
 
 test("a confirmed send returns a historical reader to latest without failing the send when history fails", async () => {
-  const { session, socket } = await setup(1);
+  const { session, peer } = await setup(1);
   try {
-    socket.receive({ type: "history", roomId: "first", messages: [message(2)], hasMore: true, oldestSeq: 1 });
-    socket.receive({ type: "history", roomId: "first", messages: [message(1)], before: 2, hasMore: false, oldestSeq: 1 });
+    await peer.history([message(2)], true);
+    await peer.history([message(1)], false, true);
     const sending = session.sendMessage("first", "Hello 3");
     void sending.catch(() => {});
-    const request = socket.sent.at(-1)!;
-    socket.receive({ type: "message_confirmed", roomId: "first", message: message(3), requestId: request.requestId });
-    socket.receive({ type: "ack", requestId: request.requestId });
+    const request = await peer.next();
+    peer.reply(request, { type: "confirmed", message: message(3), inserted: true });
     await sending;
-    const latest = socket.sent.at(-1)!;
+    const latest = await peer.next();
     expect(latest.type).toBe("history");
     expect(latest).not.toHaveProperty("before");
-    socket.receive({ type: "error", code: "storage_failed", requestId: latest.requestId });
+    peer.reply(latest, { type: "error", code: "storage_failed" });
     await vi.waitFor(() => expect(session.getSnapshot().error).toBe("storage_failed"));
     expect(session.getSnapshot().pending.has("chat:first")).toBe(false);
     expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
@@ -286,22 +300,20 @@ test("a confirmed send returns a historical reader to latest without failing the
 });
 
 test("a confirmed file becomes a session source while its sender reads an older history window", async () => {
-  const { session, socket } = await setup(1);
+  const { session, socket, peer } = await setup(1);
   const file = new File(["saved"], "note.txt"), id = crypto.randomUUID();
   const attachment = { id, name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
   vi.spyOn(session.attachments, "describe").mockResolvedValue([{ id, file, attachment }]);
   try {
-    socket.receive({ type: "history", roomId: "first", messages: [message(2)], hasMore: true, oldestSeq: 1 });
-    socket.receive({ type: "history", roomId: "first", messages: [message(1)], before: 2, hasMore: false, oldestSeq: 1 });
+    await peer.history([message(2)], true);
+    await peer.history([message(1)], false, true);
     const sending = session.sendMessage("first", "file", [{ id, file }]);
-    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("chat"));
-    const request = socket.sent.at(-1)!;
-    expect(request.attachments).toEqual([attachment]);
-    socket.receive({ type: "message_confirmed", roomId: "first", requestId: request.requestId, message: { ...message(3), attachments: [attachment] } });
+    const request = await peer.next();
+    expect(request).toMatchObject({ type: "chat", attachments: [attachment] });
+    peer.reply(request, { type: "confirmed", message: { ...message(3), attachments: [attachment] }, inserted: true });
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
     expect(socket.sent.at(-1)).toMatchObject({ type: "file_offer", roomId: "first", messageSeq: 3, attachmentId: id, available: true });
     await expect(session.attachments.content({ roomId: "first", messageSeq: 3, attachmentId: id }, attachment, new AbortController().signal)).resolves.toBe(file);
-    socket.receive({ type: "ack", requestId: request.requestId });
     await sending;
   } finally { session.close(); }
 });
@@ -947,6 +959,85 @@ test("rejected file admission cancels its shared-core consumer and releases the 
   } finally { files.reset(); }
 });
 
+test.each(["flow", "pair", "attach"])("cross-pair retirement permits one companion-audio retry (%s)", async mode => {
+  const { media, state, sent, pc, session } = await setupRoomMedia();
+  const video = remoteTrack("video"), audio = remoteTrack("audio"), failedVideo = remoteTrack("video");
+  const voices = [remoteTrack("audio"), remoteTrack("audio")];
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const exchange = async (id: string, connection: RoomPeerConnection, trigger = true) => {
+    const before = sent.length;
+    if (trigger) connection.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(sent.slice(before).some(command => command.type === "signal"
+      && command.pairId === id && command.payload.description?.type === "offer")).toBe(true));
+    const command = sent.slice(before).find(command => command.type === "signal"
+      && command.pairId === id && command.payload.description?.type === "offer")!;
+    if (command.type !== "signal") throw new Error("missing offer");
+    media.signal(id, { exchangeId: command.payload.exchangeId, description: { type: "answer", sdp: "accepted" }, tracks: [] });
+    await vi.waitFor(() => expect(connection.signalingState).toBe("stable"));
+  };
+  try {
+    state.publications = ["screen", "failed", "voice-0", "voice-1"].map(id => ({
+      id, roomId: "first", sessionId: "a", userId: "self", kind: id.startsWith("voice") ? "voice" : "screen", muted: false,
+    }));
+    media.setLocal("screen", remoteStream("picture", [video]));
+    media.setLocal("failed", remoteStream("unavailable-picture", [failedVideo]));
+    voices.forEach((track, index) => media.setLocal(`voice-${index}`, remoteStream(`voice-${index}`, [track])));
+    state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+    state.pairs.push({ id: "other", peerId: "zz", rooms: ["second"], incoming: [], outgoing: voices.map((_, index) => ({
+      id: `voice-flow-${index}`, publicationId: `voice-${index}`, selected: true, inputFlowId: null,
+    })) });
+    media.update("a", state);
+    const other = RoomPeerConnection.instances[1];
+    await exchange("pair", pc); await exchange("other", other);
+    pc.connected(); other.connected();
+    for (const connection of [pc, other]) for (const channel of connection.channels) channel.open();
+    const incumbent = pc.senders[0];
+    media.setLocal("screen", remoteStream("picture-with-audio", [video, audio]));
+    state.pairs[0].outgoing.push({ id: "failed-flow", publicationId: "failed", selected: true, inputFlowId: null });
+    media.update("a", state);
+    const install = vi.spyOn(pc, "setLocalDescription").mockRejectedValueOnce(new DOMException("local offer refused", "OperationError"));
+    pc.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(warning).toHaveBeenCalled());
+    expect(pc.senders).toEqual([incumbent]);
+    expect(sent.filter(command => command.type === "flow_state" && command.state === "failed")).toEqual([
+      { type: "flow_state", pairId: "pair", flowId: "failed-flow", state: "failed" },
+    ]);
+    media.update("a", state); media.update("a", state);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(install).toHaveBeenCalledOnce();
+
+    const add = vi.spyOn(pc, "addTrack");
+    if (mode === "attach") add.mockImplementationOnce(() => { throw new DOMException("audio still unavailable", "OperationError"); });
+    if (mode === "pair") state.pairs.pop(); else state.pairs[1].outgoing.shift();
+    media.update("a", state);
+    await exchange("pair", pc, false);
+    expect(add).toHaveBeenCalledOnce();
+    expect(other.senders.some(sender => sender.track === voices[0]) && mode !== "pair").toBe(false);
+    expect(other.close).toHaveBeenCalledTimes(mode === "pair" ? 1 : 0);
+    if (mode === "attach") {
+      expect(pc.senders).toEqual([incumbent]);
+      media.update("a", state); media.update("a", state);
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(add).toHaveBeenCalledOnce();
+      state.pairs[1].outgoing = [];
+      media.update("a", state);
+      await exchange("pair", pc, false);
+      expect(add).toHaveBeenCalledTimes(2);
+    }
+    expect(pc.senders.map(sender => sender.track)).toEqual([video, audio]);
+    expect(pc.senders[0]).toBe(incumbent);
+    const attempts = install.mock.calls.length;
+    media.update("a", state); media.update("a", state);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(install).toHaveBeenCalledTimes(attempts);
+    await expect(media.sendData("z", "control", "still-open")).resolves.toBeUndefined();
+    expect(pc.channels[0].send).toHaveBeenLastCalledWith("still-open");
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(sent.some(command => command.type === "link_state" && command.state === "failed")).toBe(false);
+    for (const track of [video, audio, failedVideo, ...voices]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test.each(["candidate", "audio", "source", "pending", "late", "channel", "initial", "unstable", "no-new"])("local offer failure scopes its %s work without retiring established media", async mode => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
@@ -1436,34 +1527,35 @@ test("voice forwards without local listening and the same pair carries the rever
 
 
 test("browse acknowledgement loads only the current room once and reconnect refreshes its history", async () => {
-  const { session, socket } = await setup();
+  const { session, socket, peer } = await setup(1000, false);
   try {
     const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
     session.browse("first");
     expect(socket.sent.filter(command => command.type === "browse" && command.active)).toHaveLength(1);
-    expect(socket.sent.some(command => command.type === "history")).toBe(false);
+    expect(peer.sent).toEqual([]);
     session.browse("second");
     const second = socket.sent.at(-1)!;
     socket.receive({ type: "ack", requestId: first.requestId }); await Promise.resolve();
-    expect(socket.sent.some(command => command.type === "history")).toBe(false);
+    expect(peer.sent).toEqual([]);
     socket.receive({ type: "room_reply", roomId: "second", requestId: second.requestId, result: { type: "done" } });
-    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "history", roomId: "second" }));
-    const history = socket.sent.at(-1)!;
+    const history = await peer.next();
     expect(history).toMatchObject({ type: "history", roomId: "second" });
     session.browse("second");
-    expect(socket.sent.filter(command => command.type === "history")).toHaveLength(1);
-    socket.receive({ type: "history", roomId: "second", messages: [message(5)], hasMore: true, oldestSeq: 1 });
-    socket.receive({ type: "room_reply", roomId: "second", requestId: history.requestId, result: { type: "done" } });
+    expect(peer.sent).toHaveLength(1);
+    expect(socket.sent.some(command => command.type === "history")).toBe(false);
+    peer.page(history, [message(5)], true);
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
     const older = session.loadHistory("second");
-    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "history", roomId: "second", before: 5 }));
-    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await older;
+    const previous = await peer.next();
+    expect(previous).toMatchObject({ type: "history", roomId: "second", before: 5 });
+    peer.page(previous, [], false); await older;
     const state = structuredClone(session.getSnapshot().state!);
     session.reconnect();
     const resumed = ChannelSocket.current; await resumed.onopen?.();
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "ack", requestId: browse.requestId });
-    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "history")).toEqual([expect.objectContaining({ type: "history", roomId: "second" })]));
+    expect(await peer.next()).toMatchObject({ type: "history", roomId: "second" });
+    expect(resumed.sent.some(command => command.type === "history")).toBe(false);
   } finally { session.close(); }
 });

@@ -9,7 +9,9 @@ The Server executable consumes [channel-core](../channel-core/README.md), the sa
 Rust library used by Native and Browser/WASM. Its package and binary remain
 `piik-channel-prototype`; the shared library is `piik-channel-core`.
 
-The three initial rooms belong to Server. Rooms created in the interface run
+The Server starts one real [Native participant](../channel-native/README.md) in
+its process to operate the three initial rooms. Its lifetime follows the explicit
+Server service, independently of administration pages. Rooms created in the interface run
 in their owner's Browser, using the same Rust room core through
 [WASM and IndexedDB](../channel-browser/README.md). That runtime owns admission,
 policy, activities, publication plans and confirmed history. The domain binds
@@ -23,7 +25,7 @@ core running in Browser/WASM and Native participants.
 
 ## Run
 
-Use Rust 1.86 or newer, the repository's Node/npm environment and installed npm
+Use Rust 1.91 or newer, the repository's Node/npm environment and installed npm
 dependencies. Build the [Browser adapter](../channel-browser/README.md)
 first, and rebuild it after changing the shared Rust core. From the repository
 root, start Rust in one terminal:
@@ -31,7 +33,7 @@ root, start Rust in one terminal:
 ```powershell
 $env:PIIK_CHANNEL_OWNER_KEY = "<private stable owner key>"
 $env:PIIK_CHANNEL_INVITE_KEY = "<different private invitation key>"
-cargo run --manifest-path prototype/channel-server/Cargo.toml
+cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml
 ```
 
 The values above are placeholders. Supply independently generated keys through
@@ -158,7 +160,7 @@ volume and pause. Candidate failure, changed viewing demand or expiry keeps the
 required old paths; view toggles do not restart spent attempts.
 Only newly constructed branches use the prototype's small fanout policy; reversing
 an existing base path does not discard its third direction. Server-owned default
-rooms have no Native endpoint and retain standalone publication plans.
+rooms use the same plans through their real Native endpoint.
 Compatible base and media flows reuse physical peer connections. A relay can stop
 watching while continuing to serve downstream viewers; its transit ends when that
 demand ends. A failed DataChannel repairs its room paths without closing healthy
@@ -178,8 +180,12 @@ stop, unwatch and leave take effect locally and are reconciled on reconnect.
 
 Saved data belongs to its domain or room runtime. This Server prototype defaults to
 `build/channel-prototype-data/channel.sqlite`. `PIIK_CHANNEL_DATA_DIR` chooses a
-different directory; `:memory:` selects an explicitly temporary instance.
-Catalog, identities and Server-owned room policy/grants use a metadata checkpoint.
+different real directory. The domain checkpoint stores catalog summaries and
+identities; `rooms/living.sqlite`, `rooms/studio.sqlite` and `rooms/quiet.sqlite`
+each store that room's policy, grants and confirmed history. Existing room names
+and policy are restored rather than overwritten by startup defaults. The Native
+endpoint authenticates with the configured owner key and restored owner identity;
+it does not create a new user on every service start.
 Browser-owned room policy and history stay in that Browser's IndexedDB; the
 domain retains only its directory summary. Messages
 commit individually: their room order, send identity and attachment descriptions
@@ -189,7 +195,7 @@ Storage failure leaves the send unconfirmed and preserves existing records.
 User credentials/invitations are stored as digests and room passwords as password
 hashes. Sessions, captures and routes are not restored after a process restart.
 
-This unpublished prototype uses checkpoint version 2. Older experimental
+This unpublished prototype uses checkpoint version 3. Older experimental
 checkpoints are rejected rather than silently discarding their history. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
 
@@ -197,8 +203,8 @@ UI preferences belong to the client; the Browser also keeps its user credential
 locally. Participant reading windows and drafts stay in memory, as do the design
 board's sample data and edits. Hosting a room is separate: its saved policy and
 history survive reopening, while captures and voice do not restart automatically.
-Changing rooms keeps hosted rooms running. Closing the owning page pauses them
-after the recovery window; Server does not take over.
+Changing rooms keeps hosted rooms running. Closing the owning page ends hosting;
+unexpected connection loss uses the recovery window. Server does not take over.
 
 Native App hosting follows the
 [room-data model](../../docs/research/channel-storage-and-identity.md).
@@ -206,16 +212,19 @@ Native App hosting follows the
 one database per room, with confirmations emitted after commit. It owns no
 network endpoint or hosting-session lifetime. The separate Native participant
 owns those resources and operates one or more rooms through that adapter.
-It is an explicit development host; App linkage and embedding it into the
-default Server runtime remain separate integration work.
+The Server embeds this participant; its separate executable remains an explicit
+development host. App linkage remains separate work and does not give a standby
+App an unattended hosting lifetime. Normal Server shutdown first ends Native
+hosting and releases its room locks, then closes the HTTP service. A Native
+hosting failure also stops that service.
 A new service URL can use the same database, but a
 new Browser origin cannot read the previous origin's saved login or bookmarks.
 
 Messages contain complete file descriptions and their SHA256 digest. The selected
 file stays with its sender; a confirmed message does not upload bytes to the domain
 or room database. Browser- and Native-hosted rooms authorize requests from retained
-messages and deliver bytes through the existing room base tree. Default Server
-rooms have no Native endpoint yet and do not advertise file delivery.
+messages and deliver bytes through the existing room base tree, including the
+three default Server rooms. The domain database stores no file content.
 
 Concurrent recipients share requested ranges through relays. Each recipient
 advances after its local write; cancellation only removes that recipient's demand.
@@ -232,10 +241,7 @@ A receiving Browser needs secure-context file storage; there is no in-memory
 whole-file fallback. Selected and verified copies belong to the current session.
 Current access controls offers and downloads; already downloaded bytes cannot be revoked.
 
-This private prototype's new message shape requires fresh local SQLite/IndexedDB
-storage. Older prototype data is rejected without overwriting it; it is not a
-published 2.x storage migration. Replicated history, federation and authority
-handoff remain outside this slice.
+Replicated history, federation and authority handoff remain outside this slice.
 Other current resource bounds are 20 live endpoints, 64 stored users and 32
 rooms. Each endpoint may publish one screen and one voice source per room.
 
@@ -244,13 +250,12 @@ rooms. Each endpoint may publish one screen and one voice source per room.
 Build the executable before running the finite integration checks:
 
 ```powershell
-cargo test --manifest-path prototype/channel-server/Cargo.toml
+cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml
 cargo test --manifest-path prototype/channel-core/Cargo.toml
 cargo test --manifest-path prototype/channel-core/Cargo.toml --features sqlite
-cargo build --manifest-path prototype/channel-server/Cargo.toml
+cargo +1.91.0 build --manifest-path prototype/channel-server/Cargo.toml
 node prototype/channel-browser/build.mjs
 npm run typecheck
-node prototype/channel-server/storage-check.mjs
 node prototype/channel-server/run-browser-check.mjs --protocol
 node prototype/channel-server/run-browser-check.mjs
 node prototype/channel-server/run-browser-check.mjs --rooms
@@ -274,9 +279,8 @@ media and actual IndexedDB/SQLite placement. `--base` blocks one direct negotiat
 and verifies bidirectional voice through a non-listening relay, DataChannel failure
 recovery and independent cross-room media leases. Generated captures
 replace only the system picker, not business state, routing or peer connections.
-The storage check owns an isolated temporary database and tests real HTTP,
-WebSocket, process restart and failed-write rollback.
-Both runners accept `CHANNEL_EXECUTABLE` to test a separate build while an older
+The Rust runtime checks cover room storage, restart, failed writes and orderly
+shutdown. The Browser runner accepts `CHANNEL_EXECUTABLE` to test a separate build while an older
 preview remains running; otherwise they use the normal debug executable.
 
 `--protocol` runs the WebSocket check with its own temporary service. Against

@@ -53,10 +53,7 @@ export const signalSchema = z.object({
 export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
-  z.object({ type: z.literal("history"), roomId: id, messages: z.array(messageSchema).max(100), hasMore: z.boolean(), before: z.number().optional(), oldestSeq: z.number().nullable() }),
   z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
-  z.object({ type: z.literal("message"), roomId: id, message: messageSchema }),
-  z.object({ type: z.literal("message_confirmed"), roomId: id, message: messageSchema, requestId: id.optional() }),
   z.object({ type: z.literal("host_bound"), roomId: id, bindingId: id }),
   z.object({ type: z.literal("host_input"), roomId: id, input: z.object({ bindingId: id }).passthrough() }),
   z.object({ type: z.literal("room_reply"), roomId: id, requestId: id.optional(), result: z.object({ type: z.string(), code: z.string().optional() }).passthrough() }),
@@ -77,7 +74,7 @@ export type RoomSummary = Pick<ChannelRoom, "id" | "name" | "creatorId" | "acces
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
-export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "message_confirmed" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
 export interface SignedConversationPacket { sender: string; payload: string; signature: number[]; remainingHops: number }
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:

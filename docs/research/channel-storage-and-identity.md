@@ -366,9 +366,9 @@ introduce a mandatory fixed website.
 
 The prototype's normal create-room action starts a Browser-owned Rust/WASM
 runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
-only its directory summary. The initial Server-owned rooms use the same room
-command core with SQLite. The explicit Native participant also operates room
-cores through the SQLite adapter, independently of the domain process.
+only its directory summary. Server embeds one Native participant to operate its
+initial rooms through the same room core, with one SQLite database per room.
+The separate Native executable uses that same participant runtime.
 These adapters commit before confirmation and share
 retry and pagination rules. Participant reading windows remain separate from
 the owner's retained history. Reopening a room restores its data without
@@ -379,9 +379,8 @@ Browser- and Native-room chat and history use authenticated requests and signed
 room-owner results over their base paths. The same paths carry voice and requested
 file ranges. File descriptions stay in confirmed messages; file contents stay
 with participants. The domain stores neither for these rooms.
-Default Server rooms retain direct chat/history execution and need a real Native
-base endpoint before advertising peer files. The private HTTP attachment store
-has been replaced, not retained as a second delivery model.
+Server rooms use this same peer path. There is no Domain chat/history executor
+or HTTP attachment store alongside it.
 
 Downloads belong to the participant session; changing the chat view does not
 cancel them. Image preview URLs belong to their view. A Browser receiver writes

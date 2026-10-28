@@ -47,7 +47,6 @@ use wire::{Command, Event, Request};
 pub struct Effects {
     pub events: Vec<(Uuid, Event)>,
     pub close: Vec<Uuid>,
-    pub history: Option<history::HistoryEffect>,
 }
 
 #[derive(Clone)]
@@ -83,7 +82,7 @@ impl Authority {
         })
     }
 
-    /// Checkpoint identity and room policy. Room history has its own storage owner.
+    /// Checkpoint domain identity and hosted-room summaries; room data stays with its host.
     pub fn export_state(&self) -> DurableState {
         let mut state = self.channel.export_state();
         state.omit_users(
@@ -115,12 +114,6 @@ impl Authority {
                         .is_some_and(|reply| matches!(reply.result, RoomResult::Invited))
             }
             Command::Join { .. } | Command::SetName { .. } | Command::SetRoles { .. } => true,
-            Command::UpdateRoom { room_id, .. }
-            | Command::EnterRoom { room_id, .. }
-            | Command::RoomInvite { room_id }
-            | Command::RevokeRoomAccess { room_id, .. } => {
-                !self.channel.remote.contains_key(room_id)
-            }
             _ => false,
         }
     }
@@ -128,20 +121,14 @@ impl Authority {
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
         self.channel.import_state(state)
     }
-    pub fn authorize_user(
-        &self,
-        credential: &str,
-        room: &str,
-        permission: RoomPermission,
-    ) -> Result<Uuid, &'static str> {
-        let user = self
-            .channel
+    pub fn owner_name(&self) -> Option<&str> {
+        self.channel
             .identity
-            .user_for_credential(credential)
-            .ok_or("invalid_credential")?;
-        self.channel.authorize(user, room, permission)?;
-        Ok(user)
+            .users
+            .get(&self.channel.identity.owner_id)
+            .map(|user| user.name.as_str())
     }
+
     /// Apply a validated request only through its current connection binding.
     pub fn handle(&mut self, connection: Uuid, request: Request, now: u64) -> Effects {
         let mut effects = self.expire(now);
@@ -233,11 +220,7 @@ impl Authority {
             }
             _ => {}
         }
-        if let Some(room) = self
-            .channel
-            .command_room(&request.command)
-            .filter(|id| self.channel.remote.contains_key(id))
-        {
+        if let Some(room) = self.channel.command_room(&request.command) {
             match self.channel.forward_room(&room, context, request.command) {
                 Ok((session, event)) => self.deliver(session, event, &mut effects),
                 Err(code) => Self::error(connection, request.request_id, code, &mut effects),
@@ -247,22 +230,7 @@ impl Authority {
         let sync_hosts = matches!(request.command, Command::SetRoles { .. } | Command::Leave);
         match self.channel.handle(session_id, request.command, now) {
             Ok(outcome) => {
-                if let Some(history) = outcome.history {
-                    let audience = self.channel.history_audience(history.room_id());
-                    effects.history = Some(history::HistoryEffect {
-                        request: history,
-                        connection,
-                        request_id: request.request_id.clone(),
-                        audience,
-                    });
-                }
-                for (recipient, mut event) in outcome.events {
-                    match &mut event {
-                        Event::RoomInvite { request_id, .. } => {
-                            *request_id = request.request_id.clone()
-                        }
-                        _ => {}
-                    }
+                for (recipient, event) in outcome.events {
                     self.deliver(recipient, event, &mut effects);
                 }
                 if sync_hosts {
@@ -279,7 +247,7 @@ impl Authority {
                         },
                     ));
                 }
-                if let Some(request_id) = request.request_id.filter(|_| effects.history.is_none()) {
+                if let Some(request_id) = request.request_id {
                     effects.events.push((connection, Event::Ack { request_id }));
                 }
                 if outcome.leave {
@@ -322,12 +290,8 @@ impl Authority {
             self.sync_hosts(&mut effects, true);
             self.broadcast(None, &mut effects);
         }
-        let (media_changed, wakes) = self.channel.expire_media(now);
-        for (session, event) in wakes {
+        for (session, event) in self.channel.wake_hosts(now) {
             self.deliver(session, event, &mut effects);
-        }
-        if media_changed {
-            self.broadcast(None, &mut effects);
         }
         let expired: Vec<_> = self
             .pending_joins
@@ -404,7 +368,7 @@ impl Authority {
             credential,
             key,
             session_id,
-            room_id,
+            room_id: _,
             signing_key,
         } = request.command
         else {
@@ -418,7 +382,7 @@ impl Authority {
             effects.close.push(connection);
             return;
         };
-        match self.channel.join_room(
+        match self.channel.join(
             Admission {
                 name: &name,
                 credential: credential.as_deref(),
@@ -428,7 +392,6 @@ impl Authority {
             },
             connection,
             now,
-            room_id.as_deref(),
         ) {
             Ok(admitted) => {
                 if let Some(old) = admitted
@@ -548,7 +511,7 @@ impl Authority {
                     let existing_user = credential.as_deref().and_then(|credential| {
                         self.channel.identity.user_for_credential(credential)
                     });
-                    match self.channel.join_room(
+                    match self.channel.join(
                         Admission {
                             name,
                             credential: credential.as_deref(),
@@ -558,7 +521,6 @@ impl Authority {
                         },
                         target,
                         now,
-                        None,
                     ) {
                         Ok(admitted) => {
                             if let Some(old) =

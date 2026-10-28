@@ -238,25 +238,36 @@ function captureProbe(name) {
           })), flowStates, qualitySamples, restoredVideo,
           audioOwners: audioSources.filter(owner => owner.connected && owner.context.state === 'running').map(owner => owner.trackObjectId) };
       },
+      async decodedVideo(publicationId, flowId) {
+        const track = window.__channelGate.snapshot().screenInputs.get(publicationId)
+          ?.find(input => input.flowId === flowId)?.stream.getVideoTracks()[0];
+        const receiver = track && peers.filter(pc => pc.connectionState === 'connected')
+          .flatMap(pc => pc.getReceivers()).find(receiver => receiver.track === track);
+        if (!receiver) return null;
+        const report = [...(await receiver.getStats()).values()]
+          .find(report => report.type === 'inbound-rtp' && report.kind === 'video' && Number.isFinite(report.framesDecoded));
+        return report && { id: report.id, frames: report.framesDecoded, timestamp: report.timestamp,
+          width: report.frameWidth, height: report.frameHeight };
+      },
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
-      async limitVideo(publicationId, peerId, maxFramerate) {
+      async limitVideo(publicationId, peerId, maxFramerate, scaleResolutionDownBy) {
         const pair = window.__channelGate.snapshot().state.pairs.find(pair => pair.peerId === peerId);
-        const flow = pair?.outgoing.find(flow => flow.publicationId === publicationId);
+        const flow = pair?.outgoing.find(flow => flow.publicationId === publicationId && flow.selected);
         const streamId = flow && flowStreams.get(flow.id);
         const output = senders.find(output => output.pc.connectionState === 'connected'
           && output.streams.includes(streamId) && output.sender.track?.kind === 'video');
-        if (!output) throw new Error('The incumbent video sender is unavailable');
+        if (!output) return null;
         const settings = () => { const value = output.sender.track.getSettings();
           return { width: value.width, height: value.height, frameRate: value.frameRate }; };
         const encodings = sender => sender.getParameters().encodings.map(encoding => ({
           active: encoding.active, maxFramerate: encoding.maxFramerate, scaleResolutionDownBy: encoding.scaleResolutionDownBy,
         }));
-        const others = () => senders.filter(value => value !== output && value.sender.track?.kind === 'video')
+        const others = () => senders.filter(value => value.sender !== output.sender && value.sender.track?.kind === 'video')
           .map(value => ({ senderId: value.id, encodings: encodings(value.sender) }));
         const before = { settings: settings(), encodings: encodings(output.sender), others: others() };
         const parameters = output.sender.getParameters();
-        parameters.encodings.forEach(encoding => { encoding.maxFramerate = maxFramerate; });
+        parameters.encodings.forEach(encoding => { encoding.maxFramerate = maxFramerate; encoding.scaleResolutionDownBy = scaleResolutionDownBy; });
         await output.sender.setParameters(parameters);
         return { flowId: flow.id, pairId: pair.id, streamId, senderId: output.id,
           before, after: { settings: settings(), encodings: encodings(output.sender), others: others() } };
@@ -326,9 +337,14 @@ async function playing(index, publicationId) {
     sample => sample.live && sample.frames > 0);
 }
 async function progressing(index, publicationId) {
-  const before = await playing(index, publicationId);
+  let before = await playing(index, publicationId);
   return until(`browser ${index} advances ${publicationId}`, () => picture(index, publicationId),
-    sample => sample.live && sample.frames > before.frames && sample.time > before.time);
+    sample => {
+      const advanced = sample.live && sample.frames > before.frames && sample.time > before.time;
+      // A repaired route can replace the player and reset its frame/time counters.
+      before = sample;
+      return advanced;
+    });
 }
 const publishScreen = (index, roomId) => action(index,
   `publish('screen', ${JSON.stringify(roomId)}, await navigator.mediaDevices.getDisplayMedia({video:true}))`);
@@ -535,6 +551,13 @@ async function branchShortcut(initial) {
         await Promise.all([host, ...watchers].map(index => action(index, `watch(${JSON.stringify(publication)})`)));
         await until('host and both branch watchers are authoritative before media starts', () => Promise.all([host, ...watchers].map(view)), values =>
           values.every(value => value.state.subscriptions.includes(publication)));
+        // Set a real lower-quality incumbent before releasing its first SDP.
+        // The capture and shadow senders remain unconstrained at 640x360/10fps.
+        const frameLimit = await until('source installs the controlled incumbent sender', () => evaluate(source,
+          `window.__channelProbe.limitVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[host].sessionId)}, 5, 4)`), value => !!value);
+        assert.deepEqual(frameLimit.after.settings, frameLimit.before.settings, 'sender limits do not constrain the capture');
+        assert.deepEqual(frameLimit.after.others, frameLimit.before.others, 'other video senders keep their own encoding parameters');
+        assert(frameLimit.after.encodings.length && frameLimit.after.encodings.every(encoding => encoding.maxFramerate === 5 && encoding.scaleResolutionDownBy === 4));
         await evaluate(source, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[host].sessionId)})`);
         await action(source, 'reconnect()'); // Replay the original blocked exchange through the production owner.
         await until('source resumes its authenticated session', () => view(source), value => value.connection === 'connected');
@@ -542,6 +565,7 @@ async function branchShortcut(initial) {
         const hostInput = (await view(host)).state.pairs.flatMap(pair => pair.incoming.filter(flow => flow.publicationId === publication)
           .map(flow => ({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId })))[0];
         assert.equal(hostInput.peerId, initial[source].sessionId);
+        assert.equal(frameLimit.flowId, hostInput.flowId);
         const pending = await until('internal relay and downstream viewer both install shadow inputs', () => Promise.all(watchers.map(view)), values =>
           values.every(value => value.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publication && !flow.selected))));
         const branches = pending.map((value, offset) => {
@@ -558,6 +582,19 @@ async function branchShortcut(initial) {
         const faults = await until('only the two shadow video senders stop actual RTP', () => Promise.all([source, relay].map(sample)), values =>
           values.every((value, offset) => value.videoStall?.flowId === branches[offset].candidate.id && value.videoStall.connected));
         for (const value of faults) assert.equal(value.videoStall.bytes, 0, 'the candidate fault emits no RTP while the incumbent shares a live PC');
+        const decoded = () => Promise.all(branches.map(branch => evaluate(branch.index,
+          `window.__channelProbe.decodedVideo(${JSON.stringify(publication)}, ${JSON.stringify(branch.incumbent.id)})`)));
+        const baseline = { before: await until('both incumbents decode the controlled dimensions', decoded, values =>
+          values.every(value => value?.frames > 0 && value.width > 0 && value.width <= 160 && value.height > 0 && value.height <= 90)) };
+        await new Promise(resolve => setTimeout(resolve, 2_000));
+        baseline.after = await decoded();
+        baseline.after.forEach((value, offset) => {
+          const before = baseline.before[offset];
+          assert.equal(value?.id, before.id, 'the baseline samples the same incumbent receiver');
+          assert.equal(value.width, before.width); assert.equal(value.height, before.height);
+          assert(value.frames > before.frames && Math.round((value.frames - before.frames) * 1000 / (value.timestamp - before.timestamp)) <= 5,
+            'the real decoded incumbent advances at the controlled frame rate before the candidate starts');
+        });
         await Promise.all(watchers.map(index => progressing(index, publication)));
         const held = await Promise.all(watchers.map(index => inspect(index, publication)));
         held.forEach((value, offset) => {
@@ -583,18 +620,10 @@ async function branchShortcut(initial) {
             values.every((value, offset) => !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].candidate.id))
               && (mode === 'unwatch' && offset === 1 ? !value.state.subscriptions.includes(publication)
                 : value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].incumbent.id && flow.selected)))), 8_000);
-          records.push({ mode, branches, firstSwitchReadyAt: readyAt, expiredAfterReadyMs: Date.now() - readyAt,
+          records.push({ mode, branches, frameLimit, baseline, firstSwitchReadyAt: readyAt, expiredAfterReadyMs: Date.now() - readyAt,
             elapsedMs: Date.now() - faults[0].videoStall.startedAt });
           await Promise.all((mode === 'unwatch' ? [relay] : watchers).map(index => progressing(index, publication)));
         } else {
-          // A controlled positive comparison: only the already-playing source→host
-          // sender is capped. The same capture and the shadow sender remain 10fps.
-          const frameLimit = await evaluate(source, `window.__channelProbe.limitVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[host].sessionId)}, 5)`);
-          assert.equal(frameLimit.flowId, hostInput.flowId);
-          assert.deepEqual(frameLimit.after.settings, frameLimit.before.settings, 'sender pacing does not constrain the capture');
-          assert.deepEqual(frameLimit.after.others, frameLimit.before.others, 'other video senders keep their own encoding parameters');
-          assert.deepEqual(frameLimit.after.encodings.map(encoding => encoding.scaleResolutionDownBy), frameLimit.before.encodings.map(encoding => encoding.scaleResolutionDownBy));
-          assert(frameLimit.after.encodings.every(encoding => encoding.maxFramerate === 5));
           await Promise.all(branches.map(branch => evaluate(branch.index, `(() => {
             const video = document.querySelector('video[data-flow-id="${branch.incumbent.id}"]');
             const slider = video.closest('.c3-video').querySelector('input.c3-mini-volume');
@@ -609,7 +638,7 @@ async function branchShortcut(initial) {
           await Promise.all([source, relay].map(index => evaluate(index, 'window.__channelProbe.restoreVideo()')));
           const selected = await until('both watchers adopt the prepared shadow cohort', () => Promise.all(watchers.map(index => inspect(index, publication))), values =>
             values.every((value, offset) => value.inputs.some(input => input.flowId === branches[offset].candidate.id && input.selected && input.displayed === 'true' && input.composited === 'true')), 25_000);
-          await writeFile(join(output, 'base-branch-commit-observed.json'), JSON.stringify({ branches, frameLimit, held, selected }, null, 2));
+          await writeFile(join(output, 'base-branch-commit-observed.json'), JSON.stringify({ branches, frameLimit, baseline, held, selected }, null, 2));
           const adopted = selected.map((value, offset) => value.inputs.find(input => input.flowId === branches[offset].candidate.id));
           adopted.forEach((input, offset) => {
             assert.equal(input.elementId, warm[offset].elementId, 'commit adopts the prewarmed DOM element');
@@ -635,7 +664,7 @@ async function branchShortcut(initial) {
           await browser(viewer, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
           await Promise.all(watchers.map(index => progressing(index, publication)));
           await browser(viewer, 'dblclick', `video[data-flow-id="${downstream.candidate.id}"]`);
-          records.push({ mode, branches, frameLimit, warm, warmOutput, adopted,
+          records.push({ mode, branches, frameLimit, baseline, warm, warmOutput, adopted,
             quality: selected.map(value => value.qualitySamples), proofs: selected.map(value => value.flowStates) });
         }
         for (const before of base) assert.deepEqual((await view(before.index)).state.pairs.filter(pair => pair.rooms.includes(room)).map(pair => pair.id).sort(), before.pairs,
@@ -664,9 +693,12 @@ async function branchShortcut(initial) {
   return records;
 }
 
-async function roomBase(initial, serverRoom) {
+async function roomBase(initial) {
   const branchShortcuts = await branchShortcut(initial);
-  const source = await capturedScreen(1, serverRoom);
+  // Host this fixture at its source so its two viewers have a known base path;
+  // cross-room lease reuse must not depend on an optional quality-based shortcut.
+  const pictureRoom = await action(1, "createRoom({name:'Picture room',access:'public',hidden:false})");
+  const source = await capturedScreen(1, pictureRoom);
   await action(2, `watch(${JSON.stringify(source)})`);
   await playing(2, source);
   const originalPair = (await view(2)).state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === source)).id;
@@ -796,6 +828,7 @@ async function roomBase(initial, serverRoom) {
   await until("last room demand releases only base leases", () => view(0), value =>
     !value.state.pairs.some(pair => pair.rooms.includes(room)) && value.state.pairs.some(pair => pair.id === survivingPair && pair.incoming.some(flow => flow.publicationId === source)));
   await progressing(0, source);
+  for (const index of [0, 1, 3, 4]) await action(index, 'browse("")');
   await action(1, `stopScreen(${JSON.stringify(source)})`);
   await until("last physical lease closes the pair", () => view(0), value => !value.state.pairs.some(pair => pair.id === survivingPair));
   for (const index of [0, 1, 3]) await assertNoError(index, "room base lifecycle");
@@ -811,12 +844,12 @@ async function roomBase(initial, serverRoom) {
 }
 
 async function roomOwner(initial, serverRoom) {
-  const serverBefore = (await sample(0)).conversationWS[serverRoom];
-  await action(0, `sendMessage(${JSON.stringify(serverRoom)}, 'Server room through WebSocket')`);
+  await action(0, `sendMessage(${JSON.stringify(serverRoom)}, 'Server room through its native peer')`);
   await action(0, `loadLatestHistory(${JSON.stringify(serverRoom)})`);
   const serverWS = (await sample(0)).conversationWS[serverRoom];
-  assert(serverWS.sent.chat > (serverBefore?.sent.chat ?? 0) && serverWS.sent.history > (serverBefore?.sent.history ?? 0),
-    "default server room chat and history keep their WebSocket path");
+  assert.equal(serverWS, undefined, "Server room conversation uses the same peer carrier as a Browser room");
+  await until("another reader receives the Server's peer confirmation", () => evaluate(2,
+    `${hook}.snapshot().messagesByRoom[${JSON.stringify(serverRoom)}]`), messages => messages?.some(message => message.text === "Server room through its native peer"));
   const room = await action(1, "createRoom({name:'Browser-owned room',access:'private',hidden:true,password:'browser-room-password'})");
   const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
   await action(2, "close()");
@@ -1060,8 +1093,8 @@ async function roomsAndFiles() {
   for (const index of [0, 1]) await assertNoError(index, "normal room entry, chat and file flow");
   await browser(0, "screenshot", join(output, "peer-room-files-desktop.png"), "--full");
   for (const index of [0, 1]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
-  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), false,
-    "a Server room without a peer endpoint does not advertise file delivery");
+  assert.equal(await evaluate(1, "!!document.querySelector('.c3-composer input[type=file]')"), true,
+    "the Server room's real peer endpoint supports the same file delivery");
   console.log("Private Browser room owns chat and sends file bytes over its actual peer path");
 
   await browser(1, "click", '.c3-room-link[aria-label="Movie night"]');
@@ -1160,7 +1193,7 @@ try {
     console.log(`Native room acceptance passed; evidence: ${output}`);
   } else if (baseOnly) {
     await senderAllocationFailure();
-    await roomBase(initial, roomId);
+    await roomBase(initial);
     console.log(`Room base acceptance passed; evidence: ${output}`);
   } else if (hostsOnly) {
     await roomOwner(initial, roomId);
@@ -1173,6 +1206,11 @@ try {
     console.log(`Focused lifecycle acceptance passed; evidence: ${output}`);
   } else {
   console.log("Five independent Browser sessions authenticated");
+
+  // The continuing publisher hosts this room so a separate relay can leave.
+  // Native acceptance separately checks Server-hosted paths.
+  const roomId = await action(2, "createRoom({name:'Shared viewing',access:'public',hidden:false})");
+  for (const index of active) await browser(index, "click", '.c3-room-link[aria-label="Shared viewing"]');
 
   let secondPublisher = 1;
   let secondPublication = await publishScreen(1, roomId);
@@ -1216,9 +1254,10 @@ try {
   await Promise.all([0, 1, 3, 4].map(index => playing(index, primaryPublication)));
   const routed = await Promise.all(sessions.map((_, index) => view(index)));
   const relay = routed.findIndex((state, index) => index !== 2 && state.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)));
-  assert(relay >= 0, "source fanout two must produce an actual peer relay for four viewers");
+  assert(relay >= 0, "bounded source fanout must produce an actual peer relay for four viewers");
   const sourceCopies = routed[2].state.pairs.filter(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)).length;
-  assert(sourceCopies <= 2, `source fanout exceeded: ${sourceCopies}`);
+  const sourceBaseDegree = routed[2].state.pairs.filter(pair => pair.rooms.includes(roomId)).length;
+  assert(sourceCopies <= Math.max(2, sourceBaseDegree), `source fanout exceeded its existing base paths: ${sourceCopies}`);
   if (relay !== secondPublisher) {
     await action(secondPublisher, `stopScreen(${JSON.stringify(secondPublication)})`);
     secondPublisher = relay;

@@ -130,14 +130,24 @@ async fn negotiate(d: &mut Driver, pair: Uuid, remote: &dyn PeerConnection) -> R
 async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> Result<()> {
     let (mut d, mut events, mut commands, _stop) = driver();
     let pair = Uuid::new_v4();
+    let other_pair = Uuid::new_v4();
     d.update(
-        vec![PairInfo {
-            id: pair,
-            peer_id: Uuid::new_v4(),
-            rooms: vec!["room".into()],
-            incoming: vec![],
-            outgoing: vec![],
-        }],
+        vec![
+            PairInfo {
+                id: pair,
+                peer_id: Uuid::new_v4(),
+                rooms: vec!["room".into()],
+                incoming: vec![],
+                outgoing: vec![],
+            },
+            PairInfo {
+                id: other_pair,
+                peer_id: Uuid::new_v4(),
+                rooms: vec![],
+                incoming: vec![],
+                outgoing: vec![],
+            },
+        ],
         vec![],
         vec![],
     )
@@ -180,6 +190,19 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         Ok::<_, anyhow::Error>(())
     })
     .await??;
+    let other_remote = builder(true, SenderReports::default())?
+        .with_handler(Arc::new(Handler {
+            pair: Uuid::new_v4(),
+            events: d.events.clone(),
+            overflow: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8)),
+        }))
+        .with_udp_addrs(vec!["0.0.0.0:0".to_string()])
+        .build()
+        .await?;
+    let other_flow = Uuid::new_v4();
+    output(&mut d, other_pair, other_flow, voice, RtpCodecKind::Audio).await?;
+    negotiate(&mut d, other_pair, &other_remote).await?;
     while commands.try_recv().is_ok() {}
     let stable = d.pairs[&pair].output_ids();
     let old_senders: HashSet<_> = d.pairs[&pair]
@@ -270,7 +293,7 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         }
     })
     .await?;
-    d.refresh_media().await?;
+    d.refresh_media(false).await?;
     assert!(!d.pairs[&pair]
         .outputs
         .contains_key(&(added_voice, RtpCodecKind::Audio)));
@@ -301,23 +324,33 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
             "type":"answer", "sdp":answer.description.as_ref().unwrap().sdp
         }))?)
         .await?;
-    d.refresh_media().await?;
+    d.refresh_media(false).await?;
     assert!(!d.pairs[&pair]
         .outputs
         .contains_key(&(screen_flow, RtpCodecKind::Audio)));
-    let released = d.pairs[&pair].outputs[&(late_flow, RtpCodecKind::Audio)].sink();
+    let released = d.pairs[&other_pair].outputs[&(other_flow, RtpCodecKind::Audio)].sink();
     d.pairs
-        .get_mut(&pair)
+        .get_mut(&other_pair)
         .unwrap()
         .plan
         .outgoing
-        .retain(|flow| flow.id != late_flow);
-    d.refresh_media().await?;
+        .retain(|flow| flow.id != other_flow);
+    d.refresh_media(false).await?;
     assert!(released.is_closed());
     assert!(d.pairs[&pair]
         .outputs
         .contains_key(&(screen_flow, RtpCodecKind::Audio)));
+    assert!(d.pairs[&pair].output_ids().is_superset(&stable));
+    assert!(d.pairs[&pair].output_ids().contains(&late));
+    assert!(!d.pairs[&pair]
+        .outputs
+        .contains_key(&(added_voice, RtpCodecKind::Audio)));
     negotiate(&mut d, pair, &*remote).await?;
+    let admitted = d.pairs[&pair].output_ids();
+    d.refresh_media(false).await?;
+    d.refresh_media(false).await?;
+    assert_eq!(d.pairs[&pair].output_ids(), admitted);
+    assert!(d.pairs[&pair].pending_offer.is_none());
     // A local failure without new work is also contained and not retried.
     let attempted = d.pairs[&pair].output_ids();
     d.finish_offer(pair, true, attempted, Err(anyhow!("no new work")))
@@ -360,9 +393,9 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         .plan
         .outgoing
         .retain(|binding| binding.id != voice_flow);
-    d.refresh_media().await?;
+    d.refresh_media(false).await?;
     d.pairs.get_mut(&pair).unwrap().plan.outgoing.push(binding);
-    d.refresh_media().await?;
+    d.refresh_media(false).await?;
     let readmitted = &d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)];
     assert!(d.pairs[&pair]
         .pc
@@ -371,6 +404,26 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         .iter()
         .any(|sender| sender.id() == readmitted.sender.id()));
     negotiate(&mut d, pair, &*remote).await?;
+    let failed = &d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)];
+    let (source, output, writer) = (failed.source, failed.id, failed.sink());
+    d.event(Event::OutputFailed {
+        pair,
+        key: (voice_flow, RtpCodecKind::Audio),
+        source,
+        output,
+    })
+    .await?;
+    assert!(writer.is_closed());
+    // The route owner has not yet withdrawn this flow. Other endpoint work
+    // cannot recreate its failed writer from the still-current source.
+    d.refresh_media(false).await?;
+    d.refresh_media(false).await?;
+    assert!(!d.pairs[&pair]
+        .outputs
+        .contains_key(&(voice_flow, RtpCodecKind::Audio)));
+    assert!(d.pairs[&pair]
+        .outputs
+        .contains_key(&(screen_flow, RtpCodecKind::Video)));
     let attempted = d.pairs[&pair].output_ids();
     assert!(d
         .finish_offer(pair, false, attempted, Err(anyhow!("initial offer")))
@@ -387,6 +440,8 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         .await
         .is_err());
     remote.close().await?;
+    other_remote.close().await?;
+    close_pair(d.pairs.remove(&other_pair).unwrap()).await;
     close_pair(d.pairs.remove(&pair).unwrap()).await;
     d.files.close().await;
     Ok(())

@@ -63,6 +63,142 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
 }
 
 #[test]
+fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
+    let mut network = RoomNetwork::new();
+    let connections: Vec<_> = (0..4).map(|_| Uuid::new_v4()).collect();
+    let sessions: Vec<_> = connections
+        .iter()
+        .map(|connection| join(&mut network, *connection, None).0)
+        .collect();
+    let room = network.create(connections[0], RoomAccess::Private, true);
+    let invitation = network
+        .command(connections[0], json!({"type":"room_invite","roomId":room}))
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::RoomInvite { key, .. } => Some(key),
+            _ => None,
+        })
+        .unwrap();
+    for index in 1..4 {
+        command(
+            &mut network,
+            connections[index],
+            json!({"type":"enter_room","roomId":room,"inviteKey":invitation}),
+        );
+        browse(&mut network, connections[index], &room, true);
+        let edge = network
+            .state(connections[index])
+            .pairs
+            .iter()
+            .find(|pair| pair.rooms.contains(&room))
+            .unwrap()
+            .clone();
+        let parent = sessions
+            .iter()
+            .position(|session| *session == edge.peer_id)
+            .unwrap();
+        for endpoint in [connections[index], connections[parent]] {
+            command(
+                &mut network,
+                endpoint,
+                json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
+            );
+        }
+    }
+    let relay_session = network
+        .state(connections[3])
+        .pairs
+        .iter()
+        .find(|pair| pair.rooms.contains(&room))
+        .unwrap()
+        .peer_id;
+    let relay = sessions
+        .iter()
+        .position(|session| *session == relay_session)
+        .unwrap();
+    assert_ne!(
+        relay, 0,
+        "the fourth participant needs an actual internal transit"
+    );
+    let private = publish(&mut network, connections[0], &room, "screen");
+    for index in 1..4 {
+        command(
+            &mut network,
+            connections[index],
+            json!({"type":"subscribe","publicationId":private,"enabled":true}),
+        );
+    }
+    let public_room = network.create(connections[0], RoomAccess::Public, false);
+    let public = publish(&mut network, connections[0], &public_room, "screen");
+    command(
+        &mut network,
+        connections[relay],
+        json!({"type":"subscribe","publicationId":public,"enabled":true}),
+    );
+    let shared_pair = network
+        .state(connections[relay])
+        .pairs
+        .iter()
+        .find(|pair| {
+            pair.incoming
+                .iter()
+                .any(|flow| flow.publication_id == public)
+        })
+        .unwrap()
+        .id;
+    assert!(network
+        .state(connections[relay])
+        .pairs
+        .iter()
+        .find(|pair| pair.id == shared_pair)
+        .unwrap()
+        .incoming
+        .iter()
+        .any(|flow| flow.publication_id == private));
+    let user = network
+        .state(connections[relay])
+        .sessions
+        .iter()
+        .find(|session| session.id == relay_session)
+        .unwrap()
+        .user_id;
+    command(
+        &mut network,
+        connections[0],
+        json!({"type":"revoke_room_access","roomId":room,"userId":user}),
+    );
+    let retired = network.state(connections[relay]);
+    assert!(!retired
+        .publications
+        .iter()
+        .any(|publication| publication.id == private));
+    assert!(retired.pairs.iter().any(|pair| pair.id == shared_pair
+        && pair
+            .incoming
+            .iter()
+            .any(|flow| flow.publication_id == public)));
+    assert!(network
+        .state(connections[3])
+        .pairs
+        .iter()
+        .any(|pair| pair.peer_id != relay_session
+            && pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == private)));
+    assert!(!network
+        .state(connections[3])
+        .pairs
+        .iter()
+        .any(|pair| pair.peer_id == relay_session
+            && pair
+                .incoming
+                .iter()
+                .any(|flow| flow.publication_id == private)));
+}
+
+#[test]
 fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_activity() {
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();
@@ -119,7 +255,8 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     voice(&mut network, host, &room, false);
     let screen = publish(&mut network, viewer, &room, "screen");
     browse(&mut network, viewer, &room, false);
-    browse(&mut network, viewer, "studio", true);
+    let other_room = network.create(other_page, RoomAccess::Public, false);
+    browse(&mut network, viewer, &other_room, true);
     let state = network.state(viewer);
     assert!(
         !state
@@ -240,6 +377,29 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
         !network.state(c).voice.iter().any(|v| v.session_id == cs),
         "transit does not join local microphone or listening"
     );
+    command(
+        &mut network,
+        d,
+        json!({"type":"voice","roomId":room,"joined":true,"muted":true,"deafened":true}),
+    );
+    command(
+        &mut network,
+        d,
+        json!({"type":"publish","publication":{"id":from_d,"roomId":room,"kind":"voice","muted":false}}),
+    );
+    assert!(
+        network
+            .state(d)
+            .publications
+            .iter()
+            .find(|p| p.id == from_d)
+            .unwrap()
+            .muted
+    );
+    assert!(network.state(d).subscriptions.contains(&from_b));
+    assert!(network.state(b).subscriptions.contains(&from_d));
+    assert_eq!(pair(&network, c, ds, &room).id, cd.id);
+    voice(&mut network, d, &room, true);
     for (connection, own_voice) in [(b, from_b), (d, from_d)] {
         assert!(
             network.state(connection).pairs.iter().all(|p| !p
@@ -305,6 +465,27 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
         independent,
         "removing a media lease leaves its required base lease"
     );
+    let user = network
+        .state(c)
+        .sessions
+        .iter()
+        .find(|s| s.id == cs)
+        .unwrap()
+        .user_id;
+    let owner = Uuid::new_v4();
+    command(
+        &mut network,
+        owner,
+        json!({"type":"join","key":"owner","name":"Domain owner"}),
+    );
+    command(
+        &mut network,
+        owner,
+        json!({"type":"set_roles","userId":user,"roles":[]}),
+    );
+    assert!(network.state(c).sessions.iter().any(|s| s.id == cs));
+    assert!(network.state(c).users.iter().any(|u| u.id == user));
+    assert!(!network.state(b).publications.iter().any(|p| p.id == screen));
 }
 
 #[test]
@@ -547,6 +728,15 @@ fn retired_picture_report_cannot_fail_recreated_flow_on_retained_base_pair() {
         .find(|flow| flow.publication_id == picture)
         .unwrap()
         .id;
+    voice(&mut network, source, &room, true);
+    voice(&mut network, viewer, &room, true);
+    let microphone = publish(&mut network, source, &room, "voice");
+    let voice_flow = pair(&network, viewer, source_session, &room)
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == microphone)
+        .unwrap()
+        .id;
     assert!(pair(&network, viewer, source_session, &room)
         .incoming
         .iter()
@@ -582,6 +772,12 @@ fn retired_picture_report_cannot_fail_recreated_flow_on_retained_base_pair() {
         .unwrap()
         .id;
     assert_ne!(recreated, old_flow);
+    let signaling = network.command(source, json!({"type":"signal","pairId":lease.id,"payload":{
+        "exchangeId":Uuid::new_v4(),"description":{"type":"offer","sdp":"pending-shared-pair"},
+        "tracks":[{"flowId":old_flow,"streamId":"retired"},{"flowId":voice_flow,"streamId":"voice"}]
+    }}));
+    assert!(signaling.events.iter().any(|(recipient, event)| *recipient == viewer && matches!(event,
+        Event::Signal { payload, .. } if payload.tracks.as_ref().is_some_and(|tracks| tracks.len() == 1 && tracks[0].flow_id == voice_flow))));
     for ready in [true, false] {
         let ignored = network.command(
             viewer,

@@ -31,16 +31,20 @@ impl RoomNetwork {
         }
     }
 
-    pub fn command(&mut self, connection: Uuid, mut value: Value) -> Effects {
+    pub fn command(&mut self, connection: Uuid, value: Value) -> Effects {
+        self.command_at(connection, value, 100)
+    }
+
+    pub fn command_at(&mut self, connection: Uuid, mut value: Value, now: u64) -> Effects {
         if value["type"] == "join" && value.get("signingKey").is_none() {
-            value["signingKey"] = json!(
-                piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
-                    .signing_key()
-            );
+            value["signingKey"] = json!(piik_channel_core::conversation::SessionSigner::from_seed(
+                [1; 32]
+            )
+            .signing_key());
         }
         let effects =
             self.authority
-                .handle(connection, Request::parse(&value.to_string()).unwrap(), 100);
+                .handle(connection, Request::parse(&value.to_string()).unwrap(), now);
         self.deliver(effects)
     }
 
@@ -49,13 +53,10 @@ impl RoomNetwork {
         let mut delivered = Effects::default();
         while let Some(effects) = pending.pop_front() {
             delivered.close.extend(effects.close);
-            if let Some(history) = effects.history {
-                assert!(delivered.history.is_none());
-                delivered.history = Some(history);
-            }
             for (connection, event) in effects.events {
                 match event {
                     Event::HostInput { room_id, input } => {
+                        let now = input.now;
                         let hosted = self
                             .hosts
                             .get_mut(&room_id)
@@ -64,7 +65,7 @@ impl RoomNetwork {
                         let output = hosted.host.dispatch(input).unwrap();
                         pending.push_back(self.authority.handle(connection, Request::parse(
                             &json!({"type":"host_output", "roomId":room_id, "output":output}).to_string(),
-                        ).unwrap(), 100));
+                        ).unwrap(), now));
                     }
                     event => {
                         match &event {
@@ -187,6 +188,7 @@ impl RoomNetwork {
             .unwrap()
     }
 
+    #[allow(dead_code)]
     pub fn policy(&self, room: &str) -> RoomState {
         self.hosts[room].host.policy().clone()
     }

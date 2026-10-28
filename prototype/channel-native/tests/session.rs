@@ -1,9 +1,9 @@
 use futures_util::{SinkExt, StreamExt};
-use piik_channel_native::session::{run, Config, RoomFile};
 use piik_channel_core::{
     wire::{Command, Event, Request},
     Authority, Effects, StoredRoomHost,
 };
+use piik_channel_native::session::{run, Config, RoomFile};
 use serde_json::{json, Value};
 use std::{path::PathBuf, time::Duration};
 use tokio::{
@@ -39,10 +39,6 @@ impl Domain {
         }
     }
     async fn apply(&mut self, effects: Effects) {
-        assert!(
-            effects.history.is_none(),
-            "domain must not write hosted-room history"
-        );
         for (connection, event) in effects.events {
             if connection == self.connection {
                 self.socket
@@ -218,6 +214,14 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.reading))).await;
 
+    domain
+        .command(
+            domain.connection,
+            json!({"type":"set_name", "name":"Owner renamed"}),
+        )
+        .await;
+    domain.until(|_, event| matches!(event, Event::State { state } if state.users.iter().any(|user| user.name == "Owner renamed"))).await;
+
     // A real socket loss resumes the same admitted session and live RoomHost.
     domain.events.clear();
     domain.socket.close(None).await.unwrap();
@@ -274,6 +278,9 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .until(|_, event| matches!(event, Event::Welcome { .. }))
         .await;
     assert!(matches!(resumed, Event::Welcome { session_id, .. } if session_id == initial));
+    assert!(
+        matches!(resumed, Event::Welcome { state, .. } if state.users.iter().any(|user| user.name == "Owner renamed"))
+    );
     assert_eq!(domain.bound("one").await, binding);
     domain.bound("two").await;
     domain.room_turn("one").await;

@@ -183,14 +183,18 @@ export class ChannelTransport {
     else this.fail();
   }
 
-  setOutgoing(streams: ReadonlyMap<string, OutgoingMedia>): void {
-    if (this.localOfferFailed && ([...this.sending.keys()].some(id => !streams.has(id)) || [...streams].some(([id, { stream }]) => {
-      const output = this.sending.get(id), previous = output?.rejectedTracks ?? output?.stream.getTracks();
+  setOutgoing(streams: ReadonlyMap<string, OutgoingMedia>, resourcesReleased = false): boolean {
+    if (resourcesReleased || [...this.sending].some(([id, output]) => !output.failed && !streams.has(id)) || [...streams].some(([id, { stream }]) => {
+      const output = this.sending.get(id);
+      if (output?.failed) return false;
+      const previous = output?.rejectedTracks ?? output?.stream.getTracks();
       const tracks = stream?.getTracks() ?? [];
       return !previous || previous.length !== tracks.length || tracks.some(track => !previous.includes(track));
-    }))) this.retryOffer();
+    })) this.retryOffer();
+    let released = false;
     for (const [id, previous] of this.sending) {
       if (streams.has(id)) continue;
+      released ||= previous.senders.length > 0;
       for (const sender of previous.senders) this.removeSender(sender);
       for (const track of previous.stream.getTracks()) previous.stream.removeTrack(track);
       this.sending.delete(id);
@@ -222,6 +226,7 @@ export class ChannelTransport {
               if (!retained.some(sender => sender.track === track)) output.stream.removeTrack(track);
             }
             console.warn("Channel media sender attach failed", { flowId: id, kind: track.kind }, error);
+            output.rejectedTracks = [...tracks];
             output.failed = retained.length === 0;
             if (output.failed) this.options.outgoingFailed?.(id);
             break;
@@ -232,9 +237,11 @@ export class ChannelTransport {
         if (sender.track && tracks.includes(sender.track)) return true;
         if (sender.track) output.stream.removeTrack(sender.track);
         this.removeSender(sender);
+        released = true;
         return false;
       });
     }
+    return released;
   }
 
   private removeSender(sender: RTCRtpSender): void {
@@ -244,7 +251,7 @@ export class ChannelTransport {
   }
 
   private retryOffer(): void {
-    if (!this.localOfferFailed) return;
+    if (!this.localOfferFailed && ![...this.sending.values()].some(output => !output.failed && output.rejectedTracks)) return;
     this.localOfferFailed = false;
     for (const output of this.sending.values()) output.rejectedTracks = undefined;
     this.offer();
@@ -406,7 +413,8 @@ export class ChannelTransport {
     this.options.failed();
   }
 
-  close(): void {
+  close(): boolean {
+    const released = [...this.sending.values()].some(output => output.senders.length > 0);
     this.closed = true;
     this.options.dataState?.(false);
     this.lifetime.abort();
@@ -428,6 +436,7 @@ export class ChannelTransport {
     this.pendingOffer = null;
     this.stableSenders = null;
     this.answer = null;
+    return released;
   }
 }
 

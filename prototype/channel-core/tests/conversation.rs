@@ -92,15 +92,11 @@ fn signed_conversation_routes_on_actual_authority_base_and_bounds_stale_projecti
         json!({"type":"chat","roomId":room,"text":"No domain content","nonce":"blocked-chat","requestId":"blocked-chat"}),
     ] {
         let rejected = network.command(connections[3], command);
-        assert!(rejected.history.is_none());
         assert!(rejected.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "room_data_channel_required")));
-        assert!(!rejected.events.iter().any(|(_, event)| matches!(
-            event,
-            Event::HostInput { .. }
-                | Event::History { .. }
-                | Event::Message { .. }
-                | Event::MessageConfirmed { .. }
-        )));
+        assert!(!rejected
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::HostInput { .. })));
     }
     let delivery = network
         .state(connections[3])

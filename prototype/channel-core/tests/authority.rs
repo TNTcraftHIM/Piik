@@ -1,5 +1,4 @@
 use piik_channel_core::{
-    history::HistoryRequest,
     wire::{Event, Request, Snapshot},
     Authority, Effects,
 };
@@ -8,9 +7,8 @@ use uuid::Uuid;
 
 fn apply(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
     if command["type"] == "join" {
-        command["signingKey"] = json!(
-            piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
-        );
+        command["signingKey"] =
+            json!(piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key());
     }
     core.handle(
         connection,
@@ -58,96 +56,98 @@ fn state(effects: &Effects, connection: Uuid) -> &Snapshot {
         .expect("personalized state")
 }
 
+#[cfg(feature = "sqlite")]
+mod support;
+
+#[cfg(feature = "sqlite")]
 #[test]
 fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() {
-    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    use piik_channel_core::wire::RoomAccess;
+    let mut core = support::RoomNetwork::new();
     let owner = Uuid::new_v4();
     let old = Uuid::new_v4();
     let current = Uuid::new_v4();
     let watcher = Uuid::new_v4();
-    join(&mut core, owner, true, 0);
-    let (session, credential, _) = join(&mut core, old, false, 0);
-    join(&mut core, watcher, false, 0);
+    core.command_at(
+        owner,
+        json!({"type":"join","key":"owner","name":"Owner"}),
+        0,
+    );
+    let (session, credential, _) = welcome(
+        core.command_at(
+            old,
+            json!({"type":"join","key":"invite","name":"Source"}),
+            0,
+        ),
+        old,
+    );
+    core.command_at(
+        watcher,
+        json!({"type":"join","key":"invite","name":"Watcher"}),
+        0,
+    );
+    let room = core.create(owner, RoomAccess::Public, false);
     let own_source = Uuid::new_v4();
     let other_source = Uuid::new_v4();
     for (connection, source) in [(owner, own_source), (old, other_source)] {
-        apply(
-            &mut core,
-            connection,
-            json!({"type":"publish", "publication":{"id":source, "roomId":"living", "kind":"screen", "muted":false}}),
-            0,
-        );
+        core.command_at(connection, json!({"type":"publish","publication":{"id":source,"roomId":room,"kind":"screen","muted":false}}), 100);
     }
-    let watching = apply(
-        &mut core,
+    core.command_at(
         watcher,
-        json!({"type":"subscribe", "publicationId":own_source, "enabled":true}),
-        0,
+        json!({"type":"subscribe","publicationId":own_source,"enabled":true}),
+        100,
     );
-    let healthy_pair = state(&watching, watcher).pairs[0].id;
-    let healthy_flow = state(&watching, watcher).pairs[0]
-        .incoming
+    let pair = core
+        .state(watcher)
+        .pairs
         .iter()
+        .find(|pair| {
+            pair.incoming
+                .iter()
+                .any(|flow| flow.publication_id == own_source)
+        })
+        .unwrap()
+        .id;
+    let flow = core
+        .state(watcher)
+        .pairs
+        .iter()
+        .flat_map(|pair| &pair.incoming)
         .find(|flow| flow.publication_id == own_source)
         .unwrap()
         .id;
-    for connection in [owner, watcher] {
-        apply(
-            &mut core,
-            connection,
-            json!({"type":"link_state","pairId":healthy_pair,"state":"connected"}),
-            0,
-        );
-    }
-    apply(
-        &mut core,
+    core.command_at(
         watcher,
-        json!({"type":"flow_state","flowId":healthy_flow,"pairId":healthy_pair,"state":"forwardable"}),
-        0,
+        json!({"type":"flow_state","flowId":flow,"pairId":pair,"state":"decoded"}),
+        100,
     );
-
-    let resumed = apply(
-        &mut core,
+    let resumed = core.command_at(
         current,
-        json!({"type":"join", "name":"Friend", "credential":credential, "sessionId":session}),
-        50,
+        json!({"type":"join","name":"Source","credential":credential,"sessionId":session}),
+        150,
     );
     assert_eq!(resumed.close, vec![old]);
-    assert!(resumed.events.iter().all(|(target, _)| *target != old));
     assert_eq!(welcome(resumed, current).0, session);
-
-    let stale = apply(
-        &mut core,
+    let stale = core.command_at(
         old,
-        json!({"type":"unpublish", "publicationId":other_source}),
-        60,
+        json!({"type":"unpublish","publicationId":other_source}),
+        160,
     );
     assert_eq!(stale.close, vec![old]);
-    let stale_send = apply(
-        &mut core,
-        old,
-        json!({"type":"chat", "roomId":"living", "text":"Stale", "nonce":"stale"}),
-        60,
-    );
-    assert!(stale_send.history.is_none());
-    assert_eq!(stale_send.close, vec![old]);
-    assert!(core.disconnect(old, 70).events.is_empty());
-    let updated = apply(
-        &mut core,
-        owner,
-        json!({"type":"set_name", "name":"Owner"}),
-        80,
-    );
-    assert!(state(&updated, current)
+    assert!(core.authority.disconnect(old, 170).events.is_empty());
+    core.command_at(owner, json!({"type":"set_name","name":"Owner"}), 180);
+    assert!(core
+        .state(current)
         .publications
         .iter()
         .any(|source| source.id == other_source));
-
-    core.disconnect(current, 100);
-    assert!(core.disconnect(current, 15_000).events.is_empty());
-    assert!(core.expire(20_099).events.is_empty());
-    let expired = core.expire(20_100);
-    let remaining = state(&expired, watcher);
+    let disconnected = core.authority.disconnect(current, 200);
+    core.deliver(disconnected);
+    assert!(core.authority.disconnect(current, 15_000).events.is_empty());
+    assert!(core.authority.expire(20_199).events.is_empty());
+    let expired = core.authority.expire(20_200);
+    core.deliver(expired);
+    let remaining = core.state(watcher);
     assert!(!remaining
         .publications
         .iter()
@@ -156,79 +156,82 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
         .publications
         .iter()
         .any(|source| source.id == own_source));
-    assert_eq!(remaining.pairs[0].id, healthy_pair);
+    assert!(remaining.pairs.iter().any(|candidate| candidate.id == pair));
     assert!(!remaining
         .sessions
         .iter()
         .any(|endpoint| endpoint.id == session));
 }
 
+#[cfg(feature = "sqlite")]
 #[test]
-fn history_requests_carry_authenticated_author_and_defer_confirmation() {
-    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
-    let connection = Uuid::new_v4();
-    let (session, _, joined) = join(&mut core, connection, false, 0);
-    let author = joined
+fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation() {
+    use piik_channel_core::{
+        conversation::ConversationCommand, history::HistoryResult, wire::RoomAccess,
+    };
+    let mut core = support::RoomNetwork::new();
+    let owner = Uuid::new_v4();
+    let author = Uuid::new_v4();
+    core.command(owner, json!({"type":"join","name":"Owner","key":"owner"}));
+    let (session, _, joined) = welcome(
+        core.command(
+            author,
+            json!({"type":"join","name":"Writer","key":"invite"}),
+        ),
+        author,
+    );
+    let user = joined
         .sessions
         .iter()
-        .find(|endpoint| endpoint.id == session)
+        .find(|entry| entry.id == session)
         .unwrap()
         .user_id;
-
-    let browse = apply(
-        &mut core,
-        connection,
-        json!({"type":"browse","active":true, "roomId":"studio", "requestId":"browse"}),
-        1,
+    let room = core.create(owner, RoomAccess::Public, false);
+    core.command(author, json!({"type":"browse","active":true,"roomId":room}));
+    let denied = core.command(
+        author,
+        json!({"type":"chat","roomId":room,"text":"WS","nonce":"ws"}),
     );
-    assert!(browse
-        .events
-        .iter()
-        .all(|(_, event)| !matches!(event, Event::History { .. })));
-    assert!(
-        state(&browse, connection)
-            .channel
-            .rooms
-            .iter()
-            .find(|room| room.id == "studio")
-            .unwrap()
-            .reading
-    );
-    assert!(browse.history.is_none());
-    assert!(browse
-        .events
-        .iter()
-        .any(|(_, event)| matches!(event, Event::Ack { request_id } if request_id == "browse")));
-
-    let send = apply(
-        &mut core,
-        connection,
-        json!({"type":"chat", "roomId":"living", "text":"  Hello  ", "nonce":"send-once", "attachments":[], "requestId":"send"}),
-        2,
-    );
-    assert!(send.events.is_empty());
-    assert!(send.close.is_empty());
-    let HistoryRequest::Send { room_id, draft } = send.history.unwrap().request else {
-        panic!("authorized chat must produce a store request");
+    assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "room_data_channel_required")));
+    let send = |text: &str| ConversationCommand::Chat {
+        text: text.into(),
+        nonce: "send-once".into(),
+        attachments: vec![],
     };
-    assert_eq!(room_id, "living");
-    assert_eq!(draft.user_id, author);
-    assert_eq!(draft.nonce, "send-once");
-    assert_eq!(draft.text, "Hello");
-    assert!(draft.attachments.is_empty());
-    assert_eq!(draft.time, 2);
-
-    let older = apply(
-        &mut core,
-        connection,
-        json!({"type":"history", "roomId":"living", "before":12, "requestId":"older"}),
-        3,
+    let HistoryResult::Sent(first) = core
+        .peer_request(author, &room, send("  Hello  "))
+        .result
+        .unwrap()
+    else {
+        panic!("confirmed send")
+    };
+    assert!(first.inserted);
+    assert_eq!(first.message.user_id, user);
+    assert_eq!(first.message.text, "Hello");
+    assert_eq!(first.message.seq, 1);
+    let HistoryResult::Sent(retry) = core
+        .peer_request(author, &room, send("Changed retry"))
+        .result
+        .unwrap()
+    else {
+        panic!("original confirmation")
+    };
+    assert!(!retry.inserted);
+    assert_eq!(
+        serde_json::to_value(first.message).unwrap(),
+        serde_json::to_value(retry.message).unwrap()
     );
-    assert!(older.events.is_empty());
-    assert!(matches!(
-        older.history.unwrap().request,
-        HistoryRequest::Read { room_id, before: Some(12) } if room_id == "living"
-    ));
+    core.command(owner, json!({"type":"set_roles","userId":user,"roles":[]}));
+    assert_eq!(
+        core.peer_request(author, &room, send("Denied"))
+            .result
+            .err(),
+        Some("forbidden")
+    );
+    assert!(
+        matches!(core.peer_request(author, &room, ConversationCommand::History { before:Some(12) }).result,
+        Ok(HistoryResult::Page { messages, .. }) if messages.len() == 1)
+    );
 }
 
 #[test]
@@ -285,10 +288,9 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
         json!({"type":"chat", "roomId":"living", "text":"Denied", "nonce":"denied"}),
         2,
     );
-    assert!(denied_send.history.is_none());
     assert!(matches!(
         denied_send.events.as_slice(),
-        [(target, Event::Error { code, .. })] if *target == guest && code == "forbidden"
+        [(target, Event::Error { code, .. })] if *target == guest && code == "room_data_channel_required"
     ));
 
     let left = apply(
@@ -345,4 +347,35 @@ fn admission_expires_old_endpoint_without_requiring_a_transport_timer() {
         .sessions
         .iter()
         .any(|session| session.id == old_session));
+}
+
+#[test]
+fn domain_checkpoint_has_no_room_policy_and_preserves_the_saved_owner_name() {
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    assert_eq!(core.owner_name(), None);
+    let owner = Uuid::new_v4();
+    let (_, _, initial) = join(&mut core, owner, true, 0);
+    assert!(initial.channel.rooms.is_empty());
+    apply(
+        &mut core,
+        owner,
+        json!({"type":"set_name","name":"Saved owner"}),
+        1,
+    );
+    let checkpoint = serde_json::to_value(core.export_state()).unwrap();
+    assert_eq!(checkpoint["version"], 3);
+    assert!(checkpoint.get("rooms").is_none());
+    assert_eq!(checkpoint["hostedRooms"], json!({}));
+    let mut restored = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    restored
+        .import_state(serde_json::from_value(checkpoint.clone()).unwrap())
+        .unwrap();
+    assert_eq!(restored.owner_name(), Some("Saved owner"));
+    let mut old = checkpoint;
+    old["version"] = json!(2);
+    assert_eq!(
+        restored.import_state(serde_json::from_value(old).unwrap()),
+        Err("invalid_state")
+    );
+    assert_eq!(restored.owner_name(), Some("Saved owner"));
 }
