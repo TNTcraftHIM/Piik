@@ -108,7 +108,6 @@ pub(crate) enum Event {
     },
 }
 struct FirstPacket {
-    publication: Uuid,
     source: Source,
     packet: rtp::Packet,
 }
@@ -492,10 +491,12 @@ impl Driver {
         self.publications = publications.into_iter().map(|p| (p.id, p.kind)).collect();
         let needed: HashSet<_> = plans
             .iter()
-            .flat_map(|plan| plan.incoming.iter().copied())
+            .flat_map(|plan| plan.incoming.iter().map(|flow| flow.id))
             .collect();
-        self.sources
-            .retain(|(id, _), _| self.publications.contains_key(id) && needed.contains(id));
+        self.sources.retain(|_, source| {
+            self.publications.contains_key(&source.publication_id)
+                && needed.contains(&source.flow_id)
+        });
         self.relay.retain(&self.sources.keys().copied().collect());
         let retained: HashSet<_> = plans.iter().map(|p| p.id).collect();
         let removed: Vec<_> = self
@@ -576,8 +577,10 @@ impl Driver {
                 }
                 p.reported.retain(|r| plan.rooms.contains(r));
                 p.plan = plan;
-                p.latest.retain(|(pub_id, _), _| {
-                    self.publications.contains_key(pub_id) && p.plan.incoming.contains(pub_id)
+                p.latest.retain(|(flow_id, _), _| {
+                    p.plan.incoming.iter().any(|flow| {
+                        flow.id == *flow_id && self.publications.contains_key(&flow.publication_id)
+                    })
                 });
                 let keep: HashSet<_> = p
                     .latest
@@ -599,8 +602,13 @@ impl Driver {
                 let remove: Vec<_> = p
                     .outputs
                     .keys()
-                    .filter(|(pub_id, _)| {
-                        !p.plan.outgoing.contains(pub_id) || !self.publications.contains_key(pub_id)
+                    .filter(|key| {
+                        !p.plan.outgoing.iter().any(|flow| {
+                            flow.id == key.0 && self.publications.contains_key(&flow.publication_id)
+                        }) || !self
+                            .sources
+                            .values()
+                            .any(|source| source.id == p.outputs[*key].source)
                     })
                     .copied()
                     .collect();
@@ -654,13 +662,10 @@ impl Driver {
             tracks: Some(
                 p.outputs
                     .iter()
-                    .map(|((publication_id, _), out)| (*publication_id, out.stream.clone()))
+                    .map(|((flow_id, _), out)| (*flow_id, out.stream.clone()))
                     .collect::<HashMap<_, _>>()
                     .into_iter()
-                    .map(|(publication_id, stream_id)| WireTrack {
-                        publication_id,
-                        stream_id,
-                    })
+                    .map(|(flow_id, stream_id)| WireTrack { flow_id, stream_id })
                     .collect(),
             ),
             resync: None,
@@ -668,13 +673,16 @@ impl Driver {
         })
     }
     async fn send_signal(&self, id: Uuid, mut payload: Signal) {
-        // SDP/exchange are immutable protocol state. Publication bindings are a
+        // SDP/exchange are immutable protocol state. Flow bindings are a
         // projection of today's leases, so a replay can only remove old mappings.
         if let (Some(pair), Some(tracks)) = (self.pairs.get(&id), payload.tracks.as_mut()) {
             tracks.retain(|track| {
-                pair.plan.outgoing.contains(&track.publication_id)
-                    && pair.outputs.iter().any(|((publication, _), out)| {
-                        *publication == track.publication_id && out.stream == track.stream_id
+                pair.plan
+                    .outgoing
+                    .iter()
+                    .any(|flow| flow.id == track.flow_id)
+                    && pair.outputs.iter().any(|((flow, _), out)| {
+                        *flow == track.flow_id && out.stream == track.stream_id
                     })
             });
         }
@@ -768,8 +776,8 @@ impl Driver {
                 .tracks
                 .unwrap_or_default()
                 .into_iter()
-                .filter(|t| p.plan.incoming.contains(&t.publication_id))
-                .map(|t| (t.stream_id, t.publication_id))
+                .filter(|t| p.plan.incoming.iter().any(|flow| flow.id == t.flow_id))
+                .map(|t| (t.stream_id, t.flow_id))
                 .collect();
             let desc: RTCSessionDescription = serde_json::from_value(
                 serde_json::json!({"type":description.kind,"sdp":description.sdp.clone().unwrap_or_default()}),
@@ -1025,7 +1033,8 @@ impl Driver {
         // An old active source may end while its replacement is awaiting a first
         // packet. Only the latest reader can invalidate the current incoming lease.
         let assigned_latest = self.pairs.get(&pair).is_some_and(|p| {
-            p.plan.incoming.contains(&key.0) && p.latest.get(&key) == Some(&source)
+            p.plan.incoming.iter().any(|flow| flow.id == key.0)
+                && p.latest.get(&key) == Some(&source)
         });
         if let Some(p) = self.pairs.get_mut(&pair) {
             if p.latest.get(&key) == Some(&source) {
@@ -1041,23 +1050,26 @@ impl Driver {
             .get(&key)
             .is_some_and(|current| current.id == source && current.pair == pair)
         {
-            self.sources.remove(&key);
+            let publication = self.sources.remove(&key).unwrap().publication_id;
             self.relay.remove(key);
             for p in self.pairs.values_mut() {
-                if p.outputs
-                    .get(&key)
-                    .is_some_and(|output| output.source == source)
-                {
+                let retired: Vec<_> = p
+                    .outputs
+                    .iter()
+                    .filter(|(_, output)| output.source == source)
+                    .map(|(key, _)| *key)
+                    .collect();
+                for key in retired {
                     p.outputs.remove(&key).unwrap().close(&*p.pc).await;
                 }
             }
             if assigned_latest
                 && (key.1 == RtpCodecKind::Video
-                    || self.publications.get(&key.0)
+                    || self.publications.get(&publication)
                         == Some(&piik_channel_prototype::wire::Kind::Voice))
             {
                 self.send(Command::FlowState {
-                    publication_id: key.0,
+                    flow_id: key.0,
                     pair_id: pair,
                     ready: false,
                 })
@@ -1092,13 +1104,19 @@ impl Driver {
                         .get(&key)
                         .is_some_and(|current| current.source == source && current.id == output)
                     {
+                        let publication = p
+                            .plan
+                            .outgoing
+                            .iter()
+                            .find(|flow| flow.id == key.0)
+                            .map(|flow| flow.publication_id);
                         p.outputs.remove(&key).unwrap().close(&*p.pc).await;
                         if key.1 == RtpCodecKind::Video
-                            || self.publications.get(&key.0)
+                            || publication.and_then(|id| self.publications.get(&id))
                                 == Some(&piik_channel_prototype::wire::Kind::Voice)
                         {
                             self.send(Command::FlowState {
-                                publication_id: key.0,
+                                flow_id: key.0,
                                 pair_id: pair,
                                 ready: false,
                             })
@@ -1186,11 +1204,14 @@ impl Driver {
             return Ok(());
         };
         let stream = track.stream_id().await;
-        let Some(publication) = p.remote.get(&stream).copied() else {
+        let Some(flow_id) = p.remote.get(&stream).copied() else {
             return Ok(());
         };
-        if !p.plan.incoming.contains(&publication) || !self.publications.contains_key(&publication)
-        {
+        let Some(binding) = p.plan.incoming.iter().find(|flow| flow.id == flow_id) else {
+            return Ok(());
+        };
+        let publication = binding.publication_id;
+        if !self.publications.contains_key(&publication) {
             return Ok(());
         }
         let Some(ssrc) = track.ssrcs().await.first().copied() else {
@@ -1208,7 +1229,7 @@ impl Driver {
                 && self.publications[&publication] == piik_channel_prototype::wire::Kind::Screen
             {
                 self.send(Command::FlowState {
-                    publication_id: publication,
+                    flow_id,
                     pair_id: id,
                     ready: false,
                 })
@@ -1216,10 +1237,12 @@ impl Driver {
             }
             return Ok(());
         }
-        let key = (publication, kind);
+        let key = (flow_id, kind);
         let (keyframes, mut requests) = watch::channel(0u64);
         let source = Source {
             id: Uuid::new_v4(),
+            flow_id,
+            publication_id: publication,
             pair: id,
             stream,
             codec,
@@ -1269,7 +1292,6 @@ impl Driver {
                             first = false;
                             if first_packets
                                 .send(FirstPacket {
-                                    publication,
                                     source: source.clone(),
                                     packet: packet.clone(),
                                 })
@@ -1315,25 +1337,24 @@ impl Driver {
         Ok(())
     }
     async fn packet(&mut self, first_packet: FirstPacket) -> Result<()> {
-        let FirstPacket {
-            publication,
-            source,
-            packet,
-        } = first_packet;
+        let FirstPacket { source, packet } = first_packet;
+        let publication = source.publication_id;
         if !self.publications.contains_key(&publication) {
             return Ok(());
         }
-        let key = (publication, source.kind);
+        let key = (source.flow_id, source.kind);
         let desired = self.pairs.get(&source.pair).is_some_and(|p| {
-            p.plan.incoming.contains(&publication)
-                && p.remote.get(&source.stream) == Some(&publication)
+            p.plan
+                .incoming
+                .iter()
+                .any(|flow| flow.id == source.flow_id && flow.publication_id == publication)
+                && p.remote.get(&source.stream) == Some(&source.flow_id)
                 && p.latest.get(&key) == Some(&source.id)
         });
         if !desired {
             return Ok(());
         }
-        // The control-plane lease alone never tears down an audible source.
-        // Only a validated packet from its replacement commits the handoff.
+        // Within one live flow, keep its track until the successor delivers a packet.
         if let Some(old) = self.sources.get(&key) {
             if let Some(pair) = self.pairs.get_mut(&old.pair) {
                 if let Some(task) = pair.tasks.remove(&old.id) {
@@ -1350,7 +1371,7 @@ impl Driver {
             || self.publications[&publication] == piik_channel_prototype::wire::Kind::Voice
         {
             self.send(Command::FlowState {
-                publication_id: publication,
+                flow_id: source.flow_id,
                 pair_id: source.pair,
                 ready: true,
             })
@@ -1361,17 +1382,29 @@ impl Driver {
     async fn refresh_media(&mut self) -> Result<()> {
         let mut failed = Vec::new();
         for (key, source) in &self.sources {
-            let (publication, _) = key;
+            let publication = &source.publication_id;
             let mut targets = Vec::new();
             for (id, p) in &mut self.pairs {
-                if *id == source.pair || !p.plan.outgoing.contains(publication) {
+                let Some(binding) = p
+                    .plan
+                    .outgoing
+                    .iter()
+                    .find(|flow| flow.publication_id == *publication)
+                else {
+                    continue;
+                };
+                if *id == source.pair {
                     continue;
                 }
-                if p.outputs.get(key).is_none_or(|o| o.source != source.id) {
+                let output_key = (binding.id, source.kind);
+                if p.outputs
+                    .get(&output_key)
+                    .is_none_or(|o| o.source != source.id)
+                {
                     let stream = p
                         .outputs
                         .iter()
-                        .find(|((id, _), _)| id == publication)
+                        .find(|((flow, _), _)| *flow == binding.id)
                         .map(|(_, out)| out.stream.clone())
                         .unwrap_or_else(|| Uuid::new_v4().to_string());
                     let next = match Output::new(
@@ -1379,7 +1412,7 @@ impl Driver {
                         source,
                         stream,
                         *id,
-                        *key,
+                        output_key,
                         self.events.clone(),
                         p.reports.clone(),
                     )
@@ -1392,23 +1425,23 @@ impl Driver {
                                 || self.publications[publication]
                                     == piik_channel_prototype::wire::Kind::Voice
                             {
-                                failed.push((*publication, *id));
+                                failed.push((binding.id, *id));
                             }
                             continue;
                         }
                     };
-                    if let Some(old) = p.outputs.insert(*key, next) {
+                    if let Some(old) = p.outputs.insert(output_key, next) {
                         old.close(&*p.pc).await;
                     }
                     source.request_keyframe();
                 }
-                targets.push(p.outputs[key].sink());
+                targets.push(p.outputs[&output_key].sink());
             }
             self.relay.set(*key, source.id, targets);
         }
-        for (publication_id, pair_id) in failed {
+        for (flow_id, pair_id) in failed {
             self.send(Command::FlowState {
-                publication_id,
+                flow_id,
                 pair_id,
                 ready: false,
             })

@@ -439,12 +439,12 @@ export function mediaSourceRecord(
     : null;
 }
 
-function mediaRecord(
+function mediaRecords(
   report: RTCStatsReport,
   direction: "send" | "receive",
   selector: StatsMediaSelector | null,
   kind: "audio" | "video" = "video",
-): StatsRecord | null {
+): StatsRecord[] {
   const expectedType = direction === "send" ? "outbound-rtp" : "inbound-rtp";
   const isExpectedMedia = (record: StatsRecord): boolean =>
     record.type === expectedType &&
@@ -460,21 +460,40 @@ function mediaRecord(
   });
   const selectedTrackIdentifier = selector?.trackIdentifier ?? null;
   const selectedRid = selector?.rid ?? null;
-  const narrowed = candidates.filter(
+  return candidates.filter(
     (candidate) =>
       (selectedTrackIdentifier === null ||
         mediaTrackIdentifier(report, candidate, direction) ===
           selectedTrackIdentifier) &&
       (selectedRid === null || stringValue(candidate, "rid") === selectedRid),
   );
-  return narrowed.length === 1 ? narrowed[0]! : null;
+}
+
+function mediaRecord(
+  report: RTCStatsReport,
+  direction: "send" | "receive",
+  selector: StatsMediaSelector | null,
+  kind: "audio" | "video" = "video",
+): StatsRecord | null {
+  const candidates = mediaRecords(report, direction, selector, kind);
+  return candidates.length === 1 ? candidates[0]! : null;
+}
+
+export function decodedVideoFrameSamples(
+  report: RTCStatsReport,
+  selector: StatsMediaSelector | null = null,
+): Array<{ id: string; framesDecoded: number | null }> {
+  return mediaRecords(report, "receive", selector).map(record => ({
+    id: record.id, framesDecoded: numberValue(record, "framesDecoded"),
+  }));
 }
 
 export function decodedVideoFrames(
   report: RTCStatsReport,
   selector: StatsMediaSelector | null = null,
 ): number | null {
-  return numberValue(mediaRecord(report, "receive", selector), "framesDecoded");
+  const samples = decodedVideoFrameSamples(report, selector);
+  return samples.length === 1 ? samples[0]!.framesDecoded : null;
 }
 
 export function maxEncodedVideoFrames(

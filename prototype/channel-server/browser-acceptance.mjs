@@ -215,7 +215,7 @@ async function roomBase(initial, serverRoom) {
   const source = await capturedScreen(1, serverRoom);
   await action(2, `watch(${JSON.stringify(source)})`);
   await playing(2, source);
-  const originalPair = (await view(2)).state.pairs.find(pair => pair.incoming.includes(source)).id;
+  const originalPair = (await view(2)).state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === source)).id;
   const room = await action(1, "createRoom({name:'Connected room',access:'public',hidden:false})");
   for (const index of [1, 2]) await browser(index, "click", '.c3-room-link[aria-label="Connected room"]');
   await until("base reuses the existing screen connection", () => view(2), value =>
@@ -235,8 +235,8 @@ async function roomBase(initial, serverRoom) {
     value.inbound.some(report => report.kind === "audio" && report.samples > 0 && report.energy > 0));
   const dVoice = (await view(3)).state.publications.find(value => value.sessionId === initial[3].sessionId && value.kind === "voice").id;
   const cTransit = await view(2);
-  assert(cTransit.state.pairs.some(pair => pair.incoming.includes(dVoice)));
-  assert(cTransit.state.pairs.some(pair => pair.outgoing.includes(dVoice)));
+  assert(cTransit.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === dVoice)));
+  assert(cTransit.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === dVoice)));
   assert(!cTransit.state.subscriptions.includes(dVoice), "transit does not join voice or play it locally");
   assert(await evaluate(2, "[...document.querySelectorAll('audio')].filter(audio => audio.srcObject).every(audio => audio.hidden && audio.muted)"),
     "transit decoder consumers must remain silent and absent from local playback");
@@ -245,7 +245,7 @@ async function roomBase(initial, serverRoom) {
   const basePicture = await capturedScreen(3, room);
   await action(1, `watch(${JSON.stringify(basePicture)})`);
   await playing(1, basePicture);
-  assert((await view(1)).state.pairs.some(pair => pair.peerId === initial[2].sessionId && pair.incoming.includes(basePicture)),
+  assert((await view(1)).state.pairs.some(pair => pair.peerId === initial[2].sessionId && pair.incoming.some(flow => flow.publicationId === basePicture)),
     "picture startup uses the reachable base transit despite a blocked direct path");
   assert(!(await view(2)).state.subscriptions.includes(basePicture), "picture transit does not require local viewing");
 
@@ -266,7 +266,7 @@ async function roomBase(initial, serverRoom) {
   await until("A becomes an available base branch", () => view(0), value => value.state.pairs.some(pair => pair.rooms.includes(room)));
   await action(0, `watch(${JSON.stringify(source)})`);
   await playing(0, source);
-  const survivingPair = (await view(0)).state.pairs.find(pair => pair.incoming.includes(source)).id;
+  const survivingPair = (await view(0)).state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === source)).id;
   await evaluate(2, "window.__channelProbe.closeDataChannels()");
   await until("D repairs through A after its transit DataChannel closes", () => view(3), value =>
     value.state.pairs.some(pair => pair.rooms.includes(room) && pair.peerId === initial[0].sessionId), 30_000);
@@ -275,12 +275,12 @@ async function roomBase(initial, serverRoom) {
     value.inbound.filter(report => report.kind === "audio").reduce((total, report) => total + (report.energy ?? 0), 0) > energyBefore);
   await progressing(0, source);
   await progressing(2, source);
-  assert((await view(2)).state.pairs.some(pair => pair.id === originalPair && pair.incoming.includes(source)), "a failed DataChannel must not close the same pair's healthy picture");
-  assert((await view(0)).state.pairs.some(pair => pair.id === survivingPair && pair.incoming.includes(source)), "base repair preserves unrelated screen transport");
+  assert((await view(2)).state.pairs.some(pair => pair.id === originalPair && pair.incoming.some(flow => flow.publicationId === source)), "a failed DataChannel must not close the same pair's healthy picture");
+  assert((await view(0)).state.pairs.some(pair => pair.id === survivingPair && pair.incoming.some(flow => flow.publicationId === source)), "base repair preserves unrelated screen transport");
   await progressing(1, basePicture);
   await browser(2, "close");
   await until("picture repairs through the surviving base branch", () => view(1), value =>
-    value.state.pairs.some(pair => pair.peerId === initial[0].sessionId && pair.incoming.includes(basePicture)), 30_000);
+    value.state.pairs.some(pair => pair.peerId === initial[0].sessionId && pair.incoming.some(flow => flow.publicationId === basePicture)), 30_000);
   await progressing(1, basePicture);
   await action(3, `stopScreen(${JSON.stringify(basePicture)})`);
 
@@ -289,7 +289,7 @@ async function roomBase(initial, serverRoom) {
     !value.state.voice.some(member => member.roomId === room) && value.state.pairs.some(pair => pair.rooms.includes(room)));
   for (const index of [0, 3]) await browser(index, "click", '.c3-room-link[aria-label="Living room"]');
   await until("last room demand releases only base leases", () => view(0), value =>
-    !value.state.pairs.some(pair => pair.rooms.includes(room)) && value.state.pairs.some(pair => pair.id === survivingPair && pair.incoming.includes(source)));
+    !value.state.pairs.some(pair => pair.rooms.includes(room)) && value.state.pairs.some(pair => pair.id === survivingPair && pair.incoming.some(flow => flow.publicationId === source)));
   await progressing(0, source);
   await action(1, `stopScreen(${JSON.stringify(source)})`);
   await until("last physical lease closes the pair", () => view(0), value => !value.state.pairs.some(pair => pair.id === survivingPair));
@@ -685,7 +685,7 @@ try {
   console.log("Two simultaneous sources; D receives only B; E decodes both");
 
   const initialRoutes = await Promise.all([0, 3, 4].map(index => view(index)));
-  const leaf = [0, 3, 4][initialRoutes.findIndex(value => !value.state.pairs.some(pair => pair.outgoing.includes(secondPublication)))];
+  const leaf = [0, 3, 4][initialRoutes.findIndex(value => !value.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === secondPublication)))];
   assert(leaf !== undefined, "distribution must have a leaf viewer");
   await action(leaf, `unwatch(${JSON.stringify(secondPublication)})`);
   await until("leaf stops watching", () => view(leaf), value => !value.state.subscriptions.includes(secondPublication));
@@ -707,9 +707,9 @@ try {
   for (const index of [1, 0, 3]) await action(index, `watch(${JSON.stringify(primaryPublication)})`);
   await Promise.all([0, 1, 3, 4].map(index => playing(index, primaryPublication)));
   const routed = await Promise.all(sessions.map((_, index) => view(index)));
-  const relay = routed.findIndex((state, index) => index !== 2 && state.state.pairs.some(pair => pair.outgoing.includes(primaryPublication)));
+  const relay = routed.findIndex((state, index) => index !== 2 && state.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)));
   assert(relay >= 0, "source fanout two must produce an actual peer relay for four viewers");
-  const sourceCopies = routed[2].state.pairs.filter(pair => pair.outgoing.includes(primaryPublication)).length;
+  const sourceCopies = routed[2].state.pairs.filter(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)).length;
   assert(sourceCopies <= 2, `source fanout exceeded: ${sourceCopies}`);
   if (relay !== secondPublisher) {
     await action(secondPublisher, `stopScreen(${JSON.stringify(secondPublication)})`);
@@ -722,16 +722,16 @@ try {
   await action(secondPublisher, `stopScreen(${JSON.stringify(secondPublication)})`);
   await progressing(relay, primaryPublication);
   const relayView = await view(relay);
-  assert(relayView.state.pairs.some(pair => pair.outgoing.includes(primaryPublication)), "own source retirement must retain another source's forwarding");
+  assert(relayView.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)), "own source retirement must retain another source's forwarding");
   console.log(`Browser ${relay} stopped its own source and keeps receiving/forwarding C`);
 
-  const downstream = relayView.state.pairs.find(pair => pair.outgoing.includes(primaryPublication)).peerId;
+  const downstream = relayView.state.pairs.find(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)).peerId;
   const downstreamIndex = routed.findIndex(value => value.sessionId === downstream);
   assert(downstreamIndex >= 0);
-  const transitPairs = relayView.state.pairs.filter(pair => pair.incoming.includes(primaryPublication) || pair.outgoing.includes(primaryPublication)).map(pair => pair.id).sort();
+  const transitPairs = relayView.state.pairs.filter(pair => pair.incoming.some(flow => flow.publicationId === primaryPublication) || pair.outgoing.some(flow => flow.publicationId === primaryPublication)).map(pair => pair.id).sort();
   await action(relay, `unwatch(${JSON.stringify(primaryPublication)})`);
   const transit = await until("relay stops local consumption", () => view(relay), value => !value.state.subscriptions.includes(primaryPublication));
-  assert.deepEqual(transit.state.pairs.filter(pair => pair.incoming.includes(primaryPublication) || pair.outgoing.includes(primaryPublication)).map(pair => pair.id).sort(), transitPairs);
+  assert.deepEqual(transit.state.pairs.filter(pair => pair.incoming.some(flow => flow.publicationId === primaryPublication) || pair.outgoing.some(flow => flow.publicationId === primaryPublication)).map(pair => pair.id).sort(), transitPairs);
   await until("transit has no local player", () => picture(relay, primaryPublication), value => value.frames === 0);
   await progressing(downstreamIndex, primaryPublication);
   await action(relay, `watch(${JSON.stringify(primaryPublication)})`);
@@ -752,7 +752,7 @@ try {
   await browser(relay, "close");
   await progressing(downstreamIndex, primaryPublication);
   const repaired = await until("relay exit is removed from recovered route", () => view(downstreamIndex), value =>
-    value.state.pairs.some(pair => pair.incoming.includes(primaryPublication) && pair.peerId !== routed[relay].sessionId));
+    value.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === primaryPublication) && pair.peerId !== routed[relay].sessionId));
   assert(repaired.streams.includes(primaryPublication));
   console.log("Relay exit recovers its downstream subscription");
 

@@ -1,9 +1,18 @@
 //! Real local PCs exercise the adapter's source-generation handoff. Room
 //! authority/routing are covered by the domain gate; this fixture supplies leases.
 use anyhow::Result;
+
+// Fixture identities are stable for an unchanged directed pair/publication lease.
+fn binding(publication_id: Uuid, pair: Uuid) -> FlowBinding {
+    FlowBinding {
+        id: Uuid::from_u128(publication_id.as_u128() ^ pair.as_u128()),
+        publication_id,
+    }
+}
 use piik_channel_native::peer::{NativeEvent, NativePeers};
 use piik_channel_prototype::wire::{
-    Candidate, Command, Description, Kind, PairInfo, PublicationInfo, Signal, Track as WireTrack,
+    Candidate, Command, Description, FlowBinding, Kind, PairInfo, PublicationInfo, Signal,
+    Track as WireTrack,
 };
 use rtc::interceptor::{Interceptor, NoopInterceptor, StreamInfo, TaggedPacket};
 use rtc::sansio::Protocol;
@@ -127,6 +136,7 @@ impl PeerConnectionEventHandler for Handler {
     }
 }
 struct Endpoint {
+    id: Uuid,
     pc: Arc<dyn PeerConnection>,
     pending: bool,
     polite: bool,
@@ -232,6 +242,7 @@ async fn endpoint_clock(
         pc.create_data_channel("piik-room", None).await?;
     }
     Ok(Endpoint {
+        id,
         pc,
         polite,
         sent: None,
@@ -264,7 +275,7 @@ async fn add_source(
         }],
     )));
     endpoint.tracks.lock().unwrap().push(WireTrack {
-        publication_id: publication,
+        flow_id: binding(publication, endpoint.id).id,
         stream_id: stream,
     });
     endpoint.pc.add_track(track.clone()).await?;
@@ -282,6 +293,26 @@ fn packet(seq: u16, timestamp: u32, ssrc: u32) -> rtp::Packet {
         },
         payload: vec![0xf8, 0xff, 0xfe].into(),
     }
+}
+fn local_video(stream: String, ssrc: u32) -> Arc<TrackLocalStaticRTP> {
+    Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
+        stream,
+        Uuid::new_v4().to_string(),
+        "VP8 packet burst".into(),
+        RtpCodecKind::Video,
+        vec![RTCRtpEncodingParameters {
+            rtp_coding_parameters: RTCRtpCodingParameters {
+                ssrc: Some(ssrc),
+                ..Default::default()
+            },
+            codec: RTCRtpCodec {
+                mime_type: "video/VP8".into(),
+                clock_rate: 90000,
+                ..Default::default()
+            },
+            ..Default::default()
+        }],
+    )))
 }
 #[derive(Default)]
 struct Loss {
@@ -445,29 +476,13 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         let child = endpoint(session, child_id, 111, events, packets).await?;
         let audio = add_source(&source, publication, 0x1111).await?;
         let stream = source.tracks.lock().unwrap()[0].stream_id.clone();
-        let video = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
-            stream,
-            Uuid::new_v4().to_string(),
-            "VP8 packet burst".into(),
-            RtpCodecKind::Video,
-            vec![RTCRtpEncodingParameters {
-                rtp_coding_parameters: RTCRtpCodingParameters {
-                    ssrc: Some(0x2222),
-                    ..Default::default()
-                },
-                codec: RTCRtpCodec {
-                    mime_type: "video/VP8".into(),
-                    clock_rate: 90000,
-                    ..Default::default()
-                },
-                ..Default::default()
-            }],
-        )));
+        let video = local_video(stream, 0x2222);
         let video_sender = source.pc.add_track(video.clone()).await?;
         let plis = source.pli.clone();
         let received = child.received.clone();
         let child_reports = child.reports.clone();
         let source_pc = source.pc.clone();
+        let source_tracks = source.tracks.clone();
         let child_pc = child.pc.clone();
         let mut audio_sender = None;
         for sender in source_pc.get_senders().await {
@@ -482,7 +497,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                         id: source_id,
                         peer_id: source_id,
                         rooms: vec!["screen".into()],
-                        incoming: vec![publication],
+                        incoming: vec![binding(publication, source_id)],
                         outgoing: vec![],
                     },
                     PairInfo {
@@ -490,7 +505,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                         peer_id: child_id,
                         rooms: vec!["screen".into()],
                         incoming: vec![],
-                        outgoing: vec![publication],
+                        outgoing: vec![binding(publication, child_id)],
                     },
                 ],
                 vec![PublicationInfo {
@@ -723,10 +738,10 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                 !matches!(
                     report,
                     Command::FlowState {
-                        publication_id,
+                        flow_id,
                         ready: false,
                         ..
-                    } if publication_id == publication
+                    } if flow_id == binding(publication, source_id).id
                 ),
                 "removing only screen audio must not fail its picture flow"
             );
@@ -747,10 +762,12 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             loop {
                 match report_rx.recv().await.unwrap() {
                     Command::FlowState {
-                        publication_id,
+                        flow_id,
                         pair_id,
                         ready: false,
-                    } if publication_id == publication && pair_id == source_id => break,
+                    } if flow_id == binding(publication, source_id).id && pair_id == source_id => {
+                        break
+                    }
                     Command::BaseState { ready: false, .. }
                     | Command::LinkState {
                         state: piik_channel_prototype::wire::LinkState::Failed,
@@ -769,6 +786,129 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             child_pc.sctp().await.unwrap().state().await?,
             rtc::peer_connection::transport::RTCSctpTransportState::Connected
         );
+        // The base PC survives an unsubscribe/resubscribe of this same publication.
+        // Old reader/sender completion must keep its retired flow identity.
+        let new_incoming = FlowBinding {
+            id: Uuid::new_v4(),
+            publication_id: publication,
+        };
+        let new_outgoing = FlowBinding {
+            id: Uuid::new_v4(),
+            publication_id: publication,
+        };
+        let plans = |active: bool| {
+            vec![
+                PairInfo {
+                    id: source_id,
+                    peer_id: source_id,
+                    rooms: vec!["screen".into()],
+                    incoming: if active {
+                        vec![new_incoming.clone()]
+                    } else {
+                        vec![]
+                    },
+                    outgoing: vec![],
+                },
+                PairInfo {
+                    id: child_id,
+                    peer_id: child_id,
+                    rooms: vec!["screen".into()],
+                    incoming: vec![],
+                    outgoing: if active {
+                        vec![new_outgoing.clone()]
+                    } else {
+                        vec![]
+                    },
+                },
+            ]
+        };
+        let info = PublicationInfo {
+            id: publication,
+            room_id: "screen".into(),
+            session_id: source_id,
+            user_id: source_id,
+            kind: Kind::Screen,
+            muted: false,
+        };
+        native
+            .update(plans(false), vec![info.clone()], vec![])
+            .await?;
+        native.update(plans(true), vec![info], vec![]).await?;
+        let stream = Uuid::new_v4().to_string();
+        *source_tracks.lock().unwrap() = vec![WireTrack {
+            flow_id: new_incoming.id,
+            stream_id: stream.clone(),
+        }];
+        let replacement = local_video(stream, 0x3333);
+        source_pc.add_track(replacement.clone()).await?;
+        let replacing = tokio::spawn(async move {
+            for seq in 0..200u16 {
+                replacement
+                    .write_rtp(rtp::Packet {
+                        header: rtp::header::Header {
+                            version: 2,
+                            payload_type: 96,
+                            ssrc: 0x3333,
+                            sequence_number: seq,
+                            timestamp: 1000 + seq as u32 * 3000,
+                            marker: true,
+                            ..Default::default()
+                        },
+                        payload: vec![0x10, 0, 0x55].into(),
+                    })
+                    .await?;
+                sleep(Duration::from_millis(20)).await;
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+        timeout(Duration::from_secs(5), async {
+            loop {
+                if let Command::FlowState {
+                    flow_id,
+                    ready: true,
+                    ..
+                } = report_rx.recv().await.unwrap()
+                {
+                    if flow_id == new_incoming.id {
+                        break;
+                    }
+                }
+            }
+        })
+        .await?;
+        let next = timeout(Duration::from_secs(5), async {
+            loop {
+                let packet = packet_rx.recv().await.unwrap();
+                if packet.header.ssrc != ssrc && packet.header.timestamp < 100_000 {
+                    break packet;
+                }
+            }
+        })
+        .await?;
+        assert_ne!(next.header.ssrc, ssrc);
+        sleep(Duration::from_millis(100)).await;
+        while let Ok(report) = report_rx.try_recv() {
+            assert!(
+                !matches!(
+                    report,
+                    Command::FlowState {
+                        flow_id,
+                        ready: false,
+                        ..
+                    } if flow_id == new_incoming.id || flow_id == new_outgoing.id
+                )
+            );
+        }
+        assert_eq!(
+            source_pc.sctp().await.unwrap().state().await?,
+            rtc::peer_connection::transport::RTCSctpTransportState::Connected
+        );
+        assert_eq!(
+            child_pc.sctp().await.unwrap().state().await?,
+            rtc::peer_connection::transport::RTCSctpTransportState::Connected
+        );
+        replacing.abort();
+        let _ = replacing.await;
         stop.send(true)?;
         task.await??;
         Arc::try_unwrap(native)
@@ -781,7 +921,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
 }
 
 #[tokio::test]
-async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handoff() -> Result<()> {
+async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> Result<()> {
     for native_id in [Uuid::nil(), Uuid::from_u128(u128::MAX)] {
         timeout(Duration::from_secs(45), async {
             let publication = Uuid::new_v4();
@@ -817,7 +957,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                         incoming: if new_source {
                             vec![]
                         } else {
-                            vec![publication]
+                            vec![binding(publication, a)]
                         },
                         outgoing: vec![],
                     },
@@ -826,7 +966,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                         peer_id: b,
                         rooms: vec!["room".into()],
                         incoming: if new_source {
-                            vec![publication]
+                            vec![binding(publication, b)]
                         } else {
                             vec![]
                         },
@@ -837,7 +977,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                         peer_id: receiver,
                         rooms: vec!["room".into()],
                         incoming: vec![],
-                        outgoing: vec![publication],
+                        outgoing: vec![binding(publication, receiver)],
                     },
                 ]
             };
@@ -918,6 +1058,7 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                 .update(plans(true), vec![info.clone()], vec![])
                 .await?;
             let eb = Endpoint {
+                id: b,
                 pc: b_pc,
                 pending: false,
                 polite: b > native_id,
@@ -929,21 +1070,14 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                 reports: Arc::new(Mutex::new(vec![])),
             };
             let source_b = add_source(&eb, publication, 0x22222222).await?;
-            // Control switches the input lease and negotiates B, but B sends nothing yet.
-            // A's old track must remain audible until B actually delivers a packet.
-            let mut old = vec![];
-            for _ in 0..8 {
-                old.push(next_matching(&mut packets, Some(old_ssrc)).await);
-            }
-            assert!(old.windows(2).all(|w| w[1]
-                .header
-                .timestamp
-                .wrapping_sub(w[0].header.timestamp)
-                == w[1]
-                    .header
-                    .sequence_number
-                    .wrapping_sub(w[0].header.sequence_number) as u32
-                    * 960));
+            // Removing A's flow retires its reader immediately. B is a different
+            // authorized lease and cannot report ready before its first packet.
+            while packets.try_recv().is_ok() {}
+            sleep(Duration::from_millis(100)).await;
+            while packets.try_recv().is_ok() {}
+            assert!(timeout(Duration::from_millis(150), packets.recv())
+                .await
+                .is_err());
             while let Ok(command) = reports.try_recv() {
                 assert!(!matches!(command,Command::FlowState{pair_id,ready:true,..}if pair_id==b));
             }
@@ -1018,13 +1152,13 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                 .find(|p| p.id == b)
                 .unwrap()
                 .incoming
-                .push(second);
+                .push(binding(second, b));
             expanded
                 .iter_mut()
                 .find(|p| p.id == receiver)
                 .unwrap()
                 .outgoing
-                .push(second);
+                .push(binding(second, receiver));
             *loss.lock().unwrap() = Loss {
                 pair: Some(receiver),
                 offer: true,
@@ -1095,10 +1229,10 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                 answer: true,
                 ..Default::default()
             };
-            eb.tracks
-                .lock()
-                .unwrap()
-                .retain(|track| track.publication_id != second);
+            eb.tracks.lock().unwrap().retain(|track| {
+                track.flow_id != binding(second, b).id
+                    && track.flow_id != binding(second, receiver).id
+            });
             let replacement = add_source(&eb, second, 0x44444444).await?;
             let replacement_sender = tokio::spawn(async move {
                 for seq in 6000..7000 {
@@ -1159,7 +1293,8 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                     .as_ref()
                     .unwrap()
                     .iter()
-                    .all(|track| track.publication_id != second));
+                    .all(|track| track.flow_id != binding(second, b).id
+                        && track.flow_id != binding(second, receiver).id));
                 let fresh = loss
                     .offers
                     .iter()
@@ -1170,7 +1305,8 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                     .as_ref()
                     .unwrap()
                     .iter()
-                    .all(|track| track.publication_id != second));
+                    .all(|track| track.flow_id != binding(second, b).id
+                        && track.flow_id != binding(second, receiver).id));
             }
             while let Ok(command) = reports.try_recv() {
                 assert!(!matches!(

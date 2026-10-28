@@ -1,4 +1,5 @@
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
+import { decodedVideoFrameSamples } from "../webrtc/stats";
 import type { ChannelSignal } from "./protocol";
 
 const MAX_FILE_FRAME_BYTES = 8192;
@@ -11,8 +12,8 @@ interface TransportOptions {
   polite: boolean;
   iceServers: RTCIceServer[];
   send(payload: ChannelSignal): void;
-  receive(publicationId: string, stream: MediaStream): void;
-  retire?(publicationId: string): void;
+  receive(flowId: string, stream: MediaStream): void;
+  retire?(flowId: string): void;
   connected(): void;
   base(ready: boolean): void;
   failed(): void;
@@ -21,11 +22,12 @@ interface TransportOptions {
   bulkClosed?(): void;
 }
 
-/** One physical pair. Publications own tracks; the pair only owns senders. */
+/** One physical pair. Flows own stream bindings and senders, never source tracks. */
 export class ChannelTransport {
   readonly pc: RTCPeerConnection;
   private sending = new Map<string, { stream: MediaStream; senders: RTCRtpSender[] }>();
   private remoteIds = new Map<string, string>();
+  private frameBaselines = new Map<string, ReadonlyMap<string, number> | null>();
   private receiving = new Map<string, MediaStream>();
   private makingOffer = false;
   private ignoreOffer = false;
@@ -73,10 +75,10 @@ export class ChannelTransport {
     };
     this.pc.ontrack = ({ streams }) => {
       for (const stream of streams) {
-        const publicationId = this.remoteIds.get(stream.id);
-        if (!publicationId) continue;
+        const flowId = this.remoteIds.get(stream.id);
+        if (!flowId) continue;
         this.receiving.set(stream.id, stream);
-        options.receive(publicationId, stream);
+        options.receive(flowId, stream);
       }
     };
   }
@@ -180,31 +182,39 @@ export class ChannelTransport {
     else this.fail();
   }
 
-  setOutgoing(streams: ReadonlyMap<string, MediaStream>): void {
+  setOutgoing(streams: ReadonlyMap<string, MediaStream | null>): void {
     for (const [id, previous] of this.sending) {
       const next = streams.get(id);
-      const tracks = next === previous.stream ? next.getTracks() : [];
+      const tracks = next?.getTracks() ?? [];
       previous.senders = previous.senders.filter(sender => {
         if (sender.track && tracks.includes(sender.track)) return true;
+        if (sender.track) previous.stream.removeTrack(sender.track);
         this.pc.removeTrack(sender);
         return false;
       });
-      if (next !== previous.stream) this.sending.delete(id);
+      if (!streams.has(id)) this.sending.delete(id);
     }
     for (const [id, stream] of streams) {
       let output = this.sending.get(id);
       if (!output) {
-        output = { stream, senders: [] };
+        output = { stream: new MediaStream(), senders: [] };
         this.sending.set(id, output);
       }
-      for (const track of stream.getTracks()) {
-        if (!output.senders.some(sender => sender.track === track)) output.senders.push(this.pc.addTrack(track, stream));
+      for (const track of stream?.getTracks() ?? []) {
+        if (!output.senders.some(sender => sender.track === track)) {
+          output.stream.addTrack(track);
+          output.senders.push(this.pc.addTrack(track, output.stream));
+        }
       }
     }
   }
 
-  hasRemoteStream(publicationId: string, stream: MediaStream): boolean {
-    return this.remoteIds.get(stream.id) === publicationId;
+  hasRemoteStream(flowId: string, stream: MediaStream): boolean {
+    return this.remoteIds.get(stream.id) === flowId;
+  }
+
+  frameBaseline(flowId: string): ReadonlyMap<string, number> | null {
+    return this.frameBaselines.get(flowId) ?? null;
   }
 
   signal(payload: ChannelSignal): void {
@@ -220,18 +230,32 @@ export class ChannelTransport {
         if (this.ignoreOffer) return;
         this.settingAnswer = description.type === "answer";
         const previousIds = this.remoteIds;
-        this.remoteIds = new Map((payload.tracks ?? []).map(track => [track.streamId, track.publicationId]));
+        const remoteIds = new Map((payload.tracks ?? []).map(track => [track.streamId, track.flowId]));
+        const flows = new Set(remoteIds.values());
+        const added = [...flows].filter(id => !this.frameBaselines.has(id));
+        if (added.length) {
+          let baseline: ReadonlyMap<string, number> | null = null;
+          try {
+            const samples = decodedVideoFrameSamples(await this.pc.getStats());
+            if (samples.every(sample => sample.framesDecoded !== null)) {
+              baseline = new Map(samples.map(sample => [sample.id, sample.framesDecoded!]));
+            }
+          } catch { /* An unknown baseline requires observed progress, not transport failure. */ }
+          if (this.closed) return;
+          for (const id of added) this.frameBaselines.set(id, baseline);
+        }
+        this.remoteIds = remoteIds;
         try { await this.pc.setRemoteDescription(description); }
         finally { this.settingAnswer = false; }
         if (description.type === "offer" || description.type === "answer") this.pendingOffer = null;
         for (const [streamId, stream] of this.receiving) {
-          const publicationId = this.remoteIds.get(streamId);
-          if (publicationId) this.options.receive(publicationId, stream);
+          const flowId = this.remoteIds.get(streamId);
+          if (flowId) this.options.receive(flowId, stream);
           else this.receiving.delete(streamId);
         }
-        const publications = new Set(this.remoteIds.values());
+        for (const id of this.frameBaselines.keys()) if (!flows.has(id)) this.frameBaselines.delete(id);
         for (const id of new Set(previousIds.values())) {
-          if (!publications.has(id)) this.options.retire?.(id);
+          if (!flows.has(id)) this.options.retire?.(id);
         }
         for (const candidate of this.candidates.splice(0)) await addRemoteIceCandidate(this.pc, { ...candidate, candidate: candidate.candidate ?? "" });
         if (description.type === "offer") {
@@ -257,14 +281,14 @@ export class ChannelTransport {
   }
 
   private replayDescription(payload: ChannelSignal): void {
-    // SDP completes its original exchange; only current publication bindings may travel with it.
-    this.options.send({ ...payload, tracks: payload.tracks?.filter(track => this.sending.get(track.publicationId)?.stream.id === track.streamId) });
+    // SDP completes its original exchange; only current flow bindings may travel with it.
+    this.options.send({ ...payload, tracks: payload.tracks?.filter(track => this.sending.get(track.flowId)?.stream.id === track.streamId) });
   }
 
   private sendDescription(exchangeId: string = crypto.randomUUID()): void {
     const description = this.pc.localDescription;
     if (!description || (description.type !== "offer" && description.type !== "answer")) return;
-    const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks: [...this.sending].map(([publicationId, { stream }]) => ({ publicationId, streamId: stream.id })) };
+    const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks: [...this.sending].map(([flowId, { stream }]) => ({ flowId, streamId: stream.id })) };
     if (description.type === "offer") this.pendingOffer = payload;
     else if (description.type === "answer") this.answer = payload;
     this.options.send(payload);
@@ -305,6 +329,7 @@ export class ChannelTransport {
     this.pc.close();
     this.sending.clear();
     this.receiving.clear();
+    this.frameBaselines.clear();
     this.pendingOffer = null;
     this.answer = null;
   }

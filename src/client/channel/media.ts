@@ -1,5 +1,5 @@
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
-import { decodedVideoFrames } from "../webrtc/stats";
+import { decodedVideoFrameSamples } from "../webrtc/stats";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
 import { ChannelTransport } from "./transport";
 
@@ -61,8 +61,8 @@ export class ChannelMedia {
           polite: sessionId.localeCompare(plan.peerId) > 0,
           iceServers: state.iceServers,
           send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
-          receive: (publicationId, stream) => this.receive(plan.id, publicationId, stream),
-          retire: publicationId => this.retire(plan.id, publicationId),
+          receive: (flowId, stream) => this.receive(plan.id, flowId, stream),
+          retire: flowId => this.retire(plan.id, flowId),
           data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
           dataState: ready => this.dataState?.(plan.peerId, ready),
           bulkClosed: () => this.bulkClosed?.(plan.peerId),
@@ -83,10 +83,10 @@ export class ChannelMedia {
       for (const room of peer.baseReady) if (!plan.rooms.includes(room)) peer.baseReady.delete(room);
       peer.transport.setRooms(plan.rooms);
       if (peer.transport.isBaseReady()) this.reportBase(peer, true);
-      for (const [publicationId, input] of peer.inputs) {
-        if (!plan.incoming.includes(publicationId)) {
+      for (const [flowId, input] of peer.inputs) {
+        if (!plan.incoming.some(flow => flow.id === flowId)) {
           input.release?.();
-          peer.inputs.delete(publicationId);
+          peer.inputs.delete(flowId);
         }
       }
     }
@@ -119,10 +119,10 @@ export class ChannelMedia {
     });
   }
 
-  private receive(pairId: string, publicationId: string, stream: MediaStream): void {
+  private receive(pairId: string, flowId: string, stream: MediaStream): void {
     const peer = this.peers.get(pairId);
-    if (!peer?.plan.incoming.includes(publicationId)) return;
-    this.prove(peer, publicationId, stream);
+    if (!peer?.plan.incoming.some(flow => flow.id === flowId)) return;
+    this.prove(peer, flowId, stream);
     this.refresh();
   }
 
@@ -131,15 +131,17 @@ export class ChannelMedia {
     if (!peer || !input) return;
     input.release?.();
     peer.inputs.delete(id);
-    if (input.ready && this.publications.find(publication => publication.id === id)?.kind === "screen") {
-      this.send({ type: "flow_state", publicationId: id, pairId, ready: false });
+    const publicationId = peer.plan.incoming.find(flow => flow.id === id)?.publicationId;
+    if (input.ready && this.publications.find(publication => publication.id === publicationId)?.kind === "screen") {
+      this.send({ type: "flow_state", flowId: id, pairId, ready: false });
     }
     this.refresh();
   }
 
   private prove(peer: Peer, id: string, stream: MediaStream): void {
     if (!peer.transport.hasRemoteStream(id, stream)) return;
-    const kind = this.publications.find(publication => publication.id === id)?.kind;
+    const publicationId = peer.plan.incoming.find(flow => flow.id === id)?.publicationId;
+    const kind = this.publications.find(publication => publication.id === publicationId)?.kind;
     if (!kind) return;
     const video = kind === "screen" ? stream.getVideoTracks().find(track => track.readyState !== "ended") : undefined;
     const receiver = video ? peer.transport.pc.getReceivers().find(candidate => candidate.track === video) : undefined;
@@ -150,7 +152,7 @@ export class ChannelMedia {
       previous?.release?.();
       peer.inputs.set(id, input);
       const changed = () => {
-        if (peer.inputs.get(id) !== input) return;
+        if (this.peers.get(peer.plan.id) !== peer || peer.inputs.get(id) !== input) return;
         this.prove(peer, id, stream);
         this.refresh();
       };
@@ -166,11 +168,11 @@ export class ChannelMedia {
         }
       };
       if (kind === "screen" && previous?.ready && !video) {
-        this.send({ type: "flow_state", publicationId: id, pairId: peer.plan.id, ready: false });
+        this.send({ type: "flow_state", flowId: id, pairId: peer.plan.id, ready: false });
       }
     }
     if (input.ready || input.stopProof) return;
-    const owned = () => this.peers.get(peer.plan.id) === peer && peer.plan.incoming.includes(id) &&
+    const owned = () => this.peers.get(peer.plan.id) === peer && peer.plan.incoming.some(flow => flow.id === id) &&
       peer.inputs.get(id) === input && peer.transport.hasRemoteStream(id, stream) && (kind !== "screen" ||
         (receiver !== undefined && stream.getVideoTracks().find(track => track.readyState !== "ended") === video && receiver.track === video &&
           peer.transport.pc.getReceivers().includes(receiver)));
@@ -179,7 +181,7 @@ export class ChannelMedia {
       if (peer.transport.pc.connectionState !== "connected") return false;
       input.ready = true;
       input.stopProof = undefined;
-      this.send({ type: "flow_state", publicationId: id, pairId: peer.plan.id, ready: true });
+      this.send({ type: "flow_state", flowId: id, pairId: peer.plan.id, ready: true });
       return true;
     };
     if (kind === "voice") {
@@ -187,27 +189,45 @@ export class ChannelMedia {
       return;
     }
     if (!video || !receiver) return;
+    const baseline = peer.transport.frameBaseline(id);
     input.stopProof = observeDecodedFrameProof({
       owns: owned,
-      requireProgress: previous?.receiver === receiver,
-      readFramesDecoded: async () => decodedVideoFrames(await receiver.getStats()),
+      requireProgress: baseline === null || previous?.receiver === receiver,
+      readFramesDecoded: async () => {
+        const samples = decodedVideoFrameSamples(await receiver.getStats());
+        const sample = samples.length === 1 ? samples[0] : undefined;
+        if (!sample || sample.framesDecoded === null) return null;
+        return baseline === null ? sample.framesDecoded : Math.max(0, sample.framesDecoded - (baseline.get(sample.id) ?? 0));
+      },
       onProof: ready,
     });
   }
 
   private refresh(): void {
     const streams = new Map(this.local);
+    const sourceFlows = new Map<string, string>();
     const relayAudio = new Map<string, MediaStreamTrack[]>();
-    for (const peer of this.peers.values()) for (const [id, input] of peer.inputs) streams.set(id, input.stream);
+    for (const publication of this.publications) {
+      if (this.local.has(publication.id)) continue;
+      for (const peer of this.peers.values()) {
+        const flow = peer.plan.incoming.find(flow => flow.publicationId === publication.id);
+        const input = flow && peer.inputs.get(flow.id);
+        if (!input) continue;
+        sourceFlows.set(publication.id, flow.id);
+        streams.set(publication.id, input.stream);
+        break;
+      }
+    }
     for (const peer of this.peers.values()) {
-      const outgoing = new Map<string, MediaStream>();
-      for (const id of peer.plan.outgoing) {
-        const stream = streams.get(id);
+      const outgoing = new Map<string, MediaStream | null>();
+      for (const flow of peer.plan.outgoing) {
+        const stream = streams.get(flow.publicationId);
+        outgoing.set(flow.id, stream ?? null);
         if (stream) {
-          outgoing.set(id, stream);
-          if (!this.local.has(id)) {
+          const sourceFlow = sourceFlows.get(flow.publicationId);
+          if (sourceFlow) {
             const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");
-            if (tracks.length) relayAudio.set(id, tracks);
+            if (tracks.length) relayAudio.set(sourceFlow, tracks);
           }
         }
       }

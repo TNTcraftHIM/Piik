@@ -40,7 +40,7 @@ export const snapshotSchema = z.object({
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
   files: z.array(filePlanSchema),
-  pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(id), incoming: z.array(id) })).max(19),
+  pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id })), incoming: z.array(z.object({ id, publicationId: id })) })).max(19),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
 export const signalSchema = z.object({
@@ -48,7 +48,7 @@ export const signalSchema = z.object({
   exchangeId: z.string().uuid().optional(),
   description: z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().max(150000).optional() }).optional(),
   candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional(),
-  tracks: z.array(z.object({ publicationId: id, streamId: id })).optional(),
+  tracks: z.array(z.object({ flowId: id, streamId: id })).optional(),
 }).refine(signal => Boolean(signal.description) === Boolean(signal.exchangeId), { message: "SDP requires an exchange", path: ["exchangeId"] });
 export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),
@@ -111,7 +111,7 @@ export type ChannelCommand =
   | { type: "voice"; roomId: string; joined: boolean; muted: boolean; deafened: boolean }
   | { type: "signal"; pairId: string; payload: ChannelSignal }
   | { type: "link_state"; pairId: string; state: "connected" | "failed" }
-  | { type: "flow_state"; publicationId: string; pairId: string; ready: boolean }
+  | { type: "flow_state"; flowId: string; pairId: string; ready: boolean }
   | { type: "base_state"; roomId: string; pairId: string; ready: boolean }
   | { type: "leave" };
 export type ChannelRequest = ChannelCommand & { requestId?: string };

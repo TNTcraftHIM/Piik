@@ -73,7 +73,7 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
     assert(parsed.success, JSON.stringify(parsed.error?.issues));
     const negotiated = eventSchema.safeParse({ type: "signal", pairId: randomUUID(),
       fromSessionId: reader.welcome.sessionId,
-      payload: { tracks: event.state.publications.map(publication => ({ publicationId: publication.id, streamId: randomUUID() })) } });
+      payload: { tracks: event.state.pairs.flatMap(pair => pair.incoming).map(flow => ({ flowId: flow.id, streamId: randomUUID() })) } });
     assert(negotiated.success, JSON.stringify(negotiated.error?.issues));
   } finally {
     // Leave immediately so the following protocol cases have the same endpoint budget.
@@ -118,12 +118,12 @@ test("authenticated users, role authority, attributed chat and selective source 
   assert.equal((await friend.request({ type: "publish", publication: { id: publicationId, roomId, kind: "screen", muted: false } })).type, "ack");
   assert.equal((await other.request({ type: "unpublish", publicationId })).type, "error");
   assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
-  const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.includes(publicationId)), "admitted subscription");
+  const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");
   assert(routed.state.pairs.every(pair => pair.peerId !== other.welcome.sessionId));
   assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { description: { type: "offer", sdp: "invalid" } } })).type, "error");
   assert.equal((await friend.request({ type: "unpublish", publicationId })).type, "ack");
   await other.wait(event => event.type === "state" && !event.state.publications.some(publication => publication.id === publicationId)
-    && event.state.pairs.every(pair => !pair.incoming.includes(publicationId)), "source retirement");
+    && event.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === publicationId)), "source retirement");
 
   const disconnected = once(friend.socket, "close");
   friend.socket.close();
@@ -190,7 +190,7 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert.equal((await creator.request({ type: "revoke_room_access", roomId, userId: guestUser })).type, "ack");
   const revoked = await guest.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "private grant revoked");
   assert(!revoked.state.publications.some(p => p.id === privatePublication));
-  assert(revoked.state.pairs.every(pair => !pair.incoming.includes(privatePublication) && !pair.outgoing.includes(privatePublication)));
+  assert(revoked.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === privatePublication) && !pair.outgoing.some(flow => flow.publicationId === privatePublication)));
   assert.equal((await guest.request({ type: "history", roomId })).type, "error");
   assert.equal((await creator.request({ type: "unpublish", publicationId: privatePublication })).type, "ack");
   assert.equal((await creator.request({ type: "update_room", roomId, name: "Studio", access: "public", hidden: false })).type, "ack");

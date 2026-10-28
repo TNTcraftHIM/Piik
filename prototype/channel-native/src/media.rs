@@ -31,6 +31,7 @@ use webrtc::{
 };
 
 pub(crate) const VIDEO_PACKETS: usize = 256;
+// One directed flow owns each kind; a publication can have several hop flows.
 pub(crate) type TrackKey = (Uuid, RtpCodecKind);
 pub(crate) type SourceReport = Arc<Mutex<Option<(SenderReport, std::time::Instant)>>>;
 
@@ -197,6 +198,8 @@ impl Interceptor for MediaFeedback {
 #[derive(Clone)]
 pub(crate) struct Source {
     pub id: Uuid,
+    pub flow_id: Uuid,
+    pub publication_id: Uuid,
     pub pair: Uuid,
     pub stream: String,
     pub codec: RTCRtpCodec,
@@ -386,26 +389,15 @@ impl Relay {
     pub fn remove(&self, key: TrackKey) {
         self.0.lock().unwrap().remove(&key);
     }
-    pub fn set(
-        &self,
-        publication: TrackKey,
-        source: Uuid,
-        targets: Vec<mpsc::Sender<rtp::Packet>>,
-    ) {
-        self.0
-            .lock()
-            .unwrap()
-            .insert(publication, (source, targets));
+    pub fn set(&self, key: TrackKey, source: Uuid, targets: Vec<mpsc::Sender<rtp::Packet>>) {
+        self.0.lock().unwrap().insert(key, (source, targets));
     }
-    pub fn retain(&self, publications: &std::collections::HashSet<TrackKey>) {
-        self.0
-            .lock()
-            .unwrap()
-            .retain(|id, _| publications.contains(id));
+    pub fn retain(&self, flows: &std::collections::HashSet<TrackKey>) {
+        self.0.lock().unwrap().retain(|id, _| flows.contains(id));
     }
-    pub fn write(&self, publication: TrackKey, source: Uuid, packet: rtp::Packet) {
+    pub fn write(&self, key: TrackKey, source: Uuid, packet: rtp::Packet) {
         let routes = self.0.lock().unwrap();
-        if let Some((active, targets)) = routes.get(&publication) {
+        if let Some((active, targets)) = routes.get(&key) {
             if *active == source {
                 for target in targets {
                     let _ = target.try_send(packet.clone());

@@ -79,12 +79,12 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await audible(1);
     const voiceIds = (await view(1)).state.publications.filter(publication => publication.roomId === room).map(publication => publication.id);
     for (const index of [1, 2]) assert((await view(index)).state.pairs.filter(pair =>
-      pair.incoming.some(id => voiceIds.includes(id))).every(pair => pair.peerId === pairs[0].peerId));
+      pair.incoming.some(flow => voiceIds.includes(flow.publicationId))).every(pair => pair.peerId === pairs[0].peerId));
 
     const nativePicture = await capturedScreen(1, room);
     await action(2, `watch(${JSON.stringify(nativePicture)})`);
     await playing(2, nativePicture);
-    assert((await view(2)).state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.includes(nativePicture)),
+    assert((await view(2)).state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.some(flow => flow.publicationId === nativePicture)),
       "picture startup must reuse the established Native base path");
 
     const fileSize = 1024 * 1024 + 17;
@@ -133,7 +133,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     await action(1, `stopScreen(${JSON.stringify(nativePicture)})`);
     await until("stopping Native-forwarded picture retains the voice pair", () => view(2), value =>
       !value.state.publications.some(publication => publication.id === nativePicture)
-      && value.state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.some(id => voiceIds.includes(id))));
+      && value.state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.some(flow => voiceIds.includes(flow.publicationId))));
     await advancing(2);
     await browser(2, "click", '.c3-room-link[aria-label="Living room"]');
 
