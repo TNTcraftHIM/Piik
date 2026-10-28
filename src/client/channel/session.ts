@@ -1,5 +1,6 @@
 import { ChannelMedia } from "./media";
-import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type RoomSettings } from "./protocol";
+import { ChannelConversation } from "./conversation";
+import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
@@ -35,7 +36,7 @@ export class ChannelSession {
     ?? new URLSearchParams(location.hash.slice(1)).get("invite") ?? undefined;
   private invitedRoom = new URLSearchParams(location.hash.slice(1)).get("room") ?? undefined;
   private roomId: string | null = this.invitedRoom ?? null;
-  private requests = new Map<string, { roomId?: string; resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout> }>();
+  private requests = new Map<string, { roomId?: string; bindingId?: string; history?: ChannelMessage[]; resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout> }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
@@ -45,13 +46,24 @@ export class ChannelSession {
   private watching = new Set<string>();
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
-  private reading: { roomId: string; socket: WebSocket | null } | null = null;
+  private reading: { roomId: string; socket: WebSocket | null; ready: Promise<void> } | null = null;
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
   private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream }>();
+  private conversation = new ChannelConversation({
+    context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
+    host: roomId => this.hostedRooms.get(roomId)?.host,
+    send: (peer, frame, allowed) => this.media.sendData(peer, "control", frame, allowed),
+    file: (peer, control) => this.attachments.data(peer, "control", control),
+    reply: reply => this.receiveConversation(reply),
+  });
   private media = new ChannelMedia(command => this.send(command), streams => this.patch({ streams }),
-    (peer, kind, data) => this.attachments.data(peer, kind, data), (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer));
-  readonly attachments = new ChannelAttachments(command => this.request(command), (peer, kind, data) => this.media.sendData(peer, kind, data));
+    (peer, kind, data) => {
+      if (kind === "chunk") this.attachments.data(peer, kind, data);
+      else void this.conversation.receive(peer, data as string).catch(() => {});
+    }, (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer));
+  readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
+    this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
 
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -75,9 +87,17 @@ export class ChannelSession {
     const socket = new WebSocket(url);
     this.socket = socket;
     this.patch({ connection: this.view.sessionId ? "reconnecting" : "connecting" });
-    socket.onopen = () => {
-      if (this.socket !== socket) return;
-      this.write({ type: "join", name: stored(nameKey) ?? "Guest", credential: this.credential, key: this.key, roomId: this.invitedRoom, sessionId: this.view.sessionId ?? undefined });
+    socket.onopen = async () => {
+      try {
+        const signingKey = await this.conversation.initialize();
+        if (this.socket !== socket || this.closed) return;
+        this.write({ type: "join", signingKey, name: stored(nameKey) ?? "Guest", credential: this.credential, key: this.key, roomId: this.invitedRoom, sessionId: this.view.sessionId ?? undefined });
+      } catch (error) {
+        if (this.socket === socket && !this.closed) {
+          this.close();
+          this.patch({ error: error instanceof Error ? error.message : "room_runtime_unavailable" });
+        }
+      }
     };
     socket.onmessage = ({ data }) => {
       if (this.socket !== socket) return;
@@ -171,9 +191,11 @@ export class ChannelSession {
     else if (event.type === "history") {
       const state = this.view.state;
       if (!state?.channel.rooms.some(room => room.id === event.roomId && room.authorized)) return;
-      const existing = event.before === undefined ? [] : this.view.messagesByRoom[event.roomId] ?? [];
+      const current = this.view.messagesByRoom[event.roomId] ?? [];
+      const last = event.messages.at(-1)?.seq ?? 0;
+      const existing = event.before === undefined ? current.filter(message => message.seq > last) : current;
       const merged = mergeMessages([...existing, ...event.messages]
-        .filter(message => event.oldestSeq !== null && message.seq >= event.oldestSeq));
+        .filter(message => event.oldestSeq === null || message.seq >= event.oldestSeq));
       const latest = event.before === undefined;
       const messages = latest ? merged.slice(-state.channel.historyWindow) : merged.slice(0, state.channel.historyWindow);
       const atLatest = latest || ((this.view.historyByRoom[event.roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
@@ -246,6 +268,13 @@ export class ChannelSession {
     const sameChannel = this.historyChannel === state.channel.id;
     this.historyChannel = state.channel.id;
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
+    for (const [id, request] of this.requests) if (request.bindingId
+      && !state.channel.rooms.some(room => room.id === request.roomId && room.authorized
+        && room.available && room.delivery?.bindingId === request.bindingId)) {
+      clearTimeout(request.timer);
+      this.requests.delete(id);
+      request.reject(new Error("room_unavailable"));
+    }
     for (const id of this.outgoingMessages.keys()) if (!canRead(id)) this.outgoingMessages.delete(id);
     this.patch({ state: visible, self: state.users.find(user => user.id === userId) ?? null,
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id))),
@@ -272,14 +301,59 @@ export class ChannelSession {
     else if (command.type === "signal" && this.signals.length < 256) this.signals.push(command);
   }
 
-  private request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command)): Promise<void> {
+  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command)): Promise<void> {
+    const reading = this.reading;
+    if ((command.type === "chat" || command.type === "history") && reading && reading.roomId === roomId
+      && this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery) await reading.ready;
     if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
+    const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
+    if ((command.type === "chat" || command.type === "history") && !room?.available) return Promise.reject(new Error("room_unavailable"));
     const requestId = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
-      this.requests.set(requestId, { resolve, reject, timer, result, roomId });
-      this.write({ ...command, requestId });
+      const delivery = this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery;
+      const peer = (command.type === "chat" || command.type === "history") && delivery;
+      this.requests.set(requestId, { resolve, reject, timer, result, roomId,
+        ...(peer ? { bindingId: delivery.bindingId, ...(command.type === "history" ? { history: [] } : {}) } : {}) });
+      if (peer && (command.type === "chat" || command.type === "history")) {
+        void this.conversation.send(command, requestId).catch(error => {
+          const request = this.requests.get(requestId);
+          if (!request) return;
+          clearTimeout(request.timer); this.requests.delete(requestId);
+          request.reject(error instanceof Error ? error : new Error(String(error)));
+        });
+      } else this.write({ ...command, requestId });
     });
+  }
+
+  private receiveConversation(reply: ConversationReply): void {
+    const record = reply.record;
+    if (record.type === "live_message") {
+      this.receive({ type: "message", roomId: reply.roomId, message: record.message });
+      return;
+    }
+    const request = this.requests.get(reply.requestId);
+    if (!request || request.roomId !== reply.roomId || request.bindingId !== reply.bindingId) return;
+    if (record.type === "history_message") {
+      if (!request.history || request.history.length >= 100 || request.history.some(message => message.seq === record.message.seq)) {
+        this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
+        return;
+      }
+      request.history.push(record.message);
+      return;
+    }
+    if (record.type === "history_end" && request.history) {
+      if (record.count !== request.history.length) {
+        this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
+        return;
+      }
+      this.receive({ type: "history", roomId: reply.roomId, messages: request.history, hasMore: record.hasMore,
+        oldestSeq: record.oldestSeq, ...(record.before === null ? {} : { before: record.before }) });
+    } else if (record.type === "confirmed") {
+      this.receive({ type: "message_confirmed", roomId: reply.roomId, message: record.message, requestId: reply.requestId });
+    }
+    this.receive(record.type === "error" ? { type: "error", requestId: reply.requestId, code: record.code }
+      : { type: "ack", requestId: reply.requestId });
   }
 
   private commandRoom(command: ChannelCommand): string | undefined {
@@ -346,9 +420,9 @@ export class ChannelSession {
     }
     if (this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.available)) {
       if (this.reading) return;
-      const reading = { roomId, socket: this.socket };
+      const reading = { roomId, socket: this.socket, ready: this.request({ type: "browse", roomId, active: true }) };
       this.reading = reading;
-      void this.request({ type: "browse", roomId, active: true }).then(async () => {
+      void reading.ready.then(async () => {
         if (this.reading !== reading || this.socket !== reading.socket || this.roomId !== roomId) return;
         if (this.view.pending.has(`history:${roomId}`)) return;
         await this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }).catch(error => {
@@ -601,6 +675,7 @@ export class ChannelSession {
     socket?.close();
     this.rejectRequests("closed");
     this.releaseMedia();
+    this.conversation.close();
     this.patch({ connection: "closed", state: null, sessionId: null, self: null });
   };
 }

@@ -2,6 +2,7 @@
 // Only OS capture is substituted with moving canvas and oscillator tracks.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rmdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -34,7 +35,7 @@ const output = resolve("build/channel-acceptance");
 const ownerKey = process.env.PIIK_CHANNEL_OWNER_KEY;
 const inviteKey = process.env.PIIK_CHANNEL_INVITE_KEY;
 assert(ownerKey && inviteKey, "Set the local server's PIIK_CHANNEL_OWNER_KEY and PIIK_CHANNEL_INVITE_KEY");
-const sessionPrefix = (await run(executable, ["session", "id", "--scope", "worktree", "--prefix", "channel-acceptance"])).stdout.trim();
+const sessionPrefix = `channel-acceptance-${randomUUID()}`;
 const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}`);
 const lifecycleOnly = process.argv.includes("--lifecycle");
 const roomsOnly = process.argv.includes("--rooms");
@@ -43,7 +44,10 @@ const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
 const active = baseOnly ? [0, 1, 2, 3] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
-  const { stdout } = await run(executable, ["--session", sessions[index], "--json", ...args], {
+  // Omitting launch options on later commands selects a different Browser context.
+  const { stdout } = await run(executable, ["--session", sessions[index], "--json",
+    "--args", "--no-sandbox,--autoplay-policy=no-user-gesture-required",
+    "--init-script", join(temporary, `${index}.js`), ...args], {
     timeout: 35_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
   });
   const result = JSON.parse(stdout);
@@ -71,12 +75,20 @@ function captureProbe(name) {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
     const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [];
+    const conversationWS = Object.create(null);
     const warn = console.warn.bind(console);
     console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
     const blockedPeers = new Set(), pairPeers = new Map();
     let blockedOffers = 0;
     const record = (direction, data) => {
       const event = JSON.parse(data);
+      const command = event.input?.action?.command;
+      const type = command?.type ?? ((event.output?.reply?.result?.type ?? event.result?.type) === 'history' ? 'history' : event.type);
+      const room = command?.roomId ?? event.roomId;
+      if (room && (type === 'chat' || type === 'history')) {
+        const counts = conversationWS[room] ??= { sent: { chat: 0, history: 0 }, received: { chat: 0, history: 0 } };
+        counts[direction][type]++;
+      }
       for (const pair of event.state?.pairs ?? []) pairPeers.set(pair.id, pair.peerId);
       protocol.push({ direction, type:event.type, room:event.roomId, request:event.requestId,
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
@@ -143,7 +155,7 @@ function captureProbe(name) {
             if (stat.type === 'outbound-rtp') outbound.push({ kind: stat.kind, bytes: stat.bytesSent, frames: stat.framesEncoded });
           }
         }
-        return { inbound, outbound, protocol, warnings, blockedOffers, connections: peers.map(pc => pc.connectionState),
+        return { inbound, outbound, protocol, conversationWS, warnings, blockedOffers, connections: peers.map(pc => pc.connectionState),
           channels: channels.map(channel => ({ label: channel.label, state: channel.readyState })),
           videos: [...document.querySelectorAll('video')].map(video => ({ time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),
@@ -292,6 +304,12 @@ async function roomBase(initial, serverRoom) {
 }
 
 async function roomOwner(initial, serverRoom) {
+  const serverBefore = (await sample(0)).conversationWS[serverRoom];
+  await action(0, `sendMessage(${JSON.stringify(serverRoom)}, 'Server room through WebSocket')`);
+  await action(0, `loadLatestHistory(${JSON.stringify(serverRoom)})`);
+  const serverWS = (await sample(0)).conversationWS[serverRoom];
+  assert(serverWS.sent.chat > (serverBefore?.sent.chat ?? 0) && serverWS.sent.history > (serverBefore?.sent.history ?? 0),
+    "default server room chat and history keep their WebSocket path");
   const room = await action(1, "createRoom({name:'Browser-owned room',access:'private',hidden:true,password:'browser-room-password'})");
   const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
   await action(2, "close()");
@@ -304,6 +322,43 @@ async function roomOwner(initial, serverRoom) {
   await action(2, `sendMessage(${JSON.stringify(room)}, 'Confirmed on B')`);
   await until("owner receives confirmed room history", () => evaluate(1,
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), value => value?.some(message => message.text === "Confirmed on B"));
+  await action(2, `loadLatestHistory(${JSON.stringify(room)})`);
+  const initialHostedWS = await Promise.all([1, 2].map(async index => (await sample(index)).conversationWS[room] ?? null));
+  assert.deepEqual(initialHostedWS, [null, null], "Browser room chat and history never traverse the domain WebSocket");
+
+  await evaluate(1, `(() => {
+    const conversation = ${hook}.session.conversation, receive = conversation.receive;
+    conversation.receive = async function(...args) {
+      try { return await receive.apply(this, args); }
+      catch (error) { window.__channelProbe.conversationRejected = String(error); throw error; }
+    };
+    window.__channelProbe.restoreConversation = () => { conversation.receive = receive; };
+    return true;
+  })()`);
+  const forgedText = "Ordinary-user fake live reply must be rejected";
+  let rejectedReply;
+  try {
+    await evaluate(2, `(async () => {
+      const session = ${hook}.session, value = ${hook}.snapshot();
+      const entry = value.state.channel.rooms.find(room => room.id === ${JSON.stringify(room)});
+      const { runtime, signer } = await session.conversation.identity;
+      if (value.sessionId === entry.delivery.hostSessionId) throw new Error('Expected ordinary participant');
+      const packet = JSON.parse(signer.sign(value.sessionId, JSON.stringify({
+        roomId: entry.id, bindingId: entry.delivery.bindingId, sender: value.sessionId,
+        recipient: entry.delivery.hostSessionId, requestId: crypto.randomUUID(),
+        record: { type: 'live_message', message: { id: crypto.randomUUID(), seq: 2,
+          userId: entry.creatorId, text: ${JSON.stringify(forgedText)}, time: Date.now(), attachments: [] } }
+      })));
+      await session.conversation.deliver(packet, runtime);
+      return true;
+    })()`);
+    rejectedReply = await until("room owner rejects a participant-signed fake reply", () => evaluate(1,
+      "window.__channelProbe.conversationRejected"), value => value?.includes("invalid_conversation_sender"));
+    assert.equal(await evaluate(1, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].some(message => message.text === ${JSON.stringify(forgedText)})`), false);
+    await action(2, `sendMessage(${JSON.stringify(room)}, 'Chat after rejected fake reply')`);
+    await until("normal chat continues after rejecting the fake reply", () => evaluate(1,
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), value => value?.some(message => message.text === "Chat after rejected fake reply"));
+  } finally { await evaluate(1, "window.__channelProbe.restoreConversation()"); }
 
   const stored = await evaluate(1, `(async () => {
     const databases = await indexedDB.databases();
@@ -370,6 +425,7 @@ async function roomOwner(initial, serverRoom) {
   assert(!(await view(1)).state.publications.some(publication => publication.roomId === room));
   assert(!(await view(1)).state.voice.some(member => member.roomId === room));
   await progressing(2, serverPicture);
+  await browser(2, "click", '.c3-room-link[aria-label="Browser-owned room"]');
   for (let start = 0; start < 100; start += 20) {
     await evaluate(2, `(async () => {
       for (let index = ${start}; index < ${start + 20}; index++) {
@@ -380,15 +436,18 @@ async function roomOwner(initial, serverRoom) {
   }
   await action(2, `loadLatestHistory(${JSON.stringify(room)})`);
   const page = await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}].map(message => message.text.length)`);
-  assert.deepEqual(page, Array(100).fill(2000), "a full valid history page must fit the host-to-domain WebSocket envelope");
+  assert.deepEqual(page, Array(100).fill(2000), "a full valid history page arrives as individual signed DataChannel records and one end marker");
+  const hostedWS = await Promise.all([0, 1, 2].map(async index => (await sample(index)).conversationWS[room] ?? null));
+  assert.deepEqual(hostedWS, [null, null, null], "hosted chat and history stay off WebSocket throughout owner recovery and paging");
   await browser(1, "click", '.c3-room-link[aria-label="Browser-owned room"]');
   for (const index of [0, 1, 2]) await assertNoError(index, "normal Browser room lifecycle");
   await browser(1, "screenshot", join(output, "browser-owned-room.png"), "--full");
   await writeFile(join(output, "room-owner-result.json"), JSON.stringify({ passed: true,
     scenarios: ["private invitation initial admission", "owner IndexedDB history", "no room data in domain SQLite",
       "cross-room shared transport", "room voice", "owner signaling resume", "scoped shutdown", "retained paused directory",
-      "owner reopen without capture revival", "maximum valid history page"],
-    domainMessageCopies: 0, maximumHistoryPage: { messages: 100, charactersPerMessage: 2000 } }, null, 2));
+      "owner reopen without capture revival", "maximum valid history page", "participant-signed fake reply rejected", "normal chat after rejected reply"],
+    conversationTransport: { serverRoomWS: serverWS, hostedRoomWS: hostedWS, rejectedReply },
+    domainMessageCopies: 0, maximumHistoryPage: { messages: 100, charactersPerMessage: 2000, transport: "signed DataChannel records" } }, null, 2));
   console.log("Browser owns policy/history and room activities; domain only retains its directory; unrelated media survives owner shutdown");
 }
 
@@ -577,8 +636,7 @@ try {
   for (const index of active) {
     const script = join(temporary, `${index}.js`);
     await writeFile(script, captureProbe(String.fromCharCode(65 + index)));
-    await browser(index, "--args", "--no-sandbox,--autoplay-policy=no-user-gesture-required", "--init-script", script,
-      "open", `${origin}/__channel-preview#${index === 0 ? "owner" : "invite"}=${encodeURIComponent(index === 0 ? ownerKey : inviteKey)}`);
+    await browser(index, "open", `${origin}/__channel-preview#${index === 0 ? "owner" : "invite"}=${encodeURIComponent(index === 0 ? ownerKey : inviteKey)}`);
   }
   const initial = [];
   for (const index of active) {
@@ -721,6 +779,9 @@ try {
   }
 } catch (error) {
   const evidence = await Promise.all(active.map(async index => ({
+    url: await browser(index, "get", "url").catch(failure => ({ error: String(failure) })),
+    errors: await browser(index, "errors").catch(failure => ({ error: String(failure) })),
+    console: await browser(index, "console").catch(failure => ({ error: String(failure) })),
     view: await view(index).catch(failure => ({ error: String(failure) })),
     probe: await evaluate(index, "window.__channelProbe?.sample() ?? { text: document.body.innerText.slice(-1800) }")
       .catch(failure => ({ error: String(failure) })),

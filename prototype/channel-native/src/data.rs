@@ -1,6 +1,8 @@
 //! One pair owns its reliable channel writers. Consumers own queued-work validity.
-use piik_channel_prototype::file_delivery::{
-    FileControl, FILE_FRAME_BYTES, FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES,
+use piik_channel_prototype::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
+use piik_channel_prototype::{
+    conversation::{self, ControlFrame, SignedPacket},
+    wire::Snapshot,
 };
 use std::sync::{
     atomic::{AtomicU8, Ordering},
@@ -23,8 +25,56 @@ pub(crate) enum Lane {
 
 pub(crate) struct Message {
     pub bytes: Vec<u8>,
-    pub scope: crate::file::FileScope,
+    pub scope: MessageScope,
     pub report_failure: bool,
+}
+pub(crate) fn queue_controls(
+    sender: &mpsc::Sender<Message>,
+    messages: Vec<Message>,
+) -> Result<(), &'static str> {
+    let permits = sender
+        .try_reserve_many(messages.len())
+        .map_err(|_| "room_control_busy")?;
+    for (permit, message) in permits.zip(messages) {
+        permit.send(message);
+    }
+    Ok(())
+}
+pub(crate) enum MessageScope {
+    File(crate::file::FileScope),
+    Conversation {
+        snapshot: watch::Receiver<Option<Snapshot>>,
+        local: Uuid,
+        peer: Uuid,
+        from: Option<Uuid>,
+        packet: SignedPacket,
+    },
+}
+impl MessageScope {
+    fn allowed(&self) -> bool {
+        match self {
+            Self::File(scope) => scope.allowed(),
+            Self::Conversation {
+                snapshot,
+                local,
+                peer,
+                from,
+                packet,
+            } => {
+                let mut packet = packet.clone();
+                snapshot.borrow().as_ref().is_some_and(|snapshot| {
+                    conversation::route(&mut packet, *local, snapshot, *from)
+                        .is_ok_and(|route| route.next_hop == Some(*peer))
+                })
+            }
+        }
+    }
+    async fn changed(&mut self) -> bool {
+        match self {
+            Self::File(scope) => scope.changed().await,
+            Self::Conversation { snapshot, .. } => snapshot.changed().await.is_ok(),
+        }
+    }
 }
 #[derive(Clone)]
 struct Binding {
@@ -38,6 +88,11 @@ pub(crate) struct Ready {
     token: Uuid,
 }
 impl Ready {
+    pub fn open(&self) -> bool {
+        self.binding.borrow().as_ref().is_some_and(|binding| {
+            binding.token == self.token && binding.state == RTCDataChannelState::Open
+        })
+    }
     pub fn set(&self, open: bool) -> bool {
         let mut current = false;
         self.binding.send_if_modified(|value| {
@@ -143,13 +198,9 @@ impl DataLink {
     }
 }
 
-// Room control decoding belongs to the pair boundary. FileDelivery consumes
-// typed controls rather than owning the shared channel's parser.
-pub(crate) fn control(bytes: &[u8]) -> Option<FileControl> {
-    if bytes.len() > FILE_FRAME_BYTES {
-        return None;
-    }
-    serde_json::from_slice(bytes).ok()
+// Pair control has one decoder; file and conversation owners consume typed frames.
+pub(crate) fn control(bytes: &[u8]) -> Option<ControlFrame> {
+    conversation::decode_control(bytes).ok()
 }
 pub(crate) fn terminal(state: &AtomicU8) -> bool {
     let state = state.load(Ordering::Acquire);
@@ -263,5 +314,53 @@ fn writer(
         binding,
         cancel,
         task,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn record(index: u8) -> Message {
+        Message {
+            bytes: vec![index],
+            scope: MessageScope::Conversation {
+                snapshot: watch::channel(None).1,
+                local: Uuid::nil(),
+                peer: Uuid::nil(),
+                from: None,
+                packet: conversation::SessionSigner::from_seed([1; 32])
+                    .sign(Uuid::nil(), &index)
+                    .unwrap(),
+            },
+            report_failure: true,
+        }
+    }
+
+    #[tokio::test]
+    async fn history_page_reserves_all_records_or_keeps_the_existing_queue_unchanged() {
+        let (sender, mut receiver) = mpsc::channel(CONTROL_QUEUE);
+        for index in 0..28 {
+            sender
+                .try_send(record(index))
+                .unwrap_or_else(|_| panic!("queue should have capacity"));
+        }
+        let page = || (0..101).map(record).collect();
+        assert_eq!(queue_controls(&sender, page()), Err("room_control_busy"));
+        assert_eq!(sender.capacity(), 100);
+        for index in 0..28 {
+            assert_eq!(receiver.recv().await.unwrap().bytes, vec![index]);
+        }
+        assert!(
+            receiver.try_recv().is_err(),
+            "no partial history page was admitted"
+        );
+
+        queue_controls(&sender, page()).unwrap();
+        assert_eq!(sender.capacity(), CONTROL_QUEUE - 101);
+        for index in 0..101 {
+            assert_eq!(receiver.recv().await.unwrap().bytes, vec![index]);
+        }
+        assert!(receiver.try_recv().is_err());
     }
 }

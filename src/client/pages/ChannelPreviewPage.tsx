@@ -68,6 +68,10 @@ export function ChannelPreviewPage() {
       ? copy("连接超时，采集已停止。重新连接后可再次分享或加入语音。", "Connection timed out. Capture stopped. Reconnect to share or join voice again.")
     : /permission|forbidden|denied|notallowed/i.test(channel.error)
       ? copy("未获允许。请检查身份组及浏览器的采集权限。", "Permission was declined. Check your roles and browser capture permission.")
+    : /room_(path_unavailable|delivery_unavailable|unavailable|control_busy)|peer_data_unavailable|data_channel_(unavailable|busy)|request_timeout/.test(channel.error)
+      ? copy("房间通信未能完成，请重试。", "Room communication did not complete. Please try again.")
+    : channel.error === "incomplete_history"
+      ? copy("聊天记录接收不完整，请重新加载。", "Chat history was interrupted. Please load it again.")
     : /unavailable|notfound|notreadable/i.test(channel.error)
       ? copy("设备暂不可用，请检查浏览器权限及设备占用。", "Device unavailable. Check browser permissions and other apps.")
     : /disconnect|closed|offline/i.test(channel.error)

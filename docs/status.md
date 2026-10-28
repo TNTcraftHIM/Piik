@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-27
+Last updated: 2026-10-28
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -24,8 +24,9 @@ explicit [Native participant](../prototype/channel-native/README.md) operates
 SQLite-backed rooms and forwards encoded Opus and file ranges on the same base paths.
 Its media adapter also forwards VP8/H264 with source audio and preserves their
 shared source clock.
-File descriptions stay in confirmed history; selected and verified copies stay
-with their participants. Authenticated room-command delivery, complete route
+Chat and history use authenticated requests and room-owner confirmations on
+those base paths. File descriptions stay in confirmed history; selected and verified
+copies stay with their participants. Participant resource admission, complete route
 transitions and App/Server integration remain. [TODO](./todo.md) owns remaining
 stages and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.

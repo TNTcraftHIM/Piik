@@ -40,11 +40,11 @@ impl Link {
     fn message(&self, key: FileKey, bytes: Vec<u8>, cancel: bool, error: bool) -> Message {
         Message {
             bytes,
-            scope: FileScope {
+            scope: crate::data::MessageScope::File(FileScope {
                 lease: self.lease.subscribe(),
                 key,
                 allow_unplanned: cancel || error,
-            },
+            }),
             report_failure: !error,
         }
     }
@@ -190,8 +190,10 @@ impl Files {
                             let file = key(&control).clone();
                             let error = matches!(control, FileControl::Error { .. });
                             let cancel = matches!(control, FileControl::Cancel { .. });
-                            let bytes = match serde_json::to_vec(&control) {
-                                Ok(bytes) if bytes.len() <= FILE_FRAME_BYTES => bytes,
+                            let bytes = match piik_channel_prototype::conversation::encode_control(
+                                &piik_channel_prototype::conversation::ControlFrame::File(control),
+                            ) {
+                                Ok(bytes) => bytes,
                                 _ => {
                                     effects.extend(core.peer_failed(
                                         &file,

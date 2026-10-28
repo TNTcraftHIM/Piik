@@ -204,27 +204,12 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     };
     let binding = domain.bound("one").await;
     domain.bound("two").await;
+    // An admitted observer receives the paused directory after the host leaves.
     let guest = Uuid::new_v4();
-    domain
-        .command(guest, json!({"type":"join","name":"Guest","key":"invite"}))
-        .await;
-    for id in ["one", "two"] {
-        domain
-            .command(
-                guest,
-                json!({"type":"chat","roomId":id,"nonce":"original","text":id}),
-            )
-            .await;
-        let confirmation = domain
-            .until(|connection, event| {
-                connection == guest
-                    && matches!(event, Event::MessageConfirmed { room_id, .. } if room_id == id)
-            })
-            .await;
-        assert!(
-            matches!(confirmation, Event::MessageConfirmed { message, .. } if message.seq == 1 && message.text == id)
-        );
-    }
+    let signer = piik_channel_prototype::conversation::SessionSigner::from_seed([9; 32]);
+    domain.command(guest, json!({
+        "type": "join", "name": "Observer", "key": "invite", "signingKey": signer.signing_key()
+    })).await;
     domain
         .command(
             domain.connection,
@@ -317,21 +302,6 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     assert_ne!(domain.bound("one").await, binding);
     domain.bound("two").await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.available && !room.reading))).await;
-    domain
-        .command(
-            guest,
-            json!({"type":"chat","roomId":"one","nonce":"original","text":"changed"}),
-        )
-        .await;
-    let confirmation = domain
-        .until(|connection, event| {
-            connection == guest
-                && matches!(event, Event::MessageConfirmed { room_id, .. } if room_id == "one")
-        })
-        .await;
-    assert!(
-        matches!(confirmation, Event::MessageConfirmed { message, .. } if message.seq == 1 && message.text == "one")
-    );
     for id in ["one", "two"] {
         assert_eq!(
             StoredRoomHost::open(&folder.join(format!("{id}.sqlite")))

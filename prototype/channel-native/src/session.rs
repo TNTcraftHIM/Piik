@@ -1,12 +1,17 @@
 //! One explicit hosting session owns its signaling connection and native peers.
 //! Room policy and route decisions remain in the shared core.
-use crate::peer::NativePeers;
+use crate::peer::{NativeEvent, NativePeers};
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
+use piik_channel_prototype::{
+    conversation::{self, ConversationRecord, ConversationReply, SessionSigner, SignedPacket},
+    history::HistoryResult,
+};
 use piik_channel_prototype::{
     wire::{Command, Event, RoomAccess, Snapshot},
     RoomState, StoredRoomHost, RECOVERY_MS,
 };
+use std::sync::Arc;
 use std::{
     collections::{BTreeMap, BTreeSet},
     future::Future,
@@ -15,7 +20,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::mpsc,
+    sync::{mpsc, watch},
     time::{self, Instant},
 };
 use tokio_tungstenite::{
@@ -26,6 +31,156 @@ use tokio_tungstenite::{
 use uuid::Uuid;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+fn new_signer() -> Result<SessionSigner> {
+    let mut seed = [0; 32];
+    getrandom::fill(&mut seed)
+        .map_err(|error| anyhow!("session key generation failed: {error}"))?;
+    Ok(SessionSigner::from_seed(seed))
+}
+
+struct RoomTurns {
+    local: Uuid,
+    rooms: BTreeMap<String, Hosted>,
+    signer: Arc<SessionSigner>,
+    snapshot: watch::Sender<Option<Snapshot>>,
+}
+impl RoomTurns {
+    fn replies(&self, peers: &NativePeers, replies: &[ConversationReply]) -> Result<()> {
+        let snapshot = self.snapshot.borrow();
+        let snapshot = snapshot
+            .as_ref()
+            .ok_or_else(|| anyhow!("room_unavailable"))?;
+        let mut next = None;
+        let mut packets = Vec::with_capacity(replies.len());
+        for reply in replies {
+            let original = self
+                .signer
+                .sign(self.local, reply)
+                .map_err(anyhow::Error::msg)?;
+            let mut packet = original.clone();
+            let route = conversation::route(&mut packet, self.local, snapshot, None)
+                .map_err(anyhow::Error::msg)?;
+            let peer = route
+                .next_hop
+                .ok_or_else(|| anyhow!("room_path_unavailable"))?;
+            if next.is_some_and(|previous| previous != peer) {
+                return Err(anyhow!("room_path_changed"));
+            }
+            next = Some(peer);
+            packets.push((packet, original));
+        }
+        if let Some(peer) = next {
+            peers.conversations(peer, packets, self.snapshot.subscribe(), self.local, None)?;
+        }
+        Ok(())
+    }
+    fn reply(&self, peers: &NativePeers, reply: &ConversationReply) {
+        let result = self.replies(peers, std::slice::from_ref(reply));
+        if let Err(error) = result {
+            eprintln!("Native conversation response unavailable: {error}");
+        }
+    }
+    fn receive(&mut self, peers: &NativePeers, peer: Uuid, mut packet: SignedPacket) {
+        let original = packet.clone();
+        let routed = {
+            let snapshot = self.snapshot.borrow();
+            let Some(snapshot) = snapshot.as_ref() else {
+                return;
+            };
+            conversation::route(&mut packet, self.local, snapshot, Some(peer))
+        };
+        let Ok(route) = routed else {
+            return;
+        };
+        if let Some(next) = route.next_hop {
+            let _ = peers.conversation(
+                next,
+                packet,
+                original,
+                self.snapshot.subscribe(),
+                self.local,
+                Some(peer),
+            );
+            return;
+        }
+        let Some(hosted) = self.rooms.get_mut(&route.address.room_id) else {
+            return;
+        };
+        if hosted.binding != Some(route.address.binding_id) {
+            return;
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let Ok(outcome) = hosted.host.dispatch_peer(&packet, now) else {
+            return;
+        };
+        let broadcast = match &outcome.result {
+            Ok(HistoryResult::Sent(confirmation)) if confirmation.inserted => {
+                Some((confirmation.message.clone(), hosted.host.current_readers()))
+            }
+            _ => None,
+        };
+        let address = outcome.address.reply();
+        if let Ok(replies) = outcome.replies() {
+            if let Err(error) = self.replies(peers, &replies) {
+                eprintln!("Native conversation response unavailable: {error}");
+                self.reply(
+                    peers,
+                    &ConversationReply {
+                        address: address.clone(),
+                        record: ConversationRecord::Error {
+                            code: error.to_string(),
+                        },
+                    },
+                );
+            }
+        }
+        if let Some((message, readers)) = broadcast {
+            for reader in readers {
+                if reader == address.recipient || reader == self.local {
+                    continue;
+                }
+                self.reply(
+                    peers,
+                    &ConversationReply {
+                        address: conversation::ConversationAddress {
+                            recipient: reader,
+                            ..address.clone()
+                        },
+                        record: ConversationRecord::LiveMessage {
+                            message: message.clone(),
+                        },
+                    },
+                );
+            }
+        }
+    }
+}
+
+async fn process_peer(
+    event: NativeEvent,
+    pairs: &BTreeSet<Uuid>,
+    room: &mut RoomTurns,
+    peers: &NativePeers,
+    socket: &mut Socket,
+) -> Result<()> {
+    match event {
+        NativeEvent::Command(command) if current(pairs, &command) => {
+            write(socket, &command, None).await?
+        }
+        NativeEvent::Conversation {
+            peer,
+            pair,
+            token,
+            packet,
+        } if peers.control_current(peer, pair, token) => room.receive(peers, peer, packet),
+        _ => {}
+    }
+    Ok(())
+}
 
 pub struct Config {
     pub url: String,
@@ -52,9 +207,9 @@ struct Hosted {
 
 struct Live {
     session: Uuid,
-    rooms: BTreeMap<String, Hosted>,
+    room: RoomTurns,
     peers: NativePeers,
-    commands: mpsc::Receiver<Command>,
+    commands: mpsc::Receiver<NativeEvent>,
     pairs: BTreeSet<Uuid>,
 }
 
@@ -63,6 +218,7 @@ struct Session {
     files: Vec<RoomFile>,
     live: Option<Live>,
     recovery: Option<Instant>,
+    signer: Arc<SessionSigner>,
 }
 
 /// A Server process may own this future; an App must end it with the front-end
@@ -77,6 +233,7 @@ pub async fn run(
         files,
         live: None,
         recovery: None,
+        signer: Arc::new(new_signer()?),
     };
     let mut stop = std::pin::pin!(stop);
     let result = session.drive(&mut stop).await;
@@ -87,6 +244,7 @@ pub async fn run(
 impl Session {
     async fn release(&mut self) -> Result<()> {
         if let Some(live) = self.live.take() {
+            live.room.snapshot.send_replace(None);
             live.peers.close().await?;
         }
         self.recovery = None;
@@ -114,8 +272,12 @@ impl Session {
                     key: self.config.key.clone(),
                     session_id: self.live.as_ref().map(|live| live.session.to_string()),
                     room_id: None,
+                    signing_key: self.signer.signing_key(),
                 };
                 let result = self.connected(&mut socket, join, stop).await;
+                if let Some(live) = &self.live {
+                    live.room.snapshot.send_replace(None);
+                }
                 if !matches!(result, Ok(false)) {
                     let released = self.release().await;
                     leave(&mut socket).await;
@@ -168,8 +330,8 @@ impl Session {
                     tokio::select! {
                         command = next_command(&mut self.live), if admitted => {
                             let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
-                            if self.live.as_ref().is_some_and(|live| current(&live.pairs, &command)) {
-                                write(socket, &command, None).await?;
+                            if let Some(live) = &mut self.live {
+                                process_peer(command, &live.pairs, &mut live.room, &live.peers, socket).await?;
                             }
                         },
                         message = socket.next() => {
@@ -305,7 +467,12 @@ impl Session {
                     let (commands, receiver) = mpsc::channel(64);
                     self.live = Some(Live {
                         session: session_id,
-                        rooms,
+                        room: RoomTurns {
+                            rooms,
+                            local: session_id,
+                            signer: self.signer.clone(),
+                            snapshot: watch::channel(None).0,
+                        },
                         peers: NativePeers::new(session_id, ice, commands),
                         commands: receiver,
                         pairs: BTreeSet::new(),
@@ -315,10 +482,17 @@ impl Session {
                 self.state(state, socket).await?;
                 if resumed {
                     let live = self.live.as_mut().unwrap();
-                    await_peer(live.peers.resync(), &mut live.commands, &live.pairs, socket)
-                        .await?;
+                    await_peer(
+                        live.peers.resync(),
+                        &mut live.commands,
+                        &live.pairs,
+                        &mut live.room,
+                        &live.peers,
+                        socket,
+                    )
+                    .await?;
                 }
-                for (id, hosted) in &mut self.live.as_mut().unwrap().rooms {
+                for (id, hosted) in &mut self.live.as_mut().unwrap().room.rooms {
                     write(
                         socket,
                         &Command::HostRegister {
@@ -342,7 +516,7 @@ impl Session {
                 if let Some(hosted) = self
                     .live
                     .as_mut()
-                    .and_then(|live| live.rooms.get_mut(&room_id))
+                    .and_then(|live| live.room.rooms.get_mut(&room_id))
                 {
                     if hosted.binding.is_some_and(|old| old != binding_id) {
                         let file = self.files.iter().find(|file| file.id == room_id).unwrap();
@@ -355,7 +529,7 @@ impl Session {
             }
             Event::HostInput { room_id, input } => {
                 if let Some(live) = &mut self.live {
-                    if let Some(hosted) = live.rooms.get_mut(&room_id) {
+                    if let Some(hosted) = live.room.rooms.get_mut(&room_id) {
                         if hosted.binding == Some(input.binding_id)
                             && live.session == input.host_session_id
                         {
@@ -374,6 +548,8 @@ impl Session {
                             live.peers.signal(pair_id, payload),
                             &mut live.commands,
                             &live.pairs,
+                            &mut live.room,
+                            &live.peers,
                             socket,
                         )
                         .await?;
@@ -384,7 +560,7 @@ impl Session {
                 if request_id.as_ref().is_some_and(|id| {
                     self.live
                         .as_ref()
-                        .is_some_and(|live| live.rooms.contains_key(id))
+                        .is_some_and(|live| live.room.rooms.contains_key(id))
                 }) {
                     bail!("room registration failed: {code}");
                 }
@@ -397,12 +573,15 @@ impl Session {
 
     async fn state(&mut self, state: Snapshot, socket: &mut Socket) -> Result<()> {
         if let Some(live) = &mut self.live {
+            live.room.snapshot.send_replace(Some(state.clone()));
             live.pairs = state.pairs.iter().map(|pair| pair.id).collect();
             await_peer(
                 live.peers
                     .update(state.pairs, state.publications, state.files),
                 &mut live.commands,
                 &live.pairs,
+                &mut live.room,
+                &live.peers,
                 socket,
             )
             .await?;
@@ -440,8 +619,10 @@ fn current(pairs: &BTreeSet<Uuid>, command: &Command) -> bool {
 // while awaiting it so neither owner waits for the other's full queue.
 async fn await_peer<T>(
     turn: impl Future<Output = Result<T>>,
-    commands: &mut mpsc::Receiver<Command>,
+    commands: &mut mpsc::Receiver<NativeEvent>,
     pairs: &BTreeSet<Uuid>,
+    room: &mut RoomTurns,
+    peers: &NativePeers,
     socket: &mut Socket,
 ) -> Result<T> {
     let mut turn = std::pin::pin!(turn);
@@ -450,13 +631,13 @@ async fn await_peer<T>(
             result = &mut turn => return result,
             command = commands.recv() => {
                 let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
-                if current(pairs, &command) { write(socket, &command, None).await?; }
+                process_peer(command, pairs, room, peers, socket).await?;
             },
         }
     }
 }
 
-async fn next_command(live: &mut Option<Live>) -> Option<Command> {
+async fn next_command(live: &mut Option<Live>) -> Option<NativeEvent> {
     match live {
         Some(live) => live.commands.recv().await,
         None => std::future::pending().await,

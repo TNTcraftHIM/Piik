@@ -11,10 +11,11 @@ in their owner's Browser, using the same Rust room core through
 policy, activities, publication plans and confirmed history. The domain binds
 authenticated runtimes to directory entries and combines their transport demand;
 a physical pair remains while any room needs it. Domain WebSocket rendezvous
-currently carries room commands and replies. Browser-hosted rooms and the
+carries admission, activity changes and repair. Browser-hosted rooms and the
 explicit [Native participant](../channel-native/README.md) establish a shared
-base tree when an activity needs it. Files reuse its admitted paths, with the
-same Rust range-delivery core running in Browser/WASM and Native participants.
+base tree when an activity needs it. Chat/history use signed requests and room-owner
+replies on that tree; files reuse its admitted paths, with the same Rust range-delivery
+core running in Browser/WASM and Native participants.
 
 ## Run
 

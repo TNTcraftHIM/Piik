@@ -1,4 +1,5 @@
-﻿import { BrowserRoomHost, createRoomPolicy, type PageResult, type SentResult } from "../src/room-host";
+import { BrowserRoomHost, createRoomPolicy, createSessionSigner, decode_control, encode_control, verify_reply, type PageResult, type SentResult } from "../src/room-host";
+import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -9,11 +10,16 @@ interface Output {
 }
 window.runBrowserRoomCheck = async () => {
   const database = `piik-browser-room-check-${crypto.randomUUID()}`;
+  const signer = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
+  const peerSigner = await createSessionSigner(crypto.getRandomValues(new Uint8Array(32)));
+  const signingKey = Array.from(signer.signing_key()), peerSigningKey = Array.from(peerSigner.signing_key());
   const owner = { userId: crypto.randomUUID(), participates: true, domainOwner: false };
   const session = crypto.randomUUID(), connection = crypto.randomUUID();
+  const peerSession = crypto.randomUUID(), peerMember = { ...owner, userId: crypto.randomUUID() };
   let bindingId = crypto.randomUUID();
   let revision = 0;
-  const endpoints = { [session]: { member: owner, connected: true } };
+  const endpoints = { [session]: { member: owner, connected: true, signingKey },
+    [peerSession]: { member: peerMember, connected: true, signingKey: peerSigningKey } };
   const policy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Browser-owned room", creatorId: owner.userId,
     access: "public", hidden: false });
   let host = await BrowserRoomHost.open(database, policy);
@@ -32,6 +38,9 @@ window.runBrowserRoomCheck = async () => {
     check(output.reply?.result.type === "history" && output.reply.result.result?.type === "page", "shared history result");
     return output.reply.result.result;
   };
+  const peerPacket = (command: object): SignedConversationPacket => JSON.parse(peerSigner.sign(peerSession, JSON.stringify({
+    roomId: host.roomId, bindingId, sender: peerSession, recipient: session, requestId: crypto.randomUUID(), command,
+  })));
   try {
     const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
     check(initial.reply?.result.type === "done", "browse confirms activity without reading history");
@@ -44,7 +53,7 @@ window.runBrowserRoomCheck = async () => {
     try {
       const guestSession = crypto.randomUUID();
       const output = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision,
-        endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true } },
+        endpoints: { ...endpoints, [guestSession]: { member: { ...owner, userId: crypto.randomUUID() }, connected: true, signingKey: peerSigningKey } },
         action: { type: "command", context: { connection, sessionId: guestSession, requestId: "hidden", now: Date.now() },
           command: { type: "history", roomId: privateHost.roomId } },
       }) as Output;
@@ -55,7 +64,7 @@ window.runBrowserRoomCheck = async () => {
       }) as Output;
       check(verified.invitation?.accepted, "shared room verifies private invitation");
       const guest = { ...owner, userId: crypto.randomUUID() };
-      const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true } };
+      const guestEndpoints = { ...endpoints, [guestSession]: { member: guest, connected: true, signingKey: peerSigningKey } };
       const granted = await privateHost.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints: guestEndpoints,
         action: { type: "grant_invited", context: { connection, sessionId: guestSession, requestId: null, now: Date.now() } },
       }) as Output;
@@ -152,6 +161,31 @@ window.runBrowserRoomCheck = async () => {
       host = replacement;
       check((await send("After owner transfer", "after-bind")).message.seq === 111, "stale message consumed no sequence");
     } finally { await previousHost.close(); await lateClaim.close(); if (host !== replacement) await replacement.close(); }
+    await dispatch({ type: "browse", roomId: host.roomId, active: true });
+    check(host.currentReaders().length === 1 && host.currentReaders()[0] === session, "reading audience comes from shared room state");
+    const packet = peerPacket({ type: "chat", text: "Signed peer", nonce: "peer-send", attachments: [] });
+    const frame = JSON.parse(decode_control(encode_control(JSON.stringify({ kind: "conversation", body: packet }))));
+    check(frame.kind === "conversation" && frame.body.payload === packet.payload, "Rust control framing preserves signed payload bytes");
+    const replies = await host.dispatchPeer(frame.body, Date.now());
+    const confirmation = replies[0];
+    check(replies.length === 1 && confirmation.record.type === "confirmed" && confirmation.record.message.seq === 112 && confirmation.record.inserted,
+      "signed peer send confirms persisted room sequence");
+    const signedReply = signer.sign(session, JSON.stringify(confirmation));
+    check(JSON.stringify(JSON.parse(verify_reply(signedReply, signer.signing_key()))) === JSON.stringify(confirmation), "Rust verifies typed reply");
+    try { await host.dispatchPeer({ ...packet, payload: packet.payload + " " }, Date.now()); throw new Error("tampered signature accepted"); }
+    catch (error) { check(String(error).includes("invalid_conversation_signature"), "tampered request rejected before storage"); }
+    const repeated = await host.dispatchPeer(packet, Date.now());
+    check(repeated[0].record.type === "confirmed" && !repeated[0].record.inserted && confirmation.record.type === "confirmed"
+      && JSON.stringify(repeated[0].record.message) === JSON.stringify(confirmation.record.message), "peer retry reuses original confirmation");
+    const page = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
+    check(page.length === 101 && page.slice(0, 100).every(reply => reply.record.type === "history_message")
+      && page[100].record.type === "history_end" && page[100].record.hasMore, "history returns shared typed records and one end marker");
+    peerMember.participates = false;
+    await host.dispatch({ bindingId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
+    const denied = await host.dispatchPeer(peerPacket({ type: "chat", text: "Not allowed", nonce: "peer-denied", attachments: [] }), Date.now());
+    check(denied.length === 1 && denied[0].record.type === "error" && denied[0].record.code === "forbidden", "current domain write permission controls signed peer sends");
+    const readable = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
+    check(readable.at(-1)?.record.type === "history_end", "losing write permission preserves permitted history reads");
     await new Promise<void>((resolve, reject) => {
       const upgrade = indexedDB.open(database, 3);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
@@ -163,9 +197,11 @@ window.runBrowserRoomCheck = async () => {
     return { passed: true, actualWasm: true, actualIndexedDB: true, serializedOrder: true, originalConfirmation: true,
       reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true, missingAttachmentRejected: true,
       latest: latest.messages.length, older: older.messages.length, beforeZero: true, versionChangeClearsPending: true,
-      bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true, domainCredentialDatabaseProvided: false };
+      bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true,
+      signedPeerHistory: true, signedPeerPermission: true, domainCredentialDatabaseProvided: false };
   } finally {
     await host.close();
+    signer.free(); peerSigner.free();
     await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(database);
       request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); });
   }

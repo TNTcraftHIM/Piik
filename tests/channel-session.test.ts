@@ -1,16 +1,17 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { ChannelAttachments } from "../src/client/channel/attachments";
-import { signalSchema, type ChannelCommand, type ChannelSignal } from "../src/client/channel/protocol";
+import { signalSchema, type ChannelCommand, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 
 class ChannelSocket {
   static OPEN = 1;
   static current: ChannelSocket;
   readyState = ChannelSocket.OPEN;
-  onopen: (() => void) | null = null;
+  onopen: (() => void | Promise<void>) | null = null;
   onmessage: ((event: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
@@ -21,22 +22,25 @@ class ChannelSocket {
   receive(event: object): void { this.onmessage?.({ data: JSON.stringify(event) }); }
 }
 
+const testSigningKey = Array.from(Buffer.from("8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c", "hex"));
+beforeEach(() => { vi.spyOn(ChannelConversation.prototype, "initialize").mockResolvedValue(testSigningKey); });
+
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-function setup(window = 1000) {
+async function setup(window = 1000) {
   vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
   session.start();
   const socket = ChannelSocket.current;
-  socket.onopen?.();
+  await socket.onopen?.();
   socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state: {
     channel: { id: "domain", name: "Friends", ownerId: "self", historyWindow: window,
       rooms: ["first", "second"].map(id => ({ id, name: id, creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         available: true, reading: id === "first", capabilities: { attachments: true } })), roles: [] },
-    users: [{ id: "self", name: "Me", roles: [] }], sessions: [{ id: "endpoint", userId: "self", online: true }],
+    users: [{ id: "self", name: "Me", roles: [] }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
     publications: [], voice: [], subscriptions: [], files: [], pairs: [], iceServers: [],
   } });
   return { session, socket };
@@ -59,7 +63,7 @@ test("host binding precedes its first input and a failed binding retires that ho
       storedPolicies: async () => [],
     },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   try {
     const creating = session.createRoom({ name: "Hosted", access: "public", hidden: false });
     void creating.catch(() => {});
@@ -89,7 +93,7 @@ test("host binding precedes its first input and a failed binding retires that ho
 });
 
 test("room replies settle only the request belonging to that room", async () => {
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   try {
     let settled = false;
     const sending = session.sendMessage("first", "Hello").then(() => { settled = true; });
@@ -110,8 +114,49 @@ test("room replies settle only the request belonging to that room", async () => 
   } finally { session.close(); }
 });
 
+test.each([
+  ["missing record", [2]],
+  ["duplicate sequence", [2, 2]],
+] as const)("an incomplete peer history page (%s) preserves messages and permits a complete retry", async (_fault, sequences) => {
+  const { session, socket } = await setup();
+  let reply!: (record: ConversationReply["record"]) => void;
+  const send = vi.spyOn(ChannelConversation.prototype, "send").mockImplementation(async function (this: ChannelConversation, command, requestId) {
+    const options = (this as unknown as { options: { reply(value: ConversationReply): void } }).options;
+    reply = record => options.reply({ roomId: command.roomId, bindingId: "binding", sender: "host",
+      recipient: "endpoint", requestId, record });
+  });
+  try {
+    socket.receive({ type: "history", roomId: "first", messages: [message(1)], hasMore: false, oldestSeq: 1 });
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].delivery = { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } };
+    state.sessions.push({ id: "host", userId: "self", online: true, signingKey: testSigningKey });
+    socket.receive({ type: "state", state });
+    const existing = session.getSnapshot().messagesByRoom.first;
+    const incomplete = session.loadLatestHistory("first");
+    const rejected = expect(incomplete).rejects.toThrow("incomplete_history");
+    expect(send).not.toHaveBeenCalled();
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    for (const seq of sequences) reply({ type: "history_message", message: message(seq) });
+    reply({ type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
+    await rejected;
+    expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
+    expect(existing).toEqual([message(1)]);
+
+    const complete = session.loadLatestHistory("first");
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    reply({ type: "history_message", message: message(2) });
+    reply({ type: "history_message", message: message(3) });
+    expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
+    reply({ type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
+    await complete;
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(2), message(3)]);
+  } finally { session.close(); }
+});
+
 test("a separate directory storage error does not fail a committed room request", async () => {
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   try {
     const updating = session.updateRoom("first", { name: "Saved", access: "public", hidden: false });
     const request = socket.sent.at(-1)!;
@@ -128,7 +173,7 @@ test("a separate directory storage error does not fail a committed room request"
 });
 
 test("confirms a send after browsing another room while only ack completes its request", async () => {
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   try {
     session.browse("second");
     let settled = false;
@@ -148,8 +193,8 @@ test("confirms a send after browsing another room while only ack completes its r
   } finally { session.close(); }
 });
 
-test("merges live messages and original confirmations once in room order within the latest window", () => {
-  const { session, socket } = setup(2);
+test("merges live messages and original confirmations once in room order within the latest window", async () => {
+  const { session, socket } = await setup(2);
   try {
     socket.receive({ type: "history", roomId: "first", messages: [message(3), message(4)], hasMore: true, oldestSeq: 1 });
     socket.receive({ type: "message_confirmed", roomId: "first", message: message(1) });
@@ -163,8 +208,25 @@ test("merges live messages and original confirmations once in room order within 
   } finally { session.close(); }
 });
 
+test.each([
+  ["empty", [], null],
+  ["older", [message(1)], 1],
+] as const)("a delayed %s history page preserves a newer live message", async (_page, messages, oldestSeq) => {
+  const { session, socket } = await setup();
+  try {
+    const loading = session.loadLatestHistory("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("history"));
+    const request = socket.sent.at(-1)!;
+    socket.receive({ type: "message", roomId: "first", message: message(2) });
+    socket.receive({ type: "history", roomId: "first", messages, hasMore: false, oldestSeq });
+    socket.receive({ type: "ack", requestId: request.requestId });
+    await loading;
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([...messages, message(2)]);
+  } finally { session.close(); }
+});
+
 test("pages beyond a full window without live messages interrupting reading, then returns to latest", async () => {
-  const { session, socket } = setup(3);
+  const { session, socket } = await setup(3);
   try {
     socket.receive({ type: "history", roomId: "first", messages: [message(8), message(9)], hasMore: true, oldestSeq: 1 });
     socket.receive({ type: "history", roomId: "first", messages: [message(7)], before: 8, hasMore: true, oldestSeq: 1 });
@@ -199,7 +261,7 @@ test("pages beyond a full window without live messages interrupting reading, the
 });
 
 test("a confirmed send returns a historical reader to latest without failing the send when history fails", async () => {
-  const { session, socket } = setup(1);
+  const { session, socket } = await setup(1);
   try {
     socket.receive({ type: "history", roomId: "first", messages: [message(2)], hasMore: true, oldestSeq: 1 });
     socket.receive({ type: "history", roomId: "first", messages: [message(1)], before: 2, hasMore: false, oldestSeq: 1 });
@@ -220,7 +282,7 @@ test("a confirmed send returns a historical reader to latest without failing the
 });
 
 test("a confirmed file becomes a session source while its sender reads an older history window", async () => {
-  const { session, socket } = setup(1);
+  const { session, socket } = await setup(1);
   const file = new File(["saved"], "note.txt"), id = crypto.randomUUID();
   const attachment = { id, name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
   vi.spyOn(session.attachments, "describe").mockResolvedValue([{ id, file, attachment }]);
@@ -300,7 +362,7 @@ class RoomAudio {
   constructor() { RoomAudio.instances.push(this); }
 }
 
-function setupRoomMedia() {
+async function setupRoomMedia() {
   RoomPeerConnection.instances = [];
   RoomAudio.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
@@ -310,7 +372,7 @@ function setupRoomMedia() {
     getTracks() { return this.tracks; }
   });
   vi.stubGlobal("document", { body: { append: vi.fn() } });
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   const state = structuredClone(session.getSnapshot().state!);
   const sent: ChannelCommand[] = [];
   const media = new ChannelMedia(command => sent.push(command), () => {});
@@ -323,8 +385,8 @@ const decodedReport = (framesDecoded: number) => new Map([["video", {
   type: "inbound-rtp", kind: "video", framesDecoded,
 }]]) as unknown as RTCStatsReport;
 
-function screenFixture() {
-  const fixture = setupRoomMedia();
+async function screenFixture() {
+  const fixture = await setupRoomMedia();
   fixture.state.publications = [{ id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", muted: false }];
   fixture.state.pairs[0].incoming = ["screen"];
   fixture.media.update("a", fixture.state);
@@ -341,7 +403,7 @@ const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(n
   getAudioTracks: () => tracks.filter(track => track.kind === "audio"),
 }) as unknown as MediaStream;
 
-async function receiveScreen(fixture: ReturnType<typeof screenFixture>, stream: MediaStream) {
+async function receiveScreen(fixture: Awaited<ReturnType<typeof screenFixture>>, stream: MediaStream) {
   fixture.media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: stream.id },
     tracks: [{ publicationId: "screen", streamId: stream.id }] });
   await vi.waitFor(() => expect(fixture.pc.remoteDescription?.sdp).toBe(stream.id));
@@ -349,7 +411,7 @@ async function receiveScreen(fixture: ReturnType<typeof screenFixture>, stream: 
 }
 
 test("an audio-first screen waits for decoded video on a currently connected transport", async () => {
-  const fixture = screenFixture();
+  const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
   vi.useFakeTimers();
   const tracks = [remoteTrack("audio")];
@@ -378,7 +440,7 @@ test("an audio-first screen waits for decoded video on a currently connected tra
 });
 
 test("a replaced screen cannot be proved by its old receiver's delayed stats", async () => {
-  const fixture = screenFixture();
+  const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
   vi.useFakeTimers();
   const resolves: Array<(report: RTCStatsReport) => void> = [];
@@ -399,7 +461,7 @@ test("a replaced screen cannot be proved by its old receiver's delayed stats", a
 });
 
 test("same-publication stream replacement re-proves progress on a reused receiver", async () => {
-  const fixture = screenFixture();
+  const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
   vi.useFakeTimers();
   const video = remoteTrack("video");
@@ -420,7 +482,7 @@ test("same-publication stream replacement re-proves progress on a reused receive
 });
 
 test("a relay updates senders when audio joins and leaves the same remote screen stream", async () => {
-  const fixture = screenFixture();
+  const fixture = await screenFixture();
   const { media, session, state, pc } = fixture;
   const video = remoteTrack("video");
   const audio = remoteTrack("audio");
@@ -449,7 +511,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
 });
 
 test.each(["ended", "removetrack", "unmapped"])("a proven screen withdraws readiness when its video is %s", async ending => {
-  const fixture = screenFixture();
+  const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
   const video = remoteTrack("video"), tracks = [video], stream = remoteStream("screen-stream", tracks);
   pc.receivers = [{ track: video, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
@@ -477,7 +539,7 @@ test.each(["ended", "removetrack", "unmapped"])("a proven screen withdraws readi
 });
 
 test("a replacement video waits for proof without treating the old input's retirement as failure", async () => {
-  const fixture = screenFixture();
+  const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
   const old = remoteTrack("video"), next = remoteTrack("video");
   const oldTracks = [old], oldStream = remoteStream("old", oldTracks), nextStream = remoteStream("new", [next]);
@@ -505,7 +567,7 @@ test("a replacement video waits for proof without treating the old input's retir
 });
 
 test("bulk waits for its own open and buffer while control and media remain available", async () => {
-  const { session, media, sent, pc } = setupRoomMedia();
+  const { session, media, sent, pc } = await setupRoomMedia();
   try {
     const [control, bulk] = pc.channels;
     pc.connected(); control.open();
@@ -526,19 +588,39 @@ test("bulk waits for its own open and buffer while control and media remain avai
     void closing.catch(() => {});
     await new Promise(resolve => setTimeout(resolve, 0));
     bulk.close();
-    await expect(closing).rejects.toThrow("file_transport_unavailable");
+    await expect(closing).rejects.toThrow("data_channel_unavailable");
     await media.sendData("z", "control", "still-open");
     expect(pc.close).not.toHaveBeenCalled();
     expect(sent.some(command => command.type === "base_state" && !command.ready)).toBe(false);
   } finally { media.reset(); session.close(); }
 });
 
+test("queued room data rechecks its owner before sending without closing the shared pair", async () => {
+  const { session, media, pc } = await setupRoomMedia();
+  try {
+    const [control] = pc.channels;
+    pc.connected(); control.open();
+    control.bufferedAmount = 65536;
+    let allowed = true;
+    const queued = media.sendData("z", "control", "old-room-content", () => allowed);
+    const rejected = expect(queued).rejects.toThrow("room_unavailable");
+    await new Promise(resolve => setTimeout(resolve, 0));
+    allowed = false;
+    control.bufferedAmount = 0; control.dispatchEvent(new Event("bufferedamountlow"));
+    await rejected;
+    expect(control.send).not.toHaveBeenCalled();
+    await media.sendData("z", "control", "current-room-content", () => true);
+    expect(control.send).toHaveBeenCalledExactlyOnceWith("current-room-content");
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test("a connecting bulk channel has a bounded frame queue and releases admission after sending", async () => {
-  const { session, media, pc } = setupRoomMedia();
+  const { session, media, pc } = await setupRoomMedia();
   try {
     pc.connected(); pc.channels[0].open();
     const frames = Array.from({ length: 32 * 17 }, () => media.sendData("z", "chunk", new Uint8Array(8192)));
-    await expect(media.sendData("z", "chunk", new Uint8Array([1]))).rejects.toThrow("file_transfer_busy");
+    await expect(media.sendData("z", "chunk", new Uint8Array([1]))).rejects.toThrow("data_channel_busy");
     await media.sendData("z", "control", "independent");
     expect(pc.channels[0].send).toHaveBeenCalledOnce();
     pc.channels[1].open();
@@ -670,7 +752,7 @@ test("an earlier answer cannot finish a newer exchange on the same transport", a
 test("a resumed welcome requests resync only for the surviving transport plan", async () => {
   RoomPeerConnection.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.pairs = ["kept", "removed"].map(id => ({ id, peerId: "z", rooms: ["first"], incoming: [], outgoing: [] }));
@@ -679,7 +761,7 @@ test("a resumed welcome requests resync only for the surviving transport plan", 
     kept.connected(); kept.channels[0].open();
     socket.close(); session.reconnect();
     const resumed = ChannelSocket.current;
-    resumed.onopen?.();
+    await resumed.onopen?.();
     state.pairs.pop();
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
     await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "signal")).toEqual([
@@ -722,8 +804,8 @@ test("source replacement releases unmapped streams and ignores their late track 
   } finally { transport.close(); }
 });
 
-test("base proof waits for open data and connected transport; removing leases preserves media", () => {
-  const { session, media, state, sent, pc } = setupRoomMedia();
+test("base proof waits for open data and connected transport; removing leases preserves media", async () => {
+  const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     pc.connected();
     expect(sent.filter(command => command.type === "base_state")).toEqual([]);
@@ -745,8 +827,8 @@ test("base proof waits for open data and connected transport; removing leases pr
   } finally { media.reset(); session.close(); }
 });
 
-test("data failure retires only the base attempt and does not retry unchanged demand", () => {
-  const { session, media, state, sent, pc } = setupRoomMedia();
+test("data failure retires only the base attempt and does not retry unchanged demand", async () => {
+  const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     pc.connected(); pc.channels[0].open(); pc.channels[0].close();
     expect(sent.at(-1)).toEqual({ type: "base_state", pairId: "pair", roomId: "first", ready: false });
@@ -760,8 +842,8 @@ test("data failure retires only the base attempt and does not retry unchanged de
   } finally { media.reset(); session.close(); }
 });
 
-test("transient transport loss retains base leases and proves new leases after recovery", () => {
-  const { session, media, state, sent, pc } = setupRoomMedia();
+test("transient transport loss retains base leases and proves new leases after recovery", async () => {
+  const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     pc.connected(); pc.channels[0].open();
     sent.length = 0;
@@ -783,9 +865,9 @@ test("transient transport loss retains base leases and proves new leases after r
   } finally { media.reset(); session.close(); }
 });
 
-test("connected media keeps its PC when the base channel exceeds the existing preparation deadline", () => {
+test("connected media keeps its PC when the base channel exceeds the existing preparation deadline", async () => {
   vi.useFakeTimers();
-  const { session, media, state, sent, pc } = setupRoomMedia();
+  const { session, media, state, sent, pc } = await setupRoomMedia();
   try {
     pc.connected();
     vi.advanceTimersByTime(19999);
@@ -801,7 +883,7 @@ test("connected media keeps its PC when the base channel exceeds the existing pr
 });
 
 test("browsing retires only reading and resumes the offline selection without ending subscriptions", async () => {
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.publications = [{ id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen", muted: false }];
@@ -820,7 +902,7 @@ test("browsing retires only reading and resumes the offline selection without en
     expect(socket.sent).toHaveLength(count);
     session.reconnect();
     const resumed = ChannelSocket.current;
-    resumed.onopen?.();
+    await resumed.onopen?.();
     state.channel.rooms.forEach(room => { room.reading = room.id === "second"; });
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
     expect(resumed.sent.slice(-2)).toEqual([{ type: "browse", roomId: "second", active: false }, expect.objectContaining({ type: "browse", roomId: "first", active: true })]);
@@ -829,8 +911,8 @@ test("browsing retires only reading and resumes the offline selection without en
   } finally { session.close(); }
 });
 
-test("rapid browsing retires the previous intent before its reading projection arrives", () => {
-  const { session, socket } = setup();
+test("rapid browsing retires the previous intent before its reading projection arrives", async () => {
+  const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.rooms.forEach(room => { room.reading = false; });
@@ -845,8 +927,8 @@ test("rapid browsing retires the previous intent before its reading projection a
   } finally { session.close(); }
 });
 
-test("a resumed room owner retires reading left behind by an offline room switch", () => {
-  const { session, socket } = setup();
+test("a resumed room owner retires reading left behind by an offline room switch", async () => {
+  const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.rooms[0].available = false;
@@ -868,7 +950,7 @@ test("a resumed room owner retires reading left behind by an offline room switch
 });
 
 test("voice forwards without local listening and the same pair carries the reverse source", async () => {
-  const { session, media, state, pc } = setupRoomMedia();
+  const { session, media, state, pc } = await setupRoomMedia();
   const aTrack = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
   const bTrack = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
   const voice = (id: string, track: MediaStreamTrack) => ({ id, getTracks: () => [track], getAudioTracks: () => [track], getVideoTracks: () => [] }) as unknown as MediaStream;
@@ -914,7 +996,7 @@ test("voice forwards without local listening and the same pair carries the rever
 
 
 test("browse acknowledgement loads only the current room once and reconnect refreshes its history", async () => {
-  const { session, socket } = setup();
+  const { session, socket } = await setup();
   try {
     const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
     session.browse("first");
@@ -924,7 +1006,8 @@ test("browse acknowledgement loads only the current room once and reconnect refr
     const second = socket.sent.at(-1)!;
     socket.receive({ type: "ack", requestId: first.requestId }); await Promise.resolve();
     expect(socket.sent.some(command => command.type === "history")).toBe(false);
-    socket.receive({ type: "room_reply", roomId: "second", requestId: second.requestId, result: { type: "done" } }); await Promise.resolve();
+    socket.receive({ type: "room_reply", roomId: "second", requestId: second.requestId, result: { type: "done" } });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "history", roomId: "second" }));
     const history = socket.sent.at(-1)!;
     expect(history).toMatchObject({ type: "history", roomId: "second" });
     session.browse("second");
@@ -933,14 +1016,14 @@ test("browse acknowledgement loads only the current room once and reconnect refr
     socket.receive({ type: "room_reply", roomId: "second", requestId: history.requestId, result: { type: "done" } });
     await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
     const older = session.loadHistory("second");
-    expect(socket.sent.at(-1)).toMatchObject({ type: "history", roomId: "second", before: 5 });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "history", roomId: "second", before: 5 }));
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await older;
     const state = structuredClone(session.getSnapshot().state!);
     session.reconnect();
-    const resumed = ChannelSocket.current; resumed.onopen?.();
+    const resumed = ChannelSocket.current; await resumed.onopen?.();
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
-    resumed.receive({ type: "ack", requestId: browse.requestId }); await Promise.resolve();
-    expect(resumed.sent.filter(command => command.type === "history")).toEqual([expect.objectContaining({ type: "history", roomId: "second" })]);
+    resumed.receive({ type: "ack", requestId: browse.requestId });
+    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "history")).toEqual([expect.objectContaining({ type: "history", roomId: "second" })]));
   } finally { session.close(); }
 });

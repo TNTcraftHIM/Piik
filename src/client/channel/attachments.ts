@@ -41,7 +41,7 @@ export class ChannelAttachments {
   private downloads = new Map<string, Download>();
   private listeners = new Set<() => void>();
   constructor(private command: (command: ChannelCommand) => Promise<void>,
-    private sendData: (peer: string, kind: "control" | "chunk", data: string | Uint8Array) => Promise<void>) {}
+    private sendData: (peer: string, kind: "control" | "chunk", data: string | Uint8Array, allowed: () => boolean) => Promise<void>) {}
 
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   status = (key: ChannelFileKey) => {
@@ -137,7 +137,7 @@ export class ChannelAttachments {
     if (this.runtime) void this.runtime.then(runtime => {
       for (const plan of this.plans) if (plan.upstream === peer || plan.downstream.includes(peer)) {
         const key = { roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id };
-        this.invoke(runtime, () => runtime.delivery.peer_failed(JSON.stringify(key), peer, "file_transport_unavailable"));
+        this.invoke(runtime, () => runtime.delivery.peer_failed(JSON.stringify(key), peer, "data_channel_unavailable"));
       }
     }).catch(() => {});
   }
@@ -211,12 +211,17 @@ export class ChannelAttachments {
       const failed = (error: unknown) => this.invoke(runtime, () => runtime.delivery.fail(JSON.stringify(key), errorOf(error).message));
       if (effect.type === "send_control" || effect.type === "send_chunk") {
         const peer = effect.peer, isError = effect.type === "send_control" && effect.control.type === "error";
+        const terminal = isError || (effect.type === "send_control" && effect.control.type === "cancel");
         const kind = effect.type === "send_control" ? "control" : "chunk";
         const data = effect.type === "send_control" ? JSON.stringify(effect.control) : new Uint8Array(effect.frame);
-        void this.sendData(peer, kind, data)
+        const allowed = () => this.current(runtime)
+          && this.rooms.some(room => room.id === key.roomId && room.authorized && room.available)
+          && (terminal || this.plans.some(plan => plan.roomId === key.roomId && plan.messageSeq === key.messageSeq
+            && plan.attachment.id === key.attachmentId && (plan.upstream === peer || plan.downstream.includes(peer))));
+        void this.sendData(peer, kind, data, allowed)
           .catch(error => {
             if (isError) return;
-            this.invoke(runtime, () => errorOf(error).message === "file_peer_unavailable"
+            this.invoke(runtime, () => errorOf(error).message === "peer_data_unavailable"
               ? runtime.delivery.peer_unavailable(peer)
               : runtime.delivery.peer_failed(JSON.stringify(key), peer, errorOf(error).message));
           });

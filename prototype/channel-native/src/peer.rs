@@ -8,7 +8,9 @@ use crate::{
     },
 };
 use anyhow::{anyhow, Result};
+use piik_channel_prototype::conversation::{ControlFrame, SignedPacket};
 use piik_channel_prototype::file_room::FilePlan;
+use piik_channel_prototype::wire::Snapshot;
 use piik_channel_prototype::wire::{
     Candidate, Command, Description, LinkState, PairInfo, PublicationInfo, Signal,
     Track as WireTrack,
@@ -36,7 +38,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{
         atomic::{AtomicBool, AtomicU8, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::{Duration, Instant},
 };
@@ -58,6 +60,16 @@ pub struct NativePeers {
     cancel: watch::Sender<bool>,
     input: mpsc::Sender<Input>,
     task: JoinHandle<()>,
+    links: Arc<Mutex<HashMap<Uuid, (Uuid, data::Senders)>>>,
+}
+pub enum NativeEvent {
+    Command(Command),
+    Conversation {
+        peer: Uuid,
+        pair: Uuid,
+        token: Uuid,
+        packet: SignedPacket,
+    },
 }
 enum Input {
     Update(
@@ -179,7 +191,8 @@ impl Pair {
 struct Driver {
     session: Uuid,
     ice: Vec<RTCIceServer>,
-    commands: mpsc::Sender<Command>,
+    commands: mpsc::Sender<NativeEvent>,
+    links: Arc<Mutex<HashMap<Uuid, (Uuid, data::Senders)>>>,
     cancel: watch::Receiver<bool>,
     events: mpsc::Sender<Event>,
     first_packets: mpsc::Sender<FirstPacket>,
@@ -193,7 +206,7 @@ impl NativePeers {
     pub fn new(
         session_id: Uuid,
         ice_servers: Vec<RTCIceServer>,
-        commands: mpsc::Sender<Command>,
+        commands: mpsc::Sender<NativeEvent>,
     ) -> Self {
         // Callback events are control-only. They must never await the PC driver that
         // invokes them. RTP has a separate bounded queue and separate poll tasks.
@@ -201,11 +214,14 @@ impl NativePeers {
         let (input, mut inputs) = mpsc::channel(64);
         let (events, mut event_rx) = mpsc::channel(1024);
         let (first_packets, mut first_rx) = mpsc::channel(256);
+        let links = Arc::new(Mutex::new(HashMap::new()));
+        let driver_links = links.clone();
         let task = tokio::spawn(async move {
             let mut d = Driver {
                 session: session_id,
                 ice: ice_servers,
                 commands,
+                links: driver_links,
                 cancel: cancelled.clone(),
                 events,
                 first_packets,
@@ -284,7 +300,63 @@ impl NativePeers {
             cancel,
             input,
             task,
+            links,
         }
+    }
+    pub(crate) fn control_current(&self, peer: Uuid, pair: Uuid, token: Uuid) -> bool {
+        self.links
+            .lock()
+            .unwrap()
+            .get(&peer)
+            .is_some_and(|(current, senders)| {
+                *current == pair && senders.current(Lane::Control, token, true)
+            })
+    }
+    /// Queue directly on the existing pair writer; no peer control turn is needed.
+    pub(crate) fn conversation(
+        &self,
+        peer: Uuid,
+        packet: SignedPacket,
+        original: SignedPacket,
+        snapshot: watch::Receiver<Option<Snapshot>>,
+        local: Uuid,
+        from: Option<Uuid>,
+    ) -> Result<()> {
+        self.conversations(peer, vec![(packet, original)], snapshot, local, from)
+    }
+    pub(crate) fn conversations(
+        &self,
+        peer: Uuid,
+        packets: Vec<(SignedPacket, SignedPacket)>,
+        snapshot: watch::Receiver<Option<Snapshot>>,
+        local: Uuid,
+        from: Option<Uuid>,
+    ) -> Result<()> {
+        let messages = packets
+            .into_iter()
+            .map(|(packet, original)| {
+                let bytes = piik_channel_prototype::conversation::encode_control(
+                    &ControlFrame::Conversation(packet),
+                )?;
+                Ok(data::Message {
+                    bytes,
+                    scope: data::MessageScope::Conversation {
+                        snapshot: snapshot.clone(),
+                        local,
+                        peer,
+                        from,
+                        packet: original,
+                    },
+                    report_failure: true,
+                })
+            })
+            .collect::<Result<Vec<_>, &'static str>>()
+            .map_err(anyhow::Error::msg)?;
+        let links = self.links.lock().unwrap();
+        let (_, link) = links
+            .get(&peer)
+            .ok_or_else(|| anyhow!("room_path_unavailable"))?;
+        data::queue_controls(&link.control, messages).map_err(anyhow::Error::msg)
     }
     pub async fn update(
         &self,
@@ -397,7 +469,7 @@ fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder
                     rtc::peer_connection::transport::RTCDtlsRole::Server
                 })
                 .with_sctp_max_message_size(SctpMaxMessageSize::Bounded(
-                    piik_channel_prototype::file_delivery::FILE_FRAME_BYTES as u32,
+                    piik_channel_prototype::conversation::CONTROL_FRAME_BYTES as u32,
                 ))
                 .build(),
         ))
@@ -408,7 +480,7 @@ impl Driver {
             return;
         }
         let mut cancel = self.cancel.clone();
-        tokio::select! { _=cancel.changed()=>{}, _=self.commands.send(command)=>{} }
+        tokio::select! { _=cancel.changed()=>{}, _=self.commands.send(NativeEvent::Command(command))=>{} }
     }
     async fn update(
         &mut self,
@@ -434,6 +506,7 @@ impl Driver {
             .collect();
         for id in removed {
             if let Some(pair) = self.pairs.remove(&id) {
+                self.links.lock().unwrap().remove(&pair.plan.peer_id);
                 self.files.detach(pair.plan.peer_id).await;
                 close_pair(pair).await;
             }
@@ -463,6 +536,10 @@ impl Driver {
                             .await?,
                     );
                     let data = DataLink::new(plan.id, state.clone(), self.events.clone());
+                    self.links
+                        .lock()
+                        .unwrap()
+                        .insert(plan.peer_id, (plan.id, data.senders()));
                     self.files.attach(plan.peer_id, data.senders()).await;
                     self.pairs.insert(
                         plan.id,
@@ -764,6 +841,7 @@ impl Driver {
         let events = self.events.clone();
         let files = self.files.receiver();
         let peer = p.plan.peer_id;
+        let commands = self.commands.clone();
         let state = p.state.clone();
         let channel = dc.clone();
         let task = tokio::spawn(async move {
@@ -776,8 +854,28 @@ impl Driver {
                     }
                     DataChannelEvent::OnMessage(message) => match lane {
                         Lane::Control => {
-                            if let Some(control) = data::control(message.data.as_ref()) {
-                                files.control(peer, token, control).await;
+                            if !ready.open() {
+                                continue;
+                            }
+                            match data::control(message.data.as_ref()) {
+                                Some(ControlFrame::File(control)) => {
+                                    files.control(peer, token, control).await
+                                }
+                                Some(ControlFrame::Conversation(packet)) => {
+                                    if commands
+                                        .send(NativeEvent::Conversation {
+                                            peer,
+                                            pair: id,
+                                            token,
+                                            packet,
+                                        })
+                                        .await
+                                        .is_err()
+                                    {
+                                        break;
+                                    }
+                                }
+                                None => {}
                             }
                         }
                         Lane::Bulk => files.chunk(peer, token, message.data.as_ref()).await,

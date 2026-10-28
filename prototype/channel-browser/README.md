@@ -5,6 +5,9 @@ transactional storage; shared Rust prepares confirmations and history pages.
 The caller supplies authenticated domain member facts, without a credential database,
 and delivers its returned projection/reply after commit. The channel prototype loads this adapter
 through its Vite entry; regular 2.x builds do not require generated WASM.
+Chat and history arrive through the room's authenticated peer carrier and use
+that same serialized storage turn. The shared Rust core verifies their origin
+and current room authority before execution.
 The same module exposes incremental attachment hashing and the shared file-range
 engine. Browser adapters supply readable Files, temporary OPFS sinks and existing
 peer DataChannels; they do not implement another route or transfer controller.

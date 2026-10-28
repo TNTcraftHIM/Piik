@@ -161,6 +161,9 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     start();
     await until("Native room reopens", () => view(2), value =>
       value.state.channel.rooms.some(entry => entry.id === room && entry.available));
+    await browser(2, "click", `.c3-room-link[aria-label="${name}"]`);
+    await until("Native room history finishes on re-entry", () => evaluate(2,
+      `${hook}.snapshot().pending.has('history:${room}')`), pending => !pending);
     await action(2, `loadLatestHistory('${room}')`);
     assert((await evaluate(2, `${hook}.snapshot().messagesByRoom['${room}']`))
       .some(message => message.text === "Confirmed by Native room"));

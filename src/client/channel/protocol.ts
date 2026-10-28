@@ -2,6 +2,7 @@ import { z } from "zod";
 
 // This is the experimental channel wire boundary; production room contracts stay separate.
 const id = z.string().min(1).max(128);
+const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
 export const userSchema = z.object({ id, name: z.string().max(40), roles: z.array(id).max(16) });
 export const roomSchema = z.object({
   id, name: z.string().max(64), creatorId: id, access: z.enum(["public", "private"]),
@@ -9,6 +10,7 @@ export const roomSchema = z.object({
   members: z.array(id).optional(),
   available: z.boolean(), reading: z.boolean(),
   capabilities: z.object({ attachments: z.boolean() }),
+  delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });
 export const publicationSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
@@ -33,7 +35,7 @@ export const snapshotSchema = z.object({
     roles: z.array(z.object({ id, name: z.string(), permissions: z.array(z.string()) })),
   }),
   users: z.array(userSchema).max(64),
-  sessions: z.array(z.object({ id, userId: id, online: z.boolean() })).max(20),
+  sessions: z.array(z.object({ id, userId: id, online: z.boolean(), signingKey })).max(20),
   publications: z.array(publicationSchema),
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
@@ -76,11 +78,19 @@ export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
 export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "message_confirmed" }>;
+export interface SignedConversationPacket { sender: string; payload: string; signature: number[]; remainingHops: number }
+export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
+export type ConversationReply = ConversationAddress & { record:
+  | { type: "confirmed"; message: ChannelMessage; inserted: boolean }
+  | { type: "history_message" | "live_message"; message: ChannelMessage }
+  | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
+  | { type: "error"; code: string }
+};
 export interface RoomSettings {
   name: string; access: "public" | "private"; hidden: boolean; password?: string | null;
 }
 export type ChannelCommand =
-  | { type: "join"; name: string; credential?: string; key?: string; roomId?: string; sessionId?: string }
+  | { type: "join"; name: string; signingKey: number[]; credential?: string; key?: string; roomId?: string; sessionId?: string }
   | { type: "set_name"; name: string }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
   | { type: "host_output"; roomId: string; output: unknown }

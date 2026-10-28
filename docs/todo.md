@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-27
+Last reviewed: 2026-10-28
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -9,8 +9,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Complete authenticated chat/history delivery on the room base tree,
-  participant resource admission and bounded screen-route transitions; integrate
+  Rust owners. Complete participant resource admission and bounded screen-route transitions; integrate
   the Native participant with App/Server hosting sessions. Reuse mature components
   and the shared frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.

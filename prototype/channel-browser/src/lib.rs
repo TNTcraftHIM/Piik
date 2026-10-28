@@ -1,4 +1,7 @@
 use piik_channel_prototype::{
+    conversation::{
+        self, ConversationAddress, ConversationReply, SessionSigner as SharedSigner, SignedPacket,
+    },
     history::{ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, HISTORY_PAGE},
     host::{HostInput, RoomHost as SharedRoomHost},
     wire::{ChatMessage, RoomAccess},
@@ -79,6 +82,79 @@ pub fn attachment_result(request: &str, message: &str) -> Result<String, JsValue
     encode(&result)
 }
 
+#[wasm_bindgen]
+pub struct SessionSigner(SharedSigner);
+
+#[wasm_bindgen]
+impl SessionSigner {
+    #[wasm_bindgen(constructor)]
+    pub fn new(seed: &[u8]) -> Result<Self, JsValue> {
+        Ok(Self(SharedSigner::from_seed(
+            seed.try_into().map_err(|_| error("invalid_request"))?,
+        )))
+    }
+    pub fn signing_key(&self) -> Vec<u8> {
+        self.0.signing_key().to_vec()
+    }
+    pub fn sign(&self, sender: &str, payload: &str) -> Result<String, JsValue> {
+        let sender = Uuid::parse_str(sender).map_err(|_| error("invalid_request"))?;
+        encode(
+            &self
+                .0
+                .sign(sender, &parse::<serde_json::Value>(payload)?)
+                .map_err(error)?,
+        )
+    }
+}
+
+#[wasm_bindgen]
+pub fn verify_reply(packet: &str, key: &[u8]) -> Result<String, JsValue> {
+    encode(
+        &ConversationReply::verify(
+            &parse::<SignedPacket>(packet)?,
+            key.try_into().map_err(|_| error("invalid_request"))?,
+        )
+        .map_err(error)?,
+    )
+}
+
+#[wasm_bindgen]
+pub fn route_conversation(
+    packet: &str,
+    local: &str,
+    state: &str,
+    from: Option<String>,
+) -> Result<String, JsValue> {
+    let mut packet = parse::<SignedPacket>(packet)?;
+    let local = Uuid::parse_str(local).map_err(|_| error("invalid_request"))?;
+    let from = from
+        .map(|id| Uuid::parse_str(&id))
+        .transpose()
+        .map_err(|_| error("invalid_request"))?;
+    let route = conversation::route(&mut packet, local, &parse(state)?, from).map_err(error)?;
+    encode(&serde_json::json!({ "packet": packet, "route": route }))
+}
+
+#[wasm_bindgen]
+pub fn encode_control(frame: &str) -> Result<Vec<u8>, JsValue> {
+    conversation::encode_control(&parse(frame)?).map_err(error)
+}
+
+#[wasm_bindgen]
+pub fn decode_control(bytes: &[u8]) -> Result<String, JsValue> {
+    encode(&conversation::decode_control(bytes).map_err(error)?)
+}
+
+#[wasm_bindgen]
+pub fn conversation_replies(address: &str, result: &str) -> Result<String, JsValue> {
+    let address = parse::<ConversationAddress>(address)?;
+    let result = match parse::<Result<HistoryResult, String>>(result)? {
+        Ok(result) => address.replies(Ok(result)),
+        Err(code) => address.replies(Err(&code)),
+    };
+    encode(&result.map_err(error)?)
+}
+
 /// Browser bindings for the shared room dispatch; the core owns its pending turn.
 #[wasm_bindgen]
 pub struct RoomHost {
@@ -101,6 +177,17 @@ impl RoomHost {
     }
     pub fn summary(&self) -> Result<String, JsValue> {
         encode(&self.room.summary())
+    }
+    pub fn prepare_peer(&self, packet: &str, now: u64) -> Result<String, JsValue> {
+        encode(
+            &self
+                .room
+                .prepare_peer(&parse::<SignedPacket>(packet)?, now)
+                .map_err(error)?,
+        )
+    }
+    pub fn current_readers(&self) -> Result<String, JsValue> {
+        encode(&self.room.current_readers())
     }
     pub fn dispatch(&mut self, input: &str) -> Result<String, JsValue> {
         encode(

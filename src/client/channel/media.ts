@@ -109,10 +109,10 @@ export class ChannelMedia {
     for (const peer of this.peers.values()) peer.transport.resync();
   }
 
-  sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array): Promise<void> {
+  sendData(peerId: string, kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
     const peer = [...this.peers.values()].find(peer => peer.plan.peerId === peerId && peer.plan.rooms.length);
-    if (!peer) return Promise.reject(new Error("file_peer_unavailable"));
-    return peer.transport.sendData(kind, data).catch(error => {
+    if (!peer) return Promise.reject(new Error("peer_data_unavailable"));
+    return peer.transport.sendData(kind, data, allowed).catch(error => {
       // Retiring this exact pair already notified the delivery owner. A late
       // send rejection must not retire a replacement to the same participant.
       if (this.peers.get(peer.plan.id) === peer) throw error;

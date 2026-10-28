@@ -1,7 +1,8 @@
-import init, { attachment_result, create_room_policy, history_page, history_page_size, prepare_confirmation, RoomHost } from "../pkg/piik_channel_browser.js";
-export { AttachmentHash, FileDelivery, attachment_limits, attachment_media_type } from "../pkg/piik_channel_browser.js";
+import init, { attachment_result, conversation_replies, create_room_policy, history_page, history_page_size, prepare_confirmation, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
+export { AttachmentHash, FileDelivery, attachment_limits, attachment_media_type, decode_control, encode_control, route_conversation, verify_reply } from "../pkg/piik_channel_browser.js";
 export async function initializeFiles(): Promise<void> { await init(); }
-import type { ChannelMessage, RoomSummary } from "../../../src/client/channel/protocol";
+export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await init(); return new SessionSigner(seed); }
+import type { ChannelMessage, ConversationAddress, ConversationReply, RoomSummary, SignedConversationPacket } from "../../../src/client/channel/protocol";
 
 export interface NewRoomPolicy {
   id: string; name: string; creatorId: string; access: "public" | "private"; hidden: boolean; password?: string | null;
@@ -19,6 +20,7 @@ interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest;
 interface HostWork { policy: object | null; history: HistoryRequest | null }
+type HistoryOutcome = { Ok: HistoryRequest } | { Err: string };
 
 const failure = (error: unknown): Error => error instanceof Error ? error : new Error(String(error));
 function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (error: Error) => void): void {
@@ -89,6 +91,7 @@ export class BrowserRoomHost {
 
   get roomId(): string { return this.room.room_id(); }
   summary(): RoomSummary { return JSON.parse(this.room.summary()); }
+  currentReaders(): string[] { return JSON.parse(this.room.current_readers()); }
 
   /** Claim only the stored owner observed by this instance, then reload its policy. */
   bind(bindingId: string): Promise<void> {
@@ -174,6 +177,24 @@ export class BrowserRoomHost {
         const cause = failure(error);
         return JSON.parse(this.room.abort(cause.name === "AbortError" ? cause.name : cause.message));
       }
+    });
+  }
+
+  dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal): Promise<ConversationReply[]> {
+    return this.enqueue(async () => {
+      if (!this.bindingId) throw new Error("stale_room_host");
+      const prepared: { address: ConversationAddress; history: HistoryOutcome } = JSON.parse(this.room.prepare_peer(JSON.stringify(packet), BigInt(now)));
+      let result: { Ok: HistoryResult } | { Err: string };
+      try {
+        if ("Err" in prepared.history) {
+          await this.roomTransaction(["rooms"], "readonly", () => {}, () => {}, signal);
+          result = prepared.history;
+        } else result = { Ok: await this.executeHistory(prepared.history.Ok, null, signal) };
+      } catch (error) {
+        const cause = failure(error);
+        result = { Err: cause.name === "AbortError" ? cause.name : cause.message };
+      }
+      return JSON.parse(conversation_replies(JSON.stringify(prepared.address), JSON.stringify(result)));
     });
   }
 

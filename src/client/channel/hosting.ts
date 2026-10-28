@@ -1,14 +1,21 @@
-import type { RoomSettings, RoomSummary } from "./protocol";
+import type { ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket } from "./protocol";
 
 export interface HostedRoom {
   readonly roomId: string;
   summary(): RoomSummary;
   bind(bindingId: string): Promise<void>;
   dispatch(input: unknown): Promise<unknown>;
+  dispatchPeer(packet: SignedConversationPacket, now: number): Promise<ConversationReply[]>;
+  currentReaders(): string[];
   close(): Promise<void>;
 }
 
 interface RoomHosting {
+  createSessionSigner(seed: Uint8Array): Promise<SessionSigner>;
+  verify_reply(packet: string, key: Uint8Array): string;
+  route_conversation(packet: string, local: string, state: string, from?: string): string;
+  encode_control(frame: string): Uint8Array;
+  decode_control(bytes: Uint8Array): string;
   initializeFiles(): Promise<void>;
   FileDelivery: new (sessionId: string) => FileDelivery;
   AttachmentHash: new () => AttachmentHash;
@@ -19,6 +26,12 @@ interface RoomHosting {
     open(databaseName: string, policy: string): Promise<HostedRoom>;
     storedPolicies(databaseName: string): Promise<string[]>;
   };
+}
+
+export interface SessionSigner {
+  signing_key(): Uint8Array;
+  sign(sender: string, payload: string): string;
+  free(): void;
 }
 
 export interface AttachmentHash {

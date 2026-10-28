@@ -1,6 +1,6 @@
 # Piik 3.0 Room Data And Hosting
 
-Reviewed 2026-10-27. The [accepted network model](./channel-network-design.md)
+Reviewed 2026-10-28. The [accepted network model](./channel-network-design.md)
 owns responsibilities, routing and live lifecycles. This document records the
 accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
@@ -362,7 +362,7 @@ data and credential. Explicit export/import can support that move; it is separat
 from editing a bookmark. This is part of Browser hosting design, not a reason to
 introduce a mandatory fixed website.
 
-## Current Implementation And Next Check
+## Current Implementation
 
 The prototype's normal create-room action starts a Browser-owned Rust/WASM
 runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
@@ -374,21 +374,14 @@ retry and pagination rules. Participant reading windows remain separate from
 the owner's retained history. Reopening a room restores its data without
 restarting captures or voice.
 
-Domain WebSocket rendezvous currently carries authenticated room commands and
-replies. Server-owned rooms retain HTTP attachments; Browser-owned rooms wait for
-peer file delivery rather than storing their content on the domain. The shared
-base paths now carry Browser- and Native-room voice; room commands/history and file bytes
-still need that carrier integration. App hosting and participant history caches
-remain later work.
-
-The next carrier check extends the separate A-domain/B-room-owner model:
-first move file bytes onto admitted room paths while keeping commands, confirmed
-metadata and transfer authorization on the existing authenticated rendezvous.
-This establishes the data path without introducing a second identity or signing
-system. Replace the private experiment's HTTP upload and content store with
-message-contained descriptions and participant-owned readable copies; do not
-maintain parallel attachment models. Default Server rooms need a real Native
-base endpoint before advertising this capability.
+Domain WebSocket rendezvous carries admission, activity changes and repair.
+Browser- and Native-room chat and history use authenticated requests and signed
+room-owner results over their base paths. The same paths carry voice and requested
+file ranges. File descriptions stay in confirmed messages; file contents stay
+with participants. The domain stores neither for these rooms.
+Default Server rooms retain direct chat/history execution and need a real Native
+base endpoint before advertising peer files. The private HTTP attachment store
+has been replaced, not retained as a second delivery model.
 
 Downloads belong to the participant session; changing the chat view does not
 cancel them. Image preview URLs belong to their view. A Browser receiver writes
@@ -403,8 +396,6 @@ share upstream ranges for simultaneous consumers, handle a slow or cancelled
 branch independently, and resume after path/source loss. Corrupted downloads
 must fail whole-file verification. Exercise file traffic alongside voice and
 picture playback through the same resource owner.
-Moving authenticated room commands/history onto those paths is a subsequent
-carrier step. It retains B's confirmation, restart and retry semantics and must
-authenticate the original author and room response across intermediate peers.
-These checks establish the ownership and carrier model before expanding the
-business interface.
+The [network model](./channel-network-design.md#authority-and-information-boundaries)
+owns authentication across intermediate peers. [TODO](../todo.md) tracks the
+remaining runtime integration.

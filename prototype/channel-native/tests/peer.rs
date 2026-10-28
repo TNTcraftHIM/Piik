@@ -1,7 +1,7 @@
 //! Real local PCs exercise the adapter's source-generation handoff. Room
 //! authority/routing are covered by the domain gate; this fixture supplies leases.
 use anyhow::Result;
-use piik_channel_native::peer::NativePeers;
+use piik_channel_native::peer::{NativeEvent, NativePeers};
 use piik_channel_prototype::wire::{
     Candidate, Command, Description, Kind, PairInfo, PublicationInfo, Signal, Track as WireTrack,
 };
@@ -360,7 +360,7 @@ fn candidate(c: Candidate) -> rtc::peer_connection::transport::RTCIceCandidateIn
 async fn pump(
     native: Arc<NativePeers>,
     mut endpoints: HashMap<Uuid, Endpoint>,
-    mut commands: mpsc::Receiver<Command>,
+    mut commands: mpsc::Receiver<NativeEvent>,
     mut events: mpsc::Receiver<Event>,
     mut stop: watch::Receiver<bool>,
     mut pause: watch::Receiver<bool>,
@@ -375,7 +375,9 @@ async fn pump(
          Event::Negotiate(id)=>{let e=endpoints.get_mut(&id).unwrap();if !e.pending {e.pc.set_local_description(e.pc.create_offer(None).await?).await?;e.pending=true;description(&native,id,e,&loss,Uuid::new_v4()).await?;}},
          Event::Candidate(id,c)=>native.signal(id,Signal{candidate:Some(c),description:None,tracks:None,resync:None,exchange_id:None}).await?,
         },
-        Some(command)=commands.recv(),if !*pause.borrow()=>match command {
+        Some(event)=commands.recv(),if !*pause.borrow()=>match event {
+         NativeEvent::Conversation {..} => {},
+         NativeEvent::Command(command) => match command {
          Command::Signal{pair_id:id,payload}=>{
           let drop={let mut loss=loss.lock().unwrap();if loss.pair==Some(id)&&payload.description.as_ref().is_some_and(|d|d.kind=="offer") {loss.offers.push(payload.clone());if loss.offer{loss.offer=false;true}else{false}}else{false}};
           if drop {continue;}let e=endpoints.get_mut(&id).unwrap();
@@ -397,6 +399,7 @@ async fn pump(
           }else if let Some(c)=payload.candidate {if e.pc.remote_description().await.is_some(){e.pc.add_ice_candidate(candidate(c)).await?;}else{e.candidates.push(c);}}
          },
          command=>{let _=reports.try_send(command);},
+        }
         }
         }
     }
@@ -460,7 +463,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                 ..Default::default()
             }],
         )));
-        let video_sender=source.pc.add_track(video.clone()).await?;
+        let video_sender = source.pc.add_track(video.clone()).await?;
         let plis = source.pli.clone();
         let received = child.received.clone();
         let child_reports = child.reports.clone();

@@ -2,9 +2,10 @@ import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import type { ChannelSignal } from "./protocol";
 
 const MAX_FILE_FRAME_BYTES = 8192;
+const MAX_CONTROL_FRAME_BYTES = 32768;
 const DATA_SEND_BUFFER_BYTES = 65536;
 // Application memory queues, matching Native: 32 core ranges × at most 17 frames.
-const FILE_SEND_QUEUE_FRAMES = { control: 128, chunk: 32 * 17 };
+const DATA_SEND_QUEUE_FRAMES = { control: 128, chunk: 32 * 17 };
 
 interface TransportOptions {
   polite: boolean;
@@ -120,18 +121,18 @@ export class ChannelTransport {
     channel.onmessage = ({ data }) => {
       if (!current() || !this.rooms.size) return;
       if (bulk && data instanceof ArrayBuffer && data.byteLength <= MAX_FILE_FRAME_BYTES) this.options.data?.("chunk", new Uint8Array(data));
-      else if (!bulk && typeof data === "string" && new TextEncoder().encode(data).length <= MAX_FILE_FRAME_BYTES) this.options.data?.("control", data);
+      else if (!bulk && typeof data === "string" && new TextEncoder().encode(data).length <= MAX_CONTROL_FRAME_BYTES) this.options.data?.("control", data);
     };
     this.reportBaseReady();
     this.syncDeadline();
   }
 
-  async sendData(kind: "control" | "chunk", data: string | Uint8Array): Promise<void> {
+  async sendData(kind: "control" | "chunk", data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
     let channel = kind === "control" ? this.channel : this.bulk;
     if (!channel) {
       await new Promise<void>((resolve, reject) => {
         const installed = ({ channel }: RTCDataChannelEvent) => { if (channel.label === (kind === "control" ? "piik-room" : "piik-file")) { cleanup(); resolve(); } };
-        const aborted = () => { cleanup(); reject(new Error("file_peer_unavailable")); };
+        const aborted = () => { cleanup(); reject(new Error("peer_data_unavailable")); };
         const cleanup = () => { this.pc.removeEventListener("datachannel", installed); this.lifetime.signal.removeEventListener("abort", aborted); };
         this.pc.addEventListener("datachannel", installed);
         this.lifetime.signal.addEventListener("abort", aborted, { once: true });
@@ -139,12 +140,12 @@ export class ChannelTransport {
       });
       channel = kind === "control" ? this.channel : this.bulk;
     }
-    if (!channel || !this.rooms.size) throw new Error("file_transport_unavailable");
+    if (!channel || !this.rooms.size) throw new Error("data_channel_unavailable");
     const writer = this.writers.get(channel);
-    if (!writer) throw new Error("file_transport_unavailable");
-    try { await writer.send(data); }
+    if (!writer) throw new Error("data_channel_unavailable");
+    try { await writer.send(data, allowed); }
     catch (error) {
-      if (this.closed || ["failed", "closed"].includes(this.pc.connectionState)) throw new Error("file_peer_unavailable");
+      if (this.closed || ["failed", "closed"].includes(this.pc.connectionState)) throw new Error("peer_data_unavailable");
       throw error;
     }
   }
@@ -309,30 +310,31 @@ export class ChannelTransport {
   }
 }
 
-/** One writer per SCTP stream; Rust's range window owns in-flight application data. */
+/** One bounded writer per SCTP stream; producers own their application work. */
 class ChannelWriter {
   private tail = Promise.resolve();
   private lifetime = new AbortController();
   private queuedFrames = 0;
   constructor(private channel: RTCDataChannel, private kind: "control" | "chunk") { channel.bufferedAmountLowThreshold = DATA_SEND_BUFFER_BYTES / 2; }
-  send(data: string | Uint8Array): Promise<void> {
+  send(data: string | Uint8Array, allowed?: () => boolean): Promise<void> {
     const size = typeof data === "string" ? new TextEncoder().encode(data).length : data.byteLength;
-    if (size > MAX_FILE_FRAME_BYTES) return Promise.reject(new Error("file_frame_too_large"));
-    if (this.queuedFrames >= FILE_SEND_QUEUE_FRAMES[this.kind]) return Promise.reject(new Error("file_transfer_busy"));
+    if (size > (this.kind === "control" ? MAX_CONTROL_FRAME_BYTES : MAX_FILE_FRAME_BYTES)) return Promise.reject(new Error(this.kind === "control" ? "control_frame_too_large" : "file_frame_too_large"));
+    if (this.queuedFrames >= DATA_SEND_QUEUE_FRAMES[this.kind]) return Promise.reject(new Error("data_channel_busy"));
     this.queuedFrames += 1;
     const work = this.tail.then(async () => {
       this.lifetime.signal.throwIfAborted();
       while (this.channel.readyState !== "open" || this.channel.bufferedAmount + size > DATA_SEND_BUFFER_BYTES) {
-        if (["closing", "closed"].includes(this.channel.readyState)) throw new Error("file_transport_unavailable");
+        if (["closing", "closed"].includes(this.channel.readyState)) throw new Error("data_channel_unavailable");
         await new Promise<void>((resolve, reject) => {
           const ready = () => { cleanup(); resolve(); };
-          const failed = () => { cleanup(); reject(new Error("file_transport_unavailable")); };
+          const failed = () => { cleanup(); reject(new Error("data_channel_unavailable")); };
           const cleanup = () => { for (const event of ["open", "bufferedamountlow"]) this.channel.removeEventListener(event, ready); for (const event of ["closing", "close", "error"]) this.channel.removeEventListener(event, failed); this.lifetime.signal.removeEventListener("abort", failed); };
           for (const event of ["open", "bufferedamountlow"]) this.channel.addEventListener(event, ready, { once: true });
           for (const event of ["closing", "close", "error"]) this.channel.addEventListener(event, failed, { once: true });
           this.lifetime.signal.addEventListener("abort", failed, { once: true });
         });
       }
+      if (allowed && !allowed()) throw new Error("room_unavailable");
       if (typeof data === "string") this.channel.send(data); else this.channel.send(data as Uint8Array<ArrayBuffer>);
     }).finally(() => { this.queuedFrames -= 1; });
     this.tail = work.catch(() => {});

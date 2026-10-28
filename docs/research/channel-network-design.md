@@ -21,10 +21,9 @@ capable room peers can be relay candidates; only viewers and necessary transit
 nodes receive the picture. Both stages use the same route state and transports.
 The owner accepted this routing foundation and durable room records with cached
 attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
-shared file delivery on those same paths. Browser-owned rooms now run the shared
-Rust core with local confirmation/storage; domain rendezvous currently carries
-their commands. Browser and Native room participants now establish base paths
-for voice and verified file ranges; TODO owns the remaining carrier and platform integration.
+shared file delivery on those same paths. Browser and Native room owners run the
+shared Rust core with local confirmation/storage. Their base paths carry authenticated
+chat/history, voice and verified file ranges; TODO owns remaining route and platform integration.
 
 ## Terminology And Roles
 
@@ -90,11 +89,11 @@ WebRTC leaves the signaling carrier to the application
 
 The room owner needs no separate public URL. The App creates these runtimes
 through normal create/join actions; users do not configure a second daemon or
-storage server. Later use of an established room path for control must preserve
-the same authority and recovery path, rather than add another permission owner.
+storage server. Peer delivery preserves this authority and recovery path without
+adding another permission owner.
 
 After room admission, the room owner confirms room changes and message order.
-The next peer-carrier slice moves chat and history requests onto the base paths.
+Chat and history requests use the base paths after room admission.
 Use short-lived session signing keys, bound to admitted sessions and the current
 room-host binding through authenticated domain rendezvous. Sign the original
 payload bytes with a maintained Ed25519 implementation, verify before parsing,
@@ -102,14 +101,16 @@ and resolve the author and permissions from current trusted domain facts. A
 relay cannot substitute its identity or supply its own permission snapshot.
 Long-lived admission credentials never enter the peer carrier.
 
-Both carriers execute the same room command and storage transaction. A peer
-request does not become a domain-issued turn: its confirmation returns to that
-request, while domain revisions retain their authority/reply-fencing purpose.
+Peer requests use the same room authorization and storage operations as local
+execution. They run in the room owner's existing serialized turn without
+changing its routing state or becoming domain-issued turns. Their confirmations
+return to the request; domain revisions retain their authority/reply-fencing purpose.
 Chat reuses its persisted retry identity; history requests need response
 correlation, not another durable replay ledger. The room host signs live results,
 without creating a permanent signed history log. The shared transport owner
-dispatches typed control messages and bounded history records; file delivery
-remains one consumer rather than owning unrelated room commands.
+dispatches typed control messages and bounded history records. A reader accepts
+only a complete page, and queued output checks current authority before sending.
+File delivery remains one consumer rather than owning unrelated room commands.
 
 The [room-data model](./channel-storage-and-identity.md) owns persistence,
 history copies, file retention and manual address replacement. Domain and room
@@ -411,8 +412,8 @@ undo a policy already committed by its room owner.
 
 A shared transport book combines logical flows into physical pairs. Changing
 one room's activity cannot retire a pair still used by another room. Domain
-rendezvous currently carries Browser-room commands and replies. Browser-hosted
-rooms establish a base DataChannel tree from reading and media demand, rooted
+rendezvous carries admission, activity changes and repair. Browser- and Native-hosted
+rooms carry authenticated chat and history on a base DataChannel tree, rooted
 at the actual host session. Both endpoints must confirm an installed open channel
 before an edge carries bidirectional voice. A non-listening participant may
 forward that voice; changing views retains necessary transit. DataChannel failure
@@ -446,8 +447,8 @@ capture. Its caller owns hosting lifetime; a command-line development host does
 not grant background hosting to an idle App. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The next slice connects authenticated room commands and App/Server hosting to
-those owners, then completes resource admission and bounded route transitions.
+The next slice completes participant resource admission and bounded route
+transitions before connecting App/Server hosting to those owners.
 Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Use one Rust
 core with thin App/Server and Browser adapters. Evaluate
