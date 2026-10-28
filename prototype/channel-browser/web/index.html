@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171a20" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f4f3ef" media="(prefers-color-scheme: light)" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>Piik</title>
+    <script>
+      var theme;
+      try { theme = localStorage.getItem("piik:ui-theme"); } catch (e) {}
+      document.documentElement.dataset.theme = theme === "light" || theme === "dark"
+        ? theme : matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

@@ -53,10 +53,11 @@ export interface FileDelivery {
   free(): void;
 }
 
-/** The isolated prototype loads the real adapter without making the 2.x build require WASM tools. */
+const roomHostingModules = import.meta.glob<RoomHosting>("../../../prototype/channel-browser/src/room-host.ts");
+
+/** Vite bundles the real adapter only for entries that use the channel client. */
 export async function loadRoomHosting(): Promise<RoomHosting> {
-  const source = "/prototype/channel-browser/src/room-host.ts";
-  try { return await import(/* @vite-ignore */ source); }
+  try { return await roomHostingModules["../../../prototype/channel-browser/src/room-host.ts"](); }
   catch { throw new Error("room_runtime_unavailable"); }
 }
 

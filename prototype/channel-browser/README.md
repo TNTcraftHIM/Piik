@@ -3,8 +3,8 @@
 The [shared Rust core](../channel-core/README.md) `RoomHost` owns room commands, authorized views and history operations. IndexedDB supplies
 transactional storage; shared Rust prepares confirmations and history pages.
 The caller supplies authenticated domain member facts, without a credential database,
-and delivers its returned projection/reply after commit. The channel prototype loads this adapter
-through its Vite entry; regular 2.x builds do not require generated WASM.
+and delivers its returned projection/reply after commit. Vite resolves this adapter
+into the 3.0 frontend bundle; regular 2.x builds do not require generated WASM.
 Chat and history arrive through the room's authenticated peer carrier and use
 that same serialized storage turn. The shared Rust core verifies their origin
 and current room authority before execution.
@@ -29,6 +29,21 @@ node prototype/channel-browser/build.mjs
 npx tsc -p prototype/channel-browser/tsconfig.json
 node prototype/channel-browser/check.mjs
 ```
+
+To build the standalone frontend after generating the adapter:
+
+```powershell
+npx vite build --config prototype/channel-browser/web.vite.config.ts
+```
+
+The ignored `build/channel-web/` directory contains the HTML, styles, JavaScript
+and WASM. This entry mounts the same functional page as `/__channel-preview`,
+sharing its session, components, theme and language preferences. Serve the whole
+directory, with `index.html` as the fallback for frontend paths such as
+`/__channel-preview`, and route the existing `/prototype/channel` WebSocket to
+the domain service on the same origin. Serve WASM as `application/wasm`.
+Node, Vite and the WASM tools are build dependencies; the deployed App or Server
+needs no Node runtime or source-file routes.
 
 `pkg/` and Cargo `target/` are generated and ignored. The finite check owns its
 loopback server and isolated browser session, then closes both. Evidence stays under

@@ -57,7 +57,13 @@ have independent live sessions. The default loopback ports are 8791 for Rust and
 8790 for the interface. `PIIK_CHANNEL_PORT`, `PIIK_CHANNEL_UI_PORT` and
 `PIIK_CHANNEL_WEB_ORIGIN` allow an isolated instance with matching ports/origin.
 
-## Visual proposal
+For a standalone deployment, build the
+[same frontend as static assets](../channel-browser/README.md) and serve
+`build/channel-web/`, with a frontend-path fallback to `index.html` and the
+existing `/prototype/channel` WebSocket routed to this domain service. Vite is
+only the development server; the deployed frontend requires no Node runtime.
+
+## Design studies
 
 Open `/__channel-design` on the same Vite service for the interactive design
 boards. This route needs no channel credential or running Rust service. Direct
@@ -65,14 +71,17 @@ links `#chat`, `#screens`, `#focus` and `#create` select the four studies; the
 toolbar compares desktop/narrow layouts, the shared light/dark themes and rooms
 with 4, 12 or 20 people. `?people=20#chat` opens the crowded-room study directly.
 
-The proposal places room navigation on the left, conversation and selected
-screens in the middle, and a persistent member list on the right. Narrow layouts
-use a full member/room pane. Room creation and editing share one native dialog
-with conditional private options. Pencils beside the user, channel and room names
+The functional frontend uses the accepted shell: room navigation on the left,
+conversation and selected screens in the middle, and a persistent domain-wide
+user list on the right. Narrow layouts navigate between room and user panes.
+It retains real roles, self-name editing, room controls, files, history, voice
+and multiple watched screens through the existing session and shared components.
+
+In the design studies, room creation and editing share one native dialog
+with conditional private options. Pencils beside the user, domain and room names
 open their corresponding editors. Colours, controls, icons and animated people come from Piik's
 existing components. Conversations, pictures and interactions are local samples;
-they do not create rooms or transmit media. The functional prototype keeps its
-existing layout until the owner accepts the visual direction.
+they do not create rooms or transmit media.
 
 Both surfaces share the domain-bookmark rail. Its plus button opens saved addresses:
 add a URL and optional local label, edit an address after a move, or remove a bookmark.
@@ -216,8 +225,8 @@ one database per room, with confirmations emitted after commit. It owns no
 network endpoint or hosting-session lifetime. The separate Native participant
 owns those resources and operates one or more rooms through that adapter.
 The Server embeds this participant; its separate executable remains an explicit
-development host. App linkage remains separate work and does not give a standby
-App an unattended hosting lifetime. Normal Server shutdown first ends Native
+development host. Explicit App linkage delegates local room execution without
+giving a standby App an unattended hosting lifetime. Normal Server shutdown first ends Native
 hosting and releases its room locks, then closes the HTTP service. A Native
 hosting failure also stops that service.
 A new service URL can use the same database, but a
@@ -291,6 +300,7 @@ preview remains running; otherwise they use the normal debug executable.
 an already running isolated instance, use
 `node --import tsx --test prototype/channel-server/check.mjs` with its local key/endpoint
 environment variables. `browser-acceptance.mjs` is the corresponding Browser
-driver; prefer `run-browser-check.mjs` for automatic service cleanup. The preview
-route and observation hook are development-only. The shared Rust library lives in
+driver; prefer `run-browser-check.mjs` for automatic service cleanup. The design-study
+route and observation hook are development-only; the static entry mounts the functional
+frontend directly. The shared Rust library lives in
 `channel-core`; its default build excludes SQLite, and HTTP stays in this Server crate.
