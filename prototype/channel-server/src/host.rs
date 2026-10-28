@@ -518,7 +518,8 @@ impl RoomHost {
                     {
                         return Err("unassigned_flow");
                     }
-                    self.room.flow_state(*flow_id, *receiver, *sender, *state)?;
+                    self.room
+                        .flow_state(*flow_id, *receiver, *sender, *state, input.now)?;
                 }
             }
             Ok(RoomResult::Done)

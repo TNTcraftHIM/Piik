@@ -15,12 +15,15 @@ use the base paths, and screen startup reuses those paths through the same parti
 Native capture and App/Server hosting-session integration remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
-mapping. Outputs share a publication stream while owning separate SSRCs and
+mapping. Outputs in one flow share a stream while owning separate SSRCs and
 bounded writers; WebRTC handles each hop's retransmission and congestion control.
 The pinned SDK does not provide RTCP round-trip-time statistics.
 Readers, outputs and their completion reports belong to the exact directed flow
 lease. Removing that lease retires its work even if the same publication is
 subscribed again on the shared connection; the replacement has a new flow ID.
+Each outgoing lease references its admitted incoming flow. Incumbent and shadow
+inputs can forward concurrently; selecting the shadow preserves its already
+warm output, stream, SSRC, source clock and feedback owner.
 
 ## Run
 

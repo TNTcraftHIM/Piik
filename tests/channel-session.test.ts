@@ -398,7 +398,7 @@ const decodedReport = (framesDecoded: number) => new Map([["video", {
 async function screenFixture() {
   const fixture = await setupRoomMedia();
   fixture.state.publications = [{ id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", muted: false }];
-  fixture.state.pairs[0].incoming = [{ id: "screen-flow", publicationId: "screen", selected: true }];
+  fixture.state.pairs[0].incoming = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
   fixture.media.update("a", fixture.state);
   fixture.pc.connected();
   return fixture;
@@ -482,7 +482,7 @@ test("a retired flow's late proof and cleanup cannot affect its replacement on t
   const pending = new Promise<RTCStatsReport>(resolve => { resolveOld = resolve; });
   try {
     state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [],
-      outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true }] });
+      outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
     pc.receivers = [{ track: oldVideo, getStats: () => pending } as unknown as RTCRtpReceiver];
@@ -490,7 +490,8 @@ test("a retired flow's late proof and cleanup cannot affect its replacement on t
     const lateCleanup = listeners.mock.calls.find(([type]) => type === "removetrack")![1] as EventListener;
     state.pairs[0].incoming = [];
     media.update("a", state);
-    state.pairs[0].incoming = [{ id: "replacement-flow", publicationId: "screen", selected: true }];
+    state.pairs[0].incoming = [{ id: "replacement-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+    state.pairs[1].outgoing = [{ id: "replacement-downstream", publicationId: "screen", selected: true, inputFlowId: "replacement-flow" }];
     media.update("a", state);
     pc.ontrack?.({ streams: [oldStream] });
     expect(downstream.senders).toEqual([]);
@@ -545,6 +546,7 @@ test.each([
 test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate until quality and presentation are %s", async outcome => {
   const fixture = await screenFixture();
   const { media, session, state, pc, sent, changed } = fixture;
+  state.subscriptions = ["screen"];
   vi.useFakeTimers();
   const oldVideo = remoteTrack("video"), nextVideo = remoteTrack("video");
   const oldAudio = remoteTrack("audio"), nextAudio = remoteTrack("audio");
@@ -561,7 +563,7 @@ test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate 
     await vi.advanceTimersByTimeAsync(0);
     pc.getStats.mockImplementation(async () => quality(oldVideo, 10));
     state.pairs.push({ id: "candidate-pair", peerId: "x", rooms: [], outgoing: [],
-      incoming: [{ id: "candidate-flow", publicationId: "screen", selected: false }] });
+      incoming: [{ id: "candidate-flow", publicationId: "screen", selected: false, inputFlowId: null }] });
     media.update("a", state);
     const next = RoomPeerConnection.instances[1]; next.connected();
     next.receivers = [{ track: nextVideo, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
@@ -608,6 +610,76 @@ test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate 
   } finally { media.reset(); session.close(); }
 });
 
+test.each(["commit", "failed"])("a shadow subtree forwards exact inputs and preserves the incumbent on %s", async outcome => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc, changed, sent } = fixture;
+  vi.useFakeTimers();
+  const oldVideo = remoteTrack("video"), nextVideo = remoteTrack("video");
+  const oldAudio = remoteTrack("audio"), nextAudio = remoteTrack("audio");
+  const oldStream = remoteStream("old-branch", [oldVideo, oldAudio]);
+  const candidate = remoteStream("shadow-branch", [nextVideo, nextAudio]);
+  try {
+    state.pairs.push({ id: "candidate-pair", peerId: "x", rooms: [], outgoing: [],
+      incoming: [{ id: "candidate-flow", publicationId: "screen", selected: false, inputFlowId: null }] });
+    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [
+      { id: "current-output", publicationId: "screen", selected: true, inputFlowId: "screen-flow" },
+      { id: "shadow-output", publicationId: "screen", selected: false, inputFlowId: "candidate-flow" },
+    ] });
+    media.update("a", state);
+    const next = RoomPeerConnection.instances[1], downstream = RoomPeerConnection.instances[2];
+    next.connected(); downstream.connected();
+    pc.receivers = [{ track: oldVideo, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
+    await receiveScreen(fixture, oldStream);
+    next.receivers = [{ track: nextVideo, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
+    media.signal("candidate-pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: candidate.id },
+      tracks: [{ flowId: "candidate-flow", streamId: candidate.id }] });
+    await vi.waitFor(() => expect(next.remoteDescription?.sdp).toBe(candidate.id));
+    next.ontrack?.({ streams: [candidate] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(downstream.senders.map(sender => sender.track)).toEqual([oldVideo, oldAudio, nextVideo, nextAudio]);
+    const currentSenders = downstream.senders.slice(0, 2), shadowSenders = downstream.senders.slice(2);
+    const shadowBinding = shadowSenders[0].stream;
+    expect(shadowBinding).not.toBe(currentSenders[0].stream);
+    expect(shadowSenders[1].stream).toBe(shadowBinding);
+    expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
+    expect(state.subscriptions).toEqual([]);
+    expect(changed.mock.calls.at(-1)![1].get("screen")?.map(input => input.flowId)).toEqual(["screen-flow"]);
+    expect(next.getStats).toHaveBeenCalledOnce();
+    media.screenPresentation("candidate-flow", candidate, "prepared");
+    expect(sent.some(command => command.type === "flow_state" && command.state === "switch_ready")).toBe(false);
+    expect(RoomAudio.instances.map(audio => audio.srcObject?.getTracks())).toEqual([[oldAudio], [nextAudio]]);
+    const shadowConsumer = RoomAudio.instances[1];
+    if (outcome === "commit") {
+      state.pairs[0].incoming = [];
+      state.pairs[1].incoming[0].selected = true;
+      state.pairs[2].outgoing.shift();
+      state.pairs[2].outgoing[0].selected = true;
+      media.update("a", state);
+      expect(downstream.senders).toEqual(shadowSenders);
+      expect(downstream.senders[0]).toBe(shadowSenders[0]);
+      expect(downstream.senders[0].stream).toBe(shadowBinding);
+      expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(candidate);
+      expect(shadowConsumer.pause).not.toHaveBeenCalled();
+      expect(RoomAudio.instances[0].pause).toHaveBeenCalledOnce();
+    } else {
+      media.signal("candidate-pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "candidate-ended" }, tracks: [] });
+      await vi.waitFor(() => expect(next.remoteDescription?.sdp).toBe("candidate-ended"));
+      expect(sent).toContainEqual({ type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "failed" });
+      expect(downstream.senders).toEqual(currentSenders);
+      expect(downstream.senders[0]).toBe(currentSenders[0]);
+      expect(shadowBinding.getTracks()).toEqual([]);
+      expect(shadowConsumer.pause).toHaveBeenCalledOnce();
+      expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
+      state.pairs.splice(1, 1);
+      state.pairs[1].outgoing.pop();
+      media.update("a", state);
+      expect(next.close).toHaveBeenCalledOnce();
+    }
+    expect(pc.close).not.toHaveBeenCalled(); expect(downstream.close).not.toHaveBeenCalled();
+    for (const track of [oldVideo, oldAudio, nextVideo, nextAudio]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test("same-publication stream replacement re-proves progress on a reused receiver", async () => {
   const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
@@ -636,7 +708,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
   const audio = remoteTrack("audio");
   const tracks = [video], stream = remoteStream("screen-stream", tracks);
   try {
-    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true }] });
+    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
     await receiveScreen(fixture, stream);
@@ -656,15 +728,13 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
     expect(downstream.senders[0]).toBe(videoSender);
     expect(binding.getTracks()).toEqual([video]);
-    state.pairs[0].incoming = [];
-    media.update("a", state);
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "source-paused" }, tracks: [] });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("source-paused"));
     expect(downstream.senders).toEqual([]);
     expect(binding.getTracks()).toEqual([]);
-    state.pairs[0].incoming = [{ id: "resumed-screen-flow", publicationId: "screen", selected: true }];
-    media.update("a", state);
     await receiveScreen(fixture, stream);
     expect(downstream.senders[0].stream).toBe(binding);
-    state.pairs[1].outgoing = [{ id: "renewed-screen-downstream", publicationId: "screen", selected: true }];
+    state.pairs[1].outgoing = [{ id: "renewed-screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }];
     media.update("a", state);
     expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
     expect(downstream.senders[0].stream.id).not.toBe(binding.id);
@@ -691,8 +761,8 @@ test.each(["new", "source", "audio", "ended"])("sender rejection rolls back its 
     media.setLocal("following", remoteStream("following", [following]));
     if (replacing) media.setLocal("screen", remoteStream("old-screen", [oldVideo]));
     state.pairs[0].outgoing = [
-      ...(replacing ? [{ id: "screen-output", publicationId: "screen", selected: true }] : []),
-      { id: "kept-output", publicationId: "kept", selected: true },
+      ...(replacing ? [{ id: "screen-output", publicationId: "screen", selected: true, inputFlowId: null }] : []),
+      { id: "kept-output", publicationId: "kept", selected: true, inputFlowId: null },
     ];
     media.update("a", state);
     const keptSender = pc.senders.find(sender => sender.track === kept);
@@ -705,8 +775,8 @@ test.each(["new", "source", "audio", "ended"])("sender rejection rolls back its 
     });
     const source = remoteStream("new-screen", [video, rejectedAudio]);
     if (!replacing) media.setLocal("screen", source);
-    state.pairs[0].outgoing = [{ id: "screen-output", publicationId: "screen", selected: true },
-      { id: "kept-output", publicationId: "kept", selected: true }, { id: "following-output", publicationId: "following", selected: true }];
+    state.pairs[0].outgoing = [{ id: "screen-output", publicationId: "screen", selected: true, inputFlowId: null },
+      { id: "kept-output", publicationId: "kept", selected: true, inputFlowId: null }, { id: "following-output", publicationId: "following", selected: true, inputFlowId: null }];
     expect(() => replacing ? media.setLocal("screen", source) : media.update("a", state)).not.toThrow();
     expect(pc.senders.map(sender => sender.track)).toEqual(survives ? [oldVideo, kept, following] : [kept, following]);
     expect(pc.senders.find(sender => sender.track === kept)).toBe(keptSender);
@@ -723,7 +793,7 @@ test.each(["new", "source", "audio", "ended"])("sender rejection rolls back its 
       expect(add).toHaveBeenCalledTimes(attempts);
     }
     state.pairs[0].outgoing.shift(); media.update("a", state);
-    state.pairs[0].outgoing.push({ id: "renewed-screen-output", publicationId: "screen", selected: true });
+    state.pairs[0].outgoing.push({ id: "renewed-screen-output", publicationId: "screen", selected: true, inputFlowId: null });
     add.mockImplementation(attach);
     media.update("a", state);
     expect(pc.senders.map(sender => sender.track)).toEqual([kept, following, video, rejectedAudio]);
@@ -1041,7 +1111,7 @@ test("base proof waits for open data and connected transport; removing leases pr
     media.update("a", state);
     expect(sent.at(-1)).toEqual({ type: "base_state", pairId: "pair", roomId: "second", ready: true });
     state.pairs[0].rooms = [];
-    state.pairs[0].outgoing = [{ id: "screen-outgoing", publicationId: "screen", selected: true }];
+    state.pairs[0].outgoing = [{ id: "screen-outgoing", publicationId: "screen", selected: true, inputFlowId: null }];
     media.update("a", state);
     expect(pc.close).not.toHaveBeenCalled();
     expect(sent.filter(command => command.type === "base_state" && !command.ready)).toEqual([]);
@@ -1186,9 +1256,9 @@ test("voice forwards without local listening and the same pair carries the rever
       { id: "voice-a", roomId: "first", sessionId: "z", userId: "other", kind: "voice", muted: false },
       { id: "voice-b", roomId: "first", sessionId: "a", userId: "self", kind: "voice", muted: false },
     ];
-    state.pairs[0].incoming = [{ id: "voice-a-in", publicationId: "voice-a", selected: true }];
-    state.pairs[0].outgoing = [{ id: "voice-b-out", publicationId: "voice-b", selected: true }];
-    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-out", publicationId: "voice-a", selected: true }] });
+    state.pairs[0].incoming = [{ id: "voice-a-in", publicationId: "voice-a", selected: true, inputFlowId: null }];
+    state.pairs[0].outgoing = [{ id: "voice-b-out", publicationId: "voice-b", selected: true, inputFlowId: null }];
+    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-out", publicationId: "voice-a", selected: true, inputFlowId: "voice-a-in" }] });
     media.setLocal("voice-b", local);
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
@@ -1204,7 +1274,7 @@ test("voice forwards without local listening and the same pair carries the rever
     expect(consumer.muted && consumer.hidden && consumer.autoplay).toBe(true);
     expect(consumer.srcObject?.getTracks()).toEqual([aTrack]);
     expect(consumer.play).toHaveBeenCalledOnce();
-    state.pairs.push({ id: "another-child", peerId: "x", rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-another-out", publicationId: "voice-a", selected: true }] });
+    state.pairs.push({ id: "another-child", peerId: "x", rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-another-out", publicationId: "voice-a", selected: true, inputFlowId: "voice-a-in" }] });
     media.update("a", state);
     expect(RoomAudio.instances).toHaveLength(1);
     state.pairs[1].outgoing = [];

@@ -160,7 +160,7 @@ impl Channel {
                         .flow_direction(session_id, pair_id, flow_id, state)
                         .ok_or("unassigned_flow")?;
                     self.room_mut(&id)?
-                        .flow_state(flow.id, flow.receiver, flow.sender, state)?;
+                        .flow_state(flow.id, flow.receiver, flow.sender, state, now)?;
                     None
                 }
                 command => {
@@ -895,7 +895,7 @@ impl Channel {
         // Check its transport leases at the domain boundary, never trust a host to name another room's flows.
         let endpoints = self.identity.endpoints();
         if projection.views.len() > 20
-            || projection.flows.len() > 800
+            || projection.flows.len() > 40 * (19 + 19)
             || projection.base_links.len() > 19
         {
             return Err("invalid_room_projection");
@@ -962,6 +962,24 @@ impl Channel {
                 }
             }
         }
+        let mut publications = BTreeMap::new();
+        for publication in projection.views.values().flat_map(|view| &view.publications) {
+            let source = (
+                publication.session_id,
+                publication.user_id,
+                publication.kind,
+                publication.muted,
+            );
+            if publications
+                .insert(publication.id, source)
+                .is_some_and(|previous| previous != source)
+            {
+                return Err("invalid_room_projection");
+            }
+        }
+        if publications.len() > 40 {
+            return Err("invalid_room_projection");
+        }
         let mut flow_ids: BTreeSet<_> = self
             .rooms
             .values()
@@ -975,12 +993,17 @@ impl Channel {
                     .flat_map(|projection| projection.flows.iter().map(|flow| flow.id)),
             )
             .collect();
-        let mut selected = BTreeSet::new();
-        let mut candidates = BTreeSet::new();
+        let previous: BTreeMap<_, _> = room
+            .projection
+            .iter()
+            .flat_map(|projection| &projection.flows)
+            .map(|flow| (flow.id, flow))
+            .collect();
+        let flows: BTreeMap<_, _> = projection.flows.iter().map(|flow| (flow.id, flow)).collect();
+        let mut inputs = BTreeSet::new();
         for flow in &projection.flows {
             if !flow_ids.insert(flow.id)
-                || (flow.selected && !selected.insert((flow.publication_id, flow.receiver)))
-                || (!flow.selected && !candidates.insert(flow.publication_id))
+                || !inputs.insert((flow.publication_id, flow.receiver, flow.selected))
                 || flow.sender == flow.receiver
                 || !endpoints.contains_key(&flow.sender)
                 || !endpoints.contains_key(&flow.receiver)
@@ -990,16 +1013,57 @@ impl Channel {
                 || !projection.views.get(&flow.receiver).is_some_and(|v| {
                     v.room.authorized && v.publications.iter().any(|p| p.id == flow.publication_id)
                 })
+                || previous.get(&flow.id).is_some_and(|old| {
+                    old.publication_id != flow.publication_id
+                        || old.sender != flow.sender
+                        || old.receiver != flow.receiver
+                        || old.input_flow_id != flow.input_flow_id
+                })
             {
                 return Err("invalid_room_projection");
             }
         }
-        if projection
-            .flows
-            .iter()
-            .any(|flow| !flow.selected && !selected.contains(&(flow.publication_id, flow.receiver)))
-        {
-            return Err("invalid_room_projection");
+        let mut shadow_roots = BTreeSet::new();
+        for flow in &projection.flows {
+            let source = publications[&flow.publication_id].0;
+            if flow.receiver == source {
+                return Err("invalid_room_projection");
+            }
+            let root = match flow.input_flow_id {
+                None if flow.sender == source => true,
+                Some(input_id) => {
+                    let input = flows.get(&input_id).ok_or("invalid_room_projection")?;
+                    if input.publication_id != flow.publication_id
+                        || input.receiver != flow.sender
+                        || (flow.selected && !input.selected)
+                    {
+                        return Err("invalid_room_projection");
+                    }
+                    input.selected
+                }
+                None => return Err("invalid_room_projection"),
+            };
+            if !flow.selected
+                && (!inputs.contains(&(flow.publication_id, flow.receiver, true))
+                    || (root && !shadow_roots.insert(flow.publication_id)))
+            {
+                return Err("invalid_room_projection");
+            }
+        }
+        // Each flow has one input. Following that chain is enough to prove a
+        // source path and reject cycles, including a shadow through its own old branch.
+        for flow in &projection.flows {
+            let mut path = BTreeSet::new();
+            let mut current = flow;
+            loop {
+                if !path.insert(current.receiver) {
+                    return Err("invalid_room_projection");
+                }
+                let Some(input_id) = current.input_flow_id else {
+                    break;
+                };
+                current = flows[&input_id];
+            }
         }
         for link in &projection.base_links {
             if link.room_id != id

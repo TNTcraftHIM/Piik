@@ -42,7 +42,7 @@ const roomsOnly = process.argv.includes("--rooms");
 const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
-const active = baseOnly ? [0, 1, 2, 3] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const active = lifecycleOnly || roomsOnly || hostsOnly || nativeOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   // Omitting launch options on later commands selects a different Browser context.
   const { stdout } = await run(executable, ["--session", sessions[index], "--json",
@@ -74,12 +74,15 @@ function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
-    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [];
+    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [], qualitySamples = [], restoredVideo = [];
+    const trackObjects = new WeakMap();
+    const trackObjectId = track => { if (!trackObjects.has(track)) trackObjects.set(track, crypto.randomUUID()); return trackObjects.get(track); };
+    let qualityInstalled = false;
     let captureAudio = false;
     const conversationWS = Object.create(null);
     const warn = console.warn.bind(console);
     console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
-    const blockedPeers = new Set(), pairPeers = new Map(), flowPublications = new Map(), senders = [], channelOwners = new Map();
+    const blockedPeers = new Set(), pairPeers = new Map(), flowBindings = new Map(), flowStreams = new Map(), senders = [], channelOwners = new Map();
     let videoStall = null;
     let blockedOffers = 0;
     const record = (direction, data) => {
@@ -93,8 +96,9 @@ function captureProbe(name) {
       }
       for (const pair of event.state?.pairs ?? []) {
         pairPeers.set(pair.id, pair.peerId);
-        for (const flow of [...pair.incoming, ...pair.outgoing]) flowPublications.set(flow.id, flow.publicationId);
+        for (const flow of [...pair.incoming, ...pair.outgoing]) flowBindings.set(flow.id, flow);
       }
+      if (direction === 'sent' && event.type === 'signal') for (const track of event.payload.tracks ?? []) flowStreams.set(track.flowId, track.streamId);
       if (direction === 'sent' && event.type === 'flow_state') {
         flowStates.push({ flowId: event.flowId, state: event.state, time: Date.now() });
         if (flowStates.length > 128) flowStates.shift();
@@ -118,7 +122,7 @@ function captureProbe(name) {
       createDataChannel(...args) { return recordChannel(this, super.createDataChannel(...args)); }
       addTrack(track, ...streams) {
         const sender = super.addTrack(track, ...streams);
-        senders.push({ pc: this, sender, streams: streams.map(stream => stream.id) });
+        senders.push({ pc: this, sender, id: crypto.randomUUID(), streams: streams.map(stream => stream.id) });
         return sender;
       }
     };
@@ -134,7 +138,8 @@ function captureProbe(name) {
         if (event.type === 'signal' && blockedPeers.has(pairPeers.get(event.pairId))) return;
         const fault = videoStall;
         const binding = fault && event.type === 'signal' && event.payload?.description && pairPeers.get(event.pairId) === fault.peerId
-          && event.payload.tracks?.find(track => flowPublications.get(track.flowId) === fault.publicationId);
+          && event.payload.tracks?.find(track => flowBindings.get(track.flowId)?.publicationId === fault.publicationId
+            && (!fault.candidateOnly || flowBindings.get(track.flowId)?.selected === false));
         if (binding) {
           if (!fault.pending) {
             const output = senders.find(output => output.pc.localDescription?.sdp === event.payload.description.sdp
@@ -158,7 +163,8 @@ function captureProbe(name) {
     const createAudioSource = AudioContext.prototype.createMediaStreamSource;
     AudioContext.prototype.createMediaStreamSource = function(stream) {
       const source = createAudioSource.call(this, stream);
-      const owner = { trackId: stream.getAudioTracks()[0]?.id, context: this, connected: false };
+      const track = stream.getAudioTracks()[0];
+      const owner = { trackId: track.id, trackObjectId: trackObjectId(track), context: this, connected: false };
       audioSources.push(owner);
       const connect = source.connect.bind(source), disconnect = source.disconnect.bind(source);
       source.connect = (...args) => { owner.connected = true; return connect(...args); };
@@ -194,6 +200,23 @@ function captureProbe(name) {
     };
     window.__channelProbe = { peers, sockets, captures, contexts,
       captureAudio(enabled) { captureAudio = enabled; },
+      async observeQuality() {
+        if (qualityInstalled) return;
+        const { P2pQualityProbe } = await import('/src/client/media/candidate-quality-probe.ts');
+        const observe = P2pQualityProbe.prototype.observe;
+        const metrics = value => value && Object.fromEntries([
+          'trackIdentifier', 'rtpStatsId', 'rtpSsrc', 'sampleTimestampMs', 'sampleWindowMs',
+          'frameWidth', 'frameHeight', 'framesPerSecond', 'intervalFramesDecoded', 'bitrateKbps',
+          'intervalFreezeCount', 'intervalFreezeDurationMs', 'intervalPauseCount', 'intervalPauseDurationMs',
+        ].map(key => [key, value[key]]));
+        P2pQualityProbe.prototype.observe = function(current, candidate) {
+          const result = observe.call(this, current, candidate);
+          qualitySamples.push({ time: Date.now(), current: metrics(current), candidate: metrics(candidate), result });
+          if (qualitySamples.length > 128) qualitySamples.shift();
+          return result;
+        };
+        qualityInstalled = true;
+      },
       screen(publicationId) {
         const snapshot = window.__channelGate.snapshot();
         return { streamId: snapshot.streams.get(publicationId)?.id,
@@ -201,15 +224,44 @@ function captureProbe(name) {
             const element = [...document.querySelectorAll('video')].find(video => video.dataset.flowId === input.flowId);
             if (element) element.__allocationIdentity ??= crypto.randomUUID();
             return { flowId: input.flowId, selected: input.selected, switchReady: input.switchReady, streamId: input.stream.id,
-              audio: input.stream.getAudioTracks().map(track => track.id), elementId: element?.__allocationIdentity,
+              audio: input.stream.getAudioTracks().map(track => track.id), audioObjects: input.stream.getAudioTracks().map(trackObjectId),
+              video: input.stream.getVideoTracks().map(track => track.id), elementId: element?.__allocationIdentity,
               displayed: element?.dataset.selected, composited: element?.dataset.composited, muted: element?.muted,
               paused: element?.paused, fullscreen: !!element && document.fullscreenElement === element.parentElement,
-              volume: element?.volume, frames: element?.getVideoPlaybackQuality().totalVideoFrames, time: element?.currentTime };
-          }), flowStates, audioOwners: audioSources.filter(owner => owner.connected && owner.context.state === 'running').map(owner => owner.trackId) };
+              volume: element?.volume, width: element?.videoWidth, height: element?.videoHeight,
+              frames: element?.getVideoPlaybackQuality().totalVideoFrames, time: element?.currentTime };
+          }), outputs: snapshot.state.pairs.flatMap(pair => pair.outgoing.filter(flow => flow.publicationId === publicationId).map(flow => {
+            const streamId = flowStreams.get(flow.id);
+            return { flowId: flow.id, inputFlowId: flow.inputFlowId, streamId, pairId: pair.id,
+              senders: senders.filter(output => streamId && output.streams.includes(streamId) && output.sender.track)
+                .map(output => ({ id: output.id, trackId: output.sender.track.id, kind: output.sender.track.kind })) };
+          })), flowStates, qualitySamples, restoredVideo,
+          audioOwners: audioSources.filter(owner => owner.connected && owner.context.state === 'running').map(owner => owner.trackObjectId) };
       },
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
-      stallVideo(publicationId, peerId) { videoStall = { publicationId, peerId }; },
+      async limitVideo(publicationId, peerId, maxFramerate) {
+        const pair = window.__channelGate.snapshot().state.pairs.find(pair => pair.peerId === peerId);
+        const flow = pair?.outgoing.find(flow => flow.publicationId === publicationId);
+        const streamId = flow && flowStreams.get(flow.id);
+        const output = senders.find(output => output.pc.connectionState === 'connected'
+          && output.streams.includes(streamId) && output.sender.track?.kind === 'video');
+        if (!output) throw new Error('The incumbent video sender is unavailable');
+        const settings = () => { const value = output.sender.track.getSettings();
+          return { width: value.width, height: value.height, frameRate: value.frameRate }; };
+        const encodings = sender => sender.getParameters().encodings.map(encoding => ({
+          active: encoding.active, maxFramerate: encoding.maxFramerate, scaleResolutionDownBy: encoding.scaleResolutionDownBy,
+        }));
+        const others = () => senders.filter(value => value !== output && value.sender.track?.kind === 'video')
+          .map(value => ({ senderId: value.id, encodings: encodings(value.sender) }));
+        const before = { settings: settings(), encodings: encodings(output.sender), others: others() };
+        const parameters = output.sender.getParameters();
+        parameters.encodings.forEach(encoding => { encoding.maxFramerate = maxFramerate; });
+        await output.sender.setParameters(parameters);
+        return { flowId: flow.id, pairId: pair.id, streamId, senderId: output.id,
+          before, after: { settings: settings(), encodings: encodings(output.sender), others: others() } };
+      },
+      stallVideo(publicationId, peerId, candidateOnly = false) { videoStall = { publicationId, peerId, candidateOnly }; },
       async restoreVideo() {
         const fault = videoStall; videoStall = null;
         await fault?.pending?.catch(() => {});
@@ -217,6 +269,8 @@ function captureProbe(name) {
         const parameters = fault.output.sender.getParameters();
         parameters.encodings.forEach(encoding => { encoding.active = true; });
         await fault.output.sender.setParameters(parameters);
+        restoredVideo.push({ publicationId: fault.publicationId, peerId: fault.peerId, flowId: fault.flowId,
+          trackId: fault.output.sender.track.id, restoredAt: Date.now(), active: fault.output.sender.getParameters().encodings.map(encoding => encoding.active) });
       },
       closeDataChannels() { for (const channel of channels) channel.close(); },
       async sample() {
@@ -233,7 +287,7 @@ function captureProbe(name) {
         if (stalled?.sender.track) for (const report of (await stalled.sender.getStats()).values()) {
           if (report.type === 'outbound-rtp' && report.kind === 'video') stalledBytes += report.bytesSent ?? 0;
         }
-        return { inbound, outbound, protocol, conversationWS, warnings, blockedOffers,
+        return { inbound, outbound, protocol, conversationWS, warnings, blockedOffers, qualitySamples, restoredVideo,
           videoStall: fault && { publicationId: fault.publicationId, peerId: fault.peerId, pairId: fault.pairId,
             flowId: fault.flowId, startedAt: fault.startedAt, error: fault.error, bytes: stalledBytes,
             connected: stalled?.pc.connectionState === 'connected',
@@ -410,96 +464,177 @@ async function senderAllocationFailure() {
   return result;
 }
 
-async function leafShortcut(initial) {
-  const leaf = 0, relay = 1, source = 3;
-  for (const [first, second] of [[relay, source], [source, relay]]) {
-    await evaluate(first, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[second].sessionId)})`);
+async function branchShortcut(initial) {
+  const host = 1, relay = 2, source = 3, viewer = 4, watchers = [relay, viewer];
+  await Promise.all(watchers.map(index => evaluate(index, 'window.__channelProbe.observeQuality()')));
+  const room = await action(host, "createRoom({name:'Branch shortcut',access:'public',hidden:false})");
+  await browser(host, 'click', '.c3-room-link[aria-label="Branch shortcut"]');
+  // Fill the host's two base branches before admitting the downstream viewer.
+  for (const index of [source, relay]) {
+    await browser(index, 'click', '.c3-room-link[aria-label="Branch shortcut"]');
+    await until('host installs its initial base branch', () => view(index), value =>
+      value.state.pairs.some(pair => pair.peerId === initial[host].sessionId && pair.rooms.includes(room)));
+    await until('base branch opens before the next admission', () => sample(index), value =>
+      value.channels.some(channel => channel.label === 'piik-room' && channel.state === 'open'));
   }
-  const room = await action(relay, "createRoom({name:'Leaf shortcut',access:'public',hidden:false})");
-  for (const index of [leaf, source]) await browser(index, 'click', '.c3-room-link[aria-label="Leaf shortcut"]');
-  await until('shortcut room forms its two base branches', () => view(relay), value =>
-    [initial[leaf].sessionId, initial[source].sessionId].every(id => value.state.pairs.some(pair => pair.peerId === id && pair.rooms.includes(room))));
-  for (const index of [leaf, source]) await action(index, `joinVoice(${JSON.stringify(room)})`);
-  const leafVoice = (await view(leaf)).state.publications.find(publication => publication.sessionId === initial[leaf].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
+  for (const [first, second] of [[source, viewer], [viewer, source]]) {
+    await evaluate(first, `window.__channelProbe.blockPeer(${JSON.stringify(initial[second].sessionId)})`);
+  }
+  await browser(viewer, 'click', '.c3-room-link[aria-label="Branch shortcut"]');
+  await until('viewer reaches the room through its internal relay', () => view(viewer), value =>
+    value.state.pairs.some(pair => pair.peerId === initial[relay].sessionId && pair.rooms.includes(room)), 35_000);
+  for (const index of [viewer, source]) await action(index, `joinVoice(${JSON.stringify(room)})`);
+  const viewerVoice = (await view(viewer)).state.publications.find(publication => publication.sessionId === initial[viewer].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
   const sourceVoice = (await view(source)).state.publications.find(publication => publication.sessionId === initial[source].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
-  await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
-  const inspect = publication => evaluate(leaf, `window.__channelProbe.screen(${JSON.stringify(publication)})`);
+  await voiceProgressing(viewer, sourceVoice); await voiceProgressing(source, viewerVoice);
+  const base = await Promise.all([host, relay, source, viewer].map(async index => ({ index,
+    pairs: (await view(index)).state.pairs.filter(pair => pair.rooms.includes(room)).map(pair => pair.id).sort() })));
+  const inspect = (index, publication) => evaluate(index, `window.__channelProbe.screen(${JSON.stringify(publication)})`);
   const records = [];
   await evaluate(source, 'window.__channelProbe.captureAudio(true)');
   try {
-    for (const mode of ['timeout', 'commit']) {
+    for (const mode of ['timeout', 'unwatch', 'commit']) {
+      // Keep the host as a real viewer too: the source's other admitted output
+      // stays occupied after internal commit, rather than starting a later leaf shortcut.
+      await evaluate(source, `window.__channelProbe.blockPeer(${JSON.stringify(initial[host].sessionId)})`);
       const publication = await capturedScreen(source, room);
-      await evaluate(source, `window.__channelProbe.stallVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[leaf].sessionId)})`);
+      await evaluate(source, `window.__channelProbe.stallVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[relay].sessionId)}, true)`);
+      await evaluate(relay, `window.__channelProbe.stallVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[viewer].sessionId)}, true)`);
       try {
-        await action(leaf, `watch(${JSON.stringify(publication)})`);
-        await playing(leaf, publication);
-        const pending = await until('decoded leaf installs an unselected direct candidate', () => view(leaf), value =>
-          value.state.pairs.some(pair => pair.peerId === initial[source].sessionId && pair.incoming.some(flow => flow.publicationId === publication && !flow.selected)));
-        const incumbent = pending.state.pairs.flatMap(pair => pair.incoming).find(flow => flow.publicationId === publication && flow.selected);
-        const candidatePair = pending.state.pairs.find(pair => pair.peerId === initial[source].sessionId && pair.incoming.some(flow => flow.publicationId === publication && !flow.selected));
-        const candidate = candidatePair.incoming.find(flow => flow.publicationId === publication && !flow.selected);
-        const fault = await until('candidate actual video sender is stopped before its offer', () => sample(source), value => value.videoStall?.flowId === candidate.id && value.videoStall.connected);
-        assert.equal(fault.videoStall.bytes, 0, 'the candidate video fault stops actual RTP while its PC connects');
-        await progressing(leaf, publication);
-        const held = await inspect(publication);
-        assert.equal(held.inputs.find(input => input.selected)?.flowId, incumbent.id);
-        assert(!held.flowStates.some(proof => proof.flowId === candidate.id && proof.state === 'switch_ready'));
-        await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
-        if (mode === 'timeout') {
-          await until('unproved candidate times out while its incumbent remains selected', () => view(leaf), value =>
-            !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === candidate.id))
-            && value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === incumbent.id && flow.selected)), 30_000);
-          await progressing(leaf, publication);
-          await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
-          records.push({ mode, incumbent: incumbent.id, candidate: candidate.id, elapsedMs: Date.now() - fault.videoStall.startedAt });
+        await Promise.all([host, ...watchers].map(index => action(index, `watch(${JSON.stringify(publication)})`)));
+        await until('host and both branch watchers are authoritative before media starts', () => Promise.all([host, ...watchers].map(view)), values =>
+          values.every(value => value.state.subscriptions.includes(publication)));
+        await evaluate(source, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[host].sessionId)})`);
+        await action(source, 'reconnect()'); // Replay the original blocked exchange through the production owner.
+        await until('source resumes its authenticated session', () => view(source), value => value.connection === 'connected');
+        await Promise.all([host, ...watchers].map(index => playing(index, publication)));
+        const hostInput = (await view(host)).state.pairs.flatMap(pair => pair.incoming.filter(flow => flow.publicationId === publication)
+          .map(flow => ({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId })))[0];
+        assert.equal(hostInput.peerId, initial[source].sessionId);
+        const pending = await until('internal relay and downstream viewer both install shadow inputs', () => Promise.all(watchers.map(view)), values =>
+          values.every(value => value.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publication && !flow.selected))));
+        const branches = pending.map((value, offset) => {
+          const inputs = value.state.pairs.flatMap(pair => pair.incoming.filter(flow => flow.publicationId === publication).map(flow => ({ ...flow, pairId: pair.id, peerId: pair.peerId })));
+          return { index: watchers[offset], incumbent: inputs.find(flow => flow.selected), candidate: inputs.find(flow => !flow.selected) };
+        });
+        const [internal, downstream] = branches;
+        assert.equal(internal.incumbent.peerId, initial[host].sessionId);
+        assert.equal(internal.candidate.peerId, initial[source].sessionId);
+        assert.equal(downstream.incumbent.peerId, initial[relay].sessionId);
+        assert.equal(downstream.candidate.pairId, downstream.incumbent.pairId, 'two lineages share the existing relay-viewer physical pair');
+        assert.equal(downstream.incumbent.inputFlowId, internal.incumbent.id);
+        assert.equal(downstream.candidate.inputFlowId, internal.candidate.id);
+        const faults = await until('only the two shadow video senders stop actual RTP', () => Promise.all([source, relay].map(sample)), values =>
+          values.every((value, offset) => value.videoStall?.flowId === branches[offset].candidate.id && value.videoStall.connected));
+        for (const value of faults) assert.equal(value.videoStall.bytes, 0, 'the candidate fault emits no RTP while the incumbent shares a live PC');
+        await Promise.all(watchers.map(index => progressing(index, publication)));
+        const held = await Promise.all(watchers.map(index => inspect(index, publication)));
+        held.forEach((value, offset) => {
+          assert.equal(value.inputs.find(input => input.selected)?.flowId, branches[offset].incumbent.id);
+          assert(!value.flowStates.some(proof => proof.flowId === branches[offset].candidate.id && proof.state === 'switch_ready'));
+        });
+        const warm = held.map((value, offset) => value.inputs.find(input => input.flowId === branches[offset].candidate.id));
+        assert(warm.every(input => input?.elementId), 'both candidate consumers exist before they are selected');
+        const warmOutput = held[0].outputs.find(output => output.flowId === downstream.candidate.id);
+        assert.equal(warmOutput.inputFlowId, internal.candidate.id);
+        assert.equal(warmOutput.senders.length, 2, 'the shadow output forwards its own video and source audio');
+        if (mode !== 'commit') {
+          await evaluate(source, 'window.__channelProbe.restoreVideo()');
+          const firstReady = await until('relay proves its candidate but cannot commit for the stalled downstream viewer', () => inspect(relay, publication), value =>
+            value.flowStates.some(proof => proof.flowId === internal.candidate.id && proof.state === 'switch_ready'));
+          const readyAt = firstReady.flowStates.find(proof => proof.flowId === internal.candidate.id && proof.state === 'switch_ready').time;
+          assert.equal(firstReady.inputs.find(input => input.selected)?.flowId, internal.incumbent.id);
+          const blocked = await inspect(viewer, publication);
+          assert.equal(blocked.inputs.find(input => input.selected)?.flowId, downstream.incumbent.id);
+          assert(!blocked.flowStates.some(proof => proof.flowId === downstream.candidate.id && proof.state === 'switch_ready'));
+          if (mode === 'unwatch') await action(viewer, `unwatch(${JSON.stringify(publication)})`);
+          await until('expiry or a changed watcher cohort cancels the entire shadow branch', () => Promise.all(watchers.map(view)), values =>
+            values.every((value, offset) => !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].candidate.id))
+              && (mode === 'unwatch' && offset === 1 ? !value.state.subscriptions.includes(publication)
+                : value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].incumbent.id && flow.selected)))), 8_000);
+          records.push({ mode, branches, firstSwitchReadyAt: readyAt, expiredAfterReadyMs: Date.now() - readyAt,
+            elapsedMs: Date.now() - faults[0].videoStall.startedAt });
+          await Promise.all((mode === 'unwatch' ? [relay] : watchers).map(index => progressing(index, publication)));
         } else {
-          await evaluate(leaf, `(() => {
-            const video = document.querySelector('video[data-flow-id="${incumbent.id}"]');
+          // A controlled positive comparison: only the already-playing source→host
+          // sender is capped. The same capture and the shadow sender remain 10fps.
+          const frameLimit = await evaluate(source, `window.__channelProbe.limitVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[host].sessionId)}, 5)`);
+          assert.equal(frameLimit.flowId, hostInput.flowId);
+          assert.deepEqual(frameLimit.after.settings, frameLimit.before.settings, 'sender pacing does not constrain the capture');
+          assert.deepEqual(frameLimit.after.others, frameLimit.before.others, 'other video senders keep their own encoding parameters');
+          assert.deepEqual(frameLimit.after.encodings.map(encoding => encoding.scaleResolutionDownBy), frameLimit.before.encodings.map(encoding => encoding.scaleResolutionDownBy));
+          assert(frameLimit.after.encodings.every(encoding => encoding.maxFramerate === 5));
+          await Promise.all(branches.map(branch => evaluate(branch.index, `(() => {
+            const video = document.querySelector('video[data-flow-id="${branch.incumbent.id}"]');
             const slider = video.closest('.c3-video').querySelector('input.c3-mini-volume');
             if (!slider) throw new Error('screen volume control unavailable');
             Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(slider, '0.35');
             slider.dispatchEvent(new Event('input', { bubbles: true })); slider.dispatchEvent(new Event('change', { bubbles: true }));
-          })()`);
-          await until('incumbent adopts nondefault volume before handover', () => inspect(publication), value => value.inputs.some(input => input.flowId === incumbent.id && Math.abs(input.volume - .35) < .01));
-          const warmed = await until('candidate owns a stable prewarmed video element', () => inspect(publication), value => value.inputs.some(input => input.flowId === candidate.id && input.elementId));
-          const candidateElement = warmed.inputs.find(input => input.flowId === candidate.id);
-          await browser(leaf, 'dblclick', `video[data-flow-id="${incumbent.id}"]`);
-          await until('incumbent enters container fullscreen', () => inspect(publication), value => value.inputs.some(input => input.flowId === incumbent.id && input.fullscreen));
-          await browser(leaf, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
-          await until('incumbent pauses before selection', () => inspect(publication), value => value.inputs.some(input => input.flowId === incumbent.id && input.paused));
-          await evaluate(source, 'window.__channelProbe.restoreVideo()');
-          const selected = await until('decoded quality-approved composited candidate becomes selected', () => inspect(publication), value => value.inputs.some(input => input.flowId === candidate.id && input.selected && input.displayed === 'true' && input.composited === 'true'), 25_000);
-          const adopted = selected.inputs.find(input => input.flowId === candidate.id);
-          assert.equal(adopted.elementId, candidateElement.elementId, 'handover adopts the prewarmed DOM element');
-          assert.equal(adopted.streamId, candidateElement.streamId, 'handover retains the candidate srcObject');
-          assert(Math.abs(adopted.volume - .35) < .01, 'handover preserves volume');
-          assert(adopted.paused && adopted.fullscreen, 'handover preserves pause and the fullscreen container');
-          await browser(leaf, 'screenshot', join(output, 'base-shortcut-fullscreen.png'));
-          const proofs = selected.flowStates.filter(proof => proof.flowId === candidate.id);
-          assert(proofs.some(proof => proof.state === 'decoded') && proofs.some(proof => proof.state === 'switch_ready'));
-          assert(proofs.find(proof => proof.state === 'switch_ready').time >= proofs.find(proof => proof.state === 'decoded').time);
-          await until('screen audio belongs only to the selected source', () => inspect(publication), value => {
-            const active = value.inputs.find(input => input.flowId === candidate.id);
-            return active.audio.length === 1 && value.audioOwners.includes(active.audio[0]) &&
-              value.inputs.filter(input => input.flowId !== candidate.id).every(input => input.muted && input.audio.every(id => !value.audioOwners.includes(id)));
+          })()`)));
+          await browser(viewer, 'dblclick', `video[data-flow-id="${downstream.incumbent.id}"]`);
+          await until('downstream incumbent enters container fullscreen', () => inspect(viewer, publication), value => value.inputs.some(input => input.flowId === downstream.incumbent.id && input.fullscreen));
+          await browser(viewer, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
+          await until('downstream incumbent pauses before selection', () => inspect(viewer, publication), value => value.inputs.some(input => input.flowId === downstream.incumbent.id && input.paused));
+          await Promise.all([source, relay].map(index => evaluate(index, 'window.__channelProbe.restoreVideo()')));
+          const selected = await until('both watchers adopt the prepared shadow cohort', () => Promise.all(watchers.map(index => inspect(index, publication))), values =>
+            values.every((value, offset) => value.inputs.some(input => input.flowId === branches[offset].candidate.id && input.selected && input.displayed === 'true' && input.composited === 'true')), 25_000);
+          await writeFile(join(output, 'base-branch-commit-observed.json'), JSON.stringify({ branches, frameLimit, held, selected }, null, 2));
+          const adopted = selected.map((value, offset) => value.inputs.find(input => input.flowId === branches[offset].candidate.id));
+          adopted.forEach((input, offset) => {
+            assert.equal(input.elementId, warm[offset].elementId, 'commit adopts the prewarmed DOM element');
+            assert.equal(input.streamId, warm[offset].streamId, 'commit retains the exact candidate srcObject');
+            assert(Math.abs(input.volume - .35) < .01, 'both viewers retain volume');
+            const proofs = selected[offset].flowStates.filter(proof => proof.flowId === branches[offset].candidate.id);
+            assert(proofs.some(proof => proof.state === 'decoded') && proofs.some(proof => proof.state === 'switch_ready'));
+            const incumbent = held[offset].inputs.find(input => input.selected);
+            const approved = selected[offset].qualitySamples.findLast(sample => sample.result === 'approved'
+              && sample.current?.trackIdentifier === incumbent.video[0] && sample.candidate?.trackIdentifier === input.video[0]);
+            assert(approved && approved.current.frameWidth === incumbent.width && approved.current.frameHeight === incumbent.height,
+              'the positive comparison retains the incumbent decoded dimensions');
+            assert(input.audioObjects.length === 1 && selected[offset].audioOwners.includes(input.audioObjects[0]));
+            assert(incumbent.audioObjects.every(id => !selected[offset].audioOwners.includes(id)), 'the old source audio graph is retired');
           });
-          await browser(leaf, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
-          await progressing(leaf, publication);
-          await browser(leaf, 'dblclick', `video[data-flow-id="${candidate.id}"]`);
-          await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
-          records.push({ mode, incumbent: incumbent.id, candidate: candidate.id, candidateElement, adopted, proofs });
+          assert(adopted[1].paused && adopted[1].fullscreen, 'commit preserves pause and the fullscreen container');
+          assert(!adopted[0].paused, 'the relay viewer continues playing');
+          assert.deepEqual(selected[0].outputs.find(output => output.flowId === downstream.candidate.id), warmOutput,
+            'commit preserves the shadow output flow, wrapper and sender identities');
+          await until('commit retires only the old media branch', () => Promise.all(watchers.map(view)), values =>
+            values.every((value, offset) => !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].incumbent.id))));
+          await browser(viewer, 'screenshot', join(output, 'base-shortcut-fullscreen.png'));
+          await browser(viewer, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
+          await Promise.all(watchers.map(index => progressing(index, publication)));
+          await browser(viewer, 'dblclick', `video[data-flow-id="${downstream.candidate.id}"]`);
+          records.push({ mode, branches, frameLimit, warm, warmOutput, adopted,
+            quality: selected.map(value => value.qualitySamples), proofs: selected.map(value => value.flowStates) });
         }
-      } finally { await evaluate(source, 'window.__channelProbe.restoreVideo()'); await action(source, `stopScreen(${JSON.stringify(publication)})`); }
+        for (const before of base) assert.deepEqual((await view(before.index)).state.pairs.filter(pair => pair.rooms.includes(room)).map(pair => pair.id).sort(), before.pairs,
+          'media convergence preserves every existing base pair');
+        assert((await view(host)).state.pairs.some(pair => pair.id === hostInput.pairId
+          && pair.incoming.some(flow => flow.id === hostInput.flowId && flow.selected)), 'the host keeps its original source input');
+        await progressing(host, publication);
+        await voiceProgressing(viewer, sourceVoice); await voiceProgressing(source, viewerVoice);
+        await writeFile(join(output, 'base-branch-shortcut.json'), JSON.stringify({ passed: true, records }, null, 2));
+      } finally {
+        await Promise.all([source, relay].map(index => evaluate(index, 'window.__channelProbe.restoreVideo()')));
+        await evaluate(source, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[host].sessionId)})`);
+        await evaluate(viewer, 'document.fullscreenElement ? document.exitFullscreen() : undefined');
+        await action(source, `stopScreen(${JSON.stringify(publication)})`);
+      }
     }
   } finally {
     await evaluate(source, 'window.__channelProbe.captureAudio(false)');
-    for (const index of [leaf, source]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
+    for (const index of [viewer, source]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
+    for (const [first, second] of [[source, viewer], [viewer, source]]) {
+      await evaluate(first, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[second].sessionId)})`);
+    }
+    for (const index of [host, relay, source, viewer]) await browser(index, 'click', '.c3-room-link[aria-label="Living room"]');
   }
-  await writeFile(join(output, 'base-leaf-shortcut.json'), JSON.stringify({ passed: true, records }, null, 2));
+  for (const index of [host, relay, source, viewer]) await assertNoError(index, 'internal branch handover');
   return records;
 }
 
 async function roomBase(initial, serverRoom) {
+  const branchShortcuts = await branchShortcut(initial);
   const source = await capturedScreen(1, serverRoom);
   await action(2, `watch(${JSON.stringify(source)})`);
   await playing(2, source);
@@ -632,14 +767,15 @@ async function roomBase(initial, serverRoom) {
   await progressing(0, source);
   await action(1, `stopScreen(${JSON.stringify(source)})`);
   await until("last physical lease closes the pair", () => view(0), value => !value.state.pairs.some(pair => pair.id === survivingPair));
-  const leafShortcuts = await leafShortcut(initial);
   for (const index of [0, 1, 3]) await assertNoError(index, "room base lifecycle");
-  await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true, mediaPrepare, leafShortcuts,
+  await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true, mediaPrepare, branchShortcuts,
     scenarios: ["room entry without capture", "media/base transport reuse", "unreachable direct edge",
       "picture startup through non-viewing base transit", "picture recovery after transit departure",
       "bidirectional voice through a non-listener", "deafen keeps routes", "view change preserves transit",
       "connected video without RTP times out without retiring base or voice", "failed DataChannel repairs voice without closing healthy RTP", "retired transit leaves independently",
-      "repair preserves another room's picture", "voice stop keeps base", "last lease retirement"] }, null, 2));
+      "repair preserves another room's picture", "voice stop keeps base", "last lease retirement",
+      "internal relay shadow lineage on a shared pair", "all watcher proofs required within their finite validity",
+      "watcher change cancels the shadow cohort", "warm branch commit preserves playback and forwarding resources"] }, null, 2));
   console.log("Room DataChannels, bidirectional voice transit and shared media leases passed real Browser acceptance");
 }
 

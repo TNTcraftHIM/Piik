@@ -14,6 +14,7 @@ pub mod file_room;
 pub mod history;
 pub mod host;
 mod identity;
+mod publication;
 mod remote;
 mod room;
 mod routes;

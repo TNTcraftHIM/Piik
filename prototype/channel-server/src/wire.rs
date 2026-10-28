@@ -343,6 +343,7 @@ pub struct PairInfo {
 pub struct FlowBinding {
     pub id: Uuid,
     pub publication_id: Uuid,
+    pub input_flow_id: Option<Uuid>,
     pub selected: bool,
 }
 

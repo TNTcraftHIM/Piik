@@ -40,7 +40,7 @@ export const snapshotSchema = z.object({
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
   files: z.array(filePlanSchema),
-  pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean() })) })).max(19),
+  pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean(), inputFlowId: id.nullable() })) })).max(19),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
 export const signalSchema = z.object({

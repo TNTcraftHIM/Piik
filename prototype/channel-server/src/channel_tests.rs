@@ -547,6 +547,7 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
         tracks.iter().map(|track| crate::transport::Flow {
             id: track.flow_id,
             publication_id: Uuid::new_v4(),
+            input_flow_id: None,
             sender: first.session_id,
             receiver: second.session_id,
             selected: true,

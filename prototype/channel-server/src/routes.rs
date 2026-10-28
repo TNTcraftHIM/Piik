@@ -158,8 +158,7 @@ impl Plan {
         self.parents
             .get(&child)
             .is_some_and(|parent| *parent != self.source)
-            && self.ready.get(&child) == Some(&Readiness::Decoded)
-            && !self.parents.values().any(|parent| *parent == child)
+            && self.ready.contains_key(&child)
             && self
                 .parents
                 .values()
@@ -172,8 +171,41 @@ impl Plan {
                 .is_some_and(|failed| failed.contains(&self.source))
     }
 
-    pub fn shortcut(&mut self, child: Uuid) {
-        self.parents.insert(child, self.source);
+    pub fn subtree(&self, root: Uuid) -> Vec<Uuid> {
+        let mut nodes = vec![root];
+        let mut index = 0;
+        while index < nodes.len() {
+            let parent = nodes[index];
+            nodes.extend(
+                self.parents
+                    .iter()
+                    .filter_map(|(child, upstream)| (*upstream == parent).then_some(*child)),
+            );
+            index += 1;
+        }
+        nodes
+    }
+
+    pub fn shortcut_candidates(&self) -> Vec<Uuid> {
+        let mut candidates = self.subtree(self.source);
+        candidates.retain(|child| self.can_shortcut(*child));
+        // Preserve shallow-first order within each class; moving a branch
+        // benefits its descendants without spending another source output.
+        candidates.sort_by_key(|child| !self.parents.values().any(|parent| parent == child));
+        candidates
+    }
+
+    pub fn readiness(&self, child: Uuid) -> Option<Readiness> {
+        self.ready.get(&child).copied()
+    }
+
+    pub fn forget_ready(&mut self, child: Uuid) {
+        self.ready.remove(&child);
+    }
+
+    pub fn adopt_branch(&mut self, root: Uuid, proof: impl IntoIterator<Item = (Uuid, Readiness)>) {
+        self.parents.insert(root, self.source);
+        self.ready.extend(proof);
     }
 
     pub fn ready_edges(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {

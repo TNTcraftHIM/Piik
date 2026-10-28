@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct Flow {
     pub id: Uuid,
     pub publication_id: Uuid,
+    pub input_flow_id: Option<Uuid>,
     pub sender: Uuid,
     pub receiver: Uuid,
     pub selected: bool,
@@ -64,6 +65,7 @@ impl TransportBook {
                 FlowBinding {
                     id: flow.id,
                     publication_id: flow.publication_id,
+                    input_flow_id: flow.input_flow_id,
                     selected: flow.selected,
                 },
             );
@@ -116,6 +118,7 @@ impl TransportBook {
             Some(Flow {
                 id: flow_id,
                 publication_id: binding.publication_id,
+                input_flow_id: binding.input_flow_id,
                 sender,
                 receiver,
                 selected: binding.selected,

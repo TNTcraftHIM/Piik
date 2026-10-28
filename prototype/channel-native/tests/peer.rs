@@ -6,8 +6,15 @@ use anyhow::Result;
 fn binding(publication_id: Uuid, pair: Uuid) -> FlowBinding {
     FlowBinding {
         selected: true,
+        input_flow_id: None,
         id: Uuid::from_u128(publication_id.as_u128() ^ pair.as_u128()),
         publication_id,
+    }
+}
+fn forwarding(publication_id: Uuid, pair: Uuid, input: Uuid) -> FlowBinding {
+    FlowBinding {
+        input_flow_id: Some(input),
+        ..binding(publication_id, pair)
     }
 }
 use piik_channel_native::peer::{NativeEvent, NativePeers};
@@ -137,7 +144,6 @@ impl PeerConnectionEventHandler for Handler {
     }
 }
 struct Endpoint {
-    id: Uuid,
     pc: Arc<dyn PeerConnection>,
     pending: bool,
     polite: bool,
@@ -243,7 +249,6 @@ async fn endpoint_clock(
         pc.create_data_channel("piik-room", None).await?;
     }
     Ok(Endpoint {
-        id,
         pc,
         polite,
         sent: None,
@@ -257,7 +262,7 @@ async fn endpoint_clock(
 }
 async fn add_source(
     endpoint: &Endpoint,
-    publication: Uuid,
+    flow_id: Uuid,
     ssrc: u32,
 ) -> Result<Arc<TrackLocalStaticRTP>> {
     let stream = Uuid::new_v4().to_string();
@@ -276,7 +281,7 @@ async fn add_source(
         }],
     )));
     endpoint.tracks.lock().unwrap().push(WireTrack {
-        flow_id: binding(publication, endpoint.id).id,
+        flow_id,
         stream_id: stream,
     });
     endpoint.pc.add_track(track.clone()).await?;
@@ -475,7 +480,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         )
         .await?;
         let child = endpoint(session, child_id, 111, events, packets).await?;
-        let audio = add_source(&source, publication, 0x1111).await?;
+        let audio = add_source(&source, binding(publication, source_id).id, 0x1111).await?;
         let stream = source.tracks.lock().unwrap()[0].stream_id.clone();
         let video = local_video(stream, 0x2222);
         let video_sender = source.pc.add_track(video.clone()).await?;
@@ -506,7 +511,11 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                         peer_id: child_id,
                         rooms: vec!["screen".into()],
                         incoming: vec![],
-                        outgoing: vec![binding(publication, child_id)],
+                        outgoing: vec![forwarding(
+                            publication,
+                            child_id,
+                            binding(publication, source_id).id,
+                        )],
                     },
                 ],
                 vec![PublicationInfo {
@@ -791,11 +800,13 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         // Old reader/sender completion must keep its retired flow identity.
         let new_incoming = FlowBinding {
             selected: true,
+            input_flow_id: None,
             id: Uuid::new_v4(),
             publication_id: publication,
         };
         let new_outgoing = FlowBinding {
             selected: true,
+            input_flow_id: Some(new_incoming.id),
             id: Uuid::new_v4(),
             publication_id: publication,
         };
@@ -922,7 +933,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
 }
 
 #[tokio::test]
-async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> Result<()> {
+async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     for native_id in [Uuid::nil(), Uuid::from_u128(u128::MAX)] {
         timeout(Duration::from_secs(45), async {
             let publication = Uuid::new_v4();
@@ -938,7 +949,8 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
             let eb = endpoint(native_id, b, 111, event_tx.clone(), packet_tx.clone()).await?;
             let er = endpoint(native_id, receiver, 109, event_tx, packet_tx).await?;
             let receiver_pc = er.pc.clone();
-            let source_a = add_source(&ea, publication, 0x11111111).await?;
+            let received = er.received.clone();
+            let source_a = add_source(&ea, binding(publication, a).id, 0x11111111).await?;
             let b_pc = eb.pc.clone();
             let b_tracks = eb.tracks.clone();
             let info = PublicationInfo {
@@ -948,6 +960,16 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                 user_id: Uuid::new_v4(),
                 kind: Kind::Voice,
                 muted: false,
+            };
+            let old_outgoing = forwarding(publication, receiver, binding(publication, a).id);
+            let candidate_incoming = FlowBinding {
+                id: Uuid::new_v4(),
+                ..binding(publication, b)
+            };
+            let candidate_outgoing = FlowBinding {
+                id: Uuid::new_v4(),
+                input_flow_id: Some(candidate_incoming.id),
+                ..old_outgoing.clone()
             };
             let plans = |new_source| {
                 vec![
@@ -967,7 +989,7 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                         peer_id: b,
                         rooms: vec!["room".into()],
                         incoming: if new_source {
-                            vec![binding(publication, b)]
+                            vec![candidate_incoming]
                         } else {
                             vec![]
                         },
@@ -978,7 +1000,7 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                         peer_id: receiver,
                         rooms: vec!["room".into()],
                         incoming: vec![],
-                        outgoing: vec![binding(publication, receiver)],
+                        outgoing: vec![if new_source { candidate_outgoing } else { old_outgoing }],
                     },
                 ]
             };
@@ -1060,10 +1082,13 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
             candidate.selected = false;
             preparing.iter_mut().find(|pair| pair.id == b).unwrap().incoming.push(candidate);
             // Outgoing candidate bindings must send even when not selected.
-            preparing.iter_mut().find(|pair| pair.id == receiver).unwrap().outgoing[0].selected = false;
-            native.update(preparing, vec![info.clone()], vec![]).await?;
+            let mut shadow_outgoing = candidate_outgoing.clone();
+            shadow_outgoing.selected = false;
+            shadow_outgoing.id = Uuid::new_v4();
+            shadow_outgoing.input_flow_id = Some(candidate.id);
+            preparing.iter_mut().find(|pair| pair.id == receiver).unwrap().outgoing.push(shadow_outgoing);
+            native.update(preparing.clone(), vec![info.clone()], vec![]).await?;
             let eb = Endpoint {
-                id: b,
                 pc: b_pc,
                 pending: false,
                 polite: b > native_id,
@@ -1074,7 +1099,7 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                 pli: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
                 reports: Arc::new(Mutex::new(vec![])),
             };
-            let source_b = add_source(&eb, publication, 0x22222222).await?;
+            let source_b = add_source(&eb, candidate.id, 0x22222222).await?;
             // An installed candidate cannot report forwardability before RTP.
             while let Ok(command) = reports.try_recv() {
                 assert!(!matches!(command,Command::FlowState{pair_id,state: FlowState::Forwardable,..}if pair_id==b));
@@ -1094,15 +1119,7 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                     if matches!(reports.recv().await, Some(Command::FlowState {pair_id, state:FlowState::Forwardable,..}) if pair_id == b) { break; }
                 }
             }).await?;
-            // Both sources now produce packets, but the unselected candidate
-            // must not replace the working input or its outgoing source clock.
-            for _ in 0..6 {
-                let packet = next_matching(&mut packets, None).await;
-                assert_eq!(packet.header.ssrc, old_ssrc);
-                assert!(packet.header.timestamp >= 50_000);
-            }
-            native.update(plans(true), vec![info.clone()], vec![]).await?;
-            let switched = timeout(Duration::from_secs(10), async {
+            let shadow = timeout(Duration::from_secs(10), async {
                 loop {
                     let p = packets.recv().await.unwrap();
                     if p.header.ssrc != old_ssrc {
@@ -1111,19 +1128,83 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                 }
             })
             .await?;
-            assert_ne!(switched.header.ssrc, 0x22222222);
-            assert!(switched.header.sequence_number < 1000);
+            assert_ne!(shadow.header.ssrc, 0x22222222);
+            assert!(shadow.header.sequence_number < 1000);
             assert_eq!(
-                switched.header.timestamp,
-                700 + (switched.header.sequence_number as u32 - 10) * 960
+                shadow.header.timestamp,
+                700 + (shadow.header.sequence_number as u32 - 10) * 960
             );
-            let new_ssrc = switched.header.ssrc;
             for _ in 0..6 {
-                let p = next_matching(&mut packets, Some(new_ssrc)).await;
+                let packet = next_matching(&mut packets, Some(old_ssrc)).await;
+                assert!(packet.header.timestamp >= 50_000);
+            }
+            // Revoke the entire candidate while its source keeps sending. Its
+            // retired reader and output cannot affect the active branch.
+            native.update(plans(false), vec![info.clone()], vec![]).await?;
+            sleep(Duration::from_millis(100)).await;
+            while packets.try_recv().is_ok() {}
+            for _ in 0..6 {
+                assert_eq!(next_matching(&mut packets, None).await.header.ssrc, old_ssrc);
+            }
+            preparing.iter_mut().find(|pair| pair.id == b).unwrap().incoming = vec![FlowBinding {
+                selected: false,
+                ..candidate_incoming
+            }];
+            preparing.iter_mut().find(|pair| pair.id == receiver).unwrap().outgoing = vec![
+                old_outgoing,
+                FlowBinding { selected: false, ..candidate_outgoing },
+            ];
+            native.update(preparing, vec![info.clone()], vec![]).await?;
+            let source_b = add_source(&eb, candidate_incoming.id, 0x22222223).await?;
+            let replacement_b = tokio::spawn(async move {
+                for seq in 10..1000 {
+                    source_b
+                        .write_rtp(packet(seq, 700 + (seq as u32 - 10) * 960, 0x22222223))
+                        .await
+                        .unwrap();
+                    sleep(Duration::from_millis(20)).await;
+                }
+            });
+            let new_ssrc = timeout(Duration::from_secs(5), async {
+                loop {
+                    let packet = packets.recv().await.unwrap();
+                    if packet.header.ssrc != old_ssrc {
+                        break packet.header.ssrc;
+                    }
+                }
+            }).await?;
+            assert_ne!(
+                new_ssrc, shadow.header.ssrc,
+                "a retired output must acquire a fresh sender"
+            );
+            let warm_tracks = received.lock().unwrap().clone();
+            let mut warm_stream = None;
+            for track in &warm_tracks {
+                if track.ssrcs().await.contains(&new_ssrc) {
+                    warm_stream = Some(track.stream_id().await);
+                }
+            }
+            let warm_stream = warm_stream.expect("shadow sender must have a received track");
+            native.update(plans(true), vec![info.clone()], vec![]).await?;
+            sleep(Duration::from_millis(100)).await;
+            while packets.try_recv().is_ok() {}
+            for _ in 0..6 {
+                let p = next_matching(&mut packets, None).await;
+                assert_eq!(p.header.ssrc, new_ssrc, "commit retains the prewarmed output");
                 assert_eq!(
                     p.header.timestamp,
                     700 + (p.header.sequence_number as u32 - 10) * 960
                 );
+            }
+            let committed_tracks = received.lock().unwrap().clone();
+            assert_eq!(
+                committed_tracks.len(), warm_tracks.len(),
+                "commit must not acquire another receiver"
+            );
+            for track in &committed_tracks {
+                if track.ssrcs().await.contains(&new_ssrc) {
+                    assert_eq!(track.stream_id().await, warm_stream);
+                }
             }
             // Fill the existing signaling output while audio is established. No RTP
             // packet may depend on that queue or an awaited control turn completing.
@@ -1169,7 +1250,7 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                 .find(|p| p.id == receiver)
                 .unwrap()
                 .outgoing
-                .push(binding(second, receiver));
+                .push(forwarding(second, receiver, binding(second, b).id));
             *loss.lock().unwrap() = Loss {
                 pair: Some(receiver),
                 offer: true,
@@ -1179,7 +1260,7 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
             native
                 .update(expanded, vec![info.clone(), second_info], vec![])
                 .await?;
-            let second_track = add_source(&eb, second, 0x33333333).await?;
+            let second_track = add_source(&eb, binding(second, b).id, 0x33333333).await?;
             let second_sender = tokio::spawn(async move {
                 for seq in 4000..5000 {
                     second_track
@@ -1244,7 +1325,7 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                 track.flow_id != binding(second, b).id
                     && track.flow_id != binding(second, receiver).id
             });
-            let replacement = add_source(&eb, second, 0x44444444).await?;
+            let replacement = add_source(&eb, binding(second, b).id, 0x44444444).await?;
             let replacement_sender = tokio::spawn(async move {
                 for seq in 6000..7000 {
                     replacement
@@ -1347,8 +1428,10 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
             let _ = second_sender.await;
             sender_a.abort();
             sender_b.abort();
+            replacement_b.abort();
             let _ = sender_a.await;
             let _ = sender_b.await;
+            let _ = replacement_b.await;
             stop_tx.send(true)?;
             pump.await??;
             Arc::try_unwrap(native).ok().unwrap().close().await?;

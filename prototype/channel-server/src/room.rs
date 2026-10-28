@@ -2,7 +2,8 @@ use crate::{
     access::{RoomPermission, RoomState},
     history::{HistoryRequest, MessageDraft},
     identity::{Endpoint, Member},
-    routes::{BaseTree, Plan, Readiness},
+    publication::Publication,
+    routes::BaseTree,
     transport::{BaseLink, Flow},
     wire::{FlowState, Kind, PublicationInfo, Room, RoomAccess, VoiceInfo},
 };
@@ -10,144 +11,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
-const SCREEN_PREPARE_MS: u64 = 20_000;
+#[cfg(test)]
+use crate::publication::SCREEN_PREPARE_MS;
 
 #[derive(Clone, Default)]
 struct Activity {
     reading: bool,
     watching: BTreeSet<Uuid>,
     voice: Option<VoiceInfo>,
-}
-
-#[derive(Clone)]
-struct Publication {
-    info: PublicationInfo,
-    plan: Plan,
-    leases: BTreeMap<(Uuid, Uuid), Uuid>,
-    operation: Option<RouteOperation>,
-    direct_attempted: BTreeSet<Uuid>,
-}
-
-#[derive(Clone, Copy)]
-struct RouteOperation {
-    flow: Uuid,
-    deadline: u64,
-    kind: OperationKind,
-}
-
-#[derive(Clone, Copy)]
-enum OperationKind {
-    Prepare,
-    Switch { receiver: Uuid, incumbent: Uuid },
-}
-
-impl Publication {
-    fn preparing_flows(&self) -> impl Iterator<Item = (Uuid, (Uuid, Uuid))> + '_ {
-        self.plan
-            .preparing_edges()
-            .filter_map(|edge| self.leases.get(&edge).map(|flow| (*flow, edge)))
-    }
-
-    fn current_switch(&self, receiver: Uuid, incumbent: Uuid) -> bool {
-        self.plan.can_shortcut(receiver)
-            && self
-                .plan
-                .parents
-                .get(&receiver)
-                .and_then(|parent| self.leases.get(&(*parent, receiver)))
-                == Some(&incumbent)
-            && self.plan.preparing_edges().next().is_none()
-    }
-
-    fn reconcile_routes(
-        &mut self,
-        mut paths: BTreeSet<(Uuid, Uuid)>,
-        requested: &BTreeSet<Uuid>,
-        connected: &BTreeSet<Uuid>,
-        now: u64,
-    ) {
-        if let Some(RouteOperation {
-            kind:
-                OperationKind::Switch {
-                    receiver,
-                    incumbent,
-                },
-            ..
-        }) = self.operation
-        {
-            if requested.contains(&receiver)
-                && connected.contains(&receiver)
-                && connected.contains(&self.plan.source)
-                && self.current_switch(receiver, incumbent)
-            {
-                paths.insert((self.plan.source, receiver));
-            } else {
-                self.cancel_switch();
-            }
-        }
-        self.leases.retain(|path, _| paths.contains(path));
-        for path in paths {
-            self.leases.entry(path).or_insert_with(Uuid::new_v4);
-        }
-        if self.info.kind != Kind::Screen {
-            return;
-        }
-        if let Some(operation) = &self.operation {
-            match operation.kind {
-                OperationKind::Switch { .. } => return,
-                OperationKind::Prepare
-                    if self
-                        .preparing_flows()
-                        .any(|(flow, _)| flow == operation.flow) =>
-                {
-                    return
-                }
-                OperationKind::Prepare => {}
-            }
-        }
-        let preparing = self
-            .preparing_flows()
-            .next()
-            .map(|(flow, _)| RouteOperation {
-                flow,
-                deadline: now.saturating_add(SCREEN_PREPARE_MS),
-                kind: OperationKind::Prepare,
-            });
-        self.operation = preparing;
-        if self.operation.is_some() || !connected.contains(&self.plan.source) {
-            return;
-        }
-        let candidate = requested.iter().copied().find(|child| {
-            !self.direct_attempted.contains(child)
-                && connected.contains(child)
-                && self.plan.can_shortcut(*child)
-        });
-        if let Some(receiver) = candidate {
-            let incumbent = self.leases[&(self.plan.parents[&receiver], receiver)];
-            let flow = Uuid::new_v4();
-            self.leases.insert((self.plan.source, receiver), flow);
-            self.direct_attempted.insert(receiver);
-            self.operation = Some(RouteOperation {
-                flow,
-                deadline: now.saturating_add(SCREEN_PREPARE_MS),
-                kind: OperationKind::Switch {
-                    receiver,
-                    incumbent,
-                },
-            });
-        }
-    }
-
-    fn cancel_switch(&mut self) {
-        if let Some(RouteOperation {
-            kind: OperationKind::Switch { receiver, .. },
-            ..
-        }) = self.operation
-        {
-            self.leases.remove(&(self.plan.source, receiver));
-            self.operation = None;
-        }
-    }
 }
 
 /// One room owns its policy, activities and logical flows. It neither owns
@@ -408,20 +279,14 @@ impl RoomRuntime {
             }
             self.publications.insert(
                 id,
-                Publication {
-                    info: PublicationInfo {
-                        id,
-                        room_id: self.policy.id.clone(),
-                        session_id: session,
-                        user_id: member.user_id,
-                        kind,
-                        muted,
-                    },
-                    plan: Plan::new(session),
-                    leases: BTreeMap::new(),
-                    operation: None,
-                    direct_attempted: BTreeSet::new(),
-                },
+                Publication::new(PublicationInfo {
+                    id,
+                    room_id: self.policy.id.clone(),
+                    session_id: session,
+                    user_id: member.user_id,
+                    kind,
+                    muted,
+                }),
             );
         }
         Ok(())
@@ -586,102 +451,38 @@ impl RoomRuntime {
             base.reconcile(&demand, &readable, &base_connected);
         }
         for (id, publication) in &mut self.publications {
-            publication
-                .direct_attempted
-                .retain(|child| endpoints.contains_key(child));
+            publication.retain_sessions(endpoints);
             let subscribers = requested
                 .iter()
                 .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
                 .collect();
-            let paths: BTreeSet<_> = if let Some(base) = self
-                .base
-                .as_ref()
-                .filter(|_| publication.info.kind == Kind::Voice)
-            {
-                base.project(
-                    publication.info.session_id,
-                    &self
-                        .activity
-                        .iter()
-                        .filter_map(|(session, activity)| {
-                            activity.voice.is_some().then_some(*session)
-                        })
-                        .collect(),
-                )
-            } else {
-                publication.plan.reconcile(
-                    &subscribers,
-                    &available,
-                    &connected,
-                    self.base.as_ref(),
-                );
-                publication
-                    .plan
-                    .parents
-                    .iter()
-                    .map(|(child, parent)| (*parent, *child))
-                    .collect()
-            };
-            publication.reconcile_routes(paths, &subscribers, &connected, now);
+            publication.reconcile(
+                &subscribers,
+                &available,
+                &connected,
+                self.base.as_ref(),
+                now,
+            );
         }
     }
 
     pub fn next_route_deadline(&self) -> Option<u64> {
         self.publications
             .values()
-            .filter_map(|publication| {
-                publication
-                    .operation
-                    .as_ref()
-                    .map(|operation| operation.deadline)
-            })
+            .filter_map(Publication::deadline)
             .min()
     }
 
     pub fn expire_media(&mut self, now: u64) -> bool {
-        let mut changed = false;
-        for publication in self.publications.values_mut() {
-            let Some(operation) = &publication.operation else {
-                continue;
-            };
-            if operation.deadline > now {
-                continue;
-            }
-            match operation.kind {
-                OperationKind::Switch { .. } => {
-                    publication.cancel_switch();
-                    changed = true;
-                }
-                OperationKind::Prepare => {
-                    let expired = publication
-                        .preparing_flows()
-                        .find_map(|(flow, edge)| (flow == operation.flow).then_some(edge));
-                    if let Some((parent, child)) = expired {
-                        // A downstream node waiting for this source is not a failed edge.
-                        publication.plan.failed(parent, child);
-                        changed = true;
-                    }
-                }
-            }
-            publication.operation = None;
-        }
-        changed
+        self.publications
+            .values_mut()
+            .fold(false, |changed, publication| {
+                publication.expire(now) || changed
+            })
     }
 
     pub fn flows(&self) -> impl Iterator<Item = Flow> + '_ {
-        self.publications.iter().flat_map(move |(id, publication)| {
-            publication
-                .leases
-                .iter()
-                .map(move |((parent, child), lease)| Flow {
-                    id: *lease,
-                    publication_id: *id,
-                    sender: *parent,
-                    receiver: *child,
-                    selected: self.base.is_some() && publication.info.kind == Kind::Voice
-                        || publication.plan.parents.get(child) == Some(parent),
-                })
-        })
+        self.publications.values().flat_map(Publication::flows)
     }
 
     pub fn base_links(&self) -> impl Iterator<Item = BaseLink> + '_ {
@@ -712,18 +513,7 @@ impl RoomRuntime {
             base.failed(first, second);
         }
         for publication in self.publications.values_mut() {
-            if let Some(RouteOperation {
-                kind: OperationKind::Switch { receiver, .. },
-                ..
-            }) = publication.operation
-            {
-                if (first == publication.plan.source && second == receiver)
-                    || (second == publication.plan.source && first == receiver)
-                {
-                    publication.cancel_switch();
-                }
-            }
-            publication.plan.failed(first, second);
+            publication.failed_pair(first, second);
         }
     }
 
@@ -733,60 +523,18 @@ impl RoomRuntime {
         receiver: Uuid,
         sender: Uuid,
         state: FlowState,
+        now: u64,
     ) -> Result<bool, &'static str> {
         let publication = self
             .publications
             .values_mut()
-            .find(|publication| publication.leases.get(&(sender, receiver)) == Some(&flow_id))
+            .find(|p| {
+                p.flows().any(|flow| {
+                    flow.id == flow_id && flow.sender == sender && flow.receiver == receiver
+                })
+            })
             .ok_or("unassigned_flow")?;
-        if self.base.is_some() && publication.info.kind == Kind::Voice {
-            return Ok(false);
-        }
-        if let Some(RouteOperation {
-            flow,
-            kind:
-                OperationKind::Switch {
-                    receiver: candidate,
-                    incumbent,
-                },
-            ..
-        }) = publication.operation
-        {
-            if flow == flow_id {
-                return Ok(match state {
-                    FlowState::Failed => {
-                        publication.cancel_switch();
-                        true
-                    }
-                    FlowState::SwitchReady
-                        if candidate == receiver
-                            && publication.current_switch(receiver, incumbent) =>
-                    {
-                        publication.plan.shortcut(receiver);
-                        publication.leases.retain(|_, lease| *lease != incumbent);
-                        publication.operation = None;
-                        true
-                    }
-                    _ => false,
-                });
-            }
-        }
-        Ok(match state {
-            FlowState::Forwardable => {
-                publication
-                    .plan
-                    .mark_ready(receiver, sender, Readiness::Forwardable)
-            }
-            FlowState::Decoded => publication
-                .plan
-                .mark_ready(receiver, sender, Readiness::Decoded),
-            FlowState::Failed if publication.info.kind == Kind::Screen => {
-                publication.plan.failed(sender, receiver);
-                true
-            }
-            FlowState::Failed => publication.plan.mark_unready(receiver, sender),
-            FlowState::SwitchReady => false,
-        })
+        Ok(publication.flow_state(flow_id, receiver, sender, state, now))
     }
 }
 
@@ -867,14 +615,26 @@ mod tests {
         room.reconcile(&endpoints, 10_000);
         assert_eq!(room.next_route_deadline(), Some(SCREEN_PREPARE_MS));
 
-        room.flow_state(flows[&(id(3), id(1))], id(1), id(3), FlowState::Forwardable)
-            .unwrap();
+        room.flow_state(
+            flows[&(id(3), id(1))],
+            id(1),
+            id(3),
+            FlowState::Forwardable,
+            19_000,
+        )
+        .unwrap();
         room.reconcile(&endpoints, 19_000);
         assert_eq!(room.next_route_deadline(), Some(39_000));
         assert!(!room.expire_media(20_000));
 
-        room.flow_state(flows[&(id(1), id(2))], id(2), id(1), FlowState::Forwardable)
-            .unwrap();
+        room.flow_state(
+            flows[&(id(1), id(2))],
+            id(2),
+            id(1),
+            FlowState::Forwardable,
+            38_000,
+        )
+        .unwrap();
         room.reconcile(&endpoints, 38_000);
         assert_eq!(room.next_route_deadline(), Some(58_000));
         assert!(!room.expire_media(39_000));
@@ -899,10 +659,16 @@ mod tests {
         assert!(!room.expire_media(78_000));
     }
 
-    fn decoded_leaf_candidate() -> (RoomRuntime, BTreeMap<Uuid, Endpoint>, Flow, Flow) {
+    fn branch_candidate(
+        relay_watching: bool,
+    ) -> (RoomRuntime, BTreeMap<Uuid, Endpoint>, Vec<Flow>, Vec<Flow>) {
         let id = Uuid::from_u128;
         let (mut room, endpoints) = screen_on_room_base();
-        // Voice and screen reuse the same base pairs but keep separate leases.
+        room.subscribe(endpoints[&id(1)].member, id(1), id(10), true)
+            .unwrap();
+        room.subscribe(endpoints[&id(2)].member, id(2), id(10), relay_watching)
+            .unwrap();
+        // Room voice retains the same physical pairs during the screen change.
         for session in [id(3), id(4)] {
             room.set_voice(endpoints[&session].member, session, true, false, false)
                 .unwrap();
@@ -914,200 +680,286 @@ mod tests {
             .flows()
             .filter(|f| f.publication_id == id(10))
             .collect();
-        let incumbent = picture
-            .iter()
-            .find(|f| f.receiver == id(4))
-            .unwrap()
-            .clone();
-        for flow in picture {
-            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Forwardable)
-                .unwrap();
+        for flow in &picture {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Forwardable,
+                1_000,
+            )
+            .unwrap();
         }
         room.reconcile(&endpoints, 1_000);
         assert!(
             room.flows().all(|f| f.selected),
-            "packet proof cannot authorize a decoded candidate"
+            "watchers need an actual decoded baseline"
         );
-        room.flow_state(
-            incumbent.id,
-            incumbent.receiver,
-            incumbent.sender,
-            FlowState::Decoded,
-        )
-        .unwrap();
+        for flow in picture
+            .iter()
+            .filter(|f| f.receiver != id(2) || relay_watching)
+        {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Decoded,
+                2_000,
+            )
+            .unwrap();
+        }
         room.reconcile(&endpoints, 2_000);
-        let candidate = room.flows().find(|f| !f.selected).unwrap();
-        assert_eq!((candidate.sender, candidate.receiver), (id(3), id(4)));
+        let shadow: Vec<_> = room.flows().filter(|f| !f.selected).collect();
+        assert_eq!(
+            shadow
+                .iter()
+                .map(|f| (f.sender, f.receiver))
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([(id(3), id(2)), (id(2), id(4))])
+        );
+        let root = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
+        let child = shadow.iter().find(|f| f.receiver == id(4)).unwrap();
+        assert_eq!(root.input_flow_id, None);
+        assert_eq!(child.input_flow_id, Some(root.id));
         assert_eq!(room.next_route_deadline(), Some(22_000));
-        (room, endpoints, incumbent, candidate)
+        (room, endpoints, picture, shadow)
     }
 
     #[test]
-    fn screen_shortcut_commits_only_the_prepared_candidate_and_keeps_other_leases() {
+    fn internal_branch_waits_for_all_viewers_then_adopts_the_entire_warmed_lineage() {
         let id = Uuid::from_u128;
-        let (mut room, endpoints, incumbent, candidate) = decoded_leaf_candidate();
-        let voice: BTreeSet<_> = room
-            .flows()
-            .filter(|f| f.publication_id == id(11))
-            .map(|f| f.id)
-            .collect();
-        let base: BTreeSet<_> = room.base_links().map(|f| (f.parent, f.child)).collect();
-        for proof in [FlowState::Forwardable, FlowState::Decoded] {
-            assert!(!room
-                .flow_state(candidate.id, candidate.receiver, candidate.sender, proof)
-                .unwrap());
-            room.reconcile(&endpoints, 3_000);
-            assert!(room.flows().any(|f| f.id == incumbent.id && f.selected));
-            assert!(room.flows().any(|f| f.id == candidate.id && !f.selected));
-        }
-        assert!(
-            !room
-                .flow_state(
-                    incumbent.id,
-                    incumbent.receiver,
-                    incumbent.sender,
-                    FlowState::Forwardable
-                )
-                .unwrap(),
-            "late packet proof cannot demote the incumbent's decoded evidence"
-        );
-        assert!(room
-            .flow_state(
-                candidate.id,
-                candidate.receiver,
-                candidate.sender,
-                FlowState::SwitchReady
-            )
-            .unwrap());
-        room.reconcile(&endpoints, 4_000);
-        let screens: Vec<_> = room
-            .flows()
-            .filter(|f| f.publication_id == id(10))
-            .collect();
-        assert_eq!(screens.len(), 1);
-        assert_eq!(
-            screens[0].id, candidate.id,
-            "commit keeps the warmed flow identity"
-        );
-        assert!(screens[0].selected);
-        assert_eq!(room.next_route_deadline(), None);
-        assert_eq!(
-            room.flow_state(
-                incumbent.id,
-                incumbent.receiver,
-                incumbent.sender,
-                FlowState::Failed
-            ),
-            Err("unassigned_flow")
-        );
-        assert_eq!(
-            room.flows()
+        for relay_watching in [false, true] {
+            let (mut room, endpoints, old, shadow) = branch_candidate(relay_watching);
+            let voice: BTreeSet<_> = room
+                .flows()
                 .filter(|f| f.publication_id == id(11))
                 .map(|f| f.id)
-                .collect::<BTreeSet<_>>(),
-            voice
-        );
-        assert_eq!(
-            room.base_links()
-                .map(|f| (f.parent, f.child))
-                .collect::<BTreeSet<_>>(),
-            base
-        );
-    }
-
-    #[test]
-    fn failed_or_expired_candidate_preserves_playback_and_is_not_retried_by_watch_toggles() {
-        let id = Uuid::from_u128;
-        for timeout in [false, true] {
-            let (mut room, endpoints, incumbent, candidate) = decoded_leaf_candidate();
-            let before: BTreeSet<_> = room.flows().filter(|f| f.selected).map(|f| f.id).collect();
-            room.reconcile(&endpoints, 21_999);
-            assert_eq!(room.next_route_deadline(), Some(22_000));
-            if timeout {
-                assert!(room.expire_media(22_000));
-            } else {
-                room.flow_state(
-                    candidate.id,
-                    candidate.receiver,
-                    candidate.sender,
-                    FlowState::Failed,
+                .collect();
+            let base: BTreeSet<_> = room.base_links().map(|f| (f.parent, f.child)).collect();
+            let relay = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
+            let viewer = shadow.iter().find(|f| f.receiver == id(4)).unwrap();
+            assert!(!room
+                .flow_state(
+                    viewer.id,
+                    viewer.receiver,
+                    viewer.sender,
+                    FlowState::SwitchReady,
+                    3_000
                 )
-                .unwrap();
+                .unwrap());
+            assert_eq!(room.next_route_deadline(), Some(8_000));
+            assert!(old
+                .iter()
+                .all(|old| room.flows().any(|f| f.id == old.id && f.selected)));
+            if relay_watching {
+                assert!(!room
+                    .flow_state(
+                        relay.id,
+                        relay.receiver,
+                        relay.sender,
+                        FlowState::Decoded,
+                        4_000
+                    )
+                    .unwrap());
             }
-            room.reconcile(&endpoints, 22_000);
-            assert_eq!(room.flows().map(|f| f.id).collect::<BTreeSet<_>>(), before);
-            assert_eq!(room.next_route_deadline(), None);
-            assert!(room.flows().any(|f| f.id == incumbent.id && f.selected));
-            assert_eq!(
-                room.flow_state(
-                    candidate.id,
-                    candidate.receiver,
-                    candidate.sender,
-                    FlowState::SwitchReady
-                ),
-                Err("unassigned_flow")
-            );
-            room.subscribe(endpoints[&id(4)].member, id(4), id(10), false)
-                .unwrap();
-            room.reconcile(&endpoints, 23_000);
-            room.subscribe(endpoints[&id(4)].member, id(4), id(10), true)
-                .unwrap();
-            room.reconcile(&endpoints, 24_000);
+            assert!(room
+                .flow_state(
+                    relay.id,
+                    relay.receiver,
+                    relay.sender,
+                    if relay_watching {
+                        FlowState::SwitchReady
+                    } else {
+                        FlowState::Forwardable
+                    },
+                    4_000
+                )
+                .unwrap());
+            room.reconcile(&endpoints, 4_000);
             let screens: Vec<_> = room
                 .flows()
                 .filter(|f| f.publication_id == id(10))
                 .collect();
-            for flow in screens {
-                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded)
-                    .unwrap();
+            assert_eq!(screens.len(), 3);
+            assert!(screens.iter().all(|f| f.selected));
+            for warm in &shadow {
+                let adopted = screens.iter().find(|f| f.id == warm.id).unwrap();
+                assert_eq!(
+                    adopted.input_flow_id, warm.input_flow_id,
+                    "commit never rebinds the warm sender"
+                );
             }
-            room.reconcile(&endpoints, 25_000);
-            assert!(room.flows().all(|f| f.selected));
+            for retired in old.iter().filter(|f| f.receiver != id(1)) {
+                assert_eq!(
+                    room.flow_state(
+                        retired.id,
+                        retired.receiver,
+                        retired.sender,
+                        FlowState::Failed,
+                        5_000
+                    ),
+                    Err("unassigned_flow")
+                );
+            }
             assert_eq!(room.next_route_deadline(), None);
+            assert_eq!(
+                room.flows()
+                    .filter(|f| f.publication_id == id(11))
+                    .map(|f| f.id)
+                    .collect::<BTreeSet<_>>(),
+                voice
+            );
+            assert_eq!(
+                room.base_links()
+                    .map(|f| (f.parent, f.child))
+                    .collect::<BTreeSet<_>>(),
+                base
+            );
         }
     }
 
     #[test]
-    fn incumbent_loss_retires_the_switch_before_ordinary_media_repair() {
-        let (mut room, endpoints, incumbent, candidate) = decoded_leaf_candidate();
+    fn failed_or_expired_shadow_preserves_the_committed_branch_and_attempt_lifetime() {
+        let id = Uuid::from_u128;
+        for timeout in [false, true] {
+            let (mut room, endpoints, old, shadow) = branch_candidate(true);
+            let viewer = shadow.iter().find(|f| f.receiver == id(4)).unwrap();
+            if timeout {
+                assert!(room.expire_media(22_000));
+            } else {
+                assert!(room
+                    .flow_state(
+                        viewer.id,
+                        viewer.receiver,
+                        viewer.sender,
+                        FlowState::Failed,
+                        21_999
+                    )
+                    .unwrap());
+            }
+            room.reconcile(&endpoints, 22_000);
+            assert!(old
+                .iter()
+                .all(|old| room.flows().any(|f| f.id == old.id && f.selected)));
+            assert!(shadow
+                .iter()
+                .all(|old| !room.flows().any(|f| f.id == old.id)));
+            // A different target may be attempted, but toggling local watching
+            // cannot reset the relay's consumed source-path attempt.
+            room.subscribe(endpoints[&id(2)].member, id(2), id(10), false)
+                .unwrap();
+            room.reconcile(&endpoints, 23_000);
+            room.subscribe(endpoints[&id(2)].member, id(2), id(10), true)
+                .unwrap();
+            room.reconcile(&endpoints, 24_000);
+            assert!(!room.flows().any(|f| !f.selected && f.receiver == id(2)));
+        }
+    }
+
+    #[test]
+    fn branch_proof_expires_synchronously_before_the_last_viewer_can_commit() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints, old, shadow) = branch_candidate(true);
+        let relay = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
+        let viewer = shadow.iter().find(|f| f.receiver == id(4)).unwrap();
         room.flow_state(
-            incumbent.id,
-            incumbent.receiver,
-            incumbent.sender,
-            FlowState::Failed,
+            relay.id,
+            relay.receiver,
+            relay.sender,
+            FlowState::SwitchReady,
+            3_000,
         )
         .unwrap();
+        // A repeated report cannot renew the first viewer's quality evidence.
+        room.flow_state(
+            relay.id,
+            relay.receiver,
+            relay.sender,
+            FlowState::SwitchReady,
+            7_999,
+        )
+        .unwrap();
+        assert_eq!(room.next_route_deadline(), Some(8_000));
+        room.flow_state(
+            viewer.id,
+            viewer.receiver,
+            viewer.sender,
+            FlowState::SwitchReady,
+            8_000,
+        )
+        .unwrap();
+        room.reconcile(&endpoints, 8_000);
+        assert!(old
+            .iter()
+            .all(|old| room.flows().any(|f| f.id == old.id && f.selected)));
+        assert!(shadow
+            .iter()
+            .all(|old| !room.flows().any(|f| f.id == old.id)));
+    }
+
+    #[test]
+    fn watching_changes_cancel_shadow_consumers_without_changing_transit() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints, old, shadow) = branch_candidate(true);
+        let relay = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
+        room.flow_state(
+            relay.id,
+            relay.receiver,
+            relay.sender,
+            FlowState::SwitchReady,
+            3_000,
+        )
+        .unwrap();
+        room.subscribe(endpoints[&id(2)].member, id(2), id(10), false)
+            .unwrap();
+        room.reconcile(&endpoints, 4_000);
+        assert!(old
+            .iter()
+            .all(|old| room.flows().any(|f| f.id == old.id && f.selected)));
+        assert!(shadow
+            .iter()
+            .all(|old| !room.flows().any(|f| f.id == old.id)));
+    }
+
+    #[test]
+    fn incumbent_loss_replaces_the_whole_input_lineage_before_ordinary_media_repair() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints, old, shadow) = branch_candidate(true);
+        let relay = old.iter().find(|f| f.receiver == id(2)).unwrap();
+        room.flow_state(
+            relay.id,
+            relay.receiver,
+            relay.sender,
+            FlowState::Failed,
+            3_000,
+        )
+        .unwrap();
+        let candidate = shadow.iter().find(|f| f.receiver == id(2)).unwrap();
         assert!(!room
             .flow_state(
                 candidate.id,
                 candidate.receiver,
                 candidate.sender,
-                FlowState::SwitchReady
+                FlowState::SwitchReady,
+                3_000
             )
             .unwrap());
         room.reconcile(&endpoints, 3_000);
-        assert!(!room.flows().any(|f| f.id == incumbent.id));
-        assert!(room.flows().all(|f| f.selected));
-        let replacement = room
+        let screens: Vec<_> = room
             .flows()
-            .find(|f| {
-                f.publication_id == candidate.publication_id && f.receiver == candidate.receiver
-            })
-            .unwrap();
-        assert_ne!(replacement.id, incumbent.id);
-        assert_ne!(
-            replacement.id, candidate.id,
-            "availability repair starts a fresh proof lifetime"
-        );
-        assert_eq!(
-            room.flow_state(
-                candidate.id,
-                candidate.receiver,
-                candidate.sender,
-                FlowState::Decoded
-            ),
-            Err("unassigned_flow")
-        );
+            .filter(|f| f.publication_id == id(10))
+            .collect();
+        assert!(screens.iter().all(|f| f.selected));
+        for receiver in [id(2), id(4)] {
+            let replacement = screens.iter().find(|f| f.receiver == receiver).unwrap();
+            assert!(
+                !old.iter().chain(&shadow).any(|f| f.id == replacement.id),
+                "changed input means new lease even on an unchanged edge"
+            );
+        }
+        let input = screens.iter().find(|f| f.receiver == id(2)).unwrap();
+        let output = screens.iter().find(|f| f.receiver == id(4)).unwrap();
+        assert_eq!(output.input_flow_id, Some(input.id));
         assert_eq!(room.next_route_deadline(), Some(23_000));
     }
 

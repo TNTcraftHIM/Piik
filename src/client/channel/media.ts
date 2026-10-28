@@ -31,6 +31,7 @@ interface MediaInput {
 export class ChannelMedia {
   private peers = new Map<string, Peer>();
   private publications: ChannelSnapshot["publications"] = [];
+  private subscriptions: ChannelSnapshot["subscriptions"] = [];
   private local = new Map<string, MediaStream>();
   private streams = new Map<string, MediaStream>();
   private screenInputs = new Map<string, ChannelScreenInput[]>();
@@ -57,6 +58,7 @@ export class ChannelMedia {
 
   update(sessionId: string, state: ChannelSnapshot): void {
     this.publications = state.publications;
+    this.subscriptions = state.subscriptions;
     const plans = new Map(state.pairs.map(plan => [plan.id, plan]));
     for (const [id, peer] of this.peers) {
       if (!plans.has(id)) {
@@ -238,7 +240,7 @@ export class ChannelMedia {
     for (const peer of this.peers.values()) {
       const flow = peer.plan.incoming.find(flow => flow.id === flowId && !flow.selected);
       const input = peer.inputs.get(flowId);
-      if (!flow || !input || input.stream !== stream || input.failed) continue;
+      if (!flow || !input || input.stream !== stream || input.failed || !this.subscriptions.includes(flow.publicationId)) continue;
       if (state === "failed") {
         input.failed = true;
         input.release?.();
@@ -255,7 +257,7 @@ export class ChannelMedia {
   private switchReady(peer: Peer, flowId: string, input: MediaInput): void {
     const flow = peer.plan.incoming.find(flow => flow.id === flowId && !flow.selected);
     if (input.failed || input.switchReady || !input.ready || !input.qualityApproved || !input.presentationReady
-      || !flow || !this.ownsInput(peer, flowId, input) || this.selectedInput(flow.publicationId)?.input !== input.incumbent
+      || !flow || !this.subscriptions.includes(flow.publicationId) || !this.ownsInput(peer, flowId, input) || this.selectedInput(flow.publicationId)?.input !== input.incumbent
       || peer.transport.pc.connectionState !== "connected") return;
     input.switchReady = true;
     input.stopQuality?.();
@@ -313,13 +315,11 @@ export class ChannelMedia {
 
   private refresh(): void {
     const streams = new Map(this.local);
-    const sourceFlows = new Map<string, string>();
     const relayAudio = new Map<string, MediaStreamTrack[]>();
     for (const publication of this.publications) {
       if (this.local.has(publication.id)) continue;
       const current = this.selectedInput(publication.id);
       if (!current) continue;
-      sourceFlows.set(publication.id, current.flowId);
       streams.set(publication.id, current.input.stream);
     }
     for (const peer of this.peers.values()) {
@@ -327,14 +327,17 @@ export class ChannelMedia {
       for (const flow of peer.plan.outgoing) {
         const publication = this.publications.find(publication => publication.id === flow.publicationId);
         if (!publication) continue;
-        const stream = streams.get(flow.publicationId);
+        let stream = flow.inputFlowId === null ? this.local.get(flow.publicationId) : undefined;
+        if (flow.inputFlowId !== null) for (const source of this.peers.values()) {
+          if (!source.plan.incoming.some(input => input.id === flow.inputFlowId && input.publicationId === flow.publicationId)) continue;
+          const input = source.inputs.get(flow.inputFlowId);
+          if (input && !input.failed) stream = input.stream;
+          break;
+        }
         outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null });
-        if (stream) {
-          const sourceFlow = sourceFlows.get(flow.publicationId);
-          if (sourceFlow) {
-            const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");
-            if (tracks.length) relayAudio.set(sourceFlow, tracks);
-          }
+        if (stream && flow.inputFlowId !== null) {
+          const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");
+          if (tracks.length) relayAudio.set(flow.inputFlowId, tracks);
         }
       }
       peer.transport.setOutgoing(outgoing);
@@ -347,6 +350,7 @@ export class ChannelMedia {
       if (this.publications.find(publication => publication.id === flow.publicationId)?.kind !== "screen") continue;
       const input = peer.inputs.get(flow.id);
       if (!input || input.failed) continue;
+      if (!flow.selected && !this.subscriptions.includes(flow.publicationId)) { input.stopQuality?.(); continue; }
       const values = screenInputs.get(flow.publicationId) ?? [];
       values.push({ flowId: flow.id, stream: input.stream, selected: flow.selected, switchReady: !!input.switchReady });
       screenInputs.set(flow.publicationId, values);

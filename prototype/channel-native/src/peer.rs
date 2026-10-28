@@ -599,22 +599,6 @@ impl Driver {
                     task.task.abort();
                     let _ = task.task.await;
                 }
-                let remove: Vec<_> = p
-                    .outputs
-                    .keys()
-                    .filter(|key| {
-                        !p.plan.outgoing.iter().any(|flow| {
-                            flow.id == key.0 && self.publications.contains_key(&flow.publication_id)
-                        }) || !self
-                            .sources
-                            .values()
-                            .any(|source| source.id == p.outputs[*key].source)
-                    })
-                    .copied()
-                    .collect();
-                for pub_id in remove {
-                    p.outputs.remove(&pub_id).unwrap().close(&*p.pc).await;
-                }
                 if p.plan.rooms.is_empty() {
                     for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
                         task.abort();
@@ -1032,9 +1016,12 @@ impl Driver {
     async fn source_ended(&mut self, pair: Uuid, key: TrackKey, source: Uuid) {
         // An old active source may end while its replacement is awaiting a first
         // packet. Only the latest reader can invalidate the current incoming lease.
-        let assigned_latest = self.pairs.get(&pair).is_some_and(|p| {
-            p.plan.incoming.iter().any(|flow| flow.id == key.0)
-                && p.latest.get(&key) == Some(&source)
+        let assigned_latest = self.pairs.get(&pair).and_then(|p| {
+            p.plan
+                .incoming
+                .iter()
+                .find(|flow| flow.id == key.0 && p.latest.get(&key) == Some(&source))
+                .copied()
         });
         if let Some(p) = self.pairs.get_mut(&pair) {
             if p.latest.get(&key) == Some(&source) {
@@ -1063,11 +1050,12 @@ impl Driver {
                     p.outputs.remove(&key).unwrap().close(&*p.pc).await;
                 }
             }
-            if assigned_latest
-                && (key.1 == RtpCodecKind::Video
+            if assigned_latest.is_some_and(|flow| {
+                !flow.selected
+                    || key.1 == RtpCodecKind::Video
                     || self.publications.get(&publication)
-                        == Some(&piik_channel_prototype::wire::Kind::Voice))
-            {
+                        == Some(&piik_channel_prototype::wire::Kind::Voice)
+            }) {
                 self.send(Command::FlowState {
                     flow_id: key.0,
                     pair_id: pair,
@@ -1104,17 +1092,19 @@ impl Driver {
                         .get(&key)
                         .is_some_and(|current| current.source == source && current.id == output)
                     {
-                        let publication = p
+                        let binding = p
                             .plan
                             .outgoing
                             .iter()
                             .find(|flow| flow.id == key.0)
-                            .map(|flow| flow.publication_id);
+                            .copied();
                         p.outputs.remove(&key).unwrap().close(&*p.pc).await;
-                        if key.1 == RtpCodecKind::Video
-                            || publication.and_then(|id| self.publications.get(&id))
-                                == Some(&piik_channel_prototype::wire::Kind::Voice)
-                        {
+                        if binding.is_some_and(|flow| {
+                            !flow.selected
+                                || key.1 == RtpCodecKind::Video
+                                || self.publications.get(&flow.publication_id)
+                                    == Some(&piik_channel_prototype::wire::Kind::Voice)
+                        }) {
                             self.send(Command::FlowState {
                                 flow_id: key.0,
                                 pair_id: pair,
@@ -1225,8 +1215,10 @@ impl Driver {
             || (kind == RtpCodecKind::Video
                 && self.publications[&publication] != piik_channel_prototype::wire::Kind::Screen)
         {
-            if kind == RtpCodecKind::Video
-                && self.publications[&publication] == piik_channel_prototype::wire::Kind::Screen
+            if !binding.selected
+                || (kind == RtpCodecKind::Video
+                    && self.publications[&publication]
+                        == piik_channel_prototype::wire::Kind::Screen)
             {
                 self.send(Command::FlowState {
                     flow_id,
@@ -1380,33 +1372,25 @@ impl Driver {
         Ok(())
     }
     async fn refresh_media(&mut self) -> Result<()> {
-        // Candidate readers can establish forwardability without replacing the
-        // selected publication's picture/audio or any existing child output.
-        let selected: HashSet<_> = self
-            .sources
-            .values()
-            .filter(|source| {
-                self.pairs.get(&source.pair).is_some_and(|pair| {
-                    pair.plan
-                        .incoming
-                        .iter()
-                        .any(|flow| flow.id == source.flow_id && flow.selected)
-                })
-            })
-            .map(|source| source.id)
-            .collect();
-        self.relay.retain(
-            &self
-                .sources
-                .iter()
-                .filter_map(|(key, source)| selected.contains(&source.id).then_some(*key))
-                .collect(),
-        );
+        // Forward the exact admitted input, including shadow branches. Selection
+        // belongs to local playback and cannot recreate a prewarmed sender.
         for pair in self.pairs.values_mut() {
             let retired: Vec<_> = pair
                 .outputs
                 .iter()
-                .filter_map(|(key, output)| (!selected.contains(&output.source)).then_some(*key))
+                .filter_map(|(key, output)| {
+                    let source = pair
+                        .plan
+                        .outgoing
+                        .iter()
+                        .find(|flow| flow.id == key.0)
+                        .and_then(|flow| {
+                            self.sources
+                                .get(&(flow.input_flow_id?, key.1))
+                                .filter(|source| source.publication_id == flow.publication_id)
+                        });
+                    (!source.is_some_and(|source| source.id == output.source)).then_some(*key)
+                })
                 .collect();
             for key in retired {
                 pair.outputs.remove(&key).unwrap().close(&*pair.pc).await;
@@ -1414,63 +1398,53 @@ impl Driver {
         }
         let mut failed = Vec::new();
         for (key, source) in &self.sources {
-            if !selected.contains(&source.id) {
-                continue;
-            }
             let publication = &source.publication_id;
             let mut targets = Vec::new();
             for (id, p) in &mut self.pairs {
-                let Some(binding) = p
-                    .plan
-                    .outgoing
-                    .iter()
-                    .find(|flow| flow.publication_id == *publication)
-                else {
-                    continue;
-                };
                 if *id == source.pair {
                     continue;
                 }
-                let output_key = (binding.id, source.kind);
-                if p.outputs
-                    .get(&output_key)
-                    .is_none_or(|o| o.source != source.id)
-                {
-                    let stream = p
-                        .outputs
-                        .iter()
-                        .find(|((flow, _), _)| *flow == binding.id)
-                        .map(|(_, out)| out.stream.clone())
-                        .unwrap_or_else(|| Uuid::new_v4().to_string());
-                    let next = match Output::new(
-                        &*p.pc,
-                        source,
-                        stream,
-                        *id,
-                        output_key,
-                        self.events.clone(),
-                        p.reports.clone(),
-                    )
-                    .await
-                    {
-                        Ok(next) => next,
-                        Err(error) => {
-                            eprintln!("Native encoded track attach failed: {error}");
-                            if source.kind == RtpCodecKind::Video
-                                || self.publications[publication]
-                                    == piik_channel_prototype::wire::Kind::Voice
-                            {
-                                failed.push((binding.id, *id));
+                for binding in p.plan.outgoing.iter().filter(|flow| {
+                    flow.publication_id == *publication
+                        && flow.input_flow_id == Some(source.flow_id)
+                }) {
+                    let output_key = (binding.id, source.kind);
+                    if !p.outputs.contains_key(&output_key) {
+                        let stream = p
+                            .outputs
+                            .iter()
+                            .find(|((flow, _), _)| *flow == binding.id)
+                            .map(|(_, out)| out.stream.clone())
+                            .unwrap_or_else(|| Uuid::new_v4().to_string());
+                        let next = match Output::new(
+                            &*p.pc,
+                            source,
+                            stream,
+                            *id,
+                            output_key,
+                            self.events.clone(),
+                            p.reports.clone(),
+                        )
+                        .await
+                        {
+                            Ok(next) => next,
+                            Err(error) => {
+                                eprintln!("Native encoded track attach failed: {error}");
+                                if !binding.selected
+                                    || source.kind == RtpCodecKind::Video
+                                    || self.publications[publication]
+                                        == piik_channel_prototype::wire::Kind::Voice
+                                {
+                                    failed.push((binding.id, *id));
+                                }
+                                continue;
                             }
-                            continue;
-                        }
-                    };
-                    if let Some(old) = p.outputs.insert(output_key, next) {
-                        old.close(&*p.pc).await;
+                        };
+                        p.outputs.insert(output_key, next);
+                        source.request_keyframe();
                     }
-                    source.request_keyframe();
+                    targets.push(p.outputs[&output_key].sink());
                 }
-                targets.push(p.outputs[&output_key].sink());
             }
             self.relay.set(*key, source.id, targets);
         }

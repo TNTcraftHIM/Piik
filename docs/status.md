@@ -26,9 +26,9 @@ Its media adapter also forwards VP8/H264 with source audio and preserves their
 shared source clock.
 Chat and history use authenticated requests and room-owner confirmations on
 those base paths. File descriptions stay in confirmed history; selected and verified
-copies stay with their participants. Screen leaves can adopt proven direct source
-paths while preserving playback. Participant resource admission, internal-relay
-transitions and App/Server integration remain. [TODO](./todo.md) owns remaining
+copies stay with their participants. Screen plans can replace a leaf or relay
+branch after its affected viewers prove delivery, while preserving playback.
+Participant resource admission and App/Server integration remain. [TODO](./todo.md) owns remaining
 stages and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.

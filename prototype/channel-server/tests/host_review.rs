@@ -649,3 +649,317 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
         }
     }
 }
+
+#[test]
+fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
+    use piik_channel_prototype::{
+        wire::{Event, Request},
+        Authority,
+    };
+
+    fn state(core: &mut Authority, connection: Uuid) -> piik_channel_prototype::wire::Snapshot {
+        core.handle(
+            connection,
+            Request {
+                request_id: None,
+                command: Command::SetName {
+                    name: "Review".into(),
+                },
+            },
+            1,
+        )
+        .events
+        .into_iter()
+        .find_map(|(target, event)| match event {
+            Event::State { state } if target == connection => Some(state),
+            _ => None,
+        })
+        .unwrap()
+    }
+
+    fn output(
+        core: &mut Authority,
+        connection: Uuid,
+        host: &mut RoomHost,
+        command: Command,
+    ) -> piik_channel_prototype::host::HostOutput {
+        let input = core
+            .handle(
+                connection,
+                Request {
+                    request_id: None,
+                    command,
+                },
+                1,
+            )
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .unwrap();
+        host.dispatch(input).unwrap();
+        host.finish(None).unwrap()
+    }
+
+    for case in [
+        "shadow",
+        "promotion",
+        "fresh_lineage",
+        "source_descriptor",
+        "missing_input",
+        "other_publication",
+        "wrong_sender",
+        "false_origin",
+        "selected_borrows_shadow",
+        "two_shadow_roots",
+        "shadow_cycle",
+        "selected_cycle",
+        "shadow_uses_own_old_branch",
+        "source_receives_itself",
+        "live_publication",
+        "live_sender",
+        "live_receiver",
+        "live_input",
+    ] {
+        let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let connections: [Uuid; 4] = std::array::from_fn(|_| Uuid::new_v4());
+        let [source, relay, branch, viewer] =
+            connections.map(|connection| review_admit(&mut core, connection, "invite"));
+        let source_user = state(&mut core, connections[0])
+            .sessions
+            .iter()
+            .find(|session| session.id == source)
+            .unwrap()
+            .user_id;
+        let room_id = "lineage-review";
+        let mut host = RoomHost::new(
+            RoomState::new(
+                room_id.into(),
+                "Lineage".into(),
+                source_user,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        let input = review_register(&mut core, connections[0], &host);
+        let relay_user = input.endpoints[&relay].member.user_id;
+        host.dispatch(input).unwrap();
+        review_host_turn(
+            &mut core,
+            connections[0],
+            room_id,
+            host.finish(None).unwrap(),
+        );
+
+        let publication = Uuid::new_v4();
+        let mut published = output(
+            &mut core,
+            connections[0],
+            &mut host,
+            Command::Publish {
+                publication: PublicationInput {
+                    id: publication,
+                    room_id: room_id.into(),
+                    kind: Kind::Screen,
+                    muted: false,
+                },
+            },
+        );
+        published.projection.flows = serde_json::from_value(serde_json::json!([{
+            "id": Uuid::new_v4(), "publicationId": publication,
+            "sender": source, "receiver": relay, "inputFlowId": null, "selected": true,
+        }]))
+        .unwrap();
+        let first = published.projection.flows[0].clone();
+        let leg = |sender, receiver, input_flow_id, selected| {
+            let mut flow = first.clone();
+            flow.id = Uuid::new_v4();
+            flow.sender = sender;
+            flow.receiver = receiver;
+            flow.input_flow_id = input_flow_id;
+            flow.selected = selected;
+            flow
+        };
+        let second = leg(relay, branch, Some(first.id), true);
+        let third = leg(branch, viewer, Some(second.id), true);
+        published.projection.flows = vec![first.clone(), second.clone(), third.clone()];
+        let accepted = review_host_turn(&mut core, connections[0], room_id, published);
+        assert!(!accepted
+            .events
+            .iter()
+            .any(|(_, event)| matches!(event, Event::Error { .. })));
+        let original = serde_json::to_value(state(&mut core, connections[2]).pairs).unwrap();
+
+        let mut prepared = output(
+            &mut core,
+            connections[0],
+            &mut host,
+            Command::Browse {
+                room_id: room_id.into(),
+                active: true,
+            },
+        );
+        let root = leg(source, branch, None, false);
+        let child = leg(branch, viewer, Some(root.id), false);
+        prepared.projection.flows = vec![
+            first.clone(),
+            second.clone(),
+            third.clone(),
+            root.clone(),
+            child.clone(),
+        ];
+        let other_publication = Uuid::new_v4();
+        if matches!(case, "other_publication" | "live_publication") {
+            for view in prepared.projection.views.values_mut() {
+                let mut other = view.publications[0].clone();
+                other.id = other_publication;
+                other.kind = Kind::Voice;
+                view.publications.push(other);
+            }
+        }
+        let flows = &mut prepared.projection.flows;
+        match case {
+            "source_descriptor" => {
+                let publication = &mut prepared
+                    .projection
+                    .views
+                    .get_mut(&viewer)
+                    .unwrap()
+                    .publications[0];
+                publication.session_id = relay;
+                publication.user_id = relay_user;
+            }
+            "missing_input" => flows[4].input_flow_id = Some(Uuid::new_v4()),
+            "other_publication" => {
+                let mut foreign = leg(source, branch, None, true);
+                foreign.publication_id = other_publication;
+                flows[4].input_flow_id = Some(foreign.id);
+                flows.push(foreign);
+            }
+            "wrong_sender" => flows[4].input_flow_id = Some(first.id),
+            "false_origin" => flows[4].input_flow_id = None,
+            "selected_borrows_shadow" => {
+                flows[2].id = Uuid::new_v4();
+                flows[2].input_flow_id = Some(root.id);
+            }
+            "two_shadow_roots" => {
+                flows[4].sender = source;
+                flows[4].input_flow_id = None;
+            }
+            "shadow_cycle" => {
+                flows[3].sender = viewer;
+                flows[3].input_flow_id = Some(child.id);
+            }
+            "selected_cycle" => {
+                for flow in &mut flows[..3] {
+                    flow.id = Uuid::new_v4();
+                }
+                flows[0].sender = branch;
+                flows[0].input_flow_id = Some(flows[1].id);
+                flows[1].input_flow_id = Some(flows[0].id);
+                flows[2].input_flow_id = Some(flows[1].id);
+            }
+            "shadow_uses_own_old_branch" => {
+                flows[3].sender = viewer;
+                flows[3].input_flow_id = Some(third.id);
+            }
+            "source_receives_itself" => flows.push(leg(relay, source, Some(first.id), true)),
+            "live_publication" => {
+                for flow in flows {
+                    flow.publication_id = other_publication;
+                }
+            }
+            "live_sender" => {
+                flows[1].sender = source;
+                flows[1].input_flow_id = None;
+            }
+            "live_receiver" => {
+                flows[1].receiver = viewer;
+                flows[2].sender = viewer;
+                flows[2].receiver = branch;
+            }
+            "live_input" | "fresh_lineage" => {
+                flows[1].id = Uuid::new_v4();
+                flows[2].input_flow_id = Some(flows[1].id);
+                if case == "fresh_lineage" {
+                    flows[2].id = Uuid::new_v4();
+                }
+            }
+            "shadow" | "promotion" => {}
+            _ => unreachable!(),
+        }
+        let effects = review_host_turn(&mut core, connections[0], room_id, prepared);
+        if !matches!(case, "shadow" | "promotion" | "fresh_lineage") {
+            assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")), "accepted invalid lineage: {case}");
+            assert_eq!(
+                serde_json::to_value(state(&mut core, connections[2]).pairs).unwrap(),
+                original,
+                "invalid {case} changed admitted transports"
+            );
+            continue;
+        }
+        assert!(
+            !effects
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, Event::Error { .. })),
+            "rejected valid lineage: {case}"
+        );
+        let before = state(&mut core, connections[2]);
+        let carriers: BTreeMap<_, _> = before
+            .pairs
+            .iter()
+            .flat_map(|pair| {
+                pair.incoming
+                    .iter()
+                    .chain(&pair.outgoing)
+                    .filter(|flow| flow.id == root.id || flow.id == child.id)
+                    .map(|flow| (flow.id, pair.id))
+            })
+            .collect();
+        assert_eq!(
+            carriers.len(),
+            2,
+            "the complete shadow branch must be admitted"
+        );
+        if case == "promotion" {
+            let mut committed = output(
+                &mut core,
+                connections[0],
+                &mut host,
+                Command::Browse {
+                    room_id: room_id.into(),
+                    active: false,
+                },
+            );
+            committed.projection.flows = vec![root, child];
+            for flow in &mut committed.projection.flows {
+                flow.selected = true;
+            }
+            let effects = review_host_turn(&mut core, connections[0], room_id, committed);
+            assert!(!effects
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, Event::Error { .. })));
+            let after = state(&mut core, connections[2]);
+            let promoted: BTreeMap<_, _> = after
+                .pairs
+                .iter()
+                .flat_map(|pair| {
+                    pair.incoming.iter().chain(&pair.outgoing).map(|flow| {
+                        assert!(flow.selected);
+                        (flow.id, pair.id)
+                    })
+                })
+                .collect();
+            assert_eq!(
+                promoted, carriers,
+                "commit must retain both proven physical carriers"
+            );
+        }
+    }
+}

@@ -320,11 +320,12 @@ Source replacement keeps its publication and changes its source generation;
 callbacks, input grants and reservations retain their original ownership.
 
 The room runtime gives each publication's directed media work its own live
-identity. It stays stable while the edge remains needed, including non-viewing
-transit. Removing and recreating that work creates a new identity even on the
-same physical connection. Transport aggregation, media resources, proof and
-cleanup retain that identity; a retired callback cannot act on its successor.
-The topology selects edges, while these identities record their actual lifetimes.
+identity and exact input. Both stay stable while the work remains needed,
+including non-viewing transit. Replacing its input creates new downstream work
+even on the same physical connection. A prepared branch keeps those identities
+when selected, so its senders and players can adopt the already-proven media.
+Transport aggregation, proof and cleanup retain the same ownership; a retired
+callback cannot act on its successor.
 
 A channel has no fixed media allowance divided among rooms. The participant
 runtime counts its actual connections, forwarded copies, encoders/decoders and
@@ -447,19 +448,21 @@ all three neighbors of an internal base node. The small fanout policy for new
 branches is a topology choice, not a measurement of device media capacity.
 Failed picture preparation uses the same availability candidates without
 retiring the shared base connection. Necessary transit survives local unwatch.
-The implemented convergence step prepares one source-to-leaf alternative per
-publication. The leaf must have decoded its current picture. Its candidate uses
-the existing same-window quality comparison and a prewarmed player frame; only
-then does the room select it and retire the old media lease. Source sound,
-volume, pause and container fullscreen follow the same player handover. Native
-element fullscreen defers that handover. Preparation and switching share one
-finite operation; failure keeps the incumbent. Each admitted session gets one
-direct attempt for that publication, independent of view toggles. Native RTP
-forwardability is distinct from Browser decode and presentation proof.
+Convergence prepares one alternative branch per publication, including its
+downstream transit. Every affected viewer must have decoded its current picture;
+its candidate must pass the shared quality comparison and supply a prewarmed
+player frame. Pure transit proves forwarding instead of pretending to display.
+Only then does the room select the prepared branch and retire its old leases.
+Source sound, volume, pause and container fullscreen follow the same player
+handover; native element fullscreen defers it. Preparation and switching share
+one finite operation. The first viewer's approval bounds the remaining wait to
+the existing quality-evidence lifetime. Failure or changed viewing demand cancels
+that candidate while preserving the required old paths. Each admitted session
+gets one direct attempt for that publication, independent of view toggles.
 Server-owned default rooms have no Native endpoint and retain standalone screen
 plans; an administrator's page cannot substitute for that endpoint. They do not
-advertise peer file delivery. Participant resource admission and transitions
-that replace an internal relay remain to be integrated.
+advertise peer file delivery. Participant resource admission and App/Server
+hosting integration remain.
 
 Before implementing the next slice, map its user-visible behavior, authority,
 state transitions, resource lifetime and recovery. Existing code is evidence of
@@ -477,8 +480,8 @@ capture. Its caller owns hosting lifetime; a command-line development host does
 not grant background hosting to an idle App. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The next slice completes participant resource admission and bounded route
-transitions before connecting App/Server hosting to those owners.
+The next slice completes participant resource admission before connecting
+App/Server hosting to those owners.
 Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Use one Rust
 core with thin App/Server and Browser adapters. Evaluate
