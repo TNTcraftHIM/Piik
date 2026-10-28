@@ -217,8 +217,10 @@ UI preferences belong to the client; the Browser also keeps its user credential
 locally. Participant reading windows and drafts stay in memory, as do the design
 board's sample data and edits. Hosting a room is separate: its saved policy and
 history survive reopening, while captures and voice do not restart automatically.
-Changing rooms keeps hosted rooms running. Closing the owning page ends hosting;
-unexpected connection loss uses the recovery window. Server does not take over.
+Changing rooms keeps hosted rooms running. Browser-hosted rooms end with their
+page; App-hosted rooms end with their App. Personal voice and shares end with
+their owning page. Unexpected connection loss uses the recovery window.
+Server does not take over.
 
 Native App hosting follows the
 [room-data model](../../docs/research/channel-storage-and-identity.md).
@@ -227,8 +229,8 @@ one database per room, with confirmations emitted after commit. It owns no
 network endpoint or hosting-session lifetime. The separate Native participant
 owns those resources and operates one or more rooms through that adapter.
 The Server embeds this participant; its separate executable remains an explicit
-development host. Explicit App linkage delegates local room execution without
-giving a standby App an unattended hosting lifetime. Normal Server shutdown first ends Native
+development host. Explicit App linkage starts a separate Native hosting endpoint
+for the same user. Normal Server shutdown first ends Native
 hosting and releases its room locks, then closes the HTTP service. A Native
 hosting failure also stops that service.
 A new service URL can use the same database, but a
@@ -280,8 +282,8 @@ node prototype/channel-server/run-browser-check.mjs --base
 
 The [Native participant checks](../channel-native/README.md#checks) add
 `--native` for concurrent Browser-to-Native picture, voice and file forwarding,
-room storage and restart. `--app` exercises local room execution through the
-Browser's existing participation, including App loss and saved-room restoration.
+room storage and restart. `--app` exercises independent App hosting and Browser
+participation, including page closure, App loss and saved-room restoration.
 
 Browser checks require `agent-browser` and its installed Chromium. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite

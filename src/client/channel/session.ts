@@ -139,6 +139,9 @@ export class ChannelSession {
       if (invite) inviteURL.hash = new URLSearchParams({ invite }).toString();
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
       this.applyState(event.state);
+      if (this.appLink.has("app")) void this.connectApp().catch(error => {
+        if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "app_disconnected" });
+      });
       void this.restoreHosts(event.sessionId).catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
@@ -390,20 +393,24 @@ export class ChannelSession {
     this.hostCleanup = Promise.all([this.hostCleanup, ...hosts.map(value => value.host.close())]).then(() => {});
   }
 
-  private async roomStorage(channelId: string, userId: string) {
-    const port = this.appLink.get("app");
-    if (port !== null) {
-      if (!this.appRooms) {
-        const app = new AppRooms(port, this.appLink.get("appToken") ?? "", channelId, userId, () => {
+  private async connectApp(): Promise<AppRooms> {
+    const state = this.view.state, self = this.view.self;
+    if (!state || !self || !this.credential || this.closed) throw new Error("disconnected");
+    if (!this.appRooms) {
+      const app = new AppRooms(this.appLink.get("app") ?? "", this.appLink.get("appToken") ?? "",
+        state.channel.id, self.id, this.credential, self.name, error => {
           if (this.appRooms !== app) return;
-          for (const [roomId, hosted] of this.hostedRooms) if (hosted.bindingId) this.write({ type: "host_stop", roomId, bindingId: hosted.bindingId });
-          this.releaseHosts();
-          this.patch({ error: "app_disconnected" });
+          this.appRooms = undefined;
+          this.patch({ error: error.message });
         });
-        this.appRooms = app;
-      }
-      return this.appRooms;
+      this.appRooms = app;
     }
+    const app = this.appRooms;
+    await app.ready;
+    return app;
+  }
+
+  private async browserStorage(channelId: string, userId: string) {
     const runtime = await loadRoomHosting(), database = roomDatabaseName(channelId, userId);
     return {
       storedPolicies: () => runtime.BrowserRoomHost.storedPolicies(database),
@@ -412,12 +419,12 @@ export class ChannelSession {
   }
 
   private async restoreHosts(sessionId: string): Promise<void> {
-    if (!this.appLink.has("app") && typeof indexedDB === "undefined") return;
+    if (typeof indexedDB === "undefined") return;
     await this.hostCleanup;
     if (this.view.sessionId !== sessionId || this.closed) return;
     const state = this.view.state, self = this.view.self;
     if (!state || !self) return;
-    const storage = await this.roomStorage(state.channel.id, self.id);
+    const storage = await this.browserStorage(state.channel.id, self.id);
     const policies = await storage.storedPolicies();
     if (this.view.sessionId !== sessionId || this.closed) return;
     for (const policy of policies) {
@@ -519,7 +526,14 @@ export class ChannelSession {
     if (!state || !self || !sessionId) throw new Error("disconnected");
     const runtime = await loadRoomHosting(), roomId = crypto.randomUUID();
     const policy = await runtime.createRoomPolicy({ ...settings, id: roomId, creatorId: self.id });
-    const storage = await this.roomStorage(state.channel.id, self.id);
+    if (this.appLink.has("app")) {
+      const app = await this.connectApp();
+      const room = await app.open(policy);
+      if (this.view.sessionId !== sessionId || this.closed) throw new Error("disconnected");
+      await this.request({ type: "browse", roomId: room.id, active: true });
+      return room.id;
+    }
+    const storage = await this.browserStorage(state.channel.id, self.id);
     const host = await storage.open(policy);
     if (this.view.sessionId !== sessionId || this.closed) { await host.close(); throw new Error("disconnected"); }
     this.hostedRooms.set(roomId, { host });

@@ -11,6 +11,7 @@ use piik_channel_core::{
     history::HistoryResult,
 };
 use piik_channel_core::{
+    host::RoomSummary,
     wire::{Command, Event, RoomAccess, Snapshot},
     RoomState, RECOVERY_MS,
 };
@@ -23,7 +24,7 @@ use std::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{mpsc, watch},
+    sync::{mpsc, oneshot, watch},
     time::{self, Instant},
 };
 use tokio_tungstenite::{
@@ -215,13 +216,35 @@ struct Session {
     live: Option<Live>,
     recovery: Option<Instant>,
     signer: Arc<SessionSigner>,
+    hosting: Option<Hosting>,
+    opening: BTreeMap<String, Vec<oneshot::Sender<Result<RoomSummary, String>>>>,
 }
 
-/// A Server process may own this future; an App must end it with the front-end
-/// session that explicitly requested hosting.
+pub(crate) struct OpenRoom {
+    pub policy: RoomState,
+    pub result: oneshot::Sender<Result<RoomSummary, String>>,
+}
+
+pub(crate) struct Hosting {
+    pub directory: PathBuf,
+    pub identity: (Uuid, Uuid),
+    pub commands: mpsc::Receiver<OpenRoom>,
+    pub ready: watch::Sender<Option<Result<(), String>>>,
+}
+
+/// The calling App or Server owns this hosting future independently of its pages.
 pub async fn run(
     config: Config,
     files: Vec<RoomFile>,
+    stop: impl Future<Output = ()> + Send,
+) -> Result<()> {
+    run_host(config, files, None, stop).await
+}
+
+pub(crate) async fn run_host(
+    config: Config,
+    files: Vec<RoomFile>,
+    hosting: Option<Hosting>,
     stop: impl Future<Output = ()> + Send,
 ) -> Result<()> {
     let mut session = Session {
@@ -230,10 +253,27 @@ pub async fn run(
         live: None,
         recovery: None,
         signer: Arc::new(new_signer()?),
+        hosting,
+        opening: BTreeMap::new(),
     };
     let mut stop = std::pin::pin!(stop);
     let result = session.drive(&mut stop).await;
     let closed = session.release().await;
+    let error = result
+        .as_ref()
+        .err()
+        .map(ToString::to_string)
+        .unwrap_or_else(|| "hosting_stopped".into());
+    if let Some(hosting) = &session.hosting {
+        if hosting.ready.borrow().is_none() {
+            hosting.ready.send_replace(Some(Err(error.clone())));
+        }
+    }
+    for replies in session.opening.into_values() {
+        for reply in replies {
+            let _ = reply.send(Err(error.clone()));
+        }
+    }
     result.and(closed)
 }
 
@@ -324,6 +364,10 @@ impl Session {
                         return Ok(true);
                     }
                     tokio::select! {
+                        request = next_host_command(&mut self.hosting), if admitted => {
+                            let request = request.ok_or_else(|| anyhow!("hosting_control_closed"))?;
+                            self.open_room(request, socket).await?;
+                        },
                         command = next_command(&mut self.live), if admitted => {
                             let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
                             if let Some(live) = &mut self.live {
@@ -388,6 +432,42 @@ impl Session {
                 state,
                 ..
             } => {
+                let user = state
+                    .sessions
+                    .iter()
+                    .find(|session| session.id == session_id)
+                    .ok_or_else(|| anyhow!("welcome omitted current session"))?
+                    .user_id;
+                if let Some(hosting) = &self.hosting {
+                    if hosting.identity != (state.channel.id, user) {
+                        bail!("owner_mismatch");
+                    }
+                    // No local room is opened until the actual domain admission agrees.
+                    std::fs::create_dir_all(&hosting.directory)?;
+                    if self.files.is_empty() {
+                        let mut paths = std::fs::read_dir(&hosting.directory)?
+                            .map(|entry| entry.map(|entry| entry.path()))
+                            .collect::<std::io::Result<Vec<_>>>()?;
+                        paths.sort();
+                        for path in paths {
+                            if path.extension().and_then(|value| value.to_str()) != Some("sqlite") {
+                                continue;
+                            }
+                            let Some(id) = path
+                                .file_stem()
+                                .and_then(|value| value.to_str())
+                                .and_then(|value| Uuid::parse_str(value).ok())
+                            else {
+                                continue;
+                            };
+                            self.files.push(RoomFile {
+                                path,
+                                id: id.to_string(),
+                                name: String::new(),
+                            });
+                        }
+                    }
+                }
                 self.config.credential = Some(credential);
                 let resumed = self
                     .live
@@ -395,17 +475,14 @@ impl Session {
                     .is_some_and(|live| live.session == session_id);
                 if !resumed {
                     self.release().await?;
-                    let user = state
-                        .sessions
-                        .iter()
-                        .find(|session| session.id == session_id)
-                        .ok_or_else(|| anyhow!("welcome omitted current session"))?
-                        .user_id;
                     let mut rooms = BTreeMap::new();
                     for file in &self.files {
                         let host = match std::fs::metadata(&file.path) {
                             Ok(_) => HostedRoom::open(&file.path, &file.id, user),
-                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                            Err(error)
+                                if error.kind() == std::io::ErrorKind::NotFound
+                                    && self.hosting.is_none() =>
+                            {
                                 let policy = RoomState::new(
                                     file.id.clone(),
                                     file.name.clone(),
@@ -468,6 +545,7 @@ impl Session {
                     )
                     .await?;
                 }
+                self.hosting_ready();
                 eprintln!(
                     "Native session admitted ({})",
                     if resumed { "resumed" } else { "new" }
@@ -484,8 +562,14 @@ impl Session {
                     .and_then(|live| live.room.rooms.get_mut(&room_id))
                 {
                     hosted.bind(binding_id)?;
+                    if let Some(replies) = self.opening.remove(&room_id) {
+                        for reply in replies {
+                            let _ = reply.send(Ok(hosted.summary()));
+                        }
+                    }
                     eprintln!("Native room bound: {room_id}");
                 }
+                self.hosting_ready();
             }
             Event::HostInput { room_id, input } => {
                 if let Some(live) = &mut self.live {
@@ -522,11 +606,101 @@ impl Session {
                         .as_ref()
                         .is_some_and(|live| live.room.rooms.contains_key(id))
                 }) {
-                    bail!("room registration failed: {code}");
+                    if self.hosting.is_none() {
+                        bail!("room registration failed: {code}");
+                    }
+                    let id = request_id.as_ref().unwrap();
+                    self.live.as_mut().unwrap().room.rooms.remove(id);
+                    self.files.retain(|file| &file.id != id);
+                    if let Some(replies) = self.opening.remove(id) {
+                        for reply in replies {
+                            let _ = reply.send(Err(code.clone()));
+                        }
+                    }
+                    self.hosting_ready();
+                    return Ok(());
                 }
                 eprintln!("Channel error: {code}");
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    fn hosting_ready(&self) {
+        if let Some(hosting) = &self.hosting {
+            if hosting.ready.borrow().is_none()
+                && self.live.as_ref().is_some_and(|live| {
+                    live.room
+                        .rooms
+                        .values()
+                        .all(|host| host.binding().is_some())
+                })
+            {
+                hosting.ready.send_replace(Some(Ok(())));
+            }
+        }
+    }
+
+    async fn open_room(&mut self, request: OpenRoom, socket: &mut Socket) -> Result<()> {
+        let id = request.policy.id.clone();
+        let installed = (|| -> Result<RoomSummary> {
+            let hosting = self
+                .hosting
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_control_closed"))?;
+            if request.policy.creator_id != hosting.identity.1 {
+                bail!("owner_mismatch");
+            }
+            if Uuid::parse_str(&id)?.to_string() != id {
+                bail!("invalid_room_id");
+            }
+            let live = self
+                .live
+                .as_mut()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            if !live.room.rooms.contains_key(&id) {
+                let path = hosting.directory.join(format!("{id}.sqlite"));
+                let host = if path.try_exists()? {
+                    HostedRoom::open(&path, &id, hosting.identity.1)?
+                } else {
+                    HostedRoom::create(&path, request.policy)?
+                };
+                self.files.push(RoomFile {
+                    path,
+                    id: id.clone(),
+                    name: host.summary().name,
+                });
+                live.room.rooms.insert(id.clone(), host);
+            }
+            Ok(live.room.rooms[&id].summary())
+        })();
+        let summary = match installed {
+            Ok(summary) => summary,
+            Err(error) => {
+                let _ = request.result.send(Err(error.to_string()));
+                return Ok(());
+            }
+        };
+        if self.live.as_ref().unwrap().room.rooms[&id]
+            .binding()
+            .is_some()
+        {
+            let _ = request.result.send(Ok(summary));
+            return Ok(());
+        }
+        let replies = self.opening.entry(id.clone()).or_default();
+        replies.push(request.result);
+        if replies.len() == 1 {
+            write(
+                socket,
+                &Command::HostRegister {
+                    room: summary,
+                    resume_binding: None,
+                },
+                Some(&id),
+            )
+            .await?;
         }
         Ok(())
     }
@@ -555,6 +729,13 @@ impl Session {
             .await?;
         }
         Ok(())
+    }
+}
+
+async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<OpenRoom> {
+    match hosting {
+        Some(hosting) => hosting.commands.recv().await,
+        None => std::future::pending().await,
     }
 }
 

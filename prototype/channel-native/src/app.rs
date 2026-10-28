@@ -1,21 +1,15 @@
-//! Local room execution delegated by one startup-authorized Browser owner.
-use crate::hosted_room::HostedRoom;
+//! A local management connection starts the App's shared native room host.
+use crate::session::{self, Hosting, OpenRoom};
 use anyhow::{anyhow, bail, Result};
 use futures_util::{SinkExt, StreamExt};
-use piik_channel_core::{conversation::SignedPacket, host::HostInput, RoomState, StoredRoomHost};
+use piik_channel_core::RoomState;
 use serde::Deserialize;
 use serde_json::{json, Value};
-use std::{
-    collections::BTreeMap,
-    future::Future,
-    path::PathBuf,
-    sync::Arc,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{future::Future, path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     net::{TcpListener, TcpStream},
-    sync::watch,
-    task::JoinSet,
+    sync::{mpsc, oneshot, watch, Mutex},
+    task::{JoinHandle, JoinSet},
     time::timeout,
 };
 use tokio_tungstenite::{
@@ -40,13 +34,99 @@ pub struct Config {
     pub token: String,
 }
 
+struct Host {
+    credential: String,
+    commands: mpsc::Sender<OpenRoom>,
+    ready: watch::Receiver<Option<Result<(), String>>>,
+    stop: watch::Sender<bool>,
+    task: JoinHandle<Result<()>>,
+}
+struct App {
+    config: Config,
+    host: Mutex<Option<Host>>,
+}
+impl App {
+    async fn hello(
+        &self,
+        channel: Uuid,
+        user: Uuid,
+        credential: String,
+        name: String,
+    ) -> Result<mpsc::Sender<OpenRoom>> {
+        if (channel, user) != (self.config.channel_id, self.config.user_id) {
+            bail!("owner_mismatch");
+        }
+        let mut hosting = self.host.lock().await;
+        if hosting.as_ref().is_some_and(|host| host.task.is_finished()) {
+            let _ = hosting.take().unwrap().task.await;
+        }
+        if let Some(host) = hosting.as_ref() {
+            if host.credential != credential {
+                bail!("owner_mismatch");
+            }
+        } else {
+            let (commands, receiver) = mpsc::channel(64);
+            let (ready, admitted) = watch::channel(None);
+            let (stop, mut stopped) = watch::channel(false);
+            let config = session::Config {
+                url: format!(
+                    "{}/prototype/channel",
+                    self.config.allowed_origin.replacen("http", "ws", 1)
+                ),
+                origin: self.config.allowed_origin.clone(),
+                name,
+                credential: Some(credential.clone()),
+                key: None,
+            };
+            let management = Hosting {
+                directory: self.config.data_root.clone(),
+                identity: (channel, user),
+                commands: receiver,
+                ready,
+            };
+            let task = tokio::spawn(session::run_host(
+                config,
+                vec![],
+                Some(management),
+                async move {
+                    let _ = stopped.changed().await;
+                },
+            ));
+            *hosting = Some(Host {
+                credential,
+                commands,
+                ready: admitted,
+                stop,
+                task,
+            });
+        }
+        let host = hosting.as_ref().unwrap();
+        let commands = host.commands.clone();
+        let mut ready = host.ready.clone();
+        drop(hosting);
+        timeout(IO_TIMEOUT, async {
+            loop {
+                let result = ready.borrow().clone();
+                if let Some(result) = result {
+                    return result.map_err(anyhow::Error::msg);
+                }
+                ready
+                    .changed()
+                    .await
+                    .map_err(|_| anyhow!("hosting_unavailable"))?;
+            }
+        })
+        .await??;
+        Ok(commands)
+    }
+}
+
 #[derive(Deserialize)]
 struct Request {
     id: String,
     #[serde(flatten)]
     operation: Operation,
 }
-
 #[derive(Deserialize)]
 #[serde(
     tag = "type",
@@ -55,19 +135,18 @@ struct Request {
     deny_unknown_fields
 )]
 enum Operation {
-    Hello { channel_id: Uuid, user_id: Uuid },
-    Policies,
-    Open { policy: String },
-    Summary { room_id: Uuid },
-    Readers { room_id: Uuid },
-    Bind { room_id: Uuid, binding_id: Uuid },
-    Dispatch { room_id: Uuid, input: HostInput },
-    Peer { room_id: Uuid, packet: SignedPacket },
-    CloseRoom { room_id: Uuid },
+    Hello {
+        channel_id: Uuid,
+        user_id: Uuid,
+        credential: String,
+        name: String,
+    },
+    Open {
+        policy: String,
+    },
 }
 
-/// The supplied listener is loopback-only; stopping waits for connection-owned
-/// room runtimes and their file locks to be released.
+/// Page sockets manage one shared host; only stopping this service retires it.
 pub async fn serve(
     listener: TcpListener,
     config: Config,
@@ -90,7 +169,6 @@ pub async fn serve(
     {
         bail!("App origin must be an exact HTTP or HTTPS origin");
     }
-    // The token is supplied locally, never minted from Browser request data.
     if config.token.is_empty()
         || !config
             .token
@@ -99,8 +177,10 @@ pub async fn serve(
     {
         bail!("App instance token must contain only letters, digits, '-' or '_'");
     }
-    std::fs::create_dir_all(&config.data_root)?;
-    let config = Arc::new(config);
+    let app = Arc::new(App {
+        config,
+        host: Mutex::new(None),
+    });
     let (closing, _) = watch::channel(false);
     let mut connections = JoinSet::new();
     tokio::pin!(stop);
@@ -109,12 +189,12 @@ pub async fn serve(
             _ = &mut stop => break Ok(()),
             accepted = listener.accept() => match accepted {
                 Ok((stream, _)) => {
-                    let config = config.clone();
+                    let app = app.clone();
                     let mut closed = closing.subscribe();
                     connections.spawn(async move {
                         tokio::select! {
                             _ = closed.changed() => {},
-                            _ = connection(stream, &config) => {},
+                            _ = connection(stream, &app) => {},
                         }
                     });
                 }
@@ -125,11 +205,19 @@ pub async fn serve(
     };
     closing.send_replace(true);
     while connections.join_next().await.is_some() {}
+    if let Some(host) = app.host.lock().await.take() {
+        let admitted = matches!(*host.ready.borrow(), Some(Ok(())));
+        host.stop.send_replace(true);
+        let closed = host.task.await?;
+        if admitted {
+            closed?;
+        }
+    }
     result
 }
 
-async fn connection(stream: TcpStream, config: &Config) -> Result<()> {
-    let protocol = format!("piik-channel-rooms.{}", config.token);
+async fn connection(stream: TcpStream, app: &App) -> Result<()> {
+    let protocol = format!("piik-channel-rooms.{}", app.config.token);
     let upgrade = |request: &Upgrade, mut response: Response| {
         let admitted = request.uri().path() == "/rooms"
             && request.uri().query().is_none()
@@ -137,7 +225,7 @@ async fn connection(stream: TcpStream, config: &Config) -> Result<()> {
                 .headers()
                 .get("origin")
                 .and_then(|value| value.to_str().ok())
-                == Some(config.allowed_origin.as_str())
+                == Some(app.config.allowed_origin.as_str())
             && request
                 .headers()
                 .get("sec-websocket-protocol")
@@ -163,10 +251,9 @@ async fn connection(stream: TcpStream, config: &Config) -> Result<()> {
         accept_hdr_async_with_config(stream, upgrade, Some(options)),
     )
     .await??;
-    let mut rooms = BTreeMap::new();
-    let mut admitted = false;
+    let mut host = None;
     loop {
-        let message = if admitted {
+        let message = if host.is_some() {
             socket.next().await
         } else {
             timeout(IO_TIMEOUT, socket.next()).await?
@@ -189,26 +276,34 @@ async fn connection(stream: TcpStream, config: &Config) -> Result<()> {
             .get("id")
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty() && id.len() <= 256);
-        let request = serde_json::from_value::<Request>(value.clone());
-        let response = match (id, request) {
+        let response = match (id, serde_json::from_value::<Request>(value.clone())) {
             (Some(_), Ok(request)) => {
-                let result = if let Operation::Hello {
-                    channel_id,
-                    user_id,
-                } = request.operation
-                {
-                    if admitted {
-                        Err(anyhow!("already_initialized"))
-                    } else if channel_id != config.channel_id || user_id != config.user_id {
-                        Err(anyhow!("owner_mismatch"))
-                    } else {
-                        admitted = true;
-                        Ok(Value::Null)
+                let result: Result<Value> = match request.operation {
+                    Operation::Hello {
+                        channel_id,
+                        user_id,
+                        credential,
+                        name,
+                    } => {
+                        if host.is_some() {
+                            Err(anyhow!("already_initialized"))
+                        } else {
+                            match app.hello(channel_id, user_id, credential, name).await {
+                                Ok(commands) => {
+                                    host = Some(commands);
+                                    Ok(Value::Null)
+                                }
+                                Err(error) => Err(error),
+                            }
+                        }
                     }
-                } else if !admitted {
-                    Err(anyhow!("hello_required"))
-                } else {
-                    execute(config, &mut rooms, request.operation)
+                    Operation::Open { policy } => {
+                        if let Some(commands) = &host {
+                            open(commands, &policy).await
+                        } else {
+                            Err(anyhow!("hello_required"))
+                        }
+                    }
                 };
                 match result {
                     Ok(result) => json!({"id":request.id,"result":result}),
@@ -226,279 +321,17 @@ async fn connection(stream: TcpStream, config: &Config) -> Result<()> {
     Ok(())
 }
 
-fn execute(
-    config: &Config,
-    rooms: &mut BTreeMap<Uuid, HostedRoom>,
-    operation: Operation,
-) -> Result<Value> {
-    match operation {
-        Operation::Policies => {
-            let mut paths = std::fs::read_dir(&config.data_root)?
-                .map(|entry| entry.map(|entry| entry.path()))
-                .collect::<std::io::Result<Vec<_>>>()?;
-            paths.sort();
-            let mut policies = Vec::new();
-            for path in paths {
-                if path.extension().and_then(|extension| extension.to_str()) != Some("sqlite") {
-                    continue;
-                }
-                let Some(id) = path
-                    .file_stem()
-                    .and_then(|stem| stem.to_str())
-                    .and_then(|stem| Uuid::parse_str(stem).ok())
-                else {
-                    continue;
-                };
-                let host =
-                    StoredRoomHost::open(&path).map_err(|error| anyhow!(error.to_string()))?;
-                check_policy(config, host.policy())?;
-                if host.policy().id != id.to_string() {
-                    bail!("room_identity_mismatch");
-                }
-                policies.push(serde_json::to_string(host.policy())?);
-            }
-            Ok(serde_json::to_value(policies)?)
-        }
-        Operation::Open { policy } => {
-            let policy: RoomState = serde_json::from_str(&policy)?;
-            let id = check_policy(config, &policy)?;
-            if !rooms.contains_key(&id) {
-                let path = config.data_root.join(format!("{id}.sqlite"));
-                let host = if path.try_exists()? {
-                    HostedRoom::open(&path, &policy.id, config.user_id)?
-                } else {
-                    HostedRoom::create(&path, policy)?
-                };
-                rooms.insert(id, host);
-            }
-            Ok(json!(id))
-        }
-        Operation::Summary { room_id } => {
-            Ok(serde_json::to_value(room(rooms, room_id)?.summary())?)
-        }
-        Operation::Readers { room_id } => Ok(json!(room(rooms, room_id)?.current_readers())),
-        Operation::Bind {
-            room_id,
-            binding_id,
-        } => {
-            room(rooms, room_id)?.bind(binding_id)?;
-            Ok(Value::Null)
-        }
-        Operation::Dispatch { room_id, input } => Ok(serde_json::to_value(
-            room(rooms, room_id)?
-                .dispatch(input)
-                .map_err(anyhow::Error::msg)?,
-        )?),
-        Operation::Peer { room_id, packet } => {
-            let now = SystemTime::now()
-                .duration_since(UNIX_EPOCH)?
-                .as_millis()
-                .try_into()?;
-            Ok(serde_json::to_value(
-                room(rooms, room_id)?
-                    .dispatch_peer(&packet, now)
-                    .map_err(anyhow::Error::msg)?
-                    .replies()
-                    .map_err(anyhow::Error::msg)?,
-            )?)
-        }
-        Operation::CloseRoom { room_id } => {
-            rooms.remove(&room_id);
-            Ok(Value::Null)
-        }
-        Operation::Hello { .. } => unreachable!(),
-    }
-}
-
-fn check_policy(config: &Config, policy: &RoomState) -> Result<Uuid> {
-    if policy.creator_id != config.user_id {
-        bail!("owner_mismatch");
-    }
-    let id = Uuid::parse_str(&policy.id)?;
-    if id.to_string() != policy.id {
-        bail!("invalid_room_id");
-    }
-    Ok(id)
-}
-
-fn room(rooms: &mut BTreeMap<Uuid, HostedRoom>, id: Uuid) -> Result<&mut HostedRoom> {
-    rooms.get_mut(&id).ok_or_else(|| anyhow!("room_not_open"))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use piik_channel_core::wire::RoomAccess;
-    use tokio::sync::oneshot;
-    use tokio_tungstenite::{
-        connect_async, tungstenite::client::IntoClientRequest, MaybeTlsStream, WebSocketStream,
-    };
-
-    type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
-
-    async fn request(socket: &mut Socket, mut value: Value) -> Value {
-        value["id"] = json!("request");
-        socket
-            .send(Message::Text(value.to_string().into()))
-            .await
-            .unwrap();
-        let text = timeout(IO_TIMEOUT, socket.next())
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap()
-            .into_text()
-            .unwrap();
-        serde_json::from_str(&text).unwrap()
-    }
-
-    #[tokio::test]
-    async fn authorized_socket_owns_saved_room_until_close_or_service_stop() {
-        let root = std::env::temp_dir().join(format!("piik-app-{}", Uuid::new_v4()));
-        let channel = Uuid::new_v4();
-        let user = Uuid::new_v4();
-        let id = Uuid::new_v4();
-        let binding = Uuid::new_v4();
-        let config = Config {
-            allowed_origin: "https://site.example".into(),
-            data_root: root.clone(),
-            channel_id: channel,
-            user_id: user,
-            token: "test-instance".into(),
-        };
-        let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))
-            .await
-            .unwrap();
-        let address = listener.local_addr().unwrap();
-        let (stop, stopped) = oneshot::channel();
-        let service = tokio::spawn(serve(listener, config, async {
-            let _ = stopped.await;
-        }));
-        let upgrade = |origin: &str| {
-            let mut request = format!("ws://{address}/rooms")
-                .into_client_request()
-                .unwrap();
-            request
-                .headers_mut()
-                .insert("origin", origin.parse().unwrap());
-            request.headers_mut().insert(
-                "sec-websocket-protocol",
-                "piik-channel-rooms.test-instance".parse().unwrap(),
-            );
-            request
-        };
-        assert!(connect_async(upgrade("https://other.example"))
-            .await
-            .is_err());
-        let (mut socket, _) = connect_async(upgrade("https://site.example"))
-            .await
-            .unwrap();
-        let wrong = request(
-            &mut socket,
-            json!({"type":"hello","channelId":channel,"userId":Uuid::new_v4()}),
-        )
-        .await;
-        assert_eq!(wrong["error"], "owner_mismatch");
-        assert_eq!(
-            request(&mut socket, json!({"type":"policies"})).await["error"],
-            "hello_required"
-        );
-        assert!(request(
-            &mut socket,
-            json!({"type":"hello","channelId":channel,"userId":user})
-        )
+async fn open(commands: &mpsc::Sender<OpenRoom>, policy: &str) -> Result<Value> {
+    let policy: RoomState = serde_json::from_str(policy)?;
+    let (result, opened) = oneshot::channel();
+    commands
+        .send(OpenRoom { policy, result })
         .await
-        .get("result")
-        .is_some());
-        let policy = RoomState::new(
-            id.to_string(),
-            "Saved".into(),
-            user,
-            RoomAccess::Private,
-            true,
-            None,
-        )
-        .unwrap();
-        let policy = serde_json::to_string(&policy).unwrap();
-        assert_eq!(
-            request(&mut socket, json!({"type":"open","policy":policy})).await["result"],
-            id.to_string()
-        );
-        let path = root.join(format!("{id}.sqlite"));
-        assert!(
-            HostedRoom::open(&path, &id.to_string(), user).is_err(),
-            "live socket holds actual file lock"
-        );
-        assert!(request(
-            &mut socket,
-            json!({"type":"bind","roomId":id,"bindingId":binding})
-        )
-        .await
-        .get("result")
-        .is_some());
-        let input = HostInput {
-            now: 1,
-            binding_id: binding,
-            host_session_id: Uuid::new_v4(),
-            revision: 1,
-            endpoints: BTreeMap::new(),
-            action: piik_channel_core::host::HostAction::Sync,
-        };
-        assert_eq!(
-            request(
-                &mut socket,
-                json!({"type":"dispatch","roomId":id,"input":input})
-            )
-            .await["result"]["bindingId"],
-            binding.to_string()
-        );
-        assert!(
-            request(&mut socket, json!({"type":"close_room","roomId":id}))
-                .await
-                .get("result")
-                .is_some()
-        );
-        drop(HostedRoom::open(&path, &id.to_string(), user).unwrap());
-        assert_eq!(
-            request(&mut socket, json!({"type":"policies"})).await["result"]
-                .as_array()
-                .unwrap()
-                .len(),
-            1
-        );
-        request(&mut socket, json!({"type":"open","policy":policy})).await;
-        assert_eq!(
-            request(&mut socket, json!({"type":"summary","roomId":id})).await["result"]["name"],
-            "Saved"
-        );
-        assert_eq!(
-            request(&mut socket, json!({"type":"readers","roomId":id})).await["result"],
-            json!([])
-        );
-        socket.close(None).await.unwrap();
-        // Drain to EOF before another connection opens the same saved room.
-        timeout(IO_TIMEOUT, async { while socket.next().await.is_some() {} })
+        .map_err(|_| anyhow!("hosting_unavailable"))?;
+    Ok(serde_json::to_value(
+        opened
             .await
-            .unwrap();
-        let (mut next, _) = connect_async(upgrade("https://site.example"))
-            .await
-            .unwrap();
-        request(
-            &mut next,
-            json!({"type":"hello","channelId":channel,"userId":user}),
-        )
-        .await;
-        assert_eq!(
-            request(&mut next, json!({"type":"open","policy":policy})).await["result"],
-            id.to_string()
-        );
-        stop.send(()).unwrap();
-        timeout(IO_TIMEOUT, service)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        drop(HostedRoom::open(&path, &id.to_string(), user).unwrap());
-        std::fs::remove_dir_all(root).unwrap();
-    }
+            .map_err(|_| anyhow!("hosting_unavailable"))?
+            .map_err(anyhow::Error::msg)?,
+    )?)
 }

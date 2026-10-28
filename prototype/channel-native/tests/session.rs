@@ -328,3 +328,256 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .unwrap();
     std::fs::remove_dir_all(folder).unwrap();
 }
+
+#[tokio::test]
+async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission() {
+    use piik_channel_core::{conversation::SessionSigner, wire::RoomAccess, RoomState};
+    use piik_channel_native::{app, hosted_room::HostedRoom};
+    use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
+
+    let folder = std::env::temp_dir().join(format!("piik-app-hosting-{}", Uuid::new_v4()));
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let mut authority = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let (channel, user) = authority.identity();
+    let browser = Uuid::new_v4();
+    let admitted = authority.handle(browser, Request::parse(&json!({"type":"join","key":"owner","name":"Owner", "signingKey":SessionSigner::from_seed([1;32]).signing_key()}).to_string()).unwrap(), 100);
+    let (credential, browser_session) = admitted
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome {
+                credential,
+                session_id,
+                ..
+            } => Some((credential, session_id)),
+            _ => None,
+        })
+        .unwrap();
+    let guest = authority.handle(Uuid::new_v4(), Request::parse(&json!({"type":"join","key":"invite","name":"Guest", "signingKey":SessionSigner::from_seed([2;32]).signing_key()}).to_string()).unwrap(), 100);
+    let guest_credential = guest
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::Welcome { credential, .. } => Some(credential),
+            _ => None,
+        })
+        .unwrap();
+    let config = || app::Config {
+        allowed_origin: origin.clone(),
+        data_root: folder.clone(),
+        channel_id: channel,
+        user_id: user,
+        token: "test-instance".into(),
+    };
+    let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = app_listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel();
+    let service = tokio::spawn(app::serve(app_listener, config(), async {
+        let _ = stopped.await;
+    }));
+    let upgrade = |address| {
+        let mut request = format!("ws://{address}/rooms")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert("Origin", origin.parse().unwrap());
+        request.headers_mut().insert(
+            "sec-websocket-protocol",
+            "piik-channel-rooms.test-instance".parse().unwrap(),
+        );
+        request
+    };
+    let (mut page, _) = connect_async(upgrade(address)).await.unwrap();
+    let hello = |credential: &str| json!({"id":"hello","type":"hello","channelId":channel,"userId":user,"credential":credential,"name":"Owner"});
+    page.send(Message::Text(hello(&guest_credential).to_string().into()))
+        .await
+        .unwrap();
+    let mut domain = Domain::accept(&listener).await;
+    domain.authority = authority;
+    domain
+        .until(|_, event| matches!(event, Event::Ack {request_id} if request_id == "native-leave"))
+        .await;
+    let rejected: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(rejected["error"], "owner_mismatch");
+    assert!(
+        !folder.exists(),
+        "public IDs and another user's credential cannot open the local data root"
+    );
+
+    page.send(Message::Text(hello(&credential).to_string().into()))
+        .await
+        .unwrap();
+    let (stream, _) = listener.accept().await.unwrap();
+    domain.socket = accept_async(stream).await.unwrap();
+    domain.connection = Uuid::new_v4();
+    domain.events.clear();
+    let welcome = domain
+        .until(|_, event| matches!(event, Event::Welcome { .. }))
+        .await;
+    let Event::Welcome {
+        session_id: native, ..
+    } = welcome
+    else {
+        unreachable!()
+    };
+    assert_ne!(native, browser_session);
+    let ready: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert!(ready.get("result").is_some());
+    let room = Uuid::new_v4().to_string();
+    let policy = RoomState::new(
+        room.clone(),
+        "Saved private".into(),
+        user,
+        RoomAccess::Private,
+        true,
+        Some("room-secret".into()),
+    )
+    .unwrap();
+    let policy = serde_json::to_string(&policy).unwrap();
+    let open = json!({"id":"open","type":"open","policy":policy});
+    page.send(Message::Text(open.to_string().into()))
+        .await
+        .unwrap();
+    let binding = domain.bound(&room).await;
+    let opened: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(opened["result"]["name"], "Saved private");
+    assert_eq!(opened["result"]["access"], "private");
+    assert_eq!(opened["result"]["hasPassword"], true);
+    domain.room_turn(&room).await;
+    let mut wrong_policy: Value = serde_json::from_str(&policy).unwrap();
+    wrong_policy["creatorId"] = json!(Uuid::new_v4());
+    page.send(Message::Text(
+        json!({"id":"wrong-owner","type":"open","policy":wrong_policy.to_string()})
+            .to_string()
+            .into(),
+    ))
+    .await
+    .unwrap();
+    let refused: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(refused["error"], "owner_mismatch");
+    for index in 0..31 {
+        domain
+            .command(
+                browser,
+                json!({"type":"host_register","room":{
+                    "id":format!("reserved-{index}"),"name":format!("Reserved {index}"),
+                    "creatorId":user,"access":"public","hidden":false,"hasPassword":false,
+                }}),
+            )
+            .await;
+    }
+    let refused_room = Uuid::new_v4().to_string();
+    let refused_policy = RoomState::new(
+        refused_room.clone(),
+        "Retained refused room".into(),
+        user,
+        RoomAccess::Public,
+        false,
+        None,
+    )
+    .unwrap();
+    page.send(Message::Text(json!({"id":"room-limit","type":"open","policy":serde_json::to_string(&refused_policy).unwrap()}).to_string().into())).await.unwrap();
+    domain.until(|_, event| matches!(event, Event::Error {code,request_id:Some(id)} if code == "room_limit" && id == &refused_room)).await;
+    let refused: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(refused["error"], "room_limit");
+    let refused_path = folder.join(format!("{refused_room}.sqlite"));
+    assert!(
+        refused_path.exists(),
+        "registration refusal preserves already committed data"
+    );
+    drop(HostedRoom::open(&refused_path, &refused_room, user).unwrap());
+    let path = folder.join(format!("{room}.sqlite"));
+    page.close(None).await.unwrap();
+    while page.next().await.is_some() {}
+    assert!(
+        HostedRoom::open(&path, &room, user).is_err(),
+        "the Native host retains the actual SQLite runtime lock after page close"
+    );
+    domain.command(browser, json!({"type":"leave"})).await;
+    domain.room_turn(&room).await;
+    domain.until(|_, event| matches!(event, Event::State {state} if state.channel.rooms.iter().any(|value| value.id == room && value.available))).await;
+
+    // Reopening the control page uses the already admitted host and binding.
+    let (mut page, _) = connect_async(upgrade(address)).await.unwrap();
+    page.send(Message::Text(hello(&credential).to_string().into()))
+        .await
+        .unwrap();
+    let _: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    page.send(Message::Text(open.to_string().into()))
+        .await
+        .unwrap();
+    let reopened: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(reopened["result"], opened["result"]);
+    assert!(HostedRoom::open(&path, &room, user).is_err());
+    stop.send(()).unwrap();
+    domain
+        .until(|_, event| matches!(event, Event::Ack {request_id} if request_id == "native-leave"))
+        .await;
+    tokio::time::timeout(Duration::from_secs(5), service)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    drop(HostedRoom::open(&path, &room, user).unwrap());
+
+    // A new process/session restores the same committed policy without activities.
+    let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = app_listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel();
+    let service = tokio::spawn(app::serve(app_listener, config(), async {
+        let _ = stopped.await;
+    }));
+    let (mut page, _) = connect_async(upgrade(address)).await.unwrap();
+    page.send(Message::Text(hello(&credential).to_string().into()))
+        .await
+        .unwrap();
+    let (stream, _) = listener.accept().await.unwrap();
+    domain.socket = accept_async(stream).await.unwrap();
+    domain.connection = Uuid::new_v4();
+    domain.events.clear();
+    domain.until(|_, event| matches!(event, Event::Error {code,request_id:Some(id)} if code == "room_limit" && id == &refused_room)).await;
+    let next_binding = domain.bound(&room).await;
+    assert_ne!(next_binding, binding);
+    let ready: Value = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            tokio::select! {
+                message = page.next() => break serde_json::from_str(&message.unwrap().unwrap().into_text().unwrap()).unwrap(),
+                _ = domain.step() => {},
+            }
+        }
+    }).await.unwrap();
+    assert!(ready.get("result").is_some());
+    domain.until(|_, event| matches!(event, Event::State {state} if state.channel.rooms.iter().any(|value| value.id == room && value.available) && state.voice.is_empty() && state.publications.is_empty())).await;
+    drop(HostedRoom::open(&refused_path, &refused_room, user).unwrap());
+    assert!(
+        HostedRoom::open(&path, &room, user).is_err(),
+        "a refused restore must not release another room's runtime"
+    );
+    let saved = StoredRoomHost::open(&path).unwrap();
+    assert!(saved.policy().hidden);
+    saved
+        .policy()
+        .clone()
+        .enter(Uuid::new_v4(), false, Some("room-secret"), None)
+        .unwrap();
+    drop(saved);
+    stop.send(()).unwrap();
+    domain
+        .until(|_, event| matches!(event, Event::Ack {request_id} if request_id == "native-leave"))
+        .await;
+    tokio::time::timeout(Duration::from_secs(5), service)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    std::fs::remove_dir_all(folder).unwrap();
+}

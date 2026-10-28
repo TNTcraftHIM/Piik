@@ -395,7 +395,7 @@ no desktop control. Changing the focused picture never retargets an input grant.
 | Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
 | A Browser page closes | End its personal voice, shares and watches. Its Browser-hosted rooms stop; App-hosted rooms continue without handoff. |
 | A hosting runtime loses domain signaling while it remains alive | Retain the existing session recovery window; expiry pauses its live rooms. |
-| A Browser's local App control connection ends | End that page's controlled personal activities; keep the App's hosting runtime and other endpoints independent. |
+| A Browser's local App control connection ends | End native activities owned by that control connection. Browser media and App hosting keep their own lifetimes. |
 | App hosting stops or its process ends | Pause its hosted rooms and release that runtime's activities and connections; saved room data remains. |
 | An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
 | Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
@@ -486,11 +486,12 @@ real base DataChannels. It forwards encoded media without local playback or
 capture. Its caller owns hosting lifetime. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The accepted App integration assigns room execution, storage, signing and peer
-connections to the App's Native participant. The Browser keeps its separate
-personal endpoint and controls its own activities. The existing page-linked
-room-execution adapter does not yet implement this lifetime separation; TODO
-tracks that integration.
+The App entry assigns room execution, storage, signing and peer connections to
+its Native participant. A loopback control socket authenticates the Browser's
+account against domain admission and opens rooms through that participant.
+The Browser keeps its separate personal endpoint and controls its own activities;
+closing the socket does not retire the App's host. Existing Browser rooms keep
+their Browser runtime and storage.
 The prototype's local launcher explicitly selects one exact Web origin and one
 domain/user data directory. Browser-supplied IDs only confirm that selection;
 they cannot select another owner's data. Changing a tunnel URL requires local

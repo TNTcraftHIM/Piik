@@ -378,7 +378,9 @@ Without an App link, the prototype's create-room action starts a Browser-owned
 Rust/WASM runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
 only its directory summary. Server embeds one Native participant to operate its
 initial rooms through the same room core, with one SQLite database per room.
-The separate Native executable uses that same participant runtime.
+The separate Native executable and local App entry use that same participant
+runtime. App-linked creation stores rooms in the Native endpoint's SQLite;
+Browser page closure does not stop it or move existing Browser rooms.
 These adapters commit before confirmation and share
 retry and pagination rules. Participant reading windows remain separate from
 the owner's retained history. Reopening a room restores its data without

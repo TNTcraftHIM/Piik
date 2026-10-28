@@ -31,8 +31,8 @@ beforeEach(() => {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function setup(window = 1000, read = true) {
-  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
+async function setup(window = 1000, read = true, hash = "") {
+  vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
@@ -85,6 +85,62 @@ async function setup(window = 1000, read = true) {
 }
 
 const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [] });
+
+test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
+  const localRoom = { id: "saved-browser-room", name: "Browser room", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
+  const host = {
+    roomId: localRoom.id, summary: () => localRoom,
+    bind: vi.fn(async (_binding: string) => {}),
+    dispatch: vi.fn(async (_input: unknown) => ({})),
+    close: vi.fn(async () => {}),
+  };
+  vi.stubGlobal("indexedDB", {});
+  const storedPolicies = vi.fn(async () => [JSON.stringify(localRoom)]);
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+    createRoomPolicy: async (input: unknown) => JSON.stringify(input),
+    BrowserRoomHost: { open: async () => host, storedPolicies },
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const { session, socket } = await setup(1000, true, "app=8793&appToken=approved");
+  const app = ChannelSocket.current;
+  try {
+    expect(app).not.toBe(socket);
+    await app.onopen?.();
+    const hello = app.sent.at(-1)!;
+    expect(hello).toMatchObject({ type: "hello", channelId: "domain", userId: "self", credential: "credential", name: "Me" });
+    app.receive({ id: hello.id, result: null });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register" && (command.room as { id: string }).id === localRoom.id)).toBe(true));
+    const register = socket.sent.find(command => command.type === "host_register")!;
+    socket.receive({ type: "host_bound", roomId: localRoom.id, bindingId: "browser-binding" });
+    socket.receive({ type: "ack", requestId: register.requestId });
+    expect(storedPolicies).toHaveBeenCalledOnce();
+
+    const creating = session.createRoom({ name: "App room", access: "private", hidden: true, password: "private-room" });
+    await vi.waitFor(() => expect(app.sent.some(command => command.type === "open")).toBe(true));
+    const opening = app.sent.find(command => command.type === "open")!;
+    const policy = JSON.parse(opening.policy as string) as { id: string; name: string; creatorId: string; access: string; hidden: boolean; password: string };
+    expect(policy).toMatchObject({ name: "App room", creatorId: "self", access: "private", hidden: true, password: "private-room" });
+    app.receive({ id: opening.id, result: { id: policy.id, name: policy.name, creatorId: "self", access: "private", hidden: true, hasPassword: true } });
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === policy.id)).toBe(true));
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.roomId === policy.id)!;
+    socket.receive({ type: "room_reply", roomId: policy.id, requestId: browse.requestId, result: { type: "done" } });
+    await expect(creating).resolves.toBe(policy.id);
+    expect(socket.sent.filter(command => command.type === "host_register")).toEqual([register]);
+    socket.receive({ type: "host_bound", roomId: policy.id, bindingId: "native-binding" });
+    socket.receive({ type: "host_input", roomId: policy.id, input: { bindingId: "native-binding", revision: 1, endpoints: {}, action: { type: "sync" } } });
+    expect(host.dispatch).not.toHaveBeenCalled();
+
+    app.close();
+    expect(session.getSnapshot().error).toBe("app_disconnected");
+    expect(host.close).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
+    session.close();
+    await vi.waitFor(() => expect(host.close).toHaveBeenCalledOnce());
+    expect(socket.sent.filter(command => command.type === "host_stop")).toEqual([
+      { type: "host_stop", roomId: localRoom.id, bindingId: "browser-binding" },
+    ]);
+    expect(app.sent.map(command => command.type)).toEqual(["hello", "open"]);
+  } finally { session.close(); }
+});
 
 test("host binding precedes its first input and a failed binding retires that host", async () => {
   const host = {

@@ -14,10 +14,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture/input and platform packaging. Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
-  Replace the page-linked App room-execution path with App-lifetime hosting and
-  a separate Browser endpoint for personal voice, sharing and watching. Preserve
-  Browser-page hosting and its close-to-stop lifetime; do not automatically move
-  existing rooms when an App connects.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

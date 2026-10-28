@@ -318,7 +318,10 @@ function captureProbe(name) {
 }
 
 const hook = "window.__channelGate";
-const action = (index, expression) => evaluate(index, `${hook}.session.${expression}`);
+const action = async (index, expression) => {
+  try { return await evaluate(index, `${hook}.session.${expression}`); }
+  catch (cause) { throw new Error(`Browser ${index} ${expression.split('(')[0]} failed`, { cause }); }
+};
 const view = index => evaluate(index, `(() => {
   const value = ${hook}?.snapshot();
   if (!value) return { connection: 'connecting', state: null };

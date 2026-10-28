@@ -1,26 +1,25 @@
-import type { HostedRoom } from "./hosting";
-import type { RoomSummary, ConversationReply } from "./protocol";
+import type { RoomSummary } from "./protocol";
 
-/** One approved local connection owns room execution; the Browser owns participation. */
+/** An approved control connection starts rooms in the App's independent participant. */
 export class AppRooms {
   private socket: WebSocket;
   private requests = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
-  private ready: Promise<void>;
+  readonly ready: Promise<void>;
   private rejectReady!: (error: Error) => void;
   private timer: ReturnType<typeof setTimeout>;
 
-  constructor(port: string, token: string, channelId: string, userId: string, onClose: () => void) {
+  constructor(port: string, token: string, channelId: string, userId: string, credential: string, name: string, onClose: (error: Error) => void) {
     if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535 || !token) throw new Error("invalid_app_link");
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${port}/rooms`, `piik-channel-rooms.${token}`);
-    const lost = () => { this.close(); onClose(); };
-    this.timer = setTimeout(lost, 10000);
+    const lost = (error = new Error("app_disconnected")) => { this.close(); onClose(error); };
+    this.timer = setTimeout(() => lost(), 10000);
     this.ready = new Promise((resolve, reject) => {
       this.rejectReady = reject;
       socket.onopen = () => {
-        void this.request({ type: "hello", channelId, userId }).then(() => {
+        void this.request({ type: "hello", channelId, userId, credential, name }).then(() => {
           clearTimeout(this.timer);
           resolve();
-        }, error => { reject(error); lost(); });
+        }, error => { reject(error); lost(error); });
       };
     });
     socket.onmessage = ({ data }) => {
@@ -33,7 +32,7 @@ export class AppRooms {
         else request.resolve(reply.result);
       } catch { lost(); }
     };
-    socket.onclose = lost;
+    socket.onclose = () => lost();
     socket.onerror = () => { /* Close retires the connection and its requests. */ };
   }
 
@@ -46,23 +45,9 @@ export class AppRooms {
     });
   }
 
-  async storedPolicies(): Promise<string[]> {
+  async open(policy: string): Promise<RoomSummary> {
     await this.ready;
-    return this.request({ type: "policies" });
-  }
-
-  async open(policy: string): Promise<HostedRoom> {
-    await this.ready;
-    const roomId = await this.request<string>({ type: "open", policy });
-    return {
-      roomId,
-      summary: () => this.request<RoomSummary>({ type: "summary", roomId }),
-      currentReaders: () => this.request<string[]>({ type: "readers", roomId }),
-      bind: bindingId => this.request<void>({ type: "bind", roomId, bindingId }),
-      dispatch: input => this.request({ type: "dispatch", roomId, input }),
-      dispatchPeer: packet => this.request<ConversationReply[]>({ type: "peer", roomId, packet }),
-      close: async () => { await this.request({ type: "close_room", roomId }).catch(() => {}); },
-    };
+    return this.request({ type: "open", policy });
   }
 
   close(): void {

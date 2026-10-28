@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 
-// App hosting delegates storage/execution, retaining the Browser's single endpoint.
+// App hosting and Browser participation share a user, not an endpoint or lifetime.
 export async function appRoom({ initial, serverRoom, browser, action, view, evaluate, until, sample,
   capturedScreen, playing, progressing, hook, output }) {
   const directory = await mkdtemp(join(tmpdir(), "piik-app-room-check-"));
@@ -43,6 +43,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     }
   };
   try {
+    const browserRoom = await action(1, "createRoom({name:'Browser-owned room',access:'public',hidden:false})");
     start(); await ready();
     const participants = await evaluate(0, `${hook}.snapshot().state.sessions.filter(session => session.online).length`);
     await browser(1, "open", url);
@@ -58,8 +59,14 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await action(2, `sendMessage(${JSON.stringify(room)}, 'Saved by the linked Rust App')`);
     await until("App room confirmation reaches its owner", () => evaluate(1,
       `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), messages => messages?.some(message => message.text === "Saved by the linked Rust App"));
-    assert.equal(await evaluate(1, `${hook}.snapshot().state.sessions.filter(session => session.online).length`), participants,
-      "local App must not add another admitted participant");
+    const hosted = (await view(1)).state.channel.rooms.find(entry => entry.id === room);
+    const nativeEndpoint = hosted.delivery.hostSessionId;
+    assert.notEqual(nativeEndpoint, (await view(1)).sessionId, "App hosting uses its own endpoint");
+    assert.equal(await evaluate(1, `${hook}.snapshot().state.sessions.find(session => session.id === ${JSON.stringify(nativeEndpoint)}).userId`), initial[1].self.id);
+    assert.equal(await evaluate(1, `${hook}.snapshot().state.sessions.filter(session => session.online).length`), participants + 1,
+      "one Native endpoint hosts the App rooms");
+    assert.equal((await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.hostSessionId,
+      (await view(1)).sessionId, "connecting App does not migrate an existing Browser room");
     const stored = new DatabaseSync(join(directory, `${room}.sqlite`), { readOnly: true });
     const domain = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
     try {
@@ -81,6 +88,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     })()`), false,
       "App room has no second Browser storage writer");
     const first = (await view(1)).state.channel.rooms.find(entry => entry.id === room).delivery.bindingId;
+    const personalEndpoint = (await view(1)).sessionId;
     await action(1, `joinVoice(${JSON.stringify(room)})`);
     await action(2, `joinVoice(${JSON.stringify(room)})`);
     await until("linked room voice uses Browser media", () => sample(2), value => value.inbound.some(row => row.kind === "audio" && row.samples > 0));
@@ -88,30 +96,53 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await action(2, `watch(${JSON.stringify(picture)})`); await playing(2, picture);
     const unrelated = await capturedScreen(0, serverRoom);
     await action(2, `watch(${JSON.stringify(unrelated)})`); await playing(2, unrelated);
+    await evaluate(1, "window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/rooms').forEach(socket => socket.close())");
+    await until("local control disconnect is visible", () => view(1), value => value.error === "app_disconnected");
+    await progressing(2, picture);
+    await action(1, "close()");
+    await browser(1, "open", "about:blank");
+    await until("page close ends personal activity and Browser hosting only", () => view(2), value =>
+      value.state.channel.rooms.some(entry => entry.id === room && entry.available && entry.delivery.hostSessionId === nativeEndpoint)
+      && value.state.channel.rooms.some(entry => entry.id === browserRoom && !entry.available)
+      && !value.state.publications.some(publication => publication.id === picture));
+    await action(2, `sendMessage(${JSON.stringify(room)}, 'Still here after the owner closes the page')`);
+    await until("App confirms chat without its owner's page", () => evaluate(2,
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), messages => messages?.some(message => message.text === "Still here after the owner closes the page"));
+    await progressing(2, unrelated);
+    await browser(1, "open", url);
+    await until("owner returns to the same Native hosting endpoint", () => view(1), value => value.connection === "connected"
+      && value.state.channel.rooms.some(entry => entry.id === room && entry.available && entry.delivery.bindingId === first)
+      && value.state.channel.rooms.some(entry => entry.id === browserRoom && entry.available && entry.delivery.hostSessionId === value.sessionId));
+    assert(!(await view(1)).state.voice.some(member => member.sessionId === personalEndpoint || member.sessionId === nativeEndpoint),
+      "personal voice stops with its page and never becomes a hosting activity");
+    await action(1, `browse(${JSON.stringify(room)})`);
+    await until("returning owner's history includes the conversation during absence", () => evaluate(1,
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), messages =>
+      messages?.some(message => message.text === "Still here after the owner closes the page"));
     const endpoint = (await view(1)).sessionId;
     await stop();
     await until("App loss pauses only its room", () => view(2), value =>
       value.state.channel.rooms.some(entry => entry.id === room && !entry.available)
-      && !value.state.publications.some(publication => publication.roomId === room));
+      && !value.state.publications.some(publication => publication.roomId === room), 30_000);
     assert.equal((await view(1)).sessionId, endpoint, "local App loss retains the Browser endpoint");
+    assert((await view(1)).state.channel.rooms.some(entry => entry.id === browserRoom && entry.available),
+      "App shutdown preserves Browser hosting");
     await progressing(2, unrelated);
     start(); await ready();
     await action(1, "reconnect()");
     await until("App reconnect restores data with a fresh binding", () => view(1), value => value.state?.channel.rooms.some(entry =>
       entry.id === room && entry.available && entry.delivery.bindingId !== first));
     await action(1, `browse(${JSON.stringify(room)})`);
-    await action(1, `loadLatestHistory(${JSON.stringify(room)})`);
-    assert((await evaluate(1, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`))
-      .some(message => message.text === "Saved by the linked Rust App"));
+    await until("App restart restores saved history", () => evaluate(1,
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), messages =>
+      messages?.some(message => message.text === "Saved by the linked Rust App"));
     assert(!(await view(1)).state.voice.some(member => member.roomId === room));
     assert(!(await view(1)).state.publications.some(publication => publication.roomId === room));
-    await browser(1, "open", "about:blank");
-    await until("closing the owner page ends App room hosting", () => view(2), value =>
-      value.state.channel.rooms.some(entry => entry.id === room && !entry.available));
     await progressing(2, unrelated);
     await writeFile(join(output, "app-result.json"), JSON.stringify({ passed: true,
-      scenarios: ["single Browser endpoint", "Native SQLite ownership", "peer chat confirmation", "Browser screen and voice",
-        "App loss isolates its rooms", "fresh binding restores saved history", "page close releases hosting"] }, null, 2));
+      scenarios: ["separate hosting and personal endpoints", "Native SQLite ownership", "Browser rooms do not migrate", "peer chat confirmation",
+        "Browser screen and voice", "control loss preserves media", "page close preserves App hosting and chat",
+        "returning page reuses Native hosting", "App loss isolates its rooms", "fresh binding restores saved history"] }, null, 2));
   } catch (error) { console.error(log); throw error; }
   finally {
     await stop();

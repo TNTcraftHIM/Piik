@@ -9,12 +9,11 @@ Opus, VP8 and H264 Constrained Baseline with packetization mode 1, without
 capture, playback or transcoding.
 
 The [network design](../../docs/research/channel-network-design.md) owns the model.
-This executable is an explicitly started development host. It does not make a
-standby Piik App take over a closed page's room. Chat, history, room voice and files
+This executable is an explicitly started development host. Chat, history, room voice and files
 use the base paths, and screen startup reuses those paths through the same participant.
 The default Server embeds one participant for its three rooms and owns its
-service lifetime. The separate App entry below delegates room execution from an
-existing Browser participant. Native capture, input and product launcher integration
+service lifetime. The App entry below owns its Native hosting endpoint, separately
+from the Browser's personal activities. Native capture, input and product launcher integration
 remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
@@ -63,9 +62,11 @@ through the existing domain protocol. An abrupt process loss uses the normal
 
 ## Local App Link
 
-The `piik-channel-app` entry exposes the same room executor over a loopback
-WebSocket. The Browser keeps its admitted identity, signing keys and media;
-there is no second participant. Closing its page or App connection ends hosting.
+The `piik-channel-app` entry exposes room creation over a loopback WebSocket.
+After authenticating the Browser's account with the domain, one Native endpoint
+hosts its rooms using the shared participant runtime. The Browser has its own
+endpoint, signing keys and personal media. Closing the page ends its calls and
+shares; the App continues hosting. Stopping the App ends its hosting runtime.
 Reopening restores policy and history with a new binding, without restarting calls.
 
 For this development bridge, explicitly select one data owner before starting:
@@ -84,8 +85,9 @@ The development page exposes those IDs in
 `window.__channelGate.snapshot().self.id`. Open a fresh page at
 `http://127.0.0.1:8790/__channel-preview#app=18997&appToken=<the generated token>`
 in the same Browser profile. `PIIK_CHANNEL_APP_PORT` may override port 18997.
-The existing room controls now use native SQLite; they do not write a second
-IndexedDB copy. Keep the token local; it is omitted from room invitations.
+New rooms created through this link use native SQLite, without a second IndexedDB
+copy. Existing Browser rooms stay in their pages and are not migrated. Keep the
+token local; it is omitted from room invitations.
 
 This local startup selection authorizes the specified site's code to use that
 data directory. Public domain/user IDs do not grant access. A replacement tunnel

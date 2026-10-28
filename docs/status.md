@@ -11,9 +11,9 @@ and Git/PRs own completed history.
 The [channel prototype](../prototype/channel-server/README.md) has a Rust
 coordinator and real Browser chat, screen publications, selective watching and
 room voice. Domain admission, room activities/plans and shared transport leases
-have separate Rust owners. Rooms created through the interface now run in their
-owner's [Browser adapter](../prototype/channel-browser/README.md), using the same
-Rust core in WASM with IndexedDB. The domain keeps their directory summaries and
+have separate Rust owners. Rooms created through the interface run in their
+owner's Browser or linked App, using the same Rust core through WASM/IndexedDB
+or Native/SQLite. The domain keeps their directory summaries and
 authenticated bindings; confirmed history and private policy stay with the room.
 The [accepted routing foundation](./research/channel-network-design.md) assigns
 each room to its actual operator and starts video on usable room paths before
@@ -30,9 +30,9 @@ copies stay with their participants. Screen plans can replace a leaf or relay
 branch after its affected viewers prove delivery, while preserving playback.
 Server now embeds that same Native participant for its persistent rooms. Domain,
 Browser and Native consume one shared Rust core; conversation has one peer carrier.
-Media allocation failures preserve existing outputs, and normal resource retirement
-permits rejected companion audio to retry. A local App connection now delegates
-SQLite-backed room execution while retaining the Browser's participation.
+App hosting has its own Native endpoint and process lifetime; the Browser's
+personal voice, shares and watches remain page-owned. Existing Browser rooms
+retain their page lifetime and storage when an App connects.
 Product App authorization/launcher integration, native capture/input and platform
 packaging remain. [TODO](./todo.md) owns remaining stages and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
