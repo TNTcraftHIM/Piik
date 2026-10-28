@@ -11,8 +11,10 @@ The owner defines the room owner as the user who actually operates the room:
 its detailed state, management and distribution belong together. A separate
 configurable file-storage service is not wanted. Ordinary URLs and manual
 bookmarks remain the entry model; automatic address discovery is not planned.
-The App is an interactive client. Unattended hosting belongs to Server; a
-standby App must not keep an abandoned owner session running.
+Both Browser pages and App processes may host rooms. Hosting follows the actual
+runtime: closing its Browser page ends Browser hosting; an App-owned room runs
+until hosting is stopped or the App process ends. Server remains the explicitly
+started service for unattended operation.
 
 Use one room routing owner: a base tree carries conversation, voice and
 files. Pictures start on usable existing paths, then converge locally towards
@@ -44,16 +46,14 @@ On P2P room paths, a relay is a participating endpoint doing forwarding work,
 not a separately deployed relay server. Sending, receiving and forwarding can
 coexist on the same user endpoint.
 
-Changing the selected room or closing an in-page panel does not end a hosting
-session. Closing the page that owns that session is a different event. Keep
-ordinary App-linked operation tied to that explicit session: reconcile a
-reload/reconnect within the existing recovery window, then pause the room if its
-owner session expires. A running standby App does not silently take over ownership.
-Server-owned domain/room runtimes instead follow the deliberately started service;
-closing an administration page does not stop that service. Both wrappers use the
-same core and routing rules. A Server does not automatically inherit an App-owned
-room. Explicit ownership transfer would also transfer its operation and state;
-automatic takeover is not selected.
+Changing the selected room or closing an in-page panel does not end hosting.
+Closing a Browser page ends that page's personal voice, sharing and watching;
+it also ends rooms whose runtime runs in that page. App-owned rooms remain with
+the App and are not handed over when a page closes. Connecting an App does not
+automatically move existing Browser-owned rooms. Server-owned runtimes follow
+their deliberately started service, independently of administration pages.
+All use the same core and routing rules. Moving a room requires explicit transfer
+of its operation and saved state; automatic takeover is not selected.
 
 ## Authority And Information Boundaries
 
@@ -92,6 +92,10 @@ through normal create/join actions; users do not configure a second daemon or
 storage server. Peer delivery preserves this authority and recovery path without
 adding another permission owner.
 
+When B joins A's domain and creates a room, B's actual Browser or App runtime
+operates that room. B needs no new domain, and A's domain service does not take
+over its execution or history.
+
 After room admission, the room owner confirms room changes and message order.
 Chat and history requests use the base paths after room admission.
 Use short-lived session signing keys, bound to admitted sessions and the current
@@ -123,9 +127,12 @@ history copies, file retention and manual address replacement. Domain and room
 data may reside on different users' devices. When one App operates both, compose
 the same runtimes locally rather than requiring another deployment.
 
-A user, a live endpoint and a linked App are different concepts. The Browser and
-its linked App implement one participation; separate devices remain separate
-endpoints of the authenticated user. Reconnect preserves identity rather than
+A user and a live endpoint are different concepts. An App's Native participant
+and a Browser page are distinct endpoints of the same authenticated user, with
+their own signing identities, transports and activities. One App uses one Native
+endpoint for its rooms in a domain; each room retains its own authority and data.
+An online hosting endpoint proves availability, not that the person is reading,
+watching or participating in voice. Reconnect preserves identity rather than
 matching a nickname or treating a shared invitation as a shared user.
 Domain bookmarks connect independent domains; they do not introduce federation
 or shared authority between those domains.
@@ -386,9 +393,10 @@ no desktop control. Changing the focused picture never retargets an input grant.
 | Event | Outcome |
 | --- | --- |
 | Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
-| The page owning an App-linked room session closes | End hosting and pause the live room. An idle App does not replace the missing owner session. |
-| An owning page loses domain signaling while its room runtime remains alive | Retain the existing session recovery window; expiry pauses the live room. |
-| The App control connection owning a room runtime ends | Release that runtime and pause its room. Reopening stored data requires a new binding; the old activities do not resume. |
+| A Browser page closes | End its personal voice, shares and watches. Its Browser-hosted rooms stop; App-hosted rooms continue without handoff. |
+| A hosting runtime loses domain signaling while it remains alive | Retain the existing session recovery window; expiry pauses its live rooms. |
+| A Browser's local App control connection ends | End that page's controlled personal activities; keep the App's hosting runtime and other endpoints independent. |
+| App hosting stops or its process ends | Pause its hosted rooms and release that runtime's activities and connections; saved room data remains. |
 | An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
 | Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
 | Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
@@ -416,15 +424,14 @@ endpoint may already have accepted the offer. The
 owns sender updates; [RFC 3264](https://www.rfc-editor.org/rfc/rfc3264.html#section-6)
 defines an answer's independent SDP origin/version.
 
-App and Browser can operate the same logical room runtime through different
-execution/storage adapters, while obeying the same explicit hosting-session
-lifetime. Persistent data can outlive that session; background App execution
-alone does not extend it. Browser hosting runs the shared authority core locally
-through WASM, with IndexedDB persistence.
+App and Browser execute the same room rules through Native/SQLite and
+Browser/WASM/IndexedDB adapters. Each room follows its actual hosting runtime's
+lifetime, separately from personal activity. Persistent data outlives that runtime;
+reopening it does not resume captures or calls.
 
 ## Implementation Boundary
 
-The normal prototype interface creates rooms in their actual owner's
+Without an App link, the current prototype interface creates rooms in their owner's
 [Browser runtime](../../prototype/channel-browser/README.md). The shared Rust
 core owns policy, activities, publication plans and confirmed history; IndexedDB
 stores that room's data. The domain supplies credential-free identity facts,
@@ -476,15 +483,14 @@ same complete user flows and failure cases against the new ownership model.
 The [Native participant](../../prototype/channel-native/README.md) now operates
 the same room core with one SQLite database per room, an admitted session and
 real base DataChannels. It forwards encoded media without local playback or
-capture. Its caller owns hosting lifetime; a command-line development host does
-not grant background hosting to an idle App. An OS file lock excludes another
+capture. Its caller owns hosting lifetime. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The App's explicit hosting connection delegates room execution and SQLite storage to Rust;
-the Browser keeps its existing admitted endpoint, signing identity and media.
-The local control connection owns those room runtimes. Its end releases them,
-and the Browser stops their bindings through the domain. Reconnecting opens saved
-data with new bindings, without a second recovery timer or another participant.
+The accepted App integration assigns room execution, storage, signing and peer
+connections to the App's Native participant. The Browser keeps its separate
+personal endpoint and controls its own activities. The existing page-linked
+room-execution adapter does not yet implement this lifetime separation; TODO
+tracks that integration.
 The prototype's local launcher explicitly selects one exact Web origin and one
 domain/user data directory. Browser-supplied IDs only confirm that selection;
 they cannot select another owner's data. Changing a tunnel URL requires local

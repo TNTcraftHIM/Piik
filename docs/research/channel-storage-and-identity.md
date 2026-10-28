@@ -304,15 +304,25 @@ Keep durable domain and room data for the 3.0 communication model, stored
 outside program/update files. This does not change the published 2.x App's
 process-only room behavior.
 
-Room availability follows its explicit hosting session, not the highlighted UI
-panel. Changing views preserves that session; the network model owns its page,
-signaling and local-execution lifetimes.
-When the session ends, the room pauses and retains its data. Restarting with the
-same data restores that room's identity and history.
+Room availability follows its actual hosting runtime, not the highlighted UI
+panel or a person's voice/watch activity. Browser hosting runs in its owning
+page with WASM and IndexedDB; closing that page ends hosting. App hosting runs in
+the App's Native participant with SQLite and continues when a Browser page closes,
+until hosting stops or the App process ends. The network model owns signaling
+recovery and participant lifetimes. When the runtime ends, the room pauses and
+retains its data. Restarting with the same data restores that room's identity
+and history.
 Recreating a same-named room without its data creates a new room.
-Unattended operation belongs to Server and follows its service lifetime; this is
-not an extra App background mode. Stored data and the shared core are independent
-of that wrapper distinction. No service takes over another user's room implicitly.
+Server remains an explicitly started unattended service. All three wrappers use
+the shared core; none takes over another runtime's room implicitly. Connecting
+an App does not migrate an existing Browser room or its origin-local data.
+
+An App and Browser may be endpoints of the same user without sharing live
+activities. One App's Native endpoint can host several rooms in a domain, each
+with independent authority and saved data. A user creating a room after joining
+another user's domain hosts it through their own actual runtime; the domain
+retains only its directory summary, without requiring another domain or storing
+that room's history on the domain owner's device.
 
 The domain directory can retain the unavailable room's summary and owner binding.
 It does not automatically become a substitute room host or recover data it never
@@ -364,8 +374,8 @@ introduce a mandatory fixed website.
 
 ## Current Implementation
 
-The prototype's normal create-room action starts a Browser-owned Rust/WASM
-runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
+Without an App link, the prototype's create-room action starts a Browser-owned
+Rust/WASM runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
 only its directory summary. Server embeds one Native participant to operate its
 initial rooms through the same room core, with one SQLite database per room.
 The separate Native executable uses that same participant runtime.
