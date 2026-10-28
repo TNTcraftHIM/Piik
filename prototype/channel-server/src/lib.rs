@@ -1,4 +1,5 @@
-//! Domain I/O and explicit Server hosting composition.
+//! Domain I/O and explicit App/Server hosting composition.
+pub mod app;
 pub mod domain;
 pub mod web;
 

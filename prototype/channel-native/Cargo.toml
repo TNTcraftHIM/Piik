@@ -8,10 +8,6 @@ default-run = "piik-channel-native"
 
 [workspace]
 
-[[bin]]
-name = "piik-channel-app"
-path = "src/bin/app.rs"
-
 [dependencies]
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 webrtc = "=0.21.1"
@@ -22,15 +18,8 @@ futures-util = "0.3"
 anyhow = "1"
 async-trait = "0.1"
 serde_json = "1"
-serde = { version = "1", features = ["derive"] }
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }
 getrandom = "=0.3.4"
-axum = { version = "0.8", features = ["ws"] }
-tower-http = { version = "0.6.6", features = ["fs"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
-url = "2.5"
-dirs = "6"
-webbrowser = "1"
 
 # Remove after upstream webrtc-rs/rtc#296 is released; provenance is in README.md.
 [patch.crates-io]

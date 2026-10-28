@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use piik_channel_native::app::{serve, Config};
+use piik_channel_prototype::app::{serve, Config};
 use std::{env, path::PathBuf};
 use tokio::net::TcpListener;
 

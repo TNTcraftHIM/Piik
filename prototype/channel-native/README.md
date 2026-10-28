@@ -12,7 +12,7 @@ The [network design](../../docs/research/channel-network-design.md) owns the mod
 This executable is an explicitly started development host. Chat, history, room voice and files
 use the base paths, and screen startup reuses those paths through the same participant.
 The default Server embeds one participant for its three rooms and owns its
-service lifetime. The App entry below owns its Native hosting endpoint, separately
+service lifetime. The [App composition](../channel-server/README.md#local-app-link) owns its Native hosting endpoint, separately
 from the Browser's personal activities. The App reuses the product's site approval
 and saved-site interface. Native capture, input and local/public-domain startup
 remain subsequent stages.
@@ -77,56 +77,17 @@ administrator page's peer connection. Ctrl+C ends hosting and confirms departure
 through the existing domain protocol. An abrupt process loss uses the normal
 20-second recovery window.
 
-## Local App Link
-
-The `piik-channel-app` entry uses the same App button, local approval page and
-saved-site controls as the shared Web interface. Build the frontend and start it:
-
-```powershell
-node node_modules/vite/bin/vite.js build --config prototype/channel-browser/web.vite.config.ts
-cargo +1.91.0 run --manifest-path prototype/channel-native/Cargo.toml --bin piik-channel-app
-```
-
-The App opens its local page in the system Browser, or the saved starred site.
-On a running domain, click **App** and approve the site on that local page.
-New rooms then use the App's SQLite storage. The create-room form names the
-current hosting runtime. Existing Browser rooms remain in their pages and are
-not migrated; a remembered App preference cannot prevent Browser hosting when
-the App is absent.
-
-Approval belongs to an exact site origin. Discovery exposes only the local
-approval address; the authorized health response supplies the process token.
-The token never appears in launch or room invitation URLs. Native verifies the
-Browser account through actual domain admission before opening its room data.
-Each approved origin owns a separate local namespace; replacing a tunnel origin
-does not silently grant access to an earlier site's data.
-
-Closing the page ends its personal calls and shares, while App hosting continues.
-Revoking a site's approval stops that site's hosting and control connections,
-preserves its saved rooms and leaves other sites running. Reapproving the same
-site reuses its data; returning with the same domain account restores its rooms
-without restarting personal activities.
-
-The App uses the platform's local application-data directory under `Piik/channel-app`.
-`PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns
-that directory. `PIIK_CHANNEL_APP_PORT` may select a loopback port instead of the
-normal discovery range; a launch URL can supply the non-secret `piik-client-port`
-query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
-`PIIK_CHANNEL_APP_NO_BROWSER=1` suppresses browser opening for automated checks.
-
 ## Checks
 
 ```powershell
 cargo +1.91.0 test --manifest-path prototype/channel-native/Cargo.toml
 cargo +1.91.0 build --manifest-path prototype/channel-native/Cargo.toml
 node prototype/channel-server/run-browser-check.mjs --native
-node prototype/channel-server/run-browser-check.mjs --app
 ```
 
 The Browser check also needs a built domain executable and the existing
 `agent-browser` environment. `CHANNEL_NATIVE_EXECUTABLE` and `CHANNEL_EXECUTABLE`
-can select separate Native and domain builds; `CHANNEL_APP_EXECUTABLE` selects
-the App entry for `--app`. The runner owns its processes,
+can select separate Native and domain builds. The runner owns its processes,
 temporary databases and Browser sessions, and stops them on completion.
 
 The peer check uses real WebRTC endpoints for source replacement, signaling
@@ -134,3 +95,8 @@ recovery, encoded audio/video forwarding and feedback under backpressure. The Br
 check covers concurrent Native-rooted picture, voice and file forwarding,
 room-owned history, independent picture playback and process restart. Generated evidence stays under
 ignored `build/`.
+
+The real session and App integration tests live with the
+[Server/App runtime](../channel-server/README.md#checks). Build this participant
+first; `CHANNEL_NATIVE_EXECUTABLE` can select its executable when using a custom
+Cargo target directory.

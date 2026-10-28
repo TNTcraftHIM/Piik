@@ -220,12 +220,12 @@ struct Session {
     opening: BTreeMap<String, Vec<oneshot::Sender<Result<RoomSummary, String>>>>,
 }
 
-pub(crate) struct OpenRoom {
+pub struct OpenRoom {
     pub policy: RoomState,
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
 }
 
-pub(crate) struct Hosting {
+pub struct Hosting {
     pub directory: PathBuf,
     pub identity: (Uuid, Uuid),
     pub commands: mpsc::Receiver<OpenRoom>,
@@ -241,7 +241,7 @@ pub async fn run(
     run_host(config, files, None, stop).await
 }
 
-pub(crate) async fn run_host(
+pub async fn run_host(
     config: Config,
     files: Vec<RoomFile>,
     hosting: Option<Hosting>,

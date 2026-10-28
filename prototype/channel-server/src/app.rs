@@ -2,7 +2,6 @@
 #[path = "app_sites.rs"]
 mod sites;
 
-use crate::session::{self, Hosting, OpenRoom};
 use anyhow::{anyhow, bail, Result};
 use axum::{
     extract::{
@@ -17,6 +16,7 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::RoomState;
+use piik_channel_native::session::{self, Hosting, OpenRoom};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, future::Future, path::PathBuf, sync::Arc, time::Duration};
@@ -382,7 +382,7 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     Ok(
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
-        "localAccessPassword":"","defaultMode":"link","modes":[],"siteAccess":"rooms","version":"development",
+        "defaultMode":"link","modes":[],"siteAccess":"rooms","version":"development",
         "revision":"development","controlPort":port}),
     )
 }

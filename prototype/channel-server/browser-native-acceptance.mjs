@@ -24,7 +24,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
   const local = `http://127.0.0.1:${port}`;
   const assets = resolve(process.env.PIIK_CHANNEL_APP_WEB_DIR ?? "build/channel-web");
   const executable = resolve(process.env.CHANNEL_APP_EXECUTABLE ??
-    `prototype/channel-native/target/debug/piik-channel-app${process.platform === "win32" ? ".exe" : ""}`);
+    `prototype/channel-server/target/debug/piik-channel-app${process.platform === "win32" ? ".exe" : ""}`);
   const url = `${origin}/__channel-preview?piik-client-port=${port}#piik-client=1`;
   let app, otherServer, otherWeb, approvalTab, personalTab, log = "";
   const start = () => {

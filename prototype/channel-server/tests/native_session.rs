@@ -256,7 +256,17 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     // A second real process cannot steal the database during the first process's
     // recovery window, even though the domain could admit its new endpoint.
     let contender_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let contender = std::process::Command::new(env!("CARGO_BIN_EXE_piik-channel-native"))
+    let executable = std::env::var_os("CHANNEL_NATIVE_EXECUTABLE")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../channel-native/target/debug")
+                .join(format!(
+                    "piik-channel-native{}",
+                    std::env::consts::EXE_SUFFIX
+                ))
+        });
+    let contender = std::process::Command::new(executable)
         .args([
             "--room",
             folder.join("one.sqlite").to_str().unwrap(),
@@ -358,7 +368,8 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
 #[tokio::test]
 async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission() {
     use piik_channel_core::{conversation::SessionSigner, wire::RoomAccess, RoomState};
-    use piik_channel_native::{app, hosted_room::HostedRoom};
+    use piik_channel_native::hosted_room::HostedRoom;
+    use piik_channel_prototype::app;
     use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
 
     let folder = std::env::temp_dir().join(format!("piik-app-hosting-{}", Uuid::new_v4()));

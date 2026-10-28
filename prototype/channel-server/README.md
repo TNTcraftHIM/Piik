@@ -6,8 +6,9 @@ App or Server. The [network design](../../docs/research/channel-network-design.m
 owns the accepted routing foundation; this file describes what currently runs.
 
 The Server executable consumes [channel-core](../channel-core/README.md), the same
-Rust library used by Native and Browser/WASM. Its package and binary remain
-`piik-channel-prototype`; the shared library is `piik-channel-core`.
+Rust library used by Native and Browser/WASM. Its package and default binary remain
+`piik-channel-prototype`; the same runtime crate also builds `piik-channel-app`.
+The shared library is `piik-channel-core`.
 The [Domain service](./src/domain.rs) owns its HTTP, WebSocket and directory lifetime;
 the [Server composition](./src/lib.rs) adds deliberate Native room hosting. Local App
 composition can reuse the Domain without inheriting that unattended participant.
@@ -16,7 +17,7 @@ The Server starts one real [Native participant](../channel-native/README.md) in
 its process to operate the three initial rooms. Its lifetime follows the explicit
 Server service, independently of administration pages. Rooms created in the interface use
 their owner's [Browser/WASM runtime](../channel-browser/README.md) or the
-[linked Rust App](../channel-native/README.md#local-app-link). That runtime owns admission,
+[linked Rust App](#local-app-link). That runtime owns admission,
 policy, activities, publication plans and confirmed history. The domain binds
 authenticated runtimes to directory entries and combines their transport demand;
 a physical pair remains while any room needs it. Domain WebSocket rendezvous
@@ -64,6 +65,43 @@ the service's own origin. Rust serves the frontend and existing WebSocket on
 that listener. `/` and `/__channel-preview` open the frontend; missing assets
 and unknown API paths return 404. Vite is only the development server; the
 deployed frontend requires no Node runtime.
+
+## Local App Link
+
+The `piik-channel-app` entry uses the same App button, local approval page and
+saved-site controls as the shared Web interface. Build the frontend and start it:
+
+```powershell
+node node_modules/vite/bin/vite.js build --config prototype/channel-browser/web.vite.config.ts
+cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --bin piik-channel-app
+```
+
+The App opens its local page in the system Browser, or the saved starred site.
+On a running domain, click **App** and approve the site on that local page.
+New rooms then use the App's SQLite storage. The create-room form names the
+current hosting runtime. Existing Browser rooms remain in their pages and are
+not migrated; a remembered App preference cannot prevent Browser hosting when
+the App is absent.
+
+Approval belongs to an exact site origin. Discovery exposes only the local
+approval address; the authorized health response supplies the process token.
+The token never appears in launch or room invitation URLs. Native verifies the
+Browser account through actual domain admission before opening its room data.
+Each approved origin owns a separate local namespace; replacing a tunnel origin
+does not silently grant access to an earlier site's data.
+
+Closing the page ends its personal calls and shares, while App hosting continues.
+Revoking a site's approval stops that site's hosting and control connections,
+preserves its saved rooms and leaves other sites running. Reapproving the same
+site reuses its data; returning with the same domain account restores its rooms
+without restarting personal activities.
+
+The App uses the platform's local application-data directory under `Piik/channel-app`.
+`PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns
+that directory. `PIIK_CHANNEL_APP_PORT` may select a loopback port instead of the
+normal discovery range; a launch URL can supply the non-secret `piik-client-port`
+query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
+`PIIK_CHANNEL_APP_NO_BROWSER=1` suppresses browser opening for automated checks.
 
 ## Design studies
 
@@ -266,6 +304,7 @@ rooms. Each endpoint may publish one screen and one voice source per room.
 Build the executable before running the finite integration checks:
 
 ```powershell
+cargo +1.91.0 build --manifest-path prototype/channel-native/Cargo.toml
 cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml
 cargo test --manifest-path prototype/channel-core/Cargo.toml
 cargo test --manifest-path prototype/channel-core/Cargo.toml --features sqlite
@@ -278,7 +317,16 @@ node prototype/channel-server/run-browser-check.mjs --rooms
 node prototype/channel-server/run-browser-check.mjs --lifecycle
 node prototype/channel-server/run-browser-check.mjs --hosts
 node prototype/channel-server/run-browser-check.mjs --base
+node prototype/channel-server/run-browser-check.mjs --app
 ```
+
+The three real Native session integration tests live in `tests/native_session.rs`
+in this crate, including App approval and storage ownership. They run the actual
+Native executable for process-lock checks, so build it first. With a custom Cargo
+target directory, set `CHANNEL_NATIVE_EXECUTABLE` to that executable. Use
+`cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml --test native_session`
+to run those tests alone. `cargo build` above builds both Server and App binaries;
+`CHANNEL_APP_EXECUTABLE` can select a separately built App for `--app`.
 
 The [Native participant checks](../channel-native/README.md#checks) add
 `--native` for concurrent Browser-to-Native picture, voice and file forwarding,

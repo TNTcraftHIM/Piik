@@ -1485,21 +1485,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "axum",
- "dirs",
  "futures-util",
  "getrandom 0.3.4",
  "piik-channel-core",
  "rtc",
- "rusqlite",
- "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
- "tower-http",
- "url",
  "uuid",
- "webbrowser",
  "webrtc",
 ]
 
@@ -1509,15 +1502,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "dirs",
  "futures-util",
  "piik-channel-core",
  "piik-channel-native",
  "rusqlite",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
  "tower-http",
+ "url",
  "uuid",
+ "webbrowser",
 ]
 
 [[package]]
