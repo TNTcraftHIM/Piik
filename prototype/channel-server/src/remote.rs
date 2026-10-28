@@ -80,11 +80,11 @@ impl RemoteRoom {
             return Err("room_busy");
         }
         binding.revision += 1;
-        if matches!(action, HostAction::RouteWake) {
+        if matches!(
+            action,
+            HostAction::RouteWake | HostAction::PairFailed { .. }
+        ) {
             binding.projection_floor = binding.revision;
-        }
-        if matches!(action, HostAction::PairFailed { .. }) {
-            binding.context_floor = binding.revision;
         }
         if let Some(owner) = owner {
             binding.replies.insert(binding.revision, owner);

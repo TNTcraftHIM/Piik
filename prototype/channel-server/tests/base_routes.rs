@@ -1228,3 +1228,84 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
         "proven picture and voice bindings remain"
     );
 }
+
+#[test]
+fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_projection() {
+    use piik_channel_prototype::{
+        host::{HostAction, RoomResult},
+        wire::Request,
+    };
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (host_session, _) = join(&mut network, host, None);
+    join(&mut network, viewer, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    browse(&mut network, viewer, &room, true);
+    let original = pair(&network, viewer, host_session, &room);
+    for endpoint in [host, viewer] {
+        command(
+            &mut network,
+            endpoint,
+            json!({"type":"base_state","roomId":room,"pairId":original.id,"ready":true}),
+        );
+    }
+    let effects = network.authority.handle(
+        viewer,
+        Request::parse(
+            &json!({"type":"browse","roomId":room,"active":true,"requestId":"before-failure"})
+                .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let earlier = network.host_turn(&room, input);
+    let effects = network.authority.handle(
+        viewer,
+        Request::parse(
+            &json!({"type":"link_state","pairId":original.id,"state":"failed"}).to_string(),
+        )
+        .unwrap(),
+        101,
+    );
+    assert!(effects.events.iter().any(|(recipient, event)| {
+        *recipient == host
+            && matches!(event, Event::HostInput { input, .. }
+                if matches!(input.action, HostAction::PairFailed { .. }))
+    }));
+    network.deliver(effects);
+    assert!(!network
+        .state(viewer)
+        .pairs
+        .iter()
+        .any(|pair| pair.id == original.id));
+    let late = network.command(
+        host,
+        json!({"type":"host_output","roomId":room,"output":earlier}),
+    );
+    assert!(
+        late.events.iter().any(|(recipient, event)| {
+            *recipient == viewer
+                && matches!(event, Event::RoomReply {
+                    request_id: Some(id), result: RoomResult::Done, ..
+                } if id == "before-failure")
+        }),
+        "physical pair failure does not revoke a completed Browse request"
+    );
+    assert!(
+        !network
+            .state(viewer)
+            .pairs
+            .iter()
+            .any(|pair| pair.id == original.id),
+        "old Browse projection must not restore the retired physical pair"
+    );
+}
