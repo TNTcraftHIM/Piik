@@ -13,7 +13,8 @@ This executable is an explicitly started development host. Chat, history, room v
 use the base paths, and screen startup reuses those paths through the same participant.
 The default Server embeds one participant for its three rooms and owns its
 service lifetime. The App entry below owns its Native hosting endpoint, separately
-from the Browser's personal activities. Native capture, input and product launcher integration
+from the Browser's personal activities. The App reuses the product's site approval
+and saved-site interface. Native capture, input and local/public-domain startup
 remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
@@ -78,37 +79,40 @@ through the existing domain protocol. An abrupt process loss uses the normal
 
 ## Local App Link
 
-The `piik-channel-app` entry exposes room creation over a loopback WebSocket.
-After authenticating the Browser's account with the domain, one Native endpoint
-hosts its rooms using the shared participant runtime. The Browser has its own
-endpoint, signing keys and personal media. Closing the page ends its calls and
-shares; the App continues hosting. Stopping the App ends its hosting runtime.
-Reopening restores policy and history with a new binding, without restarting calls.
-
-For this development bridge, explicitly select one data owner before starting:
+The `piik-channel-app` entry uses the same App button, local approval page and
+saved-site controls as the shared Web interface. Build the frontend and start it:
 
 ```powershell
-$env:PIIK_CHANNEL_APP_ORIGIN = "http://127.0.0.1:8790"
-$env:PIIK_CHANNEL_APP_DATA_DIR = "build/channel-app-data"
-$env:PIIK_CHANNEL_APP_CHANNEL_ID = "<current domain UUID>"
-$env:PIIK_CHANNEL_APP_USER_ID = "<current Browser user UUID>"
-$env:PIIK_CHANNEL_APP_TOKEN = [guid]::NewGuid().ToString()
+node node_modules/vite/bin/vite.js build --config prototype/channel-browser/web.vite.config.ts
 cargo +1.91.0 run --manifest-path prototype/channel-native/Cargo.toml --bin piik-channel-app
 ```
 
-The development page exposes those IDs in
-`window.__channelGate.snapshot().state.channel.id` and
-`window.__channelGate.snapshot().self.id`. Open a fresh page at
-`http://127.0.0.1:8790/__channel-preview#app=18997&appToken=<the generated token>`
-in the same Browser profile. `PIIK_CHANNEL_APP_PORT` may override port 18997.
-New rooms created through this link use native SQLite, without a second IndexedDB
-copy. Existing Browser rooms stay in their pages and are not migrated. Keep the
-token local; it is omitted from room invitations.
+The App opens its local page in the system Browser, or the saved starred site.
+On a running domain, click **App** and approve the site on that local page.
+New rooms then use the App's SQLite storage. The create-room form names the
+current hosting runtime. Existing Browser rooms remain in their pages and are
+not migrated; a remembered App preference cannot prevent Browser hosting when
+the App is absent.
 
-This local startup selection authorizes the specified site's code to use that
-data directory. Public domain/user IDs do not grant access. A replacement tunnel
-origin needs a new local selection; keep the same data and Browser account.
-The product App's normal approval/launcher flow will supply this selection.
+Approval belongs to an exact site origin. Discovery exposes only the local
+approval address; the authorized health response supplies the process token.
+The token never appears in launch or room invitation URLs. Native verifies the
+Browser account through actual domain admission before opening its room data.
+Each approved origin owns a separate local namespace; replacing a tunnel origin
+does not silently grant access to an earlier site's data.
+
+Closing the page ends its personal calls and shares, while App hosting continues.
+Revoking a site's approval stops that site's hosting and control connections,
+preserves its saved rooms and leaves other sites running. Reapproving the same
+site reuses its data; returning with the same domain account restores its rooms
+without restarting personal activities.
+
+The App uses the platform's local application-data directory under `Piik/channel-app`.
+`PIIK_CHANNEL_APP_DATA_DIR` selects isolated development data. One process owns
+that directory. `PIIK_CHANNEL_APP_PORT` may select a loopback port instead of the
+normal discovery range; a launch URL can supply the non-secret `piik-client-port`
+query parameter. `PIIK_CHANNEL_APP_WEB_DIR` selects the built frontend and
+`PIIK_CHANNEL_APP_NO_BROWSER=1` suppresses browser opening for automated checks.
 
 ## Checks
 

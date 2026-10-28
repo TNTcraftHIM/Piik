@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -13,21 +13,25 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
   capturedScreen, playing, progressing, hook, output }) {
   const directory = await mkdtemp(join(tmpdir(), "piik-app-room-check-"));
   const origin = process.env.CHANNEL_UI_ORIGIN;
-  const token = randomUUID();
-  const probe = createServer();
-  await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
-  const port = probe.address().port;
-  await new Promise(resolve => probe.close(resolve));
+  const freePort = async () => {
+    const probe = createServer();
+    await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
+    const port = probe.address().port;
+    await new Promise(resolve => probe.close(resolve));
+    return port;
+  };
+  const port = await freePort();
+  const local = `http://127.0.0.1:${port}`;
+  const assets = resolve(process.env.PIIK_CHANNEL_APP_WEB_DIR ?? "build/channel-web");
   const executable = resolve(process.env.CHANNEL_APP_EXECUTABLE ??
     `prototype/channel-native/target/debug/piik-channel-app${process.platform === "win32" ? ".exe" : ""}`);
-  const url = `${origin}/__channel-preview#app=${port}&appToken=${token}`;
-  let app, log = "";
+  const url = `${origin}/__channel-preview?piik-client-port=${port}#piik-client=1`;
+  let app, otherServer, otherWeb, approvalTab, personalTab, log = "";
   const start = () => {
     log = "";
     app = spawn(executable, [], { env: { ...process.env,
-      PIIK_CHANNEL_APP_PORT: String(port), PIIK_CHANNEL_APP_ORIGIN: origin,
-      PIIK_CHANNEL_APP_TOKEN: token, PIIK_CHANNEL_APP_DATA_DIR: directory,
-      PIIK_CHANNEL_APP_CHANNEL_ID: initial[1].state.channel.id, PIIK_CHANNEL_APP_USER_ID: initial[1].self.id,
+      PIIK_CHANNEL_APP_PORT: String(port), PIIK_CHANNEL_APP_DATA_DIR: directory,
+      PIIK_CHANNEL_APP_WEB_DIR: assets, PIIK_CHANNEL_APP_NO_BROWSER: "1",
     }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
     const collect = chunk => { log = (log + chunk).slice(-64000); };
     app.stdout.on("data", collect); app.stderr.on("data", collect);
@@ -42,13 +46,44 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       const exited = once(app, "exit"); app.kill(); await exited;
     }
   };
+  const health = site => fetch(`${local}/health`, { headers: { Origin: site } });
+  const appReady = index => until("Browser verifies its current App connection", () => evaluate(index, `${hook}?.snapshot().appConnected ?? false`), Boolean);
+  const approve = async site => {
+    const destination = `${local}/client?site=${encodeURIComponent(site)}`;
+    if (!approvalTab) {
+      personalTab = (await browser(1, "tab")).tabs.find(tab => tab.active).targetId;
+      approvalTab = (await browser(1, "tab", "new", destination)).targetId;
+    } else {
+      await browser(1, "tab", approvalTab);
+      await browser(1, "open", destination);
+    }
+    await browser(1, "wait", "#site-approval-title");
+    await browser(1, "find", "role", "button", "click", "--name", "English", "--exact");
+    if (site === origin) {
+      const viewport = await evaluate(1, "({ width: innerWidth, height: innerHeight })");
+      await browser(1, "screenshot", join(output, "app-approval-desktop.png"));
+      await browser(1, "set", "viewport", "390", "844");
+      await browser(1, "screenshot", join(output, "app-approval-mobile.png"));
+      await browser(1, "set", "viewport", String(viewport.width), String(viewport.height));
+    }
+    await browser(1, "find", "role", "button", "click", "--name", "Allow access", "--exact");
+    await until("real approval page grants the exact Site", async () => (await health(site)).status, value => value === 200);
+    await browser(1, "tab", personalTab);
+  };
   try {
     const browserRoom = await action(1, "createRoom({name:'Browser-owned room',access:'public',hidden:false})");
     start(); await ready();
+    const discovery = await fetch(`${local}/connect-discovery`).then(response => response.json());
+    assert.deepEqual(discovery, { service: "piik-channel-app", protocol: 1, port, connectURL: `${local}/client` });
+    assert.equal((await health(origin)).status, 403, "discovery does not approve its caller");
+    await approve(origin);
+    const token = (await (await health(origin)).json()).token;
     const participants = await evaluate(0, `${hook}.snapshot().state.sessions.filter(session => session.online).length`);
     await browser(1, "open", url);
     await browser(1, "reload");
-    await until("linked Browser restores its admitted identity", () => view(1), value => value.connection === "connected" && value.self.id === initial[1].self.id);
+    await until("linked Browser restores its admitted identity", () => view(1), value => value.connection === "connected"
+      && value.self.id === initial[1].self.id);
+    await appReady(1);
     const room = await action(1, "createRoom({name:'App-owned room',access:'private',hidden:true,password:'app-room-password'})");
     await action(1, `browse(${JSON.stringify(room)})`);
     const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
@@ -67,7 +102,9 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       "one Native endpoint hosts the App rooms");
     assert.equal((await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.hostSessionId,
       (await view(1)).sessionId, "connecting App does not migrate an existing Browser room");
-    const stored = new DatabaseSync(join(directory, `${room}.sqlite`), { readOnly: true });
+    const [siteData] = await readdir(join(directory, "rooms"));
+    const storedPath = join(directory, "rooms", siteData, initial[1].state.channel.id, initial[1].self.id, `${room}.sqlite`);
+    const stored = new DatabaseSync(storedPath, { readOnly: true });
     const domain = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
     try {
       assert.equal(stored.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 1);
@@ -97,7 +134,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const unrelated = await capturedScreen(0, serverRoom);
     await action(2, `watch(${JSON.stringify(unrelated)})`); await playing(2, unrelated);
     await evaluate(1, "window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/rooms').forEach(socket => socket.close())");
-    await until("local control disconnect is visible", () => view(1), value => value.error === "app_disconnected");
+    await until("local control disconnect is visible", () => evaluate(1, `${hook}.snapshot().appConnected`), value => value === false);
     await progressing(2, picture);
     await action(1, "close()");
     await browser(1, "open", "about:blank");
@@ -113,6 +150,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await until("owner returns to the same Native hosting endpoint", () => view(1), value => value.connection === "connected"
       && value.state.channel.rooms.some(entry => entry.id === room && entry.available && entry.delivery.bindingId === first)
       && value.state.channel.rooms.some(entry => entry.id === browserRoom && entry.available && entry.delivery.hostSessionId === value.sessionId));
+    await appReady(1);
     assert(!(await view(1)).state.voice.some(member => member.sessionId === personalEndpoint || member.sessionId === nativeEndpoint),
       "personal voice stops with its page and never becomes a hosting activity");
     await action(1, `browse(${JSON.stringify(room)})`);
@@ -129,7 +167,9 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       "App shutdown preserves Browser hosting");
     await progressing(2, unrelated);
     start(); await ready();
+    assert.equal((await health(origin)).status, 200, "approved Site survives App restart");
     await action(1, "reconnect()");
+    await appReady(1);
     await until("App reconnect restores data with a fresh binding", () => view(1), value => value.state?.channel.rooms.some(entry =>
       entry.id === room && entry.available && entry.delivery.bindingId !== first));
     await action(1, `browse(${JSON.stringify(room)})`);
@@ -139,13 +179,78 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     assert(!(await view(1)).state.voice.some(member => member.roomId === room));
     assert(!(await view(1)).state.publications.some(publication => publication.roomId === room));
     await progressing(2, unrelated);
+    const restoredBinding = (await view(1)).state.channel.rooms.find(entry => entry.id === room).delivery.bindingId;
+
+    // A second ordinary domain exercises approval isolation with its own real
+    // identity, room runtime and peer confirmation, not another claimed UUID.
+    const otherPort = await freePort(), otherCorePort = await freePort();
+    const otherOrigin = `http://127.0.0.1:${otherPort}`;
+    const otherOwner = randomUUID();
+    otherServer = spawn(resolve(process.env.CHANNEL_EXECUTABLE ??
+      `prototype/channel-server/target/debug/piik-channel-prototype${process.platform === "win32" ? ".exe" : ""}`), [], {
+      env: { ...process.env, PIIK_CHANNEL_PORT: String(otherCorePort), PIIK_CHANNEL_WEB_ORIGIN: otherOrigin,
+        PIIK_CHANNEL_WEB_DIR: assets, PIIK_CHANNEL_DATA_DIR: join(directory, "other-domain"),
+        PIIK_CHANNEL_OWNER_KEY: otherOwner, PIIK_CHANNEL_INVITE_KEY: randomUUID() },
+      windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    });
+    const collectOther = chunk => { log = (log + String(chunk).replaceAll(otherOwner, "[other owner key]")).slice(-64000); };
+    otherServer.stdout.on("data", collectOther); otherServer.stderr.on("data", collectOther);
+    otherServer.on("error", error => collectOther(String(error)));
+    otherWeb = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--config", "prototype/channel-server/vite.config.ts"], {
+      env: { ...process.env, PIIK_CHANNEL_PORT: String(otherCorePort), PIIK_CHANNEL_UI_PORT: String(otherPort) },
+      windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
+    });
+    otherWeb.stdout.on("data", collectOther); otherWeb.stderr.on("data", collectOther);
+    otherWeb.on("error", error => collectOther(String(error)));
+    await until("second ordinary Domain starts", () => fetch(`http://127.0.0.1:${otherCorePort}/healthz`).then(response => response.ok).catch(() => false), Boolean);
+    await until("second Site's normal frontend starts", () => fetch(otherOrigin).then(response => response.ok).catch(() => false), Boolean);
+    assert.equal((await health(otherOrigin)).status, 403, "one approved Site grants no authority to another");
+    await approve(otherOrigin);
+    const firstDomainTab = (await browser(0, "tab")).tabs.find(tab => tab.active).targetId;
+    await browser(0, "tab", "new",
+      `${otherOrigin}/__channel-preview?piik-client-port=${port}#owner=${otherOwner}&piik-client=1`);
+    await until("second Site admits its own Browser user", () => view(0), value => value.connection === "connected");
+    await appReady(0);
+    const otherIdentity = (await view(0)).self.id;
+    const otherRoom = await action(0, "createRoom({name:'Other Site App room',access:'public',hidden:false})");
+    const otherBinding = (await view(0)).state.channel.rooms.find(entry => entry.id === otherRoom).delivery.bindingId;
+    await action(0, `sendMessage(${JSON.stringify(otherRoom)}, 'Other Site before revocation')`);
+    await browser(1, "tab", approvalTab);
+    await browser(1, "open", `${local}/client`);
+    await browser(1, "wait", ".lr-client-approved-sites");
+    await browser(1, "click", `.lr-client-approved-site:has(a[href^="${origin}/"]) button[aria-label="Revoke this Site's App access"]`);
+    await until("revocation removes only this Site's health authority", async () => (await health(origin)).status, value => value === 403);
+    await until("revoked Site's Native rooms stop", () => view(2), value => value.state.channel.rooms.some(entry => entry.id === room && !entry.available));
+    assert.equal((await health(otherOrigin)).status, 200);
+    assert.equal((await view(0)).self.id, otherIdentity);
+    assert.equal((await view(0)).state.channel.rooms.find(entry => entry.id === otherRoom).delivery.bindingId, otherBinding);
+    await action(0, `sendMessage(${JSON.stringify(otherRoom)}, 'Other Site still confirms after revocation')`);
+    await until("another Site's actual room keeps confirming", () => evaluate(0,
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(otherRoom)}]`), messages => messages?.some(message => message.text === "Other Site still confirms after revocation"));
+    await browser(1, "open", `${local}/client?site=${encodeURIComponent(origin)}`);
+    await browser(1, "wait", "#site-approval-title");
+    await browser(1, "find", "role", "button", "click", "--name", "Allow access", "--exact");
+    await until("reapproval restores the Site's existing local permission", async () => (await health(origin)).status, value => value === 200);
+    await browser(1, "tab", personalTab);
+    await action(1, "activateApp()");
+    await until("reapproved Site restores its retained room", () => view(1), value => value.state.channel.rooms.some(entry =>
+      entry.id === room && entry.available && entry.delivery.bindingId !== restoredBinding));
+    const retained = new DatabaseSync(storedPath, { readOnly: true });
+    try { assert(retained.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count >= 2); }
+    finally { retained.close(); }
+    assert.equal((await readdir(join(directory, "rooms"))).length, 2, "reapproval reuses the same Site data directory");
+    await browser(0, "tab", firstDomainTab);
     await writeFile(join(output, "app-result.json"), JSON.stringify({ passed: true,
-      scenarios: ["separate hosting and personal endpoints", "Native SQLite ownership", "Browser rooms do not migrate", "peer chat confirmation",
+      scenarios: ["real Site approval", "unapproved Origin rejected", "saved approval reused", "cross-Site hosting isolation", "reapproval retains Site data",
+        "separate hosting and personal endpoints", "Native SQLite ownership", "Browser rooms do not migrate", "peer chat confirmation",
         "Browser screen and voice", "control loss preserves media", "page close preserves App hosting and chat",
         "returning page reuses Native hosting", "App loss isolates its rooms", "fresh binding restores saved history"] }, null, 2));
   } catch (error) { console.error(log); throw error; }
   finally {
     await stop();
+    for (const child of [otherWeb, otherServer]) if (child?.exitCode === null && child.signalCode === null) {
+      const exited = once(child, "exit"); child.kill(); await exited;
+    }
     if (relative(tmpdir(), directory).startsWith("..") || !basename(directory).startsWith("piik-app-room-check-")) throw new Error("Unexpected App acceptance directory");
     await rm(directory, { recursive: true, force: true });
   }

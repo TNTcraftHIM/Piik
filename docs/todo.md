@@ -9,9 +9,12 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Integrate the accepted shared UI with the App's normal
-  approval/launcher flow and Native participant, then connect native
-  capture/input and platform packaging. Reuse mature components and the shared
+  Rust owners. Complete native capture/input, App local/public-domain startup
+  and platform packaging over the shared UI and Native participant.
+  Before native H.264 capture, replace the SDK and Native adapter's raw profile
+  comparisons with one semantic profile/level parser; equivalent Constrained
+  Baseline formats currently fail when offered beside VP8.
+  Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab

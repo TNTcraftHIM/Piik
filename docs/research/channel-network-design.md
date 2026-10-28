@@ -492,10 +492,12 @@ account against domain admission and opens rooms through that participant.
 The Browser keeps its separate personal endpoint and controls its own activities;
 closing the socket does not retire the App's host. Existing Browser rooms keep
 their Browser runtime and storage.
-The prototype's local launcher explicitly selects one exact Web origin and one
-domain/user data directory. Browser-supplied IDs only confirm that selection;
-they cannot select another owner's data. Changing a tunnel URL requires local
-approval of the replacement origin and leaves the selected data in place.
+The local approval page grants one exact Web origin access to its own data
+namespace. Browser-supplied domain/user IDs select data only within that namespace,
+after Native verifies the actual domain admission. Revocation stops that site's
+hosting without deleting its data or affecting other sites. Changing a tunnel URL
+requires approval of the replacement origin; it does not inherit an earlier
+origin's data automatically. URLs carry discovery hints, never App permission.
 The shared Rust core has no HTTP runtime; Browser/WASM, Native and Server consume
 it directly. Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Evaluate

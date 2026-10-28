@@ -7,6 +7,7 @@ use piik_channel_native::session::{run, Config, RoomFile};
 use serde_json::{json, Value};
 use std::{path::PathBuf, time::Duration};
 use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
     sync::oneshot,
 };
@@ -107,6 +108,31 @@ impl Domain {
             _ => unreachable!(),
         }
     }
+}
+
+async fn app_http(
+    address: std::net::SocketAddr,
+    method: &str,
+    path: &str,
+    origin: Option<&str>,
+    body: Option<Value>,
+) -> (u16, Value) {
+    let mut socket = TcpStream::connect(address).await.unwrap();
+    let body = body.map(|value| value.to_string()).unwrap_or_default();
+    let origin = origin
+        .map(|value| format!("Origin: {value}\r\n"))
+        .unwrap_or_default();
+    let request = format!("{method} {path} HTTP/1.1\r\nHost: {address}\r\n{origin}Content-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
+    socket.write_all(request.as_bytes()).await.unwrap();
+    let mut response = Vec::new();
+    tokio::time::timeout(Duration::from_secs(5), socket.read_to_end(&mut response))
+        .await
+        .unwrap()
+        .unwrap();
+    let response = String::from_utf8(response).unwrap();
+    let (head, body) = response.split_once("\r\n\r\n").unwrap();
+    let status = head.split_whitespace().nth(1).unwrap().parse().unwrap();
+    (status, serde_json::from_str(body).unwrap_or(Value::Null))
 }
 
 #[tokio::test]
@@ -363,12 +389,17 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             _ => None,
         })
         .unwrap();
+    let assets = folder.join("web");
+    std::fs::create_dir_all(&assets).unwrap();
+    std::fs::write(
+        assets.join("index.html"),
+        "<!doctype html><title>App</title>",
+    )
+    .unwrap();
     let config = || app::Config {
-        allowed_origin: origin.clone(),
         data_root: folder.clone(),
-        channel_id: channel,
-        user_id: user,
-        token: "test-instance".into(),
+        assets: assets.clone(),
+        open_browser: false,
     };
     let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = app_listener.local_addr().unwrap();
@@ -376,7 +407,49 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let service = tokio::spawn(app::serve(app_listener, config(), async {
         let _ = stopped.await;
     }));
-    let upgrade = |address| {
+    let local_origin = format!("http://{address}");
+    let (status, discovery) = app_http(address, "GET", "/connect-discovery", None, None).await;
+    assert_eq!(status, 200);
+    assert_eq!(discovery["service"], "piik-channel-app");
+    assert!(
+        discovery.get("token").is_none(),
+        "discovery grants no authority"
+    );
+    assert_eq!(
+        app_http(address, "GET", "/health", Some(&origin), None)
+            .await
+            .0,
+        403
+    );
+    assert_eq!(
+        app_http(
+            address,
+            "POST",
+            "/api/client-launcher/site",
+            Some(&origin),
+            Some(json!({"site":origin,"allowed":true}))
+        )
+        .await
+        .0,
+        403,
+        "a remote site cannot approve itself"
+    );
+    assert_eq!(
+        app_http(
+            address,
+            "POST",
+            "/api/client-launcher/site",
+            Some(&local_origin),
+            Some(json!({"site":origin,"allowed":true}))
+        )
+        .await
+        .0,
+        200
+    );
+    let (status, health) = app_http(address, "GET", "/health", Some(&origin), None).await;
+    assert_eq!(status, 200);
+    let token = health["token"].as_str().unwrap();
+    let upgrade = |address, token: &str| {
         let mut request = format!("ws://{address}/rooms")
             .into_client_request()
             .unwrap();
@@ -385,11 +458,20 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             .insert("Origin", origin.parse().unwrap());
         request.headers_mut().insert(
             "sec-websocket-protocol",
-            "piik-channel-rooms.test-instance".parse().unwrap(),
+            format!("piik-channel-rooms.{token}").parse().unwrap(),
         );
         request
     };
-    let (mut page, _) = connect_async(upgrade(address)).await.unwrap();
+    let mut unapproved = upgrade(address, token);
+    unapproved
+        .headers_mut()
+        .insert("Origin", "https://unapproved.example".parse().unwrap());
+    assert!(
+        matches!(connect_async(unapproved).await,
+        Err(tokio_tungstenite::tungstenite::Error::Http(response)) if response.status() == 403),
+        "a valid instance token does not authorize another Origin"
+    );
+    let (mut page, _) = connect_async(upgrade(address, token)).await.unwrap();
     let hello = |credential: &str| json!({"id":"hello","type":"hello","channelId":channel,"userId":user,"credential":credential,"name":"Owner"});
     page.send(Message::Text(hello(&guest_credential).to_string().into()))
         .await
@@ -403,8 +485,8 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
     assert_eq!(rejected["error"], "owner_mismatch");
     assert!(
-        !folder.exists(),
-        "public IDs and another user's credential cannot open the local data root"
+        !folder.join("rooms").exists(),
+        "approval and public IDs cannot open room data before the claimed user's actual admission"
     );
 
     page.send(Message::Text(hello(&credential).to_string().into()))
@@ -448,6 +530,24 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert_eq!(opened["result"]["name"], "Saved private");
     assert_eq!(opened["result"]["access"], "private");
     assert_eq!(opened["result"]["hasPassword"], true);
+    let sites: Vec<_> = std::fs::read_dir(folder.join("rooms"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect();
+    assert_eq!(sites.len(), 1);
+    Uuid::parse_str(sites[0].file_name().unwrap().to_str().unwrap()).unwrap();
+    let room_directory = sites[0].join(channel.to_string()).join(user.to_string());
+    let duplicate = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    assert!(
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            app::serve(duplicate, config(), std::future::pending())
+        )
+        .await
+        .unwrap()
+        .is_err(),
+        "a second App cannot own the same approval data directory"
+    );
     domain.room_turn(&room).await;
     let mut wrong_policy: Value = serde_json::from_str(&policy).unwrap();
     wrong_policy["creatorId"] = json!(Uuid::new_v4());
@@ -487,13 +587,13 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let refused: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
     assert_eq!(refused["error"], "room_limit");
-    let refused_path = folder.join(format!("{refused_room}.sqlite"));
+    let refused_path = room_directory.join(format!("{refused_room}.sqlite"));
     assert!(
         refused_path.exists(),
         "registration refusal preserves already committed data"
     );
     drop(HostedRoom::open(&refused_path, &refused_room, user).unwrap());
-    let path = folder.join(format!("{room}.sqlite"));
+    let path = room_directory.join(format!("{room}.sqlite"));
     page.close(None).await.unwrap();
     while page.next().await.is_some() {}
     assert!(
@@ -505,7 +605,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     domain.until(|_, event| matches!(event, Event::State {state} if state.channel.rooms.iter().any(|value| value.id == room && value.available))).await;
 
     // Reopening the control page uses the already admitted host and binding.
-    let (mut page, _) = connect_async(upgrade(address)).await.unwrap();
+    let (mut page, _) = connect_async(upgrade(address, token)).await.unwrap();
     page.send(Message::Text(hello(&credential).to_string().into()))
         .await
         .unwrap();
@@ -536,7 +636,14 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let service = tokio::spawn(app::serve(app_listener, config(), async {
         let _ = stopped.await;
     }));
-    let (mut page, _) = connect_async(upgrade(address)).await.unwrap();
+    let (status, health) = app_http(address, "GET", "/health", Some(&origin), None).await;
+    assert_eq!(
+        status, 200,
+        "the site's local approval survives App restart"
+    );
+    let (mut page, _) = connect_async(upgrade(address, health["token"].as_str().unwrap()))
+        .await
+        .unwrap();
     page.send(Message::Text(hello(&credential).to_string().into()))
         .await
         .unwrap();

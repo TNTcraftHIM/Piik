@@ -33,8 +33,9 @@ Browser and Native consume one shared Rust core; conversation has one peer carri
 App hosting has its own Native endpoint and process lifetime; the Browser's
 personal voice, shares and watches remain page-owned. Existing Browser rooms
 retain their page lifetime and storage when an App connects.
-Product App authorization/launcher integration, native capture/input and platform
-packaging remain. [TODO](./todo.md) owns remaining stages and platform reports.
+App discovery and site approval reuse the shared product controls, with one
+local data namespace per approved site. Native capture/input, App domain startup
+and platform packaging remain. [TODO](./todo.md) owns remaining stages and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 

@@ -6,25 +6,38 @@ use tokio::net::TcpListener;
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = Config {
-        allowed_origin: env::var("PIIK_CHANNEL_APP_ORIGIN")
-            .context("PIIK_CHANNEL_APP_ORIGIN is required")?,
-        data_root: PathBuf::from(
-            env::var("PIIK_CHANNEL_APP_DATA_DIR")
-                .context("PIIK_CHANNEL_APP_DATA_DIR is required")?,
+        data_root: match env::var_os("PIIK_CHANNEL_APP_DATA_DIR") {
+            Some(directory) => PathBuf::from(directory),
+            None => dirs::data_local_dir()
+                .context("No local application data directory")?
+                .join("Piik")
+                .join("channel-app"),
+        },
+        assets: PathBuf::from(
+            env::var_os("PIIK_CHANNEL_APP_WEB_DIR").unwrap_or_else(|| "build/channel-web".into()),
         ),
-        channel_id: env::var("PIIK_CHANNEL_APP_CHANNEL_ID")
-            .context("PIIK_CHANNEL_APP_CHANNEL_ID is required")?
-            .parse()?,
-        user_id: env::var("PIIK_CHANNEL_APP_USER_ID")
-            .context("PIIK_CHANNEL_APP_USER_ID is required")?
-            .parse()?,
-        token: env::var("PIIK_CHANNEL_APP_TOKEN").context("PIIK_CHANNEL_APP_TOKEN is required")?,
+        open_browser: env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none(),
     };
-    let port: u16 = env::var("PIIK_CHANNEL_APP_PORT")
-        .unwrap_or_else(|_| "18997".into())
-        .parse()?;
-    let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
-    eprintln!("App room socket listening on {}", listener.local_addr()?);
+    anyhow::ensure!(
+        config.assets.join("index.html").is_file(),
+        "Build the shared channel Web interface first"
+    );
+    let listener = if let Ok(port) = env::var("PIIK_CHANNEL_APP_PORT") {
+        TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port.parse::<u16>()?)).await?
+    } else {
+        let mut available = None;
+        for port in 39721..=39730 {
+            match TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
+                Ok(listener) => {
+                    available = Some(listener);
+                    break;
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        available.context("Piik App discovery ports are occupied")?
+    };
     serve(listener, config, async {
         let _ = tokio::signal::ctrl_c().await;
     })
