@@ -107,8 +107,8 @@ Use incremental transactions at the storage owner. Do not carry the prototype's
 whole-channel JSON rewrite into distributed room storage. Share the Rust room
 rules between native execution and any Browser/WASM adapter; use local SQLite
 or IndexedDB through that adapter rather than an external database service.
-Storage adapters read retry identity, room order and attachment ownership inside
-one transaction; the shared core prepares the confirmation. A Browser runtime
+Storage adapters read retry identity and room order inside one transaction; the
+shared core prepares the confirmation with its attachment descriptions. A Browser runtime
 serializes room operations through the transaction's
 [complete event](https://developer.mozilla.org/en-US/docs/Web/API/IDBTransaction/complete_event),
 not an individual write's success. Failure ends that operation without advancing
@@ -219,9 +219,9 @@ data. File traffic still consumes the real forwarding capacity of each endpoint.
 
 Ordinary disconnection may resume a temporary download from its written offset,
 but that prefix is not yet verified. Final digest failure discards the temporary
-copy before retrying; whole-file verification cannot identify a good prefix or
-the particular source/relay responsible for corruption. Try other available
-candidates finitely, then report failure. Do not promote bad content or ban a
+copy and reports failure; whole-file verification cannot identify a good prefix or
+the particular source/relay responsible for corruption. Retrying starts a new
+download, without a second automatic source-recovery policy. Do not promote bad content or ban a
 claimed holder solely from an end-to-end mismatch.
 
 The [WebRTC DataChannel API](https://www.w3.org/TR/webrtc/#rtcdatachannel) supplies

@@ -38,7 +38,7 @@ impl RoomNetwork {
         self.deliver(effects)
     }
 
-    fn deliver(&mut self, effects: Effects) -> Effects {
+    pub fn deliver(&mut self, effects: Effects) -> Effects {
         let mut pending = VecDeque::from([effects]);
         let mut delivered = Effects::default();
         while let Some(effects) = pending.pop_front() {

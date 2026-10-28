@@ -31,11 +31,13 @@ pub struct RoomRuntime {
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
     base: Option<BaseTree>,
+    files: crate::file_room::FileRoom,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RoomSnapshot {
+    pub files: Vec<crate::file_room::FilePlan>,
     pub room: Room,
     pub publications: Vec<PublicationInfo>,
     pub voice: Vec<VoiceInfo>,
@@ -49,6 +51,7 @@ impl RoomRuntime {
             activity: BTreeMap::new(),
             publications: BTreeMap::new(),
             base: None,
+            files: Default::default(),
         }
     }
 
@@ -80,14 +83,21 @@ impl RoomRuntime {
 
     pub fn snapshot(&self, member: Member, session: Uuid) -> Option<RoomSnapshot> {
         let mut room = self.policy.view(member.user_id, member.domain_owner)?;
+        room.capabilities.attachments = self.base.is_some();
         room.reading = room.authorized && self.reading(session);
         let mut snapshot = RoomSnapshot {
             room,
+            files: Vec::new(),
             publications: Vec::new(),
             voice: Vec::new(),
             subscriptions: Vec::new(),
         };
         if snapshot.room.authorized {
+            snapshot.files = self
+                .base
+                .as_ref()
+                .map(|base| self.files.plans(&self.policy.id, session, base))
+                .unwrap_or_default();
             snapshot.publications = self.publications().cloned().collect();
             snapshot.voice = self.voice().cloned().collect();
             snapshot.subscriptions = self.subscriptions(session).into_iter().collect();
@@ -103,6 +113,42 @@ impl RoomRuntime {
         if self.base.as_ref().is_none_or(|base| base.root() != session) {
             self.base = Some(BaseTree::new(session));
         }
+    }
+    pub fn attachments_available(&self) -> bool {
+        self.base.is_some()
+    }
+    pub(crate) fn file_command(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        seq: u64,
+        id: Uuid,
+        offer: bool,
+        enabled: bool,
+    ) -> Result<Option<HistoryRequest>, &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        if !self.attachments_available() {
+            return Err("attachments_unavailable");
+        }
+        if enabled {
+            Ok(Some(HistoryRequest::Attachment {
+                room_id: self.policy.id.clone(),
+                message_seq: seq,
+                attachment_id: id,
+            }))
+        } else {
+            self.files.remove(session, seq, id, offer);
+            Ok(None)
+        }
+    }
+    pub(crate) fn finish_file(
+        &mut self,
+        session: Uuid,
+        seq: u64,
+        attachment: crate::AttachmentDescriptor,
+        offer: bool,
+    ) -> Result<(), &'static str> {
+        self.files.install(session, seq, attachment, offer)
     }
     pub fn reading(&self, session: Uuid) -> bool {
         self.activity
@@ -183,7 +229,7 @@ impl RoomRuntime {
         member: Member,
         text: String,
         nonce: String,
-        attachments: Vec<Uuid>,
+        attachments: Vec<crate::attachment::AttachmentDescriptor>,
         now: u64,
     ) -> Result<HistoryRequest, &'static str> {
         self.authorize(member, RoomPermission::Write)?;
@@ -366,6 +412,7 @@ impl RoomRuntime {
                     .then_some(*session)
             })
             .collect();
+        self.files.reconcile(&readable);
         self.publications
             .retain(|_, publication| available.contains(&publication.info.session_id));
         self.activity
@@ -399,6 +446,7 @@ impl RoomRuntime {
                         .then_some(*session)
                 })
                 .collect();
+            demand.extend(self.files.demand());
             demand.extend(self.publications.values().map(|p| p.info.session_id));
             let base_connected = endpoints
                 .iter()

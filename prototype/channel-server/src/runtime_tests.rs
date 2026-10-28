@@ -89,9 +89,8 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         std::env::temp_dir().join(format!("piik-directory-failure-{}.sqlite", Uuid::new_v4()));
     let room_path =
         std::env::temp_dir().join(format!("piik-host-policy-{}.sqlite", Uuid::new_v4()));
-    let directory_store =
-        storage::Storage::open(&directory_path, storage::Limits::default()).unwrap();
-    let mut room_store = storage::Storage::open(&room_path, storage::Limits::default()).unwrap();
+    let directory_store = storage::Storage::open(&directory_path).unwrap();
+    let mut room_store = storage::Storage::open(&room_path).unwrap();
     let mut hub = Hub {
         authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
@@ -233,7 +232,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
 #[test]
 fn room_commit_owns_confirmation_retry_and_broadcast_without_domain_checkpoint() {
     let path = std::env::temp_dir().join(format!("piik-room-runtime-{}.sqlite", Uuid::new_v4()));
-    let storage = storage::Storage::open(&path, storage::Limits::default()).unwrap();
+    let storage = storage::Storage::open(&path).unwrap();
     let mut hub = Hub {
         authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),

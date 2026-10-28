@@ -165,7 +165,6 @@ impl RoomRuntime {
         session: Uuid,
         command: Command,
         now: u64,
-        attachments: bool,
     ) -> Result<RoomOperation, &'static str> {
         let mut op = RoomOperation {
             result: RoomResult::Done,
@@ -175,13 +174,31 @@ impl RoomRuntime {
         match command {
             Command::Browse { active, .. } => op.history = self.browse(member, session, active)?,
             Command::History { before, .. } => op.history = Some(self.history(member, before)?),
+            Command::FileOffer {
+                message_seq,
+                attachment_id,
+                available,
+                ..
+            } => {
+                op.history =
+                    self.file_command(member, session, message_seq, attachment_id, true, available)?
+            }
+            Command::FileReceive {
+                message_seq,
+                attachment_id,
+                enabled,
+                ..
+            } => {
+                op.history =
+                    self.file_command(member, session, message_seq, attachment_id, false, enabled)?
+            }
             Command::Chat {
                 text,
                 nonce,
                 attachments: ids,
                 ..
             } => {
-                if !attachments && !ids.is_empty() {
+                if !self.attachments_available() && !ids.is_empty() {
                     return Err("attachments_unavailable");
                 }
                 op.history = Some(self.chat(member, text, nonce, ids, now)?);
@@ -396,7 +413,6 @@ impl RoomHost {
                         context.session_id,
                         command.clone(),
                         context.now,
-                        false,
                     )?;
                     if op.policy_changed {
                         work.policy = Some(self.policy().clone());
@@ -452,7 +468,26 @@ impl RoomHost {
         }
         let mut pending = self.pending.take().unwrap();
         if let Some(result) = history {
-            pending.reply.as_mut().unwrap().result = RoomResult::History { result };
+            if let HistoryResult::Attachment {
+                message_seq,
+                attachment,
+            } = result
+            {
+                let HostAction::Command { context, command } = &pending.input.action else {
+                    return Err("invalid_file_operation");
+                };
+                let offer = matches!(command, Command::FileOffer { .. });
+                if let Err(code) =
+                    self.room
+                        .finish_file(context.session_id, message_seq, attachment, offer)
+                {
+                    pending.reply.as_mut().unwrap().result =
+                        RoomResult::Error { code: code.into() };
+                }
+                self.room.reconcile(&pending.input.endpoints);
+            } else {
+                pending.reply.as_mut().unwrap().result = RoomResult::History { result };
+            }
         }
         Ok(self.output(pending))
     }
@@ -474,10 +509,7 @@ impl RoomHost {
             .filter_map(|(session, endpoint)| {
                 self.room
                     .snapshot(endpoint.member, *session)
-                    .map(|mut snapshot| {
-                        snapshot.room.capabilities.attachments = false;
-                        (*session, snapshot)
-                    })
+                    .map(|snapshot| (*session, snapshot))
             })
             .collect();
         HostOutput {

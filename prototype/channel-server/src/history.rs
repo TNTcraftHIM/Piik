@@ -1,4 +1,5 @@
-use crate::wire::{valid_id, ChatMessage, Event, MAX_MESSAGE_ATTACHMENTS};
+use crate::attachment::{AttachmentDescriptor, ATTACHMENT_LIMITS};
+use crate::wire::{valid_id, ChatMessage, Event};
 use crate::Effects;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
@@ -13,7 +14,7 @@ pub struct MessageDraft {
     pub user_id: Uuid,
     pub nonce: String,
     pub text: String,
-    pub attachments: Vec<Uuid>,
+    pub attachments: Vec<AttachmentDescriptor>,
     pub time: u64,
 }
 
@@ -22,13 +23,21 @@ impl MessageDraft {
         user_id: Uuid,
         nonce: String,
         text: String,
-        attachments: Vec<Uuid>,
+        attachments: Vec<AttachmentDescriptor>,
         time: u64,
     ) -> Result<Self, &'static str> {
-        if attachments.len() > MAX_MESSAGE_ATTACHMENTS
-            || attachments.iter().collect::<BTreeSet<_>>().len() != attachments.len()
+        if attachments.len() > ATTACHMENT_LIMITS.max_attachments_per_message
+            || attachments
+                .iter()
+                .map(|file| file.id)
+                .collect::<BTreeSet<_>>()
+                .len()
+                != attachments.len()
         {
             return Err("invalid_attachments");
+        }
+        for attachment in &attachments {
+            attachment.validate()?;
         }
         if (text.trim().is_empty() && attachments.is_empty())
             || text.chars().count() > 2000
@@ -49,7 +58,6 @@ impl MessageDraft {
     /// A confirmed retry preserves its original content, even after bytes expire.
     pub fn prepare_confirmation(
         &self,
-        room_id: &str,
         input: ConfirmationInput,
     ) -> Result<MessageConfirmation, &'static str> {
         match input {
@@ -57,31 +65,17 @@ impl MessageDraft {
                 message,
                 inserted: false,
             }),
-            ConfirmationInput::New {
-                last_seq,
-                attachments,
-            } => {
-                if self.attachments.iter().any(|id| {
-                    !attachments.iter().any(|attachment| {
-                        attachment.id == *id
-                            && attachment.room_id == room_id
-                            && attachment.user_id == self.user_id
-                    })
-                }) {
-                    return Err("attachment_unavailable");
-                }
-                Ok(MessageConfirmation {
-                    message: ChatMessage {
-                        seq: last_seq + 1,
-                        id: Uuid::new_v4(),
-                        user_id: self.user_id,
-                        text: self.text.clone(),
-                        time: self.time,
-                        attachments: self.attachments.clone(),
-                    },
-                    inserted: true,
-                })
-            }
+            ConfirmationInput::New { last_seq } => Ok(MessageConfirmation {
+                message: ChatMessage {
+                    seq: last_seq + 1,
+                    id: Uuid::new_v4(),
+                    user_id: self.user_id,
+                    text: self.text.clone(),
+                    time: self.time,
+                    attachments: self.attachments.clone(),
+                },
+                inserted: true,
+            }),
         }
     }
 }
@@ -93,21 +87,8 @@ impl MessageDraft {
     rename_all_fields = "camelCase"
 )]
 pub enum ConfirmationInput {
-    Existing {
-        message: ChatMessage,
-    },
-    New {
-        last_seq: u64,
-        attachments: Vec<AttachmentOwner>,
-    },
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AttachmentOwner {
-    pub id: Uuid,
-    pub room_id: String,
-    pub user_id: Uuid,
+    Existing { message: ChatMessage },
+    New { last_seq: u64 },
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -124,6 +105,11 @@ pub struct MessageConfirmation {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryRequest {
+    Attachment {
+        room_id: String,
+        message_seq: u64,
+        attachment_id: Uuid,
+    },
     Read {
         room_id: String,
         before: Option<u64>,
@@ -135,9 +121,37 @@ pub enum HistoryRequest {
 }
 
 impl HistoryRequest {
+    pub fn attachment_result(
+        &self,
+        message: Option<ChatMessage>,
+    ) -> Result<HistoryResult, &'static str> {
+        let Self::Attachment {
+            message_seq,
+            attachment_id,
+            ..
+        } = self
+        else {
+            return Err("not_an_attachment_read");
+        };
+        let message = message
+            .filter(|message| message.seq == *message_seq)
+            .ok_or("attachment_unavailable")?;
+        let attachment = message
+            .attachments
+            .into_iter()
+            .find(|file| file.id == *attachment_id)
+            .ok_or("attachment_unavailable")?;
+        Ok(HistoryResult::Attachment {
+            message_seq: *message_seq,
+            attachment,
+        })
+    }
+
     pub fn room_id(&self) -> &str {
         match self {
-            Self::Read { room_id, .. } | Self::Send { room_id, .. } => room_id,
+            Self::Read { room_id, .. }
+            | Self::Send { room_id, .. }
+            | Self::Attachment { room_id, .. } => room_id,
         }
     }
 }
@@ -149,6 +163,10 @@ impl HistoryRequest {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryResult {
+    Attachment {
+        message_seq: u64,
+        attachment: AttachmentDescriptor,
+    },
     Page {
         messages: Vec<ChatMessage>,
         has_more: bool,
@@ -190,6 +208,9 @@ impl HistoryEffect {
         let mut effects = Effects::default();
         let room_id = self.request.room_id().to_owned();
         match result {
+            Ok(HistoryResult::Attachment { .. }) => {
+                unreachable!("file operations finish at the room host")
+            }
             Ok(HistoryResult::Page {
                 messages,
                 has_more,

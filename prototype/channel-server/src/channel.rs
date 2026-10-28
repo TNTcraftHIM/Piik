@@ -155,7 +155,7 @@ impl Channel {
                 command => {
                     let operation = self
                         .room_mut(&id)?
-                        .command(member, session_id, command, now, true)?;
+                        .command(member, session_id, command, now)?;
                     if let RoomResult::Invite { key } = operation.result {
                         events.push((
                             session_id,
@@ -373,7 +373,30 @@ impl Channel {
                 projection
                     .views
                     .retain(|session, _| endpoints.contains_key(session));
+                let readable_sessions: BTreeSet<_> = projection
+                    .views
+                    .iter()
+                    .filter_map(|(session, view)| view.room.authorized.then_some(*session))
+                    .collect();
                 for view in projection.views.values_mut() {
+                    for file in &mut view.files {
+                        if file
+                            .source_id
+                            .is_some_and(|source| !readable_sessions.contains(&source))
+                        {
+                            file.source_id = None;
+                            file.upstream = None;
+                            file.downstream.clear();
+                        }
+                        if file
+                            .upstream
+                            .is_some_and(|peer| !readable_sessions.contains(&peer))
+                        {
+                            file.upstream = None;
+                        }
+                        file.downstream
+                            .retain(|peer| readable_sessions.contains(peer));
+                    }
                     view.publications.retain(|p| {
                         endpoints
                             .get(&p.session_id)
@@ -480,6 +503,8 @@ impl Channel {
             Command::Browse { room_id, .. }
             | Command::BaseState { room_id, .. }
             | Command::Chat { room_id, .. }
+            | Command::FileOffer { room_id, .. }
+            | Command::FileReceive { room_id, .. }
             | Command::History { room_id, .. }
             | Command::UpdateRoom { room_id, .. }
             | Command::EnterRoom { room_id, .. }
@@ -787,13 +812,41 @@ impl Channel {
                 || view.publications.len() > 40
                 || view.voice.len() > 20
                 || view.subscriptions.len() > 40
+                || view.files.len() > HISTORY_WINDOW
                 || (!view.room.authorized
                     && (view.room.reading
                         || !view.publications.is_empty()
                         || !view.voice.is_empty()
-                        || !view.subscriptions.is_empty()))
+                        || !view.subscriptions.is_empty()
+                        || !view.files.is_empty()))
             {
                 return Err("invalid_room_projection");
+            }
+            for file in &view.files {
+                let neighbor = |peer: Uuid| {
+                    peer != *recipient
+                        && projection.base_links.iter().any(|link| {
+                            (link.parent == *recipient && link.child == peer)
+                                || (link.child == *recipient && link.parent == peer)
+                        })
+                };
+                if file.room_id != id
+                    || file.message_seq == 0
+                    || file.attachment.validate().is_err()
+                    || file.downstream.len() > 19
+                    || file.downstream.iter().collect::<BTreeSet<_>>().len()
+                        != file.downstream.len()
+                    || file.source_id.is_some_and(|source| {
+                        !projection
+                            .views
+                            .get(&source)
+                            .is_some_and(|view| view.room.authorized)
+                    })
+                    || file.upstream.is_some_and(|peer| !neighbor(peer))
+                    || file.downstream.iter().any(|peer| !neighbor(*peer))
+                {
+                    return Err("invalid_room_projection");
+                }
             }
             for publication in &view.publications {
                 if publication.room_id != id
@@ -846,7 +899,6 @@ impl Channel {
             room.summary = projection.summary.clone();
             let mut projection = projection.clone();
             for view in projection.views.values_mut() {
-                view.room.capabilities.attachments = false;
                 view.room.available = true;
             }
             room.projection = Some(projection);
@@ -873,6 +925,7 @@ impl Channel {
         let mut rooms = Vec::new();
         let mut publications = Vec::new();
         let mut voice = Vec::new();
+        let mut files = Vec::new();
         let mut subscriptions = BTreeSet::new();
         if let Some(member) = member {
             for room in self.rooms.values() {
@@ -880,6 +933,7 @@ impl Channel {
                     rooms.push(snapshot.room);
                     publications.extend(snapshot.publications);
                     voice.extend(snapshot.voice);
+                    files.extend(snapshot.files);
                     subscriptions.extend(snapshot.subscriptions);
                 }
             }
@@ -890,11 +944,13 @@ impl Channel {
                     rooms.push(snapshot.room);
                     publications.extend(snapshot.publications);
                     voice.extend(snapshot.voice);
+                    files.extend(snapshot.files);
                     subscriptions.extend(snapshot.subscriptions);
                 }
             }
         }
         Snapshot {
+            files,
             channel: ChannelInfo {
                 history_window: HISTORY_WINDOW,
                 id: self.id,

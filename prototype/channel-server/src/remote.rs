@@ -117,6 +117,7 @@ impl RemoteRoom {
                 capabilities: RoomCapabilities { attachments: false },
                 members: None,
             },
+            files: vec![],
             publications: vec![],
             voice: vec![],
             subscriptions: vec![],

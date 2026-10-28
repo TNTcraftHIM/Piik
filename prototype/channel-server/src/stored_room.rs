@@ -2,7 +2,7 @@
 //! remain with the caller; this adapter executes one room input at a time.
 use crate::{
     host::{HostInput, HostOutput, RoomHost, RoomSummary},
-    storage::{Limits, Storage, StoreResult},
+    storage::{Storage, StoreResult},
     RoomState,
 };
 use std::path::Path;
@@ -15,7 +15,7 @@ pub struct StoredRoomHost {
 impl StoredRoomHost {
     /// The caller supplies a trusted, separate database path for this room.
     pub fn create(path: &Path, policy: RoomState) -> StoreResult<Self> {
-        let mut store = Storage::open(path, Limits::default())?;
+        let mut store = Storage::open(path)?;
         if store.load()?.is_some() {
             return Err("room_already_exists".into());
         }
@@ -28,7 +28,7 @@ impl StoredRoomHost {
 
     pub fn open(path: &Path) -> StoreResult<Self> {
         std::fs::metadata(path)?;
-        let store = Storage::open(path, Limits::default())?;
+        let store = Storage::open(path)?;
         let policy = serde_json::from_value(store.load()?.ok_or("room_not_found")?)?;
         Ok(Self {
             host: RoomHost::new(policy),

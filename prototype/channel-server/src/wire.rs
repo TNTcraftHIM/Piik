@@ -25,12 +25,24 @@ pub enum Command {
         room_id: String,
         active: bool,
     },
+    FileOffer {
+        room_id: String,
+        message_seq: u64,
+        attachment_id: Uuid,
+        available: bool,
+    },
+    FileReceive {
+        room_id: String,
+        message_seq: u64,
+        attachment_id: Uuid,
+        enabled: bool,
+    },
     Chat {
         room_id: String,
         text: String,
         nonce: String,
         #[serde(default)]
-        attachments: Vec<Uuid>,
+        attachments: Vec<crate::attachment::AttachmentDescriptor>,
     },
     HostRegister {
         room: crate::host::RoomSummary,
@@ -135,8 +147,6 @@ impl Request {
         })
     }
 }
-
-pub const MAX_MESSAGE_ATTACHMENTS: usize = 8;
 
 fn nullable_password<'de, D: serde::Deserializer<'de>>(
     d: D,
@@ -343,6 +353,7 @@ pub struct ChannelInfo {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
+    pub files: Vec<crate::file_room::FilePlan>,
     pub channel: ChannelInfo,
     pub users: Vec<UserInfo>,
     pub sessions: Vec<SessionInfo>,
@@ -357,7 +368,7 @@ pub struct Snapshot {
 #[serde(rename_all = "camelCase")]
 pub struct ChatMessage {
     pub seq: u64,
-    pub attachments: Vec<Uuid>,
+    pub attachments: Vec<crate::attachment::AttachmentDescriptor>,
     pub id: Uuid,
     pub user_id: Uuid,
     pub text: String,

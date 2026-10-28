@@ -173,11 +173,10 @@ fn history_requests_carry_authenticated_author_and_defer_confirmation() {
         HistoryRequest::Read { room_id, before: None } if room_id == "studio"
     ));
 
-    let attachment = Uuid::new_v4();
     let send = apply(
         &mut core,
         connection,
-        json!({"type":"chat", "roomId":"living", "text":"  Hello  ", "nonce":"send-once", "attachments":[attachment], "requestId":"send"}),
+        json!({"type":"chat", "roomId":"living", "text":"  Hello  ", "nonce":"send-once", "attachments":[], "requestId":"send"}),
         2,
     );
     assert!(send.events.is_empty());
@@ -189,7 +188,7 @@ fn history_requests_carry_authenticated_author_and_defer_confirmation() {
     assert_eq!(draft.user_id, author);
     assert_eq!(draft.nonce, "send-once");
     assert_eq!(draft.text, "Hello");
-    assert_eq!(draft.attachments, vec![attachment]);
+    assert!(draft.attachments.is_empty());
     assert_eq!(draft.time, 2);
 
     let older = apply(

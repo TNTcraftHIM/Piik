@@ -1,5 +1,3 @@
-mod attachments;
-
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -7,7 +5,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
     Router,
 };
 use piik_channel_prototype::{
@@ -121,8 +119,6 @@ struct AppState {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
     origin: String,
-    storage: Arc<Mutex<storage::Storage>>,
-    transfers: Arc<Semaphore>,
 }
 
 async fn upgrade(
@@ -269,18 +265,7 @@ async fn main() {
         std::fs::create_dir_all(&directory).expect("channel data directory");
         directory.join("channel.sqlite")
     };
-    let mut limits = storage::Limits::default();
-    if let Ok(value) = std::env::var("PIIK_CHANNEL_FILE_LIMIT") {
-        limits.max_file_bytes = value
-            .parse()
-            .expect("PIIK_CHANNEL_FILE_LIMIT must be bytes");
-    }
-    if let Ok(value) = std::env::var("PIIK_CHANNEL_ATTACHMENT_BUDGET") {
-        limits.total_bytes = value
-            .parse()
-            .expect("PIIK_CHANNEL_ATTACHMENT_BUDGET must be bytes");
-    }
-    let mut storage = storage::Storage::open(&database, limits).expect("open channel storage");
+    let mut storage = storage::Storage::open(&database).expect("open channel storage");
     let mut authority =
         Authority::new(owner, invite, ice_servers).expect("valid channel admission keys");
     if let Some(checkpoint) = storage.load().expect("read channel checkpoint") {
@@ -300,8 +285,6 @@ async fn main() {
         })),
         sockets: Arc::new(Semaphore::new(40)),
         origin: origin.clone(),
-        storage,
-        transfers: Arc::new(Semaphore::new(2)),
     };
     let timer_state = state.clone();
     tokio::spawn(async move {
@@ -314,18 +297,9 @@ async fn main() {
     let app = Router::new()
         .route("/healthz", get(|| async { "piik-channel-prototype" }))
         .route("/prototype/channel", get(upgrade))
-        .route("/prototype/channel/limits", get(attachments::limits))
         .route(
-            "/prototype/channel/rooms/{room}/attachments",
-            post(attachments::upload),
-        )
-        .route(
-            "/prototype/channel/attachments/{id}",
-            get(attachments::metadata).delete(attachments::delete),
-        )
-        .route(
-            "/prototype/channel/attachments/{id}/content",
-            get(attachments::download),
+            "/prototype/channel/limits",
+            get(|| async { axum::Json(piik_channel_prototype::ATTACHMENT_LIMITS) }),
         )
         .with_state(state);
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))

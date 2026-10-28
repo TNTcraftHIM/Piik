@@ -199,3 +199,67 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         std::fs::remove_file(path).unwrap();
     }
 }
+
+#[test]
+fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
+    let path = std::env::temp_dir().join(format!("piik-files-room-{}.sqlite", Uuid::new_v4()));
+    let owner = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let attachment = json!({ "id": Uuid::new_v4(), "name": "caption.bin", "size": 3,
+        "mediaType": "application/octet-stream", "sha256": piik_channel_prototype::attachment::sha256_hex(b"abc") });
+    let original;
+    {
+        let mut host =
+            StoredRoomHost::create(&path, policy("private", owner, RoomAccess::Private)).unwrap();
+        original = sent(command(
+            &mut host,
+            owner,
+            owner,
+            json!({"type":"chat", "roomId":"private",
+            "text":"Caption", "nonce":"file-send", "attachments":[attachment]}),
+        ))
+        .message;
+        assert_eq!(
+            original.attachments[0].sha256,
+            attachment["sha256"].as_str().unwrap()
+        );
+        let query = json!({"type":"file_offer", "roomId":"private", "messageSeq":original.seq, "attachmentId":attachment["id"], "available":true});
+        let denied = command(&mut host, owner, viewer, query.clone());
+        assert!(matches!(
+            denied.reply.unwrap().result,
+            RoomResult::Error { .. }
+        ));
+        let readable = command(&mut host, owner, owner, query);
+        assert!(matches!(readable.reply.unwrap().result, RoomResult::Done));
+        assert_eq!(
+            readable.projection.views[&owner].files[0].attachment,
+            original.attachments[0]
+        );
+        let missing = command(
+            &mut host,
+            owner,
+            owner,
+            json!({"type":"file_offer", "roomId":"private", "messageSeq":original.seq+1, "attachmentId":attachment["id"], "available":true}),
+        );
+        assert!(
+            matches!(missing.reply.unwrap().result, RoomResult::Error { code } if code == "attachment_unavailable")
+        );
+    }
+    {
+        let mut host = StoredRoomHost::open(&path).unwrap();
+        let mut changed = attachment.clone();
+        changed["sha256"] = json!(piik_channel_prototype::attachment::sha256_hex(b"changed"));
+        let retry = sent(command(
+            &mut host,
+            owner,
+            owner,
+            json!({"type":"chat", "roomId":"private", "text":"Changed", "nonce":"file-send", "attachments":[changed]}),
+        ));
+        assert!(!retry.inserted);
+        assert_eq!(
+            serde_json::to_value(retry.message).unwrap(),
+            serde_json::to_value(original).unwrap()
+        );
+    }
+    std::fs::remove_file(path).unwrap();
+}

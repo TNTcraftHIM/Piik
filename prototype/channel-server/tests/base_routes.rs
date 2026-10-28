@@ -388,3 +388,110 @@ fn failed_base_data_channel_repairs_its_lease_without_closing_a_shared_screen_pa
         "late base completion cannot reacquire a retired room lease"
     );
 }
+
+#[test]
+fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_delivery() {
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let source = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (host_session, _) = join(&mut network, host, None);
+    let (source_session, credential) = join(&mut network, source, None);
+    let (viewer_session, _) = join(&mut network, viewer, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    let attachment = json!({ "id":Uuid::new_v4(), "name":"retained.bin", "size":3, "mediaType":"application/octet-stream",
+        "sha256":piik_channel_prototype::attachment::sha256_hex(b"abc") });
+    command(
+        &mut network,
+        source,
+        json!({"type":"chat", "roomId":room, "nonce":"file", "text":"", "attachments":[attachment]}),
+    );
+    command(
+        &mut network,
+        source,
+        json!({"type":"file_offer", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "available":true}),
+    );
+    assert!(
+        network.state(source).pairs.is_empty(),
+        "idle readable copy does not own a live base connection"
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"file_receive", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "enabled":true}),
+    );
+    for connection in [source, viewer] {
+        let session = if connection == source {
+            source_session
+        } else {
+            viewer_session
+        };
+        let lease = pair(&network, connection, host_session, &room);
+        command(
+            &mut network,
+            connection,
+            json!({"type":"base_state", "roomId":room, "pairId":lease.id, "ready":true}),
+        );
+        command(
+            &mut network,
+            host,
+            json!({"type":"base_state", "roomId":room, "pairId":lease.id, "ready":true}),
+        );
+        assert_eq!(pair(&network, host, session, &room).id, lease.id);
+    }
+    let active = network.state(viewer).files[0].clone();
+    assert_eq!(active.source_id, Some(source_session));
+    assert_eq!(active.upstream, Some(host_session));
+    let lease = pair(&network, viewer, host_session, &room).id;
+    browse(&mut network, source, &room, false);
+    browse(&mut network, viewer, &room, false);
+    assert_eq!(pair(&network, viewer, host_session, &room).id, lease);
+    let effects = network.authority.disconnect(source, 100);
+    network.deliver(effects);
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(source_session)
+    );
+    assert_eq!(network.state(viewer).files[0].upstream, active.upstream);
+    assert_eq!(pair(&network, viewer, host_session, &room).id, lease);
+    command(
+        &mut network,
+        source,
+        json!({"type":"join", "name":"Recovered", "credential":credential, "sessionId":source_session}),
+    );
+    assert!(network
+        .state(source)
+        .sessions
+        .iter()
+        .any(|session| session.id == source_session && session.online));
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(source_session)
+    );
+    let effects = network.authority.disconnect(source, 200);
+    network.deliver(effects);
+    let effects = network
+        .authority
+        .expire(200 + piik_channel_prototype::RECOVERY_MS - 1);
+    network.deliver(effects);
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        Some(source_session)
+    );
+    let effects = network
+        .authority
+        .expire(200 + piik_channel_prototype::RECOVERY_MS);
+    network.deliver(effects);
+    assert_eq!(
+        network.state(viewer).files[0].source_id,
+        None,
+        "retired session withdraws its copy"
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"file_receive", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "enabled":false}),
+    );
+    assert!(network.state(viewer).files.is_empty());
+    assert!(network.state(viewer).pairs.is_empty());
+}

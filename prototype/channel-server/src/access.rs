@@ -166,7 +166,7 @@ impl RoomState {
             can_manage,
             available: true,
             reading: false,
-            capabilities: crate::wire::RoomCapabilities { attachments: true },
+            capabilities: crate::wire::RoomCapabilities { attachments: false },
             members: can_manage.then(|| self.grants.iter().copied().collect()),
         })
     }

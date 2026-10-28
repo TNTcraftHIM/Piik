@@ -1,60 +1,27 @@
-//! The local Server experiment's metadata, confirmed room history and attachments.
+//! The local Server experiment's metadata and confirmed room history.
 //! Media sessions and routes never enter this database.
 use crate::{
-    history::{AttachmentOwner, ConfirmationInput, HistoryRequest, HistoryResult, HISTORY_PAGE},
+    history::{ConfirmationInput, HistoryRequest, HistoryResult, HISTORY_PAGE},
     wire::ChatMessage,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
-use serde::Serialize;
 use serde_json::Value;
 use std::path::Path;
 use uuid::Uuid;
 
-#[derive(Clone, Copy, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Limits {
-    pub max_file_bytes: usize,
-    pub total_bytes: u64,
-    pub max_stored_files: u64,
-}
-impl Default for Limits {
-    fn default() -> Self {
-        Self {
-            max_file_bytes: 16 * 1024 * 1024,
-            total_bytes: 128 * 1024 * 1024,
-            max_stored_files: 256,
-        }
-    }
-}
-const PENDING_LIFETIME_MS: u64 = 60 * 60 * 1000;
 pub type StoreResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Attachment {
-    pub id: Uuid,
-    pub room_id: String,
-    pub user_id: Uuid,
-    pub name: String,
-    pub size: u64,
-    pub media_type: String,
-    pub created_at: u64,
-}
 
 pub struct Storage {
     connection: Connection,
-    pub limits: Limits,
 }
-
 impl Storage {
-    pub fn open(path: &Path, limits: Limits) -> StoreResult<Self> {
-        if limits.max_file_bytes == 0
-            || limits.max_file_bytes as u64 > limits.total_bytes
-            || limits.max_stored_files == 0
-        {
-            return Err("invalid_attachment_limits".into());
-        }
+    pub fn open(path: &Path) -> StoreResult<Self> {
         let connection = Connection::open(path)?;
+        let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+        let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
+        if version != 1 && (version != 0 || existing) {
+            return Err("unsupported_storage_version".into());
+        }
         connection.execute_batch(
             "PRAGMA foreign_keys=ON;
              CREATE TABLE IF NOT EXISTS checkpoint (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL);
@@ -64,13 +31,9 @@ impl Storage {
                time INTEGER NOT NULL, attachments TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
              );
-             CREATE TABLE IF NOT EXISTS attachment (
-               id TEXT PRIMARY KEY, room_id TEXT NOT NULL, user_id TEXT NOT NULL,
-               name TEXT NOT NULL, media_type TEXT NOT NULL, created_at INTEGER NOT NULL,
-               committed INTEGER NOT NULL DEFAULT 0, content BLOB NOT NULL
-             );",
+             PRAGMA user_version=1;",
         )?;
-        Ok(Self { connection, limits })
+        Ok(Self { connection })
     }
 
     pub fn load(&self) -> StoreResult<Option<Value>> {
@@ -91,10 +54,12 @@ impl Storage {
     }
 
     /// Resolve one already-authorized operation before publishing its result.
-    /// Sequence, retry identity and attachment publication commit together.
+    /// Sequence, retry identity and embedded descriptions commit together.
     pub fn history(&mut self, request: &HistoryRequest) -> Result<HistoryResult, &'static str> {
         let behavior = match request {
-            HistoryRequest::Read { .. } => TransactionBehavior::Deferred,
+            HistoryRequest::Read { .. } | HistoryRequest::Attachment { .. } => {
+                TransactionBehavior::Deferred
+            }
             HistoryRequest::Send { .. } => TransactionBehavior::Immediate,
         };
         let transaction = self
@@ -102,6 +67,17 @@ impl Storage {
             .transaction_with_behavior(behavior)
             .map_err(|_| "storage_failed")?;
         let result = match request {
+            HistoryRequest::Attachment {
+                room_id,
+                message_seq,
+                ..
+            } => {
+                let message = transaction.query_row(
+                    "SELECT seq,id,user_id,text,time,attachments FROM message WHERE room_id=?1 AND seq=?2",
+                    params![room_id, message_seq], read_message).optional().map_err(|_| "storage_failed")?
+                    ;
+                request.attachment_result(message)?
+            }
             HistoryRequest::Read { room_id, before } => {
                 let newest = before
                     .map(|seq| seq.saturating_sub(1))
@@ -144,26 +120,6 @@ impl Storage {
                 let input = if let Some(message) = previous {
                     ConfirmationInput::Existing { message }
                 } else {
-                    let mut attachments = Vec::new();
-                    for id in &draft.attachments {
-                        if let Some(attachment) = transaction
-                            .query_row(
-                                "SELECT room_id,user_id FROM attachment WHERE id=?1",
-                                [id.to_string()],
-                                |row| {
-                                    Ok(AttachmentOwner {
-                                        id: *id,
-                                        room_id: row.get(0)?,
-                                        user_id: read_uuid(row, 1)?,
-                                    })
-                                },
-                            )
-                            .optional()
-                            .map_err(|_| "storage_failed")?
-                        {
-                            attachments.push(attachment);
-                        }
-                    }
                     // No owner-history deletion exists in this slice. The last
                     // persisted row is the room's order, independent of other rooms.
                     let last_seq = transaction
@@ -173,22 +129,11 @@ impl Storage {
                             |row| row.get(0),
                         )
                         .map_err(|_| "storage_failed")?;
-                    ConfirmationInput::New {
-                        last_seq,
-                        attachments,
-                    }
+                    ConfirmationInput::New { last_seq }
                 };
-                let confirmation = draft.prepare_confirmation(room_id, input)?;
+                let confirmation = draft.prepare_confirmation(input)?;
                 if confirmation.inserted {
                     let message = &confirmation.message;
-                    for id in &message.attachments {
-                        transaction
-                            .execute(
-                                "UPDATE attachment SET committed=1 WHERE id=?1",
-                                [id.to_string()],
-                            )
-                            .map_err(|_| "storage_failed")?;
-                    }
                     let attachments = serde_json::to_string(&message.attachments)
                         .map_err(|_| "storage_failed")?;
                     transaction.execute(
@@ -204,88 +149,6 @@ impl Storage {
         };
         transaction.commit().map_err(|_| "storage_failed")?;
         Ok(result)
-    }
-
-    pub fn put(&mut self, attachment: &Attachment, content: &[u8], now: u64) -> StoreResult<()> {
-        if content.len() > self.limits.max_file_bytes || attachment.size != content.len() as u64 {
-            return Err("file_too_large".into());
-        }
-        let transaction = self.connection.transaction()?;
-        transaction.execute(
-            "DELETE FROM attachment WHERE committed=0 AND created_at<=?1",
-            [now.saturating_sub(PENDING_LIFETIME_MS)],
-        )?;
-        let (count, bytes): (u64, u64) = transaction.query_row(
-            "SELECT count(*),coalesce(sum(length(content)),0) FROM attachment",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        if count >= self.limits.max_stored_files
-            || bytes.saturating_add(content.len() as u64) > self.limits.total_bytes
-        {
-            return Err("attachment_store_full".into());
-        }
-        transaction.execute("INSERT INTO attachment(id,room_id,user_id,name,media_type,created_at,content) VALUES(?1,?2,?3,?4,?5,?6,?7)",
-            params![attachment.id.to_string(), attachment.room_id, attachment.user_id.to_string(), attachment.name,
-                attachment.media_type, attachment.created_at, content])?;
-        transaction.commit()?;
-        Ok(())
-    }
-
-    pub fn metadata(&self, id: Uuid) -> StoreResult<Option<Attachment>> {
-        let result = self.connection.query_row(
-            "SELECT room_id,user_id,name,length(content),media_type,created_at FROM attachment WHERE id=?1", [id.to_string()],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-                row.get::<_, u64>(3)?, row.get::<_, String>(4)?, row.get::<_, u64>(5)?))).optional()?;
-        result
-            .map(|(room_id, user_id, name, size, media_type, created_at)| {
-                Ok(Attachment {
-                    id,
-                    room_id,
-                    user_id: Uuid::parse_str(&user_id)?,
-                    name,
-                    size,
-                    media_type,
-                    created_at,
-                })
-            })
-            .transpose()
-    }
-
-    pub fn content(&self, id: Uuid) -> StoreResult<Option<Vec<u8>>> {
-        Ok(self
-            .connection
-            .query_row(
-                "SELECT content FROM attachment WHERE id=?1",
-                [id.to_string()],
-                |row| row.get(0),
-            )
-            .optional()?)
-    }
-
-    pub fn readable(&self, id: Uuid, user_id: Uuid) -> StoreResult<bool> {
-        Ok(self
-            .connection
-            .query_row(
-                "SELECT committed=1 OR user_id=?2 FROM attachment WHERE id=?1",
-                params![id.to_string(), user_id.to_string()],
-                |row| row.get(0),
-            )
-            .optional()?
-            .unwrap_or(false))
-    }
-
-    pub fn delete(&mut self, id: Uuid) -> StoreResult<()> {
-        self.connection
-            .execute("DELETE FROM attachment WHERE id=?1", [id.to_string()])?;
-        Ok(())
-    }
-
-    pub fn discard_draft(&mut self, id: Uuid) -> StoreResult<bool> {
-        Ok(self.connection.execute(
-            "DELETE FROM attachment WHERE id=?1 AND committed=0",
-            [id.to_string()],
-        )? == 1)
     }
 }
 
@@ -313,36 +176,17 @@ fn read_message(row: &Row<'_>) -> rusqlite::Result<ChatMessage> {
     })
 }
 
-/// Only recognized raster formats receive image MIME types. Everything else is
-/// downloaded as bytes, regardless of a supplied extension or Content-Type.
-pub fn media_type(bytes: &[u8]) -> &'static str {
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        "image/png"
-    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
-        "image/jpeg"
-    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        "image/gif"
-    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP" {
-        "image/webp"
-    } else {
-        "application/octet-stream"
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::history::MessageDraft;
-    use serde_json::json;
-    fn attachment(id: Uuid) -> Attachment {
-        Attachment {
-            id,
-            room_id: "living".into(),
-            user_id: Uuid::new_v4(),
-            name: "picture.svg".into(),
+    fn attachment() -> crate::AttachmentDescriptor {
+        crate::AttachmentDescriptor {
+            id: Uuid::new_v4(),
+            name: "file.bin".into(),
             size: 3,
             media_type: "application/octet-stream".into(),
-            created_at: 1,
+            sha256: crate::attachment::sha256_hex(b"abc"),
         }
     }
 
@@ -395,85 +239,75 @@ mod tests {
     }
 
     #[test]
-    fn room_order_and_original_confirmation_survive_restart_and_removed_bytes() {
+    fn original_descriptions_and_nonce_survive_restart() {
         let path = std::env::temp_dir().join(format!("piik-storage-{}.sqlite", Uuid::new_v4()));
-        let id = Uuid::new_v4();
-        let file = attachment(id);
-        let mut draft = MessageDraft {
-            user_id: file.user_id,
-            nonce: "same-send".into(),
-            text: "original".into(),
-            attachments: vec![id],
-            time: 2,
-        };
+        let file = attachment();
+        let mut draft = MessageDraft::new(
+            Uuid::new_v4(),
+            "same-send".into(),
+            "original".into(),
+            vec![file.clone()],
+            2,
+        )
+        .unwrap();
         let original;
         {
-            let mut store = Storage::open(&path, Limits::default()).unwrap();
-            store.put(&file, b"abc", 1).unwrap();
-            store.save(&json!({"channelId":"same"})).unwrap();
+            let mut store = Storage::open(&path).unwrap();
             let (message, inserted) = confirmed(&mut store, "living", &draft);
             assert!(inserted);
-            assert_eq!(message.seq, 1);
             original = serde_json::to_value(&message).unwrap();
-            let other_room = MessageDraft {
-                text: "quiet".into(),
-                attachments: vec![],
-                ..copy_draft(&draft)
-            };
-            assert_eq!(confirmed(&mut store, "quiet", &other_room).0.seq, 1);
-            let other_author = MessageDraft {
-                user_id: Uuid::new_v4(),
-                ..other_room
-            };
-            assert_eq!(confirmed(&mut store, "living", &other_author).0.seq, 2);
-            // Metadata saves cannot reclaim another room's confirmed content.
-            store
-                .save(&json!({"channelId":"same", "name":"changed"}))
-                .unwrap();
-            assert_eq!(store.content(id).unwrap().unwrap(), b"abc");
-            store.delete(id).unwrap();
-            draft.text = "different retry payload".into();
-            draft.attachments = vec![Uuid::new_v4()];
-            draft.time = 999;
-            let (retried, inserted) = confirmed(&mut store, "living", &draft);
-            assert!(!inserted);
-            assert_eq!(serde_json::to_value(retried).unwrap(), original);
+            assert_eq!(message.attachments, vec![file]);
+            draft.text = "changed retry".into();
+            draft.attachments[0].sha256 = crate::attachment::sha256_hex(b"different");
+            assert_eq!(
+                serde_json::to_value(confirmed(&mut store, "living", &draft).0).unwrap(),
+                original
+            );
         }
         {
-            let mut store = Storage::open(&path, Limits::default()).unwrap();
-            assert_eq!(store.load().unwrap().unwrap()["channelId"], "same");
-            assert!(store.metadata(id).unwrap().is_none());
+            let mut store = Storage::open(&path).unwrap();
             let (retried, inserted) = confirmed(&mut store, "living", &draft);
             assert!(!inserted);
             assert_eq!(serde_json::to_value(retried).unwrap(), original);
-            let (messages, more, oldest) = page(&mut store, "living", None);
-            assert_eq!(messages.len(), 2);
-            assert!(!more);
-            assert_eq!(oldest, Some(1));
+            assert_eq!(page(&mut store, "living", None).0.len(), 1);
             draft.nonce = "next-send".into();
-            draft.attachments.clear();
-            assert_eq!(confirmed(&mut store, "living", &draft).0.seq, 3);
+            assert_eq!(confirmed(&mut store, "living", &draft).0.seq, 2);
+            assert_eq!(confirmed(&mut store, "other", &draft).0.seq, 1);
         }
         std::fs::remove_file(path).unwrap();
     }
 
     #[test]
-    fn failed_commit_does_not_replace_checkpoint_and_pending_uploads_expire() {
-        let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
-        store.save(&json!({"saved":1})).unwrap();
-        store.connection.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'disk failure'); END;").unwrap();
-        assert!(store.save(&json!({"saved":2})).is_err());
-        assert_eq!(store.load().unwrap().unwrap()["saved"], 1);
-        let first = attachment(Uuid::new_v4());
-        store.put(&first, b"abc", 1).unwrap();
-        let second = attachment(Uuid::new_v4());
-        store.put(&second, b"abc", PENDING_LIFETIME_MS + 2).unwrap();
-        assert!(store.metadata(first.id).unwrap().is_none());
+    fn old_private_store_is_rejected_without_discarding_records() {
+        let path = std::env::temp_dir().join(format!("piik-old-storage-{}.sqlite", Uuid::new_v4()));
+        {
+            let connection = Connection::open(&path).unwrap();
+            connection
+                .execute_batch(
+                    "CREATE TABLE message(body TEXT); INSERT INTO message VALUES('old');",
+                )
+                .unwrap();
+        }
+        assert!(Storage::open(&path)
+            .err()
+            .unwrap()
+            .to_string()
+            .contains("unsupported_storage_version"));
+        let connection = Connection::open(&path).unwrap();
+        assert_eq!(
+            connection
+                .query_row("SELECT body FROM message", [], |row| row
+                    .get::<_, String>(0))
+                .unwrap(),
+            "old"
+        );
+        drop(connection);
+        std::fs::remove_file(path).unwrap();
     }
 
     #[test]
     fn confirmed_history_exceeds_one_thousand_and_reads_bounded_room_pages() {
-        let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
+        let mut store = Storage::open(Path::new(":memory:")).unwrap();
         let user_id = Uuid::new_v4();
         for seq in 1..=1010 {
             let draft = MessageDraft {
@@ -502,19 +336,18 @@ mod tests {
     }
 
     #[test]
-    fn failed_commit_preserves_previous_history_order_and_unpublished_attachment() {
-        let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
-        let file = attachment(Uuid::new_v4());
+    fn failed_commit_preserves_history_order_and_descriptions() {
+        let mut store = Storage::open(Path::new(":memory:")).unwrap();
+        let file = attachment();
         let mut draft = MessageDraft {
-            user_id: file.user_id,
+            user_id: Uuid::new_v4(),
             nonce: "first".into(),
             text: "saved".into(),
             attachments: vec![],
             time: 1,
         };
         let original = serde_json::to_value(confirmed(&mut store, "living", &draft).0).unwrap();
-        store.put(&file, b"abc", 1).unwrap();
-        // The INSERT and attachment UPDATE succeed. The deferred constraint
+        // The INSERT succeeds. The deferred constraint
         // fails COMMIT itself, exercising the whole transaction's rollback.
         store.connection.execute_batch(
             "CREATE TABLE commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
@@ -522,7 +355,7 @@ mod tests {
              BEGIN INSERT INTO commit_failure VALUES('missing-message'); END;",
         ).unwrap();
         draft.nonce = "retry-after-failure".into();
-        draft.attachments = vec![file.id];
+        draft.attachments = vec![file.clone()];
         assert!(matches!(
             store.history(&HistoryRequest::Send {
                 room_id: "living".into(),
@@ -534,7 +367,6 @@ mod tests {
         let (retained, _, _) = page(&mut store, "living", None);
         assert_eq!(retained.len(), 1);
         assert_eq!(serde_json::to_value(&retained[0]).unwrap(), original);
-        assert!(!store.readable(file.id, Uuid::new_v4()).unwrap());
         store
             .connection
             .execute_batch("DROP TRIGGER reject_message")
@@ -542,64 +374,6 @@ mod tests {
         let (retried, inserted) = confirmed(&mut store, "living", &draft);
         assert!(inserted);
         assert_eq!(retried.seq, 2);
-        assert!(store.readable(file.id, Uuid::new_v4()).unwrap());
-    }
-
-    #[test]
-    fn unavailable_attachment_rolls_back_other_attachment_publication() {
-        let mut store = Storage::open(Path::new(":memory:"), Limits::default()).unwrap();
-        let file = attachment(Uuid::new_v4());
-        store.put(&file, b"abc", 1).unwrap();
-        let mut other = attachment(Uuid::new_v4());
-        other.user_id = file.user_id;
-        other.room_id = "quiet".into();
-        store.put(&other, b"abc", 1).unwrap();
-        let mut draft = MessageDraft {
-            user_id: file.user_id,
-            nonce: "send".into(),
-            text: String::new(),
-            attachments: vec![file.id, other.id],
-            time: 1,
-        };
-        assert!(matches!(
-            store.history(&HistoryRequest::Send {
-                room_id: "living".into(),
-                draft: copy_draft(&draft),
-            }),
-            Err("attachment_unavailable")
-        ));
-        assert!(!store.readable(file.id, Uuid::new_v4()).unwrap());
-        assert!(page(&mut store, "living", None).0.is_empty());
-        draft.attachments = vec![file.id];
-        assert_eq!(confirmed(&mut store, "living", &draft).0.seq, 1);
-    }
-
-    #[test]
-    fn only_raster_signatures_are_previewable() {
-        assert_eq!(
-            media_type(b"<svg xmlns='http://www.w3.org/2000/svg'>"),
-            "application/octet-stream"
-        );
-        assert_eq!(media_type(b"<html>hello"), "application/octet-stream");
-        assert_eq!(media_type(b"\x89PNG\r\n\x1a\ncontent"), "image/png");
-        assert_eq!(media_type(b"RIFFabcdWEBPcontent"), "image/webp");
-    }
-
-    #[test]
-    fn quota_failure_keeps_existing_content_and_delete_releases_capacity() {
-        let limits = Limits {
-            max_file_bytes: 4,
-            total_bytes: 5,
-            max_stored_files: 2,
-        };
-        let mut store = Storage::open(Path::new(":memory:"), limits).unwrap();
-        let first = attachment(Uuid::new_v4());
-        let second = attachment(Uuid::new_v4());
-        store.put(&first, b"abc", 1).unwrap();
-        assert!(store.put(&second, b"abc", 1).is_err());
-        assert_eq!(store.content(first.id).unwrap().unwrap(), b"abc");
-        store.delete(first.id).unwrap();
-        store.put(&second, b"abc", 1).unwrap();
-        assert_eq!(store.metadata(second.id).unwrap().unwrap().size, 3);
+        assert_eq!(retried.attachments, vec![file]);
     }
 }

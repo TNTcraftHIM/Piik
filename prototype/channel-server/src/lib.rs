@@ -6,7 +6,10 @@
 //! Use a fresh connection UUID for each transport and Unix milliseconds for time.
 
 mod access;
+pub mod attachment;
 mod channel;
+pub mod file_delivery;
+pub mod file_room;
 pub mod history;
 pub mod host;
 mod identity;
@@ -21,12 +24,12 @@ mod transport;
 pub mod wire;
 
 pub use access::{RoomPermission, RoomState};
+pub use attachment::{AttachmentDescriptor, AttachmentLimits, ATTACHMENT_LIMITS};
 pub use channel::DurableState;
 pub use identity::{Endpoint, Member, User, RECOVERY_MS};
 pub use room::{RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]
 pub use stored_room::StoredRoomHost;
-pub use wire::MAX_MESSAGE_ATTACHMENTS;
 
 use channel::Channel;
 use host::{HostAction, HostOutput, RequestContext, RoomResult};
@@ -625,6 +628,7 @@ impl Authority {
             let mut completion = RoomResult::Done;
             match reply.result {
                 RoomResult::History { result } => match result {
+                    history::HistoryResult::Attachment { .. } => return Err("invalid_room_reply"),
                     history::HistoryResult::Page {
                         messages,
                         has_more,
