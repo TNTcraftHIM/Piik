@@ -444,6 +444,14 @@ capture, encoding and input at their platform boundaries; retain native helpers
 only where platform APIs or a proven component require them. Do not add a
 separate storage service.
 
+Use safe Rust for owned business rules and Native resource lifecycles; TypeScript
+owns the Web interface and Browser API bridge. Prefer maintained safe Rust APIs
+and keep necessary platform FFI inside narrow adapters. Memory safety depends
+on those adapters and dependencies upholding their contracts; a Rust wrapper
+does not make foreign code memory-safe. Follow Rust's
+[safe-abstraction guidance](https://doc.rust-lang.org/book/ch20-01-unsafe-rust.html),
+rather than replacing proven components only to change their implementation language.
+
 | Boundary | Responsibility |
 | --- | --- |
 | Shared Rust core | Domain and room rules, ordered state changes, publication/subscription demand and route planning. Drive these with typed events rather than sockets or timers inside the model. |
