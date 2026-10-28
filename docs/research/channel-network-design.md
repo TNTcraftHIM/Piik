@@ -30,11 +30,11 @@ chat/history, voice and verified file ranges; TODO owns remaining route and plat
 | English | Chinese | Meaning |
 | --- | --- | --- |
 | User | 用户 | Every participant, including domain owners, room owners and sharers. |
-| Channel | 频道 | The top-level container for users, roles and rooms. |
+| Domain | 域 | The top-level container for users, roles and rooms; named `Channel` in the current code. |
 | Domain owner | 域主 | The user operating the channel's directory, membership and role authority. |
 | Room | 房间 | A conversation, history and media scope within a channel. |
 | Room owner | 房主 | The user operating that room's state, management and base distribution network. |
-| Role | 身份组 | A channel-scoped permission group; a user may have several roles. |
+| Role | 身份组 | A domain-scoped permission group; a user may have several roles. |
 | Sharer | 分享者 | The user originating a particular screen, voice publication or file offer. |
 
 Management identities and activities overlap. A room owner can share, watch or

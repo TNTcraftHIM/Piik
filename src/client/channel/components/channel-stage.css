@@ -13,12 +13,13 @@
 .c3-monitor-heading { flex: none; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; font-weight: 650; }
 .c3-monitor-layout { min-width: 0; flex-wrap: wrap; }
 .c3-monitor-focus-name { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 400; overflow-wrap: anywhere; }
-.c3-monitor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px; align-content: start; }
+.c3-monitor-grid { display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); grid-auto-rows: minmax(160px, 1fr); gap: 14px; }
 .c3-monitor-grid.is-focused { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
-.c3-monitor-tile { min-width: 0; background: var(--wall); border: 1px solid var(--line); border-radius: 16px; }
+.c3-monitor-tile { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--wall); border: 1px solid var(--line); border-radius: 16px; }
+.c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: 100px; aspect-ratio: auto; }
 .c3-monitor-tile.is-focused { grid-column: 1 / -1; order: -1; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
-.c3-monitor-tile > footer { display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.c3-monitor-tile > footer { display: flex; flex: none; align-items: center; gap: 8px; padding: 8px 10px; }
 .c3-monitor-tile > footer > svg { width: 25px; height: 32px; flex: none; }
 .c3-monitor-source { min-width: 0; flex: 1; }
 .c3-monitor-tile-actions { display: flex; align-items: center; gap: 2px; flex: none; }

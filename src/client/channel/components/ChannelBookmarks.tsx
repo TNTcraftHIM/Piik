@@ -1,5 +1,4 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { BrandMark } from "../../components/living/BrandMark";
 import { Btn } from "../../components/living/primitives";
 import { Tooltip } from "../../components/living/Tooltip";
 import { siteEntryOrigin } from "../../lib/site-address";
@@ -57,8 +56,6 @@ export function ChannelBookmarks({ currentName, currentIcon, onCurrent, classNam
   }
   return <>
     <nav className={`c3-domain-rail ${className}`} aria-label={copy("域列表", "Domains")}>
-      <span className="c3-domain-brand" aria-label="Piik"><BrandMark size={30} /></span>
-      <span className="c3-domain-rule" />
       <Tooltip kind="hint-join-go" text={vis ? undefined : currentName}>
         <button type="button" className="lr-btn c3-domain-icon is-on" aria-current="page" aria-label={currentName} onClick={onCurrent}>
           {currentIcon ?? <Glyph name="couch" size={26} />}
@@ -78,7 +75,7 @@ export function ChannelBookmarks({ currentName, currentIcon, onCurrent, classNam
       <span className="c3-domain-version">3.0</span>
     </nav>
     <dialog ref={dialog} id={id} className="c3-bookmarks-dialog" aria-labelledby={`${id}-title`} onClose={() => setOpen(false)}>
-      <header><div><h2 id={`${id}-title`}>{title}</h2><p>{copy("把朋友的频道留在手边。", "Keep your favourite places close.")}</p></div>
+      <header><div><h2 id={`${id}-title`}>{title}</h2><p>{copy("把朋友的域留在手边。", "Keep your favourite places close.")}</p></div>
         <Btn icon="x" title="common.close" hint="hint-close" size="compact" quiet onClick={() => dialog.current?.close()} />
       </header>
       {!bookmarks.some(item => item.origin === currentOrigin) && <div className="c3-bookmark-current">

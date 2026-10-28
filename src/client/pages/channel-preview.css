@@ -1,13 +1,14 @@
 /* Layout belongs to the channel; palette, controls, cast and motion stay shared. */
-.c3-app { height: 100dvh; min-height: 600px; }
+.c3-app { height: 100dvh; min-height: 0; }
 .c3-app > .lr-top { flex: none; padding-block: 16px; }
-.c3-shell { flex: 1; min-height: 0; width: min(1480px, calc(100% - 40px)); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 220px minmax(0, 1fr); background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); }
+.c3-shell { flex: 1; min-height: 0; width: min(1480px, calc(100% - 40px)); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 220px minmax(0, 1fr) 224px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; }
 .c3-shell > .c3-domain-rail { border-radius: 22px 0 0 22px; }
-.c3-shell :is(h1,h2,h3,p), .c3-people-panel h3 { margin: 0; }
+.c3-shell :is(h1,h2,h3,p) { margin: 0; }
 .c3-shell button { cursor: pointer; }
 .c3-shell button:disabled { cursor: default; }
-.c3-sidebar { min-width: 0; display: flex; flex-direction: column; gap: 24px; padding: 28px 14px 14px; background: var(--wall); border-inline-end: 1px solid var(--line); }
-.c3-channel-title { padding-inline: 10px; }
+.c3-sidebar { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 20px; padding: 24px 12px 14px; background: var(--wall); border-inline-end: 1px solid var(--line); overflow-y: auto; overscroll-behavior: contain; }
+.c3-channel-title { display: flex; align-items: center; gap: 10px; padding-inline: 10px; }
+.c3-channel-title > div { min-width: 0; flex: 1; }
 .c3-channel-title h1 { font-size: 21px; font-weight: 750; line-height: 1.35; letter-spacing: -.035em; overflow-wrap: anywhere; }
 .c3-channel-caption { display: block; margin-top: 6px; font-size: 12px; color: var(--muted); }
 .c3-invite { padding-inline: 6px; }
@@ -17,18 +18,19 @@
 .c3-rooms { display: grid; gap: 5px; margin-top: 8px; }
 .c3-room-link { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 10px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: var(--muted); text-align: start; }
 .c3-room-link:hover { background: var(--control-hover); color: var(--ink); }
-.c3-room-link[aria-current] { background: var(--paper); border-color: var(--line); color: var(--ink); box-shadow: 0 2px 0 var(--line); }
+.c3-room-link[aria-current] { background: var(--control-selected); color: var(--control-selected-ink); box-shadow: inset 3px 0 0 var(--action); }
 .c3-room-link > svg { flex: none; }
 .c3-room-link strong { min-width: 0; flex: 1; overflow-wrap: anywhere; font-size: 13px; font-weight: 650; line-height: 1.4; }
 .c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 .c3-room-activity:empty { display: none; }
-.c3-mobile-room { display: none; }
+.c3-room-navigation { min-height: 120px; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.c3-pane-back, .c3-pane-navigation, .c3-room-tools > .c3-pane-navigation { display: none; }
 .c3-identity { display: flex; gap: 8px; align-items: center; margin-top: auto; padding: 16px 4px 2px; border-top: 1px solid var(--line); }
 .c3-identity > svg { flex: none; width: 32px; height: 40px; }
 .c3-identity > div { flex: 1; min-width: 0; }
 .c3-identity strong { display: block; font-size: 13px; overflow-wrap: anywhere; }
 .c3-identity small { display: block; font-size: 11px; color: var(--muted); margin-top: 3px; }
-.c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.c3-main { min-width: 0; min-height: 0; display: flex; flex-direction: column; container-type: inline-size; }
 .c3-room-heading { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; flex: none; padding: 20px 24px; border-bottom: 1px solid var(--line); }
 .c3-room-name { flex: 1; min-width: 120px; display: flex; align-items: center; gap: 10px; }
 .c3-room-name > svg { color: var(--muted); flex: none; }
@@ -115,9 +117,14 @@
 .c3-notice > span { flex: 1; min-width: 0; }
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
-.c3-people-body { padding: 6px 4px; }
+.c3-people-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: color-mix(in srgb, var(--wall) 60%, var(--paper)); border-inline-start: 1px solid var(--line); }
+.c3-people-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-height: 76px; }
+.c3-people-panel h2 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 650; }
+.c3-people-panel h2 > span { color: var(--muted); font-size: 11px; font-weight: 400; }
+.c3-people-body { flex: 1; min-height: 0; overflow-y: auto; padding-bottom: 14px; overscroll-behavior: contain; scrollbar-width: thin; }
+.c3-people-body .c3-section-label { padding-inline: 8px; font-size: 11px; }
 .c3-users { display: grid; gap: 4px; }
-.c3-user { min-width: 0; padding: 8px; }
+.c3-user { min-width: 0; padding: 9px 6px; }
 .c3-person { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
 .c3-person > svg { flex: none; width: 30px; height: 38px; }
 .c3-person > div { min-width: 0; flex: 1; }
@@ -133,42 +140,50 @@
 .c3-offline-users summary { color: var(--muted); cursor: pointer; font-size: 12px; padding: 6px 10px; }
 .c3-visual .c3-channel-caption, .c3-visual .c3-welcome :is(h3,p) { display: none; }
 @media (max-width: 1180px) {
-  .c3-shell { grid-template-columns: 54px 194px minmax(0, 1fr); width: calc(100% - 28px); }
+  .c3-shell { grid-template-columns: 54px 194px minmax(0, 1fr) 204px; width: calc(100% - 28px); }
   .c3-room-heading { gap: 10px; padding: 16px 18px; }
   .c3-room-actions { gap: 6px; }
-  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: max-content minmax(188px, 1fr); overflow-y: auto; }
+}
+@container (max-width: 800px) {
+  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 1fr) minmax(188px, .8fr); overflow-y: auto; }
   .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
-  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow: visible; }
+  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
   .c3-workspace.has-screens .c3-conversation { min-height: 188px; padding: 12px 18px; gap: 10px; }
   .c3-workspace.has-screens .c3-welcome > svg { display: none; }
   .c3-workspace.chat-collapsed .c3-monitor { overflow-y: auto; }
 }
+@media (max-width: 980px) {
+  .c3-shell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+  .c3-shell > .c3-domain-rail { grid-column: 1; grid-row: 1; border-inline-end: 1px solid var(--line); }
+  .c3-shell > :is(.c3-sidebar, .c3-main, .c3-people-panel) { grid-column: 2; grid-row: 1; }
+  .c3-shell[data-pane="room"] > :is(.c3-sidebar, .c3-people-panel),
+  .c3-shell[data-pane="rooms"] > .c3-people-panel,
+  .c3-shell[data-pane="people"] > .c3-sidebar { display: none; }
+  /* Keep the room's scroll geometry and media bindings while another pane is visible. */
+  .c3-shell:is([data-pane="rooms"], [data-pane="people"]) > .c3-main { visibility: hidden; }
+  .c3-pane-back, .c3-pane-navigation, .c3-room-tools > .c3-pane-navigation { display: inline-flex; flex: none; }
+  .c3-sidebar { border-inline-end: 0; padding: 24px 18px 18px; }
+  .c3-people-panel { border-inline-start: 0; padding-inline: 18px; }
+  .c3-people-panel > header { min-height: 72px; }
+}
 @media (max-width: 700px) {
-  .c3-app { min-height: 100dvh; height: 100dvh; }
-  .c3-app > .lr-top { display: flex; flex-wrap: nowrap; padding-block: 10px; }
-  .c3-app > .lr-top > .lr-top-right { display: flex; flex-wrap: nowrap; }
-  .c3-shell { width: calc(100% - 20px); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); margin-bottom: 10px; border-radius: 18px; }
-  .c3-shell > .c3-domain-rail { flex-direction: row; gap: 12px; padding: 8px 12px; min-width: 0; border-radius: 18px 18px 0 0; border-bottom: 1px solid var(--line); }
-  .c3-shell > .c3-domain-rail .c3-domain-brand, .c3-shell > .c3-domain-rail .c3-domain-rule, .c3-shell > .c3-domain-rail .c3-domain-version { display: none; }
-  .c3-shell > .c3-domain-rail .c3-domain-saved { flex-direction: row; overflow-x: auto; }
-  .c3-sidebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; border-inline-end: 0; border-bottom: 1px solid var(--line); padding: 14px; }
-  .c3-channel-title { padding: 0; align-self: center; }
-  .c3-channel-title h1 { font-size: 16px; }
-  .c3-channel-caption, .c3-identity, .c3-rooms { display: none; }
-  .c3-invite { padding: 0; }
-  .c3-room-navigation { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; }
-  .c3-room-navigation > .c3-section-label { order: 1; padding: 0; }
-  .c3-room-navigation .c3-section-caption { display: none; }
-  .c3-mobile-room { display: flex; flex: 1; min-width: 0; align-items: center; gap: 8px; padding: 4px 9px; background: var(--paper); border: 1px solid var(--line); border-radius: 10px; }
-  .c3-mobile-room > svg { flex: none; color: var(--muted); }
-  .c3-mobile-room select { min-width: 0; width: 100%; padding: 6px 0; color: var(--ink); font: inherit; font-size: 13px; font-weight: 650; background: transparent; border: 0; }
-  .c3-copy-fallback { grid-column: 1 / -1; }
+  .c3-app > .lr-top { padding-block: 10px; }
+  .c3-shell { width: calc(100% - 16px); grid-template-columns: 52px minmax(0, 1fr); margin-bottom: 8px; border-radius: 18px; }
+  .c3-shell > .c3-domain-rail { border-radius: 18px 0 0 18px; padding-block: 16px; }
+  .c3-shell > .c3-domain-rail .c3-domain-icon.lr-btn { --button-size: 40px; width: 40px; border-radius: 14px; }
+  .c3-sidebar { gap: 18px; padding: 20px 12px 14px; }
+  .c3-channel-title { padding-inline: 6px; }
+  .c3-channel-title h1 { font-size: 19px; }
+  .c3-people-panel { padding-inline: 12px; }
   .c3-room-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 12px; gap: 12px 6px; }
   .c3-room-name { min-width: 0; }
   .c3-room-name h2 { font-size: 16px; }
   .c3-room-name > svg { display: none; }
-  .c3-room-actions { grid-column: 1 / -1; grid-row: 2; gap: 10px; }
+  .c3-room-actions { grid-column: 1 / -1; grid-row: 2; gap: 8px; flex-wrap: wrap; }
+  .c3-room-actions > .lr-comic-tip-wrap .lr-cap { display: none; }
   .c3-room-tools { grid-column: 2; grid-row: 1; }
+  .c3-avatar-stack > svg + svg { display: none; }
+  .c3-people-trigger > svg { display: none; }
   .c3-conversation { padding: 14px; gap: 12px; }
   .c3-welcome h3 { font-size: 19px; }
   .c3-welcome > svg { width: 48px; height: 48px; margin-bottom: 12px; }

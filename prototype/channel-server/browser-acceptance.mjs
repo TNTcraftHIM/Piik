@@ -1223,7 +1223,8 @@ try {
   for (const index of [0, 3, 4]) await action(index, `watch(${JSON.stringify(secondPublication)})`);
   await action(4, `watch(${JSON.stringify(primaryPublication)})`);
   await Promise.all([playing(3, secondPublication), playing(4, secondPublication), playing(4, primaryPublication)]);
-  assert(!(await view(3)).streams.includes(primaryPublication), "selective watcher D must not receive C's screen");
+  assert(!(await view(3)).state.subscriptions.includes(primaryPublication), "D watches only B, even when it forwards C to E");
+  assert.equal((await picture(3, primaryPublication)).frames, 0, "transit must not create an unrequested local player");
   await browser(4, "screenshot", join(output, "desktop-two-sources.png"), "--full");
   await evaluate(4, "(() => { window.__focusPlayers = [...document.querySelectorAll('video')]; return true; })()");
   const subscriptionsBeforeFocus = (await view(4)).state.subscriptions;
@@ -1309,6 +1310,9 @@ try {
   console.log("Relay exit recovers its downstream subscription");
 
   const layoutIndex = relay === 4 ? 0 : 4;
+  assert.equal(await evaluate(layoutIndex, "document.querySelector('#c3-people').checkVisibility()"), true,
+    "the desktop roster is always available");
+  await evaluate(layoutIndex, "(() => { window.__panePlayers = [...document.querySelectorAll('video')]; return true; })()");
   await browser(layoutIndex, "set", "viewport", "390", "844");
   for (const lang of ["zh", "en"]) for (const theme of ["light", "dark"]) {
     await evaluate(layoutIndex, `(async () => {
@@ -1324,8 +1328,24 @@ try {
     assert(layout.scroll <= layout.width, `${lang}/${theme} page overflows at 390px: ${JSON.stringify(layout)}`);
     await browser(layoutIndex, "screenshot", join(output, `${lang}-${theme}-390.png`), "--full");
   }
+  await browser(layoutIndex, "fill", ".c3-composer textarea", "A draft while checking the room");
+  const beforePanes = await view(layoutIndex);
+  await browser(layoutIndex, "click", "#c3-people-trigger");
+  assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-people-heading");
+  await browser(layoutIndex, "screenshot", join(output, "people-mobile.png"), "--full");
+  await browser(layoutIndex, "click", "#c3-people .c3-pane-back button");
+  await browser(layoutIndex, "click", "#c3-rooms-trigger");
+  assert.equal(await evaluate(layoutIndex, "document.activeElement.id"), "c3-room-list-heading");
+  await browser(layoutIndex, "screenshot", join(output, "rooms-mobile.png"), "--full");
+  await browser(layoutIndex, "click", ".c3-sidebar .c3-pane-back button");
+  assert.equal(await evaluate(layoutIndex, "document.querySelector('.c3-composer textarea').value"), "A draft while checking the room");
+  assert.equal(await evaluate(layoutIndex, "window.__panePlayers.every(video => video.isConnected)"), true);
+  const afterPanes = await view(layoutIndex);
+  assert.equal(afterPanes.sessionId, beforePanes.sessionId);
+  assert(afterPanes.state.subscriptions.includes(primaryPublication), "pane navigation retains the watched screen");
+  await progressing(layoutIndex, primaryPublication);
   await writeFile(join(output, "result.json"), JSON.stringify({ scenarios: ["two sources", "selective watching", "voice", "fanout relay",
-    "independent source stop", "transit without local watching", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px"],
+    "independent source stop", "transit without local watching", "room browsing", "signaling reconnect", "relay recovery", "bilingual themes at 390px", "room/people panes retain drafts and playback"],
     sourceCopies, relay, downstreamIndex }, null, 2));
   console.log(`Browser acceptance passed; evidence: ${output}`);
   }

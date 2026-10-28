@@ -1,12 +1,11 @@
-import { FloatingPanel } from "../../components/living/FloatingPanel";
+import { BackButton } from "../../components/living/primitives";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import type { ChannelUser as User } from "../protocol";
 import { voiceAppearance } from "../presentation";
 import { ChannelUser } from "./ChannelUser";
-import { ChannelNameEditor } from "./ChannelNameEditor";
 
-export function ChannelPeople({ channel, roomId }: { channel: ChannelController; roomId: string }) {
+export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelController; roomId: string; onBack(): void }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
   const { state, self, pending, connection } = channel;
@@ -20,14 +19,14 @@ export function ChannelPeople({ channel, roomId }: { channel: ChannelController;
       voice={state ? voiceAppearance(state, user.id, roomId) : undefined}
       activity={sharing ? (zh ? "正在分享画面" : "Sharing a screen") : undefined}
       rolesDisabled={connection !== "connected" || pending.has(`roles:${user.id}`)} availableRoles={state?.channel.roles}
-      onRoles={isOwner ? roles => run(channel.setRoles(user.id, roles)) : undefined}>
-      {user.id === self?.id && <ChannelNameEditor name={self.name} disabled={connection !== "connected" || pending.has("rename")}
-        onSave={name => run(channel.renameSelf(name))} />}
-    </ChannelUser>;
+      onRoles={isOwner ? roles => run(channel.setRoles(user.id, roles)) : undefined} />;
   };
   const users = state?.users ?? [];
   const offline = users.filter(user => !online.has(user.id));
-  return <FloatingPanel id="c3-people" trigger="c3-people-trigger" title={zh ? "频道用户" : "Channel users"} icon="users" className="c3-people-panel">
+  return <aside id="c3-people" className="c3-people-panel" aria-labelledby="c3-people-heading">
+    <header><h2 id="c3-people-heading" tabIndex={-1}>{zh ? "用户" : "Users"}<span>{users.length}</span></h2>
+      <span className="c3-pane-back"><BackButton onClick={onBack} /></span>
+    </header>
     <div className="c3-people-body">
       <h3 className="c3-section-label">{zh ? `在线 ${online.size}` : `Online ${online.size}`}</h3>
       <div className="c3-users">{users.filter(user => online.has(user.id)).map(row)}</div>
@@ -35,5 +34,5 @@ export function ChannelPeople({ channel, roomId }: { channel: ChannelController;
         <div className="c3-users">{offline.map(row)}</div>
       </details>}
     </div>
-  </FloatingPanel>;
+  </aside>;
 }

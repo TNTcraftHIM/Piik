@@ -1,12 +1,12 @@
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 
-export function ChannelUser({ id, name, self, owner, roles, online, voice, activity, onRoles, rolesDisabled, availableRoles, children }: {
+export function ChannelUser({ id, name, self, owner, roles, online, voice, activity, onRoles, rolesDisabled, availableRoles }: {
   id: string; name: string; self: boolean; owner: boolean; roles: string[]; online: boolean;
-  voice?: { microphone: boolean; deafened?: boolean }; activity?: string; children?: ReactNode;
+  voice?: { microphone: boolean; deafened?: boolean }; activity?: string;
   onRoles?: (roles: string[]) => void;
   rolesDisabled?: boolean; availableRoles?: { id: string; name: string }[];
 }) {
@@ -26,7 +26,6 @@ export function ChannelUser({ id, name, self, owner, roles, online, voice, activ
         aria-label={zh ? `${name} 的身份组` : `Roles for ${name}`} onClick={() => setEditing(!editing)}>
         <Glyph name="sliders" size={18} />
       </button>}
-      {children}
     </div>
     {onRoles && !owner && editing && <fieldset className="c3-role-options">
       <legend>{zh ? "身份组" : "Roles"}</legend>
