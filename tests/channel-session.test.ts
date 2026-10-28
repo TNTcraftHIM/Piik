@@ -1526,7 +1526,7 @@ test("voice forwards without local listening and the same pair carries the rever
 });
 
 
-test("browse acknowledgement loads only the current room once and reconnect refreshes its history", async () => {
+test("browse waits for the current room path and reconnect cancels unsent history before refreshing", async () => {
   const { session, socket, peer } = await setup(1000, false);
   try {
     const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
@@ -1535,12 +1535,22 @@ test("browse acknowledgement loads only the current room once and reconnect refr
     expect(peer.sent).toEqual([]);
     session.browse("second");
     const second = socket.sent.at(-1)!;
+    const state = structuredClone(session.getSnapshot().state!);
+    const delivery = state.channel.rooms[1].delivery!;
+    delivery.nextHops = {};
+    socket.receive({ type: "state", state });
     socket.receive({ type: "ack", requestId: first.requestId }); await Promise.resolve();
     expect(peer.sent).toEqual([]);
     socket.receive({ type: "room_reply", roomId: "second", requestId: second.requestId, result: { type: "done" } });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(true));
+    expect(peer.sent).toEqual([]);
+    expect(session.getSnapshot().error).toBeNull();
+    delivery.nextHops = { host: "host" };
+    socket.receive({ type: "state", state });
     const history = await peer.next();
     expect(history).toMatchObject({ type: "history", roomId: "second" });
     session.browse("second");
+    socket.receive({ type: "state", state });
     expect(peer.sent).toHaveLength(1);
     expect(socket.sent.some(command => command.type === "history")).toBe(false);
     peer.page(history, [message(5)], true);
@@ -1549,13 +1559,21 @@ test("browse acknowledgement loads only the current room once and reconnect refr
     const previous = await peer.next();
     expect(previous).toMatchObject({ type: "history", roomId: "second", before: 5 });
     peer.page(previous, [], false); await older;
-    const state = structuredClone(session.getSnapshot().state!);
+    delivery.nextHops = {};
+    socket.receive({ type: "state", state });
+    const canceled = expect(session.loadLatestHistory("second")).rejects.toThrow("disconnected");
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(true));
+    expect(peer.sent).toHaveLength(2);
     session.reconnect();
+    await canceled;
+    delivery.nextHops = { host: "host" };
     const resumed = ChannelSocket.current; await resumed.onopen?.();
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    expect(peer.sent).toHaveLength(2);
     const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
     resumed.receive({ type: "ack", requestId: browse.requestId });
     expect(await peer.next()).toMatchObject({ type: "history", roomId: "second" });
+    expect(peer.sent).toHaveLength(3);
     expect(resumed.sent.some(command => command.type === "history")).toBe(false);
   } finally { session.close(); }
 });

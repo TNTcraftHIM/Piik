@@ -36,7 +36,11 @@ export class ChannelSession {
     ?? new URLSearchParams(location.hash.slice(1)).get("invite") ?? undefined;
   private invitedRoom = new URLSearchParams(location.hash.slice(1)).get("room") ?? undefined;
   private roomId: string | null = this.invitedRoom ?? null;
-  private requests = new Map<string, { roomId?: string; bindingId?: string; history?: ChannelMessage[]; resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout> }>();
+  private requests = new Map<string, {
+    roomId?: string; bindingId?: string; history?: ChannelMessage[];
+    pendingSend?: Extract<ChannelCommand, { type: "chat" | "history" }>;
+    resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
+  }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
@@ -265,6 +269,7 @@ export class ChannelSession {
     }
     this.media.update(sessionId, state);
     this.attachments.update(sessionId, state.files, state.channel.rooms);
+    this.sendConversations();
     this.releaseUnusedMicrophone();
   }
 
@@ -289,16 +294,26 @@ export class ChannelSession {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
-        ...(conversation ? { bindingId: delivery!.bindingId, ...(command.type === "history" ? { history: [] } : {}) } : {}) });
-      if (conversation) {
-        void this.conversation.send(command, requestId).catch(error => {
-          const request = this.requests.get(requestId);
-          if (!request) return;
-          clearTimeout(request.timer); this.requests.delete(requestId);
-          request.reject(error instanceof Error ? error : new Error(String(error)));
-        });
-      } else this.write({ ...command, requestId });
+        ...(conversation ? { bindingId: delivery!.bindingId, pendingSend: command, ...(command.type === "history" ? { history: [] } : {}) } : {}) });
+      if (conversation) this.sendConversations();
+      else this.write({ ...command, requestId });
     });
+  }
+
+  private sendConversations(): void {
+    if (this.view.connection !== "connected") return;
+    for (const [requestId, request] of this.requests) {
+      const command = request.pendingSend;
+      if (!command) continue;
+      const delivery = this.view.state?.channel.rooms.find(room => room.id === command.roomId)?.delivery;
+      if (!delivery || (delivery.hostSessionId !== this.view.sessionId && !delivery.nextHops[delivery.hostSessionId])) continue;
+      delete request.pendingSend;
+      void this.conversation.send(command, requestId).catch(error => {
+        if (!this.requests.delete(requestId)) return;
+        clearTimeout(request.timer);
+        request.reject(error instanceof Error ? error : new Error(String(error)));
+      });
+    }
   }
 
   private receiveConversation(reply: ConversationReply): void {
