@@ -223,11 +223,11 @@ export const en: Record<CopyKey, string> = {
 
   "client.launch.title": "Open Piik",
   "client.launch.version": "Installed version {version}",
-  "client.launch.local": "Local room",
+  "client.launch.local": "Local network",
   "client.launch.localHint": "Use on the same local network",
   "client.launch.link": "Public invite",
   "client.launch.linkHint": "Create one temporary public invitation link",
-  "client.launch.room": "Create a room on this device",
+  "client.launch.room": "Start Piik on this device",
   "client.connect.action": "Connect Piik App",
   "client.connect.hint": "Connect App for the full Piik experience.",
   "client.connect.discovering": "Looking for Piik App…",

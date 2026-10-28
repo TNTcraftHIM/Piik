@@ -22,7 +22,7 @@ const launcherStateSchema = z.object({
   sites: z.array(z.string()),
   siteAccess: z.literal("rooms").optional(),
   startupSite: z.string(),
-  localAccessPassword: z.string(),
+  localAccessPassword: z.string().optional(),
   defaultMode: z.enum(["local", "link"]),
   modes: z.array(z.enum(["local", "link"])).default(["local", "link"]),
   target: z.string().optional(),
@@ -54,7 +54,7 @@ export function AppLauncherPage() {
   const [siteAccess, setSiteAccess] = useState<"rooms">();
   const [startupSite, setStartupSite] = useState("");
   const [openOnApproval, setOpenOnApproval] = useState(false);
-  const [localAccessPassword, setLocalAccessPassword] = useState("");
+  const [localAccessPassword, setLocalAccessPassword] = useState<string>();
   const [error, setError] = useState<{ kind: "load" | "launch"; reason?: string; detail?: string } | null>(null);
   const [appDebug, setAppDebug] = useState<boolean | undefined>();
   const [debug, setDebug] = useState(false);

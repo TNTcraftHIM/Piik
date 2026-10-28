@@ -223,11 +223,11 @@ export const zh = {
 
   "client.launch.title": "打开 Piik",
   "client.launch.version": "当前版本 {version}",
-  "client.launch.local": "本地房间",
+  "client.launch.local": "局域网使用",
   "client.launch.localHint": "同一局域网内使用",
   "client.launch.link": "公网邀请",
   "client.launch.linkHint": "生成一个临时公网邀请链接",
-  "client.launch.room": "在这台设备上创建房间",
+  "client.launch.room": "在这台设备上启动 Piik",
   "client.connect.action": "连接 Piik App",
   "client.connect.hint": "连接 App，获得更完整的体验。",
   "client.connect.discovering": "正在查找 Piik App…",

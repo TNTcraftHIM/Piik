@@ -69,7 +69,7 @@ export function LauncherForm({
   target?: string;
   onOpen?: (event: MouseEvent<HTMLAnchorElement>) => void;
   entryURL?: (target: string) => string;
-  localAccessPassword: string;
+  localAccessPassword?: string;
   onLocalAccessPasswordChange: (password: string) => void;
   lan?: {
     addresses: readonly { address: string; name: string }[];
@@ -82,6 +82,7 @@ export function LauncherForm({
 }) {
   const { vis, t } = useCopy();
   const choices = modes ? MODES.filter(choice => modes.includes(choice.mode)) : MODES;
+  const chooseLAN = mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected);
   const accessHintId = useId();
   const standbyRef = useRef<HTMLElement>(null);
   const removalFocus = useRef<{ site: string; index: number } | null>(null);
@@ -216,8 +217,8 @@ export function LauncherForm({
         })}
       </div>
 
-      <div className="lr-client-room-settings">
-        <details className="lr-client-access-options">
+      {(localAccessPassword !== undefined || chooseLAN) && <div className="lr-client-room-settings">
+        {localAccessPassword !== undefined && <details className="lr-client-access-options">
           <summary className="lr-btn">
             <Glyph name="key" size={17} />
             <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.accessSettings")}</span>
@@ -231,8 +232,8 @@ export function LauncherForm({
           <p id={accessHintId} className={vis ? "visually-hidden" : "lr-client-access-hint"}>
             {t("client.launch.localAccessHint")}
           </p>
-        </details>
-        {mode === "local" && lan && (lan.addresses.length !== 1 || !lan.selected) ? (
+        </details>}
+        {chooseLAN && lan ? (
           <details className="lr-client-access-options" open={!lan.selected || undefined}>
             <summary className="lr-btn">
               <Glyph name="users" size={17} />
@@ -253,7 +254,7 @@ export function LauncherForm({
             </div>}
           </details>
         ) : null}
-      </div>
+      </div>}
 
       {mode === "local" && <p className={vis ? "visually-hidden" : "lr-client-access-hint"}>
         {t("client.launch.localHTTPS")}
