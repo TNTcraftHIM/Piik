@@ -41,6 +41,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
+- [ ] **Return the 3.0 RTC dependency to an upstream release.** Follow
+  [upstream #296](https://github.com/webrtc-rs/rtc/pull/296). Native and Server use
+  the same fixed 0.21.1 fork; [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
+  owns the repair and removal criteria.
 
 ## Next
 

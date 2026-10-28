@@ -23,3 +23,7 @@ uuid = { version = "=1.16.0", features = ["v4", "serde"] }
 [dev-dependencies]
 rusqlite = { version = "0.37", features = ["bundled"] }
 tokio-tungstenite = "0.29"
+
+# Cargo patches are workspace-root scoped; match channel-native/Cargo.toml.
+[patch.crates-io]
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "20cce2480fc0975241e1590ea9d018f68d3fabcc" }

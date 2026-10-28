@@ -27,6 +27,22 @@ Each outgoing lease references its admitted incoming flow. Incumbent and shadow
 inputs can forward concurrently; selecting the shadow preserves its already
 warm output, stream, SSRC, source clock and feedback owner.
 
+## RTC Dependency
+
+Native and Server pin `rtc` to commit
+`20cce2480fc0975241e1590ea9d018f68d3fabcc` in the temporary
+[fork](https://github.com/TNTcraftHIM/rtc/tree/20cce2480fc0975241e1590ea9d018f68d3fabcc).
+It contains only [upstream PR #296](https://github.com/webrtc-rs/rtc/pull/296)
+on the published 0.21.1 baseline: retire stale RTP extension mappings and preserve
+the active section's negotiated IDs. Without this fix, changing voice and screen
+tracks on an existing connection can produce an SDP offer the Browser rejects.
+
+Cargo's patch belongs to each workspace root, so both executable manifests carry
+the same pin. The fork retains upstream MIT/Apache-2.0 licensing; no build-time
+source patch or registry-cache edit is used. When an upstream release includes
+the fix, update both pins, run the existing App and Native Browser checks, and
+remove both patch entries.
+
 ## Run
 
 Start the [domain and shared Web interface](../channel-server/README.md#run),

@@ -25,3 +25,7 @@ serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }
 getrandom = "=0.3.4"
+
+# Remove after upstream webrtc-rs/rtc#296 is released; provenance is in README.md.
+[patch.crates-io]
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "20cce2480fc0975241e1590ea9d018f68d3fabcc" }
