@@ -903,18 +903,31 @@ impl Channel {
                 rooms,
                 roles: vec![
                     RoleInfo {
-                        id: "member",
-                        name: "Member",
-                        permissions: vec!["chat", "publish", "subscribe", "voice", "create_room"],
+                        id: "member".into(),
+                        name: "Member".into(),
+                        permissions: ["chat", "publish", "subscribe", "voice", "create_room"]
+                            .map(String::from)
+                            .into(),
                     },
                     RoleInfo {
-                        id: "moderator",
-                        name: "Moderator",
-                        permissions: vec!["chat", "publish", "subscribe", "voice", "create_room"],
+                        id: "moderator".into(),
+                        name: "Moderator".into(),
+                        permissions: ["chat", "publish", "subscribe", "voice", "create_room"]
+                            .map(String::from)
+                            .into(),
                     },
                 ],
             },
-            users: self.identity.users.values().cloned().collect(),
+            users: self
+                .identity
+                .users
+                .values()
+                .map(|user| UserInfo {
+                    id: user.id,
+                    name: user.name.clone(),
+                    roles: user.roles.clone(),
+                })
+                .collect(),
             sessions: self
                 .identity
                 .sessions

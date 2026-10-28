@@ -1,6 +1,6 @@
-use crate::identity::User;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -182,6 +182,10 @@ pub enum LinkState {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Signal {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub resync: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exchange_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<Description>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub candidate: Option<Candidate>,
@@ -191,29 +195,32 @@ pub struct Signal {
 
 impl Signal {
     pub fn valid(&self) -> bool {
-        self.description.as_ref().is_none_or(|description| {
-            ["offer", "answer", "rollback", "pranswer"].contains(&description.kind.as_str())
-                && description
-                    .sdp
+        self.description.is_some() == self.exchange_id.is_some()
+            && self.description.as_ref().is_none_or(|description| {
+                ["offer", "answer"].contains(&description.kind.as_str())
+                    && description
+                        .sdp
+                        .as_ref()
+                        .is_none_or(|sdp| sdp.len() <= 150_000)
+            })
+            && self.candidate.as_ref().is_none_or(|candidate| {
+                candidate
+                    .candidate
                     .as_ref()
-                    .is_none_or(|sdp| sdp.len() <= 150_000)
-        }) && self.candidate.as_ref().is_none_or(|candidate| {
-            candidate
-                .candidate
+                    .is_none_or(|value| value.len() <= 4096)
+                    && candidate
+                        .sdp_mid
+                        .as_ref()
+                        .is_none_or(|value| value.len() <= 128)
+                    && candidate
+                        .username_fragment
+                        .as_ref()
+                        .is_none_or(|value| value.len() <= 256)
+            })
+            && self
+                .tracks
                 .as_ref()
-                .is_none_or(|value| value.len() <= 4096)
-                && candidate
-                    .sdp_mid
-                    .as_ref()
-                    .is_none_or(|value| value.len() <= 128)
-                && candidate
-                    .username_fragment
-                    .as_ref()
-                    .is_none_or(|value| value.len() <= 256)
-        }) && self
-            .tracks
-            .as_ref()
-            .is_none_or(|tracks| tracks.iter().all(|track| valid_id(&track.stream_id)))
+                .is_none_or(|tracks| tracks.iter().all(|track| valid_id(&track.stream_id)))
     }
 }
 
@@ -290,7 +297,7 @@ pub struct VoiceInfo {
     pub deafened: bool,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionInfo {
     pub id: Uuid,
@@ -298,7 +305,7 @@ pub struct SessionInfo {
     pub online: bool,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PairInfo {
     pub id: Uuid,
@@ -308,14 +315,21 @@ pub struct PairInfo {
     pub incoming: Vec<Uuid>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct RoleInfo {
-    pub id: &'static str,
-    pub name: &'static str,
-    pub permissions: Vec<&'static str>,
+    pub id: String,
+    pub name: String,
+    pub permissions: Vec<String>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
+pub struct UserInfo {
+    pub id: Uuid,
+    pub name: String,
+    pub roles: BTreeSet<String>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelInfo {
     pub history_window: usize,
@@ -326,11 +340,11 @@ pub struct ChannelInfo {
     pub roles: Vec<RoleInfo>,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub channel: ChannelInfo,
-    pub users: Vec<User>,
+    pub users: Vec<UserInfo>,
     pub sessions: Vec<SessionInfo>,
     pub publications: Vec<PublicationInfo>,
     pub voice: Vec<VoiceInfo>,
@@ -350,7 +364,7 @@ pub struct ChatMessage {
     pub time: u64,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",

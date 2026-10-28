@@ -31,10 +31,12 @@ export const snapshotSchema = z.object({
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
 export const signalSchema = z.object({
-  description: z.object({ type: z.enum(["offer", "answer", "rollback", "pranswer"]), sdp: z.string().max(150000).optional() }).optional(),
+  resync: z.boolean().optional(),
+  exchangeId: z.string().uuid().optional(),
+  description: z.object({ type: z.enum(["offer", "answer"]), sdp: z.string().max(150000).optional() }).optional(),
   candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional(),
   tracks: z.array(z.object({ publicationId: id, streamId: id })).optional(),
-});
+}).refine(signal => Boolean(signal.description) === Boolean(signal.exchangeId), { message: "SDP requires an exchange", path: ["exchangeId"] });
 export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),

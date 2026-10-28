@@ -17,7 +17,8 @@ async function freePort() {
 const corePort = await freePort(), uiPort = await freePort();
 const origin = `http://127.0.0.1:${uiPort}`;
 const protocolOnly = process.argv.includes("--protocol");
-const directory = process.argv.includes("--hosts") ? await mkdtemp(join(tmpdir(), "piik-room-host-check-")) : null;
+const directory = process.argv.some(flag => ["--hosts", "--native"].includes(flag))
+  ? await mkdtemp(join(tmpdir(), "piik-room-host-check-")) : null;
 const env = { ...process.env, PIIK_CHANNEL_PORT: String(corePort), PIIK_CHANNEL_UI_PORT: String(uiPort),
   PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: directory ?? ":memory:",
   CHANNEL_WS_URL: `ws://127.0.0.1:${corePort}/prototype/channel`,

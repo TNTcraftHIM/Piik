@@ -1,0 +1,510 @@
+//! One explicit hosting session owns its signaling connection and native peers.
+//! Room policy and route decisions remain in the shared core.
+use crate::peer::NativePeers;
+use anyhow::{anyhow, bail, Context, Result};
+use futures_util::{SinkExt, StreamExt};
+use piik_channel_prototype::{
+    wire::{Command, Event, RoomAccess, Snapshot},
+    RoomState, StoredRoomHost, RECOVERY_MS,
+};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    future::Future,
+    path::PathBuf,
+    time::Duration,
+};
+use tokio::{
+    net::TcpStream,
+    sync::mpsc,
+    time::{self, Instant},
+};
+use tokio_tungstenite::{
+    connect_async_with_config,
+    tungstenite::{client::IntoClientRequest, protocol::WebSocketConfig, Message},
+    MaybeTlsStream, WebSocketStream,
+};
+use uuid::Uuid;
+
+type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
+
+pub struct Config {
+    pub url: String,
+    pub origin: String,
+    pub name: String,
+    pub key: Option<String>,
+    pub credential: Option<String>,
+}
+
+/// Trusted paths supplied by the explicit hosting caller. Existing files restore
+/// their policy; a missing file creates a public room for the admitted identity.
+pub struct RoomFile {
+    pub path: PathBuf,
+    pub id: String,
+    pub name: String,
+}
+
+struct Hosted {
+    host: StoredRoomHost,
+    binding: Option<Uuid>,
+    // Separate from SQLite's transaction locks: one process owns this runtime.
+    _file_owner: std::fs::File,
+}
+
+struct Live {
+    session: Uuid,
+    rooms: BTreeMap<String, Hosted>,
+    peers: NativePeers,
+    commands: mpsc::Receiver<Command>,
+    pairs: BTreeSet<Uuid>,
+}
+
+struct Session {
+    config: Config,
+    files: Vec<RoomFile>,
+    live: Option<Live>,
+    recovery: Option<Instant>,
+}
+
+/// A Server process may own this future; an App must end it with the front-end
+/// session that explicitly requested hosting.
+pub async fn run(
+    config: Config,
+    files: Vec<RoomFile>,
+    stop: impl Future<Output = ()> + Send,
+) -> Result<()> {
+    let mut session = Session {
+        config,
+        files,
+        live: None,
+        recovery: None,
+    };
+    let mut stop = std::pin::pin!(stop);
+    let result = session.drive(&mut stop).await;
+    let closed = session.release().await;
+    result.and(closed)
+}
+
+impl Session {
+    async fn release(&mut self) -> Result<()> {
+        if let Some(live) = self.live.take() {
+            live.peers.close().await?;
+        }
+        self.recovery = None;
+        Ok(())
+    }
+
+    async fn drive(&mut self, stop: &mut (impl Future<Output = ()> + Unpin)) -> Result<()> {
+        loop {
+            let mut request = self.config.url.as_str().into_client_request()?;
+            request
+                .headers_mut()
+                .insert("Origin", self.config.origin.parse()?);
+            let limits = WebSocketConfig::default()
+                .max_message_size(Some(2 * 1024 * 1024))
+                .max_frame_size(Some(2 * 1024 * 1024));
+            let connection = tokio::select! {
+                _ = &mut *stop => return Ok(()),
+                _ = recovery_deadline(self.recovery) => { self.release().await?; continue; },
+                result = time::timeout(Duration::from_secs(5), connect_async_with_config(request, Some(limits), false)) => result,
+            };
+            if let Ok(Ok((mut socket, _))) = connection {
+                let join = Command::Join {
+                    name: self.config.name.clone(),
+                    credential: self.config.credential.clone(),
+                    key: self.config.key.clone(),
+                    session_id: self.live.as_ref().map(|live| live.session.to_string()),
+                    room_id: None,
+                };
+                let result = self.connected(&mut socket, join, stop).await;
+                if !matches!(result, Ok(false)) {
+                    let released = self.release().await;
+                    leave(&mut socket).await;
+                    return result.map(|_| ()).and(released);
+                }
+            }
+            if self.live.is_some() && self.recovery.is_none() {
+                self.recovery = Some(Instant::now() + Duration::from_millis(RECOVERY_MS));
+            }
+            tokio::select! {
+                _ = &mut *stop => return Ok(()),
+                _ = recovery_deadline(self.recovery) => self.release().await?,
+                _ = time::sleep(Duration::from_secs(1)) => {},
+            }
+        }
+    }
+
+    /// true: caller stopped; false: connection lost, attempt the existing resume.
+    async fn connected(
+        &mut self,
+        socket: &mut Socket,
+        join: Command,
+        stop: &mut (impl Future<Output = ()> + Unpin),
+    ) -> Result<bool> {
+        enum Step {
+            Stop,
+            Expired,
+            Work(Result<bool>),
+        }
+        let mut join = Some(join);
+        let mut pending = None;
+        let mut admitted = false;
+        let mut last_seen = Instant::now();
+        loop {
+            let recovery = self.recovery;
+            let idle = last_seen + Duration::from_millis(RECOVERY_MS);
+            // Stop and connection deadlines cover the whole operation, including
+            // peer negotiation and socket writes. Welcome ends the recovery window
+            // before its projection starts a peer turn.
+            let step = {
+                let work = async {
+                    if let Some(join) = join.take() {
+                        write(socket, &join, None).await?;
+                        return Ok(true);
+                    }
+                    if let Some(event) = pending.take() {
+                        self.event(event, socket).await?;
+                        return Ok(true);
+                    }
+                    tokio::select! {
+                        command = next_command(&mut self.live), if admitted => {
+                            let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
+                            if self.live.as_ref().is_some_and(|live| current(&live.pairs, &command)) {
+                                write(socket, &command, None).await?;
+                            }
+                        },
+                        message = socket.next() => {
+                            last_seen = Instant::now();
+                            match message {
+                                Some(Ok(Message::Text(text))) => {
+                                    let event: Event = serde_json::from_str(&text).context("invalid channel event")?;
+                                    if matches!(event, Event::Welcome { .. }) {
+                                        admitted = true;
+                                        self.recovery = None;
+                                    }
+                                    if let Event::Error { code, .. } = &event {
+                                        if !admitted { bail!("admission failed: {code}"); }
+                                    }
+                                    pending = Some(event);
+                                },
+                                Some(Ok(Message::Ping(bytes))) => write_frame(socket, Message::Pong(bytes)).await?,
+                                Some(Ok(Message::Pong(_))) => {},
+                                _ => return Ok(false),
+                            }
+                        },
+                    }
+                    Ok(true)
+                };
+                tokio::select! {
+                    _ = &mut *stop => Step::Stop,
+                    _ = recovery_deadline(recovery) => Step::Expired,
+                    _ = time::sleep_until(idle) => Step::Work(Ok(false)),
+                    result = work => Step::Work(result),
+                }
+            };
+            match step {
+                Step::Stop => return Ok(true),
+                Step::Expired => {
+                    self.release().await?;
+                    return Ok(false);
+                }
+                Step::Work(Ok(false)) => return Ok(false),
+                Step::Work(Err(error)) => {
+                    if error
+                        .downcast_ref::<tokio_tungstenite::tungstenite::Error>()
+                        .is_some()
+                    {
+                        return Ok(false);
+                    }
+                    return Err(error);
+                }
+                Step::Work(Ok(true)) => {}
+            }
+        }
+    }
+
+    async fn event(&mut self, event: Event, socket: &mut Socket) -> Result<()> {
+        match event {
+            Event::Welcome {
+                credential,
+                session_id,
+                state,
+                ..
+            } => {
+                self.config.credential = Some(credential);
+                let resumed = self
+                    .live
+                    .as_ref()
+                    .is_some_and(|live| live.session == session_id);
+                if !resumed {
+                    self.release().await?;
+                    let user = state
+                        .sessions
+                        .iter()
+                        .find(|session| session.id == session_id)
+                        .ok_or_else(|| anyhow!("welcome omitted current session"))?
+                        .user_id;
+                    let mut rooms = BTreeMap::new();
+                    for file in &self.files {
+                        let mut lock_path = file.path.as_os_str().to_os_string();
+                        lock_path.push(".lock");
+                        let file_owner = std::fs::OpenOptions::new()
+                            .create(true)
+                            .truncate(false)
+                            .read(true)
+                            .write(true)
+                            .open(lock_path)?;
+                        match file_owner.try_lock() {
+                            Ok(()) => {}
+                            Err(std::fs::TryLockError::WouldBlock) => {
+                                bail!("room_storage_in_use: {}", file.id)
+                            }
+                            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+                        }
+                        let host = match std::fs::metadata(&file.path) {
+                            Ok(_) => StoredRoomHost::open(&file.path),
+                            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                let policy = RoomState::new(
+                                    file.id.clone(),
+                                    file.name.clone(),
+                                    user,
+                                    RoomAccess::Public,
+                                    false,
+                                    None,
+                                )
+                                .map_err(anyhow::Error::msg)?;
+                                StoredRoomHost::create(&file.path, policy)
+                            }
+                            Err(error) => return Err(error.into()),
+                        }
+                        .map_err(|error| anyhow!(error.to_string()))?;
+                        if host.policy().id != file.id || host.policy().creator_id != user {
+                            bail!(
+                                "room storage does not belong to this room and admitted identity"
+                            );
+                        }
+                        if rooms
+                            .insert(
+                                file.id.clone(),
+                                Hosted {
+                                    host,
+                                    binding: None,
+                                    _file_owner: file_owner,
+                                },
+                            )
+                            .is_some()
+                        {
+                            bail!("duplicate room id");
+                        }
+                    }
+                    let ice = state
+                        .ice_servers
+                        .iter()
+                        .cloned()
+                        .map(ice_server)
+                        .collect::<Result<Vec<_>, _>>()?;
+                    let (commands, receiver) = mpsc::channel(64);
+                    self.live = Some(Live {
+                        session: session_id,
+                        rooms,
+                        peers: NativePeers::new(session_id, ice, commands),
+                        commands: receiver,
+                        pairs: BTreeSet::new(),
+                    });
+                }
+                self.recovery = None;
+                self.state(state, socket).await?;
+                if resumed {
+                    let live = self.live.as_mut().unwrap();
+                    await_peer(live.peers.resync(), &mut live.commands, &live.pairs, socket)
+                        .await?;
+                }
+                for (id, hosted) in &mut self.live.as_mut().unwrap().rooms {
+                    write(
+                        socket,
+                        &Command::HostRegister {
+                            room: hosted.host.summary(),
+                            resume_binding: hosted.binding,
+                        },
+                        Some(id),
+                    )
+                    .await?;
+                }
+                eprintln!(
+                    "Native session admitted ({})",
+                    if resumed { "resumed" } else { "new" }
+                );
+            }
+            Event::State { state } => self.state(state, socket).await?,
+            Event::HostBound {
+                room_id,
+                binding_id,
+            } => {
+                if let Some(hosted) = self
+                    .live
+                    .as_mut()
+                    .and_then(|live| live.rooms.get_mut(&room_id))
+                {
+                    if hosted.binding.is_some_and(|old| old != binding_id) {
+                        let file = self.files.iter().find(|file| file.id == room_id).unwrap();
+                        hosted.host = StoredRoomHost::open(&file.path)
+                            .map_err(|error| anyhow!(error.to_string()))?;
+                    }
+                    hosted.binding = Some(binding_id);
+                    eprintln!("Native room bound: {room_id}");
+                }
+            }
+            Event::HostInput { room_id, input } => {
+                if let Some(live) = &mut self.live {
+                    if let Some(hosted) = live.rooms.get_mut(&room_id) {
+                        if hosted.binding == Some(input.binding_id)
+                            && live.session == input.host_session_id
+                        {
+                            let output = hosted.host.dispatch(input).map_err(anyhow::Error::msg)?;
+                            write(socket, &Command::HostOutput { room_id, output }, None).await?;
+                        }
+                    }
+                }
+            }
+            Event::Signal {
+                pair_id, payload, ..
+            } => {
+                if let Some(live) = &mut self.live {
+                    if live.pairs.contains(&pair_id) {
+                        await_peer(
+                            live.peers.signal(pair_id, payload),
+                            &mut live.commands,
+                            &live.pairs,
+                            socket,
+                        )
+                        .await?;
+                    }
+                }
+            }
+            Event::Error { code, request_id } => {
+                if request_id.as_ref().is_some_and(|id| {
+                    self.live
+                        .as_ref()
+                        .is_some_and(|live| live.rooms.contains_key(id))
+                }) {
+                    bail!("room registration failed: {code}");
+                }
+                eprintln!("Channel error: {code}");
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn state(&mut self, state: Snapshot, socket: &mut Socket) -> Result<()> {
+        if let Some(live) = &mut self.live {
+            live.pairs = state.pairs.iter().map(|pair| pair.id).collect();
+            await_peer(
+                live.peers.update(state.pairs, state.publications),
+                &mut live.commands,
+                &live.pairs,
+                socket,
+            )
+            .await?;
+        }
+        Ok(())
+    }
+}
+
+// The wire uses the browser RTCIceServer shape; the native library requires an
+// array and explicit credential strings even for an unauthenticated STUN server.
+fn ice_server(mut value: serde_json::Value) -> Result<webrtc::peer_connection::RTCIceServer> {
+    let object = value
+        .as_object_mut()
+        .ok_or_else(|| anyhow!("invalid_ice_server"))?;
+    if let Some(serde_json::Value::String(url)) = object.get("urls") {
+        object.insert("urls".into(), serde_json::json!([url]));
+    }
+    object.entry("username").or_insert_with(|| "".into());
+    object.entry("credential").or_insert_with(|| "".into());
+    serde_json::from_value(value).map_err(|_| anyhow!("invalid_ice_server"))
+}
+
+fn current(pairs: &BTreeSet<Uuid>, command: &Command) -> bool {
+    let pair = match command {
+        Command::Signal { pair_id, .. }
+        | Command::LinkState { pair_id, .. }
+        | Command::FlowState { pair_id, .. }
+        | Command::BaseState { pair_id, .. } => pair_id,
+        _ => return false,
+    };
+    pairs.contains(pair)
+}
+
+// A peer turn may emit signaling before completing. Drain the same bounded output
+// while awaiting it so neither owner waits for the other's full queue.
+async fn await_peer<T>(
+    turn: impl Future<Output = Result<T>>,
+    commands: &mut mpsc::Receiver<Command>,
+    pairs: &BTreeSet<Uuid>,
+    socket: &mut Socket,
+) -> Result<T> {
+    let mut turn = std::pin::pin!(turn);
+    loop {
+        tokio::select! {
+            result = &mut turn => return result,
+            command = commands.recv() => {
+                let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
+                if current(pairs, &command) { write(socket, &command, None).await?; }
+            },
+        }
+    }
+}
+
+async fn next_command(live: &mut Option<Live>) -> Option<Command> {
+    match live {
+        Some(live) => live.commands.recv().await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn recovery_deadline(deadline: Option<Instant>) {
+    match deadline {
+        Some(deadline) => time::sleep_until(deadline).await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn write(socket: &mut Socket, command: &Command, request_id: Option<&str>) -> Result<()> {
+    let mut value = serde_json::to_value(command)?;
+    if let Some(id) = request_id {
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("requestId".into(), id.into());
+    }
+    write_frame(socket, Message::Text(value.to_string().into())).await
+}
+
+async fn write_frame(socket: &mut Socket, frame: Message) -> Result<()> {
+    time::timeout(Duration::from_secs(5), socket.send(frame))
+        .await
+        .map_err(|_| {
+            tokio_tungstenite::tungstenite::Error::Io(std::io::ErrorKind::TimedOut.into())
+        })??;
+    Ok(())
+}
+
+// The acknowledged Leave retires domain resources before dropping a socket that
+// may still contain unread state. Otherwise a TCP reset can overtake that command.
+async fn leave(socket: &mut Socket) {
+    let _ = time::timeout(Duration::from_secs(5), async {
+        write(socket, &Command::Leave, Some("native-leave")).await?;
+        while let Some(message) = socket.next().await {
+            match message? {
+                Message::Text(text) => {
+                    if matches!(serde_json::from_str::<Event>(&text), Ok(Event::Ack { request_id }) if request_id == "native-leave") { break; }
+                },
+                Message::Ping(bytes) => write_frame(socket, Message::Pong(bytes)).await?,
+                Message::Close(_) => break,
+                _ => {},
+            }
+        }
+        socket.close(None).await?;
+        Ok::<_, anyhow::Error>(())
+    }).await;
+}

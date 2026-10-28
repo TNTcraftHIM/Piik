@@ -23,7 +23,8 @@ The owner accepted this routing foundation and durable room records with cached
 attachments. The [room-data model](./channel-storage-and-identity.md) owns simple
 shared file delivery on those same paths. Browser-owned rooms now run the shared
 Rust core with local confirmation/storage; domain rendezvous currently carries
-their commands. TODO owns the base-tree and Native integration still to implement.
+their commands. Browser and Native room participants now establish base paths
+and voice; TODO owns the remaining carrier and platform integration.
 
 ## Terminology And Roles
 
@@ -367,6 +368,18 @@ a socket does not extend its deadline; successful authenticated reconciliation
 ends it. Local stop takes effect immediately. One scope's retirement cannot
 release another room's healthy source or transport lease.
 
+An unfinished SDP exchange belongs to its physical connection. On resume,
+retransmit its original offer or cached answer with the same exchange identity;
+an answer from an older exchange cannot complete a newer one. Keep that protocol
+exchange separate from current publication authority: retransmission may remove
+revoked track bindings, but never insert a new binding into an old description.
+Finish the pending exchange, then let normal WebRTC negotiation apply current
+senders. A unilateral rollback is not a synchronization protocol: the other
+endpoint may already have accepted the offer. The
+[WebRTC negotiation model](https://www.w3.org/TR/webrtc/#session-negotiation-model)
+owns sender updates; [RFC 3264](https://www.rfc-editor.org/rfc/rfc3264.html#section-6)
+defines an answer's independent SDP origin/version.
+
 App and Browser can operate the same logical room runtime through different
 execution/storage adapters, while obeying the same explicit hosting-session
 lifetime. Persistent data can outlive that session; background App execution
@@ -395,8 +408,8 @@ forward that voice; changing views retains necessary transit. DataChannel failur
 repairs base paths while preserving the pair's healthy media leases.
 
 Screens retain independent plans in this slice. Server-owned default rooms also
-retain publication plans until a Native media endpoint supplies their base root;
-the administrator's page is not that endpoint. Files use authenticated HTTP only
+retain publication plans; their domain process does not embed a Native media
+endpoint, and an administrator's page cannot substitute for one. Files use authenticated HTTP only
 in those Server-owned rooms.
 Its simplified screen plan starts with subscribers as relay candidates and
 retains existing transit while downstream demand needs it. Stopping local
@@ -413,7 +426,14 @@ Implement the resulting concepts in Rust using suitable mature components;
 module and function parity with Go is not an acceptance criterion. Verify the
 same complete user flows and failure cases against the new ownership model.
 
-The next slice connects Native hosting and peer data delivery to those owners.
+The [Native participant](../../prototype/channel-native/README.md) now operates
+the same room core with one SQLite database per room, an admitted session and
+real base DataChannels. It forwards encoded Opus without local playback or
+capture. Its caller owns hosting lifetime; a command-line development host does
+not grant background hosting to an idle App. An OS file lock excludes another
+runtime from simultaneously operating the same saved room.
+
+The next slice connects peer data delivery and App/Server hosting to those owners.
 Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Use one Rust
 core with thin App/Server and Browser adapters. Evaluate
@@ -446,7 +466,7 @@ hop, relay departure, room-host restart and domain-authority loss. Compare share
 voice and independent screens under the same workload; measure startup, recovery,
 frame/voice delay and bytes at the actual forwarding endpoints.
 
-The next Native transport slice uses the tested webrtc-rs/rtc 0.21.1 candidate.
+The isolated Native participant uses webrtc-rs/rtc 0.21.1.
 Its [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc389547450e245877310c9cbed/src/peer_connection/mod.rs)
 owns sockets, candidate gathering and protocol deadlines. Its
 [interceptor registry](https://github.com/webrtc-rs/rtc/blob/2a732df55ca4bcf26b80914fa0f570cfaf74cfcb/src/peer_connection/configuration/interceptor_registry.rs)
@@ -457,9 +477,13 @@ the pacer's finite queue and rate-dependent release timing. Piik owns encoder
 demand, bounded queued work and the source's RTP timeline, rather than
 reimplementing those network algorithms.
 
-Native encoded forwarding and SFU integration remain later stages. This candidate
-is not yet a product dependency, and the Rust coordinator does not replace the
-current 2.x Native media core.
+Native voice forwarding separates control turns from real-time packet writers.
+Each output uses its sender's negotiated codec mapping and owns one source RTP
+clock; replacing that source creates a new sender/SSRC after its first packet.
+Removing the last incoming demand releases its reader even if the publication
+remains in the room directory. Native video forwarding and SFU integration
+remain later stages. This isolated dependency does not replace the current
+2.x Native media core.
 
 ## Design References
 

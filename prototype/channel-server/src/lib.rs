@@ -13,18 +13,18 @@ mod identity;
 mod remote;
 mod room;
 mod routes;
-#[cfg(feature = "server")]
+#[cfg(feature = "sqlite")]
 pub mod storage;
-#[cfg(feature = "server")]
+#[cfg(feature = "sqlite")]
 mod stored_room;
 mod transport;
 pub mod wire;
 
 pub use access::{RoomPermission, RoomState};
 pub use channel::DurableState;
-pub use identity::{Endpoint, Member, User};
+pub use identity::{Endpoint, Member, User, RECOVERY_MS};
 pub use room::{RoomRuntime, RoomSnapshot};
-#[cfg(feature = "server")]
+#[cfg(feature = "sqlite")]
 pub use stored_room::StoredRoomHost;
 pub use wire::MAX_MESSAGE_ATTACHMENTS;
 

@@ -7,7 +7,8 @@ publish = false
 
 [features]
 default = ["server"]
-server = ["dep:axum", "dep:tokio", "dep:rusqlite", "dep:futures-util"]
+sqlite = ["dep:rusqlite"]
+server = ["sqlite", "dep:axum", "dep:tokio", "dep:futures-util"]
 
 [[bin]]
 name = "piik-channel-prototype"

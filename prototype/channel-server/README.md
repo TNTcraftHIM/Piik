@@ -11,9 +11,9 @@ in their owner's Browser, using the same Rust room core through
 policy, activities, publication plans and confirmed history. The domain binds
 authenticated runtimes to directory entries and combines their transport demand;
 a physical pair remains while any room needs it. Domain WebSocket rendezvous
-currently carries room commands and replies. Browser-hosted rooms establish a
-shared base tree when an activity needs it; Native hosting and peer file delivery
-remain the next integration.
+currently carries room commands and replies. Browser-hosted rooms and the
+explicit [Native participant](../channel-native/README.md) establish a shared
+base tree when an activity needs it. Peer file delivery is not connected yet.
 
 ## Run
 
@@ -125,7 +125,7 @@ a grid or focus one picture, with chat alongside or tucked away. These presentat
 choices do not implement media layering or a new quality policy. Local previews
 stay muted, and pausing a player does not stop forwarding its source.
 
-In Browser-hosted rooms, reading, voice, sharing and watching share a bounded
+In Browser- and Native-hosted rooms, reading, voice, sharing and watching share a bounded
 base tree rooted at the actual hosting session. Each edge requires an open reliable
 DataChannel at both endpoints. Voice follows the needed paths of that tree in
 either direction; a participant can forward without joining or hearing the call.
@@ -133,18 +133,20 @@ Leaving the room view ends reading, while active media and necessary transit rem
 
 Screens still use their own bounded distribution trees: the source first serves
 two subscribers, then ready subscribers can relay. Server-owned default rooms use
-these publication plans until the Server has a Native media endpoint.
+these publication plans; their domain process does not embed a Native media endpoint.
 Compatible base and media flows reuse physical peer connections. A relay can stop
 watching while continuing to serve downstream viewers; its transit ends when that
 demand ends. A failed DataChannel repairs its room paths without closing healthy
 media on the same connection. Stopping one share keeps unrelated received and
-forwarded media alive. Browser relays can decode and re-encode; Native encoded forwarding and SFU
-fallback are not implemented here. Browser WebRTC owns ICE and congestion control.
+forwarded media alive. Browser relays can decode and re-encode. The Native
+participant forwards encoded Opus; Native video forwarding and SFU fallback
+remain later work. WebRTC owns ICE and congestion control.
 Optional `PIIK_CHANNEL_ICE_SERVERS` supplies an ICE-server JSON array; local checks
 do not establish public-NAT connectivity or reliable background Browser service.
 
 A signaling interruption has one 20-second recovery window. A resumed endpoint
-retains its committed media; expiry releases captures and transports. Offline
+retains its committed media and resumes unfinished negotiation on the same
+connections; expiry releases captures and transports. Offline
 stop, unwatch and leave take effect locally and are reconciled on reconnect.
 
 ## Saved data and files
@@ -177,9 +179,11 @@ Native App hosting follows the
 [room-data model](../../docs/research/channel-storage-and-identity.md).
 `StoredRoomHost` supplies the shared Rust room core's SQLite execution adapter:
 one database per room, with confirmations emitted after commit. It owns no
-network endpoint or hosting-session lifetime; that Native integration is next.
-The Server prototype's saved database does not implement that App lifecycle or
-add distribution packages. A new service URL can use the same database, but a
+network endpoint or hosting-session lifetime. The separate Native participant
+owns those resources and operates one or more rooms through that adapter.
+It is an explicit development host; App linkage and embedding it into the
+default Server runtime remain separate integration work.
+A new service URL can use the same database, but a
 new Browser origin cannot read the previous origin's saved login or bookmarks.
 
 Server-owned rooms use authenticated HTTP attachments, independently of media
@@ -233,6 +237,9 @@ node prototype/channel-server/run-browser-check.mjs --lifecycle
 node prototype/channel-server/run-browser-check.mjs --hosts
 node prototype/channel-server/run-browser-check.mjs --base
 ```
+
+The [Native participant checks](../channel-native/README.md#checks) add
+`--native` for real Browser-to-Native voice, room storage and restart.
 
 Browser checks require `agent-browser` and its installed Chromium. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite

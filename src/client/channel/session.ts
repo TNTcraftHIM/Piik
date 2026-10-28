@@ -113,6 +113,7 @@ export class ChannelSession {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
       if (resumed) {
+        this.media.resync();
         for (const publication of event.state.publications) {
           if (publication.sessionId === event.sessionId && !this.local.has(publication.id)) this.write({ type: "unpublish", publicationId: publication.id });
         }

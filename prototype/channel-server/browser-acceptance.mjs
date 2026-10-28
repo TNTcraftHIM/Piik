@@ -6,6 +6,7 @@ import { mkdir, mkdtemp, rmdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { nativeRoom } from "./browser-native-acceptance.mjs";
 // On Windows the daemon can inherit a CLI pipe. Wait for the command's exit,
 // rather than execFile's close event, which would also wait for that daemon.
 function run(executable, args, options = {}) {
@@ -39,7 +40,8 @@ const lifecycleOnly = process.argv.includes("--lifecycle");
 const roomsOnly = process.argv.includes("--rooms");
 const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
-const active = baseOnly ? [0, 1, 2, 3] : lifecycleOnly || roomsOnly || hostsOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const nativeOnly = process.argv.includes("--native");
+const active = baseOnly ? [0, 1, 2, 3] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   const { stdout } = await run(executable, ["--session", sessions[index], "--json", ...args], {
     timeout: 35_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
@@ -70,6 +72,7 @@ function captureProbe(name) {
     localStorage.setItem('piik:ui-mode', 'text');
     const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [];
     const blockedPeers = new Set(), pairPeers = new Map();
+    let blockedOffers = 0;
     const record = (direction, data) => {
       const event = JSON.parse(data);
       for (const pair of event.state?.pairs ?? []) pairPeers.set(pair.id, pair.peerId);
@@ -88,7 +91,10 @@ function captureProbe(name) {
     window.WebSocket = class extends NativeWS {
       constructor(...args) { super(...args); sockets.push(this); this.addEventListener('message', message => {
         const event = record('received', message.data);
-        if (event.type === 'signal' && blockedPeers.has(event.fromSessionId)) message.stopImmediatePropagation();
+        if (event.type === 'signal' && blockedPeers.has(event.fromSessionId)) {
+          if (event.payload?.description?.type === 'offer') blockedOffers++;
+          message.stopImmediatePropagation();
+        }
       }); }
       send(data) { const event = record('sent', data);
         if (event.type === 'signal' && blockedPeers.has(pairPeers.get(event.pairId))) return;
@@ -123,6 +129,7 @@ function captureProbe(name) {
     };
     window.__channelProbe = { peers, sockets, captures, contexts,
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
+      unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
       closeDataChannels() { for (const channel of channels) channel.close(); },
       async sample() {
         const inbound = [], outbound = [];
@@ -133,7 +140,7 @@ function captureProbe(name) {
             if (stat.type === 'outbound-rtp') outbound.push({ kind: stat.kind, bytes: stat.bytesSent, frames: stat.framesEncoded });
           }
         }
-        return { inbound, outbound, protocol, connections: peers.map(pc => pc.connectionState),
+        return { inbound, outbound, protocol, blockedOffers, connections: peers.map(pc => pc.connectionState),
           channels: channels.map(channel => ({ label: channel.label, state: channel.readyState })),
           videos: [...document.querySelectorAll('video')].map(video => ({ time: video.currentTime,
             frames: video.getVideoPlaybackQuality().totalVideoFrames, width: video.videoWidth, paused: video.paused })),
@@ -567,7 +574,11 @@ try {
   }
   const roomId = initial[0].state.channel.rooms[0].id;
   assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
-  if (baseOnly) {
+  if (nativeOnly) {
+    await nativeRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,
+      capturedScreen, playing, progressing, assertNoError, hook, output });
+    console.log(`Native room acceptance passed; evidence: ${output}`);
+  } else if (baseOnly) {
     await roomBase(initial, roomId);
     console.log(`Room base acceptance passed; evidence: ${output}`);
   } else if (hostsOnly) {

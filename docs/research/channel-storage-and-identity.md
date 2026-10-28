@@ -360,7 +360,9 @@ introduce a mandatory fixed website.
 The prototype's normal create-room action starts a Browser-owned Rust/WASM
 runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
 only its directory summary. The initial Server-owned rooms use the same room
-command core with SQLite. Both adapters commit before confirmation and share
+command core with SQLite. The explicit Native participant also operates room
+cores through the SQLite adapter, independently of the domain process.
+These adapters commit before confirmation and share
 retry and pagination rules. Participant reading windows remain separate from
 the owner's retained history. Reopening a room restores its data without
 restarting captures or voice.
@@ -368,7 +370,7 @@ restarting captures or voice.
 Domain WebSocket rendezvous currently carries authenticated room commands and
 replies. Server-owned rooms retain HTTP attachments; Browser-owned rooms wait for
 peer file delivery rather than storing their content on the domain. The shared
-base paths now carry Browser-room voice; room commands/history and file bytes
+base paths now carry Browser- and Native-room voice; room commands/history and file bytes
 still need that carrier integration. App hosting and participant history caches
 remain later work.
 

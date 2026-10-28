@@ -90,6 +90,10 @@ export class ChannelMedia {
     this.peers.get(pairId)?.transport.signal(payload);
   }
 
+  resync(): void {
+    for (const peer of this.peers.values()) peer.transport.resync();
+  }
+
   private receive(pairId: string, publicationId: string, stream: MediaStream): void {
     const peer = this.peers.get(pairId);
     if (!peer?.plan.incoming.includes(publicationId)) return;

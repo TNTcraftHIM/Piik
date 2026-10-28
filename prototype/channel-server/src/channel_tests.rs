@@ -452,6 +452,8 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
     watch(&mut channel, second.session_id, source);
     let pair_id = channel.snapshot(first.session_id).pairs[0].id;
     let spoof = Signal {
+        resync: None,
+        exchange_id: None,
         description: None,
         candidate: None,
         tracks: Some(vec![Track {
@@ -470,6 +472,8 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
         )
         .is_err());
     let payload = Signal {
+        resync: None,
+        exchange_id: None,
         description: None,
         candidate: None,
         tracks: Some(vec![Track {
@@ -505,6 +509,8 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
             Command::Signal {
                 pair_id,
                 payload: Signal {
+                    resync: None,
+                    exchange_id: None,
                     description: None,
                     candidate: None,
                     tracks: Some(tracks),

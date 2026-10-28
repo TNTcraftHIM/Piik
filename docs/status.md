@@ -19,8 +19,10 @@ The [accepted routing foundation](./research/channel-network-design.md) assigns
 each room to its actual operator and starts video on usable room paths before
 bounded source-rooted convergence. The [data model](./research/channel-storage-and-identity.md)
 owns history and file delivery. Browser-hosted rooms now share base connections
-for reading and media demand, with bidirectional voice on those paths. Native
-hosting and peer file delivery are next. [TODO](./todo.md) owns remaining stages
+for reading and media demand, with bidirectional voice on those paths. The
+explicit [Native participant](../prototype/channel-native/README.md) operates
+SQLite-backed rooms and forwards encoded Opus on the same base paths.
+App/Server integration and peer file delivery are next. [TODO](./todo.md) owns remaining stages
 and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.

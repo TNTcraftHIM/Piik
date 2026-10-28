@@ -20,6 +20,8 @@ export class ChannelTransport {
   private makingOffer = false;
   private ignoreOffer = false;
   private settingAnswer = false;
+  private pendingOffer: ChannelSignal | null = null;
+  private answer: ChannelSignal | null = null;
   private candidates: RTCIceCandidateInit[] = [];
   private operations: Promise<void> = Promise.resolve();
   private deadline: ReturnType<typeof setTimeout> | null;
@@ -57,9 +59,10 @@ export class ChannelTransport {
     };
     this.pc.ontrack = ({ streams }) => {
       for (const stream of streams) {
-        this.receiving.set(stream.id, stream);
         const publicationId = this.remoteIds.get(stream.id);
-        if (publicationId) options.receive(publicationId, stream);
+        if (!publicationId) continue;
+        this.receiving.set(stream.id, stream);
+        options.receive(publicationId, stream);
       }
     };
   }
@@ -143,8 +146,11 @@ export class ChannelTransport {
 
   signal(payload: ChannelSignal): void {
     this.enqueue(async () => {
+      if (payload.resync) { this.resendOffer(); return; }
       if (payload.description) {
         const description = payload.description;
+        if (description.type === "answer" && (!this.pendingOffer || payload.exchangeId !== this.pendingOffer.exchangeId)) return;
+        if (description.type === "offer" && this.answer && payload.exchangeId === this.answer.exchangeId) { this.replayDescription(this.answer); return; }
         const ready = !this.makingOffer && (this.pc.signalingState === "stable" || this.settingAnswer);
         const collision = description.type === "offer" && !ready;
         this.ignoreOffer = !this.options.polite && collision;
@@ -153,14 +159,16 @@ export class ChannelTransport {
         this.remoteIds = new Map((payload.tracks ?? []).map(track => [track.streamId, track.publicationId]));
         try { await this.pc.setRemoteDescription(description); }
         finally { this.settingAnswer = false; }
+        if (description.type === "offer" || description.type === "answer") this.pendingOffer = null;
         for (const [streamId, stream] of this.receiving) {
           const publicationId = this.remoteIds.get(streamId);
           if (publicationId) this.options.receive(publicationId, stream);
+          else this.receiving.delete(streamId);
         }
         for (const candidate of this.candidates.splice(0)) await addRemoteIceCandidate(this.pc, { ...candidate, candidate: candidate.candidate ?? "" });
         if (description.type === "offer") {
           await this.pc.setLocalDescription();
-          if (!this.closed) this.sendDescription();
+          if (!this.closed) this.sendDescription(payload.exchangeId!);
         }
       } else if (payload.candidate && !this.ignoreOffer) {
         if (this.pc.remoteDescription) await addRemoteIceCandidate(this.pc, { ...payload.candidate, candidate: payload.candidate.candidate ?? "" });
@@ -169,10 +177,29 @@ export class ChannelTransport {
     });
   }
 
-  private sendDescription(): void {
+  resync(): void {
+    this.enqueue(async () => {
+      this.options.send({ resync: true });
+      this.resendOffer();
+    });
+  }
+
+  private resendOffer(): void {
+    if (this.pendingOffer) this.replayDescription(this.pendingOffer);
+  }
+
+  private replayDescription(payload: ChannelSignal): void {
+    // SDP completes its original exchange; only current publication bindings may travel with it.
+    this.options.send({ ...payload, tracks: payload.tracks?.filter(track => this.sending.get(track.publicationId)?.stream.id === track.streamId) });
+  }
+
+  private sendDescription(exchangeId: string = crypto.randomUUID()): void {
     const description = this.pc.localDescription;
-    if (!description) return;
-    this.options.send({ description: description.toJSON(), tracks: [...this.sending].map(([publicationId, { stream }]) => ({ publicationId, streamId: stream.id })) });
+    if (!description || (description.type !== "offer" && description.type !== "answer")) return;
+    const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks: [...this.sending].map(([publicationId, { stream }]) => ({ publicationId, streamId: stream.id })) };
+    if (description.type === "offer") this.pendingOffer = payload;
+    else if (description.type === "answer") this.answer = payload;
+    this.options.send(payload);
   }
 
   private enqueue(action: () => Promise<void>): void {
@@ -205,5 +232,7 @@ export class ChannelTransport {
     this.pc.close();
     this.sending.clear();
     this.receiving.clear();
+    this.pendingOffer = null;
+    this.answer = null;
   }
 }

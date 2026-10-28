@@ -2,7 +2,8 @@ import { afterEach, expect, test, vi } from "vitest";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
 import { ChannelMedia } from "../src/client/channel/media";
-import type { ChannelCommand } from "../src/client/channel/protocol";
+import { ChannelTransport } from "../src/client/channel/transport";
+import { signalSchema, type ChannelCommand, type ChannelSignal } from "../src/client/channel/protocol";
 
 class ChannelSocket {
   static OPEN = 1;
@@ -230,10 +231,10 @@ class RoomPeerConnection {
   static instances: RoomPeerConnection[] = [];
   connectionState = "new";
   signalingState = "stable";
-  localDescription = null;
+  localDescription: (RTCSessionDescriptionInit & { toJSON(): RTCSessionDescriptionInit }) | null = null;
   remoteDescription: RTCSessionDescriptionInit | null = null;
   onicecandidate = null;
-  onnegotiationneeded = null;
+  onnegotiationneeded: (() => void) | null = null;
   onconnectionstatechange: (() => void) | null = null;
   ondatachannel: ((event: { channel: RoomDataChannel }) => void) | null = null;
   ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
@@ -247,8 +248,17 @@ class RoomPeerConnection {
   addTrack(track: MediaStreamTrack) { const sender = { track }; this.senders.push(sender); return sender; }
   removeTrack(sender: { track: MediaStreamTrack }) { this.senders.splice(this.senders.indexOf(sender), 1); }
   getReceivers() { return []; }
-  async setRemoteDescription(description: RTCSessionDescriptionInit) { this.remoteDescription = description; }
-  async setLocalDescription() {}
+  async setRemoteDescription(description: RTCSessionDescriptionInit) {
+    if (description.type === "answer" && this.signalingState !== "have-local-offer") throw new Error("answer without pending offer");
+    this.remoteDescription = description;
+    this.signalingState = description.type === "offer" ? "have-remote-offer" : "stable";
+  }
+  async setLocalDescription() {
+    const type = this.signalingState === "have-remote-offer" ? "answer" : "offer";
+    const value = { type, sdp: `${type}-${this.channels.length}-${this.senders.length}` } as RTCSessionDescriptionInit;
+    this.localDescription = { ...value, toJSON: () => ({ ...value }) };
+    this.signalingState = type === "offer" ? "have-local-offer" : "stable";
+  }
   connected() { this.connectionState = "connected"; this.onconnectionstatechange?.(); }
 }
 
@@ -282,6 +292,158 @@ function setupRoomMedia() {
   media.update("a", state);
   return { session, socket, media, state, sent, pc: RoomPeerConnection.instances[0] };
 }
+
+test.each(["offer", "answer"])("resync recovers a lost %s on the same transport with its original track manifest", async lost => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const sent: ChannelSignal[][] = [[], []];
+  const failed = [vi.fn(), vi.fn()];
+  const transports = sent.map((signals, i) => new ChannelTransport({
+    polite: Boolean(i), iceServers: [], send: payload => signals.push(signalSchema.parse(payload)),
+    receive: () => {}, connected: () => {}, base: () => {}, failed: failed[i],
+  }));
+  const [a, b] = transports, [pcA, pcB] = RoomPeerConnection.instances;
+  const remoteA = vi.spyOn(pcA, "setRemoteDescription"), remoteB = vi.spyOn(pcB, "setRemoteDescription");
+  const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }] }) as unknown as MediaStream;
+  try {
+    a.setOutgoing(new Map([["voice", stream("original")]]));
+    pcA.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(sent[0]).toHaveLength(1));
+    const offer = structuredClone(sent[0].shift()!);
+    let withheldAnswer: ChannelSignal | undefined;
+    if (lost === "answer") {
+      b.setOutgoing(new Map([["reverse", stream("revoked-reverse")]]));
+      b.signal(offer);
+      await vi.waitFor(() => expect(sent[1]).toHaveLength(1));
+      withheldAnswer = sent[1].shift(); // The peer applied the offer, but its answer was lost.
+      b.setOutgoing(new Map());
+    }
+    // A later demand must not rewrite the manifest of the offer already in flight.
+    a.setOutgoing(new Map([["voice", stream("replacement")]]));
+    if (lost === "offer") {
+      b.resync(); // Only the receiving peer reconnects; it cannot know A has an offer.
+      await vi.waitFor(() => expect(sent[1]).toHaveLength(1));
+      a.signal(sent[1].shift()!);
+    } else a.resync(); // Only the peer that missed the answer reconnects.
+    await vi.waitFor(() => expect(sent[0].some(signal => signal.description)).toBe(true));
+    const replay = sent[0].find(signal => signal.description)!;
+    expect(replay).toEqual({ ...offer, tracks: [] });
+    expect(offer.tracks).toEqual([{ publicationId: "voice", streamId: "original" }]);
+    b.signal(replay);
+    await vi.waitFor(() => expect(sent[1].some(signal => signal.description?.type === "answer")).toBe(true));
+    const answer = sent[1].find(signal => signal.description?.type === "answer")!;
+    expect(answer.exchangeId).toBe(offer.exchangeId);
+    expect(answer.tracks).toEqual([]);
+    if (withheldAnswer) expect(withheldAnswer.tracks).toEqual([{ publicationId: "reverse", streamId: "revoked-reverse" }]);
+    a.signal(answer);
+    await vi.waitFor(() => expect(pcA.signalingState).toBe("stable"));
+    a.signal(answer);
+    a.signal({ resync: true }); // Stable transports have no pending offer to replay.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(remoteA).toHaveBeenCalledOnce();
+    expect(remoteB).toHaveBeenCalledOnce();
+    expect(failed.every(callback => callback.mock.calls.length === 0)).toBe(true);
+    expect(pcA.close).not.toHaveBeenCalled(); expect(pcB.close).not.toHaveBeenCalled();
+    expect(RoomPeerConnection.instances).toHaveLength(2);
+  } finally { transports.forEach(transport => transport.close()); }
+});
+
+test("an earlier answer cannot finish a newer exchange on the same transport", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const sent: ChannelSignal[][] = [[], []], failed = vi.fn();
+  const transports = sent.map((signals, i) => new ChannelTransport({
+    polite: Boolean(i), iceServers: [], send: payload => signals.push(signalSchema.parse(payload)),
+    receive: () => {}, connected: () => {}, base: () => {}, failed,
+  }));
+  const [a, b] = transports, [pcA, pcB] = RoomPeerConnection.instances;
+  const remoteA = vi.spyOn(pcA, "setRemoteDescription");
+  const stream = (id: string) => ({ id, getTracks: () => [{ kind: "audio" }] }) as unknown as MediaStream;
+  try {
+    a.setOutgoing(new Map([["voice", stream("old")]]));
+    pcA.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(sent[0]).toHaveLength(1));
+    const oldOffer = sent[0].shift()!;
+    b.signal(oldOffer);
+    await vi.waitFor(() => expect(sent[1]).toHaveLength(1));
+    const oldAnswer = sent[1].shift()!;
+    a.signal(oldAnswer);
+    await vi.waitFor(() => expect(pcA.signalingState).toBe("stable"));
+    a.setOutgoing(new Map([["voice", stream("new")]]));
+    pcA.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(sent[0].some(signal => signal.description)).toBe(true));
+    const newOffer = sent[0].find(signal => signal.description)!;
+    expect(newOffer.exchangeId).not.toBe(oldOffer.exchangeId);
+    expect(newOffer.tracks).toEqual([{ publicationId: "voice", streamId: "new" }]);
+    a.signal(oldAnswer);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(remoteA).toHaveBeenCalledOnce();
+    expect(pcA.signalingState).toBe("have-local-offer");
+    b.signal(newOffer);
+    await vi.waitFor(() => expect(sent[1]).toHaveLength(1));
+    expect(sent[1][0].exchangeId).toBe(newOffer.exchangeId);
+    a.signal(sent[1][0]);
+    await vi.waitFor(() => expect(pcA.signalingState).toBe("stable"));
+    expect(remoteA).toHaveBeenCalledTimes(2);
+    expect(failed).not.toHaveBeenCalled();
+    expect(pcA.close).not.toHaveBeenCalled(); expect(pcB.close).not.toHaveBeenCalled();
+  } finally { transports.forEach(transport => transport.close()); }
+});
+
+test("a resumed welcome requests resync only for the surviving transport plan", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket } = setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.pairs = ["kept", "removed"].map(id => ({ id, peerId: "z", rooms: ["first"], incoming: [], outgoing: [] }));
+    socket.receive({ type: "state", state });
+    const [kept, removed] = RoomPeerConnection.instances;
+    kept.connected(); kept.channels[0].open();
+    socket.close(); session.reconnect();
+    const resumed = ChannelSocket.current;
+    resumed.onopen?.();
+    state.pairs.pop();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    await vi.waitFor(() => expect(resumed.sent.filter(command => command.type === "signal")).toEqual([
+      { type: "signal", pairId: "kept", payload: { resync: true } },
+    ]));
+    expect(kept.close).not.toHaveBeenCalled();
+    expect(removed.close).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("source replacement releases unmapped streams and ignores their late track events", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const receive = vi.fn(), send = vi.fn();
+  const transport = new ChannelTransport({ polite: true, iceServers: [], send, receive, connected: () => {}, base: () => {}, failed: vi.fn() });
+  const pc = RoomPeerConnection.instances[0], stop = vi.fn();
+  const stream = (id: string) => ({ id, getTracks: () => [{ stop }] }) as unknown as MediaStream;
+  const old = stream("old-source"), current = stream("current-source");
+  const offer = (streams: MediaStream[]) => transport.signal({
+    exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "source update" },
+    tracks: streams.map(stream => ({ publicationId: "voice", streamId: stream.id })),
+  });
+  try {
+    offer([old]);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    pc.ontrack?.({ streams: [old] });
+    expect(receive).toHaveBeenLastCalledWith("voice", old);
+    offer([current]);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    pc.ontrack?.({ streams: [current] });
+    pc.ontrack?.({ streams: [old] }); // A retired source event must not repopulate the cache.
+    receive.mockClear();
+    offer([old, current]);
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(3));
+    expect(receive.mock.calls).toEqual([["voice", current]]);
+    const fresh = stream(old.id);
+    pc.ontrack?.({ streams: [fresh] });
+    expect(receive).toHaveBeenLastCalledWith("voice", fresh);
+    expect(stop).not.toHaveBeenCalled();
+  } finally { transport.close(); }
+});
 
 test("base proof waits for open data and connected transport; removing leases preserves media", () => {
   const { session, media, state, sent, pc } = setupRoomMedia();
@@ -443,7 +605,7 @@ test("voice forwards without local listening and the same pair carries the rever
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
     downstream.connected(); downstream.channels[0].open();
-    media.signal("pair", { description: { type: "offer", sdp: "fixture" }, tracks: [{ publicationId: "voice-a", streamId: incoming.id }] });
+    media.signal("pair", { exchangeId: "incoming-exchange", description: { type: "offer", sdp: "fixture" }, tracks: [{ publicationId: "voice-a", streamId: incoming.id }] });
     await vi.waitFor(() => expect(pc.remoteDescription?.type).toBe("offer"));
     pc.ontrack?.({ streams: [incoming] });
     expect(state.subscriptions).toEqual([]);
