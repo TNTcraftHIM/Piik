@@ -1,6 +1,6 @@
 ﻿import assert from "node:assert/strict";
 import { once } from "node:events";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { test } from "node:test";
 import WebSocket from "ws";
 import { eventSchema } from "../../src/client/channel/protocol.ts";
@@ -45,7 +45,8 @@ async function connect(t, join) {
       return response;
     },
   };
-  socket.send(JSON.stringify({ type: "join", name: "Protocol check", ...join }));
+  const signingKey = [...Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url")];
+  socket.send(JSON.stringify({ type: "join", name: "Protocol check", signingKey, ...join }));
   client.welcome = await wait(event => ["welcome", "error"].includes(event.type), "join result");
   return client;
 }

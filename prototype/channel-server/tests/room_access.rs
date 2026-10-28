@@ -137,8 +137,10 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
         b,
         json!({"type":"browse","active":true,"roomId":"quiet"}),
     );
+    assert!(browsing.history.is_none());
+    let history = command(&mut core, b, json!({"type":"history","roomId":"quiet"}));
     assert!(
-        matches!(browsing.history.unwrap().request, HistoryRequest::Read { room_id, .. } if room_id == "quiet")
+        matches!(history.history.unwrap().request, HistoryRequest::Read { room_id, .. } if room_id == "quiet")
     );
     let after = state(
         command(
@@ -313,11 +315,18 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         .rooms
         .iter()
         .any(|entry| entry.id == room));
-    for value in [
-        json!({"type":"history","roomId":room}),
-        json!({"type":"chat","roomId":room,"text":"Revoked","nonce":"revoked"}),
+    for request in [
+        piik_channel_prototype::conversation::ConversationCommand::History { before: None },
+        piik_channel_prototype::conversation::ConversationCommand::Chat {
+            text: "Revoked".into(),
+            nonce: "revoked".into(),
+            attachments: vec![],
+        },
     ] {
-        rejected(command(&mut core, guest, value));
+        assert_eq!(
+            core.peer_request(guest, &room, request).result.err(),
+            Some("room_unavailable")
+        );
     }
     rejected(command(
         &mut core,
@@ -375,11 +384,20 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
             .unwrap()
             .authorized
     );
-    rejected(command(
-        &mut core,
-        guest,
-        json!({"type":"chat","roomId":room,"text":"blocked","nonce":"1"}),
-    ));
+    assert_eq!(
+        core.peer_request(
+            guest,
+            &room,
+            piik_channel_prototype::conversation::ConversationCommand::Chat {
+                text: "blocked".into(),
+                nonce: "1".into(),
+                attachments: vec![]
+            }
+        )
+        .result
+        .err(),
+        Some("room_access_required")
+    );
     command(
         &mut core,
         guest,
@@ -507,17 +525,27 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
             && candidate.authorized
             && candidate.can_manage
             && candidate.available));
-    let history = command(
+    let browsing = command(
         &mut restored,
         new_page,
         json!({"type":"browse","active":true,"roomId":room}),
     );
+    assert!(!browsing
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::History { .. })));
     assert!(
-        history.history.is_none(),
-        "domain storage must not receive Browser room history"
+        browsing.history.is_none(),
+        "domain storage must not receive hosted room history"
     );
-    assert!(history.events.iter().any(|(_, event)| matches!(event,
-        Event::History { room_id, messages, .. } if room_id == &room && messages.is_empty())));
+    let history = restored.peer_request(
+        new_page,
+        &room,
+        piik_channel_prototype::conversation::ConversationCommand::History { before: None },
+    );
+    assert!(
+        matches!(history.result, Ok(piik_channel_prototype::history::HistoryResult::Page { messages, .. }) if messages.is_empty())
+    );
     let (_, again, _) = admit(
         &mut restored,
         Uuid::new_v4(),

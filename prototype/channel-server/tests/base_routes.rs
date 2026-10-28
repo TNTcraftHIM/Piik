@@ -1,7 +1,10 @@
 #![cfg(feature = "server")]
 
 mod support;
-use piik_channel_prototype::wire::{Event, PairInfo, RoomAccess};
+use piik_channel_prototype::{
+    conversation::ConversationCommand,
+    wire::{Event, PairInfo, RoomAccess},
+};
 use serde_json::{json, Value};
 use support::RoomNetwork;
 use uuid::Uuid;
@@ -401,11 +404,19 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     let room = network.create(host, RoomAccess::Public, false);
     let attachment = json!({ "id":Uuid::new_v4(), "name":"retained.bin", "size":3, "mediaType":"application/octet-stream",
         "sha256":piik_channel_prototype::attachment::sha256_hex(b"abc") });
-    command(
-        &mut network,
+    let confirmation = network.peer_request(
         source,
-        json!({"type":"chat", "roomId":room, "nonce":"file", "text":"", "attachments":[attachment]}),
+        &room,
+        ConversationCommand::Chat {
+            text: String::new(),
+            nonce: "file".into(),
+            attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
+        },
     );
+    assert!(matches!(
+        confirmation.result,
+        Ok(piik_channel_prototype::history::HistoryResult::Sent(_))
+    ));
     command(
         &mut network,
         source,
@@ -531,11 +542,19 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     }
     let attachment = json!({"id":Uuid::new_v4(),"name":"live.bin","size":3,"mediaType":"application/octet-stream",
         "sha256":piik_channel_prototype::attachment::sha256_hex(b"abc")});
-    command(
-        &mut network,
+    let confirmation = network.peer_request(
         source,
-        json!({"type":"chat","roomId":room,"text":"","nonce":"retained","attachments":[attachment]}),
+        &room,
+        ConversationCommand::Chat {
+            text: String::new(),
+            nonce: "retained".into(),
+            attachments: vec![serde_json::from_value(attachment.clone()).unwrap()],
+        },
     );
+    assert!(matches!(
+        confirmation.result,
+        Ok(piik_channel_prototype::history::HistoryResult::Sent(_))
+    ));
     command(
         &mut network,
         source,

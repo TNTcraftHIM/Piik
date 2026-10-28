@@ -26,3 +26,4 @@ argon2 = "0.5.3"
 sha2 = "0.10"
 hmac = "0.12"
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }
+ed25519-dalek = "=2.2.0"

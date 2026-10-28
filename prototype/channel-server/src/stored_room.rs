@@ -36,6 +36,27 @@ impl StoredRoomHost {
         })
     }
 
+    pub fn dispatch_peer(
+        &mut self,
+        packet: &crate::conversation::SignedPacket,
+        now: u64,
+    ) -> Result<crate::conversation::ConversationOutcome, &'static str> {
+        let prepared = self.host.prepare_peer(packet, now)?;
+        let result = prepared
+            .history
+            .as_ref()
+            .map_err(|code| *code)
+            .and_then(|request| self.store.history(request));
+        Ok(crate::conversation::ConversationOutcome {
+            address: prepared.address,
+            result,
+        })
+    }
+
+    pub fn current_readers(&self) -> Vec<uuid::Uuid> {
+        self.host.current_readers()
+    }
+
     pub fn policy(&self) -> &RoomState {
         self.host.policy()
     }

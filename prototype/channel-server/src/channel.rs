@@ -10,7 +10,7 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use uuid::Uuid;
 
 /// Local composition of domain admission, room runtimes and shared transports.
@@ -648,6 +648,9 @@ impl Channel {
         command: Command,
     ) -> Result<(Uuid, Event), &'static str> {
         let action = match command {
+            Command::Chat { .. } | Command::History { .. } => {
+                return Err("room_data_channel_required");
+            }
             Command::BaseState {
                 room_id,
                 pair_id,
@@ -958,9 +961,21 @@ impl Channel {
                 }
             }
             for room in self.remote.values() {
-                if let Some(snapshot) =
+                if let Some(mut snapshot) =
                     room.snapshot(member, session_id, Self::host_online(&self.identity, room))
                 {
+                    snapshot.room.delivery = if snapshot.room.authorized && snapshot.room.available
+                    {
+                        room.binding.as_ref().zip(room.projection.as_ref()).map(
+                            |(binding, projection)| RoomDelivery {
+                                host_session_id: binding.session,
+                                binding_id: binding.id,
+                                next_hops: room_next_hops(session_id, &projection.base_links),
+                            },
+                        )
+                    } else {
+                        None
+                    };
                     rooms.push(snapshot.room);
                     publications.extend(snapshot.publications);
                     voice.extend(snapshot.voice);
@@ -1012,6 +1027,7 @@ impl Channel {
                     id: session.id,
                     user_id: session.user_id,
                     online: session.connection.is_some(),
+                    signing_key: session.signing_key,
                 })
                 .collect(),
             publications,
@@ -1021,6 +1037,29 @@ impl Channel {
             ice_servers: self.ice_servers.clone(),
         }
     }
+}
+
+fn room_next_hops(session: Uuid, links: &[crate::transport::BaseLink]) -> BTreeMap<Uuid, Uuid> {
+    let mut result = BTreeMap::new();
+    let mut pending = VecDeque::from([(session, session)]);
+    while let Some((current, first)) = pending.pop_front() {
+        for link in links {
+            let next = if link.parent == current {
+                link.child
+            } else if link.child == current {
+                link.parent
+            } else {
+                continue;
+            };
+            if next == session || result.contains_key(&next) {
+                continue;
+            }
+            let first = if current == session { next } else { first };
+            result.insert(next, first);
+            pending.push_back((next, first));
+        }
+    }
+    result
 }
 
 #[derive(Clone, Deserialize, Serialize)]

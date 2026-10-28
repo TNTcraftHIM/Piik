@@ -199,9 +199,6 @@ impl RoomRuntime {
                 attachments: ids,
                 ..
             } => {
-                if !self.attachments_available() && !ids.is_empty() {
-                    return Err("attachments_unavailable");
-                }
                 op.history = Some(self.chat(member, text, nonce, ids, now)?);
             }
             Command::UpdateRoom {
@@ -264,7 +261,14 @@ struct Pending {
     history: bool,
 }
 
+struct RoomAuthority {
+    binding_id: Uuid,
+    host_session_id: Uuid,
+    endpoints: BTreeMap<Uuid, Endpoint>,
+}
+
 pub struct RoomHost {
+    authority: Option<RoomAuthority>,
     room: RoomRuntime,
     pending: Option<Pending>,
 }
@@ -310,6 +314,7 @@ mod tests {
                 endpoints: BTreeMap::from([(
                     session,
                     Endpoint {
+                        signing_key: [1; 32],
                         member: owner,
                         connected: true,
                     },
@@ -336,6 +341,7 @@ mod tests {
 impl RoomHost {
     pub fn new(policy: RoomState) -> Self {
         Self {
+            authority: None,
             room: RoomRuntime::new(policy),
             pending: None,
         }
@@ -347,10 +353,78 @@ impl RoomHost {
         RoomSummary::from_policy(self.policy())
     }
 
+    /// Called inside the adapter's existing serialized room storage turn.
+    /// Only the authenticated domain input can replace these authority facts.
+    pub fn prepare_peer(
+        &self,
+        packet: &crate::conversation::SignedPacket,
+        now: u64,
+    ) -> Result<crate::conversation::PreparedConversation, &'static str> {
+        use crate::conversation::{
+            verify, ConversationCommand, ConversationRequest, PreparedConversation,
+        };
+        if self.pending.is_some() {
+            return Err("room_operation_pending");
+        }
+        let authority = self.authority.as_ref().ok_or("room_host_offline")?;
+        let endpoint = authority
+            .endpoints
+            .get(&packet.sender)
+            .ok_or("session_expired")?;
+        let request: ConversationRequest = verify(packet, endpoint.signing_key)?;
+        if request.address.sender != packet.sender
+            || request.address.recipient != authority.host_session_id
+            || request.address.binding_id != authority.binding_id
+            || request.address.room_id != self.room.policy().id
+            || !crate::wire::valid_id(&request.address.request_id)
+        {
+            return Err("invalid_conversation_scope");
+        }
+        let history = match request.command {
+            ConversationCommand::Chat {
+                text,
+                nonce,
+                attachments,
+            } => self
+                .room
+                .chat(endpoint.member, text, nonce, attachments, now),
+            ConversationCommand::History { before } => self.room.history(endpoint.member, before),
+        };
+        Ok(PreparedConversation {
+            address: request.address,
+            history,
+        })
+    }
+
+    pub fn current_readers(&self) -> Vec<Uuid> {
+        self.authority
+            .as_ref()
+            .map(|authority| {
+                authority
+                    .endpoints
+                    .iter()
+                    .filter_map(|(session, endpoint)| {
+                        (self.room.reading(*session)
+                            && self
+                                .room
+                                .authorize(endpoint.member, crate::RoomPermission::Read)
+                                .is_ok())
+                        .then_some(*session)
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn dispatch(&mut self, input: HostInput) -> Result<HostWork, &'static str> {
         if self.pending.is_some() {
             return Err("room_operation_pending");
         }
+        self.authority = Some(RoomAuthority {
+            binding_id: input.binding_id,
+            host_session_id: input.host_session_id,
+            endpoints: input.endpoints.clone(),
+        });
         self.room.set_host_session(input.host_session_id);
         self.room.reconcile(&input.endpoints);
         let before = self.room.clone();

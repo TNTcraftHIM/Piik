@@ -23,22 +23,29 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         let reader = Uuid::new_v4();
         let publication = Uuid::new_v4();
         let binding = Uuid::new_v4();
-        let mut endpoints = BTreeMap::from([
-            (
-                publisher,
-                Endpoint {
-                    member: owner,
-                    connected: true,
-                },
-            ),
-            (
-                reader,
-                Endpoint {
-                    member: viewer,
-                    connected: true,
-                },
-            ),
-        ]);
+        let mut endpoints =
+            BTreeMap::from([
+                (
+                    publisher,
+                    Endpoint {
+                        member: owner,
+                        connected: true,
+                        signing_key:
+                            piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32])
+                                .signing_key(),
+                    },
+                ),
+                (
+                    reader,
+                    Endpoint {
+                        member: viewer,
+                        connected: true,
+                        signing_key:
+                            piik_channel_prototype::conversation::SessionSigner::from_seed([2; 32])
+                                .signing_key(),
+                    },
+                ),
+            ]);
         let mut host = RoomHost::new(
             RoomState::new(
                 "review".into(),
@@ -93,14 +100,15 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                 endpoints,
                 action: HostAction::Command {
                     context: context(reader),
-                    command: Command::History {
+                    command: Command::EnterRoom {
                         room_id: "review".into(),
-                        before: None,
+                        password: None,
+                        invite_key: None,
                     },
                 },
             })
             .unwrap();
-        assert!(work.history.is_some());
+        assert!(work.policy.is_some());
         let output = host.abort("storage_failed".into()).unwrap();
         assert!(
             output.projection.views[&reader].publications.is_empty(),
@@ -119,7 +127,7 @@ fn review_admit(core: &mut piik_channel_prototype::Authority, connection: Uuid, 
     core.handle(
         connection,
         piik_channel_prototype::wire::Request::parse(
-            &serde_json::json!({"type":"join","name":"Review","key":key}).to_string(),
+            &serde_json::json!({"type":"join","signingKey":piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","key":key}).to_string(),
         )
         .unwrap(),
         0,
@@ -291,7 +299,7 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
     let effects = core.handle(
         c,
         Request::parse(
-            &serde_json::json!({"type":"join","name":"C","key":key,"roomId":"private-review"})
+            &serde_json::json!({"type":"join","signingKey":piik_channel_prototype::conversation::SessionSigner::from_seed([2; 32]).signing_key(),"name":"C","key":key,"roomId":"private-review"})
                 .to_string(),
         )
         .unwrap(),
@@ -371,6 +379,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         .unwrap(),
     );
     let input = review_register(&mut core, b, &host);
+    let domain_binding = input.binding_id;
     host.dispatch(input).unwrap();
     review_host_turn(
         &mut core,
@@ -406,10 +415,10 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
     let queued = core.handle(
         c,
         Request {
-            request_id: Some("next-history".into()),
-            command: Command::History {
+            request_id: Some("next-browse".into()),
+            command: Command::Browse {
                 room_id: "concurrent-review".into(),
-                before: None,
+                active: true,
             },
         },
         1,
@@ -419,12 +428,15 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         .iter()
         .any(|(_, e)| matches!(e, Event::HostInput { .. })));
     host.dispatch(input).unwrap();
-    let completed = review_host_turn(
-        &mut core,
-        b,
-        "concurrent-review",
-        host.finish(None).unwrap(),
-    );
+    let mut output = host.finish(None).unwrap();
+    for view in output.projection.views.values_mut() {
+        view.room.delivery = Some(piik_channel_prototype::wire::RoomDelivery {
+            host_session_id: Uuid::new_v4(),
+            binding_id: Uuid::new_v4(),
+            next_hops: BTreeMap::from([(Uuid::new_v4(), Uuid::new_v4())]),
+        });
+    }
+    let completed = review_host_turn(&mut core, b, "concurrent-review", output);
     assert!(
         completed.events.iter().any(|(target, e)| *target == b
             && matches!(e,Event::RoomReply{request_id:Some(id),..}if id=="publish")),
@@ -447,5 +459,20 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
             _ => None,
         })
         .unwrap();
+    let delivery = state
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == "concurrent-review")
+        .unwrap()
+        .delivery
+        .as_ref()
+        .unwrap();
+    assert_eq!(delivery.binding_id, domain_binding);
+    assert_eq!(delivery.host_session_id, bs);
+    assert!(
+        delivery.next_hops.is_empty(),
+        "room-provided delivery fields cannot forge domain binding or routes"
+    );
     assert!(state.publications.iter().any(|p|p.id==publication),"acknowledged capture vanished because an unrelated ordinary room command advanced revision");
 }

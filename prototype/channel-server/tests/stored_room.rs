@@ -21,6 +21,9 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
                 (
                     session,
                     Endpoint {
+                        signing_key:
+                            piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32])
+                                .signing_key(),
                         member: Member {
                             user_id: session,
                             participates: true,

@@ -27,6 +27,7 @@ pub struct Session {
     pub user_id: Uuid,
     pub connection: Option<Uuid>,
     pub disconnected_at: Option<u64>,
+    pub signing_key: [u8; 32],
 }
 
 #[derive(Clone)]
@@ -39,6 +40,7 @@ pub struct Identity {
 }
 
 pub struct Admission<'a> {
+    pub signing_key: [u8; 32],
     pub credential: Option<&'a str>,
     pub key: Option<&'a str>,
     pub resume: Option<&'a str>,
@@ -65,6 +67,7 @@ pub struct Member {
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Endpoint {
+    pub signing_key: [u8; 32],
     pub member: Member,
     pub connected: bool,
 }
@@ -87,6 +90,7 @@ impl Identity {
                     session.id,
                     Endpoint {
                         member: self.member(session.user_id).expect("admitted session"),
+                        signing_key: session.signing_key,
                         connected: session.connection.is_some(),
                     },
                 )
@@ -180,7 +184,9 @@ impl Identity {
             user_id,
             connection: None,
             disconnected_at: None,
+            signing_key: input.signing_key,
         });
+        session.signing_key = input.signing_key;
         let replaced_connection = session.connection.replace(connection);
         session.disconnected_at = None;
         Ok(Admitted {
@@ -313,6 +319,7 @@ mod tests {
         resume: Option<&'a str>,
     ) -> Admission<'a> {
         Admission {
+            signing_key: [1; 32],
             key,
             credential,
             resume,

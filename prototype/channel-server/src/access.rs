@@ -156,6 +156,7 @@ impl RoomState {
             return None;
         }
         Some(Room {
+            delivery: None,
             id: self.id.clone(),
             name: self.name.clone(),
             creator_id: self.creator_id,

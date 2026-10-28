@@ -42,7 +42,13 @@ impl Endpoint {
         endpoint
     }
 
-    fn request(&self, hub: &mut Hub, command: Value) {
+    fn request(&self, hub: &mut Hub, mut command: Value) {
+        if command["type"] == "join" {
+            command["signingKey"] = json!(
+                piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32])
+                    .signing_key()
+            );
+        }
         hub.request(self.id, Request::parse(&command.to_string()).unwrap());
     }
 

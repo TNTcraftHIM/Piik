@@ -229,6 +229,9 @@ impl RoomRuntime {
         now: u64,
     ) -> Result<HistoryRequest, &'static str> {
         self.authorize(member, RoomPermission::Write)?;
+        if !self.attachments_available() && !attachments.is_empty() {
+            return Err("attachments_unavailable");
+        }
         Ok(HistoryRequest::Send {
             room_id: self.policy.id.clone(),
             draft: MessageDraft::new(member.user_id, nonce, text, attachments, now)?,

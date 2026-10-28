@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve, relative } from "node:path";
@@ -57,7 +57,8 @@ async function connect(input) {
     });
   }
   await once(socket, "open");
-  socket.send(JSON.stringify({ type: "join", name: "Storage check", ...input }));
+  const signingKey = [...Buffer.from(generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" }).x, "base64url")];
+  socket.send(JSON.stringify({ type: "join", name: "Storage check", signingKey, ...input }));
   const welcome = await wait(event => event.type === "welcome" || event.type === "error");
   assert.equal(welcome.type, "welcome");
   const client = { socket, welcome, wait, inbox, request: async command => {

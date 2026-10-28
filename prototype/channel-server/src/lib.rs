@@ -8,6 +8,7 @@
 mod access;
 pub mod attachment;
 mod channel;
+pub mod conversation;
 pub mod file_delivery;
 pub mod file_room;
 pub mod history;
@@ -394,6 +395,7 @@ impl Authority {
             key,
             session_id,
             room_id,
+            signing_key,
         } = request.command
         else {
             effects.events.push((
@@ -412,6 +414,7 @@ impl Authority {
                 credential: credential.as_deref(),
                 key: key.as_deref(),
                 resume: session_id.as_deref(),
+                signing_key,
             },
             connection,
             now,
@@ -525,6 +528,7 @@ impl Authority {
                         name,
                         credential,
                         session_id,
+                        signing_key,
                         ..
                     } = &pending.command
                     else {
@@ -540,6 +544,7 @@ impl Authority {
                             credential: credential.as_deref(),
                             key: Some(&key),
                             resume: session_id.as_deref(),
+                            signing_key: *signing_key,
                         },
                         target,
                         now,

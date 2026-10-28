@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -17,6 +17,7 @@ pub enum Command {
         key: Option<String>,
         session_id: Option<String>,
         room_id: Option<String>,
+        signing_key: [u8; 32],
     },
     SetName {
         name: String,
@@ -278,7 +279,18 @@ pub struct Room {
     pub reading: bool,
     pub capabilities: RoomCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<RoomDelivery>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub members: Option<Vec<Uuid>>,
+}
+
+/// The domain derives these destinations from the accepted room base tree.
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RoomDelivery {
+    pub host_session_id: Uuid,
+    pub binding_id: Uuid,
+    pub next_hops: BTreeMap<Uuid, Uuid>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -313,6 +325,7 @@ pub struct SessionInfo {
     pub id: Uuid,
     pub user_id: Uuid,
     pub online: bool,
+    pub signing_key: [u8; 32],
 }
 
 #[derive(Clone, Deserialize, Serialize)]

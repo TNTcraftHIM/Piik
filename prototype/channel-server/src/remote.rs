@@ -104,6 +104,7 @@ impl RemoteRoom {
         }
         Some(RoomSnapshot {
             room: Room {
+                delivery: None,
                 id: self.summary.id.clone(),
                 name: self.summary.name.clone(),
                 creator_id: self.summary.creator_id,

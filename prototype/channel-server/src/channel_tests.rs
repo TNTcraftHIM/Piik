@@ -127,6 +127,7 @@ fn join(channel: &mut Channel, owner: bool) -> Admitted {
     channel
         .join(
             Admission {
+                signing_key: crate::conversation::SessionSigner::from_seed([1; 32]).signing_key(),
                 name: "Friend",
                 credential: None,
                 key: Some(if owner { "owner" } else { "invite" }),

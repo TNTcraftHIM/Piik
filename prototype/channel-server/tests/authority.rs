@@ -6,7 +6,12 @@ use piik_channel_prototype::{
 use serde_json::{json, Value};
 use uuid::Uuid;
 
-fn apply(core: &mut Authority, connection: Uuid, command: Value, now: u64) -> Effects {
+fn apply(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
+    if command["type"] == "join" {
+        command["signingKey"] = json!(
+            piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32]).signing_key()
+        );
+    }
     core.handle(
         connection,
         Request::parse(&command.to_string()).unwrap(),
