@@ -1,7 +1,10 @@
 //! Native transport for authorized adjacent pairs. The domain supplies all leases.
 use crate::{
     file::{FileLink, Files, Lane},
-    media::{Output, Relay, Source},
+    media::{
+        supported, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source, TrackKey,
+        VIDEO_PACKETS,
+    },
 };
 use anyhow::{anyhow, Result};
 use piik_channel_prototype::file_room::FilePlan;
@@ -20,6 +23,10 @@ use rtc::{
             setting_engine::{SctpMaxMessageSize, SettingEngineBuilder},
         },
         sdp::RTCSessionDescription,
+    },
+    rtcp::{
+        payload_feedbacks::picture_loss_indication::PictureLossIndication,
+        sender_report::SenderReport,
     },
     rtp,
     rtp_transceiver::rtp_sender::{RTCRtpCodec, RTCRtpCodecParameters, RtpCodecKind},
@@ -61,7 +68,7 @@ enum Input {
     Signal(Uuid, Signal, oneshot::Sender<Result<()>>),
     Resync(oneshot::Sender<Result<()>>),
 }
-enum Event {
+pub(crate) enum Event {
     Negotiate(Uuid),
     Candidate(Uuid, Candidate),
     State(Uuid, RTCPeerConnectionState),
@@ -69,8 +76,19 @@ enum Event {
     Channel(Uuid, Arc<dyn DataChannel>),
     Dc(Uuid, Uuid, bool),
     Bulk(Uuid, Uuid),
+    OutputFailed {
+        pair: Uuid,
+        key: TrackKey,
+        source: Uuid,
+        output: Uuid,
+    },
+    SourceEnded {
+        pair: Uuid,
+        key: TrackKey,
+        source: Uuid,
+    },
 }
-struct Audio {
+struct FirstPacket {
     publication: Uuid,
     source: Source,
     packet: rtp::Packet,
@@ -127,9 +145,10 @@ struct Pair {
     ignore_offer: bool,
     candidates: Vec<Candidate>,
     remote: HashMap<String, Uuid>,
-    latest: HashMap<Uuid, Uuid>,
-    outputs: HashMap<Uuid, Output>,
-    tasks: HashMap<Uuid, JoinHandle<()>>,
+    latest: HashMap<TrackKey, Uuid>,
+    outputs: HashMap<TrackKey, Output>,
+    reports: SenderReports,
+    tasks: HashMap<Uuid, Reader>,
     dc: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
     bulk: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
     files: FileLink,
@@ -139,6 +158,11 @@ struct Pair {
     reported: HashSet<String>,
     deadline: Option<Instant>,
     overflow: Arc<AtomicBool>,
+}
+struct Reader {
+    key: TrackKey,
+    track: String,
+    task: JoinHandle<()>,
 }
 impl Pair {
     fn connected(&self) -> bool {
@@ -151,10 +175,10 @@ struct Driver {
     commands: mpsc::Sender<Command>,
     cancel: watch::Receiver<bool>,
     events: mpsc::Sender<Event>,
-    audio: mpsc::Sender<Audio>,
+    first_packets: mpsc::Sender<FirstPacket>,
     pairs: HashMap<Uuid, Pair>,
-    publications: HashSet<Uuid>,
-    sources: HashMap<Uuid, Source>,
+    publications: HashMap<Uuid, piik_channel_prototype::wire::Kind>,
+    sources: HashMap<TrackKey, Source>,
     relay: Relay,
     files: Files,
 }
@@ -169,7 +193,7 @@ impl NativePeers {
         let (cancel, mut cancelled) = watch::channel(false);
         let (input, mut inputs) = mpsc::channel(64);
         let (events, mut event_rx) = mpsc::channel(1024);
-        let (audio, mut audio_rx) = mpsc::channel(256);
+        let (first_packets, mut first_rx) = mpsc::channel(256);
         let task = tokio::spawn(async move {
             let mut d = Driver {
                 session: session_id,
@@ -177,9 +201,9 @@ impl NativePeers {
                 commands,
                 cancel: cancelled.clone(),
                 events,
-                audio,
+                first_packets,
                 pairs: HashMap::new(),
-                publications: HashSet::new(),
+                publications: HashMap::new(),
                 sources: HashMap::new(),
                 relay: Relay::default(),
                 files: Files::new(session_id),
@@ -188,7 +212,7 @@ impl NativePeers {
             enum Turn {
                 Input(Input),
                 Event(Event),
-                FirstPacket(Audio),
+                FirstPacket(FirstPacket),
                 Tick,
             }
             loop {
@@ -196,7 +220,7 @@ impl NativePeers {
                     _=cancelled.changed()=>break,
                     request=inputs.recv()=>match request {Some(request)=>Turn::Input(request),None=>break},
                     Some(event)=event_rx.recv()=>Turn::Event(event),
-                    Some(packet)=audio_rx.recv()=>Turn::FirstPacket(packet),
+                    Some(packet)=first_rx.recv()=>Turn::FirstPacket(packet),
                     _=tick.tick()=>Turn::Tick,
                 };
                 let work = async {
@@ -218,6 +242,8 @@ impl NativePeers {
                         }
                         Turn::Event(event) => {
                             let id = match &event {
+                                Event::OutputFailed { pair, .. } => *pair,
+                                Event::SourceEnded { pair, .. } => *pair,
                                 Event::Negotiate(id)
                                 | Event::Candidate(id, _)
                                 | Event::State(id, _)
@@ -233,7 +259,7 @@ impl NativePeers {
                         }
                         Turn::FirstPacket(packet) => {
                             if let Err(error) = d.packet(packet).await {
-                                eprintln!("Native audio attach failed: {error}");
+                                eprintln!("Native encoded track attach failed: {error}");
                             }
                         }
                         Turn::Tick => d.deadlines().await,
@@ -289,7 +315,7 @@ fn codec() -> RTCRtpCodec {
         rtcp_feedback: vec![],
     }
 }
-fn builder(polite: bool) -> Result<PeerConnectionBuilder<String>> {
+fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder<String>> {
     let mut media = MediaEngine::default();
     media.register_codec(
         RTCRtpCodecParameters {
@@ -299,6 +325,41 @@ fn builder(polite: bool) -> Result<PeerConnectionBuilder<String>> {
         },
         RtpCodecKind::Audio,
     )?;
+    for (payload_type, mime_type, fmtp) in [
+        (96, "video/VP8", ""),
+        (
+            102,
+            "video/H264",
+            "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f",
+        ),
+    ] {
+        media.register_codec(
+            RTCRtpCodecParameters {
+                rtp_codec: RTCRtpCodec {
+                    mime_type: mime_type.into(),
+                    clock_rate: 90000,
+                    sdp_fmtp_line: fmtp.into(),
+                    ..Default::default()
+                },
+                payload_type,
+                ..Default::default()
+            },
+            RtpCodecKind::Video,
+        )?;
+        media.register_codec(
+            RTCRtpCodecParameters {
+                rtp_codec: RTCRtpCodec {
+                    mime_type: "video/rtx".into(),
+                    clock_rate: 90000,
+                    sdp_fmtp_line: format!("apt={payload_type}"),
+                    ..Default::default()
+                },
+                payload_type: payload_type + 1,
+                ..Default::default()
+            },
+            RtpCodecKind::Video,
+        )?;
+    }
     let registry = register_default_interceptors(Registry::new(), &mut media)?;
     let registry = configure_congestion_control(
         registry,
@@ -310,9 +371,11 @@ fn builder(polite: bool) -> Result<PeerConnectionBuilder<String>> {
         Slot::Pacer,
         PacerBuilder::new()
             .with_target_bitrate(300_000.0)
-            .with_queue_limit(256)
+            .with_queue_limit(VIDEO_PACKETS)
             .build(),
-    );
+    )
+    .with(Slot::Custom(20_000), MediaFeedback::default())
+    .with(Slot::Custom(500), ReportProjection::new(reports));
     Ok(PeerConnectionBuilder::new()
         .with_media_engine(media)
         .with_interceptor_registry(registry)
@@ -346,17 +409,13 @@ impl Driver {
         files: Vec<FilePlan>,
     ) -> Result<()> {
         self.files.update(files, &plans).await;
-        self.publications = publications
-            .into_iter()
-            .filter(|p| p.kind == piik_channel_prototype::wire::Kind::Voice)
-            .map(|p| p.id)
-            .collect();
+        self.publications = publications.into_iter().map(|p| (p.id, p.kind)).collect();
         let needed: HashSet<_> = plans
             .iter()
             .flat_map(|plan| plan.incoming.iter().copied())
             .collect();
         self.sources
-            .retain(|id, _| self.publications.contains(id) && needed.contains(id));
+            .retain(|(id, _), _| self.publications.contains_key(id) && needed.contains(id));
         self.relay.retain(&self.sources.keys().copied().collect());
         let retained: HashSet<_> = plans.iter().map(|p| p.id).collect();
         let removed: Vec<_> = self
@@ -377,8 +436,9 @@ impl Driver {
                 if !self.pairs.contains_key(&plan.id) {
                     let overflow = Arc::new(AtomicBool::new(false));
                     let state = Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8));
+                    let reports = SenderReports::default();
                     let pc: Arc<dyn PeerConnection> = Arc::new(
-                        builder(self.session > plan.peer_id)?
+                        builder(self.session > plan.peer_id, reports.clone())?
                             .with_handler(Arc::new(Handler {
                                 pair: plan.id,
                                 events: self.events.clone(),
@@ -408,6 +468,7 @@ impl Driver {
                             remote: HashMap::new(),
                             latest: HashMap::new(),
                             outputs: HashMap::new(),
+                            reports,
                             tasks: HashMap::new(),
                             dc: None,
                             bulk: None,
@@ -428,8 +489,8 @@ impl Driver {
                 }
                 p.reported.retain(|r| plan.rooms.contains(r));
                 p.plan = plan;
-                p.latest.retain(|pub_id, _| {
-                    self.publications.contains(pub_id) && p.plan.incoming.contains(pub_id)
+                p.latest.retain(|(pub_id, _), _| {
+                    self.publications.contains_key(pub_id) && p.plan.incoming.contains(pub_id)
                 });
                 let keep: HashSet<_> = p
                     .latest
@@ -440,19 +501,19 @@ impl Driver {
                 let retired: Vec<_> = p
                     .tasks
                     .iter()
-                    .filter(|(id, task)| !keep.contains(id) || task.is_finished())
+                    .filter(|(id, reader)| !keep.contains(id) || reader.task.is_finished())
                     .map(|(id, _)| *id)
                     .collect();
                 for id in retired {
                     let task = p.tasks.remove(&id).unwrap();
-                    task.abort();
-                    let _ = task.await;
+                    task.task.abort();
+                    let _ = task.task.await;
                 }
                 let remove: Vec<_> = p
                     .outputs
                     .keys()
-                    .filter(|pub_id| {
-                        !p.plan.outgoing.contains(pub_id) || !self.publications.contains(pub_id)
+                    .filter(|(pub_id, _)| {
+                        !p.plan.outgoing.contains(pub_id) || !self.publications.contains_key(pub_id)
                     })
                     .copied()
                     .collect();
@@ -506,9 +567,12 @@ impl Driver {
             tracks: Some(
                 p.outputs
                     .iter()
-                    .map(|(publication_id, out)| WireTrack {
-                        publication_id: *publication_id,
-                        stream_id: out.stream.clone(),
+                    .map(|((publication_id, _), out)| (*publication_id, out.stream.clone()))
+                    .collect::<HashMap<_, _>>()
+                    .into_iter()
+                    .map(|(publication_id, stream_id)| WireTrack {
+                        publication_id,
+                        stream_id,
                     })
                     .collect(),
             ),
@@ -522,10 +586,9 @@ impl Driver {
         if let (Some(pair), Some(tracks)) = (self.pairs.get(&id), payload.tracks.as_mut()) {
             tracks.retain(|track| {
                 pair.plan.outgoing.contains(&track.publication_id)
-                    && pair
-                        .outputs
-                        .get(&track.publication_id)
-                        .is_some_and(|out| out.stream == track.stream_id)
+                    && pair.outputs.iter().any(|((publication, _), out)| {
+                        *publication == track.publication_id && out.stream == track.stream_id
+                    })
             });
         }
         self.send(Command::Signal {
@@ -641,6 +704,7 @@ impl Driver {
                     self.offer(id).await?;
                 }
             }
+            self.reconcile_receivers(id).await?;
         } else if let Some(c) = signal.candidate {
             if !p.ignore_offer {
                 if p.pc.remote_description().await.is_some() {
@@ -819,8 +883,106 @@ impl Driver {
             }
         }
     }
+    async fn reconcile_receivers(&mut self, pair: Uuid) -> Result<()> {
+        let Some(p) = self.pairs.get(&pair) else {
+            return Ok(());
+        };
+        let mut ended = HashSet::new();
+        for transceiver in p.pc.get_transceivers().await {
+            if !matches!(
+                transceiver.current_direction().await?,
+                rtc::rtp_transceiver::RTCRtpTransceiverDirection::Recvonly
+                    | rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendrecv
+            ) {
+                if let Some(receiver) = transceiver.receiver().await? {
+                    ended.insert(receiver.track().track_id().await);
+                }
+            }
+        }
+        let retired: Vec<_> = p
+            .tasks
+            .iter()
+            .filter(|(_, reader)| ended.contains(&reader.track))
+            .map(|(source, reader)| (*source, reader.key))
+            .collect();
+        for (source, key) in retired {
+            self.source_ended(pair, key, source).await;
+        }
+        Ok(())
+    }
+    async fn source_ended(&mut self, pair: Uuid, key: TrackKey, source: Uuid) {
+        // An old active source may end while its replacement is awaiting a first
+        // packet. Only the latest reader can invalidate the current incoming lease.
+        let assigned_latest = self.pairs.get(&pair).is_some_and(|p| {
+            p.plan.incoming.contains(&key.0) && p.latest.get(&key) == Some(&source)
+        });
+        if let Some(p) = self.pairs.get_mut(&pair) {
+            if p.latest.get(&key) == Some(&source) {
+                p.latest.remove(&key);
+            }
+            if let Some(reader) = p.tasks.remove(&source) {
+                reader.task.abort();
+                let _ = reader.task.await;
+            }
+        }
+        if self
+            .sources
+            .get(&key)
+            .is_some_and(|current| current.id == source && current.pair == pair)
+        {
+            self.sources.remove(&key);
+            self.relay.remove(key);
+            for p in self.pairs.values_mut() {
+                if p.outputs
+                    .get(&key)
+                    .is_some_and(|output| output.source == source)
+                {
+                    p.outputs.remove(&key).unwrap().close(&*p.pc).await;
+                }
+            }
+            if assigned_latest
+                && (key.1 == RtpCodecKind::Video
+                    || self.publications.get(&key.0)
+                        == Some(&piik_channel_prototype::wire::Kind::Voice))
+            {
+                self.send(Command::FlowState {
+                    publication_id: key.0,
+                    pair_id: pair,
+                    ready: false,
+                })
+                .await;
+            }
+        }
+    }
     async fn event(&mut self, event: Event) -> Result<()> {
         match event {
+            Event::SourceEnded { pair, key, source } => self.source_ended(pair, key, source).await,
+            Event::OutputFailed {
+                pair,
+                key,
+                source,
+                output,
+            } => {
+                if let Some(p) = self.pairs.get_mut(&pair) {
+                    if p.outputs
+                        .get(&key)
+                        .is_some_and(|current| current.source == source && current.id == output)
+                    {
+                        p.outputs.remove(&key).unwrap().close(&*p.pc).await;
+                        if key.1 == RtpCodecKind::Video
+                            || self.publications.get(&key.0)
+                                == Some(&piik_channel_prototype::wire::Kind::Voice)
+                        {
+                            self.send(Command::FlowState {
+                                publication_id: key.0,
+                                pair_id: pair,
+                                ready: false,
+                            })
+                            .await;
+                        }
+                    }
+                }
+            }
             Event::Negotiate(id) => {
                 if self.pairs.contains_key(&id) {
                     self.offer(id).await?;
@@ -903,9 +1065,7 @@ impl Driver {
         let Some(publication) = p.remote.get(&stream).copied() else {
             return Ok(());
         };
-        if !p.plan.incoming.contains(&publication)
-            || !self.publications.contains(&publication)
-            || track.kind().await != RtpCodecKind::Audio
+        if !p.plan.incoming.contains(&publication) || !self.publications.contains_key(&publication)
         {
             return Ok(());
         }
@@ -915,129 +1075,220 @@ impl Driver {
         let Some(codec) = track.codec(ssrc).await else {
             return Ok(());
         };
-        if !codec.mime_type.eq_ignore_ascii_case(MIME_TYPE_OPUS) || codec.clock_rate != 48000 {
+        let kind = track.kind().await;
+        if !supported(&codec, kind)
+            || (kind == RtpCodecKind::Video
+                && self.publications[&publication] != piik_channel_prototype::wire::Kind::Screen)
+        {
+            if kind == RtpCodecKind::Video
+                && self.publications[&publication] == piik_channel_prototype::wire::Kind::Screen
+            {
+                self.send(Command::FlowState {
+                    publication_id: publication,
+                    pair_id: id,
+                    ready: false,
+                })
+                .await;
+            }
             return Ok(());
         }
+        let key = (publication, kind);
+        let (keyframes, mut requests) = watch::channel(0u64);
         let source = Source {
             id: Uuid::new_v4(),
             pair: id,
             stream,
             codec,
             ssrc,
+            kind,
+            keyframes,
+            report: Default::default(),
         };
-        if let Some(previous) = p.latest.insert(publication, source.id) {
-            if self.sources.get(&publication).map(|s| s.id) != Some(previous) {
+        if let Some(previous) = p.latest.insert(key, source.id) {
+            if self.sources.get(&key).map(|s| s.id) != Some(previous) {
                 if let Some(task) = p.tasks.remove(&previous) {
-                    task.abort();
-                    let _ = task.await;
+                    task.task.abort();
+                    let _ = task.task.await;
                 }
             }
         }
-        let audio = self.audio.clone();
+        let first_packets = self.first_packets.clone();
         let relay = self.relay.clone();
         let source_id = source.id;
-        p.tasks.retain(|_, task| !task.is_finished());
-        p.tasks.insert(
-            source_id,
-            tokio::spawn(async move {
-                let mut first = true;
-                while let Some(event) = track.poll().await {
-                    match event {
-                        TrackRemoteEvent::OnRtpPacket(packet)
-                            if packet.header.ssrc == source.ssrc && !packet.payload.is_empty() =>
-                        {
-                            if first {
-                                first = false;
-                                if audio
-                                    .send(Audio {
-                                        publication,
-                                        source: source.clone(),
-                                        packet: packet.clone(),
-                                    })
-                                    .await
-                                    .is_err()
-                                {
-                                    break;
+        let events = self.events.clone();
+        let track_id = track.track_id().await;
+        p.tasks.retain(|_, reader| !reader.task.is_finished());
+        let task = tokio::spawn(async move {
+            let mut first = true;
+            loop {
+                let event = tokio::select! {
+                    event = track.poll() => match event {
+                        Some(event) => event,
+                        None => break,
+                    },
+                    result = requests.changed(), if kind == RtpCodecKind::Video => {
+                        if result.is_err() {
+                            break;
+                        }
+                        let _ = track.write_rtcp(vec![Box::new(PictureLossIndication {
+                            sender_ssrc: 0,
+                            media_ssrc: source.ssrc,
+                        })]).await;
+                        continue;
+                    }
+                };
+                match event {
+                    TrackRemoteEvent::OnRtpPacket(packet)
+                        if packet.header.ssrc == source.ssrc && !packet.payload.is_empty() =>
+                    {
+                        if first {
+                            first = false;
+                            if first_packets
+                                .send(FirstPacket {
+                                    publication,
+                                    source: source.clone(),
+                                    packet: packet.clone(),
+                                })
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        } else {
+                            relay.write(key, source.id, packet);
+                        }
+                    }
+                    TrackRemoteEvent::OnEnded => break,
+                    TrackRemoteEvent::OnRtcpPacket(packets) => {
+                        for packet in packets {
+                            if let Some(report) = packet.as_any().downcast_ref::<SenderReport>() {
+                                if report.ssrc == source.ssrc {
+                                    *source.report.lock().unwrap() =
+                                        Some((report.clone(), Instant::now()));
                                 }
                             }
-                            relay.write(publication, source.id, packet);
                         }
-                        TrackRemoteEvent::OnEnded => break,
-                        _ => {}
                     }
+                    _ => {}
                 }
-            }),
+            }
+            let _ = events
+                .send(Event::SourceEnded {
+                    pair: id,
+                    key,
+                    source: source_id,
+                })
+                .await;
+        });
+        p.tasks.insert(
+            source_id,
+            Reader {
+                key,
+                track: track_id,
+                task,
+            },
         );
         Ok(())
     }
-    async fn packet(&mut self, audio: Audio) -> Result<()> {
-        let Audio {
+    async fn packet(&mut self, first_packet: FirstPacket) -> Result<()> {
+        let FirstPacket {
             publication,
             source,
             packet,
-        } = audio;
-        if !self.publications.contains(&publication) {
+        } = first_packet;
+        if !self.publications.contains_key(&publication) {
             return Ok(());
         }
+        let key = (publication, source.kind);
         let desired = self.pairs.get(&source.pair).is_some_and(|p| {
             p.plan.incoming.contains(&publication)
                 && p.remote.get(&source.stream) == Some(&publication)
-                && p.latest.get(&publication) == Some(&source.id)
+                && p.latest.get(&key) == Some(&source.id)
         });
         if !desired {
             return Ok(());
         }
         // The control-plane lease alone never tears down an audible source.
         // Only a validated packet from its replacement commits the handoff.
-        if let Some(old) = self.sources.get(&publication) {
+        if let Some(old) = self.sources.get(&key) {
             if let Some(pair) = self.pairs.get_mut(&old.pair) {
                 if let Some(task) = pair.tasks.remove(&old.id) {
-                    task.abort();
-                    let _ = task.await;
+                    task.task.abort();
+                    let _ = task.task.await;
                 }
             }
         }
-        self.sources.insert(publication, source.clone());
+        self.sources.insert(key, source.clone());
         self.refresh_media().await?;
-        self.relay.write(publication, source.id, packet);
-        self.send(Command::FlowState {
-            publication_id: publication,
-            pair_id: source.pair,
-            ready: true,
-        })
-        .await;
+        self.relay.write(key, source.id, packet);
+        // A screen's audio alone does not establish its picture transport.
+        if source.kind == RtpCodecKind::Video
+            || self.publications[&publication] == piik_channel_prototype::wire::Kind::Voice
+        {
+            self.send(Command::FlowState {
+                publication_id: publication,
+                pair_id: source.pair,
+                ready: true,
+            })
+            .await;
+        }
         Ok(())
     }
     async fn refresh_media(&mut self) -> Result<()> {
         let mut failed = Vec::new();
-        for (publication, source) in &self.sources {
+        for (key, source) in &self.sources {
+            let (publication, _) = key;
             let mut targets = Vec::new();
             for (id, p) in &mut self.pairs {
                 if *id == source.pair || !p.plan.outgoing.contains(publication) {
                     continue;
                 }
-                if p.outputs
-                    .get(publication)
-                    .is_none_or(|o| o.source != source.id)
-                {
-                    let next = match Output::new(&*p.pc, source).await {
+                if p.outputs.get(key).is_none_or(|o| o.source != source.id) {
+                    let stream = p
+                        .outputs
+                        .iter()
+                        .find(|((id, _), _)| id == publication)
+                        .map(|(_, out)| out.stream.clone())
+                        .unwrap_or_else(|| Uuid::new_v4().to_string());
+                    let next = match Output::new(
+                        &*p.pc,
+                        source,
+                        stream,
+                        *id,
+                        *key,
+                        self.events.clone(),
+                        p.reports.clone(),
+                    )
+                    .await
+                    {
                         Ok(next) => next,
                         Err(error) => {
-                            eprintln!("Native Opus attach failed: {error}");
-                            failed.push(*id);
+                            eprintln!("Native encoded track attach failed: {error}");
+                            if source.kind == RtpCodecKind::Video
+                                || self.publications[publication]
+                                    == piik_channel_prototype::wire::Kind::Voice
+                            {
+                                failed.push((*publication, *id));
+                            }
                             continue;
                         }
                     };
-                    if let Some(old) = p.outputs.insert(*publication, next) {
+                    if let Some(old) = p.outputs.insert(*key, next) {
                         old.close(&*p.pc).await;
                     }
+                    source.request_keyframe();
                 }
-                targets.push(p.outputs[publication].sink());
+                targets.push(p.outputs[key].sink());
             }
-            self.relay.set(*publication, source.id, targets);
+            self.relay.set(*key, source.id, targets);
         }
-        for id in failed {
-            self.fail(id).await;
+        for (publication_id, pair_id) in failed {
+            self.send(Command::FlowState {
+                publication_id,
+                pair_id,
+                ready: false,
+            })
+            .await;
         }
         Ok(())
     }
@@ -1061,8 +1312,8 @@ async fn close_pair(mut pair: Pair) {
     }
     pair.files.close().await;
     for (_, task) in pair.tasks {
-        task.abort();
-        let _ = task.await;
+        task.task.abort();
+        let _ = task.task.await;
     }
     for (_, output) in pair.outputs {
         output.close(&*pair.pc).await;

@@ -5,6 +5,8 @@ use piik_channel_native::peer::NativePeers;
 use piik_channel_prototype::wire::{
     Candidate, Command, Description, Kind, PairInfo, PublicationInfo, Signal, Track as WireTrack,
 };
+use rtc::interceptor::{Interceptor, NoopInterceptor, StreamInfo, TaggedPacket};
+use rtc::sansio::Protocol;
 use rtc::{
     media_stream::MediaStreamTrack,
     peer_connection::{
@@ -38,6 +40,48 @@ use webrtc::{
     },
 };
 
+struct PliTap {
+    count: Arc<std::sync::atomic::AtomicUsize>,
+    reports: Arc<Mutex<Vec<rtc::rtcp::sender_report::SenderReport>>>,
+    inner: NoopInterceptor,
+}
+impl Protocol<TaggedPacket, TaggedPacket, ()> for PliTap {
+    type Rout = TaggedPacket;
+    type Wout = TaggedPacket;
+    type Eout = ();
+    type Error = rtc::shared::error::Error;
+    type Time = std::time::Instant;
+    fn handle_read(&mut self, msg: TaggedPacket) -> std::result::Result<(), Self::Error> {
+        if let rtc::interceptor::Packet::Rtcp(packets) = &msg.message.packet {
+            for packet in packets {
+                if let Some(report) = packet
+                    .as_any()
+                    .downcast_ref::<rtc::rtcp::sender_report::SenderReport>()
+                {
+                    self.reports.lock().unwrap().push(report.clone());
+                }
+                if packet.as_any().is::<rtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication>() {self.count.fetch_add(1,std::sync::atomic::Ordering::SeqCst);}
+            }
+        }
+        self.inner.handle_read(msg)
+    }
+    fn poll_read(&mut self) -> Option<Self::Rout> {
+        self.inner.poll_read()
+    }
+    fn handle_write(&mut self, msg: TaggedPacket) -> std::result::Result<(), Self::Error> {
+        self.inner.handle_write(msg)
+    }
+    fn poll_write(&mut self) -> Option<Self::Wout> {
+        self.inner.poll_write()
+    }
+}
+impl Interceptor for PliTap {
+    fn bind_local_stream(&mut self, _: &StreamInfo) {}
+    fn unbind_local_stream(&mut self, _: &StreamInfo) {}
+    fn bind_remote_stream(&mut self, _: &StreamInfo) {}
+    fn unbind_remote_stream(&mut self, _: &StreamInfo) {}
+}
+
 enum Event {
     Negotiate(Uuid),
     Candidate(Uuid, Candidate),
@@ -46,6 +90,7 @@ struct Handler {
     id: Uuid,
     events: mpsc::Sender<Event>,
     packets: mpsc::Sender<rtp::Packet>,
+    received: Arc<Mutex<Vec<Arc<dyn TrackRemote>>>>,
 }
 #[async_trait::async_trait]
 impl PeerConnectionEventHandler for Handler {
@@ -70,6 +115,7 @@ impl PeerConnectionEventHandler for Handler {
         tokio::spawn(async move { while dc.poll().await.is_some() {} });
     }
     async fn on_track(&self, track: Arc<dyn TrackRemote>) {
+        self.received.lock().unwrap().push(track.clone());
         let packets = self.packets.clone();
         tokio::spawn(async move {
             while let Some(event) = track.poll().await {
@@ -87,6 +133,9 @@ struct Endpoint {
     sent: Option<Signal>,
     candidates: Vec<Candidate>,
     tracks: Arc<Mutex<Vec<WireTrack>>>,
+    received: Arc<Mutex<Vec<Arc<dyn TrackRemote>>>>,
+    pli: Arc<std::sync::atomic::AtomicUsize>,
+    reports: Arc<Mutex<Vec<rtc::rtcp::sender_report::SenderReport>>>,
 }
 fn codec() -> RTCRtpCodec {
     RTCRtpCodec {
@@ -104,6 +153,16 @@ async fn endpoint(
     events: mpsc::Sender<Event>,
     packets: mpsc::Sender<rtp::Packet>,
 ) -> Result<Endpoint> {
+    endpoint_clock(native_id, id, payload_type, events, packets, false).await
+}
+async fn endpoint_clock(
+    native_id: Uuid,
+    id: Uuid,
+    payload_type: u8,
+    events: mpsc::Sender<Event>,
+    packets: mpsc::Sender<rtp::Packet>,
+    manual: bool,
+) -> Result<Endpoint> {
     let mut media = MediaEngine::default();
     media.register_codec(
         RTCRtpCodecParameters {
@@ -113,13 +172,56 @@ async fn endpoint(
         },
         RtpCodecKind::Audio,
     )?;
+    for (pt, mime, fmtp) in [(96, "video/VP8", ""), (97, "video/rtx", "apt=96")] {
+        media.register_codec(
+            RTCRtpCodecParameters {
+                rtp_codec: RTCRtpCodec {
+                    mime_type: mime.into(),
+                    clock_rate: 90000,
+                    sdp_fmtp_line: fmtp.into(),
+                    ..Default::default()
+                },
+                payload_type: pt,
+                ..Default::default()
+            },
+            RtpCodecKind::Video,
+        )?;
+    }
+    let pli = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let reports = Arc::new(Mutex::new(vec![]));
+    let mut registry =
+        rtc::peer_connection::configuration::interceptor_registry::register_default_interceptors(
+            rtc::interceptor::Registry::new(),
+            &mut media,
+        )?
+        .with(
+            rtc::interceptor::Slot::Custom(20_000),
+            PliTap {
+                count: pli.clone(),
+                reports: reports.clone(),
+                inner: NoopInterceptor::new(),
+            },
+        );
+    if manual {
+        registry = registry.with(
+            rtc::interceptor::Slot::SenderReport,
+            PliTap {
+                count: pli.clone(),
+                reports: reports.clone(),
+                inner: NoopInterceptor::new(),
+            },
+        );
+    }
+    let received = Arc::new(Mutex::new(vec![]));
     let pc: Arc<dyn PeerConnection> = Arc::new(
         PeerConnectionBuilder::<String>::new()
             .with_media_engine(media)
+            .with_interceptor_registry(registry)
             .with_handler(Arc::new(Handler {
                 id,
                 events,
                 packets,
+                received: received.clone(),
             }))
             .with_udp_addrs(vec!["0.0.0.0:0".into()])
             .build()
@@ -136,6 +238,9 @@ async fn endpoint(
         pending: false,
         candidates: vec![],
         tracks: Arc::new(Mutex::new(vec![])),
+        received,
+        pli,
+        reports,
     })
 }
 async fn add_source(
@@ -314,6 +419,365 @@ async fn next_matching(rx: &mut mpsc::Receiver<rtp::Packet>, ssrc: Option<u32>) 
 }
 
 #[tokio::test]
+async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> Result<()> {
+    timeout(Duration::from_secs(20), async {
+        let session = Uuid::nil();
+        let source_id = Uuid::new_v4();
+        let child_id = Uuid::new_v4();
+        let publication = Uuid::new_v4();
+        let (commands, rx) = mpsc::channel(64);
+        let native = Arc::new(NativePeers::new(session, vec![], commands));
+        let (events, event_rx) = mpsc::channel(1024);
+        let (packets, mut packet_rx) = mpsc::channel(2048);
+        let (reports, mut report_rx) = mpsc::channel(256);
+        let source = endpoint_clock(
+            session,
+            source_id,
+            111,
+            events.clone(),
+            packets.clone(),
+            true,
+        )
+        .await?;
+        let child = endpoint(session, child_id, 111, events, packets).await?;
+        let audio = add_source(&source, publication, 0x1111).await?;
+        let stream = source.tracks.lock().unwrap()[0].stream_id.clone();
+        let video = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
+            stream,
+            Uuid::new_v4().to_string(),
+            "VP8 packet burst".into(),
+            RtpCodecKind::Video,
+            vec![RTCRtpEncodingParameters {
+                rtp_coding_parameters: RTCRtpCodingParameters {
+                    ssrc: Some(0x2222),
+                    ..Default::default()
+                },
+                codec: RTCRtpCodec {
+                    mime_type: "video/VP8".into(),
+                    clock_rate: 90000,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+        )));
+        let video_sender=source.pc.add_track(video.clone()).await?;
+        let plis = source.pli.clone();
+        let received = child.received.clone();
+        let child_reports = child.reports.clone();
+        let source_pc = source.pc.clone();
+        let child_pc = child.pc.clone();
+        let mut audio_sender = None;
+        for sender in source_pc.get_senders().await {
+            if sender.track().kind().await == RtpCodecKind::Audio {
+                audio_sender = Some(sender);
+            }
+        }
+        native
+            .update(
+                vec![
+                    PairInfo {
+                        id: source_id,
+                        peer_id: source_id,
+                        rooms: vec!["screen".into()],
+                        incoming: vec![publication],
+                        outgoing: vec![],
+                    },
+                    PairInfo {
+                        id: child_id,
+                        peer_id: child_id,
+                        rooms: vec!["screen".into()],
+                        incoming: vec![],
+                        outgoing: vec![publication],
+                    },
+                ],
+                vec![PublicationInfo {
+                    id: publication,
+                    room_id: "screen".into(),
+                    session_id: source_id,
+                    user_id: source_id,
+                    kind: Kind::Screen,
+                    muted: false,
+                }],
+                vec![],
+            )
+            .await?;
+        let (stop, stopped) = watch::channel(false);
+        let (_pause, paused) = watch::channel(false);
+        let task = tokio::spawn(pump(
+            native.clone(),
+            HashMap::from([(source_id, source), (child_id, child)]),
+            rx,
+            event_rx,
+            stopped,
+            paused,
+            reports,
+            Arc::new(Mutex::new(Loss::default())),
+        ));
+        let mut ready = std::collections::HashSet::new();
+        while ready.len() < 2 {
+            if let Some(Command::BaseState {
+                pair_id,
+                ready: true,
+                ..
+            }) = report_rx.recv().await
+            {
+                ready.insert(pair_id);
+            }
+        }
+        let audio_on = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let send_audio = audio_on.clone();
+        let sending = tokio::spawn(async move {
+            for frame in 0..30u16 {
+                // Both media share the source clock; picture packets arrive 50ms later.
+                let ntp = 0xE0000000_00000000u64.wrapping_add((frame as u64 * (1u64 << 32)) / 5);
+                if send_audio.load(std::sync::atomic::Ordering::SeqCst) {
+                    audio
+                        .write_rtcp(vec![Box::new(rtc::rtcp::sender_report::SenderReport {
+                            ssrc: 0x1111,
+                            ntp_time: ntp,
+                            rtp_time: 50_000 + frame as u32 * 9600,
+                            packet_count: 0xaaaa,
+                            octet_count: 0xbbbb,
+                            ..Default::default()
+                        })])
+                        .await?;
+                }
+                video
+                    .write_rtcp(vec![Box::new(rtc::rtcp::sender_report::SenderReport {
+                        ssrc: 0x2222,
+                        ntp_time: ntp,
+                        rtp_time: 900_000 + frame as u32 * 18000,
+                        packet_count: 0xaaaa,
+                        octet_count: 0xbbbb,
+                        ..Default::default()
+                    })])
+                    .await?;
+                if send_audio.load(std::sync::atomic::Ordering::SeqCst) {
+                    audio
+                        .write_rtp(packet(frame, 50_000 + frame as u32 * 9600, 0x1111))
+                        .await?;
+                }
+                sleep(Duration::from_millis(50)).await;
+                for index in 0..64u16 {
+                    let mut payload = vec![0x55; 100];
+                    payload[0] = if index == 0 { 0x10 } else { 0 };
+                    payload[1] = 0;
+                    video
+                        .write_rtp(rtp::Packet {
+                            header: rtp::header::Header {
+                                version: 2,
+                                payload_type: 96,
+                                ssrc: 0x2222,
+                                sequence_number: frame * 64 + index,
+                                timestamp: 900_000 + frame as u32 * 18000,
+                                marker: index == 63,
+                                ..Default::default()
+                            },
+                            payload: payload.into(),
+                        })
+                        .await?;
+                }
+                sleep(Duration::from_millis(150)).await;
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+        let mut frames: HashMap<u32, std::collections::HashSet<u16>> = HashMap::new();
+        let mut audio_packets = 0;
+        let mut last_video = None;
+        while audio_packets < 2 || !frames.values().any(|packets| packets.len() == 64) {
+            let packet = packet_rx.recv().await.unwrap();
+            if packet.payload.len() == 3 {
+                audio_packets += 1;
+                assert_eq!(packet.header.payload_type, 111);
+            } else {
+                assert_eq!(packet.header.payload_type, 96);
+                assert_ne!(packet.header.ssrc, 0x2222);
+                frames
+                    .entry(packet.header.timestamp)
+                    .or_default()
+                    .insert(packet.header.sequence_number);
+                last_video = Some(packet);
+            }
+        }
+        let tracks = received.lock().unwrap().clone();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(
+            tracks[0].stream_id().await,
+            tracks[1].stream_id().await,
+            "one screen publication keeps audio/video in one MediaStream"
+        );
+        let before = plis.load(std::sync::atomic::Ordering::SeqCst);
+        let mut video_track = None;
+        for track in tracks {
+            if track.kind().await == RtpCodecKind::Video {
+                video_track = Some(track);
+            }
+        }
+        let video_track = video_track.unwrap();
+        let ssrc = video_track.ssrcs().await[0];
+        timeout(Duration::from_secs(4), async {
+            loop {
+                let reports = child_reports.lock().unwrap().clone();
+                if let (Some(audio), Some(video)) = (
+                    reports.iter().find(|r| r.ssrc != ssrc),
+                    reports.iter().find(|r| r.ssrc == ssrc),
+                ) {
+                    for (report, rate, base) in
+                        [(audio, 48000u64, 50_000u32), (video, 90000u64, 900_000u32)]
+                    {
+                        let ntp = report.ntp_time.wrapping_sub(0xE0000000_00000000);
+                        let expected =
+                            base.wrapping_add(((ntp as u128 * rate as u128) >> 32) as u32);
+                        assert!(
+                            report.rtp_time.wrapping_sub(expected) <= 1,
+                            "source RTP/NTP relation survives differential packet delay"
+                        );
+                        assert_ne!(report.ssrc, 0x1111);
+                        assert_ne!(report.ssrc, 0x2222);
+                        assert!(report.packet_count > 0 && report.packet_count < 0xaaaa);
+                        assert!(report.octet_count > 0 && report.octet_count != 0xbbbb);
+                    }
+                    break;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await?;
+        let original = last_video.unwrap();
+        video_track
+            .write_rtcp(vec![Box::new(
+                rtc::rtcp::transport_feedbacks::transport_layer_nack::TransportLayerNack {
+                    sender_ssrc: 0,
+                    media_ssrc: ssrc,
+                    nacks: vec![
+                        rtc::rtcp::transport_feedbacks::transport_layer_nack::NackPair::new(
+                            original.header.sequence_number,
+                        ),
+                    ],
+                },
+            )])
+            .await?;
+        timeout(Duration::from_secs(3), async {
+            loop {
+                let packet = packet_rx.recv().await.unwrap();
+                if packet.header.ssrc == ssrc
+                    && packet.header.sequence_number == original.header.sequence_number
+                {
+                    assert_eq!(packet.header.payload_type, 96);
+                    assert_eq!(packet.payload, original.payload);
+                    break;
+                }
+            }
+        })
+        .await?;
+        video_track
+            .write_rtcp(vec![Box::new(
+                rtc::rtcp::payload_feedbacks::picture_loss_indication::PictureLossIndication {
+                    sender_ssrc: 0,
+                    media_ssrc: ssrc,
+                },
+            )])
+            .await?;
+        timeout(Duration::from_secs(3), async {
+            while plis.load(std::sync::atomic::Ordering::SeqCst) <= before {
+                sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await?;
+        audio_on.store(false, std::sync::atomic::Ordering::SeqCst);
+        source_pc.remove_track(&audio_sender.unwrap()).await?;
+        timeout(Duration::from_secs(3), async {
+            loop {
+                let mut receiving_audio = false;
+                for transceiver in child_pc.get_transceivers().await {
+                    if let Some(receiver) = transceiver.receiver().await? {
+                        if receiver.track().kind().await == RtpCodecKind::Audio
+                            && matches!(
+                                transceiver.current_direction().await?,
+                                rtc::rtp_transceiver::RTCRtpTransceiverDirection::Recvonly
+                                    | rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendrecv
+                            )
+                        {
+                            receiving_audio = true;
+                        }
+                    }
+                }
+                if !receiving_audio {
+                    break;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await??;
+        let continued = next_matching(&mut packet_rx, Some(ssrc)).await;
+        assert_eq!(
+            continued.header.ssrc, ssrc,
+            "audio removal preserves the video sender"
+        );
+        while let Ok(report) = report_rx.try_recv() {
+            assert!(
+                !matches!(
+                    report,
+                    Command::FlowState {
+                        publication_id,
+                        ready: false,
+                        ..
+                    } if publication_id == publication
+                ),
+                "removing only screen audio must not fail its picture flow"
+            );
+            assert!(!matches!(
+                report,
+                Command::BaseState { ready: false, .. }
+                    | Command::LinkState {
+                        state: piik_channel_prototype::wire::LinkState::Failed,
+                        ..
+                    }
+            ));
+        }
+        sending.abort();
+        let _ = sending.await;
+        // The publication and incoming lease stay installed while its video ends.
+        source_pc.remove_track(&video_sender).await?;
+        timeout(Duration::from_secs(3), async {
+            loop {
+                match report_rx.recv().await.unwrap() {
+                    Command::FlowState {
+                        publication_id,
+                        pair_id,
+                        ready: false,
+                    } if publication_id == publication && pair_id == source_id => break,
+                    Command::BaseState { ready: false, .. }
+                    | Command::LinkState {
+                        state: piik_channel_prototype::wire::LinkState::Failed,
+                        ..
+                    } => panic!("ending a media track must preserve base transport"),
+                    _ => {}
+                }
+            }
+        })
+        .await?;
+        assert_eq!(
+            source_pc.sctp().await.unwrap().state().await?,
+            rtc::peer_connection::transport::RTCSctpTransportState::Connected
+        );
+        assert_eq!(
+            child_pc.sctp().await.unwrap().state().await?,
+            rtc::peer_connection::transport::RTCSctpTransportState::Connected
+        );
+        stop.send(true)?;
+        task.await??;
+        Arc::try_unwrap(native)
+            .map_err(|_| anyhow::anyhow!("Native still borrowed"))?
+            .close()
+            .await?;
+        Ok::<_, anyhow::Error>(())
+    })
+    .await?
+}
+
+#[tokio::test]
 async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handoff() -> Result<()> {
     for native_id in [Uuid::nil(), Uuid::from_u128(u128::MAX)] {
         timeout(Duration::from_secs(45), async {
@@ -422,7 +886,10 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                         && receiver_pc
                             .current_remote_description()
                             .await
-                            .is_some_and(|d| d.sdp_type == rtc::peer_connection::sdp::RTCSdpType::Answer && d.sdp.contains("a=rtpmap:109 opus/48000"))
+                            .is_some_and(|d| {
+                                d.sdp_type == rtc::peer_connection::sdp::RTCSdpType::Answer
+                                    && d.sdp.contains("a=rtpmap:109 opus/48000")
+                            })
                     {
                         break;
                     }
@@ -454,6 +921,9 @@ async fn first_packet_switches_source_clock_and_preserves_old_audio_until_handof
                 sent: None,
                 candidates: vec![],
                 tracks: b_tracks,
+                received: Arc::new(Mutex::new(vec![])),
+                pli: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+                reports: Arc::new(Mutex::new(vec![])),
             };
             let source_b = add_source(&eb, publication, 0x22222222).await?;
             // Control switches the input lease and negotiates B, but B sends nothing yet.

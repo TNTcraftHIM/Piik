@@ -140,7 +140,7 @@ watching while continuing to serve downstream viewers; its transit ends when tha
 demand ends. A failed DataChannel repairs its room paths without closing healthy
 media on the same connection. Stopping one share keeps unrelated received and
 forwarded media alive. Browser relays can decode and re-encode. The Native
-participant forwards encoded Opus; Native video forwarding and SFU fallback
+participant forwards encoded Opus, VP8 and H264; Native capture and SFU fallback
 remain later work. WebRTC owns ICE and congestion control.
 Optional `PIIK_CHANNEL_ICE_SERVERS` supplies an ICE-server JSON array; local checks
 do not establish public-NAT connectivity or reliable background Browser service.

@@ -3,15 +3,21 @@
 This isolated Rust participant operates rooms through the same `RoomHost` core
 as the Browser adapter. SQLite stores each room's policy and confirmed history;
 the domain supplies admission, directory views and transport leases. Its actual
-WebRTC endpoint carries room DataChannels and forwards encoded Opus between
-Browsers without opening a microphone or playing their sound locally. It also
-forwards requested file ranges on the same room paths, without retaining file
-contents in SQLite.
+WebRTC endpoint carries room DataChannels, encoded media and requested file
+ranges without retaining file contents in SQLite. The media adapter forwards
+Opus, VP8 and H264 Constrained Baseline with packetization mode 1, without
+capture, playback or transcoding.
 
 The [network design](../../docs/research/channel-network-design.md) owns the model.
 This executable is an explicitly started development host. It does not make a
-standby Piik App take over a closed page's room. Native screen capture and video
-forwarding remain outside this slice.
+standby Piik App take over a closed page's room. Room voice and files use the
+base paths. Connecting screen plans to those Native paths and adding Native
+capture are subsequent stages.
+
+Each incoming audio/video track keeps its RTP clock and source Sender Report
+mapping. Outputs share a publication stream while owning separate SSRCs and
+bounded writers; WebRTC handles each hop's retransmission and congestion control.
+The pinned SDK does not provide RTCP round-trip-time statistics.
 
 ## Run
 
@@ -60,7 +66,7 @@ can select separate Native and domain builds. The runner owns its processes,
 temporary databases and Browser sessions, and stops them on completion.
 
 The peer check uses real WebRTC endpoints for source replacement, signaling
-recovery and forwarding while control output is backpressured. The Browser
+recovery, encoded audio/video forwarding and feedback under backpressure. The Browser
 check covers actual Native-rooted voice and file forwarding, room-owned history,
 independent picture playback and process restart. Generated evidence stays under
 ignored `build/`.

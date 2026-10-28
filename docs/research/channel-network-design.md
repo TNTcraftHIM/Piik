@@ -428,7 +428,7 @@ same complete user flows and failure cases against the new ownership model.
 
 The [Native participant](../../prototype/channel-native/README.md) now operates
 the same room core with one SQLite database per room, an admitted session and
-real base DataChannels. It forwards encoded Opus without local playback or
+real base DataChannels. It forwards encoded media without local playback or
 capture. Its caller owns hosting lifetime; a command-line development host does
 not grant background hosting to an idle App. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
@@ -478,13 +478,14 @@ the pacer's finite queue and rate-dependent release timing. Piik owns encoder
 demand, bounded queued work and the source's RTP timeline, rather than
 reimplementing those network algorithms.
 
-Native voice forwarding separates control turns from real-time packet writers.
-Each output uses its sender's negotiated codec mapping and owns one source RTP
-clock; replacing that source creates a new sender/SSRC after its first packet.
+Native encoded forwarding separates control turns from real-time packet writers.
+Audio and video retain separate source identities within one publication. Each
+output uses its sender's negotiated codec mapping and keeps the source RTP clock
+and Sender Report correlation; replacing a source creates a new sender/SSRC.
 Removing the last incoming demand releases its reader even if the publication
-remains in the room directory. Native video forwarding and SFU integration
-remain later stages. This isolated dependency does not replace the current
-2.x Native media core.
+remains in the room directory. Native screen-route startup on the base paths,
+capture and SFU integration remain later stages. This isolated dependency does
+not replace the current 2.x Native media core.
 
 ## Design References
 

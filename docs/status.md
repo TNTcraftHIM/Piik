@@ -22,6 +22,8 @@ owns history and file delivery. Browser-hosted rooms now share base connections
 for reading and media demand, with bidirectional voice on those paths. The
 explicit [Native participant](../prototype/channel-native/README.md) operates
 SQLite-backed rooms and forwards encoded Opus and file ranges on the same base paths.
+Its media adapter also forwards VP8/H264 with source audio and preserves their
+shared source clock.
 File descriptions stay in confirmed history; selected and verified copies stay
 with their participants. App/Server integration and screen startup on the base
 paths are next. [TODO](./todo.md) owns remaining stages
