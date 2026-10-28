@@ -1,0 +1,13 @@
+.c3-share-control { display: inline-flex; }
+.lr-anchored-card.c3-share-picker {
+  width: min(720px, calc(100vw - 16px));
+  height: min(560px, calc(100dvh - 16px));
+  padding: 0;
+  overflow: hidden;
+}
+.c3-share-picker > .lr-source-picker {
+  position: relative;
+  inset: auto;
+  height: 100%;
+  border-radius: inherit;
+}

@@ -180,7 +180,7 @@
   .c3-room-name h2 { font-size: 16px; }
   .c3-room-name > svg { display: none; }
   .c3-room-actions { grid-column: 1 / -1; grid-row: 2; gap: 8px; flex-wrap: wrap; }
-  .c3-room-actions > .lr-comic-tip-wrap .lr-cap { display: none; }
+  .c3-room-actions > :is(.lr-comic-tip-wrap, .c3-share-control) .lr-cap { display: none; }
   .c3-room-tools { grid-column: 2; grid-row: 1; }
   .c3-avatar-stack > svg + svg { display: none; }
   .c3-people-trigger > svg { display: none; }

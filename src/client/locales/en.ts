@@ -253,7 +253,7 @@ export const en: Record<CopyKey, string> = {
   "client.connect.manage": "App is ready. Manage App.",
   "client.connect.approveTitle": "Allow this Site to use Piik App?",
   "client.connect.approveHint": "This Site will be able to use this device's screens, windows and microphone. Check that you trust this address.",
-  "client.connect.approveRoomsHint": "This Site will be able to host rooms in App and save room settings and chat history.",
+  "client.connect.approveChannelHint": "This Site can host rooms in App and use this device's windows and screens. Check that you trust this address.",
   "client.connect.approve": "Allow access",
   "client.connect.approved": "This Site can now use App",
   "client.connect.return": "You can close this page and return to your Site.",

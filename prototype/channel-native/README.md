@@ -6,7 +6,7 @@ the domain supplies admission, directory views and transport leases. Its actual
 WebRTC endpoint carries room DataChannels, encoded media and requested file
 ranges without retaining file contents in SQLite. The media adapter forwards
 Opus, VP8 and H264 Constrained Baseline with packetization mode 1, without
-capture, playback or transcoding.
+decoding or transcoding.
 
 The [network design](../../docs/research/channel-network-design.md) owns the model.
 This executable is an explicitly started development host. Chat, history, room voice and files
@@ -19,8 +19,12 @@ Local/public-invitation launcher. Windows capture now has a separate Rust produc
 WGC supplies GPU textures, D3D11 scales them, and Media Foundation encodes H264 on
 the same adapter. Its complete access units retain capture presentation time;
 one capture owner handles keyframe requests, bitrate changes and final stop.
-Connecting that producer to App sharing controls, native input and platform
-packaging remain subsequent stages.
+The App's source picker starts that producer on its existing Native endpoint.
+Local and received sources share the same encoded outputs and room routes.
+The selecting page holds the capture lease: closing it stops its captures while
+App-hosted rooms continue. Startup completes after the first encoded access unit;
+errors before that point return to the page. Native source audio, encoder-demand
+adaptation, input and platform packaging remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs in one flow share a stream while owning separate SSRCs and

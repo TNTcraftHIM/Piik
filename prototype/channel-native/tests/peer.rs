@@ -423,6 +423,7 @@ async fn pump(
         },
         Some(event)=commands.recv(),if !*pause.borrow()=>match event {
          NativeEvent::Conversation {..} => {},
+         NativeEvent::CaptureEnded {..} => {},
          NativeEvent::Command(command) => match command {
          Command::Signal{pair_id:id,payload}=>{
           let drop={let mut loss=loss.lock().unwrap();if loss.pair==Some(id)&&payload.description.as_ref().is_some_and(|d|d.kind=="offer") {loss.offers.push(payload.clone());if loss.offer{loss.offer=false;true}else{false}}else{false}};

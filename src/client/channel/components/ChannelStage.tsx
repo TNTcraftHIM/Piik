@@ -11,7 +11,8 @@ export interface ChannelStageSource {
   userId: string;
   name: string;
   roomName: string;
-  local: boolean;
+  /** This page controls the share; its actual endpoint can be the App. */
+  owned: boolean;
   subscribed: boolean;
   stream?: MediaStream;
   inputs?: readonly ChannelScreenInput[];
@@ -35,8 +36,8 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
-  const active = sources.filter(source => source.local || source.subscribed);
-  const available = sources.filter(source => !source.local && !source.subscribed);
+  const active = sources.filter(source => source.owned || source.subscribed);
+  const available = sources.filter(source => !source.owned && !source.subscribed);
   const focused = active.find(source => source.id === focusedId);
   if (!sources.length) return null;
 
@@ -76,24 +77,24 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a"))) return;
               onFocus(source.id);
             }}>
-            {source.stream ? <ChannelVideo stream={source.stream} local={source.local} inputs={source.inputs} onPresentation={onPresentation}
+            {source.stream ? <ChannelVideo stream={source.stream} local={source.owned} inputs={source.inputs} onPresentation={onPresentation}
               label={`${source.name} — ${source.roomName}`} />
               : <div className="c3-monitor-wait" role="status"><Glyph name="loader" size={24} className="lr-spin" />
                 <span>{copy("正在连接画面", "Connecting picture")}</span></div>}
             <footer>
               <PawnSvg color={participantColor(source.userId)} identity={source.userId} />
               <div className="c3-monitor-source"><strong>{source.name}</strong>
-                <small>{source.local ? `${copy("本机预览", "Local preview")} / ` : ""}{source.roomName}</small>
+                <small>{source.owned ? `${copy("本机预览", "Local preview")} / ` : ""}{source.roomName}</small>
               </div>
               <div className="c3-monitor-tile-actions">
                 {active.length > 1 && <ChannelAction icon={isFocused ? "contract" : "expand"} quiet iconOnly
                   label={isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${source.name}`, `Focus ${source.name}`)}
                   pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
-                <ChannelAction icon={source.local ? "stop" : "x"} danger={source.local} quiet={!source.local} iconOnly
-                  label={source.local ? copy(`停止分享 ${source.name}`, `Stop sharing ${source.name}`)
+                <ChannelAction icon={source.owned ? "stop" : "x"} danger={source.owned} quiet={!source.owned} iconOnly
+                  label={source.owned ? copy(`停止分享 ${source.name}`, `Stop sharing ${source.name}`)
                     : copy(`停止观看 ${source.name}`, `Stop watching ${source.name}`)}
-                  hint={source.local ? "hint-share-stop" : "hint-close"} busy={source.pending}
-                  onClick={() => source.local ? onStop(source.id) : onUnwatch(source.id)} />
+                  hint={source.owned ? "hint-share-stop" : "hint-close"} busy={source.pending}
+                  onClick={() => source.owned ? onStop(source.id) : onUnwatch(source.id)} />
               </div>
             </footer>
           </article>;

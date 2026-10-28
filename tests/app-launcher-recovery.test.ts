@@ -39,7 +39,7 @@ const saved = {
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string; siteAccess?: "rooms" } = saved) => ({ ok: true, status: 200, json: async () => state });
+const response = (state: typeof saved & { detail?: string; siteAccess?: "channel" } = saved) => ({ ok: true, status: 200, json: async () => state });
 
 function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const state: Record<string, unknown> = {};
@@ -78,10 +78,10 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
 }
 
 describe("App launcher state recovery", () => {
-  it("reads the room-hosting permission scope from the actual launcher response", async () => {
-    const page = mount(vi.fn(async () => response({ ...saved, siteAccess: "rooms" })));
+  it("reads the channel App permission scope from the actual launcher response", async () => {
+    const page = mount(vi.fn(async () => response({ ...saved, siteAccess: "channel" })));
     await settle();
-    expect(page.state.SiteAccess).toBe("rooms");
+    expect(page.state.SiteAccess).toBe("channel");
     page.cleanup();
   });
   it.each([

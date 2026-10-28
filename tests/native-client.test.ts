@@ -5,7 +5,7 @@ import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompat
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { AppQualityPreference } from "../src/client/native/quality-preference";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
-import { channelAppDiscovery, discoverChannelAppHealth } from "../src/client/channel/app-rooms";
+import { channelAppDiscovery, discoverChannelAppHealth } from "../src/client/channel/app-link";
 
 import {
   nativeEventSchema,

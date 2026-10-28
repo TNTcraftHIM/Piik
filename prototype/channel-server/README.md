@@ -104,7 +104,16 @@ current hosting runtime. Existing Browser rooms remain in their pages and are
 not migrated; a remembered App preference cannot prevent Browser hosting when
 the App is absent.
 
-Approval belongs to an exact site origin. Discovery exposes only the local
+On Windows, **Share screen** reuses the source picker for App windows/displays
+and Browser capture. App capture publishes through that same Native participant;
+the selecting page previews it as an ordinary subscriber. Stopping the share or
+closing its page stops only its captures, not its hosted rooms. This prototype
+uses 1080p/30 fps/4 Mbps H264 for native video; source audio and encoder-demand
+adaptation are subsequent work. Browser capture retains its existing behavior.
+
+Approval covers room hosting and local window/screen capture and belongs to an
+exact site origin. Earlier room-only consent requires approval again, preserving
+the site's room-data namespace. Discovery exposes only the local
 approval address; the authorized health response supplies the process token.
 The token never appears in launch or room invitation URLs. Native verifies the
 Browser account through actual domain admission before opening its room data.

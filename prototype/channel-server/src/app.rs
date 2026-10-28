@@ -21,7 +21,11 @@ use axum::{
 };
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::RoomState;
-use piik_channel_native::session::{self, Hosting, OpenRoom};
+use piik_channel_native::{
+    capture::{Settings, Target},
+    peer::CaptureLease,
+    session::{self, HostCommand, Hosting, OpenRoom, StartCapture},
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{collections::BTreeMap, future::Future, path::PathBuf, sync::Arc, time::Duration};
@@ -38,6 +42,13 @@ const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
 const PROTOCOL: u8 = 1;
+// Prototype native-share defaults; the shared share settings will supply these.
+const CAPTURE_SETTINGS: Settings = Settings {
+    width: 1920,
+    height: 1080,
+    fps: 30,
+    bitrate: 4_000_000,
+};
 
 pub struct Config {
     pub data_root: PathBuf,
@@ -70,7 +81,7 @@ impl Permission {
 }
 struct Host {
     credential: String,
-    commands: mpsc::Sender<OpenRoom>,
+    commands: mpsc::Sender<HostCommand>,
     ready: watch::Receiver<Option<Result<(), String>>>,
     stop: watch::Sender<bool>,
     task: JoinHandle<Result<()>>,
@@ -109,7 +120,7 @@ impl App {
         user: Uuid,
         credential: String,
         name: String,
-    ) -> Result<mpsc::Sender<OpenRoom>> {
+    ) -> Result<mpsc::Sender<HostCommand>> {
         let mut registry = self.registry.lock().await;
         if *self.closing.borrow() {
             bail!("hosting_unavailable");
@@ -408,7 +419,7 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     Ok(
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
-        "defaultMode":"link","modes":["local","link"],"siteAccess":"rooms","version":"development",
+        "defaultMode":"link","modes":["local","link"],"siteAccess":"channel","version":"development",
         "revision":"development","controlPort":port}),
     )
 }
@@ -556,87 +567,136 @@ enum Operation {
     Open {
         policy: String,
     },
+    Targets,
+    StartCapture {
+        room_id: String,
+        target: Target,
+    },
+    StopCapture {
+        publication_id: Uuid,
+    },
 }
 async fn connection(
-    mut socket: WebSocket,
+    socket: WebSocket,
     app: &App,
     site: &str,
     permission: &Arc<Permission>,
 ) -> Result<()> {
-    let mut host = None;
-    loop {
-        let message = if host.is_some() {
-            socket.next().await
-        } else {
-            timeout(IO_TIMEOUT, socket.next()).await?
-        };
-        let Some(message) = message else { break };
-        let text = match message? {
-            Message::Text(text) => text,
-            Message::Close(_) => {
-                timeout(IO_TIMEOUT, socket.flush()).await??;
-                break;
-            }
-            Message::Ping(_) | Message::Pong(_) => {
-                timeout(IO_TIMEOUT, socket.flush()).await??;
-                continue;
-            }
-            _ => bail!("App requests must be text"),
-        };
-        let value: Value = serde_json::from_str(&text)?;
-        let id = value
-            .get("id")
-            .and_then(Value::as_str)
-            .filter(|id| !id.is_empty() && id.len() <= 256);
-        let response = match (id, serde_json::from_value::<Request>(value.clone())) {
-            (Some(_), Ok(request)) => {
-                let result: Result<Value> = match request.operation {
-                    Operation::Hello {
-                        channel_id,
-                        user_id,
-                        credential,
-                        name,
-                    } => {
-                        if host.is_some() {
-                            Err(anyhow!("already_initialized"))
-                        } else {
-                            match app
-                                .hello(site, permission, channel_id, user_id, credential, name)
-                                .await
-                            {
-                                Ok(commands) => {
-                                    host = Some(commands);
-                                    Ok(Value::Null)
-                                }
-                                Err(error) => Err(error),
-                            }
-                        }
-                    }
-                    Operation::Open { policy } => match &host {
-                        Some(commands) => open(commands, &policy).await,
-                        None => Err(anyhow!("hello_required")),
-                    },
-                };
-                match result {
-                    Ok(result) => json!({"id":request.id,"result":result}),
-                    Err(error) => json!({"id":request.id,"error":error.to_string()}),
+    let (mut writer, mut reader) = socket.split();
+    let result = {
+        let (incoming, mut queue) = mpsc::channel(64);
+        let reading = async move {
+            loop {
+                match reader.next().await {
+                    Some(Ok(Message::Text(text))) => incoming
+                        .try_send(text)
+                        .map_err(|_| anyhow!("App request queue full"))?,
+                    Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+                    _ => return Ok::<_, anyhow::Error>(()),
                 }
             }
-            _ => json!({"id":id,"error":"invalid_request"}),
         };
-        timeout(
-            IO_TIMEOUT,
-            socket.send(Message::Text(response.to_string().into())),
-        )
-        .await??;
-    }
-    Ok(())
+        let processing = async {
+            let mut host = None;
+            let mut captures: BTreeMap<Uuid, CaptureLease> = BTreeMap::new();
+            loop {
+                let message = if host.is_some() {
+                    queue.recv().await
+                } else {
+                    timeout(IO_TIMEOUT, queue.recv()).await?
+                };
+                let Some(text) = message else { break };
+                let value: Value = serde_json::from_str(&text)?;
+                let id = value
+                    .get("id")
+                    .and_then(Value::as_str)
+                    .filter(|id| !id.is_empty() && id.len() <= 256);
+                let response = match (id, serde_json::from_value::<Request>(value.clone())) {
+                    (Some(_), Ok(request)) => {
+                        let result: Result<Value> = match request.operation {
+                            Operation::Hello {
+                                channel_id,
+                                user_id,
+                                credential,
+                                name,
+                            } => {
+                                if host.is_some() {
+                                    Err(anyhow!("already_initialized"))
+                                } else {
+                                    match app
+                                        .hello(
+                                            site, permission, channel_id, user_id, credential, name,
+                                        )
+                                        .await
+                                    {
+                                        Ok(commands) => {
+                                            host = Some(commands);
+                                            Ok(Value::Null)
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                }
+                            }
+                            Operation::Open { policy } => match &host {
+                                Some(commands) => open(commands, &policy).await,
+                                None => Err(anyhow!("hello_required")),
+                            },
+                            Operation::Targets => match &host {
+                                Some(_) => capture_targets().await,
+                                None => Err(anyhow!("hello_required")),
+                            },
+                            Operation::StartCapture { room_id, target } => match &host {
+                                Some(commands) => {
+                                    captures.retain(|_, lease| !lease.is_stopped());
+                                    let publication_id = Uuid::new_v4();
+                                    match start_capture(commands, publication_id, room_id, target)
+                                        .await
+                                    {
+                                        Ok(lease) => {
+                                            captures.insert(publication_id, lease);
+                                            Ok(json!({"publicationId":publication_id}))
+                                        }
+                                        Err(error) => Err(error),
+                                    }
+                                }
+                                None => Err(anyhow!("hello_required")),
+                            },
+                            Operation::StopCapture { publication_id } => {
+                                drop(captures.remove(&publication_id));
+                                Ok(Value::Null)
+                            }
+                        };
+                        match result {
+                            Ok(result) => json!({"id":request.id,"result":result}),
+                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                        }
+                    }
+                    _ => json!({"id":id,"error":"invalid_request"}),
+                };
+                timeout(
+                    IO_TIMEOUT,
+                    writer.send(Message::Text(response.to_string().into())),
+                )
+                .await??;
+            }
+            Ok(())
+        };
+        tokio::pin!(reading, processing);
+        tokio::select! {
+            result = &mut reading => result,
+            result = &mut processing => result,
+        }
+    };
+    // Dropping the processor first stops every page-owned capture, including
+    // while a Native request is awaiting admission or a room-host response.
+    let _ = timeout(IO_TIMEOUT, writer.close()).await;
+    result
 }
-async fn open(commands: &mpsc::Sender<OpenRoom>, policy: &str) -> Result<Value> {
+async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Value> {
     let policy: RoomState = serde_json::from_str(policy)?;
     let (result, opened) = oneshot::channel();
     commands
-        .send(OpenRoom { policy, result })
+        .send(HostCommand::Open(OpenRoom { policy, result }))
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?;
     Ok(serde_json::to_value(
@@ -645,4 +705,45 @@ async fn open(commands: &mpsc::Sender<OpenRoom>, policy: &str) -> Result<Value> 
             .map_err(|_| anyhow!("hosting_unavailable"))?
             .map_err(anyhow::Error::msg)?,
     )?)
+}
+
+async fn capture_targets() -> Result<Value> {
+    #[cfg(target_os = "windows")]
+    {
+        Ok(serde_json::to_value(
+            tokio::task::spawn_blocking(piik_channel_native::capture::targets).await??,
+        )?)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        Ok(json!([]))
+    }
+}
+
+async fn start_capture(
+    commands: &mpsc::Sender<HostCommand>,
+    publication_id: Uuid,
+    room_id: String,
+    target: Target,
+) -> Result<CaptureLease> {
+    if !cfg!(target_os = "windows") {
+        bail!("capture_unavailable");
+    }
+    let (result, response) = oneshot::channel();
+    commands
+        .send(HostCommand::StartCapture(StartCapture {
+            publication_id,
+            room_id,
+            target,
+            settings: CAPTURE_SETTINGS,
+            result,
+        }))
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?;
+    let mut lease = response
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?
+        .map_err(anyhow::Error::msg)?;
+    lease.ready().await.map_err(|_| anyhow!("capture_failed"))?;
+    Ok(lease)
 }

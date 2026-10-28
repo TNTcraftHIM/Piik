@@ -9,6 +9,7 @@ import { useCopy } from "../ui/copy";
 import { useChannel } from "../channel/use-channel";
 import { ChannelAction, ChannelAudio } from "../channel/components/ChannelMedia";
 import { ChannelStage } from "../channel/components/ChannelStage";
+import { ChannelShareControl } from "../channel/components/ChannelShareControl";
 import { ChannelConversation } from "../channel/components/ChannelConversation";
 import { ChannelJoinVoice } from "../channel/components/ChannelJoinVoice";
 import { ChannelVoiceDock } from "../channel/components/ChannelVoiceDock";
@@ -17,7 +18,7 @@ import { ChannelNameEditor } from "../channel/components/ChannelNameEditor";
 import { ChannelRoomControls, ChannelRoomEntry } from "../channel/components/ChannelRoomControls";
 import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
-import { channelAppDiscovery } from "../channel/app-rooms";
+import { channelAppDiscovery } from "../channel/app-link";
 import "../channel/bootstrap";
 import "./channel-preview.css";
 
@@ -45,8 +46,8 @@ export function ChannelPreviewPage() {
   const busy = (action: string, id?: string) => pending.has(action) || pending.has(`${action}:${id}`);
   const publications = state?.publications ?? [];
   const screens = publications.filter(value => value.kind === "screen");
-  const mine = screens.filter(value => value.sessionId === sessionId);
-  const watched = screens.filter(value => value.sessionId !== sessionId && state?.subscriptions.includes(value.id));
+  const mine = screens.filter(value => channel.ownedScreens.has(value.id));
+  const watched = screens.filter(value => !channel.ownedScreens.has(value.id) && state?.subscriptions.includes(value.id));
   const visibleScreens = [...mine, ...watched];
   const availableScreens = screens.filter(value => value.roomId === roomId && !visibleScreens.includes(value));
   const myVoice = state?.voice.filter(value => value.sessionId === sessionId) ?? [];
@@ -62,6 +63,8 @@ export function ChannelPreviewPage() {
       ? copy("房间操作已成功，但域目录保存失败。", "The room operation succeeded, but the domain directory could not be saved.")
     : channel.error === "app_disconnected"
       ? copy("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.")
+    : channel.error === "capture_failed"
+      ? copy("未能开始分享，请重新选择窗口或屏幕。", "Could not start sharing. Choose a window or screen again.")
     : channel.error === "owner_mismatch"
       ? copy("App 中的房间数据属于另一个域或账号。请确认当前站点和登录账号。", "The App room data belongs to another domain or account. Check the current site and signed-in account.")
     : /room_host_conflict|room_storage_in_use/.test(channel.error)
@@ -159,8 +162,7 @@ export function ChannelPreviewPage() {
             title={{ text: copy("房间列表", "Rooms") }} hint="hint-collapse" controls="c3-room-list" expanded={mobilePane === "rooms"}
             onClick={() => setMobilePane("rooms")} /></span><Glyph name="couch" size={25} /><h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2></div>
           <div className="c3-room-actions">
-            {room?.authorized && <><ChannelAction icon="cast" label={copy("分享屏幕", "Share screen")} primary hint="hint-share-start"
-              disabled={!connected || !room.available || !can("publish")} busy={busy("screen", roomId)} onClick={() => run(channel.startScreen(roomId))} />
+            {room?.authorized && <><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available || !can("publish")} />
               <ChannelJoinVoice joined={joined} disabled={!connected || !room.available || !can("voice")} busy={busy("voice", roomId)}
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
@@ -189,10 +191,10 @@ export function ChannelPreviewPage() {
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${chatOpen ? "" : " chat-collapsed"}`}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
-            roomName: nameOfRoom(publication.roomId), local: publication.sessionId === sessionId,
+            roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
-            pending: busy(publication.sessionId === sessionId ? "stop" : "watch", publication.id),
+            pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id),
           }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected && can("subscribe")}
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation} />

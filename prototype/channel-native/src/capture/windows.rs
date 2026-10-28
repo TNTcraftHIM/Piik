@@ -97,6 +97,9 @@ impl Shared {
 #[derive(Clone)]
 pub struct Control(Arc<Shared>);
 impl Control {
+    pub fn is_stopped(&self) -> bool {
+        self.0.state.lock().unwrap().stop
+    }
     /// Request cancellation, including an encoder blocked on AU backpressure.
     /// The Capture owner still joins the worker with Capture::stop.
     pub fn stop(&self) {
@@ -206,6 +209,10 @@ fn creation_time(pid: u32) -> Result<u64> {
 pub fn targets() -> Result<Vec<Target>> {
     let mut targets = Vec::new();
     for window in Window::enumerate()? {
+        let title = window.title()?;
+        if title.trim().is_empty() {
+            continue;
+        }
         // Inaccessible/protected processes are not selectable input identities.
         let Ok(pid) = window.process_id() else {
             continue;
@@ -216,7 +223,7 @@ pub fn targets() -> Result<Vec<Target>> {
         targets.push(Target {
             kind: TargetKind::Window,
             source_id: (window.as_raw_hwnd() as usize).to_string(),
-            title: window.title()?,
+            title,
             pid,
             creation_time: Some(created.to_string()),
         });

@@ -1,5 +1,8 @@
-//! One output RTP clock belongs to one received source track. A source replacement
+//! One output RTP clock belongs to one received or captured source. A replacement
 //! creates a new sender/SSRC; clocks from different sources are never spliced.
+#[cfg(target_os = "windows")]
+pub(crate) mod local;
+
 use anyhow::Result;
 use rtc::{
     interceptor::{Attribute, Interceptor, Packet, StreamInfo, TaggedPacket},
@@ -275,14 +278,21 @@ impl Interceptor for MediaFeedback {
 }
 
 #[derive(Clone)]
+pub(crate) enum SourceOrigin {
+    Incoming {
+        pair: Uuid,
+        flow_id: Uuid,
+        stream: String,
+    },
+    Local,
+}
+#[derive(Clone)]
 pub(crate) struct Source {
     pub id: Uuid,
-    pub flow_id: Uuid,
     pub publication_id: Uuid,
-    pub pair: Uuid,
-    pub stream: String,
-    // Track SDP format, not a declaration of the encoded SPS. The reader checks
-    // actual H264 SPS separately before passing its packets to the relay.
+    pub origin: SourceOrigin,
+    // SDK format identity: received-track SDP or the local encoder's initial SPS.
+    // Producers validate actual SPS separately from each Output's negotiation.
     pub codec: RTCRtpCodec,
     pub ssrc: u32,
     pub kind: RtpCodecKind,
@@ -290,6 +300,14 @@ pub(crate) struct Source {
     pub report: SourceReport,
 }
 impl Source {
+    pub fn matches(&self, flow: &piik_channel_core::wire::FlowBinding, kind: RtpCodecKind) -> bool {
+        self.publication_id == flow.publication_id
+            && self.kind == kind
+            && match &self.origin {
+                SourceOrigin::Incoming { flow_id, .. } => flow.input_flow_id == Some(*flow_id),
+                SourceOrigin::Local => flow.input_flow_id.is_none(),
+            }
+    }
     pub fn request_keyframe(&self) {
         if self.kind == RtpCodecKind::Video {
             self.keyframes.send_modify(|n| *n = n.wrapping_add(1));
@@ -489,24 +507,22 @@ impl Output {
 // current source identity and writer handles; readers hold this lock only long
 // enough to enqueue one packet. No SDP, SQLite, or signaling await is on this path.
 #[derive(Clone, Default)]
-pub(crate) struct Relay(Arc<Mutex<HashMap<TrackKey, (Uuid, Vec<mpsc::Sender<rtp::Packet>>)>>>);
+pub(crate) struct Relay(Arc<Mutex<HashMap<Uuid, Vec<mpsc::Sender<rtp::Packet>>>>>);
 impl Relay {
-    pub fn remove(&self, key: TrackKey) {
-        self.0.lock().unwrap().remove(&key);
+    pub fn remove(&self, source: Uuid) {
+        self.0.lock().unwrap().remove(&source);
     }
-    pub fn set(&self, key: TrackKey, source: Uuid, targets: Vec<mpsc::Sender<rtp::Packet>>) {
-        self.0.lock().unwrap().insert(key, (source, targets));
+    pub fn set(&self, source: Uuid, targets: Vec<mpsc::Sender<rtp::Packet>>) {
+        self.0.lock().unwrap().insert(source, targets);
     }
-    pub fn retain(&self, flows: &std::collections::HashSet<TrackKey>) {
-        self.0.lock().unwrap().retain(|id, _| flows.contains(id));
+    pub fn retain(&self, sources: &std::collections::HashSet<Uuid>) {
+        self.0.lock().unwrap().retain(|id, _| sources.contains(id));
     }
-    pub fn write(&self, key: TrackKey, source: Uuid, packet: rtp::Packet) {
+    pub fn write(&self, source: Uuid, packet: rtp::Packet) {
         let routes = self.0.lock().unwrap();
-        if let Some((active, targets)) = routes.get(&key) {
-            if *active == source {
-                for target in targets {
-                    let _ = target.try_send(packet.clone());
-                }
+        if let Some(targets) = routes.get(&source) {
+            for target in targets {
+                let _ = target.try_send(packet.clone());
             }
         }
     }

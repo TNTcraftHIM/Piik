@@ -9,10 +9,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Complete native capture/input and platform packaging over the
-  shared UI and Native participant.
-  Connect the Windows capture producer to App sharing through the existing Native
-  endpoint, keeping personal sharing page-owned and hosted rooms process-owned.
+  Rust owners. Complete Native source audio, encoder-demand adaptation, input
+  and platform packaging over the shared UI and Native participant.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
@@ -57,6 +55,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
+- [ ] **RTC DTLS fix submission.** The local SDK repair preserves the established
+  transport role when the SDP offerer changes. Submit it upstream and update the
+  fixed dependency after approval; Native capture acceptance uses this repair.
 - [ ] **Maintenance publication.** Held on 2026-10-27. Completed fixes stay on
   the maintenance branch; publish only on the owner's next instruction.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser

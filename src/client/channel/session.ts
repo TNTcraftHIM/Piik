@@ -4,8 +4,9 @@ import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessag
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
-import { AppRooms, discoverChannelAppHealth } from "./app-rooms";
+import { ChannelApp, discoverChannelAppHealth } from "./app-link";
 import { isClientActivated } from "../lib/session";
+import type { NativeCaptureTarget } from "../native/wire";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -26,6 +27,7 @@ function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
 export class ChannelSession {
   private view: ChannelView = {
     appConnected: false,
+    ownedScreens: new Set(),
     state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
     streams: new Map(), screenInputs: new Map(), error: null, inviteURL: null, pending: new Set(),
   };
@@ -46,7 +48,7 @@ export class ChannelSession {
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
-  private appRooms: AppRooms | undefined;
+  private app: ChannelApp | undefined;
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
   private microphone: MediaStream | null = null;
@@ -80,7 +82,9 @@ export class ChannelSession {
   screenPresentation = (flowId: string, stream: MediaStream, state: ScreenPresentation): void => this.media.screenPresentation(flowId, stream, state);
 
   private patch(patch: Partial<ChannelView>): void {
-    this.view = { ...this.view, ...patch, appConnected: this.appRooms?.connected ?? false };
+    const ownedScreens = new Set(this.app?.screens);
+    for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
+    this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens };
     for (const listener of this.listeners) listener();
   }
 
@@ -239,7 +243,12 @@ export class ChannelSession {
       }
     }
     for (const id of this.watching) {
-      if (!state.publications.some(publication => publication.id === id)) this.watching.delete(id);
+      if (!state.publications.some(publication => publication.id === id) && !this.view.pending.has(`watch:${id}`)) this.watching.delete(id);
+    }
+    for (const publication of this.view.state?.publications ?? []) {
+      if (this.app?.screens.has(publication.id) && !state.publications.some(value => value.id === publication.id)) {
+        void this.app.stopCapture(publication.id).catch(() => {});
+      }
     }
     // Server assignments own transports. Local stop intent owns what this page
     // presents and plays, including while the authority is temporarily unreachable.
@@ -388,31 +397,31 @@ export class ChannelSession {
   private releaseHosts(): void {
     const hosts = [...this.hostedRooms.values()];
     this.hostedRooms.clear();
-    const app = this.appRooms;
-    this.appRooms = undefined;
+    const app = this.app;
+    this.app = undefined;
     app?.close();
     this.hostCleanup = Promise.all([this.hostCleanup, ...hosts.map(value => value.host.close())]).then(() => {});
   }
 
-  private async connectApp(): Promise<AppRooms> {
+  private async connectApp(): Promise<ChannelApp> {
     const state = this.view.state, self = this.view.self;
     if (!state || !self || !this.credential || this.closed) throw new Error("disconnected");
-    if (!this.appRooms) {
+    if (!this.app) {
       const health = await discoverChannelAppHealth({ waitForPermission: false });
       if (!health) throw new Error("app_disconnected");
       if (this.closed || this.view.self?.id !== self.id || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
-      if (!this.appRooms) {
-        const app = new AppRooms(health, state.channel.id, self.id, this.credential, self.name, () => {
-          if (this.appRooms !== app) return;
-          this.appRooms = undefined;
+      if (!this.app) {
+        const app = new ChannelApp(health, state.channel.id, self.id, this.credential, self.name, () => {
+          if (this.app !== app) return;
+          this.app = undefined;
           this.patch({});
         });
-        this.appRooms = app;
+        this.app = app;
       }
     }
-    const app = this.appRooms;
+    const app = this.app;
     await app.ready;
-    if (this.appRooms === app && !this.closed) this.patch({});
+    if (this.app === app && !this.closed) this.patch({});
     return app;
   }
 
@@ -530,7 +539,7 @@ export class ChannelSession {
     stored(nameKey, name.trim());
   });
   createRoom = (settings: RoomSettings): Promise<string> => this.action("create-room", async () => {
-    const app = this.appRooms?.connected ? this.appRooms : undefined;
+    const app = this.app?.connected ? this.app : undefined;
     const state = this.view.state, self = this.view.self, sessionId = this.view.sessionId;
     if (!state || !self || !sessionId) throw new Error("disconnected");
     const runtime = await loadRoomHosting(), roomId = crypto.randomUUID();
@@ -563,9 +572,9 @@ export class ChannelSession {
   });
   revokeRoomAccess = (roomId: string, userId: string): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }));
   setRoles = (userId: string, roles: string[]): Promise<void> => this.action(`roles:${userId}`, () => this.request({ type: "set_roles", userId, roles }));
-  watch = (publicationId: string): Promise<void> => this.action(`watch:${publicationId}`, async () => {
+  watch = (publicationId: string, roomId?: string): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     this.watching.add(publicationId);
-    try { await this.request({ type: "subscribe", publicationId, enabled: true }); }
+    try { await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId); }
     catch (error) { this.watching.delete(publicationId); this.refreshActivity(); throw error; }
   });
   unwatch = (publicationId: string): Promise<void> => this.action(`watch:${publicationId}`, async () => {
@@ -598,7 +607,27 @@ export class ChannelSession {
     if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); throw new Error("closed"); }
     await this.publish("screen", roomId, stream);
   });
+  nativeSources = async (): Promise<NativeCaptureTarget[]> => (await this.connectApp()).sources();
+  startNativeScreen = (roomId: string, target: NativeCaptureTarget): Promise<void> => this.action(`screen:${roomId}`, async () => {
+    const epoch = this.captureEpoch;
+    const app = await this.connectApp();
+    if (epoch !== this.captureEpoch) throw new Error("closed");
+    const id = await app.startCapture(roomId, target);
+    if (epoch !== this.captureEpoch || this.app !== app) {
+      await app.stopCapture(id);
+      throw new Error("closed");
+    }
+    this.patch({});
+    // Native owns the source; this page previews it through the ordinary route.
+    await this.watch(id, roomId);
+  });
   stopScreen = (publicationId: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
+    if (this.app?.screens.has(publicationId)) {
+      this.watching.delete(publicationId);
+      await this.app.stopCapture(publicationId);
+      this.refreshActivity();
+      return;
+    }
     const roomId = this.local.get(publicationId)?.roomId ?? this.commandRoom({ type: "unpublish", publicationId });
     this.retireCapture(publicationId);
     this.refreshActivity();
@@ -691,6 +720,7 @@ export class ChannelSession {
 
   private releaseMedia(): void {
     this.captureEpoch += 1;
+    this.app?.stopCaptures();
     this.attachments.reset();
     this.media.reset();
     this.local.clear();

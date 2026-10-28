@@ -1,6 +1,7 @@
 import type { RoomSummary } from "./protocol";
 import { z } from "zod";
 import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
+import { nativeCaptureTargetSchema, type NativeCaptureTarget } from "../native/wire";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
@@ -29,16 +30,18 @@ export const channelAppDiscovery: AppDiscovery = {
   isIncompatible: error => error instanceof AppCompatibilityError,
 };
 
-/** An approved control connection starts rooms in the App's independent participant. */
-export class AppRooms {
+/** Hosting survives this link; captures selected through it belong to this page. */
+export class ChannelApp {
   private socket: WebSocket;
   private requests = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
   readonly ready: Promise<void>;
   private rejectReady!: (error: Error) => void;
   private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
+  private captures = new Set<string>();
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
+  get screens(): ReadonlySet<string> { return this.captures; }
 
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string, onClose: () => void) {
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
@@ -82,8 +85,31 @@ export class AppRooms {
     return this.request({ type: "open", policy });
   }
 
+  async sources(): Promise<NativeCaptureTarget[]> {
+    await this.ready;
+    return z.array(nativeCaptureTargetSchema).parse(await this.request({ type: "targets" }));
+  }
+
+  async startCapture(roomId: string, target: NativeCaptureTarget): Promise<string> {
+    await this.ready;
+    const result = z.object({ publicationId: z.uuid() }).strict()
+      .parse(await this.request({ type: "start_capture", roomId, target }));
+    this.captures.add(result.publicationId);
+    return result.publicationId;
+  }
+
+  async stopCapture(publicationId: string): Promise<void> {
+    if (!this.captures.delete(publicationId)) return;
+    if (this.connected) await this.request({ type: "stop_capture", publicationId });
+  }
+
+  stopCaptures(): void {
+    for (const id of this.captures) void this.stopCapture(id).catch(() => {});
+  }
+
   close(): void {
     this.authenticated = false;
+    this.captures.clear();
     clearTimeout(this.timer);
     this.socket.onclose = null;
     this.socket.close();

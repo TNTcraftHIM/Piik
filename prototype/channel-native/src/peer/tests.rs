@@ -9,7 +9,7 @@ fn driver() -> (
 ) {
     let (commands, output) = mpsc::channel(128);
     let (events, input) = mpsc::channel(1024);
-    let (first_packets, _) = mpsc::channel(16);
+    let (ready_sources, _) = mpsc::channel(16);
     let (stop, cancel) = watch::channel(false);
     (
         Driver {
@@ -19,10 +19,12 @@ fn driver() -> (
             links: Arc::new(Mutex::new(HashMap::new())),
             cancel,
             events,
-            first_packets,
+            ready_sources,
             pairs: HashMap::new(),
             publications: HashMap::new(),
             sources: HashMap::new(),
+            #[cfg(target_os = "windows")]
+            captures: HashMap::new(),
             relay: Relay::default(),
             files: Files::new(Uuid::nil()),
         },
@@ -42,10 +44,12 @@ async fn output(
     let input = Uuid::new_v4();
     let source = Source {
         id: Uuid::new_v4(),
-        flow_id: input,
         publication_id: publication,
-        pair: Uuid::new_v4(),
-        stream: Uuid::new_v4().to_string(),
+        origin: SourceOrigin::Incoming {
+            flow_id: input,
+            pair: Uuid::new_v4(),
+            stream: Uuid::new_v4().to_string(),
+        },
         codec: if kind == RtpCodecKind::Audio {
             codec()
         } else {
@@ -73,13 +77,17 @@ async fn output(
         input
     };
     let source = Source {
-        flow_id: input,
+        origin: SourceOrigin::Incoming {
+            flow_id: input,
+            pair: Uuid::new_v4(),
+            stream: Uuid::new_v4().to_string(),
+        },
         ..source
     };
     let next = Output::new(
         &*p.pc,
         &source,
-        source.stream.clone(),
+        Uuid::new_v4().to_string(),
         pair,
         (flow, kind),
         d.events.clone(),
@@ -88,7 +96,11 @@ async fn output(
     .await?;
     let id = next.id;
     p.outputs.insert((flow, kind), next);
-    d.sources.insert((input, kind), source);
+    d.sources.retain(|_, old| {
+        !(old.kind == kind
+            && matches!(old.origin, SourceOrigin::Incoming { flow_id, .. } if flow_id == input))
+    });
+    d.sources.insert(source.id, source);
     Ok(id)
 }
 
@@ -167,8 +179,19 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
     );
     let voice = Uuid::new_v4();
     let screen = Uuid::new_v4();
-    d.publications.insert(voice, Kind::Voice);
-    d.publications.insert(screen, Kind::Screen);
+    for (id, kind) in [(voice, Kind::Voice), (screen, Kind::Screen)] {
+        d.publications.insert(
+            id,
+            PublicationInfo {
+                id,
+                kind,
+                room_id: "room".into(),
+                session_id: d.session,
+                user_id: d.session,
+                muted: false,
+            },
+        );
+    }
     let voice_flow = Uuid::new_v4();
     let screen_flow = Uuid::new_v4();
     output(&mut d, pair, voice_flow, voice, RtpCodecKind::Audio).await?;

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
-import * as appRooms from "../src/client/channel/app-rooms";
+import * as appLink from "../src/client/channel/app-link";
 import * as launchSession from "../src/client/lib/session";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
@@ -116,7 +116,7 @@ test("domain and room invitations use the current Welcome origin without local b
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appRooms, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
@@ -173,9 +173,49 @@ test("App hosting uses its own participant while Browser rooms retain their page
   } finally { session.close(); }
 });
 
+test("Native capture previews before its Browser snapshot arrives and stops through its App owner", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  const publicationId = crypto.randomUUID();
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Test display" });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    app.receive({ id: app.sent.at(-1)!.id, result: { publicationId } });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("subscribe"));
+    const watch = socket.sent.at(-1)!;
+    const state = session.getSnapshot().state!;
+    socket.receive({ type: "state", state });
+    const published = { ...state,
+      publications: [{ id: publicationId, roomId: "first", sessionId: "native", userId: "self", kind: "screen", muted: false }],
+      subscriptions: [publicationId],
+    };
+    socket.receive({ type: "state", state: published });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: watch.requestId, result: { type: "done" } });
+    await starting;
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
+    expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
+
+    const stopping = session.stopScreen(publicationId);
+    expect(app.sent.at(-1)).toMatchObject({ type: "stop_capture", publicationId });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    socket.receive({ type: "state", state });
+    await stopping;
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
+    session.close();
+    expect(app.readyState).toBe(3);
+    expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("remembered App intent does not prevent Browser hosting when no App is connected", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  const discovery = vi.spyOn(appRooms, "discoverChannelAppHealth").mockResolvedValue(null);
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(null);
   const host = {
     roomId: "", summary: () => ({ id: host.roomId, name: "Browser room", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
     bind: async () => {}, close: async () => {},
@@ -205,7 +245,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
 
 test("an App failure during creation does not turn that request into a Browser room", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appRooms, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   let prepared!: (policy: string) => void;
   let policy = "";
   const browserOpen = vi.fn();

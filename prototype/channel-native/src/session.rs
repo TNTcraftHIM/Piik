@@ -1,8 +1,9 @@
 //! One explicit hosting session owns its signaling connection and native peers.
 //! Room policy and route decisions remain in the shared core.
 use crate::{
+    capture::{Settings, Target},
     hosted_room::HostedRoom,
-    peer::{NativeEvent, NativePeers},
+    peer::{CaptureLease, NativeEvent, NativePeers},
 };
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -11,8 +12,8 @@ use piik_channel_core::{
     history::HistoryResult,
 };
 use piik_channel_core::{
-    host::RoomSummary,
-    wire::{Command, Event, RoomAccess, Snapshot},
+    host::{RoomResult, RoomSummary},
+    wire::{Command, Event, Kind, PublicationInput, RoomAccess, Snapshot},
     RoomState, RECOVERY_MS,
 };
 use std::sync::Arc;
@@ -181,6 +182,16 @@ async fn process_peer(
             token,
             packet,
         } if peers.control_current(peer, pair, token) => room.receive(peers, peer, packet),
+        NativeEvent::CaptureEnded {
+            publication_id,
+            error,
+            ..
+        } => {
+            if let Some(error) = error {
+                eprintln!("Native capture ended: {error}");
+            }
+            write(socket, &Command::Unpublish { publication_id }, None).await?;
+        }
         _ => {}
     }
     Ok(())
@@ -218,6 +229,7 @@ struct Session {
     signer: Arc<SessionSigner>,
     hosting: Option<Hosting>,
     opening: BTreeMap<String, Vec<oneshot::Sender<Result<RoomSummary, String>>>>,
+    pending_captures: BTreeMap<String, StartCapture>,
 }
 
 pub struct OpenRoom {
@@ -225,10 +237,35 @@ pub struct OpenRoom {
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
 }
 
+pub struct StartCapture {
+    pub publication_id: Uuid,
+    pub room_id: String,
+    pub target: Target,
+    pub settings: Settings,
+    pub result: oneshot::Sender<Result<CaptureLease, String>>,
+}
+
+pub enum HostCommand {
+    Open(OpenRoom),
+    StartCapture(StartCapture),
+}
+impl HostCommand {
+    fn unavailable(self) {
+        match self {
+            Self::Open(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::StartCapture(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+        }
+    }
+}
+
 pub struct Hosting {
     pub directory: PathBuf,
     pub identity: (Uuid, Uuid),
-    pub commands: mpsc::Receiver<OpenRoom>,
+    pub commands: mpsc::Receiver<HostCommand>,
     pub ready: watch::Sender<Option<Result<(), String>>>,
 }
 
@@ -255,9 +292,11 @@ pub async fn run_host(
         signer: Arc::new(new_signer()?),
         hosting,
         opening: BTreeMap::new(),
+        pending_captures: BTreeMap::new(),
     };
     let mut stop = std::pin::pin!(stop);
     let result = session.drive(&mut stop).await;
+    session.fail_captures("hosting_stopped");
     let closed = session.release().await;
     let error = result
         .as_ref()
@@ -278,7 +317,14 @@ pub async fn run_host(
 }
 
 impl Session {
+    fn fail_captures(&mut self, code: &str) {
+        for request in std::mem::take(&mut self.pending_captures).into_values() {
+            let _ = request.result.send(Err(code.into()));
+        }
+    }
+
     async fn release(&mut self) -> Result<()> {
+        self.fail_captures("hosting_unavailable");
         if let Some(live) = self.live.take() {
             live.room.snapshot.send_replace(None);
             live.peers.close().await?;
@@ -296,10 +342,20 @@ impl Session {
             let limits = WebSocketConfig::default()
                 .max_message_size(Some(2 * 1024 * 1024))
                 .max_frame_size(Some(2 * 1024 * 1024));
-            let connection = tokio::select! {
-                _ = &mut *stop => return Ok(()),
-                _ = recovery_deadline(self.recovery) => { self.release().await?; continue; },
-                result = time::timeout(Duration::from_secs(5), connect_async_with_config(request, Some(limits), false)) => result,
+            let connecting = time::timeout(
+                Duration::from_secs(5),
+                connect_async_with_config(request, Some(limits), false),
+            );
+            tokio::pin!(connecting);
+            let connection = loop {
+                tokio::select! {
+                    _ = &mut *stop => return Ok(()),
+                    _ = recovery_deadline(self.recovery) => { self.release().await?; },
+                    command = next_host_command(&mut self.hosting) => {
+                        command.ok_or_else(|| anyhow!("hosting_control_closed"))?.unavailable();
+                    },
+                    result = &mut connecting => break result,
+                }
             };
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
@@ -311,6 +367,7 @@ impl Session {
                     signing_key: self.signer.signing_key(),
                 };
                 let result = self.connected(&mut socket, join, stop).await;
+                self.fail_captures("disconnected");
                 if let Some(live) = &self.live {
                     live.room.snapshot.send_replace(None);
                 }
@@ -323,10 +380,17 @@ impl Session {
             if self.live.is_some() && self.recovery.is_none() {
                 self.recovery = Some(Instant::now() + Duration::from_millis(RECOVERY_MS));
             }
-            tokio::select! {
-                _ = &mut *stop => return Ok(()),
-                _ = recovery_deadline(self.recovery) => self.release().await?,
-                _ = time::sleep(Duration::from_secs(1)) => {},
+            let delay = time::sleep(Duration::from_secs(1));
+            tokio::pin!(delay);
+            loop {
+                tokio::select! {
+                    _ = &mut *stop => return Ok(()),
+                    _ = recovery_deadline(self.recovery) => self.release().await?,
+                    command = next_host_command(&mut self.hosting) => {
+                        command.ok_or_else(|| anyhow!("hosting_control_closed"))?.unavailable();
+                    },
+                    _ = &mut delay => break,
+                }
             }
         }
     }
@@ -364,9 +428,13 @@ impl Session {
                         return Ok(true);
                     }
                     tokio::select! {
-                        request = next_host_command(&mut self.hosting), if admitted => {
+                        request = next_host_command(&mut self.hosting) => {
                             let request = request.ok_or_else(|| anyhow!("hosting_control_closed"))?;
-                            self.open_room(request, socket).await?;
+                            if !admitted { request.unavailable(); }
+                            else { match request {
+                                HostCommand::Open(request) => self.open_room(request, socket).await?,
+                                HostCommand::StartCapture(request) => self.start_capture(request, socket).await?,
+                            } }
                         },
                         command = next_command(&mut self.live), if admitted => {
                             let command = command.ok_or_else(|| anyhow!("native_peer_stopped"))?;
@@ -521,6 +589,33 @@ impl Session {
                     });
                 }
                 self.recovery = None;
+                // A disconnected pending Publish may have completed without its
+                // reply reaching us. Only real local producer ownership survives.
+                let live = self.live.as_mut().unwrap();
+                let captures = await_peer(
+                    live.peers.capture_publications(),
+                    &mut live.commands,
+                    &live.pairs,
+                    &mut live.room,
+                    &live.peers,
+                    socket,
+                )
+                .await?;
+                for publication in &state.publications {
+                    if publication.session_id == live.session
+                        && matches!(publication.kind, Kind::Screen)
+                        && !captures.contains(&publication.id)
+                    {
+                        write(
+                            socket,
+                            &Command::Unpublish {
+                                publication_id: publication.id,
+                            },
+                            None,
+                        )
+                        .await?;
+                    }
+                }
                 self.state(state, socket).await?;
                 if resumed {
                     let live = self.live.as_mut().unwrap();
@@ -600,7 +695,42 @@ impl Session {
                     }
                 }
             }
+            Event::RoomReply {
+                room_id,
+                request_id: Some(id),
+                result,
+            } => {
+                if self
+                    .pending_captures
+                    .get(&id)
+                    .is_some_and(|request| request.room_id == room_id)
+                {
+                    let request = self.pending_captures.remove(&id).unwrap();
+                    match result {
+                        RoomResult::Done => self.finish_capture(request, socket).await?,
+                        RoomResult::Error { code } => {
+                            let publication_id = request.publication_id;
+                            let _ = request.result.send(Err(code));
+                            self.unpublish_capture(publication_id, socket).await?;
+                        }
+                        _ => {
+                            let publication_id = request.publication_id;
+                            let _ = request.result.send(Err("invalid_capture_reply".into()));
+                            self.unpublish_capture(publication_id, socket).await?;
+                        }
+                    }
+                }
+            }
             Event::Error { code, request_id } => {
+                if let Some(request) = request_id
+                    .as_ref()
+                    .and_then(|id| self.pending_captures.remove(id))
+                {
+                    let publication_id = request.publication_id;
+                    let _ = request.result.send(Err(code));
+                    self.unpublish_capture(publication_id, socket).await?;
+                    return Ok(());
+                }
                 if request_id.as_ref().is_some_and(|id| {
                     self.live
                         .as_ref()
@@ -623,6 +753,84 @@ impl Session {
                 eprintln!("Channel error: {code}");
             }
             _ => {}
+        }
+        Ok(())
+    }
+
+    async fn start_capture(&mut self, request: StartCapture, socket: &mut Socket) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
+        }
+        if !cfg!(target_os = "windows") {
+            let _ = request.result.send(Err("capture_unavailable".into()));
+            return Ok(());
+        }
+        let publication = PublicationInput {
+            id: request.publication_id,
+            room_id: request.room_id.clone(),
+            kind: Kind::Screen,
+            muted: false,
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures.insert(id.clone(), request);
+        write(socket, &Command::Publish { publication }, Some(&id)).await
+    }
+
+    async fn unpublish_capture(&mut self, publication_id: Uuid, socket: &mut Socket) -> Result<()> {
+        let owned = self.live.as_ref().is_some_and(|live| {
+            live.room.snapshot.borrow().as_ref().is_some_and(|state| {
+                state.publications.iter().any(|publication| {
+                    publication.id == publication_id
+                        && publication.session_id == live.session
+                        && matches!(publication.kind, Kind::Screen)
+                })
+            })
+        });
+        if owned {
+            write(socket, &Command::Unpublish { publication_id }, None).await?;
+        }
+        Ok(())
+    }
+
+    async fn finish_capture(&mut self, request: StartCapture, socket: &mut Socket) -> Result<()> {
+        let publication_id = request.publication_id;
+        let live = self
+            .live
+            .as_mut()
+            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+        let current = live.room.snapshot.borrow().as_ref().is_some_and(|state| {
+            state.publications.iter().any(|publication| {
+                publication.id == publication_id
+                    && publication.room_id == request.room_id
+                    && publication.session_id == live.session
+                    && matches!(publication.kind, Kind::Screen)
+            })
+        });
+        if !current || request.result.is_closed() {
+            let _ = request.result.send(Err("publication_unavailable".into()));
+            self.unpublish_capture(publication_id, socket).await?;
+            return Ok(());
+        }
+        let result = await_peer(
+            live.peers
+                .start_capture(publication_id, request.target, request.settings),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await;
+        match result {
+            Ok(lease) => {
+                if request.result.send(Ok(lease)).is_err() {
+                    self.unpublish_capture(publication_id, socket).await?;
+                }
+            }
+            Err(error) => {
+                let _ = request.result.send(Err(error.to_string()));
+                self.unpublish_capture(publication_id, socket).await?;
+            }
         }
         Ok(())
     }
@@ -732,7 +940,7 @@ impl Session {
     }
 }
 
-async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<OpenRoom> {
+async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<HostCommand> {
     match hosting {
         Some(hosting) => hosting.commands.recv().await,
         None => std::future::pending().await,
