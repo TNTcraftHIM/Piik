@@ -35,6 +35,7 @@ export class ChannelSession {
   private recoveryDeadline: ReturnType<typeof setTimeout> | null = null;
   private closed = true;
   private credential = stored(credentialKey) ?? undefined;
+  private invitationOrigin = location.origin;
   private key = new URLSearchParams(location.hash.slice(1)).get("owner")
     ?? new URLSearchParams(location.hash.slice(1)).get("invite") ?? undefined;
   private invitedRoom = new URLSearchParams(location.hash.slice(1)).get("room") ?? undefined;
@@ -135,8 +136,9 @@ export class ChannelSession {
       if (!resumed) this.releaseHosts();
       this.credential = event.credential;
       stored(credentialKey, event.credential);
+      this.invitationOrigin = event.invitationOrigin ?? location.origin;
       const invite = event.inviteKey ?? (!this.invitedRoom ? new URLSearchParams(location.hash.slice(1)).get("invite") : null);
-      const inviteURL = new URL(location.pathname, location.origin);
+      const inviteURL = new URL(location.pathname, this.invitationOrigin);
       if (invite) inviteURL.hash = new URLSearchParams({ invite }).toString();
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
       this.applyState(event.state);
@@ -555,7 +557,7 @@ export class ChannelSession {
     let key: string | undefined;
     await this.request({ type: "room_invite", roomId }, event => { if (event.type === "room_invite") key = event.key; });
     if (!key) throw new Error("invalid_response");
-    const url = new URL(location.pathname, location.origin);
+    const url = new URL(location.pathname, this.invitationOrigin);
     url.hash = new URLSearchParams({ room: roomId, invite: key }).toString();
     return url.href;
   });

@@ -89,6 +89,31 @@ async function setup(window = 1000, read = true, hash = "") {
 
 const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [] });
 
+test("domain and room invitations use the current Welcome origin without local bootstrap data", async () => {
+  const { session, peer } = await setup();
+  const state = session.getSnapshot().state!;
+  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview?piik-client-port=39721#owner=local-owner&piik-client=1&piik-client-port=39721"));
+  try {
+    for (const invitationOrigin of ["https://friends.example", undefined]) {
+      session.reconnect();
+      const socket = ChannelSocket.current;
+      await socket.onopen?.();
+      socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state,
+        inviteKey: "domain-invite", ...(invitationOrigin ? { invitationOrigin } : {}) });
+      const origin = invitationOrigin ?? "https://channel.test";
+      expect(session.getSnapshot().inviteURL).toBe(`${origin}/__channel-preview#invite=domain-invite`);
+      const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+      socket.receive({ type: "ack", requestId: browse.requestId });
+      peer.page(await peer.next(), [], false, null);
+      const creating = session.createRoomInvite("first");
+      const request = socket.sent.findLast(command => command.type === "room_invite")!;
+      socket.receive({ type: "room_invite", roomId: "first", key: "room-invite", requestId: request.requestId });
+      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
+      await expect(creating).resolves.toBe(`${origin}/__channel-preview#room=first&invite=room-invite`);
+    }
+  } finally { session.close(); }
+});
+
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appRooms, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });

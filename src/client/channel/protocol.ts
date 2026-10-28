@@ -51,7 +51,7 @@ export const signalSchema = z.object({
   tracks: z.array(z.object({ flowId: id, streamId: id })).optional(),
 }).refine(signal => Boolean(signal.description) === Boolean(signal.exchangeId), { message: "SDP requires an exchange", path: ["exchangeId"] });
 export const eventSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional() }),
+  z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional(), invitationOrigin: z.string().url().optional() }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
   z.object({ type: z.literal("room_invite"), roomId: id, key: id, requestId: id.optional() }),
   z.object({ type: z.literal("host_bound"), roomId: id, bindingId: id }),
