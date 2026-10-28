@@ -1,18 +1,11 @@
 //! Local site permission and its data namespace. Domain credentials stay in memory.
+use crate::web::origin;
 use anyhow::{bail, Result};
 use rusqlite::{params, Connection, OptionalExtension};
 use std::{collections::BTreeMap, path::Path};
 use uuid::Uuid;
 
 pub(super) struct Sites(Connection);
-
-pub(super) fn origin(value: &str) -> Result<String> {
-    let url = url::Url::parse(value)?;
-    if !matches!(url.scheme(), "http" | "https") || url.origin().ascii_serialization() != value {
-        bail!("invalid_site_origin");
-    }
-    Ok(value.to_owned())
-}
 
 impl Sites {
     pub fn open(directory: &Path) -> Result<Self> {

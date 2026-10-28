@@ -57,6 +57,13 @@ represent separate users; tabs in one profile share a saved user credential but
 have independent live sessions. The default loopback ports are 8791 for Rust and
 8790 for the interface. `PIIK_CHANNEL_PORT`, `PIIK_CHANNEL_UI_PORT` and
 `PIIK_CHANNEL_WEB_ORIGIN` allow an isolated instance with matching ports/origin.
+Optional `PIIK_CHANNEL_INVITATION_ORIGIN` selects a separate public HTTP(S)
+origin for invitations and permits that exact WebSocket Origin alongside the
+primary UI origin. Both values must be exact origins without paths, credentials,
+queries or fragments. The public origin must serve or proxy this same frontend
+and domain WebSocket; this setting does not create a listener or tunnel. The
+runtime supplies `invitationOrigin` in Welcome only when configured and does not
+save it in domain or room data. Keep owner-entry credentials on the local entry.
 
 For a standalone deployment, build the
 [same frontend as static assets](../channel-browser/README.md), then set

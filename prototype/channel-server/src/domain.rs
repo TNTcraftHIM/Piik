@@ -33,6 +33,7 @@ struct Hub {
     authority: Authority,
     clients: BTreeMap<Uuid, Client>,
     storage: Arc<Mutex<storage::Storage>>,
+    invitation_origin: Option<String>,
 }
 
 impl Hub {
@@ -95,7 +96,15 @@ impl Hub {
         self.apply(effects);
     }
 
-    fn send(&self, connection: Uuid, event: Event) {
+    fn send(&self, connection: Uuid, mut event: Event) {
+        if let Some(origin) = &self.invitation_origin {
+            if let Event::Welcome {
+                invitation_origin, ..
+            } = &mut event
+            {
+                *invitation_origin = Some(origin.clone());
+            }
+        }
         if let Some(client) = self.clients.get(&connection) {
             if client.events.try_send(event).is_err() {
                 let _ = client.close.send(true);
@@ -132,7 +141,12 @@ async fn upgrade(
     headers: HeaderMap,
     socket: WebSocketUpgrade,
 ) -> Response {
-    if headers.get("origin").and_then(|value| value.to_str().ok()) != Some(state.origin.as_str()) {
+    let origin = headers.get("origin").and_then(|value| value.to_str().ok());
+    let allowed = origin.is_some_and(|origin| {
+        origin == state.origin.as_str()
+            || state.hub.lock().unwrap().invitation_origin.as_deref() == Some(origin)
+    });
+    if !allowed {
         return StatusCode::FORBIDDEN.into_response();
     }
     let Ok(permit) = state.sockets.clone().try_acquire_owned() else {
@@ -276,8 +290,14 @@ impl Domain {
         owner: &str,
         invite: &str,
         origin: String,
+        invitation_origin: Option<String>,
         ice_servers: Vec<serde_json::Value>,
     ) -> anyhow::Result<Self> {
+        let origin = crate::web::origin(&origin)?;
+        let invitation_origin = invitation_origin
+            .as_deref()
+            .map(crate::web::origin)
+            .transpose()?;
         anyhow::ensure!(
             directory != Path::new(":memory:"),
             "PIIK_CHANNEL_DATA_DIR must be a real directory"
@@ -300,6 +320,7 @@ impl Domain {
                 authority,
                 clients: BTreeMap::new(),
                 storage: Arc::new(Mutex::new(storage)),
+                invitation_origin,
             })),
             sockets: Arc::new(Semaphore::new(40)),
             origin,

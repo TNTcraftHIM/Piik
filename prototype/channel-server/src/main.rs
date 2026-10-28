@@ -9,6 +9,7 @@ async fn main() -> anyhow::Result<()> {
         .expect("PIIK_CHANNEL_PORT must be a port");
     let origin =
         std::env::var("PIIK_CHANNEL_WEB_ORIGIN").unwrap_or_else(|_| "http://127.0.0.1:8790".into());
+    let invitation_origin = std::env::var("PIIK_CHANNEL_INVITATION_ORIGIN").ok();
     let owner = std::env::var("PIIK_CHANNEL_OWNER_KEY")
         .expect("Set PIIK_CHANNEL_OWNER_KEY to a private stable startup key");
     let invite = std::env::var("PIIK_CHANNEL_INVITE_KEY")
@@ -26,7 +27,14 @@ async fn main() -> anyhow::Result<()> {
         Some(directory) => web::frontend(&PathBuf::from(directory))?,
         None => axum::Router::new(),
     };
-    let state = Domain::open(&directory, &owner, &invite, origin.clone(), ice_servers)?;
+    let state = Domain::open(
+        &directory,
+        &owner,
+        &invite,
+        origin.clone(),
+        invitation_origin,
+        ice_servers,
+    )?;
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
     println!("Piik Rust channel prototype: http://127.0.0.1:{port}");
     println!(

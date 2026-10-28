@@ -413,6 +413,7 @@ impl Authority {
                         session_id: admitted.session_id,
                         state: self.channel.snapshot(admitted.session_id),
                         invite_key: owner.then(|| self.channel.identity.invite_key.clone()),
+                        invitation_origin: None,
                     },
                 ));
                 if let Some(request_id) = request.request_id {
@@ -583,6 +584,7 @@ impl Authority {
                                 session_id: admitted.session_id,
                                 state: self.channel.snapshot(admitted.session_id),
                                 invite_key: None,
+                                invitation_origin: None,
                             },
                         ));
                         if let Some(request_id) = pending.request_id {

@@ -67,6 +67,7 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
     let mut hub = Hub {
         authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
+        invitation_origin: None,
         storage: Arc::new(Mutex::new(
             storage::Storage::open(Path::new(":memory:")).unwrap(),
         )),
@@ -169,6 +170,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         storage: Arc::new(Mutex::new(directory_store)),
+        invitation_origin: None,
     };
     let mut operator = Endpoint::join(&mut hub, "invite");
     let mut viewer = Endpoint::join(&mut hub, "invite");
@@ -342,6 +344,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         "owner",
         "invite",
         "http://localhost".into(),
+        None,
         vec![],
     )
     .unwrap();
@@ -554,7 +557,15 @@ async fn start_server(
     tokio::task::JoinHandle<anyhow::Result<()>>,
     Arc<Mutex<Hub>>,
 ) {
-    let state = Domain::open(folder, "owner", "invite", "http://localhost".into(), vec![]).unwrap();
+    let state = Domain::open(
+        folder,
+        "owner",
+        "invite",
+        "http://localhost".into(),
+        None,
+        vec![],
+    )
+    .unwrap();
     let hub = state.hub.clone();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -571,6 +582,147 @@ async fn start_server(
         },
     ));
     (address, stop, task, hub)
+}
+
+#[tokio::test]
+async fn invitation_origin_is_only_a_second_exact_http_entry() {
+    let folder = std::env::temp_dir().join(format!("piik-domain-origins-{}", Uuid::new_v4()));
+    let primary = "http://localhost";
+    let invitation = "https://invite.example";
+    let owner = Uuid::new_v4().to_string();
+    assert!(Domain::open(
+        &folder,
+        &owner,
+        "invite",
+        format!("{primary}/path"),
+        None,
+        vec![]
+    )
+    .is_err());
+    assert!(Domain::open(
+        &folder,
+        &owner,
+        "invite",
+        primary.into(),
+        Some("https://user@invite.example".into()),
+        vec![]
+    )
+    .is_err());
+    assert!(
+        !folder.exists(),
+        "invalid entry configuration cannot initialize domain data"
+    );
+    let state = Domain::open(
+        &folder,
+        &owner,
+        "invite",
+        primary.into(),
+        Some(invitation.into()),
+        vec![],
+    )
+    .unwrap();
+    assert_eq!(
+        state.origin(),
+        primary,
+        "Native retains the primary connection origin"
+    );
+    let identity = state.identity().0;
+    let hub = state.hub.clone();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let (stop, stopped) = oneshot::channel();
+    let task = tokio::spawn(state.serve(listener, Router::new(), async {
+        let _ = stopped.await;
+    }));
+    let request = |origin: &str| {
+        let mut request = format!("ws://{address}/prototype/channel")
+            .into_client_request()
+            .unwrap();
+        request
+            .headers_mut()
+            .insert("Origin", origin.parse().unwrap());
+        request
+    };
+    let mut sockets = Vec::new();
+    for (origin, key) in [(primary, owner.as_str()), (invitation, "invite")] {
+        let (mut socket, _) = connect_async(request(origin)).await.unwrap();
+        send_request(
+            &mut socket,
+            json!({"type":"join", "key":key, "name":"Entry user"}),
+        )
+        .await;
+        let text = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match socket.next().await.unwrap().unwrap() {
+                    Message::Text(text) => break text,
+                    Message::Ping(bytes) => socket.send(Message::Pong(bytes)).await.unwrap(),
+                    other => panic!("unexpected entry event: {other:?}"),
+                }
+            }
+        })
+        .await
+        .unwrap();
+        let welcome: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(welcome["type"], "welcome");
+        assert_eq!(welcome["invitationOrigin"], invitation);
+        assert_eq!(welcome["state"]["channel"]["id"], identity.to_string());
+        assert_eq!(
+            welcome["state"]["sessions"].as_array().unwrap().len(),
+            sockets.len() + 1,
+            "both entries share the same admitted domain"
+        );
+        assert!(
+            !text.contains(&owner),
+            "the actual Welcome never exposes the owner key"
+        );
+        sockets.push(socket);
+    }
+    assert!(
+        matches!(connect_async(request("https://stranger.example")).await,
+        Err(tokio_tungstenite::tungstenite::Error::Http(response)) if response.status() == 403)
+    );
+    let checkpoint = hub
+        .lock()
+        .unwrap()
+        .storage
+        .lock()
+        .unwrap()
+        .load()
+        .unwrap()
+        .unwrap();
+    assert!(
+        !checkpoint.to_string().contains(invitation),
+        "the invitation address is not domain identity or room data"
+    );
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    drop(sockets);
+    drop(hub);
+    let restored = Domain::open(&folder, &owner, "invite", primary.into(), None, vec![]).unwrap();
+    assert_eq!(restored.identity().0, identity);
+    {
+        let mut hub = restored.hub.lock().unwrap();
+        let mut probe = Endpoint::connect(&mut hub);
+        probe.request(
+            &mut hub,
+            json!({"type":"join", "key":owner, "name":"Restored owner"}),
+        );
+        let welcome = probe
+            .drain()
+            .into_iter()
+            .find(|event| event["type"] == "welcome")
+            .unwrap();
+        assert!(
+            welcome.get("invitationOrigin").is_none(),
+            "without an override Welcome keeps its existing shape"
+        );
+    }
+    drop(restored);
+    std::fs::remove_dir_all(folder).unwrap();
 }
 
 #[tokio::test]
@@ -750,6 +902,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         "owner",
         "invite",
         "http://localhost".into(),
+        None,
         vec![],
     )
     .unwrap();

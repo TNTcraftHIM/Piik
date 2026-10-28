@@ -2,6 +2,7 @@
 #[path = "app_sites.rs"]
 mod sites;
 
+use crate::web;
 use anyhow::{anyhow, bail, Result};
 use axum::{
     extract::{
@@ -276,7 +277,7 @@ pub async fn serve(
 }
 
 fn request_origin(headers: &HeaderMap) -> Option<String> {
-    sites::origin(headers.get(header::ORIGIN)?.to_str().ok()?).ok()
+    web::origin(headers.get(header::ORIGIN)?.to_str().ok()?).ok()
 }
 fn local_origin(app: &App, value: &str) -> bool {
     value == format!("http://127.0.0.1:{}", app.port)
@@ -407,7 +408,7 @@ struct Approval {
     allowed: bool,
 }
 async fn approve(State(app): State<Arc<App>>, Json(change): Json<Approval>) -> ApiResult {
-    let site = sites::origin(&change.site).map_err(|_| {
+    let site = web::origin(&change.site).map_err(|_| {
         (
             StatusCode::BAD_REQUEST,
             Json(json!({"detail":"Invalid site address"})),

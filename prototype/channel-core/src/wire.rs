@@ -422,6 +422,8 @@ pub enum Event {
         state: Snapshot,
         #[serde(skip_serializing_if = "Option::is_none")]
         invite_key: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        invitation_origin: Option<String>,
     },
     State {
         state: Snapshot,
