@@ -16,6 +16,9 @@ import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelNameEditor } from "../channel/components/ChannelNameEditor";
 import { ChannelRoomControls, ChannelRoomEntry } from "../channel/components/ChannelRoomControls";
 import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
+import { AppConnectionButton } from "../components/living/AppConnectionButton";
+import { channelAppDiscovery } from "../channel/app-rooms";
+import "../channel/bootstrap";
 import "./channel-preview.css";
 
 export function ChannelPreviewPage() {
@@ -107,7 +110,8 @@ export function ChannelPreviewPage() {
     ? copy("正在连接", "Connecting") : connection === "reconnecting" ? copy("正在重连", "Reconnecting") : copy("连接已断开", "Disconnected");
 
   return <div className={`lr-app c3-app${vis ? " c3-visual" : ""}`}>
-    <AppHeader homeHref={`${location.pathname}${location.search}${location.hash}`} atHome appControl={null} diagnosticControl={null}
+    <AppHeader homeHref={`${location.pathname}${location.search}${location.hash}`} atHome
+      appControl={<AppConnectionButton discovery={channelAppDiscovery} onConnected={() => run(channel.activateApp())} />} diagnosticControl={null}
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
     <main className="c3-shell" data-pane={mobilePane}>

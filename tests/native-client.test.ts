@@ -5,6 +5,7 @@ import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompat
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { AppQualityPreference } from "../src/client/native/quality-preference";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
+import { channelAppDiscovery, discoverChannelAppHealth } from "../src/client/channel/app-rooms";
 
 import {
   nativeEventSchema,
@@ -24,6 +25,42 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("discovers the room App independently of v10 media control and checks health after approval", async () => {
+  vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://channel.example/") });
+  let approved = false;
+  vi.stubGlobal("fetch", vi.fn(async (raw: string) => {
+    const url = new URL(raw), port = Number(url.port);
+    if (port === NATIVE_CLIENT_PORT_START) return Response.json({ service: "piik-client", protocol: 10, port });
+    if (port !== NATIVE_CLIENT_PORT_START + 1) throw new TypeError("No listener");
+    const identity = { service: "piik-channel-app", protocol: 1, port };
+    if (url.pathname === "/connect-discovery") return Response.json({ ...identity, connectURL: `http://127.0.0.1:${port}/client` });
+    return approved ? Response.json({ ...identity, token: "instance-token" }) : new Response(null, { status: 403 });
+  }));
+  await expect(channelAppDiscovery.connect()).resolves.toBe(`http://127.0.0.1:${NATIVE_CLIENT_PORT_START + 1}/client?site=https%3A%2F%2Fchannel.example`);
+  await expect(discoverChannelAppHealth()).resolves.toBeNull();
+  approved = true;
+  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ protocol: 1, port: NATIVE_CLIENT_PORT_START + 1, token: "instance-token" });
+});
+
+it("uses an explicit non-secret App port outside the default scan range", async () => {
+  const page = { setTimeout, clearTimeout, location: new URL("https://channel.example/?piik-client-port=48995#piik-client=1"),
+    history: { state: null, replaceState: vi.fn() } };
+  vi.stubGlobal("window", page);
+  const bootstrap = await import("../src/client/lib/session");
+  bootstrap.takeClientLaunchBootstrap();
+  try {
+    const fetcher = vi.fn(async () => Response.json({ service: "piik-channel-app", protocol: 1, port: 48995, token: "instance-token" }));
+    vi.stubGlobal("fetch", fetcher);
+    await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: 48995 });
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledWith("http://127.0.0.1:48995/health", expect.anything());
+    expect(page.history.replaceState).toHaveBeenCalledWith(null, "", "/");
+  } finally {
+    page.location = new URL("https://channel.example/#piik-client=1");
+    bootstrap.takeClientLaunchBootstrap();
+  }
 });
 
 describe("native App private wire", () => {

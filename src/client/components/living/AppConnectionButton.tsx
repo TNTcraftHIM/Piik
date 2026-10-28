@@ -9,9 +9,11 @@ import { HintComic } from "./hints";
 import { LoadingStatus } from "./WaitingStatus";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { androidAppIntent } from "../../native/activation";
+import type { AppDiscovery } from "../../native/discovery";
 
 interface AppConnectionProps {
   onConnected?: () => void;
+  discovery?: AppDiscovery;
 }
 
 interface ConnectionAttempt {
@@ -21,7 +23,13 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected, discovery }: AppConnectionProps) {
+  const loadDiscovery = async (): Promise<AppDiscovery> => {
+    if (discovery) return discovery;
+    const native = await import("../../native/client");
+    return { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
+      isIncompatible: error => error instanceof native.NativeCompatibilityError };
+  };
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
   const wakeURL = androidAppIntent("piik://app");
@@ -38,14 +46,14 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
       if (pending.current || help.current?.matches(":popover-open") || !isClientActivated()) return;
       healthCheck.current?.abort();
       const current = healthCheck.current = new AbortController();
-      const native = await import("../../native/client");
+      const native = await loadDiscovery();
       if (current.signal.aborted) return;
       try {
-        const health = await native.discoverNativeHealth({ signal: current.signal, waitForPermission: false });
+        const health = await native.health({ signal: current.signal, waitForPermission: false });
         if (!current.signal.aborted && !pending.current) setState(health ? "ready" : "idle");
       } catch (error) {
         if (!current.signal.aborted && !pending.current) {
-          setState(error instanceof native.NativeCompatibilityError ? "incompatible" : "idle");
+          setState(native.isIncompatible(error) ? "incompatible" : "idle");
         }
       }
     };
@@ -56,7 +64,7 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     window.addEventListener("focus", onFocus);
     const unwatch = watchClientActivation(onFocus);
     return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); unwatch(); };
-  }, []);
+  }, [discovery]);
   useEffect(() => () => { pending.current?.controller.abort(); pending.current?.popup?.close(); }, []);
 
   function showHelp(): void {
@@ -73,13 +81,13 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     pending.current = attempt;
     showHelp();
     const signal = attempt.controller.signal;
-    let native: typeof import("../../native/client") | undefined;
+    let native: AppDiscovery | undefined;
     let approving = false;
     let waking = false;
     const verifyApproval = async (reported = false) => {
       if (approving || signal.aborted) return;
       approving = true;
-      const health = await native?.discoverNativeHealth({ signal }).catch(() => null);
+      const health = await native?.health({ signal }).catch(() => null);
       if (signal.aborted) return;
       approving = false;
       if (health) {
@@ -126,12 +134,12 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     const discover = async () => {
       setState("busy");
       try {
-        native = await import("../../native/client");
+        native = await loadDiscovery();
         if (signal.aborted) return;
-        const url = await native.discoverNativeConnect(signal);
+        const url = await native.connect(signal);
         if (signal.aborted) return;
         if (!url) { finish("unavailable"); return; }
-        const health = await native.discoverNativeHealth({ signal, waitForPermission: false });
+        const health = await native.health({ signal, waitForPermission: false });
         if (signal.aborted) return;
         manage = manage && health !== null;
         if (health && !manage) {
@@ -153,7 +161,7 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
         };
         setState(manage ? "ready" : "approval");
       } catch (error) {
-        if (!signal.aborted) finish(native && error instanceof native.NativeCompatibilityError ? "incompatible" : "unavailable");
+        if (!signal.aborted) finish(native?.isIncompatible(error) ? "incompatible" : "unavailable");
       }
     };
     if (wake && wakeURL) {

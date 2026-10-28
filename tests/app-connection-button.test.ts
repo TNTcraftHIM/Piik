@@ -80,6 +80,8 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
     window, document, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, isClientActivated: () => activated,
+    loadDiscovery: async () => ({ health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
+      isIncompatible: (error: unknown) => error instanceof native.NativeCompatibilityError }),
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
       return () => window.removeEventListener("activation", changed);

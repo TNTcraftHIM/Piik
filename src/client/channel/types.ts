@@ -25,6 +25,7 @@ export interface ChannelView {
 }
 
 export interface ChannelActions {
+  activateApp(): Promise<void>;
   browse(roomId: string): void;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;
   loadHistory(roomId: string): Promise<void>;

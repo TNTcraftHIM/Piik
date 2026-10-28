@@ -1,6 +1,6 @@
 import { mountApp } from "../../../src/client/mount";
 import { ChannelPreviewPage } from "../../../src/client/pages/ChannelPreviewPage";
-import { initTheme } from "../../../src/client/ui/theme";
+import "../../../src/client/channel/bootstrap";
+import { AppLauncherPage } from "../../../src/client/pages/AppLauncherPage";
 
-initTheme();
-void mountApp(<ChannelPreviewPage />);
+void mountApp(location.pathname === "/client" || location.pathname === "/client/" ? <AppLauncherPage /> : <ChannelPreviewPage />);

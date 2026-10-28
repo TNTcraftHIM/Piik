@@ -1,4 +1,33 @@
 import type { RoomSummary } from "./protocol";
+import { z } from "zod";
+import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
+
+const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
+const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
+type AppHealth = z.infer<typeof healthSchema>;
+class AppCompatibilityError extends Error {}
+
+function identity(body: unknown, port: number): void {
+  const value = identitySchema.parse(body);
+  if (value.port !== port) throw new Error("invalid_app_response");
+  if (value.protocol !== 1) throw new AppCompatibilityError("App room protocol is incompatible");
+}
+
+export function discoverChannelAppHealth(options: AppDiscoveryOptions = {}): Promise<AppHealth | null> {
+  return discoverLocalApp("health", (body, port) => {
+    identity(body, port);
+    return healthSchema.parse(body);
+  }, options, error => error instanceof AppCompatibilityError);
+}
+
+export const channelAppDiscovery: AppDiscovery = {
+  health: discoverChannelAppHealth,
+  connect: signal => discoverLocalApp("connect-discovery", (body, port) => {
+    identity(body, port);
+    return appApprovalURL(identitySchema.extend({ connectURL: z.string().url().max(256) }).parse(body).connectURL);
+  }, { signal }, error => error instanceof AppCompatibilityError),
+  isIncompatible: error => error instanceof AppCompatibilityError,
+};
 
 /** An approved control connection starts rooms in the App's independent participant. */
 export class AppRooms {
@@ -8,9 +37,8 @@ export class AppRooms {
   private rejectReady!: (error: Error) => void;
   private timer: ReturnType<typeof setTimeout>;
 
-  constructor(port: string, token: string, channelId: string, userId: string, credential: string, name: string, onClose: (error: Error) => void) {
-    if (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535 || !token) throw new Error("invalid_app_link");
-    const socket = this.socket = new WebSocket(`ws://127.0.0.1:${port}/rooms`, `piik-channel-rooms.${token}`);
+  constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string, onClose: (error: Error) => void) {
+    const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
     const lost = (error = new Error("app_disconnected")) => { this.close(); onClose(error); };
     this.timer = setTimeout(() => lost(), 10000);
     this.ready = new Promise((resolve, reject) => {

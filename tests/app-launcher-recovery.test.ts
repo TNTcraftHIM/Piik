@@ -122,6 +122,18 @@ describe("App launcher state recovery", () => {
     expect(html).toContain(saved.sites[0]);
   });
 
+  it("keeps approved-site controls without unsupported room launch modes", () => {
+    const html = renderToStaticMarkup(createElement(LauncherForm, {
+      mode: "link", modes: [], sites: saved.sites, startupSite: saved.sites[0], localAccessPassword: "",
+      onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onSelectSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
+    }));
+    expect(html).toContain(saved.sites[0]);
+    expect(html).toContain("lr-client-site-actions");
+    expect(html).not.toContain('role="radiogroup"');
+    expect(html).not.toContain('type="submit"');
+    expect(html).not.toContain("lr-client-room-settings");
+  });
+
   it("reopens a healthy room without offering another mode or password", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
       mode: "local", sites: [], startupSite: "", localAccessPassword: "saved password", target: "http://127.0.0.1:8787/#piik-client=1",

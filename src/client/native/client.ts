@@ -1,8 +1,8 @@
 import type { z } from "zod";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { debugError, debugEvent } from "../lib/debug";
-import { clientRuntimePort } from "../lib/session";
-import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "./discovery-ports";
+import { appApprovalURL, discoverLocalApp, isLoopbackPage, type AppDiscoveryOptions } from "./discovery";
+export { isLoopbackPage } from "./discovery";
 
 import type {
   IceConfig,
@@ -50,30 +50,6 @@ import {
 } from "./wire";
 
 const REQUEST_TIMEOUT_MS = 8_000;
-
-interface NativeDiscoveryOptions {
-  waitForPermission?: boolean;
-  signal?: AbortSignal;
-}
-
-export function isLoopbackPage(): boolean {
-  return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
-}
-
-async function ungrantedLocalPermission(): Promise<PermissionState | null> {
-  // App Local already runs on loopback. Its permission can say "prompt" even
-  // though loopback-to-loopback requests do not need consent.
-  if (isLoopbackPage()) return null;
-  for (const name of ["loopback-network", "local-network-access"]) {
-    try {
-      const { state } = await navigator.permissions.query({ name: name as PermissionName });
-      return state === "granted" ? null : state;
-    } catch {
-      // Older Chromium uses the combined name; other browsers may expose neither.
-    }
-  }
-  return null;
-}
 
 interface PendingRequest<T = unknown> {
   operation: string;
@@ -123,7 +99,7 @@ export class NativeRequestError extends Error {
 }
 
 export async function discoverNativeHealth(
-  options: NativeDiscoveryOptions = {},
+  options: AppDiscoveryOptions = {},
 ): Promise<NativeHealth | null> {
   const health = await discoverNative("health", body => nativeHealthSchema.parse(body), options);
   if (health) debugEvent("native", "discovered", { capabilities: health.nativeMedia });
@@ -134,76 +110,26 @@ export async function discoverNativeHealth(
 export async function discoverNativeConnect(signal?: AbortSignal): Promise<string | null> {
   return discoverNative("connect-discovery", body => {
     const { connectURL } = nativeConnectSchema.parse(body);
-    const url = new URL(connectURL);
-    if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port ||
-        url.username || url.password || url.pathname !== "/client" || url.search || url.hash) {
-      throw new Error("Invalid local App approval address");
-    }
-    url.searchParams.set("site", window.location.origin);
-    return url.toString();
+    return appApprovalURL(connectURL);
   }, { signal });
 }
 
 async function discoverNative<T>(
   path: "health" | "connect-discovery", read: (body: unknown) => T,
-  { waitForPermission = true, signal }: NativeDiscoveryOptions,
+  options: AppDiscoveryOptions,
 ): Promise<T | null> {
-  if (signal?.aborted) return null;
-  if (!waitForPermission) {
-    const permission = await ungrantedLocalPermission();
-    if (permission) {
-      debugEvent("native", "unavailable", { stage: "permission", permission });
-      return null;
-    }
-  }
-  if (signal?.aborted) return null;
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal?.reason);
-  signal?.addEventListener("abort", abort, { once: true });
-  // The first request may wait for browser permission. One shared deadline
-  // bounds the scan; a silent port must not hide an App on another port.
-  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    // An explicit launch stays with its App even when another approved App is faster.
-    const selectedPort = clientRuntimePort();
-    const ports = selectedPort === null ? Array.from({
-      length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
-    }, (_, index) => NATIVE_CLIENT_PORT_START + index) : [selectedPort];
-    return await Promise.any(ports.map(async port => {
-      const response = await fetch(`http://127.0.0.1:${port}/${path}`, {
-        cache: "no-store",
-        signal: controller.signal,
-        ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
-      } as RequestInit);
-      if (!response.ok) throw new Error("Piik App discovery was not accepted");
-      const body: unknown = await response.json();
+    return await discoverLocalApp(path, (body, port) => {
       const identity = nativeDiscoveryIdentitySchema.safeParse(body);
-      if (!identity.success || identity.data.port !== port) {
-        throw new Error("Not a Piik App discovery response");
-      }
-      if (identity.data.protocol !== NATIVE_CLIENT_PROTOCOL) {
-        throw new NativeCompatibilityError(identity.data.protocol);
-      }
+      if (!identity.success || identity.data.port !== port) throw new Error("Not a Piik App discovery response");
+      if (identity.data.protocol !== NATIVE_CLIENT_PROTOCOL) throw new NativeCompatibilityError(identity.data.protocol);
       return read(body);
-    }));
+    }, options, error => error instanceof NativeCompatibilityError);
   } catch (error) {
-    const incompatible = error instanceof AggregateError
-      ? error.errors.find((failure) => failure instanceof NativeCompatibilityError)
-      : undefined;
-    if (incompatible) {
-      debugEvent("native", "incompatible", {
-        expectedProtocol: NATIVE_CLIENT_PROTOCOL,
-        actualProtocol: incompatible.actualProtocol,
-      });
-      throw incompatible;
-    }
-    // A failed fetch cannot distinguish an absent App from blocked local access.
-    debugEvent("native", "unavailable", { stage: "discovery", timedOut: controller.signal.aborted });
-    return null;
-  } finally {
-    signal?.removeEventListener("abort", abort);
-    window.clearTimeout(timer);
-    controller.abort();
+    if (error instanceof NativeCompatibilityError) debugEvent("native", "incompatible", {
+      expectedProtocol: NATIVE_CLIENT_PROTOCOL, actualProtocol: error.actualProtocol,
+    });
+    throw error;
   }
 }
 
@@ -241,7 +167,7 @@ export class NativeClient {
     socket.addEventListener("error", () => this.handleClose());
   }
 
-  static async connect(options?: NativeDiscoveryOptions): Promise<NativeClient | null> {
+  static async connect(options?: AppDiscoveryOptions): Promise<NativeClient | null> {
     const signal = options?.signal;
     const health = await discoverNativeHealth(options);
     if (!health || signal?.aborted) return null;

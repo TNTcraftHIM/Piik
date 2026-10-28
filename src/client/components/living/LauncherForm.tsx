@@ -163,7 +163,7 @@ export function LauncherForm({
       </section>
 
       {roomError}
-      {target ? <a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
+      {choices.length > 0 && (target ? <a className="lr-btn is-primary" href={entryURL(target)} onClick={onOpen} aria-label={t("client.launch.go")}>
         <Glyph name="arrowRight" size={19} />{vis ? null : <span className="lr-cap">{t("client.launch.go")}</span>}
       </a> : <>
       <p className={vis ? "visually-hidden" : "lr-client-launch-section"}>{t("client.launch.room")}</p>
@@ -267,7 +267,7 @@ export function LauncherForm({
         hint={MODES.find((choice) => choice.mode === mode)?.comic}
         disabled={mode === "local" && lan !== undefined && !lan.selected}
       />
-      </>}
+      </>)}
     </form>
   );
 }

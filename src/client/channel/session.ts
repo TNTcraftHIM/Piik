@@ -4,7 +4,8 @@ import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessag
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
-import { AppRooms } from "./app-rooms";
+import { AppRooms, discoverChannelAppHealth } from "./app-rooms";
+import { isClientActivated } from "../lib/session";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -44,7 +45,6 @@ export class ChannelSession {
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
   private appRooms: AppRooms | undefined;
-  private appLink = new URLSearchParams(location.hash.slice(1));
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
   private microphone: MediaStream | null = null;
@@ -139,7 +139,7 @@ export class ChannelSession {
       if (invite) inviteURL.hash = new URLSearchParams({ invite }).toString();
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
       this.applyState(event.state);
-      if (this.appLink.has("app")) void this.connectApp().catch(error => {
+      if (isClientActivated()) void this.connectApp().catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "app_disconnected" });
       });
       void this.restoreHosts(event.sessionId).catch(error => {
@@ -397,18 +397,24 @@ export class ChannelSession {
     const state = this.view.state, self = this.view.self;
     if (!state || !self || !this.credential || this.closed) throw new Error("disconnected");
     if (!this.appRooms) {
-      const app = new AppRooms(this.appLink.get("app") ?? "", this.appLink.get("appToken") ?? "",
-        state.channel.id, self.id, this.credential, self.name, error => {
+      const health = await discoverChannelAppHealth({ waitForPermission: false });
+      if (!health) throw new Error("app_disconnected");
+      if (this.closed || this.view.self?.id !== self.id || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
+      if (!this.appRooms) {
+        const app = new AppRooms(health, state.channel.id, self.id, this.credential, self.name, error => {
           if (this.appRooms !== app) return;
           this.appRooms = undefined;
           this.patch({ error: error.message });
         });
-      this.appRooms = app;
+        this.appRooms = app;
+      }
     }
     const app = this.appRooms;
     await app.ready;
     return app;
   }
+
+  activateApp = (): Promise<void> => this.action("app", async () => { await this.connectApp(); });
 
   private async browserStorage(channelId: string, userId: string) {
     const runtime = await loadRoomHosting(), database = roomDatabaseName(channelId, userId);
@@ -526,7 +532,7 @@ export class ChannelSession {
     if (!state || !self || !sessionId) throw new Error("disconnected");
     const runtime = await loadRoomHosting(), roomId = crypto.randomUUID();
     const policy = await runtime.createRoomPolicy({ ...settings, id: roomId, creatorId: self.id });
-    if (this.appLink.has("app")) {
+    if (isClientActivated()) {
       const app = await this.connectApp();
       const room = await app.open(policy);
       if (this.view.sessionId !== sessionId || this.closed) throw new Error("disconnected");

@@ -9,7 +9,6 @@ import { z } from "zod";
 import { createOpaqueId } from "./opaque-id";
 import { isLang, type Lang } from "../locales";
 import { withBrowserDebug } from "./debug";
-import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../native/discovery-ports";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
 const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
@@ -23,7 +22,7 @@ export function clientRuntimePort(): number | null { return clientPortInPage; }
 
 function parseClientRuntimePort(value: string | null): number | null {
   const port = Number(value);
-  return Number.isInteger(port) && port >= NATIVE_CLIENT_PORT_START && port <= NATIVE_CLIENT_PORT_END ? port : null;
+  return Number.isInteger(port) && port >= 1 && port <= 65535 ? port : null;
 }
 
 export function isClientActivated(): boolean {

@@ -2,6 +2,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
+import * as appRooms from "../src/client/channel/app-rooms";
+import * as launchSession from "../src/client/lib/session";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { ChannelAttachments } from "../src/client/channel/attachments";
@@ -25,6 +27,7 @@ class ChannelSocket {
 
 const testSigningKey = Array.from(Buffer.from("8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c", "hex"));
 beforeEach(() => {
+  vi.spyOn(launchSession, "isClientActivated").mockReturnValue(false);
   vi.spyOn(ChannelConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
   vi.stubGlobal("MediaStream", RoomMediaStream);
 });
@@ -87,6 +90,8 @@ async function setup(window = 1000, read = true, hash = "") {
 const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [] });
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appRooms, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
@@ -100,7 +105,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     createRoomPolicy: async (input: unknown) => JSON.stringify(input),
     BrowserRoomHost: { open: async () => host, storedPolicies },
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-  const { session, socket } = await setup(1000, true, "app=8793&appToken=approved");
+  const { session, socket } = await setup();
   const app = ChannelSocket.current;
   try {
     expect(app).not.toBe(socket);
