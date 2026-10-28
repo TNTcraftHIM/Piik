@@ -114,7 +114,7 @@ func newVoiceConnection(owner *voiceMedia, plan VoiceConnectionPlan, emit func(V
 		return nil, err
 	}
 	registry := &interceptor.Registry{}
-	settings := owner.settings
+	settings := owner.settings()
 	factory, err := forwarding.ConfigureAudioForwarding(&settings, registry, func(ssrc uint32) *livekitsfu.DownTrack {
 		owner.mu.Lock()
 		defer owner.mu.Unlock()

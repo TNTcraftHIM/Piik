@@ -190,8 +190,11 @@ Add `SFU_UDP_PORT=7882` to `.env`, allow UDP 7882, and restart Piik to enable
 automatic SFU fallback. When the server is behind NAT, also set `SFU_PUBLIC_IP`
 to its reachable public IPv4 address or DDNS hostname and forward the same external
 and internal UDP port as `SFU_UDP_PORT`. Use a hostname pointing directly to that
-IPv4, with the CDN proxy disabled. Piik resolves it at startup; after the public
-IP changes and DDNS updates, restart Piik. The same binary provides the fallback.
+IPv4, with the CDN proxy disabled. Piik resolves it at startup and every minute.
+After DDNS updates, new media connections use the updated address without a
+service restart. If the address change interrupted an ongoing share, the Host
+can restart sharing and Viewers can rejoin the room.
+The same binary provides the fallback.
 Allow server forwarding capacity and outbound bandwidth for Viewers actually
 using the SFU.
 The Host must turn off **Privacy mode** before sharing to allow this route.

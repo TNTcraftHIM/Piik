@@ -84,6 +84,8 @@ type Server struct {
 	logger        *slog.Logger
 	media         *sfu.Media
 	mediaMux      ice.UDPMux
+	sfuPublicIP   atomic.Pointer[string]
+	stopSFUDNS    func()
 	signalOptions signal.Options
 	httpServer    *http.Server
 	// Listen binds unless New received owned listeners. Shutdown waits for
@@ -232,14 +234,13 @@ func (s *Server) Listen(ctx context.Context) (int, error) {
 }
 
 func (s *Server) start(ctx context.Context) (int, error) {
-	var publicIP string
 	if s.config.SFU != nil {
-		var err error
-		publicIP, err = resolveSFUPublicIP(ctx, s.config.SFU.PublicIP)
+		publicIP, err := resolveSFUPublicIP(ctx, s.config.SFU.PublicIP)
 		if err != nil {
 			_ = s.stopServing(ctx)
 			return 0, err
 		}
+		s.sfuPublicIP.Store(&publicIP)
 	}
 	// Bind first. A listener owned by another process must fail before
 	// the room database is opened.
@@ -276,10 +277,14 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 		settings.SetICEUDPMux(s.mediaMux)
 		settings.SetIncludeLoopbackCandidate(net.ParseIP(configuration.ListenHost).IsLoopback())
-		if publicIP != "" {
-			settings.SetNAT1To1IPs([]string{publicIP}, webrtc.ICECandidateTypeHost)
-		}
-		s.media = sfu.NewMedia(sfu.MediaOptions{Settings: settings, Events: func(event sfu.MediaEvent) {
+		s.media = sfu.NewMedia(sfu.MediaOptions{Settings: func() webrtc.SettingEngine {
+			// A Pion API owns its settings snapshot for its entire lifetime.
+			snapshot := settings
+			if address := *s.sfuPublicIP.Load(); address != "" {
+				snapshot.SetNAT1To1IPs([]string{address}, webrtc.ICECandidateTypeHost)
+			}
+			return snapshot
+		}, Events: func(event sfu.MediaEvent) {
 			if signaling := s.signaling.Load(); signaling != nil {
 				signaling.HandleSfuMediaEvent(event)
 			}
@@ -287,6 +292,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 		s.signalOptions.SfuFallback = &signal.SfuFallback{Media: s.media, Admission: sfu.NewAdmission(sfu.AdmissionOptions{
 			IngressCapacity: room.Capacity, EgressCapacity: room.Capacity * s.config.MaxViewersPerRoom,
 		})}
+		s.startSFUDNSRefresh(configuration.PublicIP)
 	}
 	for _, listener := range s.listeners {
 		go func() {
@@ -332,6 +338,10 @@ func (s *Server) start(ctx context.Context) (int, error) {
 // listener afterwards makes the port release synchronous. A second close of an
 // already closed HTTP listener is harmless.
 func (s *Server) stopServing(ctx context.Context) error {
+	if s.stopSFUDNS != nil {
+		s.stopSFUDNS()
+		s.stopSFUDNS = nil
+	}
 	err := s.httpServer.Shutdown(ctx)
 	for _, listener := range s.listeners {
 		_ = listener.Close()

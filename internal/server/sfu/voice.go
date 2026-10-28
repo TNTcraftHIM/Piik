@@ -69,12 +69,12 @@ func (p VoiceConnectionPlan) key() voiceKey {
 
 type voiceMedia struct {
 	mu          sync.Mutex
-	settings    webrtc.SettingEngine
+	settings    func() webrtc.SettingEngine
 	connections map[voiceKey]*voiceConnection
 	closed      bool
 }
 
-func newVoiceMedia(settings webrtc.SettingEngine) *voiceMedia {
+func newVoiceMedia(settings func() webrtc.SettingEngine) *voiceMedia {
 	return &voiceMedia{settings: settings, connections: make(map[voiceKey]*voiceConnection)}
 }
 
