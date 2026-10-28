@@ -38,10 +38,11 @@ npx vite build --config prototype/channel-browser/web.vite.config.ts
 
 The ignored `build/channel-web/` directory contains the HTML, styles, JavaScript
 and WASM. This entry mounts the same functional page as `/__channel-preview`,
-sharing its session, components, theme and language preferences. Serve the whole
-directory, with `index.html` as the fallback for frontend paths such as
-`/__channel-preview`, and route the existing `/prototype/channel` WebSocket to
-the domain service on the same origin. Serve WASM as `application/wasm`.
+sharing its session, components, theme and language preferences. The
+[Rust service](../channel-server/README.md#run) can serve this directory directly.
+A separate web host must serve `index.html` for `/` and `/__channel-preview`,
+route the existing `/prototype/channel` WebSocket to the domain service on the
+same origin, and serve WASM as `application/wasm`.
 Node, Vite and the WASM tools are build dependencies; the deployed App or Server
 needs no Node runtime or source-file routes.
 

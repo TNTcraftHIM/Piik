@@ -1,4 +1,4 @@
-use piik_channel_prototype::{domain::Domain, serve_server};
+use piik_channel_prototype::{domain::Domain, serve_server, web};
 use std::path::PathBuf;
 
 #[tokio::main]
@@ -22,13 +22,17 @@ async fn main() -> anyhow::Result<()> {
     let directory = std::env::var("PIIK_CHANNEL_DATA_DIR")
         .unwrap_or_else(|_| "build/channel-prototype-data".into());
     let directory = PathBuf::from(directory);
+    let routes = match std::env::var_os("PIIK_CHANNEL_WEB_DIR") {
+        Some(directory) => web::frontend(&PathBuf::from(directory))?,
+        None => axum::Router::new(),
+    };
     let state = Domain::open(&directory, &owner, &invite, origin.clone(), ice_servers)?;
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?;
     println!("Piik Rust channel prototype: http://127.0.0.1:{port}");
     println!(
         "Web interface: {origin}/__channel-preview (use your configured owner or invitation key)"
     );
-    serve_server(listener, state, directory, owner, async {
+    serve_server(listener, state, directory, owner, routes, async {
         let _ = tokio::signal::ctrl_c().await;
     })
     .await

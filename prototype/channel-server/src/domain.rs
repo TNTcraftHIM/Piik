@@ -327,6 +327,7 @@ impl Domain {
     pub async fn serve(
         self,
         listener: tokio::net::TcpListener,
+        routes: Router,
         stop: impl Future<Output = ()>,
     ) -> anyhow::Result<()> {
         let app = Router::new()
@@ -336,7 +337,8 @@ impl Domain {
                 "/prototype/channel/limits",
                 get(|| async { axum::Json(piik_channel_core::ATTACHMENT_LIMITS) }),
             )
-            .with_state(self.clone());
+            .with_state(self.clone())
+            .merge(routes);
         let (stop_http, mut http_stopped) = watch::channel(false);
         let http = axum::serve(listener, app)
             .with_graceful_shutdown(async move {

@@ -1,5 +1,6 @@
 //! Domain I/O and explicit Server hosting composition.
 pub mod domain;
+pub mod web;
 
 use domain::Domain;
 use piik_channel_native::session::{self as native, Config, RoomFile};
@@ -12,6 +13,7 @@ pub async fn serve_server(
     domain: Domain,
     directory: PathBuf,
     owner: String,
+    routes: axum::Router,
     stop: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
     std::fs::create_dir_all(directory.join("rooms"))?;
@@ -39,7 +41,7 @@ pub async fn serve_server(
     let hosting = native::run(config, rooms, async {
         let _ = native_stopped.changed().await;
     });
-    let mut service = tokio::spawn(domain.serve(listener, async move {
+    let mut service = tokio::spawn(domain.serve(listener, routes, async move {
         let _ = domain_stopped.changed().await;
     }));
     tokio::pin!(hosting, stop);

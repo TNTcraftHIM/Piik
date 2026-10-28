@@ -14,6 +14,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture/input and platform packaging. Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
+  App launcher integration awaits the owner's decision on moving room hosting
+  from the page session to the App lifetime; personal voice and screen activities
+  would still end with their page. Unrelated prototype work continues.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

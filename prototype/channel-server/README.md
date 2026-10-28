@@ -58,10 +58,12 @@ have independent live sessions. The default loopback ports are 8791 for Rust and
 `PIIK_CHANNEL_WEB_ORIGIN` allow an isolated instance with matching ports/origin.
 
 For a standalone deployment, build the
-[same frontend as static assets](../channel-browser/README.md) and serve
-`build/channel-web/`, with a frontend-path fallback to `index.html` and the
-existing `/prototype/channel` WebSocket routed to this domain service. Vite is
-only the development server; the deployed frontend requires no Node runtime.
+[same frontend as static assets](../channel-browser/README.md), then set
+`PIIK_CHANNEL_WEB_DIR` to `build/channel-web/` and `PIIK_CHANNEL_WEB_ORIGIN` to
+the service's own origin. Rust serves the frontend and existing WebSocket on
+that listener. `/` and `/__channel-preview` open the frontend; missing assets
+and unknown API paths return 404. Vite is only the development server; the
+deployed frontend requires no Node runtime.
 
 ## Design studies
 

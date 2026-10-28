@@ -560,9 +560,16 @@ async fn start_server(
     let address = listener.local_addr().unwrap();
     let (stop, stopped) = oneshot::channel();
     let folder = folder.to_owned();
-    let task = tokio::spawn(serve(listener, state, folder, "owner".into(), async {
-        let _ = stopped.await;
-    }));
+    let task = tokio::spawn(serve(
+        listener,
+        state,
+        folder,
+        "owner".into(),
+        Router::new(),
+        async {
+            let _ = stopped.await;
+        },
+    ));
     (address, stop, task, hub)
 }
 
