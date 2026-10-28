@@ -33,6 +33,25 @@ function metrics(
 }
 
 describe("SFU quality probe", () => {
+  it.each([sfuCandidateDoesNotRegress, p2pCandidateDoesNotRegress])(
+    "compares frame delivery over the sampled window rather than the last second",
+    (compare) => {
+      const current = metrics(3_000);
+      expect(compare(current, metrics(3_100, { framesPerSecond: 30 }))).toBe(true);
+      expect(compare(current, metrics(3_100, { framesPerSecond: null }))).toBe(true);
+      expect(
+        compare(current, metrics(3_100, { intervalFramesDecoded: 60 })),
+      ).toBe(false);
+      expect(
+        compare(current, metrics(3_100, {
+          sampleWindowMs: 3_000,
+          intervalFramesDecoded: 180,
+          framesPerSecond: 30,
+        })),
+      ).toBe(true);
+    },
+  );
+
   it("accepts only complete same-Viewer non-regressing windows", () => {
     const current = metrics(2_000);
     expect(sfuCandidateDoesNotRegress(current, metrics(2_100))).toBe(true);
@@ -73,6 +92,7 @@ describe("SFU quality probe", () => {
       frameWidth: 320,
       frameHeight: 180,
       framesPerSecond: 10,
+      intervalFramesDecoded: 20,
       bitrateKbps: 200,
     });
     expect(
@@ -82,6 +102,7 @@ describe("SFU quality probe", () => {
           frameWidth: 1_280,
           frameHeight: 720,
           framesPerSecond: 30,
+          intervalFramesDecoded: 60,
           bitrateKbps: 150,
         }),
       ),
@@ -93,6 +114,7 @@ describe("SFU quality probe", () => {
           frameWidth: 1_280,
           frameHeight: 720,
           framesPerSecond: 30,
+          intervalFramesDecoded: 60,
           bitrateKbps: null,
         }),
       ),
@@ -105,6 +127,7 @@ describe("SFU quality probe", () => {
           frameWidth: 1_280,
           frameHeight: 720,
           framesPerSecond: 5,
+          intervalFramesDecoded: 10,
         }),
       ),
     ).toBe(false);
@@ -134,6 +157,7 @@ describe("SFU quality probe", () => {
         frameWidth: 320,
         frameHeight: 180,
         framesPerSecond: 10,
+        intervalFramesDecoded: 10,
       });
     const candidate = (timestampMs: number) =>
       metrics(timestampMs, {
@@ -141,6 +165,7 @@ describe("SFU quality probe", () => {
         frameWidth: 1_280,
         frameHeight: 720,
         framesPerSecond: 30,
+        intervalFramesDecoded: 30,
       });
 
     expect(
@@ -159,12 +184,14 @@ describe("SFU quality probe", () => {
       frameWidth: 320,
       frameHeight: 180,
       framesPerSecond: 10,
+      intervalFramesDecoded: 10,
     });
     const candidate = metrics(10_900, {
       sampleWindowMs: 1_000,
       frameWidth: 1_280,
       frameHeight: 720,
       framesPerSecond: 30,
+      intervalFramesDecoded: 30,
     });
 
     expect(p2pCandidateDoesNotRegress(current, candidate)).toBe(true);
@@ -182,7 +209,7 @@ describe("SFU quality probe", () => {
   it("rejects after three comparable regressing P2P windows", () => {
     const probe = new P2pQualityProbe();
     const candidate = (timestampMs: number) =>
-      metrics(timestampMs, { framesPerSecond: 30 });
+      metrics(timestampMs, { framesPerSecond: 30, intervalFramesDecoded: 60 });
     expect(probe.observe(metrics(1_000), candidate(1_100))).toBe("pending");
     expect(probe.observe(metrics(3_000), candidate(3_100))).toBe("pending");
     expect(probe.observe(metrics(5_000), candidate(5_100))).toBe("rejected");
@@ -206,7 +233,10 @@ describe("SFU quality probe", () => {
     expect(probe.observe(metrics(1_000), metrics(1_100))).toBe("pending");
     expect(probe.observe(metrics(3_000), metrics(3_100))).toBe("pending");
     expect(
-      probe.observe(metrics(5_000), metrics(5_100, { framesPerSecond: 30 })),
+      probe.observe(
+        metrics(5_000),
+        metrics(5_100, { framesPerSecond: 30, intervalFramesDecoded: 60 }),
+      ),
     ).toBe("pending");
     expect(probe.observe(metrics(7_000), metrics(7_100))).toBe("pending");
     expect(probe.observe(metrics(9_000), metrics(9_100))).toBe("pending");
@@ -242,6 +272,7 @@ describe("zero-frame current route", () => {
       frameWidth: 320,
       frameHeight: 180,
       framesPerSecond: 10,
+      intervalFramesDecoded: 20,
     });
 
   it("approves clean delivery on both candidate route types", () => {
