@@ -97,7 +97,7 @@ fn revoking_private_relay_retires_its_subtree_without_changing_public_flow() {
                     .unwrap()
                     .id,
                 pair_id: pair,
-                ready: true,
+                state: FlowState::Forwardable,
             },
             0,
         )
@@ -307,7 +307,7 @@ fn selective_subscriptions_ready_relays_and_failed_pair_ids_are_fenced() {
                     .unwrap()
                     .id,
                 pair_id: source_pairs[0].id,
-                ready: true,
+                state: FlowState::Forwardable,
             },
             0,
         )
@@ -346,7 +346,7 @@ fn selective_subscriptions_ready_relays_and_failed_pair_ids_are_fenced() {
                     .unwrap()
                     .id,
                 pair_id: source_pairs[0].id,
-                ready: true
+                state: FlowState::Forwardable
             },
             0
         )
@@ -549,6 +549,7 @@ fn history_requests_and_signal_tracks_use_the_actual_authority() {
             publication_id: Uuid::new_v4(),
             sender: first.session_id,
             receiver: second.session_id,
+            selected: true,
         }),
         [],
     );
@@ -732,7 +733,7 @@ fn connected_screen_without_media_proof_expires_to_a_ready_relay() {
             command: Command::FlowState {
                 flow_id: a_flow,
                 pair_id: a.id,
-                ready: true,
+                state: FlowState::Forwardable,
             },
         },
         0,

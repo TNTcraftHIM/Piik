@@ -145,6 +145,12 @@ base connections.
 Each screen keeps its own distribution plan. Startup reuses ready base paths,
 including required non-viewing transit. If those paths cannot carry the picture,
 the same plan seeks an alternative through the source or ready media relays.
+Once a Browser leaf decodes its current picture, the plan may prepare one direct
+source path while retaining playback. The candidate must decode, pass the shared
+quality comparison and supply a prewarmed video frame before selection. The player
+adopts that existing element and its source sound, preserving volume and pause.
+Candidate failure or the 20-second deadline keeps the old path; view toggles do
+not restart spent attempts. Internal-relay switching is a later step.
 Only newly constructed branches use the prototype's small fanout policy; reversing
 an existing base path does not discard its third direction. Server-owned default
 rooms have no Native endpoint and retain standalone publication plans.

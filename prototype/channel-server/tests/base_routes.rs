@@ -585,7 +585,7 @@ fn retired_picture_report_cannot_fail_recreated_flow_on_retained_base_pair() {
     for ready in [true, false] {
         let ignored = network.command(
             viewer,
-            json!({"type":"flow_state", "flowId":old_flow, "pairId":lease.id, "ready":ready}),
+            json!({"type":"flow_state", "flowId":old_flow, "pairId":lease.id, "state":if ready { "forwardable" } else { "failed" }}),
         );
         assert!(
             ignored.events.is_empty(),
@@ -680,7 +680,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     command(
         &mut network,
         relay,
-        json!({"type":"flow_state","flowId":root_relay.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_relay.id,"ready":true}),
+        json!({"type":"flow_state","flowId":root_relay.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_relay.id,"state":"forwardable"}),
     );
     let companion = publish(&mut network, viewer, &room, "screen");
     command(
@@ -693,12 +693,12 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     // report failure for somebody else's otherwise-current pair.
     let ignored = network.command(
         source,
-        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":true}),
+        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"state":"forwardable"}),
     );
     assert!(ignored.events.is_empty());
     let ignored = network.command(
         stranger,
-        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":false}),
+        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"state":"failed"}),
     );
     assert!(ignored.events.is_empty());
     // This receiver has never supplied ready=true. A real add-track/codec failure
@@ -706,7 +706,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     command(
         &mut network,
         source,
-        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":false}),
+        json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"state":"failed"}),
     );
     let repaired = network.state(viewer);
     assert!(repaired
@@ -774,7 +774,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     // The physical pair still serves other work, but its old picture lease no
     // longer authorizes either endpoint to damage the replacement route.
     for endpoint in [source, viewer] {
-        let ignored = network.command(endpoint, json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"ready":false}));
+        let ignored = network.command(endpoint, json!({"type":"flow_state","flowId":root_viewer.incoming.iter().find(|flow| flow.publication_id == picture).unwrap().id,"pairId":root_viewer.id,"state":"failed"}));
         assert!(ignored.events.is_empty());
     }
     assert!(network
@@ -1105,7 +1105,7 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
     command(
         &mut network,
         a,
-        json!({"type":"flow_state","flowId":proven_flow,"pairId":proven.id,"ready":true}),
+        json!({"type":"flow_state","flowId":proven_flow,"pairId":proven.id,"state":"forwardable"}),
     );
     let starting_effects = network.authority.handle(
         b,

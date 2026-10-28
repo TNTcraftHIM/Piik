@@ -480,12 +480,18 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
 }
 
 #[test]
-fn host_projection_rejects_cross_room_and_duplicate_live_flow_ids() {
+fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
     use piik_channel_prototype::{
         wire::{Event, Request},
         Authority,
     };
-    for duplicate_in_room in [false, true] {
+    for conflict in [
+        "cross_room_id",
+        "same_room_id",
+        "two_selected",
+        "two_candidates",
+        "candidate_without_selected",
+    ] {
         let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
         let source = Uuid::new_v4();
         let viewer = Uuid::new_v4();
@@ -578,16 +584,28 @@ fn host_projection_rejects_cross_room_and_duplicate_live_flow_ids() {
                 host.dispatch(input).unwrap();
                 let mut output = host.finish(None).unwrap();
                 if room == "second-review" && !output.projection.flows.is_empty() {
-                    if duplicate_in_room {
-                        output
-                            .projection
-                            .flows
-                            .push(output.projection.flows[0].clone());
-                    } else {
-                        output.projection.flows[0].id = original_flow.unwrap();
+                    let flows = &mut output.projection.flows;
+                    match conflict {
+                        "cross_room_id" => flows[0].id = original_flow.unwrap(),
+                        "same_room_id" => flows.push(flows[0].clone()),
+                        "two_selected" => {
+                            let mut duplicate = flows[0].clone();
+                            duplicate.id = Uuid::new_v4();
+                            flows.push(duplicate);
+                        }
+                        "two_candidates" => {
+                            for _ in 0..2 {
+                                let mut candidate = flows[0].clone();
+                                candidate.id = Uuid::new_v4();
+                                candidate.selected = false;
+                                flows.push(candidate);
+                            }
+                        }
+                        "candidate_without_selected" => flows[0].selected = false,
+                        _ => unreachable!(),
                     }
                     let effects = review_host_turn(&mut core, source, room, output);
-                    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")), "conflicting live flow ID must be rejected (same room: {duplicate_in_room})");
+                    assert!(effects.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")), "invalid flow ownership must be rejected: {conflict}");
                     let state = core
                         .handle(
                             source,

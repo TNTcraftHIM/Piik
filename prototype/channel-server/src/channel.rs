@@ -154,13 +154,13 @@ impl Channel {
                 Command::FlowState {
                     flow_id,
                     pair_id,
-                    ready,
+                    state,
                 } => {
                     let flow = self
-                        .flow_direction(session_id, pair_id, flow_id, ready)
+                        .flow_direction(session_id, pair_id, flow_id, state)
                         .ok_or("unassigned_flow")?;
                     self.room_mut(&id)?
-                        .flow_state(flow.id, flow.receiver, flow.sender, ready)?;
+                        .flow_state(flow.id, flow.receiver, flow.sender, state)?;
                     None
                 }
                 command => {
@@ -698,17 +698,17 @@ impl Channel {
             Command::FlowState {
                 flow_id,
                 pair_id,
-                ready,
+                state,
             } => {
                 let flow = self
-                    .flow_direction(context.session_id, pair_id, flow_id, ready)
+                    .flow_direction(context.session_id, pair_id, flow_id, state)
                     .ok_or("unassigned_flow")?;
                 HostAction::FlowState {
                     context,
                     flow_id,
                     sender: flow.sender,
                     receiver: flow.receiver,
-                    ready,
+                    state,
                 }
             }
             command => HostAction::Command { context, command },
@@ -721,10 +721,11 @@ impl Channel {
         reporter: Uuid,
         pair: Uuid,
         flow_id: Uuid,
-        ready: bool,
+        state: FlowState,
     ) -> Option<Flow> {
         let flow = self.transports.flow(pair, flow_id)?;
-        (flow.receiver == reporter || (!ready && flow.sender == reporter)).then_some(flow)
+        (flow.receiver == reporter || (state == FlowState::Failed && flow.sender == reporter))
+            .then_some(flow)
     }
 
     pub(crate) fn current_report(&self, session: Uuid, command: &Command) -> bool {
@@ -738,9 +739,9 @@ impl Channel {
             Command::FlowState {
                 flow_id,
                 pair_id,
-                ready,
+                state,
             } => self
-                .flow_direction(session, *pair_id, *flow_id, *ready)
+                .flow_direction(session, *pair_id, *flow_id, *state)
                 .is_some(),
             Command::LinkState { pair_id, .. } => self.peer(session, *pair_id).is_some(),
             _ => true,
@@ -974,8 +975,12 @@ impl Channel {
                     .flat_map(|projection| projection.flows.iter().map(|flow| flow.id)),
             )
             .collect();
+        let mut selected = BTreeSet::new();
+        let mut candidates = BTreeSet::new();
         for flow in &projection.flows {
             if !flow_ids.insert(flow.id)
+                || (flow.selected && !selected.insert((flow.publication_id, flow.receiver)))
+                || (!flow.selected && !candidates.insert(flow.publication_id))
                 || flow.sender == flow.receiver
                 || !endpoints.contains_key(&flow.sender)
                 || !endpoints.contains_key(&flow.receiver)
@@ -988,6 +993,13 @@ impl Channel {
             {
                 return Err("invalid_room_projection");
             }
+        }
+        if projection
+            .flows
+            .iter()
+            .any(|flow| !flow.selected && !selected.contains(&(flow.publication_id, flow.receiver)))
+        {
+            return Err("invalid_room_projection");
         }
         for link in &projection.base_links {
             if link.room_id != id

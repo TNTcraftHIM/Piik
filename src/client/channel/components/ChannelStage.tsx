@@ -3,6 +3,7 @@ import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { ChannelAction, ChannelVideo } from "./ChannelMedia";
+import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import "./channel-stage.css";
 
 export interface ChannelStageSource {
@@ -13,6 +14,7 @@ export interface ChannelStageSource {
   local: boolean;
   subscribed: boolean;
   stream?: MediaStream;
+  inputs?: readonly ChannelScreenInput[];
   pending?: boolean;
   available?: boolean;
 }
@@ -25,10 +27,11 @@ export interface ChannelStageProps {
   onWatch: (id: string) => void;
   onUnwatch: (id: string) => void;
   onStop: (id: string) => void;
+  onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
 }
 
 /** Subscription belongs to the caller. Focus only changes the layout of existing players. */
-export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onStop }: ChannelStageProps) {
+export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatch, onUnwatch, onStop, onPresentation }: ChannelStageProps) {
   const { lang, vis } = useCopy();
   const zh = lang === "zh";
   const copy = (cn: string, en: string) => zh ? cn : en;
@@ -73,7 +76,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               if (!focusable || (event.target instanceof Element && event.target.closest("button, input, select, a"))) return;
               onFocus(source.id);
             }}>
-            {source.stream ? <ChannelVideo stream={source.stream} local={source.local}
+            {source.stream ? <ChannelVideo stream={source.stream} local={source.local} inputs={source.inputs} onPresentation={onPresentation}
               label={`${source.name} — ${source.roomName}`} />
               : <div className="c3-monitor-wait" role="status"><Glyph name="loader" size={24} className="lr-spin" />
                 <span>{copy("正在连接画面", "Connecting picture")}</span></div>}

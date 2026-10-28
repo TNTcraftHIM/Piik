@@ -177,11 +177,11 @@ export function ChannelPreviewPage() {
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), local: publication.sessionId === sessionId,
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
-            subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id),
+            subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
             pending: busy(publication.sessionId === sessionId ? "stop" : "watch", publication.id),
           }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected && can("subscribe")}
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
-            onStop={id => run(channel.stopScreen(id))} />
+            onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation} />
           {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} messages={channel.messagesByRoom[roomId] ?? []}
             users={state?.users ?? []} canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}

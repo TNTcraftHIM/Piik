@@ -102,7 +102,7 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
     apply(
         &mut core,
         watcher,
-        json!({"type":"flow_state","flowId":healthy_flow,"pairId":healthy_pair,"ready":true}),
+        json!({"type":"flow_state","flowId":healthy_flow,"pairId":healthy_pair,"state":"forwardable"}),
         0,
     );
 

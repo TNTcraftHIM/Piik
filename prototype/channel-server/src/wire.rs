@@ -116,7 +116,7 @@ pub enum Command {
     FlowState {
         flow_id: Uuid,
         pair_id: Uuid,
-        ready: bool,
+        state: FlowState,
     },
     BaseState {
         room_id: String,
@@ -343,6 +343,16 @@ pub struct PairInfo {
 pub struct FlowBinding {
     pub id: Uuid,
     pub publication_id: Uuid,
+    pub selected: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlowState {
+    Failed,
+    Forwardable,
+    Decoded,
+    SwitchReady,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

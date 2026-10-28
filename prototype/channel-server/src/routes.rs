@@ -3,13 +3,19 @@ use uuid::Uuid;
 
 const FANOUT: usize = 2;
 
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Readiness {
+    Forwardable,
+    Decoded,
+}
+
 /// One source owns one acyclic tree. Shared physical transport ownership lives
 /// above these plans: a source retiring must not close another source's pair.
 #[derive(Clone)]
 pub struct Plan {
     pub source: Uuid,
     pub parents: BTreeMap<Uuid, Uuid>,
-    ready: BTreeSet<Uuid>,
+    ready: BTreeMap<Uuid, Readiness>,
     failed_parents: BTreeMap<Uuid, BTreeSet<Uuid>>,
 }
 
@@ -18,7 +24,7 @@ impl Plan {
         Self {
             source,
             parents: BTreeMap::new(),
-            ready: BTreeSet::new(),
+            ready: BTreeMap::new(),
             failed_parents: BTreeMap::new(),
         }
     }
@@ -54,7 +60,8 @@ impl Plan {
             }
         }
         self.parents.retain(|child, _| needed.contains(child));
-        self.ready.retain(|child| self.parents.contains_key(child));
+        self.ready
+            .retain(|child, _| self.parents.contains_key(child));
         self.failed_parents.retain(|child, parents| {
             parents.retain(|parent| available.contains(parent));
             available.contains(child)
@@ -78,7 +85,7 @@ impl Plan {
                 continue;
             }
             let failed = self.failed_parents.entry(*child).or_default();
-            let candidates = std::iter::once(self.source).chain(self.ready.iter().copied());
+            let candidates = std::iter::once(self.source).chain(self.ready.keys().copied());
             let parent = candidates
                 .filter(|parent| {
                     parent != child && connected.contains(parent) && !failed.contains(parent)
@@ -132,28 +139,59 @@ impl Plan {
         true
     }
 
-    pub fn mark_ready(&mut self, child: Uuid, parent: Uuid) -> bool {
+    pub fn mark_ready(&mut self, child: Uuid, parent: Uuid, proof: Readiness) -> bool {
         if self.parents.get(&child) != Some(&parent) {
             return false;
         }
-        self.ready.insert(child)
+        if self
+            .ready
+            .get(&child)
+            .is_some_and(|current| *current >= proof)
+        {
+            return false;
+        }
+        self.ready.insert(child, proof);
+        true
+    }
+
+    pub fn can_shortcut(&self, child: Uuid) -> bool {
+        self.parents
+            .get(&child)
+            .is_some_and(|parent| *parent != self.source)
+            && self.ready.get(&child) == Some(&Readiness::Decoded)
+            && !self.parents.values().any(|parent| *parent == child)
+            && self
+                .parents
+                .values()
+                .filter(|parent| **parent == self.source)
+                .count()
+                < FANOUT
+            && !self
+                .failed_parents
+                .get(&child)
+                .is_some_and(|failed| failed.contains(&self.source))
+    }
+
+    pub fn shortcut(&mut self, child: Uuid) {
+        self.parents.insert(child, self.source);
     }
 
     pub fn ready_edges(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
-        self.parents
-            .iter()
-            .filter_map(|(child, parent)| self.ready.contains(child).then_some((*parent, *child)))
+        self.parents.iter().filter_map(|(child, parent)| {
+            self.ready.contains_key(child).then_some((*parent, *child))
+        })
     }
 
     pub fn preparing_edges(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
         self.parents.iter().filter_map(|(child, parent)| {
-            (!self.ready.contains(child) && (*parent == self.source || self.ready.contains(parent)))
-                .then_some((*parent, *child))
+            (!self.ready.contains_key(child)
+                && (*parent == self.source || self.ready.contains_key(parent)))
+            .then_some((*parent, *child))
         })
     }
 
     pub fn mark_unready(&mut self, child: Uuid, parent: Uuid) -> bool {
-        if self.parents.get(&child) != Some(&parent) || !self.ready.remove(&child) {
+        if self.parents.get(&child) != Some(&parent) || self.ready.remove(&child).is_none() {
             return false;
         }
         let descendants: Vec<_> = self
@@ -256,7 +294,7 @@ impl BaseTree {
         };
         let changed = self.acknowledged.insert((endpoint, peer));
         if self.acknowledged.contains(&(peer, endpoint)) {
-            self.plan.mark_ready(child, parent);
+            self.plan.mark_ready(child, parent, Readiness::Forwardable);
         }
         changed
     }
@@ -313,7 +351,7 @@ mod tests {
         let available = set(&[1, 2, 3, 4, 5]);
         plan.reconcile(&requested, &available, &available, None);
         assert_eq!(plan.parents.len(), 2);
-        assert!(plan.mark_ready(id(2), id(1)));
+        assert!(plan.mark_ready(id(2), id(1), Readiness::Forwardable));
         plan.reconcile(&requested, &available, &available, None);
         assert_eq!(plan.parents[&id(4)], id(2));
         assert_eq!(plan.parents[&id(5)], id(2));
@@ -329,13 +367,13 @@ mod tests {
         let requested = set(&[2, 3, 4, 5]);
         let available = set(&[1, 2, 3, 4, 5]);
         first.reconcile(&requested, &available, &available, None);
-        first.mark_ready(id(2), id(1));
+        first.mark_ready(id(2), id(1), Readiness::Forwardable);
         first.reconcile(&requested, &available, &available, None);
         second.reconcile(&set(&[1, 3]), &available, &available, None);
         let second_before = second.parents.clone();
         first.failed(id(1), id(2));
         assert_eq!(first.parents, BTreeMap::from([(id(3), id(1))]));
-        first.mark_ready(id(3), id(1));
+        first.mark_ready(id(3), id(1), Readiness::Forwardable);
         first.reconcile(&requested, &available, &available, None);
         assert_eq!(first.parents[&id(3)], id(1));
         assert_ne!(first.parents.get(&id(2)), Some(&id(1)));
@@ -347,19 +385,19 @@ mod tests {
         let mut plan = Plan::new(id(1));
         let available = set(&[1, 2, 3, 4]);
         plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
-        plan.mark_ready(id(2), id(1));
+        plan.mark_ready(id(2), id(1), Readiness::Forwardable);
         plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         let before = plan.parents.clone();
         plan.reconcile(&set(&[3, 4]), &available, &available, None);
         assert_eq!(plan.parents, before);
         assert!(
-            !plan.mark_ready(id(2), id(1)),
+            !plan.mark_ready(id(2), id(1), Readiness::Forwardable),
             "existing transit proof is retained"
         );
         plan.reconcile(&set(&[3]), &available, &available, None);
         assert!(!plan.parents.contains_key(&id(2)));
         assert!(!plan.parents.values().any(|parent| *parent == id(2)));
-        assert!(!plan.mark_ready(id(2), id(1)));
+        assert!(!plan.mark_ready(id(2), id(1), Readiness::Forwardable));
         assert_eq!(plan.parents, BTreeMap::from([(id(3), id(1))]));
     }
 
@@ -379,18 +417,18 @@ mod tests {
         let mut plan = Plan::new(id(1));
         let available = set(&[1, 2, 3, 4]);
         plan.reconcile(&set(&[2]), &available, &available, None);
-        plan.mark_ready(id(2), id(1));
+        plan.mark_ready(id(2), id(1), Readiness::Forwardable);
         plan.reconcile(&set(&[]), &available, &available, None);
         plan.reconcile(&set(&[2]), &available, &available, None);
         assert_eq!(plan.parents[&id(2)], id(1));
 
-        plan.mark_ready(id(2), id(1));
+        plan.mark_ready(id(2), id(1), Readiness::Forwardable);
         plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         assert_eq!(plan.parents[&id(4)], id(2));
         plan.failed(id(1), id(2));
         assert!(plan.failed_parents[&id(2)].contains(&id(1)));
         assert!(plan.failed_parents[&id(4)].is_empty());
-        plan.mark_ready(id(3), id(1));
+        plan.mark_ready(id(3), id(1), Readiness::Forwardable);
         plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         assert_eq!(plan.parents[&id(2)], id(3));
         assert!(plan.parents.contains_key(&id(4)));
@@ -404,7 +442,7 @@ mod tests {
         for _ in 0..5 {
             plan.reconcile(&requested, &available, &available, None);
             for (child, parent) in plan.parents.clone() {
-                plan.mark_ready(child, parent);
+                plan.mark_ready(child, parent, Readiness::Forwardable);
             }
         }
         for _ in 0..4 {
@@ -422,7 +460,7 @@ mod tests {
         requested.insert(id(10));
         plan.reconcile(&requested, &available, &available, None);
         let parent = plan.parents[&id(10)];
-        plan.mark_ready(id(10), parent);
+        plan.mark_ready(id(10), parent, Readiness::Forwardable);
         plan.reconcile(&requested, &available, &available, None);
         assert_eq!(plan.parents[&id(9)], id(10));
         // Session retirement removes its old candidate failure fact. Mere
@@ -460,7 +498,7 @@ mod tests {
             3,
             "shared suffix is installed once before the first media proof"
         );
-        screen.mark_ready(id(1), id(3));
+        screen.mark_ready(id(1), id(3), Readiness::Forwardable);
         assert_eq!(
             screen.ready_edges().collect::<Vec<_>>(),
             vec![(id(3), id(1))]

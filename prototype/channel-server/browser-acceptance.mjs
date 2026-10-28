@@ -74,7 +74,8 @@ function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
-    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [];
+    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [];
+    let captureAudio = false;
     const conversationWS = Object.create(null);
     const warn = console.warn.bind(console);
     console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
@@ -93,6 +94,10 @@ function captureProbe(name) {
       for (const pair of event.state?.pairs ?? []) {
         pairPeers.set(pair.id, pair.peerId);
         for (const flow of [...pair.incoming, ...pair.outgoing]) flowPublications.set(flow.id, flow.publicationId);
+      }
+      if (direction === 'sent' && event.type === 'flow_state') {
+        flowStates.push({ flowId: event.flowId, state: event.state, time: Date.now() });
+        if (flowStates.length > 128) flowStates.shift();
       }
       protocol.push({ direction, type:event.type, room:event.roomId, request:event.requestId,
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
@@ -150,6 +155,16 @@ function captureProbe(name) {
         return super.send(data);
       }
     };
+    const createAudioSource = AudioContext.prototype.createMediaStreamSource;
+    AudioContext.prototype.createMediaStreamSource = function(stream) {
+      const source = createAudioSource.call(this, stream);
+      const owner = { trackId: stream.getAudioTracks()[0]?.id, context: this, connected: false };
+      audioSources.push(owner);
+      const connect = source.connect.bind(source), disconnect = source.disconnect.bind(source);
+      source.connect = (...args) => { owner.connected = true; return connect(...args); };
+      source.disconnect = (...args) => { owner.connected = false; return disconnect(...args); };
+      return source;
+    };
     const microphone = () => {
       const context = new AudioContext(), oscillator = context.createOscillator();
       contexts.push(context);
@@ -174,9 +189,24 @@ function captureProbe(name) {
       const stream = canvas.captureStream(10); captures.push(stream);
       const track = stream.getVideoTracks()[0], stop = track.stop.bind(track);
       track.stop = () => { clearInterval(timer); stop(); };
+      if (captureAudio) for (const audio of microphone().getAudioTracks()) stream.addTrack(audio);
       return stream;
     };
     window.__channelProbe = { peers, sockets, captures, contexts,
+      captureAudio(enabled) { captureAudio = enabled; },
+      screen(publicationId) {
+        const snapshot = window.__channelGate.snapshot();
+        return { streamId: snapshot.streams.get(publicationId)?.id,
+          inputs: (snapshot.screenInputs.get(publicationId) ?? []).map(input => {
+            const element = [...document.querySelectorAll('video')].find(video => video.dataset.flowId === input.flowId);
+            if (element) element.__allocationIdentity ??= crypto.randomUUID();
+            return { flowId: input.flowId, selected: input.selected, switchReady: input.switchReady, streamId: input.stream.id,
+              audio: input.stream.getAudioTracks().map(track => track.id), elementId: element?.__allocationIdentity,
+              displayed: element?.dataset.selected, composited: element?.dataset.composited, muted: element?.muted,
+              paused: element?.paused, fullscreen: !!element && document.fullscreenElement === element.parentElement,
+              volume: element?.volume, frames: element?.getVideoPlaybackQuality().totalVideoFrames, time: element?.currentTime };
+          }), flowStates, audioOwners: audioSources.filter(owner => owner.connected && owner.context.state === 'running').map(owner => owner.trackId) };
+      },
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
       stallVideo(publicationId, peerId) { videoStall = { publicationId, peerId }; },
@@ -380,6 +410,95 @@ async function senderAllocationFailure() {
   return result;
 }
 
+async function leafShortcut(initial) {
+  const leaf = 0, relay = 1, source = 3;
+  for (const [first, second] of [[relay, source], [source, relay]]) {
+    await evaluate(first, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[second].sessionId)})`);
+  }
+  const room = await action(relay, "createRoom({name:'Leaf shortcut',access:'public',hidden:false})");
+  for (const index of [leaf, source]) await browser(index, 'click', '.c3-room-link[aria-label="Leaf shortcut"]');
+  await until('shortcut room forms its two base branches', () => view(relay), value =>
+    [initial[leaf].sessionId, initial[source].sessionId].every(id => value.state.pairs.some(pair => pair.peerId === id && pair.rooms.includes(room))));
+  for (const index of [leaf, source]) await action(index, `joinVoice(${JSON.stringify(room)})`);
+  const leafVoice = (await view(leaf)).state.publications.find(publication => publication.sessionId === initial[leaf].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
+  const sourceVoice = (await view(source)).state.publications.find(publication => publication.sessionId === initial[source].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
+  await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
+  const inspect = publication => evaluate(leaf, `window.__channelProbe.screen(${JSON.stringify(publication)})`);
+  const records = [];
+  await evaluate(source, 'window.__channelProbe.captureAudio(true)');
+  try {
+    for (const mode of ['timeout', 'commit']) {
+      const publication = await capturedScreen(source, room);
+      await evaluate(source, `window.__channelProbe.stallVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[leaf].sessionId)})`);
+      try {
+        await action(leaf, `watch(${JSON.stringify(publication)})`);
+        await playing(leaf, publication);
+        const pending = await until('decoded leaf installs an unselected direct candidate', () => view(leaf), value =>
+          value.state.pairs.some(pair => pair.peerId === initial[source].sessionId && pair.incoming.some(flow => flow.publicationId === publication && !flow.selected)));
+        const incumbent = pending.state.pairs.flatMap(pair => pair.incoming).find(flow => flow.publicationId === publication && flow.selected);
+        const candidatePair = pending.state.pairs.find(pair => pair.peerId === initial[source].sessionId && pair.incoming.some(flow => flow.publicationId === publication && !flow.selected));
+        const candidate = candidatePair.incoming.find(flow => flow.publicationId === publication && !flow.selected);
+        const fault = await until('candidate actual video sender is stopped before its offer', () => sample(source), value => value.videoStall?.flowId === candidate.id && value.videoStall.connected);
+        assert.equal(fault.videoStall.bytes, 0, 'the candidate video fault stops actual RTP while its PC connects');
+        await progressing(leaf, publication);
+        const held = await inspect(publication);
+        assert.equal(held.inputs.find(input => input.selected)?.flowId, incumbent.id);
+        assert(!held.flowStates.some(proof => proof.flowId === candidate.id && proof.state === 'switch_ready'));
+        await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
+        if (mode === 'timeout') {
+          await until('unproved candidate times out while its incumbent remains selected', () => view(leaf), value =>
+            !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === candidate.id))
+            && value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === incumbent.id && flow.selected)), 30_000);
+          await progressing(leaf, publication);
+          await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
+          records.push({ mode, incumbent: incumbent.id, candidate: candidate.id, elapsedMs: Date.now() - fault.videoStall.startedAt });
+        } else {
+          await evaluate(leaf, `(() => {
+            const video = document.querySelector('video[data-flow-id="${incumbent.id}"]');
+            const slider = video.closest('.c3-video').querySelector('input.c3-mini-volume');
+            if (!slider) throw new Error('screen volume control unavailable');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(slider, '0.35');
+            slider.dispatchEvent(new Event('input', { bubbles: true })); slider.dispatchEvent(new Event('change', { bubbles: true }));
+          })()`);
+          await until('incumbent adopts nondefault volume before handover', () => inspect(publication), value => value.inputs.some(input => input.flowId === incumbent.id && Math.abs(input.volume - .35) < .01));
+          const warmed = await until('candidate owns a stable prewarmed video element', () => inspect(publication), value => value.inputs.some(input => input.flowId === candidate.id && input.elementId));
+          const candidateElement = warmed.inputs.find(input => input.flowId === candidate.id);
+          await browser(leaf, 'dblclick', `video[data-flow-id="${incumbent.id}"]`);
+          await until('incumbent enters container fullscreen', () => inspect(publication), value => value.inputs.some(input => input.flowId === incumbent.id && input.fullscreen));
+          await browser(leaf, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
+          await until('incumbent pauses before selection', () => inspect(publication), value => value.inputs.some(input => input.flowId === incumbent.id && input.paused));
+          await evaluate(source, 'window.__channelProbe.restoreVideo()');
+          const selected = await until('decoded quality-approved composited candidate becomes selected', () => inspect(publication), value => value.inputs.some(input => input.flowId === candidate.id && input.selected && input.displayed === 'true' && input.composited === 'true'), 25_000);
+          const adopted = selected.inputs.find(input => input.flowId === candidate.id);
+          assert.equal(adopted.elementId, candidateElement.elementId, 'handover adopts the prewarmed DOM element');
+          assert.equal(adopted.streamId, candidateElement.streamId, 'handover retains the candidate srcObject');
+          assert(Math.abs(adopted.volume - .35) < .01, 'handover preserves volume');
+          assert(adopted.paused && adopted.fullscreen, 'handover preserves pause and the fullscreen container');
+          await browser(leaf, 'screenshot', join(output, 'base-shortcut-fullscreen.png'));
+          const proofs = selected.flowStates.filter(proof => proof.flowId === candidate.id);
+          assert(proofs.some(proof => proof.state === 'decoded') && proofs.some(proof => proof.state === 'switch_ready'));
+          assert(proofs.find(proof => proof.state === 'switch_ready').time >= proofs.find(proof => proof.state === 'decoded').time);
+          await until('screen audio belongs only to the selected source', () => inspect(publication), value => {
+            const active = value.inputs.find(input => input.flowId === candidate.id);
+            return active.audio.length === 1 && value.audioOwners.includes(active.audio[0]) &&
+              value.inputs.filter(input => input.flowId !== candidate.id).every(input => input.muted && input.audio.every(id => !value.audioOwners.includes(id)));
+          });
+          await browser(leaf, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
+          await progressing(leaf, publication);
+          await browser(leaf, 'dblclick', `video[data-flow-id="${candidate.id}"]`);
+          await voiceProgressing(leaf, sourceVoice); await voiceProgressing(source, leafVoice);
+          records.push({ mode, incumbent: incumbent.id, candidate: candidate.id, candidateElement, adopted, proofs });
+        }
+      } finally { await evaluate(source, 'window.__channelProbe.restoreVideo()'); await action(source, `stopScreen(${JSON.stringify(publication)})`); }
+    }
+  } finally {
+    await evaluate(source, 'window.__channelProbe.captureAudio(false)');
+    for (const index of [leaf, source]) await action(index, `leaveVoice(${JSON.stringify(room)})`);
+  }
+  await writeFile(join(output, 'base-leaf-shortcut.json'), JSON.stringify({ passed: true, records }, null, 2));
+  return records;
+}
+
 async function roomBase(initial, serverRoom) {
   const source = await capturedScreen(1, serverRoom);
   await action(2, `watch(${JSON.stringify(source)})`);
@@ -513,8 +632,9 @@ async function roomBase(initial, serverRoom) {
   await progressing(0, source);
   await action(1, `stopScreen(${JSON.stringify(source)})`);
   await until("last physical lease closes the pair", () => view(0), value => !value.state.pairs.some(pair => pair.id === survivingPair));
+  const leafShortcuts = await leafShortcut(initial);
   for (const index of [0, 1, 3]) await assertNoError(index, "room base lifecycle");
-  await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true, mediaPrepare,
+  await writeFile(join(output, "base-result.json"), JSON.stringify({ passed: true, mediaPrepare, leafShortcuts,
     scenarios: ["room entry without capture", "media/base transport reuse", "unreachable direct edge",
       "picture startup through non-viewing base transit", "picture recovery after transit departure",
       "bidirectional voice through a non-listener", "deafen keeps routes", "view change preserves transit",

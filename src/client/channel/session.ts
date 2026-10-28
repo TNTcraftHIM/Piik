@@ -2,7 +2,7 @@ import { ChannelMedia } from "./media";
 import { ChannelConversation } from "./conversation";
 import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
-import type { ChannelView } from "./types";
+import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
 
 const credentialKey = "piik.channel.prototype.credential";
@@ -24,7 +24,7 @@ function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
 export class ChannelSession {
   private view: ChannelView = {
     state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
-    streams: new Map(), error: null, inviteURL: null, pending: new Set(),
+    streams: new Map(), screenInputs: new Map(), error: null, inviteURL: null, pending: new Set(),
   };
   private listeners = new Set<() => void>();
   private socket: WebSocket | null = null;
@@ -57,7 +57,7 @@ export class ChannelSession {
     file: (peer, control) => this.attachments.data(peer, "control", control),
     reply: reply => this.receiveConversation(reply),
   });
-  private media = new ChannelMedia(command => this.send(command), streams => this.patch({ streams }),
+  private media = new ChannelMedia(command => this.send(command), (streams, screenInputs) => this.patch({ streams, screenInputs }),
     (peer, kind, data) => {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
       else void this.conversation.receive(peer, data as string).catch(() => {});
@@ -68,6 +68,7 @@ export class ChannelSession {
   getSnapshot = (): ChannelView => this.view;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   stats = () => this.media.stats();
+  screenPresentation = (flowId: string, stream: MediaStream, state: ScreenPresentation): void => this.media.screenPresentation(flowId, stream, state);
 
   private patch(patch: Partial<ChannelView>): void {
     this.view = { ...this.view, ...patch };

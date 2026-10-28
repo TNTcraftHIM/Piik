@@ -1,6 +1,15 @@
 import type { ChannelMessage, ChannelSnapshot, ChannelUser, RoomSettings } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 
+export interface ChannelScreenInput {
+  flowId: string;
+  stream: MediaStream;
+  selected: boolean;
+  switchReady: boolean;
+}
+
+export type ScreenPresentation = "prepared" | "waiting" | "failed";
+
 export interface ChannelView {
   state: ChannelSnapshot | null;
   sessionId: string | null;
@@ -9,6 +18,7 @@ export interface ChannelView {
   messagesByRoom: Record<string, ChannelMessage[]>;
   historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean }>;
   streams: ReadonlyMap<string, MediaStream>;
+  screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>;
   error: string | null;
   inviteURL: string | null;
   pending: ReadonlySet<string>;
@@ -31,6 +41,7 @@ export interface ChannelActions {
   stopScreen(publicationId: string): Promise<void>;
   watch(publicationId: string): Promise<void>;
   unwatch(publicationId: string): Promise<void>;
+  screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation): void;
   joinVoice(roomId: string, listenOnly?: boolean): Promise<void>;
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;

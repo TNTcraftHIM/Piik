@@ -40,7 +40,7 @@ export const snapshotSchema = z.object({
   voice: z.array(z.object({ sessionId: id, roomId: id, muted: z.boolean(), deafened: z.boolean() })),
   subscriptions: z.array(id),
   files: z.array(filePlanSchema),
-  pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id })), incoming: z.array(z.object({ id, publicationId: id })) })).max(19),
+  pairs: z.array(z.object({ id, peerId: id, rooms: z.array(id), outgoing: z.array(z.object({ id, publicationId: id, selected: z.boolean() })), incoming: z.array(z.object({ id, publicationId: id, selected: z.boolean() })) })).max(19),
   iceServers: z.array(z.object({ urls: z.union([z.string(), z.array(z.string())]), username: z.string().optional(), credential: z.string().optional() })),
 });
 export const signalSchema = z.object({
@@ -111,7 +111,7 @@ export type ChannelCommand =
   | { type: "voice"; roomId: string; joined: boolean; muted: boolean; deafened: boolean }
   | { type: "signal"; pairId: string; payload: ChannelSignal }
   | { type: "link_state"; pairId: string; state: "connected" | "failed" }
-  | { type: "flow_state"; flowId: string; pairId: string; ready: boolean }
+  | { type: "flow_state"; flowId: string; pairId: string; state: "failed" | "forwardable" | "decoded" | "switch_ready" }
   | { type: "base_state"; roomId: string; pairId: string; ready: boolean }
   | { type: "leave" };
 export type ChannelRequest = ChannelCommand & { requestId?: string };

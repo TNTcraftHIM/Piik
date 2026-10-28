@@ -5,14 +5,15 @@ use anyhow::Result;
 // Fixture identities are stable for an unchanged directed pair/publication lease.
 fn binding(publication_id: Uuid, pair: Uuid) -> FlowBinding {
     FlowBinding {
+        selected: true,
         id: Uuid::from_u128(publication_id.as_u128() ^ pair.as_u128()),
         publication_id,
     }
 }
 use piik_channel_native::peer::{NativeEvent, NativePeers};
 use piik_channel_prototype::wire::{
-    Candidate, Command, Description, FlowBinding, Kind, PairInfo, PublicationInfo, Signal,
-    Track as WireTrack,
+    Candidate, Command, Description, FlowBinding, FlowState, Kind, PairInfo, PublicationInfo,
+    Signal, Track as WireTrack,
 };
 use rtc::interceptor::{Interceptor, NoopInterceptor, StreamInfo, TaggedPacket};
 use rtc::sansio::Protocol;
@@ -739,7 +740,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                     report,
                     Command::FlowState {
                         flow_id,
-                        ready: false,
+                        state: FlowState::Failed,
                         ..
                     } if flow_id == binding(publication, source_id).id
                 ),
@@ -764,7 +765,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                     Command::FlowState {
                         flow_id,
                         pair_id,
-                        ready: false,
+                        state: FlowState::Failed,
                     } if flow_id == binding(publication, source_id).id && pair_id == source_id => {
                         break
                     }
@@ -789,10 +790,12 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         // The base PC survives an unsubscribe/resubscribe of this same publication.
         // Old reader/sender completion must keep its retired flow identity.
         let new_incoming = FlowBinding {
+            selected: true,
             id: Uuid::new_v4(),
             publication_id: publication,
         };
         let new_outgoing = FlowBinding {
+            selected: true,
             id: Uuid::new_v4(),
             publication_id: publication,
         };
@@ -865,7 +868,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             loop {
                 if let Command::FlowState {
                     flow_id,
-                    ready: true,
+                    state: FlowState::Forwardable,
                     ..
                 } = report_rx.recv().await.unwrap()
                 {
@@ -888,16 +891,14 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         assert_ne!(next.header.ssrc, ssrc);
         sleep(Duration::from_millis(100)).await;
         while let Ok(report) = report_rx.try_recv() {
-            assert!(
-                !matches!(
-                    report,
-                    Command::FlowState {
-                        flow_id,
-                        ready: false,
-                        ..
-                    } if flow_id == new_incoming.id || flow_id == new_outgoing.id
-                )
-            );
+            assert!(!matches!(
+                report,
+                Command::FlowState {
+                    flow_id,
+                    state: FlowState::Failed,
+                    ..
+                } if flow_id == new_incoming.id || flow_id == new_outgoing.id
+            ));
         }
         assert_eq!(
             source_pc.sctp().await.unwrap().state().await?,
@@ -1054,9 +1055,13 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
             assert_ne!(old_ssrc, 0x11111111);
             assert_eq!(first.header.payload_type, 109);
             assert!(first.payload.as_ref() == [0xf8, 0xff, 0xfe]);
-            native
-                .update(plans(true), vec![info.clone()], vec![])
-                .await?;
+            let mut preparing = plans(false);
+            let mut candidate = binding(publication, b);
+            candidate.selected = false;
+            preparing.iter_mut().find(|pair| pair.id == b).unwrap().incoming.push(candidate);
+            // Outgoing candidate bindings must send even when not selected.
+            preparing.iter_mut().find(|pair| pair.id == receiver).unwrap().outgoing[0].selected = false;
+            native.update(preparing, vec![info.clone()], vec![]).await?;
             let eb = Endpoint {
                 id: b,
                 pc: b_pc,
@@ -1070,16 +1075,9 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                 reports: Arc::new(Mutex::new(vec![])),
             };
             let source_b = add_source(&eb, publication, 0x22222222).await?;
-            // Removing A's flow retires its reader immediately. B is a different
-            // authorized lease and cannot report ready before its first packet.
-            while packets.try_recv().is_ok() {}
-            sleep(Duration::from_millis(100)).await;
-            while packets.try_recv().is_ok() {}
-            assert!(timeout(Duration::from_millis(150), packets.recv())
-                .await
-                .is_err());
+            // An installed candidate cannot report forwardability before RTP.
             while let Ok(command) = reports.try_recv() {
-                assert!(!matches!(command,Command::FlowState{pair_id,ready:true,..}if pair_id==b));
+                assert!(!matches!(command,Command::FlowState{pair_id,state: FlowState::Forwardable,..}if pair_id==b));
             }
             // A distinct source clock deliberately restarts at low values.
             let sender_b = tokio::spawn(async move {
@@ -1091,6 +1089,19 @@ async fn first_packet_switches_source_clock_and_retires_removed_input_flow() -> 
                     sleep(Duration::from_millis(20)).await;
                 }
             });
+            timeout(Duration::from_secs(5), async {
+                loop {
+                    if matches!(reports.recv().await, Some(Command::FlowState {pair_id, state:FlowState::Forwardable,..}) if pair_id == b) { break; }
+                }
+            }).await?;
+            // Both sources now produce packets, but the unselected candidate
+            // must not replace the working input or its outgoing source clock.
+            for _ in 0..6 {
+                let packet = next_matching(&mut packets, None).await;
+                assert_eq!(packet.header.ssrc, old_ssrc);
+                assert!(packet.header.timestamp >= 50_000);
+            }
+            native.update(plans(true), vec![info.clone()], vec![]).await?;
             let switched = timeout(Duration::from_secs(10), async {
                 loop {
                     let p = packets.recv().await.unwrap();

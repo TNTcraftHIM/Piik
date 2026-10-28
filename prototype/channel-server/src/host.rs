@@ -5,7 +5,7 @@ use crate::{
     identity::{Endpoint, Member},
     room::{RoomRuntime, RoomSnapshot},
     transport::{BaseLink, Flow},
-    wire::{Command, RoomAccess},
+    wire::{Command, FlowState, RoomAccess},
     RoomState,
 };
 use serde::{Deserialize, Serialize};
@@ -68,7 +68,7 @@ pub enum HostAction {
         flow_id: Uuid,
         sender: Uuid,
         receiver: Uuid,
-        ready: bool,
+        state: FlowState,
     },
     BaseState {
         context: RequestContext,
@@ -511,13 +511,14 @@ impl RoomHost {
                     flow_id,
                     sender,
                     receiver,
-                    ready,
+                    state,
                 } => {
-                    if context.session_id != *receiver && (*ready || context.session_id != *sender)
+                    if context.session_id != *receiver
+                        && (*state != FlowState::Failed || context.session_id != *sender)
                     {
                         return Err("unassigned_flow");
                     }
-                    self.room.flow_state(*flow_id, *receiver, *sender, *ready)?;
+                    self.room.flow_state(*flow_id, *receiver, *sender, *state)?;
                 }
             }
             Ok(RoomResult::Done)

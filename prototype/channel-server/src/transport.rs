@@ -10,6 +10,7 @@ pub struct Flow {
     pub publication_id: Uuid,
     pub sender: Uuid,
     pub receiver: Uuid,
+    pub selected: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -22,8 +23,8 @@ pub struct BaseLink {
 
 #[derive(Clone, Default)]
 struct Directions {
-    forward: BTreeMap<Uuid, Uuid>,
-    reverse: BTreeMap<Uuid, Uuid>,
+    forward: BTreeMap<Uuid, FlowBinding>,
+    reverse: BTreeMap<Uuid, FlowBinding>,
     rooms: BTreeSet<String>,
 }
 
@@ -58,7 +59,14 @@ impl TransportBook {
             } else {
                 &mut directions.reverse
             }
-            .insert(flow.id, flow.publication_id);
+            .insert(
+                flow.id,
+                FlowBinding {
+                    id: flow.id,
+                    publication_id: flow.publication_id,
+                    selected: flow.selected,
+                },
+            );
         }
         for link in base {
             let key = if link.parent < link.child {
@@ -99,17 +107,18 @@ impl TransportBook {
             if pair.id != id {
                 return None;
             }
-            let (sender, receiver, publication_id) =
-                if let Some(publication) = pair.flows.forward.get(&flow_id) {
-                    (*first, *second, *publication)
+            let (sender, receiver, binding) =
+                if let Some(binding) = pair.flows.forward.get(&flow_id) {
+                    (*first, *second, *binding)
                 } else {
                     (*second, *first, *pair.flows.reverse.get(&flow_id)?)
                 };
             Some(Flow {
                 id: flow_id,
-                publication_id,
+                publication_id: binding.publication_id,
                 sender,
                 receiver,
+                selected: binding.selected,
             })
         })
     }
@@ -139,20 +148,8 @@ impl TransportBook {
                     id: pair.id,
                     peer_id: peer,
                     rooms: pair.flows.rooms.iter().cloned().collect(),
-                    outgoing: outgoing
-                        .iter()
-                        .map(|(id, publication_id)| FlowBinding {
-                            id: *id,
-                            publication_id: *publication_id,
-                        })
-                        .collect(),
-                    incoming: incoming
-                        .iter()
-                        .map(|(id, publication_id)| FlowBinding {
-                            id: *id,
-                            publication_id: *publication_id,
-                        })
-                        .collect(),
+                    outgoing: outgoing.values().copied().collect(),
+                    incoming: incoming.values().copied().collect(),
                 })
             })
             .collect()

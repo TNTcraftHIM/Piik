@@ -12,7 +12,7 @@ use piik_channel_prototype::conversation::{ControlFrame, SignedPacket};
 use piik_channel_prototype::file_room::FilePlan;
 use piik_channel_prototype::wire::Snapshot;
 use piik_channel_prototype::wire::{
-    Candidate, Command, Description, LinkState, PairInfo, PublicationInfo, Signal,
+    Candidate, Command, Description, FlowState, LinkState, PairInfo, PublicationInfo, Signal,
     Track as WireTrack,
 };
 use rtc::{
@@ -1071,7 +1071,7 @@ impl Driver {
                 self.send(Command::FlowState {
                     flow_id: key.0,
                     pair_id: pair,
-                    ready: false,
+                    state: FlowState::Failed,
                 })
                 .await;
             }
@@ -1118,7 +1118,7 @@ impl Driver {
                             self.send(Command::FlowState {
                                 flow_id: key.0,
                                 pair_id: pair,
-                                ready: false,
+                                state: FlowState::Failed,
                             })
                             .await;
                         }
@@ -1231,7 +1231,7 @@ impl Driver {
                 self.send(Command::FlowState {
                     flow_id,
                     pair_id: id,
-                    ready: false,
+                    state: FlowState::Failed,
                 })
                 .await;
             }
@@ -1373,15 +1373,50 @@ impl Driver {
             self.send(Command::FlowState {
                 flow_id: source.flow_id,
                 pair_id: source.pair,
-                ready: true,
+                state: FlowState::Forwardable,
             })
             .await;
         }
         Ok(())
     }
     async fn refresh_media(&mut self) -> Result<()> {
+        // Candidate readers can establish forwardability without replacing the
+        // selected publication's picture/audio or any existing child output.
+        let selected: HashSet<_> = self
+            .sources
+            .values()
+            .filter(|source| {
+                self.pairs.get(&source.pair).is_some_and(|pair| {
+                    pair.plan
+                        .incoming
+                        .iter()
+                        .any(|flow| flow.id == source.flow_id && flow.selected)
+                })
+            })
+            .map(|source| source.id)
+            .collect();
+        self.relay.retain(
+            &self
+                .sources
+                .iter()
+                .filter_map(|(key, source)| selected.contains(&source.id).then_some(*key))
+                .collect(),
+        );
+        for pair in self.pairs.values_mut() {
+            let retired: Vec<_> = pair
+                .outputs
+                .iter()
+                .filter_map(|(key, output)| (!selected.contains(&output.source)).then_some(*key))
+                .collect();
+            for key in retired {
+                pair.outputs.remove(&key).unwrap().close(&*pair.pc).await;
+            }
+        }
         let mut failed = Vec::new();
         for (key, source) in &self.sources {
+            if !selected.contains(&source.id) {
+                continue;
+            }
             let publication = &source.publication_id;
             let mut targets = Vec::new();
             for (id, p) in &mut self.pairs {
@@ -1443,7 +1478,7 @@ impl Driver {
             self.send(Command::FlowState {
                 flow_id,
                 pair_id,
-                ready: false,
+                state: FlowState::Failed,
             })
             .await;
         }

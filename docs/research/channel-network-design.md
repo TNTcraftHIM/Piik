@@ -447,10 +447,19 @@ all three neighbors of an internal base node. The small fanout policy for new
 branches is a topology choice, not a measurement of device media capacity.
 Failed picture preparation uses the same availability candidates without
 retiring the shared base connection. Necessary transit survives local unwatch.
+The implemented convergence step prepares one source-to-leaf alternative per
+publication. The leaf must have decoded its current picture. Its candidate uses
+the existing same-window quality comparison and a prewarmed player frame; only
+then does the room select it and retire the old media lease. Source sound,
+volume, pause and container fullscreen follow the same player handover. Native
+element fullscreen defers that handover. Preparation and switching share one
+finite operation; failure keeps the incumbent. Each admitted session gets one
+direct attempt for that publication, independent of view toggles. Native RTP
+forwardability is distinct from Browser decode and presentation proof.
 Server-owned default rooms have no Native endpoint and retain standalone screen
 plans; an administrator's page cannot substitute for that endpoint. They do not
-advertise peer file delivery. Actual participant resource admission and complete
-bounded route transitions remain to be integrated.
+advertise peer file delivery. Participant resource admission and transitions
+that replace an internal relay remain to be integrated.
 
 Before implementing the next slice, map its user-visible behavior, authority,
 state transitions, resource lifetime and recovery. Existing code is evidence of
