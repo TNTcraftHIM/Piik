@@ -181,7 +181,8 @@ export class ChannelTransport {
   setOutgoing(streams: ReadonlyMap<string, MediaStream>): void {
     for (const [id, previous] of this.sending) {
       const next = streams.get(id);
-      if (next === previous.stream && next.getTracks().every(track => previous.senders.some(sender => sender.track === track))) continue;
+      const tracks = next?.getTracks();
+      if (next === previous.stream && tracks?.length === previous.senders.length && tracks.every(track => previous.senders.some(sender => sender.track === track))) continue;
       for (const sender of previous.senders) this.pc.removeTrack(sender);
       this.sending.delete(id);
     }

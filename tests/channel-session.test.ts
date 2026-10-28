@@ -265,6 +265,7 @@ class RoomPeerConnection extends EventTarget {
   ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
   channels: RoomDataChannel[] = [];
   senders: Array<{ track: MediaStreamTrack }> = [];
+  receivers: RTCRtpReceiver[] = [];
   close = vi.fn(() => { this.connectionState = "closed"; });
   constructor() { super(); RoomPeerConnection.instances.push(this); }
   createDataChannel(label: string, options: RTCDataChannelInit) {
@@ -272,7 +273,7 @@ class RoomPeerConnection extends EventTarget {
   }
   addTrack(track: MediaStreamTrack) { const sender = { track }; this.senders.push(sender); return sender; }
   removeTrack(sender: { track: MediaStreamTrack }) { this.senders.splice(this.senders.indexOf(sender), 1); }
-  getReceivers() { return []; }
+  getReceivers() { return this.receivers; }
   async setRemoteDescription(description: RTCSessionDescriptionInit) {
     if (description.type === "answer" && this.signalingState !== "have-local-offer") throw new Error("answer without pending offer");
     this.remoteDescription = description;
@@ -317,6 +318,127 @@ function setupRoomMedia() {
   media.update("a", state);
   return { session, socket, media, state, sent, pc: RoomPeerConnection.instances[0] };
 }
+
+const decodedReport = (framesDecoded: number) => new Map([["video", {
+  type: "inbound-rtp", kind: "video", framesDecoded,
+}]]) as unknown as RTCStatsReport;
+
+function screenFixture() {
+  const fixture = setupRoomMedia();
+  fixture.state.publications = [{ id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", muted: false }];
+  fixture.state.pairs[0].incoming = ["screen"];
+  fixture.media.update("a", fixture.state);
+  fixture.pc.connected();
+  return fixture;
+}
+
+const remoteStream = (id: string, tracks: MediaStreamTrack[]) => ({
+  id, getTracks: () => tracks, getVideoTracks: () => tracks.filter(track => track.kind === "video"),
+  getAudioTracks: () => tracks.filter(track => track.kind === "audio"),
+}) as unknown as MediaStream;
+
+async function receiveScreen(fixture: ReturnType<typeof screenFixture>, stream: MediaStream) {
+  fixture.media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: stream.id },
+    tracks: [{ publicationId: "screen", streamId: stream.id }] });
+  await vi.waitFor(() => expect(fixture.pc.remoteDescription?.sdp).toBe(stream.id));
+  fixture.pc.ontrack?.({ streams: [stream] });
+}
+
+test("an audio-first screen waits for decoded video on a currently connected transport", async () => {
+  const fixture = screenFixture();
+  const { media, session, pc, sent } = fixture;
+  vi.useFakeTimers();
+  const tracks = [{ kind: "audio" } as MediaStreamTrack];
+  const stream = remoteStream("screen-stream", tracks);
+  let resolve!: (report: RTCStatsReport) => void;
+  const pending = new Promise<RTCStatsReport>(done => { resolve = done; });
+  const getStats = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(decodedReport(2));
+  try {
+    await receiveScreen(fixture, stream);
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
+    const video = { kind: "video" } as MediaStreamTrack;
+    tracks.push(video);
+    pc.receivers = [{ track: video, getStats } as unknown as RTCRtpReceiver];
+    pc.ontrack?.({ streams: [stream] });
+    pc.connectionState = "disconnected"; pc.onconnectionstatechange?.();
+    resolve(decodedReport(1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
+    pc.connected();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
+      { type: "flow_state", publicationId: "screen", pairId: "pair", ready: true },
+    ]);
+  } finally { media.reset(); session.close(); }
+});
+
+test("a replaced screen cannot be proved by its old receiver's delayed stats", async () => {
+  const fixture = screenFixture();
+  const { media, session, pc, sent } = fixture;
+  vi.useFakeTimers();
+  const resolves: Array<(report: RTCStatsReport) => void> = [];
+  try {
+    for (const id of ["old", "new"]) {
+      const video = { kind: "video" } as MediaStreamTrack;
+      const pending = new Promise<RTCStatsReport>(resolve => { resolves.push(resolve); });
+      pc.receivers = [{ track: video, getStats: () => pending } as unknown as RTCRtpReceiver];
+      await receiveScreen(fixture, remoteStream(id, [video]));
+    }
+    resolves[0](decodedReport(10));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
+    resolves[1](decodedReport(1));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1);
+  } finally { media.reset(); session.close(); }
+});
+
+test("same-publication stream replacement re-proves progress on a reused receiver", async () => {
+  const fixture = screenFixture();
+  const { media, session, pc, sent } = fixture;
+  vi.useFakeTimers();
+  const video = { kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack;
+  let frames = 5;
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(frames) } as RTCRtpReceiver];
+  try {
+    await receiveScreen(fixture, remoteStream("old", [video]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1);
+    await receiveScreen(fixture, remoteStream("new", [video]));
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1);
+    frames++;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(sent.filter(command => command.type === "flow_state")).toHaveLength(2);
+    expect(video.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
+test("a relay updates senders when audio joins and leaves the same remote screen stream", async () => {
+  const fixture = screenFixture();
+  const { media, session, state, pc } = fixture;
+  const video = { kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack;
+  const audio = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
+  const tracks = [video], stream = remoteStream("screen-stream", tracks);
+  try {
+    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: ["screen"] });
+    media.update("a", state);
+    const downstream = RoomPeerConnection.instances[1];
+    await receiveScreen(fixture, stream);
+    expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    tracks.push(audio);
+    pc.ontrack?.({ streams: [stream] });
+    expect(downstream.senders.map(sender => sender.track)).toEqual([video, audio]);
+    // Removing a remote track does not emit ontrack; the SDP replay republishes its stream.
+    tracks.pop();
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "audio-removed" },
+      tracks: [{ publicationId: "screen", streamId: stream.id }] });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("audio-removed"));
+    expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    expect(video.stop).not.toHaveBeenCalled(); expect(audio.stop).not.toHaveBeenCalled();
+    expect(downstream.close).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
 
 test("bulk waits for its own open and buffer while control and media remain available", async () => {
   const { session, media, sent, pc } = setupRoomMedia();
@@ -689,6 +811,7 @@ test("voice forwards without local listening and the same pair carries the rever
   const incoming = voice("a-stream", aTrack), local = voice("b-stream", bTrack);
   try {
     pc.connected(); pc.channels[0].open();
+    state.publications = [{ id: "voice-a", roomId: "first", sessionId: "z", userId: "other", kind: "voice", muted: false }];
     state.pairs[0].incoming = ["voice-a"];
     state.pairs[0].outgoing = ["voice-b"];
     state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: ["voice-a"] });

@@ -1,18 +1,26 @@
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
+import { decodedVideoFrames } from "../webrtc/stats";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
 import { ChannelTransport } from "./transport";
 
 interface Peer {
   plan: ChannelPair;
   transport: ChannelTransport;
-  streams: Map<string, MediaStream>;
-  proofs: Map<string, () => void>;
-  ready: Set<string>;
+  inputs: Map<string, MediaInput>;
   baseReady: Set<string>;
+}
+
+interface MediaInput {
+  stream: MediaStream;
+  video: MediaStreamTrack | undefined;
+  receiver: RTCRtpReceiver | undefined;
+  ready: boolean;
+  stopProof?: () => void;
 }
 
 export class ChannelMedia {
   private peers = new Map<string, Peer>();
+  private publications: ChannelSnapshot["publications"] = [];
   private local = new Map<string, MediaStream>();
   private streams = new Map<string, MediaStream>();
   private relayAudio = new Map<string, { tracks: MediaStreamTrack[]; audio: HTMLAudioElement }>();
@@ -37,6 +45,7 @@ export class ChannelMedia {
   }
 
   update(sessionId: string, state: ChannelSnapshot): void {
+    this.publications = state.publications;
     const plans = new Map(state.pairs.map(plan => [plan.id, plan]));
     for (const [id, peer] of this.peers) {
       if (!plans.has(id)) {
@@ -58,7 +67,7 @@ export class ChannelMedia {
           connected: () => {
             this.send({ type: "link_state", pairId: plan.id, state: "connected" });
             const current = this.peers.get(plan.id);
-            if (current) for (const [id, stream] of current.streams) this.prove(current, id, stream);
+            if (current) for (const [id, input] of current.inputs) this.prove(current, id, input.stream);
           },
           failed: () => this.send({ type: "link_state", pairId: plan.id, state: "failed" }),
           base: ready => {
@@ -66,18 +75,16 @@ export class ChannelMedia {
             if (current) this.reportBase(current, ready);
           },
         });
-        peer = { plan, transport, streams: new Map(), proofs: new Map(), ready: new Set(), baseReady: new Set() };
+        peer = { plan, transport, inputs: new Map(), baseReady: new Set() };
         this.peers.set(plan.id, peer);
       } else peer.plan = plan;
       for (const room of peer.baseReady) if (!plan.rooms.includes(room)) peer.baseReady.delete(room);
       peer.transport.setRooms(plan.rooms);
       if (peer.transport.isBaseReady()) this.reportBase(peer, true);
-      for (const publicationId of peer.streams.keys()) {
+      for (const [publicationId, input] of peer.inputs) {
         if (!plan.incoming.includes(publicationId)) {
-          peer.streams.delete(publicationId);
-          peer.proofs.get(publicationId)?.();
-          peer.proofs.delete(publicationId);
-          peer.ready.delete(publicationId);
+          input.stopProof?.();
+          peer.inputs.delete(publicationId);
         }
       }
     }
@@ -113,43 +120,52 @@ export class ChannelMedia {
   private receive(pairId: string, publicationId: string, stream: MediaStream): void {
     const peer = this.peers.get(pairId);
     if (!peer?.plan.incoming.includes(publicationId)) return;
-    peer.streams.set(publicationId, stream);
     this.prove(peer, publicationId, stream);
     this.refresh();
   }
 
   private prove(peer: Peer, id: string, stream: MediaStream): void {
-    if (peer.ready.has(id) || peer.proofs.has(id)) return;
-    const owned = () => this.peers.get(peer.plan.id) === peer && peer.plan.incoming.includes(id);
+    const kind = this.publications.find(publication => publication.id === id)?.kind;
+    if (!kind) return;
+    const video = kind === "screen" ? stream.getVideoTracks()[0] : undefined;
+    const receiver = video ? peer.transport.pc.getReceivers().find(candidate => candidate.track === video) : undefined;
+    const previous = peer.inputs.get(id);
+    const input: MediaInput = previous && previous.stream === stream && previous.video === video && previous.receiver === receiver
+      ? previous : { stream, video, receiver, ready: false };
+    if (input !== previous) {
+      previous?.stopProof?.();
+      peer.inputs.set(id, input);
+    }
+    if (input.ready || input.stopProof) return;
+    const owned = () => this.peers.get(peer.plan.id) === peer && peer.plan.incoming.includes(id) &&
+      peer.inputs.get(id) === input && (kind !== "screen" ||
+        (receiver !== undefined && stream.getVideoTracks()[0] === video && receiver.track === video &&
+          peer.transport.pc.getReceivers().includes(receiver)));
     const ready = () => {
       if (!owned()) return true;
-      peer.ready.add(id);
+      if (peer.transport.pc.connectionState !== "connected") return false;
+      input.ready = true;
+      input.stopProof = undefined;
       this.send({ type: "flow_state", publicationId: id, pairId: peer.plan.id, ready: true });
       return true;
     };
-    if (stream.getVideoTracks().length === 0) {
-      if (peer.transport.pc.connectionState === "connected") ready();
+    if (kind === "voice") {
+      ready();
       return;
     }
-    const video = stream.getVideoTracks()[0];
-    const receiver = peer.transport.pc.getReceivers().find(candidate => candidate.track === video);
-    if (!receiver) return;
-    peer.proofs.set(id, observeDecodedFrameProof({
+    if (!video || !receiver) return;
+    input.stopProof = observeDecodedFrameProof({
       owns: owned,
-      readFramesDecoded: async () => {
-        const reports = await receiver.getStats();
-        let frames: number | null = null;
-        reports.forEach(report => { if (report.type === "inbound-rtp" && report.kind === "video") frames = report.framesDecoded ?? null; });
-        return frames;
-      },
+      requireProgress: previous?.receiver === receiver,
+      readFramesDecoded: async () => decodedVideoFrames(await receiver.getStats()),
       onProof: ready,
-    }));
+    });
   }
 
   private refresh(): void {
     const streams = new Map(this.local);
     const relayAudio = new Map<string, MediaStreamTrack[]>();
-    for (const peer of this.peers.values()) for (const [id, stream] of peer.streams) streams.set(id, stream);
+    for (const peer of this.peers.values()) for (const [id, input] of peer.inputs) streams.set(id, input.stream);
     for (const peer of this.peers.values()) {
       const outgoing = new Map<string, MediaStream>();
       for (const id of peer.plan.outgoing) {
@@ -203,7 +219,7 @@ export class ChannelMedia {
   }
 
   private closePeer(peer: Peer): void {
-    for (const stop of peer.proofs.values()) stop();
+    for (const input of peer.inputs.values()) input.stopProof?.();
     peer.transport.close();
   }
 
