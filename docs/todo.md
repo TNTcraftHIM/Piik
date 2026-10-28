@@ -11,9 +11,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete native capture/input, App local/public-domain startup
   and platform packaging over the shared UI and Native participant.
-  Before native H.264 capture, replace the SDK and Native adapter's raw profile
-  comparisons with one semantic profile/level parser; equivalent Constrained
-  Baseline formats currently fail when offered beside VP8.
+  Before native H.264 capture, complete equivalent-profile and directional level
+  negotiation. Encoded forwarding must use the actual source format rather than
+  treating the peer's receive parameters as the stream's SPS.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
