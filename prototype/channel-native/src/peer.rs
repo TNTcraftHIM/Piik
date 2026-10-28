@@ -157,7 +157,9 @@ struct Pair {
     plan: PairInfo,
     pc: Arc<dyn PeerConnection>,
     polite: bool,
-    pending_offer: Option<Signal>,
+    pending_offer: Option<PendingOffer>,
+    stable_outputs: Option<HashSet<Uuid>>,
+    failed_offer: Option<OfferWork>,
     answer: Option<Signal>,
     negotiate: bool,
     ignore_offer: bool,
@@ -165,6 +167,7 @@ struct Pair {
     remote: HashMap<String, Uuid>,
     latest: HashMap<TrackKey, Uuid>,
     outputs: HashMap<TrackKey, Output>,
+    rejected_outputs: HashMap<TrackKey, Uuid>,
     reports: SenderReports,
     tasks: HashMap<Uuid, Reader>,
     dc: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
@@ -182,9 +185,79 @@ struct Reader {
     track: String,
     task: JoinHandle<()>,
 }
+
+#[derive(Clone)]
+struct PendingOffer {
+    signal: Signal,
+    outputs: HashSet<Uuid>,
+}
+
+#[derive(PartialEq, Eq)]
+struct OfferWork {
+    outputs: HashSet<Uuid>,
+    flows: HashSet<Uuid>,
+    rooms: Vec<String>,
+    control: Option<Uuid>,
+    bulk: Option<Uuid>,
+}
+
 impl Pair {
     fn connected(&self) -> bool {
         self.state.load(Ordering::Acquire) == RTCPeerConnectionState::Connected as u8
+    }
+
+    fn output_ids(&self) -> HashSet<Uuid> {
+        self.outputs.values().map(|output| output.id).collect()
+    }
+
+    fn offer_work(&self) -> OfferWork {
+        OfferWork {
+            outputs: self.output_ids(),
+            flows: self
+                .plan
+                .outgoing
+                .iter()
+                .chain(&self.plan.incoming)
+                .map(|flow| flow.id)
+                .collect(),
+            rooms: self.plan.rooms.clone(),
+            control: self.dc.as_ref().map(|(token, _, _)| *token),
+            bulk: self.bulk.as_ref().map(|(token, _, _)| *token),
+        }
+    }
+
+    async fn stable(&self) -> bool {
+        let state = self.state.load(Ordering::Acquire);
+        state != RTCPeerConnectionState::Failed as u8
+            && state != RTCPeerConnectionState::Closed as u8
+            && self.pc.current_local_description().await.is_some()
+            && self.pc.current_remote_description().await.is_some()
+            && self.pc.pending_local_description().await.is_none()
+            && self.pc.pending_remote_description().await.is_none()
+    }
+
+    async fn confirm_outputs(&mut self, offered: HashSet<Uuid>) -> Result<()> {
+        let mut stable = HashSet::new();
+        for transceiver in self.pc.get_transceivers().await {
+            if matches!(
+                transceiver.current_direction().await?,
+                rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendonly
+                    | rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendrecv
+            ) {
+                if let Some(sender) = transceiver.sender().await? {
+                    stable.extend(
+                        self.outputs
+                            .values()
+                            .filter(|output| {
+                                offered.contains(&output.id) && output.sender.id() == sender.id()
+                            })
+                            .map(|output| output.id),
+                    );
+                }
+            }
+        }
+        self.stable_outputs = Some(stable);
+        Ok(())
     }
 }
 struct Driver {
@@ -549,6 +622,8 @@ impl Driver {
                             plan: plan.clone(),
                             pc,
                             pending_offer: None,
+                            stable_outputs: None,
+                            failed_offer: None,
                             answer: None,
                             negotiate: false,
                             ignore_offer: false,
@@ -556,6 +631,7 @@ impl Driver {
                             remote: HashMap::new(),
                             latest: HashMap::new(),
                             outputs: HashMap::new(),
+                            rejected_outputs: HashMap::new(),
                             reports,
                             tasks: HashMap::new(),
                             dc: None,
@@ -693,11 +769,11 @@ impl Driver {
         }
     }
     async fn replay_pending(&self, id: Uuid) {
-        if let Some(offer) = self
-            .pairs
-            .get(&id)
-            .and_then(|pair| pair.pending_offer.clone())
-        {
+        if let Some(offer) = self.pairs.get(&id).and_then(|pair| {
+            pair.pending_offer
+                .as_ref()
+                .map(|offer| offer.signal.clone())
+        }) {
             self.send_signal(id, offer).await;
         }
     }
@@ -709,11 +785,86 @@ impl Driver {
             p.negotiate = true;
             return Ok(());
         }
+        let outputs = p.output_ids();
+        if p.failed_offer.as_ref() == Some(&p.offer_work()) {
+            return Ok(());
+        }
         p.negotiate = false;
-        p.pc.set_local_description(p.pc.create_offer(None).await?)
-            .await?;
+        let stable = p.stable_outputs.is_some() && p.stable().await;
+        let result = async {
+            p.pc.set_local_description(p.pc.create_offer(None).await?)
+                .await?;
+            Ok(())
+        }
+        .await;
+        self.finish_offer(id, stable, outputs, result).await
+    }
+
+    async fn finish_offer(
+        &mut self,
+        id: Uuid,
+        was_stable: bool,
+        outputs: HashSet<Uuid>,
+        result: Result<()>,
+    ) -> Result<()> {
+        if let Err(error) = result {
+            let p = self.pairs.get_mut(&id).unwrap();
+            if !was_stable || p.pending_offer.is_some() || !p.stable().await {
+                return Err(error);
+            }
+            let stable = p.stable_outputs.as_ref().unwrap();
+            let added: Vec<_> = p
+                .outputs
+                .iter()
+                .filter_map(|(key, output)| {
+                    (outputs.contains(&output.id) && !stable.contains(&output.id)).then_some(*key)
+                })
+                .collect();
+            let mut affected = HashSet::new();
+            for key in added {
+                let output = p.outputs.remove(&key).unwrap();
+                p.rejected_outputs.insert(key, output.source);
+                affected.insert(key.0);
+                output.close(&*p.pc).await;
+            }
+            let failed: Vec<_> = affected
+                .into_iter()
+                .filter(|flow| {
+                    let binding = p
+                        .plan
+                        .outgoing
+                        .iter()
+                        .find(|binding| binding.id == *flow)
+                        .expect("an allocated output owns a current flow");
+                    let primary = if self.publications[&binding.publication_id]
+                        == piik_channel_prototype::wire::Kind::Screen
+                    {
+                        RtpCodecKind::Video
+                    } else {
+                        RtpCodecKind::Audio
+                    };
+                    !p.outputs.contains_key(&(*flow, primary))
+                })
+                .collect();
+            p.failed_offer = Some(p.offer_work());
+            eprintln!("Native local offer failed before signaling: {error}");
+            for flow_id in failed {
+                self.send(Command::FlowState {
+                    flow_id,
+                    pair_id: id,
+                    state: FlowState::Failed,
+                })
+                .await;
+            }
+            return Ok(());
+        }
         let offer = self.local_signal(id, Uuid::new_v4()).await?;
-        self.pairs.get_mut(&id).unwrap().pending_offer = Some(offer.clone());
+        let p = self.pairs.get_mut(&id).unwrap();
+        p.failed_offer = None;
+        p.pending_offer = Some(PendingOffer {
+            signal: offer.clone(),
+            outputs,
+        });
         self.send_signal(id, offer).await;
         Ok(())
     }
@@ -730,7 +881,10 @@ impl Driver {
                 .exchange_id
                 .ok_or_else(|| anyhow!("missing SDP exchange"))?;
             if description.kind == "answer"
-                && p.pending_offer.as_ref().and_then(|offer| offer.exchange_id) != Some(exchange)
+                && p.pending_offer
+                    .as_ref()
+                    .and_then(|offer| offer.signal.exchange_id)
+                    != Some(exchange)
             {
                 return Ok(());
             }
@@ -774,11 +928,14 @@ impl Driver {
                 p.pc.set_local_description(p.pc.create_answer(None).await?)
                     .await?;
                 let answer = self.local_signal(id, exchange).await?;
-                self.pairs.get_mut(&id).unwrap().answer = Some(answer.clone());
+                let p = self.pairs.get_mut(&id).unwrap();
+                p.confirm_outputs(p.output_ids()).await?;
+                p.answer = Some(answer.clone());
                 self.send_signal(id, answer).await;
             } else {
-                p.pending_offer = None;
+                let offered = p.pending_offer.take().unwrap().outputs;
                 p.answer = None;
+                p.confirm_outputs(offered).await?;
                 if p.negotiate {
                     self.offer(id).await?;
                 }
@@ -1372,9 +1529,54 @@ impl Driver {
         Ok(())
     }
     async fn refresh_media(&mut self) -> Result<()> {
+        self.refresh_outputs().await?;
+        let retry: Vec<_> = self
+            .pairs
+            .iter()
+            .filter_map(|(id, pair)| {
+                pair.failed_offer
+                    .as_ref()
+                    .filter(|previous| **previous != pair.offer_work())
+                    .map(|_| *id)
+            })
+            .collect();
+        let mut partial = false;
+        for id in &retry {
+            let pair = self.pairs.get_mut(id).unwrap();
+            let before = pair.rejected_outputs.len();
+            // A later real mutation may retry rejected companion audio while
+            // preserving the screen's established video and flow identity.
+            pair.rejected_outputs.retain(|(flow, kind), _| {
+                *kind != RtpCodecKind::Audio
+                    || !pair.outputs.contains_key(&(*flow, RtpCodecKind::Video))
+            });
+            partial |= pair.rejected_outputs.len() != before;
+        }
+        if partial {
+            self.refresh_outputs().await?;
+        }
+        for id in retry {
+            if let Err(error) = self.offer(id).await {
+                eprintln!("Native pair negotiation failed: {error}");
+                self.fail(id).await;
+            }
+        }
+        Ok(())
+    }
+
+    async fn refresh_outputs(&mut self) -> Result<()> {
         // Forward the exact admitted input, including shadow branches. Selection
         // belongs to local playback and cannot recreate a prewarmed sender.
         for pair in self.pairs.values_mut() {
+            pair.rejected_outputs.retain(|key, rejected| {
+                pair.plan.outgoing.iter().any(|flow| {
+                    flow.id == key.0
+                        && flow
+                            .input_flow_id
+                            .and_then(|input| self.sources.get(&(input, key.1)))
+                            .is_some_and(|source| source.id == *rejected)
+                })
+            });
             let retired: Vec<_> = pair
                 .outputs
                 .iter()
@@ -1409,6 +1611,9 @@ impl Driver {
                         && flow.input_flow_id == Some(source.flow_id)
                 }) {
                     let output_key = (binding.id, source.kind);
+                    if p.rejected_outputs.get(&output_key) == Some(&source.id) {
+                        continue;
+                    }
                     if !p.outputs.contains_key(&output_key) {
                         let stream = p
                             .outputs
@@ -1485,3 +1690,6 @@ async fn close_pair(mut pair: Pair) {
         output.close(&*pair.pc).await;
     }
 }
+
+#[cfg(test)]
+mod tests;

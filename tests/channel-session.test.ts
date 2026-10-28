@@ -341,6 +341,7 @@ class RoomPeerConnection extends EventTarget {
   addTrack(track: MediaStreamTrack, stream: MediaStream) { const sender = { track, stream }; this.senders.push(sender); return sender; }
   removeTrack(sender: { track: MediaStreamTrack; stream: MediaStream }) { this.senders.splice(this.senders.indexOf(sender), 1); }
   getReceivers() { return this.receivers; }
+  getTransceivers() { return this.senders.map(sender => ({ sender, currentDirection: "sendrecv" as RTCRtpTransceiverDirection })); }
   async setRemoteDescription(description: RTCSessionDescriptionInit) {
     if (description.type === "answer" && this.signalingState !== "have-local-offer") throw new Error("answer without pending offer");
     this.remoteDescription = description;
@@ -944,6 +945,147 @@ test("rejected file admission cancels its shared-core consumer and releases the 
     expect(abort).toHaveBeenCalledOnce(); expect(removeEntry).toHaveBeenCalledOnce();
     expect(files.status(key)).toEqual({ busy: false, error: "forbidden" });
   } finally { files.reset(); }
+});
+
+test.each(["candidate", "audio", "source", "pending", "late", "channel", "initial", "unstable", "no-new"])("local offer failure scopes its %s work without retiring established media", async mode => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const sent: ChannelSignal[][] = [[], []], failed = vi.fn(), outgoingFailed = vi.fn();
+  const transports = sent.map((signals, index) => new ChannelTransport({
+    polite: Boolean(index), iceServers: [], send: signal => signals.push(signal),
+    receive() {}, connected() {}, base() {}, failed, outgoingFailed,
+  }));
+  const [left, right] = transports, [pc, remote] = RoomPeerConnection.instances;
+  const picture = remoteTrack("video"), voice = remoteTrack("audio"), next = remoteTrack(mode === "audio" ? "audio" : "video");
+  const screen = remoteStream("incumbent", [picture]), audio = remoteStream("voice", [voice]);
+  const outputs = new Map<string, { kind: "screen" | "voice"; stream: MediaStream }>([
+    ["screen", { kind: "screen", stream: screen }], ["voice", { kind: "voice", stream: audio }],
+  ]);
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const exchange = async (trigger = true, duringPending?: () => void) => {
+    if (trigger) pc.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(sent[0].some(signal => signal.description?.type === "offer")).toBe(true));
+    const offer = sent[0].find(signal => signal.description?.type === "offer")!;
+    duringPending?.();
+    right.signal(offer);
+    await vi.waitFor(() => expect(sent[1].some(signal => signal.exchangeId === offer.exchangeId)).toBe(true));
+    left.signal(sent[1].find(signal => signal.exchangeId === offer.exchangeId)!);
+    await vi.waitFor(() => expect(pc.signalingState).toBe("stable"));
+    sent[0].length = 0; sent[1].length = 0;
+  };
+  try {
+    if (mode !== "channel") { left.setRooms(["room"]); right.setRooms(["room"]); }
+    left.setOutgoing(outputs);
+    if (mode !== "initial") await exchange();
+    if (mode === "pending") {
+      outputs.set("confirmed", { kind: "screen", stream: remoteStream("confirmed", [remoteTrack("video")]) });
+      left.setOutgoing(outputs);
+      await exchange(true, () => {
+        outputs.set("candidate", { kind: "screen", stream: remoteStream("later-than-offer", [next]) });
+        left.setOutgoing(outputs);
+      });
+    }
+    pc.connected(); remote.connected();
+    for (const channel of pc.channels) channel.open();
+    const established = pc.senders.filter(sender => sender.track !== next), wrapper = established[0].stream;
+    if (mode === "audio") {
+      outputs.set("screen", { kind: "screen", stream: remoteStream("with-audio", [picture, next]) });
+    } else if (mode === "source") {
+      const sender = established[0];
+      outputs.set("screen", { kind: "screen", stream: remoteStream("withdrawn", []) });
+      left.setOutgoing(outputs); // Only an actually detached sender can be reused by addTrack.
+      Object.defineProperty(next, "id", { value: picture.id });
+      vi.spyOn(pc, "addTrack").mockImplementationOnce((track, stream) => {
+        sender.track = track; sender.stream = stream; pc.senders.push(sender); return sender;
+      });
+      outputs.set("screen", { kind: "screen", stream: remoteStream("replacement", [next]) });
+    } else if (mode !== "no-new") outputs.set("candidate", { kind: "screen", stream: remoteStream("candidate", [next]) });
+    left.setOutgoing(outputs);
+    let reject!: () => void;
+    const pending = new Promise<void>(resolve => { reject = resolve; });
+    const install = vi.spyOn(pc, "setLocalDescription").mockImplementationOnce(async () => {
+      if (mode === "unstable") pc.signalingState = "have-local-offer";
+      if (mode === "late" || mode === "channel") await pending;
+      throw new DOMException("local offer refused", "OperationError");
+    });
+    pc.onnegotiationneeded?.();
+    let lateSender: typeof pc.senders[number] | undefined;
+    if (mode === "channel") {
+      await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+      left.setRooms(["room"]);
+      for (const channel of pc.channels) channel.open();
+      reject();
+    }
+    if (mode === "late") {
+      await vi.waitFor(() => expect(install).toHaveBeenCalledOnce());
+      lateSender = pc.senders.find(sender => sender.track === next)!;
+      outputs.delete("candidate"); left.setOutgoing(outputs);
+      const track = remoteTrack("video"); Object.defineProperty(track, "id", { value: next.id });
+      vi.spyOn(pc, "addTrack").mockImplementationOnce((track, stream) => {
+        lateSender!.track = track; lateSender!.stream = stream; pc.senders.push(lateSender!); return lateSender!;
+      });
+      outputs.set("later", { kind: "screen", stream: remoteStream("later", [track]) });
+      left.setOutgoing(outputs);
+      reject();
+    }
+    await vi.waitFor(() => expect(warning).toHaveBeenCalled());
+    const recoverable = mode !== "initial" && mode !== "unstable";
+    if (!recoverable) {
+      expect(failed).toHaveBeenCalledOnce();
+      expect(outgoingFailed).not.toHaveBeenCalled();
+      return;
+    }
+    expect(failed).not.toHaveBeenCalled();
+    const retained = mode === "source" ? established.slice(1) : mode === "late" ? [...established, lateSender!] : established;
+    expect(pc.senders).toEqual(retained);
+    expect(pc.senders[0]).toBe(retained[0]);
+    expect(wrapper.getTracks()).toEqual(mode === "source" ? [] : [picture]);
+    expect(outgoingFailed.mock.calls).toEqual(["candidate", "pending", "channel"].includes(mode) ? [["candidate"]] : mode === "source" ? [["screen"]] : []);
+    expect(left.isBaseReady()).toBe(true);
+    await expect(left.sendData("control", "still-open")).resolves.toBeUndefined();
+    expect(pc.channels[0].send).toHaveBeenLastCalledWith("still-open");
+    if (mode !== "late" && mode !== "channel") expect(sent[0].some(signal => signal.description)).toBe(false);
+    expect(pc.close).not.toHaveBeenCalled();
+    for (const track of [picture, voice, next]) expect(track.stop).not.toHaveBeenCalled();
+    if (mode === "late" || mode === "channel") {
+      await exchange(false);
+      expect(pc.senders).toEqual(retained);
+      if (mode === "late") expect(outgoingFailed).not.toHaveBeenCalled();
+      return;
+    }
+    pc.onnegotiationneeded?.();
+    left.setOutgoing(outputs); // An unchanged projection must not retry refused work.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(install).toHaveBeenCalledOnce();
+    install.mockRestore();
+    if (mode === "audio") {
+      remote.onnegotiationneeded?.();
+      await vi.waitFor(() => expect(sent[1].some(signal => signal.description?.type === "offer")).toBe(true));
+      const offer = sent[1].find(signal => signal.description?.type === "offer")!;
+      left.signal(offer);
+      await vi.waitFor(() => expect(sent[0].some(signal => signal.exchangeId === offer.exchangeId)).toBe(true));
+      right.signal(sent[0].find(signal => signal.exchangeId === offer.exchangeId)!);
+      await vi.waitFor(() => expect(remote.signalingState).toBe("stable"));
+      sent[0].length = 0; sent[1].length = 0;
+      left.setOutgoing(outputs);
+      expect(pc.senders.map(sender => sender.track)).toEqual([picture, voice]);
+      expect(sent[0]).toEqual([]);
+      outputs.delete("voice"); // A real resource release permits the refused audio binding to be tried again.
+      left.setOutgoing(outputs);
+      await exchange(false);
+      expect(pc.senders.map(sender => sender.track)).toEqual([picture, next]);
+      return;
+    }
+    outputs.delete("candidate");
+    if (mode === "source") outputs.delete("screen"); else outputs.set("screen", { kind: "screen", stream: screen });
+    left.setOutgoing(outputs);
+    const following = remoteTrack("video");
+    outputs.set("following", { kind: "screen", stream: remoteStream("following", [following]) });
+    left.setOutgoing(outputs);
+    await exchange(false);
+    expect(failed).not.toHaveBeenCalled();
+    expect(pc.senders.some(sender => sender.track === following)).toBe(true);
+  } finally { transports.forEach(transport => transport.close()); }
 });
 
 test.each(["offer", "answer"])("resync recovers a lost %s on the same transport with its original track manifest", async lost => {

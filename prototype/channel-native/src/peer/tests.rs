@@ -1,0 +1,393 @@
+use super::*;
+use piik_channel_prototype::wire::{FlowBinding, Kind};
+
+fn driver() -> (
+    Driver,
+    mpsc::Receiver<Event>,
+    mpsc::Receiver<NativeEvent>,
+    watch::Sender<bool>,
+) {
+    let (commands, output) = mpsc::channel(128);
+    let (events, input) = mpsc::channel(1024);
+    let (first_packets, _) = mpsc::channel(16);
+    let (stop, cancel) = watch::channel(false);
+    (
+        Driver {
+            session: Uuid::nil(),
+            ice: vec![],
+            commands,
+            links: Arc::new(Mutex::new(HashMap::new())),
+            cancel,
+            events,
+            first_packets,
+            pairs: HashMap::new(),
+            publications: HashMap::new(),
+            sources: HashMap::new(),
+            relay: Relay::default(),
+            files: Files::new(Uuid::nil()),
+        },
+        input,
+        output,
+        stop,
+    )
+}
+
+async fn output(
+    d: &mut Driver,
+    pair: Uuid,
+    flow: Uuid,
+    publication: Uuid,
+    kind: RtpCodecKind,
+) -> Result<Uuid> {
+    let input = Uuid::new_v4();
+    let source = Source {
+        id: Uuid::new_v4(),
+        flow_id: input,
+        publication_id: publication,
+        pair: Uuid::new_v4(),
+        stream: Uuid::new_v4().to_string(),
+        codec: if kind == RtpCodecKind::Audio {
+            codec()
+        } else {
+            RTCRtpCodec {
+                mime_type: "video/VP8".into(),
+                clock_rate: 90_000,
+                ..Default::default()
+            }
+        },
+        ssrc: 100,
+        kind,
+        keyframes: watch::channel(0).0,
+        report: Arc::new(Mutex::new(None)),
+    };
+    let p = d.pairs.get_mut(&pair).unwrap();
+    let input = if let Some(binding) = p.plan.outgoing.iter().find(|binding| binding.id == flow) {
+        binding.input_flow_id.unwrap()
+    } else {
+        p.plan.outgoing.push(FlowBinding {
+            id: flow,
+            publication_id: publication,
+            input_flow_id: Some(input),
+            selected: true,
+        });
+        input
+    };
+    let source = Source {
+        flow_id: input,
+        ..source
+    };
+    let next = Output::new(
+        &*p.pc,
+        &source,
+        source.stream.clone(),
+        pair,
+        (flow, kind),
+        d.events.clone(),
+        p.reports.clone(),
+    )
+    .await?;
+    let id = next.id;
+    p.outputs.insert((flow, kind), next);
+    d.sources.insert((input, kind), source);
+    Ok(id)
+}
+
+async fn negotiate(d: &mut Driver, pair: Uuid, remote: &dyn PeerConnection) -> Result<()> {
+    if d.pairs[&pair].pending_offer.is_none() {
+        d.offer(pair).await?;
+    }
+    let offer = d.pairs[&pair]
+        .pending_offer
+        .as_ref()
+        .unwrap()
+        .signal
+        .clone();
+    remote
+        .set_remote_description(serde_json::from_value(serde_json::json!({
+            "type":"offer", "sdp":offer.description.unwrap().sdp.unwrap()
+        }))?)
+        .await?;
+    remote
+        .set_local_description(remote.create_answer(None).await?)
+        .await?;
+    d.signal(
+        pair,
+        Signal {
+            description: Some(Description {
+                kind: "answer".into(),
+                sdp: Some(remote.local_description().await.unwrap().sdp),
+            }),
+            exchange_id: offer.exchange_id,
+            tracks: Some(vec![]),
+            candidate: None,
+            resync: None,
+        },
+    )
+    .await
+}
+
+#[tokio::test]
+async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> Result<()> {
+    let (mut d, mut events, mut commands, _stop) = driver();
+    let pair = Uuid::new_v4();
+    d.update(
+        vec![PairInfo {
+            id: pair,
+            peer_id: Uuid::new_v4(),
+            rooms: vec!["room".into()],
+            incoming: vec![],
+            outgoing: vec![],
+        }],
+        vec![],
+        vec![],
+    )
+    .await?;
+    let remote_id = Uuid::new_v4();
+    let remote: Arc<dyn PeerConnection> = Arc::new(
+        builder(true, SenderReports::default())?
+            .with_handler(Arc::new(Handler {
+                pair: remote_id,
+                events: d.events.clone(),
+                overflow: Arc::new(AtomicBool::new(false)),
+                state: Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8)),
+            }))
+            .with_udp_addrs(vec!["0.0.0.0:0".to_string()])
+            .build()
+            .await?,
+    );
+    let voice = Uuid::new_v4();
+    let screen = Uuid::new_v4();
+    d.publications.insert(voice, Kind::Voice);
+    d.publications.insert(screen, Kind::Screen);
+    let voice_flow = Uuid::new_v4();
+    let screen_flow = Uuid::new_v4();
+    output(&mut d, pair, voice_flow, voice, RtpCodecKind::Audio).await?;
+    output(&mut d, pair, screen_flow, screen, RtpCodecKind::Video).await?;
+    negotiate(&mut d, pair, &*remote).await?;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !d.pairs[&pair].connected() {
+            if let Some(Event::Candidate(id, candidate)) = events.recv().await {
+                if id == pair {
+                    remote.add_ice_candidate(ice_candidate(candidate)).await?;
+                } else {
+                    d.pairs[&pair]
+                        .pc
+                        .add_ice_candidate(ice_candidate(candidate))
+                        .await?;
+                }
+            }
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    while commands.try_recv().is_ok() {}
+    let stable = d.pairs[&pair].output_ids();
+    let old_senders: HashSet<_> = d.pairs[&pair]
+        .pc
+        .get_senders()
+        .await
+        .iter()
+        .map(|s| s.id())
+        .collect();
+    let base = d.pairs[&pair].dc.as_ref().unwrap().1.clone();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while base.ready_state().await? != rtc::data_channel::RTCDataChannelState::Open {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    let added_voice = Uuid::new_v4();
+    output(&mut d, pair, added_voice, voice, RtpCodecKind::Audio).await?;
+    output(&mut d, pair, screen_flow, screen, RtpCodecKind::Audio).await?;
+    let added: Vec<_> = d.pairs[&pair]
+        .outputs
+        .values()
+        .filter(|out| !stable.contains(&out.id))
+        .map(|out| (out.sender.id(), out.sink()))
+        .collect();
+    let attempted = d.pairs[&pair].output_ids();
+    // A sender added after this attempt's snapshot belongs to later work.
+    let late_flow = Uuid::new_v4();
+    let late = output(&mut d, pair, late_flow, voice, RtpCodecKind::Audio).await?;
+    // The SDK seals PeerConnection, so inject the API result at this private
+    // boundary while exercising real negotiated PCs, senders and writers.
+    d.finish_offer(pair, true, attempted, Err(anyhow!("local offer rejected")))
+        .await?;
+    let p = &d.pairs[&pair];
+    assert!(p.connected());
+    assert!(p.output_ids().is_superset(&stable));
+    assert!(p.output_ids().contains(&late));
+    let senders: HashSet<_> = p.pc.get_senders().await.iter().map(|s| s.id()).collect();
+    assert!(senders.is_superset(&old_senders));
+    for (sender, sink) in added {
+        assert!(!senders.contains(&sender));
+        assert!(sink.is_closed());
+    }
+    let failed: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok())
+        .filter_map(|event| match event {
+            NativeEvent::Command(Command::FlowState {
+                flow_id,
+                state: FlowState::Failed,
+                ..
+            }) => Some(flow_id),
+            NativeEvent::Command(Command::LinkState {
+                state: LinkState::Failed,
+                ..
+            }) => panic!("shared pair failed"),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(failed, vec![added_voice]);
+    base.send_text("base survives").await?;
+    for sequence_number in 47..50 {
+        d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)]
+            .sink()
+            .send(rtp::Packet {
+                header: rtp::header::Header {
+                    version: 2,
+                    sequence_number,
+                    timestamp: 48_000 + u32::from(sequence_number - 47) * 960,
+                    ..Default::default()
+                },
+                payload: vec![0xf8, 0xff, 0xfe].into(),
+            })
+            .await?;
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(Event::Track(id, track)) = events.recv().await {
+                if id == remote_id {
+                    while let Some(event) = track.poll().await {
+                        if let TrackRemoteEvent::OnRtpPacket(packet) = event {
+                            if packet.header.sequence_number >= 47 {
+                                return;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+    .await?;
+    d.refresh_media().await?;
+    assert!(!d.pairs[&pair]
+        .outputs
+        .contains_key(&(added_voice, RtpCodecKind::Audio)));
+    // A successful remote exchange confirms its own senders; it does not
+    // consume the local failure's right to retry after resources are released.
+    remote
+        .set_local_description(remote.create_offer(None).await?)
+        .await?;
+    let exchange = Uuid::new_v4();
+    d.signal(
+        pair,
+        Signal {
+            description: Some(Description {
+                kind: "offer".into(),
+                sdp: Some(remote.local_description().await.unwrap().sdp),
+            }),
+            exchange_id: Some(exchange),
+            tracks: Some(vec![]),
+            candidate: None,
+            resync: None,
+        },
+    )
+    .await?;
+    let answer = d.pairs[&pair].answer.as_ref().unwrap();
+    assert_eq!(answer.exchange_id, Some(exchange));
+    remote
+        .set_remote_description(serde_json::from_value(serde_json::json!({
+            "type":"answer", "sdp":answer.description.as_ref().unwrap().sdp
+        }))?)
+        .await?;
+    d.refresh_media().await?;
+    assert!(!d.pairs[&pair]
+        .outputs
+        .contains_key(&(screen_flow, RtpCodecKind::Audio)));
+    let released = d.pairs[&pair].outputs[&(late_flow, RtpCodecKind::Audio)].sink();
+    d.pairs
+        .get_mut(&pair)
+        .unwrap()
+        .plan
+        .outgoing
+        .retain(|flow| flow.id != late_flow);
+    d.refresh_media().await?;
+    assert!(released.is_closed());
+    assert!(d.pairs[&pair]
+        .outputs
+        .contains_key(&(screen_flow, RtpCodecKind::Audio)));
+    negotiate(&mut d, pair, &*remote).await?;
+    // A local failure without new work is also contained and not retried.
+    let attempted = d.pairs[&pair].output_ids();
+    d.finish_offer(pair, true, attempted, Err(anyhow!("no new work")))
+        .await?;
+    d.offer(pair).await?;
+    assert!(d.pairs[&pair].pending_offer.is_none());
+    // A replacement is new work even when RTC reuses the same sender slot.
+    // The retired source is never reinstated after its replacement fails.
+    let old = d
+        .pairs
+        .get_mut(&pair)
+        .unwrap()
+        .outputs
+        .remove(&(voice_flow, RtpCodecKind::Audio))
+        .unwrap();
+    let retired = old.sink();
+    old.close(&*d.pairs[&pair].pc).await;
+    let replacement = output(&mut d, pair, voice_flow, voice, RtpCodecKind::Audio).await?;
+    let rejected = d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)].sink();
+    let attempted = d.pairs[&pair].output_ids();
+    d.finish_offer(pair, true, attempted, Err(anyhow!("replacement rejected")))
+        .await?;
+    assert!(retired.is_closed() && rejected.is_closed());
+    assert!(!d.pairs[&pair].output_ids().contains(&replacement));
+    assert!(!d.pairs[&pair]
+        .outputs
+        .contains_key(&(voice_flow, RtpCodecKind::Audio)));
+    assert!(std::iter::from_fn(|| commands.try_recv().ok()).any(|event| matches!(event,
+        NativeEvent::Command(Command::FlowState { flow_id, state: FlowState::Failed, .. }) if flow_id == voice_flow)));
+    let binding = d.pairs[&pair]
+        .plan
+        .outgoing
+        .iter()
+        .find(|binding| binding.id == voice_flow)
+        .copied()
+        .unwrap();
+    d.pairs
+        .get_mut(&pair)
+        .unwrap()
+        .plan
+        .outgoing
+        .retain(|binding| binding.id != voice_flow);
+    d.refresh_media().await?;
+    d.pairs.get_mut(&pair).unwrap().plan.outgoing.push(binding);
+    d.refresh_media().await?;
+    let readmitted = &d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)];
+    assert!(d.pairs[&pair]
+        .pc
+        .get_senders()
+        .await
+        .iter()
+        .any(|sender| sender.id() == readmitted.sender.id()));
+    negotiate(&mut d, pair, &*remote).await?;
+    let attempted = d.pairs[&pair].output_ids();
+    assert!(d
+        .finish_offer(pair, false, attempted, Err(anyhow!("initial offer")))
+        .await
+        .is_err());
+    // An error after SDP has actually entered have-local-offer is outside
+    // this recovery boundary, even before application signaling is sent.
+    let pc = d.pairs[&pair].pc.clone();
+    pc.set_local_description(pc.create_offer(None).await?)
+        .await?;
+    let attempted = d.pairs[&pair].output_ids();
+    assert!(d
+        .finish_offer(pair, true, attempted, Err(anyhow!("installed offer")))
+        .await
+        .is_err());
+    remote.close().await?;
+    close_pair(d.pairs.remove(&pair).unwrap()).await;
+    d.files.close().await;
+    Ok(())
+}

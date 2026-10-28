@@ -389,7 +389,7 @@ async function senderAllocationFailure() {
     const canvas = document.createElement('canvas'); canvas.width = 160; canvas.height = 90;
     const paint = canvas.getContext('2d'); let frame = 0;
     const timer = setInterval(() => { paint.fillStyle = 'hsl(' + (++frame * 13 % 360) + ' 80% 50%)'; paint.fillRect(0, 0, 160, 90); }, 50);
-    const video = canvas.captureStream(20).getVideoTracks()[0], secondVideo = video.clone();
+    const video = canvas.captureStream(20).getVideoTracks()[0], secondVideo = video.clone(), candidateVideo = video.clone();
     const failures = [], errors = [], received = [], consumers = [], inputs = new Map();
     const warn = console.warn;
     console.warn = (...args) => { if (args[0] === 'Channel media sender attach failed') errors.push(args[2]?.name); warn(...args); };
@@ -453,11 +453,42 @@ async function senderAllocationFailure() {
       await left.sendData('control', 'after-allocation-failure');
       await wait('voice or base stopped after a flow allocation failure', async () => received.includes('after-allocation-failure') && advancing(before, await stats()));
       check(failures.length === 1 && left.pc.connectionState === 'connected' && right.pc.connectionState === 'connected', 'flow allocation failed the shared pair');
-      return { passed: true, error: errors[0], failures, before, after: await stats(), baseMessage: true, retiredLeaseReallocated: true };
+
+      await wait('pair did not finish its existing negotiation', () => left.pc.signalingState === 'stable' && right.pc.signalingState === 'stable');
+      const liveVideo = await videoSample('new-screen'), liveAudio = await stats();
+      const stableSenders = left.pc.getSenders().filter(sender => sender.track);
+      const install = left.pc.setLocalDescription.bind(left.pc);
+      let rejectedOffers = 0;
+      left.pc.setLocalDescription = async (...args) => {
+        left.pc.setLocalDescription = install;
+        rejectedOffers += 1;
+        throw new DOMException('Controlled local offer allocation failure', 'OperationError');
+      };
+      const candidate = { kind: 'screen', stream: new MediaStream([candidateVideo]) };
+      const offered = new Map([['voice', voice], ['good-screen', good], ['new-screen', failed], ['failed-offer', candidate]]);
+      left.setOutgoing(offered);
+      await wait('the unnegotiated candidate did not report its own failure', () => failures.includes('failed-offer'));
+      check(rejectedOffers === 1 && !failures.includes('pair'), 'a local offer failure retired the established pair');
+      check(stableSenders.every(sender => left.pc.getSenders().includes(sender) && sender.track?.readyState === 'live'), 'an established sender was retired with the candidate');
+      check(!left.pc.getSenders().some(sender => sender.track === candidateVideo) && candidateVideo.readyState === 'live', 'failed candidate resource was retained or its source stopped');
+      for (let repeat = 0; repeat < 3; repeat++) left.setOutgoing(offered);
+      check(!left.pc.getSenders().some(sender => sender.track === candidateVideo), 'unchanged rejected demand was allocated again');
+      await left.sendData('control', 'after-offer-failure');
+      await wait('existing picture, voice or base stopped after the rejected offer', async () => {
+        const next = await videoSample('new-screen');
+        return next?.id === liveVideo.id && next.frames > liveVideo.frames
+          && advancing(liveAudio, await stats()) && received.includes('after-offer-failure');
+      });
+      offered.delete('failed-offer'); offered.set('recovered-screen', candidate);
+      left.setOutgoing(offered);
+      await wait('a later real media request could not negotiate', async () => (await videoSample('recovered-screen'))?.frames > 1);
+      check(failures.length === 2 && left.pc.connectionState === 'connected' && right.pc.connectionState === 'connected', 'retry damaged the established pair');
+      return { passed: true, error: errors[0], failures, before, after: await stats(), baseMessage: true,
+        retiredLeaseReallocated: true, localOffer: { rejectedOffers, oldPicture: liveVideo, resumed: await videoSample('recovered-screen') } };
     } finally {
       left?.close(); right?.close(); console.warn = warn; clearInterval(timer);
       for (const element of consumers) { element.pause(); element.srcObject = null; element.remove(); }
-      for (const track of [audio, video, secondVideo]) track.stop(); oscillator.stop(); oscillator.disconnect(); await context.close();
+      for (const track of [audio, video, secondVideo, candidateVideo]) track.stop(); oscillator.stop(); oscillator.disconnect(); await context.close();
     }
   })()`);
   await writeFile(join(output, 'sender-allocation-result.json'), JSON.stringify(result, null, 2));

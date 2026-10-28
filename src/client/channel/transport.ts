@@ -31,14 +31,16 @@ interface TransportOptions {
 /** One physical pair. Flows own stream bindings and senders, never source tracks. */
 export class ChannelTransport {
   readonly pc: RTCPeerConnection;
-  private sending = new Map<string, { stream: MediaStream; senders: RTCRtpSender[]; failed: boolean }>();
+  private sending = new Map<string, { kind: ChannelPublication["kind"]; stream: MediaStream; senders: RTCRtpSender[]; failed: boolean; rejectedTracks?: MediaStreamTrack[] }>();
+  private stableSenders: Map<RTCRtpSender, MediaStreamTrack | null> | null = null;
   private remoteIds = new Map<string, string>();
   private frameBaselines = new Map<string, ReadonlyMap<string, number> | null>();
   private receiving = new Map<string, MediaStream>();
   private makingOffer = false;
   private ignoreOffer = false;
   private settingAnswer = false;
-  private pendingOffer: ChannelSignal | null = null;
+  private pendingOffer: { payload: ChannelSignal; senders: Map<RTCRtpSender, MediaStreamTrack | null> } | null = null;
+  private localOfferFailed = false;
   private answer: ChannelSignal | null = null;
   private candidates: RTCIceCandidateInit[] = [];
   private operations: Promise<void> = Promise.resolve();
@@ -57,16 +59,7 @@ export class ChannelTransport {
     this.pc.onicecandidate = ({ candidate }) => {
       if (candidate) options.send({ candidate: candidate.toJSON() });
     };
-    this.pc.onnegotiationneeded = () => {
-      this.enqueue(async () => {
-        if (this.pc.signalingState !== "stable") return;
-        this.makingOffer = true;
-        try {
-          await this.pc.setLocalDescription();
-          if (!this.closed) this.sendDescription();
-        } finally { this.makingOffer = false; }
-      });
-    };
+    this.pc.onnegotiationneeded = () => { if (!this.localOfferFailed) this.offer(); };
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
         options.dataState?.(true);
@@ -92,6 +85,7 @@ export class ChannelTransport {
   /** Room leases share one reliable ordered channel on this physical pair. */
   setRooms(rooms: readonly string[]): void {
     const added = rooms.some(room => !this.rooms.has(room));
+    const changed = added || rooms.length !== this.rooms.size;
     this.rooms = new Set(rooms);
     if (added) this.baseFailed = false;
     if (this.rooms.size && !this.baseFailed && !this.channel && !this.options.polite) {
@@ -100,6 +94,7 @@ export class ChannelTransport {
     if (this.rooms.size && !this.bulk && !this.options.polite) this.installChannel(this.pc.createDataChannel("piik-file", { ordered: true }));
     this.reportBaseReady();
     this.syncDeadline();
+    if (changed) this.retryOffer();
   }
 
   isBaseReady(): boolean {
@@ -189,20 +184,27 @@ export class ChannelTransport {
   }
 
   setOutgoing(streams: ReadonlyMap<string, OutgoingMedia>): void {
+    if (this.localOfferFailed && ([...this.sending.keys()].some(id => !streams.has(id)) || [...streams].some(([id, { stream }]) => {
+      const output = this.sending.get(id), previous = output?.rejectedTracks ?? output?.stream.getTracks();
+      const tracks = stream?.getTracks() ?? [];
+      return !previous || previous.length !== tracks.length || tracks.some(track => !previous.includes(track));
+    }))) this.retryOffer();
     for (const [id, previous] of this.sending) {
       if (streams.has(id)) continue;
-      for (const sender of previous.senders) this.pc.removeTrack(sender);
+      for (const sender of previous.senders) this.removeSender(sender);
       for (const track of previous.stream.getTracks()) previous.stream.removeTrack(track);
       this.sending.delete(id);
     }
     for (const [id, { kind, stream }] of streams) {
       let output = this.sending.get(id);
       if (!output) {
-        output = { stream: new MediaStream(), senders: [], failed: false };
+        output = { kind, stream: new MediaStream(), senders: [], failed: false };
         this.sending.set(id, output);
       }
       if (output.failed) continue;
       const tracks = stream?.getTracks() ?? [];
+      if (output.rejectedTracks?.length === tracks.length && tracks.every(track => output.rejectedTracks!.includes(track))) continue;
+      output.rejectedTracks = undefined;
       const previous = [...output.senders];
       let attached = true;
       for (const track of tracks) {
@@ -214,7 +216,7 @@ export class ChannelTransport {
             attached = false;
             const live = previous.filter(sender => sender.track?.readyState === "live");
             const retained = live.some(sender => sender.track?.kind === (kind === "screen" ? "video" : "audio")) ? live : [];
-            for (const sender of output.senders) if (!retained.includes(sender)) this.pc.removeTrack(sender);
+            for (const sender of output.senders) if (!retained.includes(sender)) this.removeSender(sender);
             output.senders = retained;
             for (const track of output.stream.getTracks()) {
               if (!retained.some(sender => sender.track === track)) output.stream.removeTrack(track);
@@ -229,10 +231,70 @@ export class ChannelTransport {
       if (attached) output.senders = output.senders.filter(sender => {
         if (sender.track && tracks.includes(sender.track)) return true;
         if (sender.track) output.stream.removeTrack(sender.track);
-        this.pc.removeTrack(sender);
+        this.removeSender(sender);
         return false;
       });
     }
+  }
+
+  private removeSender(sender: RTCRtpSender): void {
+    this.stableSenders?.delete(sender);
+    this.pendingOffer?.senders.delete(sender);
+    this.pc.removeTrack(sender);
+  }
+
+  private retryOffer(): void {
+    if (!this.localOfferFailed) return;
+    this.localOfferFailed = false;
+    for (const output of this.sending.values()) output.rejectedTracks = undefined;
+    this.offer();
+  }
+
+  private offer(): void {
+    this.enqueue(async () => {
+      if (this.pc.signalingState !== "stable" || this.pendingOffer) return;
+      const senders = new Map([...this.sending.values()].flatMap(output => output.senders.map(sender => [sender, sender.track] as const)));
+      const channel = this.channel, bulk = this.bulk;
+      this.makingOffer = true;
+      try {
+        try { await this.pc.setLocalDescription(); }
+        catch (error) {
+          if (!this.stableSenders || this.pendingOffer || this.pc.signalingState !== "stable"
+            || this.closed || ["failed", "closed"].includes(this.pc.connectionState)) throw error;
+          this.localOfferFailed = true;
+          const reverted: string[] = [], failed: string[] = [];
+          for (const [id, output] of this.sending) {
+            const rejected = output.senders.filter(sender => senders.has(sender) && senders.get(sender) === sender.track
+              && this.stableSenders!.get(sender) !== sender.track);
+            if (!rejected.length) continue;
+            reverted.push(id);
+            output.rejectedTracks = output.stream.getTracks();
+            for (const sender of rejected) {
+              if (sender.track) output.stream.removeTrack(sender.track);
+              this.removeSender(sender);
+            }
+            output.senders = output.senders.filter(sender => !rejected.includes(sender));
+            if (!output.senders.some(sender => sender.track?.readyState === "live" && sender.track.kind === (output.kind === "screen" ? "video" : "audio"))) {
+              output.failed = true;
+              failed.push(id);
+            }
+          }
+          console.warn("Channel local offer failed", { flows: reverted }, error);
+          for (const id of failed) this.options.outgoingFailed?.(id);
+          if ((this.channel && this.channel !== channel) || (this.bulk && this.bulk !== bulk)
+            || [...this.sending.values()].some(output => output.senders.some(sender => !senders.has(sender) || senders.get(sender) !== sender.track))) this.retryOffer();
+          return;
+        }
+        if (!this.closed) this.sendDescription(senders);
+      } finally { this.makingOffer = false; }
+    });
+  }
+
+  private confirmSenders(senders: ReadonlyMap<RTCRtpSender, MediaStreamTrack | null>): void {
+    this.stableSenders = new Map(this.pc.getTransceivers()
+      .filter(transceiver => ["sendonly", "sendrecv"].includes(transceiver.currentDirection ?? "")
+        && senders.has(transceiver.sender) && senders.get(transceiver.sender) === transceiver.sender.track)
+      .map(transceiver => [transceiver.sender, transceiver.sender.track]));
   }
 
   hasRemoteStream(flowId: string, stream: MediaStream): boolean {
@@ -248,7 +310,7 @@ export class ChannelTransport {
       if (payload.resync) { this.resendOffer(); return; }
       if (payload.description) {
         const description = payload.description;
-        if (description.type === "answer" && (!this.pendingOffer || payload.exchangeId !== this.pendingOffer.exchangeId)) return;
+        if (description.type === "answer" && (!this.pendingOffer || payload.exchangeId !== this.pendingOffer.payload.exchangeId)) return;
         if (description.type === "offer" && this.answer && payload.exchangeId === this.answer.exchangeId) { this.replayDescription(this.answer); return; }
         const ready = !this.makingOffer && (this.pc.signalingState === "stable" || this.settingAnswer);
         const collision = description.type === "offer" && !ready;
@@ -256,6 +318,7 @@ export class ChannelTransport {
         if (this.ignoreOffer) return;
         this.settingAnswer = description.type === "answer";
         const previousIds = this.remoteIds;
+        const offeredSenders = this.pendingOffer?.senders;
         const remoteIds = new Map((payload.tracks ?? []).map(track => [track.streamId, track.flowId]));
         const flows = new Set(remoteIds.values());
         const added = [...flows].filter(id => !this.frameBaselines.has(id));
@@ -273,6 +336,7 @@ export class ChannelTransport {
         this.remoteIds = remoteIds;
         try { await this.pc.setRemoteDescription(description); }
         finally { this.settingAnswer = false; }
+        if (description.type === "answer") this.confirmSenders(offeredSenders!);
         if (description.type === "offer" || description.type === "answer") this.pendingOffer = null;
         for (const [streamId, stream] of this.receiving) {
           const flowId = this.remoteIds.get(streamId);
@@ -285,8 +349,9 @@ export class ChannelTransport {
         }
         for (const candidate of this.candidates.splice(0)) await addRemoteIceCandidate(this.pc, { ...candidate, candidate: candidate.candidate ?? "" });
         if (description.type === "offer") {
+          const senders = new Map([...this.sending.values()].flatMap(output => output.senders.map(sender => [sender, sender.track] as const)));
           await this.pc.setLocalDescription();
-          if (!this.closed) this.sendDescription(payload.exchangeId!);
+          if (!this.closed) { this.confirmSenders(senders); this.sendDescription(senders, payload.exchangeId!); }
         }
       } else if (payload.candidate && !this.ignoreOffer) {
         if (this.pc.remoteDescription) await addRemoteIceCandidate(this.pc, { ...payload.candidate, candidate: payload.candidate.candidate ?? "" });
@@ -303,7 +368,7 @@ export class ChannelTransport {
   }
 
   private resendOffer(): void {
-    if (this.pendingOffer) this.replayDescription(this.pendingOffer);
+    if (this.pendingOffer) this.replayDescription(this.pendingOffer.payload);
   }
 
   private replayDescription(payload: ChannelSignal): void {
@@ -314,12 +379,12 @@ export class ChannelTransport {
     }) });
   }
 
-  private sendDescription(exchangeId: string = crypto.randomUUID()): void {
+  private sendDescription(senders: Map<RTCRtpSender, MediaStreamTrack | null>, exchangeId: string = crypto.randomUUID()): void {
     const description = this.pc.localDescription;
     if (!description || (description.type !== "offer" && description.type !== "answer")) return;
     const payload = { exchangeId, description: { type: description.type, sdp: description.sdp }, tracks: [...this.sending]
       .filter(([, output]) => !output.failed).map(([flowId, { stream }]) => ({ flowId, streamId: stream.id })) };
-    if (description.type === "offer") this.pendingOffer = payload;
+    if (description.type === "offer") this.pendingOffer = { payload, senders };
     else if (description.type === "answer") this.answer = payload;
     this.options.send(payload);
   }
@@ -361,6 +426,7 @@ export class ChannelTransport {
     this.receiving.clear();
     this.frameBaselines.clear();
     this.pendingOffer = null;
+    this.stableSenders = null;
     this.answer = null;
   }
 }
