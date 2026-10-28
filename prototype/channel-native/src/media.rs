@@ -251,10 +251,11 @@ impl Protocol<TaggedPacket, TaggedPacket, ()> for MediaFeedback {
                     || packet.as_any().is::<PictureLossIndication>()
                     || packet.as_any().is::<FullIntraRequest>()
             });
-            if packets.is_empty() {
+            if !packets.is_empty() {
+                msg.message.add(Attribute::DeliverToApplication);
+            } else if msg.message.attributes.is_empty() {
                 return Ok(());
             }
-            msg.message.add(Attribute::DeliverToApplication);
         }
         self.read.push_back(msg);
         Ok(())
@@ -531,6 +532,44 @@ impl Relay {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn media_feedback_preserves_sdk_metadata_without_exposing_consumed_rtcp() -> Result<()> {
+        use rtc::{interceptor::AttributedPacket, rtcp::receiver_report::ReceiverReport};
+
+        let packet = |packets| TaggedPacket {
+            now: std::time::Instant::now(),
+            transport: Default::default(),
+            message: AttributedPacket::new(Packet::Rtcp(packets)),
+        };
+        let target = Attribute::TargetBitrateChanged {
+            bits_per_second: 750_000.0,
+        };
+        let mut feedback = MediaFeedback::default();
+        let mut report = packet(vec![Box::new(ReceiverReport::default())]);
+        report.message.add(target.clone());
+        feedback.handle_read(report)?;
+        let carrier = feedback
+            .poll_read()
+            .expect("SDK target must survive filtering");
+        assert!(matches!(&carrier.message.packet, Packet::Rtcp(packets) if packets.is_empty()));
+        assert!(matches!(carrier.message.get(&target),
+            Some(Attribute::TargetBitrateChanged { bits_per_second }) if *bits_per_second == 750_000.0));
+        assert!(!carrier.message.has(&Attribute::DeliverToApplication));
+
+        feedback.handle_read(packet(vec![Box::new(ReceiverReport::default())]))?;
+        assert!(feedback.poll_read().is_none());
+        feedback.handle_read(packet(vec![Box::new(PictureLossIndication::default())]))?;
+        let picture_feedback = feedback.poll_read().expect("PLI reaches its source owner");
+        assert!(picture_feedback
+            .message
+            .has(&Attribute::DeliverToApplication));
+        assert!(
+            matches!(&picture_feedback.message.packet, Packet::Rtcp(packets)
+            if packets.len() == 1 && packets[0].as_any().is::<PictureLossIndication>())
+        );
+        Ok(())
+    }
 
     #[test]
     fn h264_checks_actual_sps_without_retaining_a_historical_level_ceiling() -> Result<()> {
