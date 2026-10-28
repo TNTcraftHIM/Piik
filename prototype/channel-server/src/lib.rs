@@ -264,11 +264,11 @@ impl Authority {
                     }
                     self.deliver(recipient, event, &mut effects);
                 }
-                if outcome.broadcast {
-                    self.broadcast(None, &mut effects);
-                }
                 if sync_hosts {
                     self.sync_hosts(&mut effects, true);
+                }
+                if outcome.broadcast {
+                    self.broadcast(None, &mut effects);
                 }
                 if outcome.leave {
                     effects.events.push((
@@ -440,8 +440,8 @@ impl Authority {
                 if let Some(request_id) = request.request_id {
                     effects.events.push((connection, Event::Ack { request_id }));
                 }
-                self.broadcast(Some(admitted.session_id), effects);
                 self.sync_hosts(effects, false);
+                self.broadcast(Some(admitted.session_id), effects);
             }
             Err(code) => {
                 effects.events.push((
@@ -632,45 +632,7 @@ impl Authority {
             }
             let mut completion = RoomResult::Done;
             match reply.result {
-                RoomResult::History { result } => match result {
-                    history::HistoryResult::Attachment { .. } => return Err("invalid_room_reply"),
-                    history::HistoryResult::Page {
-                        messages,
-                        has_more,
-                        oldest_seq,
-                        before,
-                    } => effects.events.push((
-                        context.connection,
-                        Event::History {
-                            room_id: room_id.into(),
-                            messages,
-                            has_more,
-                            oldest_seq,
-                            before,
-                        },
-                    )),
-                    history::HistoryResult::Sent(confirmation) => {
-                        if confirmation.inserted {
-                            for audience in self.channel.history_audience(room_id) {
-                                effects.events.push((
-                                    audience,
-                                    Event::Message {
-                                        room_id: room_id.into(),
-                                        message: confirmation.message.clone(),
-                                    },
-                                ));
-                            }
-                        }
-                        effects.events.push((
-                            context.connection,
-                            Event::MessageConfirmed {
-                                room_id: room_id.into(),
-                                message: confirmation.message,
-                                request_id: context.request_id.clone(),
-                            },
-                        ));
-                    }
-                },
+                RoomResult::History { .. } => return Err("invalid_room_reply"),
                 RoomResult::Invite { key } => effects.events.push((
                     context.connection,
                     Event::RoomInvite {

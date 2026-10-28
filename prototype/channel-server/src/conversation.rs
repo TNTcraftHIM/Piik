@@ -218,6 +218,8 @@ pub enum ConversationRecord {
         message: ChatMessage,
     },
     HistoryEnd {
+        #[serde(deserialize_with = "history_count")]
+        count: usize,
         has_more: bool,
         oldest_seq: Option<u64>,
         before: Option<u64>,
@@ -229,6 +231,14 @@ pub enum ConversationRecord {
         code: String,
     },
 }
+fn history_count<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<usize, D::Error> {
+    let count = usize::deserialize(deserializer)?;
+    if count > crate::history::HISTORY_PAGE {
+        return Err(serde::de::Error::custom("invalid history count"));
+    }
+    Ok(count)
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct ConversationReply {
     #[serde(flatten)]
@@ -276,7 +286,8 @@ impl ConversationAddress {
                 oldest_seq,
                 before,
             }) => {
-                if messages.len() > crate::history::HISTORY_PAGE {
+                let count = messages.len();
+                if count > crate::history::HISTORY_PAGE {
                     return Err("invalid_conversation_result");
                 }
                 let mut records: Vec<_> = messages
@@ -284,6 +295,7 @@ impl ConversationAddress {
                     .map(|message| ConversationRecord::HistoryMessage { message })
                     .collect();
                 records.push(ConversationRecord::HistoryEnd {
+                    count,
                     has_more,
                     oldest_seq,
                     before,
@@ -394,8 +406,9 @@ mod tests {
         assert_eq!(replies.len(), 101);
         assert!(matches!(
             replies.last().unwrap().record,
-            ConversationRecord::HistoryEnd { .. }
+            ConversationRecord::HistoryEnd { count: 100, .. }
         ));
+        assert!(serde_json::from_value::<ConversationRecord>(serde_json::json!({"type":"history_end","count":101,"hasMore":false,"oldestSeq":null,"before":null})).is_err());
         for reply in replies {
             let packet = signer.sign(reply.address.sender, &reply).unwrap();
             let bytes = encode_control(&ControlFrame::Conversation(packet)).unwrap();

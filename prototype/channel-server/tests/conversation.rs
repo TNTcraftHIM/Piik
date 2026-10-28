@@ -206,6 +206,7 @@ fn signed_conversation_routes_on_actual_authority_base_and_bounds_stale_projecti
     let reply = ConversationReply {
         address: address.reply(),
         record: ConversationRecord::HistoryEnd {
+            count: 0,
             has_more: false,
             oldest_seq: None,
             before: None,
