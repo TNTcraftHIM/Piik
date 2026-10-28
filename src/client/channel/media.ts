@@ -16,6 +16,7 @@ interface MediaInput {
   receiver: RTCRtpReceiver | undefined;
   ready: boolean;
   stopProof?: () => void;
+  release?: () => void;
 }
 
 export class ChannelMedia {
@@ -61,6 +62,7 @@ export class ChannelMedia {
           iceServers: state.iceServers,
           send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
           receive: (publicationId, stream) => this.receive(plan.id, publicationId, stream),
+          retire: publicationId => this.retire(plan.id, publicationId),
           data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
           dataState: ready => this.dataState?.(plan.peerId, ready),
           bulkClosed: () => this.bulkClosed?.(plan.peerId),
@@ -83,7 +85,7 @@ export class ChannelMedia {
       if (peer.transport.isBaseReady()) this.reportBase(peer, true);
       for (const [publicationId, input] of peer.inputs) {
         if (!plan.incoming.includes(publicationId)) {
-          input.stopProof?.();
+          input.release?.();
           peer.inputs.delete(publicationId);
         }
       }
@@ -124,22 +126,53 @@ export class ChannelMedia {
     this.refresh();
   }
 
+  private retire(pairId: string, id: string): void {
+    const peer = this.peers.get(pairId), input = peer?.inputs.get(id);
+    if (!peer || !input) return;
+    input.release?.();
+    peer.inputs.delete(id);
+    if (input.ready && this.publications.find(publication => publication.id === id)?.kind === "screen") {
+      this.send({ type: "flow_state", publicationId: id, pairId, ready: false });
+    }
+    this.refresh();
+  }
+
   private prove(peer: Peer, id: string, stream: MediaStream): void {
+    if (!peer.transport.hasRemoteStream(id, stream)) return;
     const kind = this.publications.find(publication => publication.id === id)?.kind;
     if (!kind) return;
-    const video = kind === "screen" ? stream.getVideoTracks()[0] : undefined;
+    const video = kind === "screen" ? stream.getVideoTracks().find(track => track.readyState !== "ended") : undefined;
     const receiver = video ? peer.transport.pc.getReceivers().find(candidate => candidate.track === video) : undefined;
     const previous = peer.inputs.get(id);
     const input: MediaInput = previous && previous.stream === stream && previous.video === video && previous.receiver === receiver
       ? previous : { stream, video, receiver, ready: false };
     if (input !== previous) {
-      previous?.stopProof?.();
+      previous?.release?.();
       peer.inputs.set(id, input);
+      const changed = () => {
+        if (peer.inputs.get(id) !== input) return;
+        this.prove(peer, id, stream);
+        this.refresh();
+      };
+      if (kind === "screen") {
+        stream.addEventListener("removetrack", changed);
+        video?.addEventListener("ended", changed);
+      }
+      input.release = () => {
+        input.stopProof?.();
+        if (kind === "screen") {
+          stream.removeEventListener("removetrack", changed);
+          video?.removeEventListener("ended", changed);
+        }
+      };
+      if (kind === "screen" && previous?.ready && !video) {
+        this.send({ type: "flow_state", publicationId: id, pairId: peer.plan.id, ready: false });
+      }
     }
     if (input.ready || input.stopProof) return;
     const owned = () => this.peers.get(peer.plan.id) === peer && peer.plan.incoming.includes(id) &&
-      peer.inputs.get(id) === input && (kind !== "screen" ||
-        (receiver !== undefined && stream.getVideoTracks()[0] === video && receiver.track === video &&
+      peer.inputs.get(id) === input && peer.transport.hasRemoteStream(id, stream) && (kind !== "screen" ||
+        (receiver !== undefined && stream.getVideoTracks().find(track => track.readyState !== "ended") === video && receiver.track === video &&
           peer.transport.pc.getReceivers().includes(receiver)));
     const ready = () => {
       if (!owned()) return true;
@@ -219,7 +252,7 @@ export class ChannelMedia {
   }
 
   private closePeer(peer: Peer): void {
-    for (const input of peer.inputs.values()) input.stopProof?.();
+    for (const input of peer.inputs.values()) input.release?.();
     peer.transport.close();
   }
 

@@ -332,7 +332,11 @@ function screenFixture() {
   return fixture;
 }
 
-const remoteStream = (id: string, tracks: MediaStreamTrack[]) => ({
+const remoteTrack = (kind: "audio" | "video") => Object.assign(new EventTarget(), {
+  kind, readyState: "live", stop: vi.fn(),
+}) as unknown as MediaStreamTrack;
+
+const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(new EventTarget(), {
   id, getTracks: () => tracks, getVideoTracks: () => tracks.filter(track => track.kind === "video"),
   getAudioTracks: () => tracks.filter(track => track.kind === "audio"),
 }) as unknown as MediaStream;
@@ -348,15 +352,16 @@ test("an audio-first screen waits for decoded video on a currently connected tra
   const fixture = screenFixture();
   const { media, session, pc, sent } = fixture;
   vi.useFakeTimers();
-  const tracks = [{ kind: "audio" } as MediaStreamTrack];
+  const tracks = [remoteTrack("audio")];
   const stream = remoteStream("screen-stream", tracks);
   let resolve!: (report: RTCStatsReport) => void;
   const pending = new Promise<RTCStatsReport>(done => { resolve = done; });
   const getStats = vi.fn().mockReturnValueOnce(pending).mockResolvedValue(decodedReport(2));
   try {
     await receiveScreen(fixture, stream);
+    stream.dispatchEvent(new Event("removetrack"));
     expect(sent.filter(command => command.type === "flow_state")).toEqual([]);
-    const video = { kind: "video" } as MediaStreamTrack;
+    const video = remoteTrack("video");
     tracks.push(video);
     pc.receivers = [{ track: video, getStats } as unknown as RTCRtpReceiver];
     pc.ontrack?.({ streams: [stream] });
@@ -379,7 +384,7 @@ test("a replaced screen cannot be proved by its old receiver's delayed stats", a
   const resolves: Array<(report: RTCStatsReport) => void> = [];
   try {
     for (const id of ["old", "new"]) {
-      const video = { kind: "video" } as MediaStreamTrack;
+      const video = remoteTrack("video");
       const pending = new Promise<RTCStatsReport>(resolve => { resolves.push(resolve); });
       pc.receivers = [{ track: video, getStats: () => pending } as unknown as RTCRtpReceiver];
       await receiveScreen(fixture, remoteStream(id, [video]));
@@ -397,7 +402,7 @@ test("same-publication stream replacement re-proves progress on a reused receive
   const fixture = screenFixture();
   const { media, session, pc, sent } = fixture;
   vi.useFakeTimers();
-  const video = { kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack;
+  const video = remoteTrack("video");
   let frames = 5;
   pc.receivers = [{ track: video, getStats: async () => decodedReport(frames) } as RTCRtpReceiver];
   try {
@@ -417,8 +422,8 @@ test("same-publication stream replacement re-proves progress on a reused receive
 test("a relay updates senders when audio joins and leaves the same remote screen stream", async () => {
   const fixture = screenFixture();
   const { media, session, state, pc } = fixture;
-  const video = { kind: "video", stop: vi.fn() } as unknown as MediaStreamTrack;
-  const audio = { kind: "audio", stop: vi.fn() } as unknown as MediaStreamTrack;
+  const video = remoteTrack("video");
+  const audio = remoteTrack("audio");
   const tracks = [video], stream = remoteStream("screen-stream", tracks);
   try {
     state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: ["screen"] });
@@ -426,17 +431,76 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     const downstream = RoomPeerConnection.instances[1];
     await receiveScreen(fixture, stream);
     expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    const videoSender = downstream.senders[0];
     tracks.push(audio);
     pc.ontrack?.({ streams: [stream] });
     expect(downstream.senders.map(sender => sender.track)).toEqual([video, audio]);
+    expect(downstream.senders[0]).toBe(videoSender);
     // Removing a remote track does not emit ontrack; the SDP replay republishes its stream.
     tracks.pop();
     media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "audio-removed" },
       tracks: [{ publicationId: "screen", streamId: stream.id }] });
     await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("audio-removed"));
     expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    expect(downstream.senders[0]).toBe(videoSender);
     expect(video.stop).not.toHaveBeenCalled(); expect(audio.stop).not.toHaveBeenCalled();
     expect(downstream.close).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
+test.each(["ended", "removetrack", "unmapped"])("a proven screen withdraws readiness when its video is %s", async ending => {
+  const fixture = screenFixture();
+  const { media, session, pc, sent } = fixture;
+  const video = remoteTrack("video"), tracks = [video], stream = remoteStream("screen-stream", tracks);
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
+  try {
+    await receiveScreen(fixture, stream);
+    await vi.waitFor(() => expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1));
+    if (ending === "ended") {
+      Object.defineProperty(video, "readyState", { value: "ended" });
+      video.dispatchEvent(new Event("ended"));
+    } else if (ending === "removetrack") {
+      tracks.pop();
+      stream.dispatchEvent(new Event("removetrack"));
+    } else {
+      media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "unmapped" }, tracks: [] });
+      await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("unmapped"));
+    }
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
+      { type: "flow_state", publicationId: "screen", pairId: "pair", ready: true },
+      { type: "flow_state", publicationId: "screen", pairId: "pair", ready: false },
+    ]);
+    video.dispatchEvent(new Event("ended")); stream.dispatchEvent(new Event("removetrack"));
+    expect(sent.filter(command => command.type === "flow_state")).toHaveLength(2);
+    expect(video.stop).not.toHaveBeenCalled(); expect(pc.close).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
+test("a replacement video waits for proof without treating the old input's retirement as failure", async () => {
+  const fixture = screenFixture();
+  const { media, session, pc, sent } = fixture;
+  const old = remoteTrack("video"), next = remoteTrack("video");
+  const oldTracks = [old], oldStream = remoteStream("old", oldTracks), nextStream = remoteStream("new", [next]);
+  let resolve!: (report: RTCStatsReport) => void;
+  const pending = new Promise<RTCStatsReport>(done => { resolve = done; });
+  try {
+    pc.receivers = [{ track: old, getStats: async () => decodedReport(5) } as RTCRtpReceiver];
+    await receiveScreen(fixture, oldStream);
+    await vi.waitFor(() => expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1));
+    pc.receivers = [{ track: next, getStats: () => pending } as RTCRtpReceiver];
+    const applyDescription = pc.setRemoteDescription.bind(pc);
+    vi.spyOn(pc, "setRemoteDescription").mockImplementation(async description => {
+      await applyDescription(description);
+      oldTracks.pop();
+      oldStream.dispatchEvent(new Event("removetrack"));
+    });
+    await receiveScreen(fixture, nextStream);
+    Object.defineProperty(old, "readyState", { value: "ended" }); old.dispatchEvent(new Event("ended"));
+    oldStream.dispatchEvent(new Event("removetrack"));
+    expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1);
+    resolve(decodedReport(1));
+    await vi.waitFor(() => expect(sent.filter(command => command.type === "flow_state")).toHaveLength(2));
+    expect(sent.filter(command => command.type === "flow_state" && !command.ready)).toEqual([]);
   } finally { media.reset(); session.close(); }
 });
 

@@ -11,6 +11,7 @@ interface TransportOptions {
   iceServers: RTCIceServer[];
   send(payload: ChannelSignal): void;
   receive(publicationId: string, stream: MediaStream): void;
+  retire?(publicationId: string): void;
   connected(): void;
   base(ready: boolean): void;
   failed(): void;
@@ -181,17 +182,28 @@ export class ChannelTransport {
   setOutgoing(streams: ReadonlyMap<string, MediaStream>): void {
     for (const [id, previous] of this.sending) {
       const next = streams.get(id);
-      const tracks = next?.getTracks();
-      if (next === previous.stream && tracks?.length === previous.senders.length && tracks.every(track => previous.senders.some(sender => sender.track === track))) continue;
-      for (const sender of previous.senders) this.pc.removeTrack(sender);
-      this.sending.delete(id);
+      const tracks = next === previous.stream ? next.getTracks() : [];
+      previous.senders = previous.senders.filter(sender => {
+        if (sender.track && tracks.includes(sender.track)) return true;
+        this.pc.removeTrack(sender);
+        return false;
+      });
+      if (next !== previous.stream) this.sending.delete(id);
     }
     for (const [id, stream] of streams) {
-      if (!this.sending.has(id)) {
-        const senders = stream.getTracks().map(track => this.pc.addTrack(track, stream));
-        this.sending.set(id, { stream, senders });
+      let output = this.sending.get(id);
+      if (!output) {
+        output = { stream, senders: [] };
+        this.sending.set(id, output);
+      }
+      for (const track of stream.getTracks()) {
+        if (!output.senders.some(sender => sender.track === track)) output.senders.push(this.pc.addTrack(track, stream));
       }
     }
+  }
+
+  hasRemoteStream(publicationId: string, stream: MediaStream): boolean {
+    return this.remoteIds.get(stream.id) === publicationId;
   }
 
   signal(payload: ChannelSignal): void {
@@ -206,6 +218,7 @@ export class ChannelTransport {
         this.ignoreOffer = !this.options.polite && collision;
         if (this.ignoreOffer) return;
         this.settingAnswer = description.type === "answer";
+        const previousIds = this.remoteIds;
         this.remoteIds = new Map((payload.tracks ?? []).map(track => [track.streamId, track.publicationId]));
         try { await this.pc.setRemoteDescription(description); }
         finally { this.settingAnswer = false; }
@@ -214,6 +227,10 @@ export class ChannelTransport {
           const publicationId = this.remoteIds.get(streamId);
           if (publicationId) this.options.receive(publicationId, stream);
           else this.receiving.delete(streamId);
+        }
+        const publications = new Set(this.remoteIds.values());
+        for (const id of new Set(previousIds.values())) {
+          if (!publications.has(id)) this.options.retire?.(id);
         }
         for (const candidate of this.candidates.splice(0)) await addRemoteIceCandidate(this.pc, { ...candidate, candidate: candidate.candidate ?? "" });
         if (description.type === "offer") {
