@@ -94,11 +94,22 @@ storage server. Later use of an established room path for control must preserve
 the same authority and recovery path, rather than add another permission owner.
 
 After room admission, the room owner confirms room changes and message order.
-Forwarded commands must retain verifiable original sender/authority and room
-identity: an authorized relay is not allowed to impersonate another user.
-Do not expose long-lived admission credentials to intermediate peers. Establish
-that control boundary using maintained primitives before moving authoritative
-commands onto a multi-hop carrier.
+The next peer-carrier slice moves chat and history requests onto the base paths.
+Use short-lived session signing keys, bound to admitted sessions and the current
+room-host binding through authenticated domain rendezvous. Sign the original
+payload bytes with a maintained Ed25519 implementation, verify before parsing,
+and resolve the author and permissions from current trusted domain facts. A
+relay cannot substitute its identity or supply its own permission snapshot.
+Long-lived admission credentials never enter the peer carrier.
+
+Both carriers execute the same room command and storage transaction. A peer
+request does not become a domain-issued turn: its confirmation returns to that
+request, while domain revisions retain their authority/reply-fencing purpose.
+Chat reuses its persisted retry identity; history requests need response
+correlation, not another durable replay ledger. The room host signs live results,
+without creating a permanent signed history log. The shared transport owner
+dispatches typed control messages and bounded history records; file delivery
+remains one consumer rather than owning unrelated room commands.
 
 The [room-data model](./channel-storage-and-identity.md) owns persistence,
 history copies, file retention and manual address replacement. Domain and room
