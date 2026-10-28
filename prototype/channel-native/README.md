@@ -13,8 +13,9 @@ This executable is an explicitly started development host. It does not make a
 standby Piik App take over a closed page's room. Chat, history, room voice and files
 use the base paths, and screen startup reuses those paths through the same participant.
 The default Server embeds one participant for its three rooms and owns its
-service lifetime. Native capture and App hosting-session integration remain
-subsequent stages.
+service lifetime. The separate App entry below delegates room execution from an
+existing Browser participant. Native capture, input and product launcher integration
+remain subsequent stages.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs in one flow share a stream while owning separate SSRCs and
@@ -60,17 +61,50 @@ administrator page's peer connection. Ctrl+C ends hosting and confirms departure
 through the existing domain protocol. An abrupt process loss uses the normal
 20-second recovery window.
 
+## Local App Link
+
+The `piik-channel-app` entry exposes the same room executor over a loopback
+WebSocket. The Browser keeps its admitted identity, signing keys and media;
+there is no second participant. Closing its page or App connection ends hosting.
+Reopening restores policy and history with a new binding, without restarting calls.
+
+For this development bridge, explicitly select one data owner before starting:
+
+```powershell
+$env:PIIK_CHANNEL_APP_ORIGIN = "http://127.0.0.1:8790"
+$env:PIIK_CHANNEL_APP_DATA_DIR = "build/channel-app-data"
+$env:PIIK_CHANNEL_APP_CHANNEL_ID = "<current domain UUID>"
+$env:PIIK_CHANNEL_APP_USER_ID = "<current Browser user UUID>"
+$env:PIIK_CHANNEL_APP_TOKEN = [guid]::NewGuid().ToString()
+cargo +1.91.0 run --manifest-path prototype/channel-native/Cargo.toml --bin piik-channel-app
+```
+
+The development page exposes those IDs in
+`window.__channelGate.snapshot().state.channel.id` and
+`window.__channelGate.snapshot().self.id`. Open a fresh page at
+`http://127.0.0.1:8790/__channel-preview#app=18997&appToken=<the generated token>`
+in the same Browser profile. `PIIK_CHANNEL_APP_PORT` may override port 18997.
+The existing room controls now use native SQLite; they do not write a second
+IndexedDB copy. Keep the token local; it is omitted from room invitations.
+
+This local startup selection authorizes the specified site's code to use that
+data directory. Public domain/user IDs do not grant access. A replacement tunnel
+origin needs a new local selection; keep the same data and Browser account.
+The product App's normal approval/launcher flow will supply this selection.
+
 ## Checks
 
 ```powershell
 cargo +1.91.0 test --manifest-path prototype/channel-native/Cargo.toml
 cargo +1.91.0 build --manifest-path prototype/channel-native/Cargo.toml
 node prototype/channel-server/run-browser-check.mjs --native
+node prototype/channel-server/run-browser-check.mjs --app
 ```
 
 The Browser check also needs a built domain executable and the existing
 `agent-browser` environment. `CHANNEL_NATIVE_EXECUTABLE` and `CHANNEL_EXECUTABLE`
-can select separate Native and domain builds. The runner owns its processes,
+can select separate Native and domain builds; `CHANNEL_APP_EXECUTABLE` selects
+the App entry for `--app`. The runner owns its processes,
 temporary databases and Browser sessions, and stops them on completion.
 
 The peer check uses real WebRTC endpoints for source replacement, signaling

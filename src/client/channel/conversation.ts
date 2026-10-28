@@ -100,7 +100,7 @@ export class ChannelConversation {
     const broadcasts: ConversationReply[] = [];
     for (const reply of replies) {
       if (reply.record.type === "confirmed" && reply.record.inserted) {
-        for (const recipient of host.currentReaders()) if (recipient !== reply.recipient) {
+        for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) {
           const live: ConversationReply = { ...reply, recipient, record: { type: "live_message", message: reply.record.message } };
           broadcasts.push(live);
         }

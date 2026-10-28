@@ -1,6 +1,9 @@
 //! One explicit hosting session owns its signaling connection and native peers.
 //! Room policy and route decisions remain in the shared core.
-use crate::peer::{NativeEvent, NativePeers};
+use crate::{
+    hosted_room::HostedRoom,
+    peer::{NativeEvent, NativePeers},
+};
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{
@@ -9,7 +12,7 @@ use piik_channel_core::{
 };
 use piik_channel_core::{
     wire::{Command, Event, RoomAccess, Snapshot},
-    RoomState, StoredRoomHost, RECOVERY_MS,
+    RoomState, RECOVERY_MS,
 };
 use std::sync::Arc;
 use std::{
@@ -41,7 +44,7 @@ fn new_signer() -> Result<SessionSigner> {
 
 struct RoomTurns {
     local: Uuid,
-    rooms: BTreeMap<String, Hosted>,
+    rooms: BTreeMap<String, HostedRoom>,
     signer: Arc<SessionSigner>,
     snapshot: watch::Sender<Option<Snapshot>>,
 }
@@ -107,19 +110,19 @@ impl RoomTurns {
         let Some(hosted) = self.rooms.get_mut(&route.address.room_id) else {
             return;
         };
-        if hosted.binding != Some(route.address.binding_id) {
+        if hosted.binding() != Some(route.address.binding_id) {
             return;
         }
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        let Ok(outcome) = hosted.host.dispatch_peer(&packet, now) else {
+        let Ok(outcome) = hosted.dispatch_peer(&packet, now) else {
             return;
         };
         let broadcast = match &outcome.result {
             Ok(HistoryResult::Sent(confirmation)) if confirmation.inserted => {
-                Some((confirmation.message.clone(), hosted.host.current_readers()))
+                Some((confirmation.message.clone(), hosted.current_readers()))
             }
             _ => None,
         };
@@ -196,13 +199,6 @@ pub struct RoomFile {
     pub path: PathBuf,
     pub id: String,
     pub name: String,
-}
-
-struct Hosted {
-    host: StoredRoomHost,
-    binding: Option<Uuid>,
-    // Separate from SQLite's transaction locks: one process owns this runtime.
-    _file_owner: std::fs::File,
 }
 
 struct Live {
@@ -407,23 +403,8 @@ impl Session {
                         .user_id;
                     let mut rooms = BTreeMap::new();
                     for file in &self.files {
-                        let mut lock_path = file.path.as_os_str().to_os_string();
-                        lock_path.push(".lock");
-                        let file_owner = std::fs::OpenOptions::new()
-                            .create(true)
-                            .truncate(false)
-                            .read(true)
-                            .write(true)
-                            .open(lock_path)?;
-                        match file_owner.try_lock() {
-                            Ok(()) => {}
-                            Err(std::fs::TryLockError::WouldBlock) => {
-                                bail!("room_storage_in_use: {}", file.id)
-                            }
-                            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-                        }
                         let host = match std::fs::metadata(&file.path) {
-                            Ok(_) => StoredRoomHost::open(&file.path),
+                            Ok(_) => HostedRoom::open(&file.path, &file.id, user),
                             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                                 let policy = RoomState::new(
                                     file.id.clone(),
@@ -434,27 +415,11 @@ impl Session {
                                     None,
                                 )
                                 .map_err(anyhow::Error::msg)?;
-                                StoredRoomHost::create(&file.path, policy)
+                                HostedRoom::create(&file.path, policy)
                             }
-                            Err(error) => return Err(error.into()),
-                        }
-                        .map_err(|error| anyhow!(error.to_string()))?;
-                        if host.policy().id != file.id || host.policy().creator_id != user {
-                            bail!(
-                                "room storage does not belong to this room and admitted identity"
-                            );
-                        }
-                        if rooms
-                            .insert(
-                                file.id.clone(),
-                                Hosted {
-                                    host,
-                                    binding: None,
-                                    _file_owner: file_owner,
-                                },
-                            )
-                            .is_some()
-                        {
+                            Err(error) => Err(error.into()),
+                        }?;
+                        if rooms.insert(file.id.clone(), host).is_some() {
                             bail!("duplicate room id");
                         }
                     }
@@ -496,8 +461,8 @@ impl Session {
                     write(
                         socket,
                         &Command::HostRegister {
-                            room: hosted.host.summary(),
-                            resume_binding: hosted.binding,
+                            room: hosted.summary(),
+                            resume_binding: hosted.binding(),
                         },
                         Some(id),
                     )
@@ -518,22 +483,17 @@ impl Session {
                     .as_mut()
                     .and_then(|live| live.room.rooms.get_mut(&room_id))
                 {
-                    if hosted.binding.is_some_and(|old| old != binding_id) {
-                        let file = self.files.iter().find(|file| file.id == room_id).unwrap();
-                        hosted.host = StoredRoomHost::open(&file.path)
-                            .map_err(|error| anyhow!(error.to_string()))?;
-                    }
-                    hosted.binding = Some(binding_id);
+                    hosted.bind(binding_id)?;
                     eprintln!("Native room bound: {room_id}");
                 }
             }
             Event::HostInput { room_id, input } => {
                 if let Some(live) = &mut self.live {
                     if let Some(hosted) = live.room.rooms.get_mut(&room_id) {
-                        if hosted.binding == Some(input.binding_id)
+                        if hosted.binding() == Some(input.binding_id)
                             && live.session == input.host_session_id
                         {
-                            let output = hosted.host.dispatch(input).map_err(anyhow::Error::msg)?;
+                            let output = hosted.dispatch(input).map_err(anyhow::Error::msg)?;
                             write(socket, &Command::HostOutput { room_id, output }, None).await?;
                         }
                     }

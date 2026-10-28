@@ -305,8 +305,8 @@ outside program/update files. This does not change the published 2.x App's
 process-only room behavior.
 
 Room availability follows its explicit hosting session, not the highlighted UI
-panel. Changing views preserves that session; losing its owning page follows the
-network model's recovery window and does not grant an idle App independent hosting.
+panel. Changing views preserves that session; the network model owns its page,
+signaling and local-execution lifetimes.
 When the session ends, the room pauses and retains its data. Restarting with the
 same data restores that room's identity and history.
 Recreating a same-named room without its data creates a new room.

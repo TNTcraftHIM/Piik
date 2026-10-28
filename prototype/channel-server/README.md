@@ -11,9 +11,9 @@ Rust library used by Native and Browser/WASM. Its package and binary remain
 
 The Server starts one real [Native participant](../channel-native/README.md) in
 its process to operate the three initial rooms. Its lifetime follows the explicit
-Server service, independently of administration pages. Rooms created in the interface run
-in their owner's Browser, using the same Rust room core through
-[WASM and IndexedDB](../channel-browser/README.md). That runtime owns admission,
+Server service, independently of administration pages. Rooms created in the interface use
+their owner's [Browser/WASM runtime](../channel-browser/README.md) or the
+[linked Rust App](../channel-native/README.md#local-app-link). That runtime owns admission,
 policy, activities, publication plans and confirmed history. The domain binds
 authenticated runtimes to directory entries and combines their transport demand;
 a physical pair remains while any room needs it. Domain WebSocket rendezvous
@@ -266,7 +266,8 @@ node prototype/channel-server/run-browser-check.mjs --base
 
 The [Native participant checks](../channel-native/README.md#checks) add
 `--native` for concurrent Browser-to-Native picture, voice and file forwarding,
-room storage and restart.
+room storage and restart. `--app` exercises local room execution through the
+Browser's existing participation, including App loss and saved-room restoration.
 
 Browser checks require `agent-browser` and its installed Chromium. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite

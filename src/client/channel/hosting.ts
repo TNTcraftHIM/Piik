@@ -2,11 +2,11 @@ import type { ConversationReply, RoomSettings, RoomSummary, SignedConversationPa
 
 export interface HostedRoom {
   readonly roomId: string;
-  summary(): RoomSummary;
+  summary(): RoomSummary | Promise<RoomSummary>;
   bind(bindingId: string): Promise<void>;
   dispatch(input: unknown): Promise<unknown>;
   dispatchPeer(packet: SignedConversationPacket, now: number): Promise<ConversationReply[]>;
-  currentReaders(): string[];
+  currentReaders(): string[] | Promise<string[]>;
   close(): Promise<void>;
 }
 

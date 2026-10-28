@@ -1297,6 +1297,7 @@ dependencies = [
  "getrandom 0.3.4",
  "piik-channel-core",
  "rtc",
+ "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",

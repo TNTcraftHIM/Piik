@@ -387,7 +387,8 @@ no desktop control. Changing the focused picture never retargets an input grant.
 | --- | --- |
 | Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
 | The page owning an App-linked room session closes | End hosting and pause the live room. An idle App does not replace the missing owner session. |
-| An owning page unexpectedly loses its connection | Retain the existing session recovery window; expiry pauses the live room. |
+| An owning page loses domain signaling while its room runtime remains alive | Retain the existing session recovery window; expiry pauses the live room. |
+| The App control connection owning a room runtime ends | Release that runtime and pause its room. Reopening stored data requires a new binding; the old activities do not resume. |
 | An administration page closes while Server owns the runtime | The deliberately running service continues; its lifetime is independent of that page. |
 | Browser-owned room runtime closes or expires | The room pauses; Browser hosting must not silently move to the domain owner's device. |
 | Room owner stops the hosting runtime | The room becomes unavailable; saved data remains. No automatic replacement is selected. |
@@ -479,7 +480,15 @@ capture. Its caller owns hosting lifetime; a command-line development host does
 not grant background hosting to an idle App. An OS file lock excludes another
 runtime from simultaneously operating the same saved room.
 
-The next slice connects the App's explicit hosting session to these owners.
+The App's explicit hosting connection delegates room execution and SQLite storage to Rust;
+the Browser keeps its existing admitted endpoint, signing identity and media.
+The local control connection owns those room runtimes. Its end releases them,
+and the Browser stops their bindings through the domain. Reconnecting opens saved
+data with new bindings, without a second recovery timer or another participant.
+The prototype's local launcher explicitly selects one exact Web origin and one
+domain/user data directory. Browser-supplied IDs only confirm that selection;
+they cannot select another owner's data. Changing a tunnel URL requires local
+approval of the replacement origin and leaves the selected data in place.
 The shared Rust core has no HTTP runtime; Browser/WASM, Native and Server consume
 it directly. Domain runtime keeps directory, membership and authenticated rendezvous;
 room execution and storage remain with the explicit room host. Evaluate

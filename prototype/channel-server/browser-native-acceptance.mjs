@@ -5,7 +5,120 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { createServer } from "node:net";
+
+// App hosting delegates storage/execution, retaining the Browser's single endpoint.
+export async function appRoom({ initial, serverRoom, browser, action, view, evaluate, until, sample,
+  capturedScreen, playing, progressing, hook, output }) {
+  const directory = await mkdtemp(join(tmpdir(), "piik-app-room-check-"));
+  const origin = process.env.CHANNEL_UI_ORIGIN;
+  const token = randomUUID();
+  const probe = createServer();
+  await new Promise(resolve => probe.listen(0, "127.0.0.1", resolve));
+  const port = probe.address().port;
+  await new Promise(resolve => probe.close(resolve));
+  const executable = resolve(process.env.CHANNEL_APP_EXECUTABLE ??
+    `prototype/channel-native/target/debug/piik-channel-app${process.platform === "win32" ? ".exe" : ""}`);
+  const url = `${origin}/__channel-preview#app=${port}&appToken=${token}`;
+  let app, log = "";
+  const start = () => {
+    log = "";
+    app = spawn(executable, [], { env: { ...process.env,
+      PIIK_CHANNEL_APP_PORT: String(port), PIIK_CHANNEL_APP_ORIGIN: origin,
+      PIIK_CHANNEL_APP_TOKEN: token, PIIK_CHANNEL_APP_DATA_DIR: directory,
+      PIIK_CHANNEL_APP_CHANNEL_ID: initial[1].state.channel.id, PIIK_CHANNEL_APP_USER_ID: initial[1].self.id,
+    }, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const collect = chunk => { log = (log + chunk).slice(-64000); };
+    app.stdout.on("data", collect); app.stderr.on("data", collect);
+    app.on("error", error => collect(String(error)));
+  };
+  const ready = () => until("App local socket starts", () => {
+    if (app.exitCode !== null) throw new Error(log);
+    return log;
+  }, value => value.includes("App room socket listening"));
+  const stop = async () => {
+    if (app?.exitCode === null && app.signalCode === null) {
+      const exited = once(app, "exit"); app.kill(); await exited;
+    }
+  };
+  try {
+    start(); await ready();
+    const participants = await evaluate(0, `${hook}.snapshot().state.sessions.filter(session => session.online).length`);
+    await browser(1, "open", url);
+    await browser(1, "reload");
+    await until("linked Browser restores its admitted identity", () => view(1), value => value.connection === "connected" && value.self.id === initial[1].self.id);
+    const room = await action(1, "createRoom({name:'App-owned room',access:'private',hidden:true,password:'app-room-password'})");
+    await action(1, `browse(${JSON.stringify(room)})`);
+    const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
+    assert(!invite.includes(token), "room invitations never carry the local App token");
+    await browser(2, "open", invite);
+    await until("invited reader enters App-owned room", () => view(2), value => value.connection === "connected"
+      && value.state.channel.rooms.some(entry => entry.id === room && entry.authorized));
+    await action(2, `sendMessage(${JSON.stringify(room)}, 'Saved by the linked Rust App')`);
+    await until("App room confirmation reaches its owner", () => evaluate(1,
+      `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), messages => messages?.some(message => message.text === "Saved by the linked Rust App"));
+    assert.equal(await evaluate(1, `${hook}.snapshot().state.sessions.filter(session => session.online).length`), participants,
+      "local App must not add another admitted participant");
+    const stored = new DatabaseSync(join(directory, `${room}.sqlite`), { readOnly: true });
+    const domain = new DatabaseSync(process.env.CHANNEL_DATA_FILE, { readOnly: true });
+    try {
+      assert.equal(stored.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 1);
+      assert.equal(domain.prepare("SELECT count(*) AS count FROM message WHERE room_id=?").get(room).count, 0);
+    } finally { stored.close(); domain.close(); }
+    assert.equal(await evaluate(1, `(async () => {
+      for (const database of await indexedDB.databases()) {
+        if (!database.name?.startsWith('piik.channel.rooms.')) continue;
+        const db = await new Promise((resolve, reject) => { const request = indexedDB.open(database.name);
+          request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error); });
+        try {
+          const tx = db.transaction('rooms'); const request = tx.objectStore('rooms').get(${JSON.stringify(room)});
+          await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onabort = () => reject(tx.error); });
+          if (request.result) return true;
+        } finally { db.close(); }
+      }
+      return false;
+    })()`), false,
+      "App room has no second Browser storage writer");
+    const first = (await view(1)).state.channel.rooms.find(entry => entry.id === room).delivery.bindingId;
+    await action(1, `joinVoice(${JSON.stringify(room)})`);
+    await action(2, `joinVoice(${JSON.stringify(room)})`);
+    await until("linked room voice uses Browser media", () => sample(2), value => value.inbound.some(row => row.kind === "audio" && row.samples > 0));
+    const picture = await capturedScreen(1, room);
+    await action(2, `watch(${JSON.stringify(picture)})`); await playing(2, picture);
+    const unrelated = await capturedScreen(0, serverRoom);
+    await action(2, `watch(${JSON.stringify(unrelated)})`); await playing(2, unrelated);
+    const endpoint = (await view(1)).sessionId;
+    await stop();
+    await until("App loss pauses only its room", () => view(2), value =>
+      value.state.channel.rooms.some(entry => entry.id === room && !entry.available)
+      && !value.state.publications.some(publication => publication.roomId === room));
+    assert.equal((await view(1)).sessionId, endpoint, "local App loss retains the Browser endpoint");
+    await progressing(2, unrelated);
+    start(); await ready();
+    await action(1, "reconnect()");
+    await until("App reconnect restores data with a fresh binding", () => view(1), value => value.state?.channel.rooms.some(entry =>
+      entry.id === room && entry.available && entry.delivery.bindingId !== first));
+    await action(1, `browse(${JSON.stringify(room)})`);
+    await action(1, `loadLatestHistory(${JSON.stringify(room)})`);
+    assert((await evaluate(1, `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`))
+      .some(message => message.text === "Saved by the linked Rust App"));
+    assert(!(await view(1)).state.voice.some(member => member.roomId === room));
+    assert(!(await view(1)).state.publications.some(publication => publication.roomId === room));
+    await browser(1, "open", "about:blank");
+    await until("closing the owner page ends App room hosting", () => view(2), value =>
+      value.state.channel.rooms.some(entry => entry.id === room && !entry.available));
+    await progressing(2, unrelated);
+    await writeFile(join(output, "app-result.json"), JSON.stringify({ passed: true,
+      scenarios: ["single Browser endpoint", "Native SQLite ownership", "peer chat confirmation", "Browser screen and voice",
+        "App loss isolates its rooms", "fresh binding restores saved history", "page close releases hosting"] }, null, 2));
+  } catch (error) { console.error(log); throw error; }
+  finally {
+    await stop();
+    if (relative(tmpdir(), directory).startsWith("..") || !basename(directory).startsWith("piik-app-room-check-")) throw new Error("Unexpected App acceptance directory");
+    await rm(directory, { recursive: true, force: true });
+  }
+}
 
 // Exercise the normal interface against an actual Native room operator. The
 // Browser harness replaces only capture, retaining real Opus and WebRTC peers.

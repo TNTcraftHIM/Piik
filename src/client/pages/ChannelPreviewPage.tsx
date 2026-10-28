@@ -54,7 +54,11 @@ export function ChannelPreviewPage() {
     ? copy("房间运行组件尚未构建。请先构建 Browser room adapter，再刷新原型。", "Room runtime is not built. Build the Browser room adapter, then reload the prototype.")
     : channel.error === "directory_storage_failed"
       ? copy("房间操作已成功，但域目录保存失败。", "The room operation succeeded, but the domain directory could not be saved.")
-    : channel.error === "room_host_conflict"
+    : channel.error === "app_disconnected"
+      ? copy("App 已断开。请重新打开 App，再重新连接。", "The App disconnected. Open it again, then reconnect.")
+    : channel.error === "owner_mismatch"
+      ? copy("App 选择的数据不属于当前域或账号。请检查本机启动配置。", "The App data belongs to another domain or account. Check its local startup configuration.")
+    : /room_host_conflict|room_storage_in_use/.test(channel.error)
       ? copy("另一个页面已接管这间房间。请关闭多余页面，再刷新本页。", "Another page has taken over this room. Close the extra page, then reload this page.")
     : channel.error === "room_host_offline"
       ? copy("房主暂时离线，请等待房主恢复房间。", "The room owner is offline. Wait for them to bring the room back.")

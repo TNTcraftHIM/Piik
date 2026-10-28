@@ -9,10 +9,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Integrate the accepted shared UI and the Native participant with
-  the App's explicit hosting session, then connect native capture/input and platform
-  packaging. Reuse mature components
-  and the shared frontend; preserve useful behavior rather than translating
+  Rust owners. Integrate the accepted shared UI and the local room-execution
+  adapter with the App's normal approval/launcher flow, then connect native
+  capture/input and platform packaging. Reuse mature components and the shared
+  frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer

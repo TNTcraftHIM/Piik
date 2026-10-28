@@ -7,7 +7,7 @@ import { mkdir, mkdtemp, rmdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { nativeRoom } from "./browser-native-acceptance.mjs";
+import { appRoom, nativeRoom } from "./browser-native-acceptance.mjs";
 // On Windows the daemon can inherit a CLI pipe. Wait for the command's exit,
 // rather than execFile's close event, which would also wait for that daemon.
 function run(executable, args, options = {}) {
@@ -42,7 +42,8 @@ const roomsOnly = process.argv.includes("--rooms");
 const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
-const active = lifecycleOnly || roomsOnly || hostsOnly || nativeOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const appOnly = process.argv.includes("--app");
+const active = lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   // Omitting launch options on later commands selects a different Browser context.
   const { stdout } = await run(executable, ["--session", sessions[index], "--json",
@@ -1187,7 +1188,11 @@ try {
   }
   const roomId = initial[0].state.channel.rooms[0].id;
   assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
-  if (nativeOnly) {
+  if (appOnly) {
+    await appRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,
+      capturedScreen, playing, progressing, hook, output });
+    console.log(`Linked App room acceptance passed; evidence: ${output}`);
+  } else if (nativeOnly) {
     await nativeRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,
       capturedScreen, playing, progressing, assertNoError, hook, output });
     console.log(`Native room acceptance passed; evidence: ${output}`);

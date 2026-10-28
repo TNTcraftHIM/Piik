@@ -4,6 +4,7 @@ import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessag
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
+import { AppRooms } from "./app-rooms";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -42,6 +43,8 @@ export class ChannelSession {
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
+  private appRooms: AppRooms | undefined;
+  private appLink = new URLSearchParams(location.hash.slice(1));
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
   private microphone: MediaStream | null = null;
@@ -381,29 +384,54 @@ export class ChannelSession {
   private releaseHosts(): void {
     const hosts = [...this.hostedRooms.values()];
     this.hostedRooms.clear();
+    const app = this.appRooms;
+    this.appRooms = undefined;
+    app?.close();
     this.hostCleanup = Promise.all([this.hostCleanup, ...hosts.map(value => value.host.close())]).then(() => {});
   }
 
+  private async roomStorage(channelId: string, userId: string) {
+    const port = this.appLink.get("app");
+    if (port !== null) {
+      if (!this.appRooms) {
+        const app = new AppRooms(port, this.appLink.get("appToken") ?? "", channelId, userId, () => {
+          if (this.appRooms !== app) return;
+          for (const [roomId, hosted] of this.hostedRooms) if (hosted.bindingId) this.write({ type: "host_stop", roomId, bindingId: hosted.bindingId });
+          this.releaseHosts();
+          this.patch({ error: "app_disconnected" });
+        });
+        this.appRooms = app;
+      }
+      return this.appRooms;
+    }
+    const runtime = await loadRoomHosting(), database = roomDatabaseName(channelId, userId);
+    return {
+      storedPolicies: () => runtime.BrowserRoomHost.storedPolicies(database),
+      open: (policy: string) => runtime.BrowserRoomHost.open(database, policy),
+    };
+  }
+
   private async restoreHosts(sessionId: string): Promise<void> {
-    if (typeof indexedDB === "undefined") return;
+    if (!this.appLink.has("app") && typeof indexedDB === "undefined") return;
     await this.hostCleanup;
     if (this.view.sessionId !== sessionId || this.closed) return;
     const state = this.view.state, self = this.view.self;
     if (!state || !self) return;
-    const runtime = await loadRoomHosting();
-    const database = roomDatabaseName(state.channel.id, self.id);
-    const policies = await runtime.BrowserRoomHost.storedPolicies(database);
+    const storage = await this.roomStorage(state.channel.id, self.id);
+    const policies = await storage.storedPolicies();
     if (this.view.sessionId !== sessionId || this.closed) return;
     for (const policy of policies) {
       const id = (JSON.parse(policy) as { id: string }).id;
       let hosted = this.hostedRooms.get(id);
       if (!hosted) {
-        const host = await runtime.BrowserRoomHost.open(database, policy);
+        const host = await storage.open(policy);
         if (this.view.sessionId !== sessionId || this.closed) { await host.close(); return; }
         hosted = { host };
         this.hostedRooms.set(id, hosted);
       }
-      await this.request({ type: "host_register", room: hosted.host.summary(), resumeBinding: hosted.bindingId });
+      const room = await hosted.host.summary();
+      if (this.hostedRooms.get(id) !== hosted || this.view.sessionId !== sessionId || this.closed) return;
+      await this.request({ type: "host_register", room, resumeBinding: hosted.bindingId });
     }
   }
 
@@ -491,10 +519,13 @@ export class ChannelSession {
     if (!state || !self || !sessionId) throw new Error("disconnected");
     const runtime = await loadRoomHosting(), roomId = crypto.randomUUID();
     const policy = await runtime.createRoomPolicy({ ...settings, id: roomId, creatorId: self.id });
-    const host = await runtime.BrowserRoomHost.open(roomDatabaseName(state.channel.id, self.id), policy);
+    const storage = await this.roomStorage(state.channel.id, self.id);
+    const host = await storage.open(policy);
     if (this.view.sessionId !== sessionId || this.closed) { await host.close(); throw new Error("disconnected"); }
     this.hostedRooms.set(roomId, { host });
-    await this.request({ type: "host_register", room: host.summary() });
+    const room = await host.summary();
+    if (this.hostedRooms.get(roomId)?.host !== host || this.view.sessionId !== sessionId || this.closed) throw new Error("disconnected");
+    await this.request({ type: "host_register", room });
     await this.request({ type: "browse", roomId, active: true });
     return roomId;
   });

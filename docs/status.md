@@ -31,8 +31,10 @@ branch after its affected viewers prove delivery, while preserving playback.
 Server now embeds that same Native participant for its persistent rooms. Domain,
 Browser and Native consume one shared Rust core; conversation has one peer carrier.
 Media allocation failures preserve existing outputs, and normal resource retirement
-permits rejected companion audio to retry. App linkage, native capture/input and
-platform integration remain. [TODO](./todo.md) owns remaining stages and platform reports.
+permits rejected companion audio to retry. A local App connection now delegates
+SQLite-backed room execution while retaining the Browser's participation.
+Product App authorization/launcher integration, native capture/input and platform
+packaging remain. [TODO](./todo.md) owns remaining stages and platform reports.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 
