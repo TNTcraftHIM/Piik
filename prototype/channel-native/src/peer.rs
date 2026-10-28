@@ -8,10 +8,10 @@ use crate::{
     },
 };
 use anyhow::{anyhow, Result};
-use piik_channel_prototype::conversation::{ControlFrame, SignedPacket};
-use piik_channel_prototype::file_room::FilePlan;
-use piik_channel_prototype::wire::Snapshot;
-use piik_channel_prototype::wire::{
+use piik_channel_core::conversation::{ControlFrame, SignedPacket};
+use piik_channel_core::file_room::FilePlan;
+use piik_channel_core::wire::Snapshot;
+use piik_channel_core::wire::{
     Candidate, Command, Description, FlowState, LinkState, PairInfo, PublicationInfo, Signal,
     Track as WireTrack,
 };
@@ -269,7 +269,7 @@ struct Driver {
     events: mpsc::Sender<Event>,
     first_packets: mpsc::Sender<FirstPacket>,
     pairs: HashMap<Uuid, Pair>,
-    publications: HashMap<Uuid, piik_channel_prototype::wire::Kind>,
+    publications: HashMap<Uuid, piik_channel_core::wire::Kind>,
     sources: HashMap<TrackKey, Source>,
     relay: Relay,
     files: Files,
@@ -407,7 +407,7 @@ impl NativePeers {
         let messages = packets
             .into_iter()
             .map(|(packet, original)| {
-                let bytes = piik_channel_prototype::conversation::encode_control(
+                let bytes = piik_channel_core::conversation::encode_control(
                     &ControlFrame::Conversation(packet),
                 )?;
                 Ok(data::Message {
@@ -541,7 +541,7 @@ fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder
                     rtc::peer_connection::transport::RTCDtlsRole::Server
                 })
                 .with_sctp_max_message_size(SctpMaxMessageSize::Bounded(
-                    piik_channel_prototype::conversation::CONTROL_FRAME_BYTES as u32,
+                    piik_channel_core::conversation::CONTROL_FRAME_BYTES as u32,
                 ))
                 .build(),
         ))
@@ -837,7 +837,7 @@ impl Driver {
                         .find(|binding| binding.id == *flow)
                         .expect("an allocated output owns a current flow");
                     let primary = if self.publications[&binding.publication_id]
-                        == piik_channel_prototype::wire::Kind::Screen
+                        == piik_channel_core::wire::Kind::Screen
                     {
                         RtpCodecKind::Video
                     } else {
@@ -1211,7 +1211,7 @@ impl Driver {
                 !flow.selected
                     || key.1 == RtpCodecKind::Video
                     || self.publications.get(&publication)
-                        == Some(&piik_channel_prototype::wire::Kind::Voice)
+                        == Some(&piik_channel_core::wire::Kind::Voice)
             }) {
                 self.send(Command::FlowState {
                     flow_id: key.0,
@@ -1260,7 +1260,7 @@ impl Driver {
                             !flow.selected
                                 || key.1 == RtpCodecKind::Video
                                 || self.publications.get(&flow.publication_id)
-                                    == Some(&piik_channel_prototype::wire::Kind::Voice)
+                                    == Some(&piik_channel_core::wire::Kind::Voice)
                         }) {
                             self.send(Command::FlowState {
                                 flow_id: key.0,
@@ -1370,12 +1370,12 @@ impl Driver {
         let kind = track.kind().await;
         if !supported(&codec, kind)
             || (kind == RtpCodecKind::Video
-                && self.publications[&publication] != piik_channel_prototype::wire::Kind::Screen)
+                && self.publications[&publication] != piik_channel_core::wire::Kind::Screen)
         {
             if !binding.selected
                 || (kind == RtpCodecKind::Video
                     && self.publications[&publication]
-                        == piik_channel_prototype::wire::Kind::Screen)
+                        == piik_channel_core::wire::Kind::Screen)
             {
                 self.send(Command::FlowState {
                     flow_id,
@@ -1517,7 +1517,7 @@ impl Driver {
         self.relay.write(key, source.id, packet);
         // A screen's audio alone does not establish its picture transport.
         if source.kind == RtpCodecKind::Video
-            || self.publications[&publication] == piik_channel_prototype::wire::Kind::Voice
+            || self.publications[&publication] == piik_channel_core::wire::Kind::Voice
         {
             self.send(Command::FlowState {
                 flow_id: source.flow_id,
@@ -1638,7 +1638,7 @@ impl Driver {
                                 if !binding.selected
                                     || source.kind == RtpCodecKind::Video
                                     || self.publications[publication]
-                                        == piik_channel_prototype::wire::Kind::Voice
+                                        == piik_channel_core::wire::Kind::Voice
                                 {
                                     failed.push((binding.id, *id));
                                 }

@@ -9,7 +9,7 @@ publish = false
 crate-type = ["cdylib"]
 
 [dependencies]
-piik-channel-prototype = { path = "../channel-server", default-features = false }
+piik-channel-core = { path = "../channel-core" }
 uuid = { version = "=1.16.0", features = ["v4", "serde", "js"] }
 wasm-bindgen = "=0.2.129"
 serde = { version = "1", features = ["derive"] }

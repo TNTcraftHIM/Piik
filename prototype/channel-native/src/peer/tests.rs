@@ -1,5 +1,5 @@
 use super::*;
-use piik_channel_prototype::wire::{FlowBinding, Kind};
+use piik_channel_core::wire::{FlowBinding, Kind};
 
 fn driver() -> (
     Driver,

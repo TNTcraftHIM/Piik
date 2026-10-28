@@ -1,6 +1,6 @@
 # Native channel participant
 
-This isolated Rust participant operates rooms through the same `RoomHost` core
+This isolated Rust participant operates rooms through the same [shared `RoomHost` core](../channel-core/README.md)
 as the Browser adapter. SQLite stores each room's policy and confirmed history;
 the domain supplies admission, directory views and transport leases. Its actual
 WebRTC endpoint carries room DataChannels, encoded media and requested file

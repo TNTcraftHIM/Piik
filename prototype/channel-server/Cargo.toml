@@ -5,25 +5,16 @@ edition = "2021"
 rust-version = "1.86"
 publish = false
 
-[features]
-default = ["server"]
-sqlite = ["dep:rusqlite"]
-server = ["sqlite", "dep:axum", "dep:tokio", "dep:futures-util"]
-
 [[bin]]
 name = "piik-channel-prototype"
 path = "src/main.rs"
-required-features = ["server"]
 
 [dependencies]
-axum = { version = "0.8", features = ["ws"], optional = true }
-rusqlite = { version = "0.37", features = ["bundled"], optional = true }
-futures-util = { version = "0.3", optional = true }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"], optional = true }
-serde = { version = "1", features = ["derive"] }
+piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
+axum = { version = "0.8", features = ["ws"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"] }
 serde_json = "1"
-argon2 = "0.5.3"
-sha2 = "0.10"
-hmac = "0.12"
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }
-ed25519-dalek = "=2.2.0"
+
+[dev-dependencies]
+rusqlite = { version = "0.37", features = ["bundled"] }

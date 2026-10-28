@@ -1,6 +1,6 @@
-#![cfg(feature = "server")]
+#![cfg(feature = "sqlite")]
 mod support;
-use piik_channel_prototype::{
+use piik_channel_core::{
     conversation::{
         route, ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
         ConversationRequest, SessionSigner,

@@ -269,7 +269,7 @@ dependencies = [
 name = "piik-channel-browser"
 version = "0.1.0"
 dependencies = [
- "piik-channel-prototype",
+ "piik-channel-core",
  "serde",
  "serde_json",
  "uuid",
@@ -277,7 +277,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "piik-channel-prototype"
+name = "piik-channel-core"
 version = "0.1.0"
 dependencies = [
  "argon2",

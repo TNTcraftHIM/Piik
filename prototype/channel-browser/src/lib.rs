@@ -1,4 +1,4 @@
-use piik_channel_prototype::{
+use piik_channel_core::{
     conversation::{
         self, ConversationAddress, ConversationReply, SessionSigner as SharedSigner, SignedPacket,
     },
@@ -210,7 +210,7 @@ impl RoomHost {
 }
 
 #[wasm_bindgen]
-pub struct AttachmentHash(piik_channel_prototype::attachment::AttachmentHash);
+pub struct AttachmentHash(piik_channel_core::attachment::AttachmentHash);
 #[wasm_bindgen]
 impl AttachmentHash {
     #[wasm_bindgen(constructor)]
@@ -226,21 +226,21 @@ impl AttachmentHash {
 }
 #[wasm_bindgen]
 pub fn attachment_media_type(bytes: &[u8]) -> String {
-    piik_channel_prototype::attachment::sniff_media_type(bytes).into()
+    piik_channel_core::attachment::sniff_media_type(bytes).into()
 }
 #[wasm_bindgen]
 pub fn attachment_limits() -> Result<String, JsValue> {
-    encode(&piik_channel_prototype::ATTACHMENT_LIMITS)
+    encode(&piik_channel_core::ATTACHMENT_LIMITS)
 }
 
 #[wasm_bindgen]
-pub struct FileDelivery(piik_channel_prototype::file_delivery::FileDelivery);
+pub struct FileDelivery(piik_channel_core::file_delivery::FileDelivery);
 #[wasm_bindgen]
 impl FileDelivery {
     #[wasm_bindgen(constructor)]
     pub fn new(session_id: &str) -> Result<Self, JsValue> {
         Ok(Self(
-            piik_channel_prototype::file_delivery::FileDelivery::new(
+            piik_channel_core::file_delivery::FileDelivery::new(
                 Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
             ),
         ))

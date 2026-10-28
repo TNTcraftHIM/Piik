@@ -8,7 +8,7 @@ use axum::{
     routing::get,
     Router,
 };
-use piik_channel_prototype::{
+use piik_channel_core::{
     storage,
     wire::{Event, Request},
     Authority, Effects,
@@ -39,11 +39,11 @@ impl Hub {
         // is a projection of that authority, not a second writer that may undo it.
         // Completing an invited identity still belongs to the domain transaction.
         let room_projection = matches!(&request.command,
-            piik_channel_prototype::wire::Command::HostOutput { output, .. }
+            piik_channel_core::wire::Command::HostOutput { output, .. }
             if !output.reply.as_ref().is_some_and(|reply| matches!(reply.result,
-                piik_channel_prototype::host::RoomResult::Invited)));
+                piik_channel_core::host::RoomResult::Invited)));
         let (failure_target, request_id) = match &request.command {
-            piik_channel_prototype::wire::Command::HostOutput { output, .. } => output
+            piik_channel_core::wire::Command::HostOutput { output, .. } => output
                 .reply
                 .as_ref()
                 .map(|reply| (reply.context.connection, reply.context.request_id.clone()))
@@ -299,7 +299,7 @@ async fn main() {
         .route("/prototype/channel", get(upgrade))
         .route(
             "/prototype/channel/limits",
-            get(|| async { axum::Json(piik_channel_prototype::ATTACHMENT_LIMITS) }),
+            get(|| async { axum::Json(piik_channel_core::ATTACHMENT_LIMITS) }),
         )
         .with_state(state);
     let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))

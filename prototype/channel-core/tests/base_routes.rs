@@ -1,7 +1,7 @@
-#![cfg(feature = "server")]
+#![cfg(feature = "sqlite")]
 
 mod support;
-use piik_channel_prototype::{
+use piik_channel_core::{
     conversation::ConversationCommand,
     wire::{Event, PairInfo, RoomAccess},
 };
@@ -22,7 +22,7 @@ fn command(network: &mut RoomNetwork, connection: Uuid, command: Value) {
             event,
             Event::Error { .. }
                 | Event::RoomReply {
-                    result: piik_channel_prototype::host::RoomResult::Error { .. },
+                    result: piik_channel_core::host::RoomResult::Error { .. },
                     ..
                 }
         )),
@@ -410,7 +410,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     let (viewer_session, _) = join(&mut network, viewer, None);
     let room = network.create(host, RoomAccess::Public, false);
     let attachment = json!({ "id":Uuid::new_v4(), "name":"retained.bin", "size":3, "mediaType":"application/octet-stream",
-        "sha256":piik_channel_prototype::attachment::sha256_hex(b"abc") });
+        "sha256":piik_channel_core::attachment::sha256_hex(b"abc") });
     let confirmation = network.peer_request(
         source,
         &room,
@@ -422,7 +422,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     );
     assert!(matches!(
         confirmation.result,
-        Ok(piik_channel_prototype::history::HistoryResult::Sent(_))
+        Ok(piik_channel_core::history::HistoryResult::Sent(_))
     ));
     command(
         &mut network,
@@ -494,7 +494,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     network.deliver(effects);
     let effects = network
         .authority
-        .expire(200 + piik_channel_prototype::RECOVERY_MS - 1);
+        .expire(200 + piik_channel_core::RECOVERY_MS - 1);
     network.deliver(effects);
     assert_eq!(
         network.state(viewer).files[0].source_id,
@@ -502,7 +502,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     );
     let effects = network
         .authority
-        .expire(200 + piik_channel_prototype::RECOVERY_MS);
+        .expire(200 + piik_channel_core::RECOVERY_MS);
     network.deliver(effects);
     assert_eq!(
         network.state(viewer).files[0].source_id,
@@ -643,7 +643,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
         publish(&mut network, connection, &room, "voice");
     }
     let attachment = json!({"id":Uuid::new_v4(),"name":"live.bin","size":3,"mediaType":"application/octet-stream",
-        "sha256":piik_channel_prototype::attachment::sha256_hex(b"abc")});
+        "sha256":piik_channel_core::attachment::sha256_hex(b"abc")});
     let confirmation = network.peer_request(
         source,
         &room,
@@ -655,7 +655,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     );
     assert!(matches!(
         confirmation.result,
-        Ok(piik_channel_prototype::history::HistoryResult::Sent(_))
+        Ok(piik_channel_core::history::HistoryResult::Sent(_))
     ));
     command(
         &mut network,
@@ -739,7 +739,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     let voice_ids: Vec<_> = repaired
         .publications
         .iter()
-        .filter(|publication| publication.kind == piik_channel_prototype::wire::Kind::Voice)
+        .filter(|publication| publication.kind == piik_channel_core::wire::Kind::Voice)
         .map(|publication| publication.id)
         .collect();
     for publication in voice_ids {
@@ -1063,7 +1063,7 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
 
 #[test]
 fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
-    use piik_channel_prototype::{host::HostAction, wire::Request};
+    use piik_channel_core::{host::HostAction, wire::Request};
     let mut network = RoomNetwork::new();
     let source = Uuid::new_v4();
     let a = Uuid::new_v4();
@@ -1231,7 +1231,7 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
 
 #[test]
 fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_projection() {
-    use piik_channel_prototype::{
+    use piik_channel_core::{
         host::{HostAction, RoomResult},
         wire::Request,
     };
@@ -1312,7 +1312,7 @@ fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_project
 
 #[test]
 fn unrelated_leave_does_not_invalidate_an_earlier_browse_reply_or_revive_retired_activity() {
-    use piik_channel_prototype::{host::RoomResult, wire::Request};
+    use piik_channel_core::{host::RoomResult, wire::Request};
     let mut network = RoomNetwork::new();
     let host = Uuid::new_v4();
     let b = Uuid::new_v4();

@@ -8,7 +8,7 @@ publish = false
 [workspace]
 
 [dependencies]
-piik-channel-prototype = { path = "../channel-server", default-features = false, features = ["sqlite"] }
+piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 webrtc = "=0.21.1"
 rtc = "=0.21.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"] }

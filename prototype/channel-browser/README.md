@@ -1,6 +1,6 @@
 # Browser room adapter
 
-The shared Rust `RoomHost` owns room commands, authorized views and history operations. IndexedDB supplies
+The [shared Rust core](../channel-core/README.md) `RoomHost` owns room commands, authorized views and history operations. IndexedDB supplies
 transactional storage; shared Rust prepares confirmations and history pages.
 The caller supplies authenticated domain member facts, without a credential database,
 and delivers its returned projection/reply after commit. The channel prototype loads this adapter

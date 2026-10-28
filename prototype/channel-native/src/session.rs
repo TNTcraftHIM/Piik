@@ -3,11 +3,11 @@
 use crate::peer::{NativeEvent, NativePeers};
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
-use piik_channel_prototype::{
+use piik_channel_core::{
     conversation::{self, ConversationRecord, ConversationReply, SessionSigner, SignedPacket},
     history::HistoryResult,
 };
-use piik_channel_prototype::{
+use piik_channel_core::{
     wire::{Command, Event, RoomAccess, Snapshot},
     RoomState, StoredRoomHost, RECOVERY_MS,
 };

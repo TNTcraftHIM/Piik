@@ -18,7 +18,7 @@ fn forwarding(publication_id: Uuid, pair: Uuid, input: Uuid) -> FlowBinding {
     }
 }
 use piik_channel_native::peer::{NativeEvent, NativePeers};
-use piik_channel_prototype::wire::{
+use piik_channel_core::wire::{
     Candidate, Command, Description, FlowBinding, FlowState, Kind, PairInfo, PublicationInfo,
     Signal, Track as WireTrack,
 };
@@ -759,7 +759,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                 report,
                 Command::BaseState { ready: false, .. }
                     | Command::LinkState {
-                        state: piik_channel_prototype::wire::LinkState::Failed,
+                        state: piik_channel_core::wire::LinkState::Failed,
                         ..
                     }
             ));
@@ -780,7 +780,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                     }
                     Command::BaseState { ready: false, .. }
                     | Command::LinkState {
-                        state: piik_channel_prototype::wire::LinkState::Failed,
+                        state: piik_channel_core::wire::LinkState::Failed,
                         ..
                     } => panic!("ending a media track must preserve base transport"),
                     _ => {}
@@ -1404,7 +1404,7 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
                 assert!(!matches!(
                     command,
                     Command::LinkState {
-                        state: piik_channel_prototype::wire::LinkState::Failed,
+                        state: piik_channel_core::wire::LinkState::Failed,
                         ..
                     }
                 ));

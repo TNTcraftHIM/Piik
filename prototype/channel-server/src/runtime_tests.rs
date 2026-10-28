@@ -45,7 +45,7 @@ impl Endpoint {
     fn request(&self, hub: &mut Hub, mut command: Value) {
         if command["type"] == "join" {
             command["signingKey"] = json!(
-                piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32])
+                piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
                     .signing_key()
             );
         }
@@ -62,7 +62,7 @@ impl Endpoint {
 fn complete_host_turn(
     hub: &mut Hub,
     endpoint: &mut Endpoint,
-    host: &mut piik_channel_prototype::host::RoomHost,
+    host: &mut piik_channel_core::host::RoomHost,
     room_store: &mut storage::Storage,
 ) {
     let input = std::iter::from_fn(|| endpoint.events.try_recv().ok())
@@ -90,7 +90,7 @@ fn complete_host_turn(
 
 #[test]
 fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
-    use piik_channel_prototype::{host::RoomHost, wire::RoomAccess, RoomState};
+    use piik_channel_core::{host::RoomHost, wire::RoomAccess, RoomState};
     let directory_path =
         std::env::temp_dir().join(format!("piik-directory-failure-{}.sqlite", Uuid::new_v4()));
     let room_path =

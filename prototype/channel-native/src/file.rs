@@ -1,6 +1,6 @@
 //! FileDelivery owns file ranges, branch failures and its supplied plan leases.
 use crate::data::{Lane, Message, Senders, BULK_QUEUE, CONTROL_QUEUE};
-use piik_channel_prototype::{
+use piik_channel_core::{
     file_delivery::{FileControl, FileDelivery, FileEffect, FILE_FRAME_BYTES},
     file_room::{FileKey, FilePlan},
     wire::PairInfo,
@@ -190,8 +190,8 @@ impl Files {
                             let file = key(&control).clone();
                             let error = matches!(control, FileControl::Error { .. });
                             let cancel = matches!(control, FileControl::Cancel { .. });
-                            let bytes = match piik_channel_prototype::conversation::encode_control(
-                                &piik_channel_prototype::conversation::ControlFrame::File(control),
+                            let bytes = match piik_channel_core::conversation::encode_control(
+                                &piik_channel_core::conversation::ControlFrame::File(control),
                             ) {
                                 Ok(bytes) => bytes,
                                 _ => {

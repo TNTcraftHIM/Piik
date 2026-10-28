@@ -1,4 +1,4 @@
-use piik_channel_prototype::{
+use piik_channel_core::{
     wire::{Event, Request, RoomAccess, Snapshot},
     Authority, Effects, RoomState, StoredRoomHost,
 };
@@ -34,7 +34,7 @@ impl RoomNetwork {
     pub fn command(&mut self, connection: Uuid, mut value: Value) -> Effects {
         if value["type"] == "join" && value.get("signingKey").is_none() {
             value["signingKey"] = json!(
-                piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32])
+                piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
                     .signing_key()
             );
         }
@@ -91,8 +91,8 @@ impl RoomNetwork {
     pub fn host_turn(
         &mut self,
         room: &str,
-        input: piik_channel_prototype::host::HostInput,
-    ) -> piik_channel_prototype::host::HostOutput {
+        input: piik_channel_core::host::HostInput,
+    ) -> piik_channel_core::host::HostOutput {
         self.hosts
             .get_mut(room)
             .unwrap()
@@ -150,9 +150,9 @@ impl RoomNetwork {
         &mut self,
         connection: Uuid,
         room: &str,
-        command: piik_channel_prototype::conversation::ConversationCommand,
-    ) -> piik_channel_prototype::conversation::ConversationOutcome {
-        use piik_channel_prototype::conversation::{
+        command: piik_channel_core::conversation::ConversationCommand,
+    ) -> piik_channel_core::conversation::ConversationOutcome {
+        use piik_channel_core::conversation::{
             ConversationAddress, ConversationRequest, SessionSigner,
         };
         let host_connection = self.hosts[room].connection;

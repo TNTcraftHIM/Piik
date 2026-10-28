@@ -1,4 +1,4 @@
-use piik_channel_prototype::{
+use piik_channel_core::{
     host::{HostAction, HostInput, RequestContext, RoomHost},
     wire::{Command, Kind, PublicationInput, RoomAccess},
     Endpoint, Member, RoomState,
@@ -31,7 +31,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                         member: owner,
                         connected: true,
                         signing_key:
-                            piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32])
+                            piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
                                 .signing_key(),
                     },
                 ),
@@ -41,7 +41,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                         member: viewer,
                         connected: true,
                         signing_key:
-                            piik_channel_prototype::conversation::SessionSigner::from_seed([2; 32])
+                            piik_channel_core::conversation::SessionSigner::from_seed([2; 32])
                                 .signing_key(),
                     },
                 ),
@@ -125,11 +125,11 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
     }
 }
 
-fn review_admit(core: &mut piik_channel_prototype::Authority, connection: Uuid, key: &str) -> Uuid {
+fn review_admit(core: &mut piik_channel_core::Authority, connection: Uuid, key: &str) -> Uuid {
     core.handle(
         connection,
-        piik_channel_prototype::wire::Request::parse(
-            &serde_json::json!({"type":"join","signingKey":piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","key":key}).to_string(),
+        piik_channel_core::wire::Request::parse(
+            &serde_json::json!({"type":"join","signingKey":piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key(),"name":"Review","key":key}).to_string(),
         )
         .unwrap(),
         0,
@@ -137,20 +137,20 @@ fn review_admit(core: &mut piik_channel_prototype::Authority, connection: Uuid, 
     .events
     .into_iter()
     .find_map(|(_, e)| match e {
-        piik_channel_prototype::wire::Event::Welcome { session_id, .. } => Some(session_id),
+        piik_channel_core::wire::Event::Welcome { session_id, .. } => Some(session_id),
         _ => None,
     })
     .unwrap()
 }
 fn review_host_turn(
-    core: &mut piik_channel_prototype::Authority,
+    core: &mut piik_channel_core::Authority,
     host_connection: Uuid,
     room_id: &str,
-    output: piik_channel_prototype::host::HostOutput,
-) -> piik_channel_prototype::Effects {
+    output: piik_channel_core::host::HostOutput,
+) -> piik_channel_core::Effects {
     core.handle(
         host_connection,
-        piik_channel_prototype::wire::Request {
+        piik_channel_core::wire::Request {
             request_id: None,
             command: Command::HostOutput {
                 room_id: room_id.into(),
@@ -161,13 +161,13 @@ fn review_host_turn(
     )
 }
 fn review_register(
-    core: &mut piik_channel_prototype::Authority,
+    core: &mut piik_channel_core::Authority,
     host_connection: Uuid,
     host: &RoomHost,
-) -> piik_channel_prototype::host::HostInput {
+) -> piik_channel_core::host::HostInput {
     core.handle(
         host_connection,
-        piik_channel_prototype::wire::Request {
+        piik_channel_core::wire::Request {
             request_id: None,
             command: Command::HostRegister {
                 room: host.summary(),
@@ -179,14 +179,14 @@ fn review_register(
     .events
     .into_iter()
     .find_map(|(_, e)| match e {
-        piik_channel_prototype::wire::Event::HostInput { input, .. } => Some(input),
+        piik_channel_core::wire::Event::HostInput { input, .. } => Some(input),
         _ => None,
     })
     .unwrap()
 }
 #[test]
 fn room_host_cannot_complete_an_unissued_other_room_request() {
-    use piik_channel_prototype::{
+    use piik_channel_core::{
         host::{RoomReply, RoomResult},
         wire::Event,
         Authority,
@@ -199,7 +199,7 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
     let b_user = core
         .handle(
             b,
-            piik_channel_prototype::wire::Request {
+            piik_channel_core::wire::Request {
                 request_id: None,
                 command: Command::SetName { name: "B".into() },
             },
@@ -253,7 +253,7 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
 }
 #[test]
 fn invited_connection_cannot_act_before_room_grant_commits() {
-    use piik_channel_prototype::{
+    use piik_channel_core::{
         wire::{Event, Request},
         Authority,
     };
@@ -301,7 +301,7 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
     let effects = core.handle(
         c,
         Request::parse(
-            &serde_json::json!({"type":"join","signingKey":piik_channel_prototype::conversation::SessionSigner::from_seed([2; 32]).signing_key(),"name":"C","key":key,"roomId":"private-review"})
+            &serde_json::json!({"type":"join","signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key(),"name":"C","key":key,"roomId":"private-review"})
                 .to_string(),
         )
         .unwrap(),
@@ -337,7 +337,7 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
 
 #[test]
 fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
-    use piik_channel_prototype::{
+    use piik_channel_core::{
         wire::{Event, Request},
         Authority,
     };
@@ -432,7 +432,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
     host.dispatch(input).unwrap();
     let mut output = host.finish(None).unwrap();
     for view in output.projection.views.values_mut() {
-        view.room.delivery = Some(piik_channel_prototype::wire::RoomDelivery {
+        view.room.delivery = Some(piik_channel_core::wire::RoomDelivery {
             host_session_id: Uuid::new_v4(),
             binding_id: Uuid::new_v4(),
             next_hops: BTreeMap::from([(Uuid::new_v4(), Uuid::new_v4())]),
@@ -481,7 +481,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
 
 #[test]
 fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
-    use piik_channel_prototype::{
+    use piik_channel_core::{
         wire::{Event, Request},
         Authority,
     };
@@ -652,12 +652,12 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
 
 #[test]
 fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
-    use piik_channel_prototype::{
+    use piik_channel_core::{
         wire::{Event, Request},
         Authority,
     };
 
-    fn state(core: &mut Authority, connection: Uuid) -> piik_channel_prototype::wire::Snapshot {
+    fn state(core: &mut Authority, connection: Uuid) -> piik_channel_core::wire::Snapshot {
         core.handle(
             connection,
             Request {
@@ -682,7 +682,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         connection: Uuid,
         host: &mut RoomHost,
         command: Command,
-    ) -> piik_channel_prototype::host::HostOutput {
+    ) -> piik_channel_core::host::HostOutput {
         let input = core
             .handle(
                 connection,

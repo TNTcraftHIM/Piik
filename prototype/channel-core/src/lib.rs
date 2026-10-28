@@ -1,4 +1,4 @@
-//! Temporary channel authority shared by App and Server entry points.
+//! Shared channel authority and room state for Browser, Native and Server adapters.
 //!
 //! The caller supplies connection identities and time, completes room-storage
 //! effects, then delivers their events before admitting another command.

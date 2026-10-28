@@ -1,6 +1,6 @@
 //! One pair owns its reliable channel writers. Consumers own queued-work validity.
-use piik_channel_prototype::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
-use piik_channel_prototype::{
+use piik_channel_core::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
+use piik_channel_core::{
     conversation::{self, ControlFrame, SignedPacket},
     wire::Snapshot,
 };

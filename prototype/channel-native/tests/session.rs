@@ -1,6 +1,6 @@
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_native::session::{run, Config, RoomFile};
-use piik_channel_prototype::{
+use piik_channel_core::{
     wire::{Command, Event, Request},
     Authority, Effects, StoredRoomHost,
 };
@@ -206,7 +206,7 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     domain.bound("two").await;
     // An admitted observer receives the paused directory after the host leaves.
     let guest = Uuid::new_v4();
-    let signer = piik_channel_prototype::conversation::SessionSigner::from_seed([9; 32]);
+    let signer = piik_channel_core::conversation::SessionSigner::from_seed([9; 32]);
     domain.command(guest, json!({
         "type": "join", "name": "Observer", "key": "invite", "signingKey": signer.signing_key()
     })).await;

@@ -1138,24 +1138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "piik-channel-native"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "futures-util",
- "getrandom 0.3.4",
- "piik-channel-prototype",
- "rtc",
- "serde_json",
- "tokio",
- "tokio-tungstenite",
- "uuid",
- "webrtc",
-]
-
-[[package]]
-name = "piik-channel-prototype"
+name = "piik-channel-core"
 version = "0.1.0"
 dependencies = [
  "argon2",
@@ -1166,6 +1149,23 @@ dependencies = [
  "serde_json",
  "sha2",
  "uuid",
+]
+
+[[package]]
+name = "piik-channel-native"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures-util",
+ "getrandom 0.3.4",
+ "piik-channel-core",
+ "rtc",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "uuid",
+ "webrtc",
 ]
 
 [[package]]

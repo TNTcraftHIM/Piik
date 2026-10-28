@@ -5,6 +5,10 @@ interface, and real Browser WebRTC. It does not replace the production 2.x
 App or Server. The [network design](../../docs/research/channel-network-design.md)
 owns the accepted routing foundation; this file describes what currently runs.
 
+The Server executable consumes [channel-core](../channel-core/README.md), the same
+Rust library used by Native and Browser/WASM. Its package and binary remain
+`piik-channel-prototype`; the shared library is `piik-channel-core`.
+
 The three initial rooms belong to Server. Rooms created in the interface run
 in their owner's Browser, using the same Rust room core through
 [WASM and IndexedDB](../channel-browser/README.md). That runtime owns admission,
@@ -241,7 +245,8 @@ Build the executable before running the finite integration checks:
 
 ```powershell
 cargo test --manifest-path prototype/channel-server/Cargo.toml
-cargo test --manifest-path prototype/channel-server/Cargo.toml --no-default-features --lib
+cargo test --manifest-path prototype/channel-core/Cargo.toml
+cargo test --manifest-path prototype/channel-core/Cargo.toml --features sqlite
 cargo build --manifest-path prototype/channel-server/Cargo.toml
 node prototype/channel-browser/build.mjs
 npm run typecheck
@@ -279,5 +284,5 @@ an already running isolated instance, use
 `node --import tsx --test prototype/channel-server/check.mjs` with its local key/endpoint
 environment variables. `browser-acceptance.mjs` is the corresponding Browser
 driver; prefer `run-browser-check.mjs` for automatic service cleanup. The preview
-route and observation hook are development-only. The shared Rust library builds
-without the `server` feature, excluding Axum and SQLite from that core boundary.
+route and observation hook are development-only. The shared Rust library lives in
+`channel-core`; its default build excludes SQLite, and HTTP stays in this Server crate.

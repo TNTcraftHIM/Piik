@@ -1,4 +1,4 @@
-use piik_channel_prototype::{
+use piik_channel_core::{
     history::HistoryRequest,
     wire::{Event, Request, Snapshot},
     Authority, Effects,
@@ -9,7 +9,7 @@ use uuid::Uuid;
 fn apply(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
     if command["type"] == "join" {
         command["signingKey"] = json!(
-            piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32]).signing_key()
+            piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
         );
     }
     core.handle(

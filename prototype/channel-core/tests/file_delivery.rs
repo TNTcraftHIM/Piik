@@ -1,4 +1,4 @@
-use piik_channel_prototype::{
+use piik_channel_core::{
     attachment::sha256_hex,
     file_delivery::{FileControl, FileDelivery, FileEffect, FILE_FRAME_BYTES, FILE_RANGE_BYTES},
     file_room::{FileKey, FilePlan},

@@ -1,6 +1,6 @@
-#![cfg(feature = "server")]
+#![cfg(feature = "sqlite")]
 
-use piik_channel_prototype::{
+use piik_channel_core::{
     history::HistoryResult,
     host::{HostAction, HostInput, HostOutput, RequestContext, RoomResult},
     wire::{Request, RoomAccess},
@@ -23,7 +23,7 @@ fn input(owner: Uuid, actor: Uuid, action: impl FnOnce(RequestContext) -> HostAc
                     session,
                     Endpoint {
                         signing_key:
-                            piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32])
+                            piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
                                 .signing_key(),
                         member: Member {
                             user_id: session,
@@ -57,7 +57,7 @@ fn policy(id: &str, owner: Uuid, access: RoomAccess) -> RoomState {
     RoomState::new(id.into(), id.into(), owner, access, false, None).unwrap()
 }
 
-fn sent(output: HostOutput) -> piik_channel_prototype::history::MessageConfirmation {
+fn sent(output: HostOutput) -> piik_channel_core::history::MessageConfirmation {
     match output.reply.unwrap().result {
         RoomResult::History {
             result: HistoryResult::Sent(confirmation),
@@ -210,7 +210,7 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
     let owner = Uuid::new_v4();
     let viewer = Uuid::new_v4();
     let attachment = json!({ "id": Uuid::new_v4(), "name": "caption.bin", "size": 3,
-        "mediaType": "application/octet-stream", "sha256": piik_channel_prototype::attachment::sha256_hex(b"abc") });
+        "mediaType": "application/octet-stream", "sha256": piik_channel_core::attachment::sha256_hex(b"abc") });
     let original;
     {
         let mut host =
@@ -248,7 +248,7 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
     {
         let mut host = StoredRoomHost::open(&path).unwrap();
         let mut changed = attachment.clone();
-        changed["sha256"] = json!(piik_channel_prototype::attachment::sha256_hex(b"changed"));
+        changed["sha256"] = json!(piik_channel_core::attachment::sha256_hex(b"changed"));
         let retry = sent(command(
             &mut host,
             owner,

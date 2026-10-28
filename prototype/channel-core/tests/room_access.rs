@@ -1,6 +1,6 @@
-#![cfg(feature = "server")]
+#![cfg(feature = "sqlite")]
 
-use piik_channel_prototype::{
+use piik_channel_core::{
     history::HistoryRequest,
     host::RoomResult,
     wire::{Event, Snapshot},
@@ -232,7 +232,7 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         .channel
         .rooms
         .iter()
-        .all(|room| room.access == piik_channel_prototype::wire::RoomAccess::Public));
+        .all(|room| room.access == piik_channel_core::wire::RoomAccess::Public));
     let room = room(&mut core, creator, "private", true);
     let key = invite(&mut core, creator, &room);
     let (_, outsider_credential, initial) = admit(
@@ -350,8 +350,8 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
         .iter()
         .any(|entry| entry.id == room));
     for request in [
-        piik_channel_prototype::conversation::ConversationCommand::History { before: None },
-        piik_channel_prototype::conversation::ConversationCommand::Chat {
+        piik_channel_core::conversation::ConversationCommand::History { before: None },
+        piik_channel_core::conversation::ConversationCommand::Chat {
             text: "Revoked".into(),
             nonce: "revoked".into(),
             attachments: vec![],
@@ -422,7 +422,7 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
         core.peer_request(
             guest,
             &room,
-            piik_channel_prototype::conversation::ConversationCommand::Chat {
+            piik_channel_core::conversation::ConversationCommand::Chat {
                 text: "blocked".into(),
                 nonce: "1".into(),
                 attachments: vec![]
@@ -575,10 +575,10 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     let history = restored.peer_request(
         new_page,
         &room,
-        piik_channel_prototype::conversation::ConversationCommand::History { before: None },
+        piik_channel_core::conversation::ConversationCommand::History { before: None },
     );
     assert!(
-        matches!(history.result, Ok(piik_channel_prototype::history::HistoryResult::Page { messages, .. }) if messages.is_empty())
+        matches!(history.result, Ok(piik_channel_core::history::HistoryResult::Page { messages, .. }) if messages.is_empty())
     );
     let (_, again, _) = admit(
         &mut restored,
@@ -592,7 +592,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
 
 #[test]
 fn late_room_results_follow_the_requesters_current_authority() {
-    use piik_channel_prototype::{host::HostAction, wire::Request};
+    use piik_channel_core::{host::HostAction, wire::Request};
     let mut network = core();
     let owner = Uuid::new_v4();
     let actor = Uuid::new_v4();
@@ -671,7 +671,7 @@ fn late_room_results_follow_the_requesters_current_authority() {
     );
     let returning = Uuid::new_v4();
     let signing_key =
-        piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32]).signing_key();
+        piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key();
     let effects = network.authority.handle(
         returning,
         Request::parse(
