@@ -589,3 +589,177 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert!(restored.state(new_page).publications.is_empty());
     assert!(restored.state(new_page).voice.is_empty());
 }
+
+#[test]
+fn late_room_results_follow_the_requesters_current_authority() {
+    use piik_channel_prototype::{host::HostAction, wire::Request};
+    let mut network = core();
+    let owner = Uuid::new_v4();
+    let actor = Uuid::new_v4();
+    let unrelated = Uuid::new_v4();
+    admit(
+        &mut network,
+        owner,
+        json!({"type":"join","name":"Owner","key":"owner"}),
+    );
+    let (actor_session, credential, state) = admit(
+        &mut network,
+        actor,
+        json!({"type":"join","name":"Actor","key":"invite"}),
+    );
+    admit(
+        &mut network,
+        unrelated,
+        json!({"type":"join","name":"Unrelated","key":"invite"}),
+    );
+    let actor_user = state
+        .sessions
+        .iter()
+        .find(|session| session.id == actor_session)
+        .unwrap()
+        .user_id;
+    let public = room(&mut network, owner, "public", false);
+    let private = room(&mut network, owner, "private", true);
+    let invitation = invite(&mut network, owner, &private);
+
+    let effects = network.authority.handle(
+        actor,
+        Request::parse(
+            &json!({"type":"browse","roomId":public,"active":true,"requestId":"before-revoke"})
+                .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let earlier = network.host_turn(&public, input);
+    command(
+        &mut network,
+        owner,
+        json!({"type":"set_roles","userId":actor_user,"roles":[]}),
+    );
+    let late = command(
+        &mut network,
+        owner,
+        json!({"type":"host_output","roomId":public,"output":earlier}),
+    );
+    let result = late
+        .events
+        .iter()
+        .find_map(|(recipient, event)| match event {
+            Event::RoomReply {
+                request_id: Some(id),
+                result,
+                ..
+            } if *recipient == actor && id == "before-revoke" => Some(result),
+            _ => None,
+        })
+        .expect("the original request receives its scoped result");
+    assert!(matches!(result, RoomResult::Error { code } if code == "room_context_changed"));
+
+    command(
+        &mut network,
+        owner,
+        json!({"type":"set_roles","userId":actor_user,"roles":["member"]}),
+    );
+    let returning = Uuid::new_v4();
+    let signing_key =
+        piik_channel_prototype::conversation::SessionSigner::from_seed([1; 32]).signing_key();
+    let effects = network.authority.handle(
+        returning,
+        Request::parse(
+            &json!({
+                "type": "join", "name": "Returning", "credential": credential,
+                "key": invitation, "roomId": private, "signingKey": signing_key,
+            })
+            .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    assert!(matches!(
+        input.action,
+        HostAction::VerifyInvite {
+            member: Some(_),
+            ..
+        }
+    ));
+    let verification = network.host_turn(&private, input);
+    assert!(verification.invitation.as_ref().unwrap().accepted);
+    command(
+        &mut network,
+        owner,
+        json!({"type":"set_roles","userId":actor_user,"roles":[]}),
+    );
+    let rejected = command(
+        &mut network,
+        owner,
+        json!({"type":"host_output","roomId":private,"output":verification}),
+    );
+    assert!(rejected.close.contains(&returning));
+    assert!(
+        !rejected
+            .events
+            .iter()
+            .any(|(recipient, event)| *recipient == returning
+                && matches!(event, Event::Welcome { .. })),
+        "an existing user's stale invitation cannot bypass changed authority"
+    );
+
+    let newcomer = Uuid::new_v4();
+    let effects = network.authority.handle(
+        newcomer,
+        Request::parse(
+            &json!({
+                "type": "join", "name": "Newcomer", "key": invitation,
+                "roomId": private, "signingKey": signing_key,
+            })
+            .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    assert!(matches!(
+        input.action,
+        HostAction::VerifyInvite { member: None, .. }
+    ));
+    let verification = network.host_turn(&private, input);
+    assert!(verification.invitation.as_ref().unwrap().accepted);
+    command(&mut network, unrelated, json!({"type":"leave"}));
+    let admitted = command(
+        &mut network,
+        owner,
+        json!({"type":"host_output","roomId":private,"output":verification}),
+    );
+    assert!(
+        admitted
+            .events
+            .iter()
+            .any(|(recipient, event)| *recipient == newcomer
+                && matches!(event, Event::Welcome { .. })),
+        "a new invitee has no existing Member dependency on unrelated departures"
+    );
+}

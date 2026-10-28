@@ -14,16 +14,20 @@ pub(crate) struct Binding {
     pub session: Uuid,
     pub connection: Uuid,
     pub revision: u64,
-    // Request authority and projection order advance independently.
-    pub context_floor: u64,
     pub projection_floor: u64,
     pub replies: BTreeMap<u64, ReplyOwner>,
 }
 
 #[derive(Clone)]
 pub(crate) enum ReplyOwner {
-    Request(RequestContext),
-    Invitation(Uuid),
+    Request {
+        context: RequestContext,
+        member: Member,
+    },
+    Invitation {
+        ticket: Uuid,
+        member: Option<Member>,
+    },
     RouteWake,
 }
 
@@ -71,9 +75,15 @@ impl RemoteRoom {
             | HostAction::Revoke { context, .. }
             | HostAction::FlowState { context, .. }
             | HostAction::BaseState { context, .. }
-            | HostAction::GrantInvited { context } => Some(ReplyOwner::Request(context.clone())),
+            | HostAction::GrantInvited { context } => Some(ReplyOwner::Request {
+                context: context.clone(),
+                member: endpoints[&context.session_id].member,
+            }),
             HostAction::RouteWake => Some(ReplyOwner::RouteWake),
-            HostAction::VerifyInvite { ticket, .. } => Some(ReplyOwner::Invitation(*ticket)),
+            HostAction::VerifyInvite { ticket, member, .. } => Some(ReplyOwner::Invitation {
+                ticket: *ticket,
+                member: *member,
+            }),
             _ => None,
         };
         if owner.is_some() && binding.replies.len() >= 64 {

@@ -107,7 +107,10 @@ changing its routing state or becoming domain-issued turns. Their confirmations
 return to the request; domain revisions retain their authority/reply-fencing purpose.
 Projection order and request authority remain separate: an older room snapshot
 cannot replace newer routes, but an earlier authorized action can still complete.
-Only a changed authority context invalidates that action's confirmation.
+Confirmation follows the requester's current session and permission facts;
+another participant leaving or changing roles cannot invalidate it. Invitation
+verification follows the invited user's known permissions, not an online-session
+requirement for someone who has not joined yet.
 Chat reuses its persisted retry identity; history requests need response
 correlation, not another durable replay ledger. The room host signs live results,
 without creating a permanent signed history log. The shared transport owner

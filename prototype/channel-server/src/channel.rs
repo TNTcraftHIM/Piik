@@ -28,7 +28,7 @@ pub struct Channel {
 
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
-    pub context_current: bool,
+    pub reply_current: bool,
 }
 
 pub struct Outcome {
@@ -617,7 +617,6 @@ impl Channel {
                 session,
                 connection,
                 revision: 0,
-                context_floor: 0,
                 projection_floor: 0,
                 replies: BTreeMap::new(),
             });
@@ -640,7 +639,7 @@ impl Channel {
             .binding
             .as_mut()
             .unwrap();
-        binding.context_floor = binding.revision;
+        binding.projection_floor = binding.revision;
         self.reconcile();
         Ok((id, events))
     }
@@ -792,14 +791,14 @@ impl Channel {
         (changed, events)
     }
 
-    pub(crate) fn sync_hosts(&mut self, invalidate: bool) -> Vec<(Uuid, Event)> {
+    pub(crate) fn sync_hosts(&mut self, invalidate_projection: bool) -> Vec<(Uuid, Event)> {
         let ids: Vec<_> = self.remote.keys().cloned().collect();
         ids.into_iter()
             .filter_map(|id| {
                 let event = self.host_input(&id, HostAction::Sync).ok()?;
-                if invalidate {
+                if invalidate_projection {
                     let binding = self.remote.get_mut(&id).unwrap().binding.as_mut().unwrap();
-                    binding.context_floor = binding.revision;
+                    binding.projection_floor = binding.revision;
                 }
                 Some(event)
             })
@@ -844,29 +843,34 @@ impl Channel {
         if output.revision > binding.revision {
             return Err("invalid_room_revision");
         }
-        let reply_valid = match binding.replies.get(&output.revision) {
-            Some(ReplyOwner::Request(context)) => {
+        let (reply_valid, reply_current) = match binding.replies.get(&output.revision) {
+            Some(ReplyOwner::Request { context, member }) => (
                 output
                     .reply
                     .as_ref()
                     .is_some_and(|reply| &reply.context == context)
-                    && output.invitation.is_none()
-            }
-            Some(ReplyOwner::RouteWake) => output.reply.is_none() && output.invitation.is_none(),
-            Some(ReplyOwner::Invitation(ticket)) => {
+                    && output.invitation.is_none(),
+                self.identity.session_for_connection(context.connection)
+                    == Some(context.session_id)
+                    && self.identity.member(member.user_id).ok().as_ref() == Some(member),
+            ),
+            Some(ReplyOwner::Invitation { ticket, member }) => (
                 output
                     .invitation
                     .as_ref()
                     .is_some_and(|invitation| invitation.ticket == *ticket)
-                    && output.reply.is_none()
+                    && output.reply.is_none(),
+                member
+                    .is_none_or(|member| self.identity.member(member.user_id).ok() == Some(member)),
+            ),
+            Some(ReplyOwner::RouteWake) | None => {
+                (output.reply.is_none() && output.invitation.is_none(), true)
             }
-            None => output.reply.is_none() && output.invitation.is_none(),
         };
         if !reply_valid {
             return Err("invalid_room_reply");
         }
-        let context_current = output.revision >= binding.context_floor;
-        let projection_applied = context_current && output.revision >= binding.projection_floor;
+        let projection_applied = output.revision >= binding.projection_floor;
         self.remote
             .get_mut(id)
             .unwrap()
@@ -879,7 +883,7 @@ impl Channel {
         if !projection_applied {
             return Ok(HostAcceptance {
                 projection_applied,
-                context_current,
+                reply_current,
             });
         }
         let projection = &output.projection;
@@ -1009,7 +1013,7 @@ impl Channel {
         self.reconcile();
         Ok(HostAcceptance {
             projection_applied,
-            context_current,
+            reply_current,
         })
     }
 

@@ -1309,3 +1309,107 @@ fn failed_pair_does_not_invalidate_an_earlier_browse_reply_or_revive_old_project
         "old Browse projection must not restore the retired physical pair"
     );
 }
+
+#[test]
+fn unrelated_leave_does_not_invalidate_an_earlier_browse_reply_or_revive_retired_activity() {
+    use piik_channel_prototype::{host::RoomResult, wire::Request};
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let b = Uuid::new_v4();
+    let c = Uuid::new_v4();
+    let (host_session, _) = join(&mut network, host, None);
+    let (b_session, _) = join(&mut network, b, None);
+    let (c_session, _) = join(&mut network, c, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    for viewer in [b, c] {
+        browse(&mut network, viewer, &room, true);
+    }
+    let c_pair = pair(&network, c, host_session, &room).id;
+    let c_picture = publish(&mut network, c, &room, "screen");
+    let b_identity = network
+        .state(b)
+        .sessions
+        .iter()
+        .find(|session| session.id == b_session)
+        .unwrap()
+        .clone();
+    let effects = network.authority.handle(
+        b,
+        Request::parse(
+            &json!({"type":"browse","roomId":room,"active":true,"requestId":"before-c-leaves"})
+                .to_string(),
+        )
+        .unwrap(),
+        100,
+    );
+    let input = effects
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            Event::HostInput { input, .. } => Some(input),
+            _ => None,
+        })
+        .unwrap();
+    let earlier = network.host_turn(&room, input);
+    command(&mut network, c, json!({"type":"leave"}));
+    let current = network.state(b);
+    assert_eq!(
+        serde_json::to_value(
+            current
+                .sessions
+                .iter()
+                .find(|session| session.id == b_session)
+                .unwrap()
+        )
+        .unwrap(),
+        serde_json::to_value(b_identity).unwrap(),
+        "B's admitted session is unchanged"
+    );
+    assert!(current
+        .channel
+        .rooms
+        .iter()
+        .any(|view| view.id == room && view.authorized && view.available && view.reading));
+    assert!(!current
+        .sessions
+        .iter()
+        .any(|session| session.id == c_session));
+    assert!(!current
+        .publications
+        .iter()
+        .any(|publication| publication.id == c_picture));
+    let late = network.command(
+        host,
+        json!({"type":"host_output","roomId":room,"output":earlier}),
+    );
+    let reply = late
+        .events
+        .iter()
+        .find_map(|(recipient, event)| match event {
+            Event::RoomReply {
+                request_id: Some(id),
+                result,
+                ..
+            } if *recipient == b && id == "before-c-leaves" => Some(result),
+            _ => None,
+        })
+        .expect("B receives its original request result");
+    assert!(
+        matches!(reply, RoomResult::Done),
+        "unrelated C leaving does not revoke B's completed Browse request"
+    );
+    for connection in [host, b] {
+        let state = network.state(connection);
+        assert!(!state
+            .publications
+            .iter()
+            .any(|publication| publication.id == c_picture));
+        assert!(
+            !state
+                .pairs
+                .iter()
+                .any(|pair| pair.id == c_pair || pair.peer_id == c_session),
+            "old projection must not revive C's pair"
+        );
+    }
+}

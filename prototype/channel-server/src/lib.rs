@@ -487,8 +487,8 @@ impl Authority {
         ));
     }
 
-    fn sync_hosts(&mut self, effects: &mut Effects, invalidate: bool) {
-        for (session, event) in self.channel.sync_hosts(invalidate) {
+    fn sync_hosts(&mut self, effects: &mut Effects, invalidate_projection: bool) {
+        for (session, event) in self.channel.sync_hosts(invalidate_projection) {
             self.deliver(session, event, effects);
         }
     }
@@ -508,7 +508,7 @@ impl Authority {
         if accepted.projection_applied {
             self.broadcast(None, effects);
         }
-        if !accepted.context_current {
+        if !accepted.reply_current {
             if let Some(reply) = &mut output.reply {
                 reply.result = RoomResult::Error {
                     code: "room_context_changed".into(),
