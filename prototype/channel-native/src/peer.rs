@@ -1,6 +1,7 @@
 //! Native transport for authorized adjacent pairs. The domain supplies all leases.
 use crate::{
-    file::{FileLink, Files, Lane},
+    data::{self, DataLink, Lane},
+    file::Files,
     media::{
         supported, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source, TrackKey,
         VIDEO_PACKETS,
@@ -87,6 +88,12 @@ pub(crate) enum Event {
         key: TrackKey,
         source: Uuid,
     },
+    DataWriteFailed {
+        pair: Uuid,
+        lane: Lane,
+        token: Uuid,
+        temporary: bool,
+    },
 }
 struct FirstPacket {
     publication: Uuid,
@@ -151,7 +158,7 @@ struct Pair {
     tasks: HashMap<Uuid, Reader>,
     dc: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
     bulk: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
-    files: FileLink,
+    data: DataLink,
     state: Arc<AtomicU8>,
     dc_open: bool,
     base_failed: bool,
@@ -244,6 +251,7 @@ impl NativePeers {
                             let id = match &event {
                                 Event::OutputFailed { pair, .. } => *pair,
                                 Event::SourceEnded { pair, .. } => *pair,
+                                Event::DataWriteFailed { pair, .. } => *pair,
                                 Event::Negotiate(id)
                                 | Event::Candidate(id, _)
                                 | Event::State(id, _)
@@ -454,6 +462,8 @@ impl Driver {
                             .build()
                             .await?,
                     );
+                    let data = DataLink::new(plan.id, state.clone(), self.events.clone());
+                    self.files.attach(plan.peer_id, data.senders()).await;
                     self.pairs.insert(
                         plan.id,
                         Pair {
@@ -472,7 +482,7 @@ impl Driver {
                             tasks: HashMap::new(),
                             dc: None,
                             bulk: None,
-                            files: FileLink::new(plan.peer_id, state.clone(), &self.files).await,
+                            data,
                             state,
                             dc_open: false,
                             base_failed: false,
@@ -526,8 +536,8 @@ impl Driver {
                         let _ = task.await;
                         let _ = dc.close().await;
                     }
-                    p.files.unbind(Lane::Control);
-                    p.files.unbind(Lane::Bulk);
+                    p.data.unbind(Lane::Control);
+                    p.data.unbind(Lane::Bulk);
                     p.dc_open = false;
                 } else if !p.polite && !p.base_failed && p.dc.is_none() {
                     let dc = p.pc.create_data_channel("piik-room", None).await?;
@@ -750,7 +760,7 @@ impl Driver {
             return Ok(());
         }
         let token = Uuid::new_v4();
-        let ready = p.files.bind(lane, token, dc.clone());
+        let ready = p.data.bind(lane, token, dc.clone());
         let events = self.events.clone();
         let files = self.files.receiver();
         let peer = p.plan.peer_id;
@@ -764,11 +774,14 @@ impl Driver {
                             let _ = events.send(Event::Dc(id, token, true)).await;
                         }
                     }
-                    DataChannelEvent::OnMessage(message) => {
-                        files
-                            .message(peer, lane, token, message.data.as_ref())
-                            .await
-                    }
+                    DataChannelEvent::OnMessage(message) => match lane {
+                        Lane::Control => {
+                            if let Some(control) = data::control(message.data.as_ref()) {
+                                files.control(peer, token, control).await;
+                            }
+                        }
+                        Lane::Bulk => files.chunk(peer, token, message.data.as_ref()).await,
+                    },
                     DataChannelEvent::OnClose | DataChannelEvent::OnError => {
                         if ready.set(false) {
                             files
@@ -776,7 +789,7 @@ impl Driver {
                                     peer,
                                     lane,
                                     token,
-                                    lane == Lane::Control || crate::file::terminal(&state),
+                                    lane == Lane::Control || data::terminal(&state),
                                 )
                                 .await;
                             let event = if lane == Lane::Control {
@@ -840,8 +853,8 @@ impl Driver {
         p.reported.clear();
         let rooms = p.plan.rooms.clone();
         self.files.unavailable(p.plan.peer_id).await;
-        p.files.unbind(Lane::Control);
-        p.files.unbind(Lane::Bulk);
+        p.data.unbind(Lane::Control);
+        p.data.unbind(Lane::Bulk);
         for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
             task.abort();
             let _ = task.await;
@@ -956,6 +969,19 @@ impl Driver {
     }
     async fn event(&mut self, event: Event) -> Result<()> {
         match event {
+            Event::DataWriteFailed {
+                pair,
+                lane,
+                token,
+                temporary,
+            } => {
+                if let Some(p) = self.pairs.get(&pair) {
+                    self.files
+                        .receiver()
+                        .closed(p.plan.peer_id, lane, token, temporary)
+                        .await;
+                }
+            }
             Event::SourceEnded { pair, key, source } => self.source_ended(pair, key, source).await,
             Event::OutputFailed {
                 pair,
@@ -1042,7 +1068,7 @@ impl Driver {
                         .as_ref()
                         .is_some_and(|(current, _, _)| *current == token)
                     {
-                        p.files.unbind(Lane::Bulk);
+                        p.data.unbind(Lane::Bulk);
                         if let Some((_, dc, task)) = p.bulk.take() {
                             task.abort();
                             let _ = task.await;
@@ -1310,7 +1336,7 @@ async fn close_pair(mut pair: Pair) {
         task.abort();
         let _ = task.await;
     }
-    pair.files.close().await;
+    pair.data.close().await;
     for (_, task) in pair.tasks {
         task.task.abort();
         let _ = task.task.await;

@@ -2,5 +2,6 @@
 //! WebRTC peers implement only the domain's current transport leases.
 mod media;
 mod file;
+mod data;
 pub mod peer;
 pub mod session;
