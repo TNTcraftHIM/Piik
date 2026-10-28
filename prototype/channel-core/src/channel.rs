@@ -35,6 +35,10 @@ pub struct Outcome {
 }
 
 impl Channel {
+    pub(crate) fn identity(&self) -> (Uuid, Uuid) {
+        (self.id, self.identity.owner_id)
+    }
+
     pub fn new(owner_key: String, invite_key: String, ice_servers: Vec<Value>) -> Self {
         let identity = Identity::new(owner_key, invite_key);
         Self {

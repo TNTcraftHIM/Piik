@@ -129,6 +129,11 @@ impl Authority {
             .map(|user| user.name.as_str())
     }
 
+    /// The channel and its owner's user ID, available before any endpoint joins.
+    pub fn identity(&self) -> (Uuid, Uuid) {
+        self.channel.identity()
+    }
+
     /// Apply a validated request only through its current connection binding.
     pub fn handle(&mut self, connection: Uuid, request: Request, now: u64) -> Effects {
         let mut effects = self.expire(now);

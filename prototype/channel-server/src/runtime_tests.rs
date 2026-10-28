@@ -1,4 +1,5 @@
 use super::*;
+use crate::serve_server as serve;
 use serde_json::{json, Value};
 
 struct Endpoint {
@@ -336,7 +337,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         RoomState, StoredRoomHost,
     };
     let folder = std::env::temp_dir().join(format!("piik-room-commit-{}", Uuid::new_v4()));
-    let state = open_state(
+    let state = Domain::open(
         &folder,
         "owner",
         "invite",
@@ -344,6 +345,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         vec![],
     )
     .unwrap();
+    std::fs::create_dir_all(folder.join("rooms")).unwrap();
     let mut hub = state.hub.lock().unwrap();
     let mut sender = Endpoint::join(&mut hub, "owner");
     let reader = Endpoint::join(&mut hub, "invite");
@@ -552,7 +554,7 @@ async fn start_server(
     tokio::task::JoinHandle<anyhow::Result<()>>,
     Arc<Mutex<Hub>>,
 ) {
-    let state = open_state(folder, "owner", "invite", "http://localhost".into(), vec![]).unwrap();
+    let state = Domain::open(folder, "owner", "invite", "http://localhost".into(), vec![]).unwrap();
     let hub = state.hub.clone();
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
@@ -736,7 +738,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
     assert!(saved.policy().access == RoomAccess::Private);
     assert!(saved.policy().grants.contains(&guest_user));
     drop(saved);
-    let restored = open_state(
+    let restored = Domain::open(
         &folder,
         "owner",
         "invite",

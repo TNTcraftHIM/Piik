@@ -8,6 +8,9 @@ owns the accepted routing foundation; this file describes what currently runs.
 The Server executable consumes [channel-core](../channel-core/README.md), the same
 Rust library used by Native and Browser/WASM. Its package and binary remain
 `piik-channel-prototype`; the shared library is `piik-channel-core`.
+The [Domain service](./src/domain.rs) owns its HTTP, WebSocket and directory lifetime;
+the [Server composition](./src/lib.rs) adds deliberate Native room hosting. Local App
+composition can reuse the Domain without inheriting that unattended participant.
 
 The Server starts one real [Native participant](../channel-native/README.md) in
 its process to operate the three initial rooms. Its lifetime follows the explicit
