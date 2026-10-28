@@ -173,7 +173,7 @@ impl RoomRuntime {
             policy_changed: false,
         };
         match command {
-            Command::Browse { active, .. } => op.history = self.browse(member, session, active)?,
+            Command::Browse { active, .. } => self.browse(member, session, active)?,
             Command::History { before, .. } => op.history = Some(self.history(member, before)?),
             Command::FileOffer {
                 message_seq,

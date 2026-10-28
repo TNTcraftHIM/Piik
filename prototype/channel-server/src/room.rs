@@ -160,14 +160,10 @@ impl RoomRuntime {
         member: Member,
         session: Uuid,
         active: bool,
-    ) -> Result<Option<HistoryRequest>, &'static str> {
+    ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Read)?;
         self.activity.entry(session).or_default().reading = active;
-        if active {
-            self.history(member, None).map(Some)
-        } else {
-            Ok(None)
-        }
+        Ok(())
     }
 
     pub fn grant_invited(&mut self, user: Uuid) {

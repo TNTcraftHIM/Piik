@@ -34,6 +34,8 @@ window.runBrowserRoomCheck = async () => {
   };
   try {
     const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
+    check(initial.reply?.result.type === "done", "browse confirms activity without reading history");
+    check((await history()).messages.length === 0, "history is an explicit independent read");
     check(initial.projection.views[session].room.canManage, "room owner view comes from shared Rust");
     const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", creatorId: owner.userId,
       access: "private", hidden: true });
@@ -66,7 +68,7 @@ window.runBrowserRoomCheck = async () => {
         check(restored.projection.views[guestSession], "private invitation grant survives runtime reopen");
       } finally { await reopened.close(); }
     } finally { await privateHost.close(); }
-    const file = { id: crypto.randomUUID(), name: "file.bin", size: 3, mediaType: "application/octet-stream",
+    const file: SentResult["message"]["attachments"][number] = { id: crypto.randomUUID(), name: "file.bin", size: 3, mediaType: "application/octet-stream",
       sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" };
     const [first, second] = await Promise.all([send("Original", "first", [file]), send("Second", "second")]);
     check(first.inserted && first.message.seq === 1 && second.message.seq === 2, "serialized room order");

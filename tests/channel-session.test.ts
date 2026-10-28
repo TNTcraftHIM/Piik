@@ -812,7 +812,7 @@ test("browsing retires only reading and resumes the offline selection without en
     state.subscriptions = ["screen"];
     socket.receive({ type: "state", state });
     session.browse("second");
-    expect(socket.sent.slice(-2)).toEqual([{ type: "browse", roomId: "first", active: false }, { type: "browse", roomId: "second", active: true }]);
+    expect(socket.sent.slice(-2)).toEqual([{ type: "browse", roomId: "first", active: false }, expect.objectContaining({ type: "browse", roomId: "second", active: true })]);
     expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
     socket.close();
     const count = socket.sent.length;
@@ -823,7 +823,7 @@ test("browsing retires only reading and resumes the offline selection without en
     resumed.onopen?.();
     state.channel.rooms.forEach(room => { room.reading = room.id === "second"; });
     resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
-    expect(resumed.sent.slice(-2)).toEqual([{ type: "browse", roomId: "second", active: false }, { type: "browse", roomId: "first", active: true }]);
+    expect(resumed.sent.slice(-2)).toEqual([{ type: "browse", roomId: "second", active: false }, expect.objectContaining({ type: "browse", roomId: "first", active: true })]);
     expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
     expect(resumed.sent.some(command => ["unpublish", "subscribe", "voice"].includes(String(command.type)))).toBe(false);
   } finally { session.close(); }
@@ -838,9 +838,9 @@ test("rapid browsing retires the previous intent before its reading projection a
     session.browse("first");
     session.browse("second");
     expect(socket.sent.slice(-3)).toEqual([
-      { type: "browse", roomId: "first", active: true },
+      expect.objectContaining({ type: "browse", roomId: "first", active: true }),
       { type: "browse", roomId: "first", active: false },
-      { type: "browse", roomId: "second", active: true },
+      expect.objectContaining({ type: "browse", roomId: "second", active: true }),
     ]);
   } finally { session.close(); }
 });
@@ -853,7 +853,7 @@ test("a resumed room owner retires reading left behind by an offline room switch
     socket.receive({ type: "state", state });
     const beforeSwitch = socket.sent.length;
     session.browse("second");
-    expect(socket.sent.slice(beforeSwitch)).toEqual([{ type: "browse", roomId: "second", active: true }]);
+    expect(socket.sent.slice(beforeSwitch)).toEqual([expect.objectContaining({ type: "browse", roomId: "second", active: true })]);
     state.channel.rooms[1].reading = true;
     socket.receive({ type: "state", state });
     const beforeResume = socket.sent.length;
@@ -910,4 +910,37 @@ test("voice forwards without local listening and the same pair carries the rever
     expect(pc.close).not.toHaveBeenCalled();
     expect(downstream.close).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
+});
+
+
+test("browse acknowledgement loads only the current room once and reconnect refreshes its history", async () => {
+  const { session, socket } = setup();
+  try {
+    const first = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    session.browse("first");
+    expect(socket.sent.filter(command => command.type === "browse" && command.active)).toHaveLength(1);
+    expect(socket.sent.some(command => command.type === "history")).toBe(false);
+    session.browse("second");
+    const second = socket.sent.at(-1)!;
+    socket.receive({ type: "ack", requestId: first.requestId }); await Promise.resolve();
+    expect(socket.sent.some(command => command.type === "history")).toBe(false);
+    socket.receive({ type: "room_reply", roomId: "second", requestId: second.requestId, result: { type: "done" } }); await Promise.resolve();
+    const history = socket.sent.at(-1)!;
+    expect(history).toMatchObject({ type: "history", roomId: "second" });
+    session.browse("second");
+    expect(socket.sent.filter(command => command.type === "history")).toHaveLength(1);
+    socket.receive({ type: "history", roomId: "second", messages: [message(5)], hasMore: true, oldestSeq: 1 });
+    socket.receive({ type: "room_reply", roomId: "second", requestId: history.requestId, result: { type: "done" } });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:second")).toBe(false));
+    const older = session.loadHistory("second");
+    expect(socket.sent.at(-1)).toMatchObject({ type: "history", roomId: "second", before: 5 });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await older;
+    const state = structuredClone(session.getSnapshot().state!);
+    session.reconnect();
+    const resumed = ChannelSocket.current; resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
+    resumed.receive({ type: "ack", requestId: browse.requestId }); await Promise.resolve();
+    expect(resumed.sent.filter(command => command.type === "history")).toEqual([expect.objectContaining({ type: "history", roomId: "second" })]);
+  } finally { session.close(); }
 });

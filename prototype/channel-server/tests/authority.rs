@@ -158,7 +158,7 @@ fn history_requests_carry_authenticated_author_and_defer_confirmation() {
     assert!(browse
         .events
         .iter()
-        .all(|(_, event)| !matches!(event, Event::Ack { .. } | Event::History { .. })));
+        .all(|(_, event)| !matches!(event, Event::History { .. })));
     assert!(
         state(&browse, connection)
             .channel
@@ -168,10 +168,11 @@ fn history_requests_carry_authenticated_author_and_defer_confirmation() {
             .unwrap()
             .reading
     );
-    assert!(matches!(
-        browse.history.unwrap().request,
-        HistoryRequest::Read { room_id, before: None } if room_id == "studio"
-    ));
+    assert!(browse.history.is_none());
+    assert!(browse
+        .events
+        .iter()
+        .any(|(_, event)| matches!(event, Event::Ack { request_id } if request_id == "browse")));
 
     let send = apply(
         &mut core,
