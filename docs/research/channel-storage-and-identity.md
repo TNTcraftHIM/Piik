@@ -62,15 +62,22 @@ channel or every attachment's bytes.
 
 | Record | Durable information |
 | --- | --- |
-| Message | Stable identity, authenticated author, room-confirmed order and send time, text and attachment references. |
-| Attachment | Stable identity, filename, media type, byte size and expected whole-file digest. |
+| Message | Stable identity, authenticated author, room-confirmed order and send time, text and attachment descriptions. |
+| Attachment within a message | Stable identity, filename, media type, byte size and expected whole-file digest. |
 | Image presentation | Optional dimensions and preview reference on the same attachment; no separate image storage or delivery lifecycle. |
 
 Send time and author belong to the message rather than a second copy on every
 attachment. A text message can contain attachments, and an attachment message
-can have a caption. The room owner saves these records transactionally and
-restores them on ordinary restart. Serving availability is derived from current
+can have a caption. Store descriptions inside the confirmed message, rather
+than creating an upload/pending/commit lifecycle for metadata. The room owner
+saves the message transactionally and restores it on ordinary restart.
+Serving availability is derived from current
 readable copies, not a permanent `available` flag on the saved message.
+
+The sender prepares readable local content and its digest before sending one
+chat command. A retry returns the original message, including its original
+attachment descriptions. Room identity, message sequence and attachment identity
+locate a description for authorization; no separate metadata service is needed.
 
 ## Confirmed History
 
@@ -375,8 +382,20 @@ still need that carrier integration. App hosting and participant history caches
 remain later work.
 
 The next carrier check extends the separate A-domain/B-room-owner model:
-C and D receive history along admitted room paths, so A no longer carries every
-room message. Preserve B's existing confirmation, restart and retry semantics.
+first move file bytes onto admitted room paths while keeping commands, confirmed
+metadata and transfer authorization on the existing authenticated rendezvous.
+This establishes the data path without introducing a second identity or signing
+system. Replace the private experiment's HTTP upload and content store with
+message-contained descriptions and participant-owned readable copies; do not
+maintain parallel attachment models. Default Server rooms need a real Native
+base endpoint before advertising this capability.
+
+Downloads belong to the participant session; changing the chat view does not
+cancel them. Image preview URLs belong to their view. A Browser receiver writes
+to a bounded local sink and verifies the complete file before exposing it, while
+the sender reads bounded ranges from its selected file. Unsupported storage is
+an explicit capability result, not permission to buffer an arbitrary file in RAM.
+
 A file must reach D through an intermediate peer when C-D direct connectivity
 is unavailable. Lost message confirmation must not duplicate a committed send;
 refreshing a participant must recover confirmed history. File delivery must
@@ -384,5 +403,8 @@ share upstream ranges for simultaneous consumers, handle a slow or cancelled
 branch independently, and resume after path/source loss. Corrupted downloads
 must fail whole-file verification. Exercise file traffic alongside voice and
 picture playback through the same resource owner.
+Moving authenticated room commands/history onto those paths is a subsequent
+carrier step. It retains B's confirmation, restart and retry semantics and must
+authenticate the original author and room response across intermediate peers.
 These checks establish the ownership and carrier model before expanding the
 business interface.
