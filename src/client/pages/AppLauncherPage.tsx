@@ -20,6 +20,7 @@ import {
 
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
+  siteAccess: z.literal("rooms").optional(),
   startupSite: z.string(),
   localAccessPassword: z.string(),
   defaultMode: z.enum(["local", "link"]),
@@ -50,6 +51,7 @@ export function AppLauncherPage() {
   const [mode, setMode] = useState<AppMode>("link");
   const [modes, setModes] = useState<readonly AppMode[]>(["local", "link"]);
   const [sites, setSites] = useState<string[]>([]);
+  const [siteAccess, setSiteAccess] = useState<"rooms">();
   const [startupSite, setStartupSite] = useState("");
   const [openOnApproval, setOpenOnApproval] = useState(false);
   const [localAccessPassword, setLocalAccessPassword] = useState("");
@@ -125,6 +127,7 @@ export function AppLauncherPage() {
         setTarget(state.target);
         setStarting(state.starting === true);
         setSites(state.sites);
+        setSiteAccess(state.siteAccess);
         setStartupSite(state.startupSite);
         setAppDebug(state.debug);
         setDebug(state.debug === true);
@@ -313,7 +316,8 @@ export function AppLauncherPage() {
                 <strong>{requestedSite}</strong>
                 {approvalCurrent && <Glyph name="check" size={20} className="lr-client-approval-check" />}
               </div>
-              <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return" : "client.connect.approveHint")}</p>
+              <p className={vis ? "visually-hidden" : undefined}>{t(approvalCurrent ? "client.connect.return"
+                : siteAccess === "rooms" ? "client.connect.approveRoomsHint" : "client.connect.approveHint")}</p>
             </div>
             {!validSite && <Pill icon="alert" tone="bad" label={t("client.connect.invalid")} comic="signal-failed" />}
             {siteError && <p role="alert">{siteError}</p>}

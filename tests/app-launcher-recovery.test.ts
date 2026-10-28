@@ -39,12 +39,12 @@ const saved = {
   revision: "test", version: "development", debug: false,
   lan: { addresses: [{ address: "192.0.2.1", name: "LAN" }], selected: "192.0.2.1" },
 };
-const response = (state: typeof saved & { detail?: string } = saved) => ({ ok: true, status: 200, json: async () => state });
+const response = (state: typeof saved & { detail?: string; siteAccess?: "rooms" } = saved) => ({ ok: true, status: 200, json: async () => state });
 
 function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
-    "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "ControlPort", "Target", "Starting", "Sites", "StartupSite",
+    "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "ControlPort", "Target", "Starting", "Sites", "SiteAccess", "StartupSite",
     "AppDebug", "Debug", "Error", "Loading", "Update", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
@@ -78,6 +78,12 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
 }
 
 describe("App launcher state recovery", () => {
+  it("reads the room-hosting permission scope from the actual launcher response", async () => {
+    const page = mount(vi.fn(async () => response({ ...saved, siteAccess: "rooms" })));
+    await settle();
+    expect(page.state.SiteAccess).toBe("rooms");
+    page.cleanup();
+  });
   it.each([
     ["v2.4.1", "v2.4.1"],
     ["development", "development (aaaaaaa)"],

@@ -253,6 +253,7 @@ export const zh = {
   "client.connect.manage": "App 已就绪，点击管理。",
   "client.connect.approveTitle": "允许使用 Piik App？",
   "client.connect.approveHint": "此站点将可以使用本机的屏幕、窗口和麦克风。请确认你信任这个网址。",
+  "client.connect.approveRoomsHint": "允许此站点在 App 中托管房间，并保存房间设置和聊天记录。",
   "client.connect.approve": "允许使用",
   "client.connect.approved": "已允许此站点使用 App",
   "client.connect.return": "可以关闭此页面，返回原站点继续。",
