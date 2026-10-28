@@ -8,7 +8,7 @@ use axum::{
     routing::get,
     Router,
 };
-use futures_util::{Sink, SinkExt, StreamExt};
+use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
 use piik_channel_core::{
     storage,
     wire::{Event, Request},
@@ -351,6 +351,17 @@ impl Domain {
         routes: Router,
         stop: impl Future<Output = ()>,
     ) -> anyhow::Result<()> {
+        self.serve_with_https(listener, None, routes, stop).await
+    }
+
+    /// One domain, clock and shutdown owner serve both pre-bound entries.
+    pub async fn serve_with_https(
+        self,
+        listener: tokio::net::TcpListener,
+        https: Option<crate::web::LanHttps>,
+        routes: Router,
+        stop: impl Future<Output = ()>,
+    ) -> anyhow::Result<()> {
         let app = Router::new()
             .route("/healthz", get(|| async { "piik-channel-prototype" }))
             .route("/prototype/channel", get(upgrade))
@@ -361,11 +372,20 @@ impl Domain {
             .with_state(self.clone())
             .merge(routes);
         let (stop_http, mut http_stopped) = watch::channel(false);
-        let http = axum::serve(listener, app)
+        let http = axum::serve(listener, app.clone())
             .with_graceful_shutdown(async move {
                 let _ = http_stopped.changed().await;
             })
             .into_future();
+        let mut servers = FuturesUnordered::new();
+        servers.push(http.boxed());
+        let stop_https = axum_server::Handle::new();
+        if let Some(https) = https {
+            let server = axum_server::from_tcp_rustls(https.listener.into_std()?, https.config)?
+                .handle(stop_https.clone())
+                .serve(app.into_make_service());
+            servers.push(server.boxed());
+        }
         let expiry = async {
             let mut timer = tokio::time::interval(Duration::from_secs(1));
             loop {
@@ -373,18 +393,21 @@ impl Domain {
                 self.hub.lock().unwrap().expire();
             }
         };
-        tokio::pin!(http, expiry, stop);
-        let result = tokio::select! {
-            _ = &mut stop => {
-                self.close_clients();
-                let _ = stop_http.send(true);
-                http.await
-            }
-            result = &mut http => result,
+        tokio::pin!(expiry, stop);
+        let mut result = tokio::select! {
+            _ = &mut stop => Ok(()),
+            result = servers.next() => result.expect("HTTP entry is present"),
             _ = &mut expiry => unreachable!(),
         };
         // A failed listener must retire its WebSocket owners as well.
         self.close_clients();
+        let _ = stop_http.send(true);
+        stop_https.graceful_shutdown(None);
+        while let Some(closed) = servers.next().await {
+            if result.is_ok() {
+                result = closed;
+            }
+        }
         Ok(result?)
     }
 

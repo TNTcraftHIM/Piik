@@ -20,8 +20,9 @@ piik-channel-native = { path = "../channel-native" }
 anyhow = "1"
 futures-util = "0.3"
 axum = { version = "0.8", features = ["ws"] }
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
 tower-http = { version = "0.6.6", features = ["fs"] }
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time", "process", "io-util"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }
 uuid = { version = "=1.16.0", features = ["v4", "serde"] }
@@ -29,9 +30,14 @@ rusqlite = { version = "0.37", features = ["bundled"] }
 url = "2.5"
 dirs = "6"
 webbrowser = "1"
+if-addrs = "0.15"
+rcgen = { version = "=0.14.10", default-features = false, features = ["ring"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+ring = "0.17"
 
 [dev-dependencies]
 tokio-tungstenite = "0.29"
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 
 # Cargo patches are workspace-root scoped; match channel-native/Cargo.toml.
 [patch.crates-io]

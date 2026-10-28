@@ -585,6 +585,130 @@ async fn start_server(
 }
 
 #[tokio::test]
+async fn http_and_https_share_a_domain_and_release_both_listeners_on_stop() {
+    use crate::web::LanHttps;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let folder = std::env::temp_dir().join(format!("piik-domain-https-{}", Uuid::new_v4()));
+    let http = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let http_address = http.local_addr().unwrap();
+    assert!(LanHttps::bind(http_address.ip(), http_address.port())
+        .await
+        .is_err());
+    let https = LanHttps::bind(http_address.ip(), 0).await.unwrap();
+    let https_address = https.listener.local_addr().unwrap();
+    let invitation = https.origin().to_owned();
+    let fingerprint = https.fingerprint();
+    let mut roots = rustls::RootCertStore::empty();
+    roots.add(https.certificate.clone()).unwrap();
+    let tls = Arc::new(
+        rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth(),
+    );
+    let state = Domain::open(
+        &folder,
+        "owner",
+        "invite",
+        "http://localhost".into(),
+        Some(invitation.clone()),
+        vec![],
+    )
+    .unwrap();
+    let identity = state.identity().0;
+    let (stop, stopped) = oneshot::channel();
+    let task = tokio::spawn(
+        state.serve_with_https(http, Some(https), Router::new(), async {
+            let _ = stopped.await;
+        }),
+    );
+    let (mut owner, _, initial) = connect(http_address, "owner", "Owner").await;
+    assert_eq!(initial.channel.id, identity);
+    let mut request = format!("wss://{https_address}/prototype/channel")
+        .into_client_request()
+        .unwrap();
+    request
+        .headers_mut()
+        .insert("Origin", invitation.parse().unwrap());
+    let (mut guest, _) = tokio_tungstenite::connect_async_tls_with_config(
+        request,
+        None,
+        false,
+        Some(tokio_tungstenite::Connector::Rustls(tls.clone())),
+    )
+    .await
+    .unwrap();
+    send_request(
+        &mut guest,
+        json!({"type":"join", "key":"invite", "name":"LAN guest"}),
+    )
+    .await;
+    let Event::Welcome {
+        state,
+        invitation_origin,
+        ..
+    } = event(&mut guest).await
+    else {
+        panic!("authenticated HTTPS welcome")
+    };
+    assert_eq!(state.channel.id, identity);
+    assert_eq!(state.sessions.len(), 2);
+    assert_eq!(invitation_origin, Some(invitation));
+    state_when(&mut owner, |state| state.sessions.len() == 2).await;
+
+    // Trust only this runtime's exact certificate; verify its IP SAN and the
+    // advertised fingerprint without changing system trust or skipping TLS.
+    let mut stream = tokio_rustls::TlsConnector::from(tls)
+        .connect(
+            https_address.ip().into(),
+            TcpStream::connect(https_address).await.unwrap(),
+        )
+        .await
+        .unwrap();
+    let served = &stream.get_ref().1.peer_certificates().unwrap()[0];
+    let actual: String = ring::digest::digest(&ring::digest::SHA256, served.as_ref())
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02X}"))
+        .collect();
+    assert_eq!(actual, fingerprint);
+    stream
+        .write_all(
+            b"GET /api/client-launcher HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n",
+        )
+        .await
+        .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).await.unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 404"),
+        "LAN entry cannot expose local approval routes"
+    );
+    drop(stream);
+
+    stop.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    for socket in [&mut owner, &mut guest] {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(frame) = socket.next().await {
+                if matches!(frame.unwrap(), Message::Close(_)) {
+                    return;
+                }
+            }
+        })
+        .await
+        .expect("both entries retire their actual WebSocket owners");
+    }
+    let _http = TcpListener::bind(http_address).await.unwrap();
+    let _https = TcpListener::bind(https_address).await.unwrap();
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[tokio::test]
 async fn invitation_origin_is_only_a_second_exact_http_entry() {
     let folder = std::env::temp_dir().join(format!("piik-domain-origins-{}", Uuid::new_v4()));
     let primary = "http://localhost";
