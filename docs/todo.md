@@ -1,12 +1,16 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-27
+Last reviewed: 2026-10-28
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Equivalent H.264 negotiation.** Pion drops a supported Constrained
+  Baseline offer such as `42c01f` when VP8 also matches. The minimal RFC 6184
+  profile-matching repair passes actual receiver and forwarding checks locally;
+  upstream submission and a fixed dependency await owner approval.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
