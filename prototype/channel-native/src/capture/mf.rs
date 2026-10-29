@@ -79,7 +79,6 @@ pub(super) struct Encoder {
 impl Drop for Encoder {
     fn drop(&mut self) {
         unsafe {
-            let _ = self.transform.ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
             let _ = self.activate.ShutdownObject();
         }
     }
