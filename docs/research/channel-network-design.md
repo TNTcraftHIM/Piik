@@ -585,8 +585,16 @@ media demand, independently of actual usage and current allocation. Two Chrome
 viewers return to one shared baseline encoder after capacity is learned; leaving
 one viewer preserves the other. Closing the capture page releases video, audio
 and encoder workers while the App-hosted room continues.
+With that real App and two Chrome receivers, limiting one encrypted UDP egress
+from 8 Mbps to 600 kbps for 20 seconds reduces its actual network output to
+577 kbps. Its video produces 407 kbps while the healthy sibling stays at
+2.14 Mbps. The queue peaks at 134 KB and drains during the limited phase.
+Restoring capacity returns the constrained output to its configured 4 Mbps
+video budget after 16.1–16.6 seconds, preserving both tracks, SSRCs and audio.
+The estimator, allocation and hardware encoder drive this trial automatically;
+it covers a direct publisher connection, not downstream relay adaptation.
 
-For a 20-second 600 kbps FIFO bottleneck, peak network backlog falls from 18,654
+In the separate transport-only 20-second 600 kbps FIFO trial, peak network backlog falls from 18,654
 to 325 packets, but target recovery to 8 Mbps still takes 36.6 seconds. Payload
 demand and encrypted wire capacity have different overhead. Keeping 60 seconds
 of history instead of 2 preserves late feedback but takes 41.3 seconds to recover.
