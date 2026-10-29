@@ -329,7 +329,9 @@ private func listSources() async throws {
 }
 
 private func bitmapPreview(_ image: VideoImage) throws -> Data {
-    let pixels = CIImage(cvPixelBuffer: image.buffer, options: [.applyCleanAperture: true])
+    // Core Video's clean rect and Core Image both use a lower-left origin.
+    let pixels = CIImage(cvPixelBuffer: image.buffer)
+        .cropped(to: CVImageBufferGetCleanRect(image.buffer))
     guard let source = CIContext().createCGImage(pixels, from: pixels.extent) else {
         throw CaptureFailure(description: "source preview image is unavailable")
     }
@@ -1264,6 +1266,18 @@ private func geometrySelfTest() throws {
         .contentRect: rect.dictionaryRepresentation,
         .scaleFactor: CGFloat(2), .contentScale: CGFloat(1),
     ]
+    // Leave unequal black padding above/below the crop, with dark content on
+    // top and light content below. Decode the actual BMP to detect a Y flip.
+    try require(CVPixelBufferLockBaseAddress(buffer, []), "preview-test-buffer-lock")
+    guard let luma = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else {
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        throw CaptureFailure(description: "preview test pixels are unavailable")
+    }
+    let stride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+    for row in 80..<680 {
+        memset(luma.advanced(by: row * stride + 100), row < 380 ? 80 : 180, 400)
+    }
+    CVPixelBufferUnlockBaseAddress(buffer, [])
     // Core Video returns a lower-left origin; the surface crop starts 80 px
     // from the top, so its lower edge is 720 - 80 - 600 = 40 px from the bottom.
     guard let image = VideoImage(buffer, attachments: attachments),
@@ -1275,7 +1289,11 @@ private func geometrySelfTest() throws {
     let preview = try bitmapPreview(image)
     guard preview.starts(with: [0x42, 0x4d]), preview.count <= 192 * 1024,
           let thumbnail = NSBitmapImageRep(data: preview),
-          thumbnail.pixelsWide == 120, thumbnail.pixelsHigh == 180 else {
+          thumbnail.pixelsWide == 120, thumbnail.pixelsHigh == 180,
+          let top = thumbnail.colorAt(x: 5, y: 3)?.usingColorSpace(.deviceRGB),
+          let bottom = thumbnail.colorAt(x: 5, y: 176)?.usingColorSpace(.deviceRGB),
+          top.redComponent > 0.15, top.redComponent < 0.45,
+          bottom.redComponent > 0.6, bottom.redComponent < 0.9 else {
         throw CaptureFailure(description: "source preview conversion self-test failed")
     }
     var upscaled = attachments
