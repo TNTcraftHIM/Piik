@@ -18,6 +18,7 @@ use rtc::{
     rtp_transceiver::h264::H264ProfileLevelId,
     rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
     sansio::Protocol,
+    shared::replay_detector::{ReplayDetector, WrappedSlidingWindowDetector},
 };
 use std::{
     collections::{HashMap, VecDeque},
@@ -234,6 +235,36 @@ impl H264Sps {
     }
 }
 
+/// One received track's media boundary, after the SDK has restored RTX identity.
+pub(crate) struct RtpIngress {
+    received: WrappedSlidingWindowDetector,
+    h264: Option<H264Sps>,
+}
+impl RtpIngress {
+    pub fn new(codec: &RTCRtpCodec) -> Self {
+        Self {
+            // Half the RTP sequence space: retain late repairs independently of
+            // output queue size, without a second sequence/rollover algorithm.
+            received: WrappedSlidingWindowDetector::new(1 << 15, u16::MAX as u64),
+            h264: codec
+                .mime_type
+                .eq_ignore_ascii_case("video/H264")
+                .then(H264Sps::default),
+        }
+    }
+
+    pub fn accept(&mut self, packet: &rtp::Packet) -> Result<bool> {
+        if !self.received.check(packet.header.sequence_number.into()) {
+            return Ok(false);
+        }
+        if let Some(h264) = &mut self.h264 {
+            h264.observe(packet)?;
+        }
+        self.received.accept();
+        Ok(true)
+    }
+}
+
 // The stock chain consumes network feedback. This final application hook exposes
 // source sender reports and PLI/FIR, following upstream rtcp-processing.
 #[derive(Default)]
@@ -411,6 +442,46 @@ impl Relay {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ingress_counts_and_forwards_repaired_media_once_across_rollover() -> Result<()> {
+        let codec = RTCRtpCodec {
+            mime_type: "video/VP8".into(),
+            ..Default::default()
+        };
+        let mut ingress = RtpIngress::new(&codec);
+        let relay = Relay::default();
+        let source = Uuid::new_v4();
+        let (target, mut received) = mpsc::channel(8);
+        relay.set(source, vec![target]);
+        // RTX has already regained its original primary sequence. The missing
+        // packet arrives after rollover, then its late original arrives too.
+        for sequence in [65534, 65534, 0, 0, 65535, 65535, 1] {
+            let packet = rtp::Packet {
+                header: rtp::header::Header {
+                    sequence_number: sequence,
+                    ..Default::default()
+                },
+                payload: vec![0; 88].into(),
+            };
+            if ingress.accept(&packet)? {
+                relay.write(source, packet);
+            }
+        }
+        let mut sequences = Vec::new();
+        while let Ok(packet) = received.try_recv() {
+            sequences.push(packet.header.sequence_number);
+        }
+        assert_eq!(sequences, [65534, 0, 65535, 1]);
+        let start = relay.0.lock().unwrap()[&source].rate.start.unwrap();
+        assert_eq!(
+            relay.bitrate(source, start + Duration::from_secs(1)),
+            Some(3200)
+        );
+        let mut replacement = RtpIngress::new(&codec);
+        assert!(replacement.accept(&rtp::Packet::default())?);
+        Ok(())
+    }
 
     #[test]
     fn relay_measures_ingress_once_and_keeps_rate_with_its_source() {

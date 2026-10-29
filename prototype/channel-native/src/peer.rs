@@ -3,7 +3,7 @@ use crate::{
     data::{self, DataLink, Lane},
     file::Files,
     media::{
-        supported, H264Sps, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source,
+        supported, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source,
         SourceFeed, SourceOrigin, TrackKey, H264_RELAY_PROFILE, VIDEO_PACKETS,
     },
 };
@@ -1924,11 +1924,7 @@ impl Driver {
         p.tasks.retain(|_, reader| !reader.task.is_finished());
         let task = tokio::spawn(async move {
             let mut first = true;
-            let mut h264 = source
-                .codec
-                .mime_type
-                .eq_ignore_ascii_case("video/H264")
-                .then(H264Sps::default);
+            let mut ingress = crate::media::RtpIngress::new(&source.codec);
             loop {
                 let event = tokio::select! {
                     event = track.poll() => match event {
@@ -1950,8 +1946,10 @@ impl Driver {
                     TrackRemoteEvent::OnRtpPacket(packet)
                         if packet.header.ssrc == ssrc && !packet.payload.is_empty() =>
                     {
-                        if let Some(h264) = &mut h264 {
-                            if let Err(error) = h264.observe(&packet) {
+                        match ingress.accept(&packet) {
+                            Ok(false) => continue,
+                            Ok(true) => {}
+                            Err(error) => {
                                 eprintln!("Native encoded input failed: {error}");
                                 break;
                             }
