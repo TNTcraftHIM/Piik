@@ -16,13 +16,7 @@ use rtc::{
         RTCRtpRtxParameters, RtpCodecKind,
     },
 };
-use std::{
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc, Weak,
-    },
-    time::{Duration, Instant},
-};
+use std::sync::{Arc, Weak};
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
@@ -67,9 +61,6 @@ pub(crate) struct Output {
     feedback: JoinHandle<()>,
     reports: SenderReports,
     ssrc: u32,
-    submitted_bytes: Arc<AtomicU64>,
-    measured: (Instant, u64),
-    bitrate: u64,
 }
 impl Output {
     pub async fn new(
@@ -174,8 +165,6 @@ impl Output {
             .insert(ssrc, (source.codec.clock_rate, report));
         let (negotiated, mut format) = watch::channel(None::<RTCRtpCodecParameters>);
         let source_id = source.id;
-        let submitted_bytes = Arc::new(AtomicU64::new(0));
-        let submitted = submitted_bytes.clone();
         let feedback_track = track.clone();
         let upstream = source.clone();
         let feedback_input = input.clone();
@@ -223,10 +212,8 @@ impl Output {
                         payload: packet.payload,
                       };
                       // SDK send errors contain the rejected media packet.
-                      let bytes = packet.payload.len() + 12;
                       track.write_rtp(packet).await
                         .map_err(|_| anyhow::anyhow!("encoded RTP writer unavailable"))?;
-                      submitted.fetch_add(bytes as u64, Ordering::Relaxed);
                     }
                 }
                 Ok::<_, anyhow::Error>(())
@@ -256,9 +243,6 @@ impl Output {
             feedback,
             reports,
             ssrc,
-            submitted_bytes,
-            measured: (Instant::now(), 0),
-            bitrate: 0,
         })
     }
     pub fn rtp_sink(&self) -> Option<mpsc::Sender<rtp::Packet>> {
@@ -266,16 +250,6 @@ impl Output {
             Input::Rtp(packets) => Some(packets.clone()),
             Input::Video(_) => None,
         }
-    }
-    /// RTP submitted to transport, before pacing reduces departures on a weak path.
-    pub fn bitrate(&mut self, now: Instant) -> u64 {
-        let elapsed = now.duration_since(self.measured.0);
-        if elapsed >= Duration::from_secs(1) {
-            let bytes = self.submitted_bytes.load(Ordering::Relaxed);
-            self.bitrate = ((bytes - self.measured.1) as f64 * 8.0 / elapsed.as_secs_f64()) as u64;
-            self.measured = (now, bytes);
-        }
-        self.bitrate
     }
     pub fn video_input(&self) -> Option<Weak<video::Input>> {
         match &self.input {

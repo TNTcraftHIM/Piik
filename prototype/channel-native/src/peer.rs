@@ -476,8 +476,12 @@ impl NativePeers {
                                 eprintln!("Native encoded track attach failed: {error}");
                             }
                         }
-                        Turn::Tick => d.deadlines().await,
-                        Turn::Bandwidth => {}
+                        Turn::Tick | Turn::Bandwidth => {
+                            d.deadlines().await;
+                            if let Err(error) = d.refresh_media(false).await {
+                                eprintln!("Native media admission failed: {error}");
+                            }
+                        }
                     }
                     #[cfg(target_os = "windows")]
                     d.reconcile_encodings();
@@ -740,13 +744,35 @@ impl Driver {
                     .get(&flow.publication_id)
                     .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
         }) {
-            self.send(Command::FlowState {
-                flow_id: key.0,
-                pair_id: pair,
-                state: FlowState::Failed,
-            })
-            .await;
+            self.fail_flow(pair, key.0).await;
         }
+    }
+
+    async fn fail_flow(&mut self, pair: Uuid, flow: Uuid) {
+        let p = self.pairs.get_mut(&pair).unwrap();
+        if p.plan
+            .outgoing
+            .iter()
+            .any(|binding| binding.id == flow && !binding.selected)
+        {
+            let keys: Vec<_> = p
+                .outputs
+                .keys()
+                .filter(|key| key.0 == flow)
+                .copied()
+                .collect();
+            for key in keys {
+                let output = p.outputs.remove(&key).unwrap();
+                p.rejected_outputs.insert(key, output.source);
+                output.close(&*p.pc).await;
+            }
+        }
+        self.send(Command::FlowState {
+            flow_id: flow,
+            pair_id: pair,
+            state: FlowState::Failed,
+        })
+        .await;
     }
 
     #[cfg(target_os = "windows")]
@@ -1149,18 +1175,13 @@ impl Driver {
                     } else {
                         RtpCodecKind::Audio
                     };
-                    !p.outputs.contains_key(&(*flow, primary))
+                    !binding.selected || !p.outputs.contains_key(&(*flow, primary))
                 })
                 .collect();
             p.failed_offer = Some(p.offer_work());
             eprintln!("Native local offer failed before signaling: {error}");
             for flow_id in failed {
-                self.send(Command::FlowState {
-                    flow_id,
-                    pair_id: id,
-                    state: FlowState::Failed,
-                })
-                .await;
+                self.fail_flow(id, flow_id).await;
             }
             return Ok(());
         }
@@ -1970,7 +1991,13 @@ impl Driver {
                 released = true;
             }
         }
-        let mut failed = Vec::new();
+        let budgets = self.bandwidth_plans(Instant::now());
+        for (id, budget) in &budgets {
+            for flow in &budget.rejected {
+                self.fail_flow(*id, *flow).await;
+            }
+        }
+        let mut failed = HashSet::new();
         for source in self.sources.values() {
             let publication = &source.publication_id;
             let mut targets = Vec::new();
@@ -1985,10 +2012,20 @@ impl Driver {
                     .filter(|flow| source.matches(flow, source.kind))
                 {
                     let output_key = (binding.id, source.kind);
+                    if budgets[id].rejected.contains(&binding.id)
+                        || failed.contains(&(binding.id, *id))
+                        || !binding.selected
+                            && p.rejected_outputs.keys().any(|key| key.0 == binding.id)
+                    {
+                        continue;
+                    }
                     if p.rejected_outputs.get(&output_key) == Some(&source.id) {
                         continue;
                     }
                     if !p.outputs.contains_key(&output_key) {
+                        if budgets[id].waiting.contains(&binding.id) {
+                            continue;
+                        }
                         let stream = p
                             .outputs
                             .iter()
@@ -2015,7 +2052,7 @@ impl Driver {
                                     || self.publications[publication].kind
                                         == piik_channel_core::wire::Kind::Voice
                                 {
-                                    failed.push((binding.id, *id));
+                                    failed.insert((binding.id, *id));
                                 }
                                 continue;
                             }
@@ -2031,12 +2068,7 @@ impl Driver {
             self.relay.set(source.id, targets);
         }
         for (flow_id, pair_id) in failed {
-            self.send(Command::FlowState {
-                flow_id,
-                pair_id,
-                state: FlowState::Failed,
-            })
-            .await;
+            self.fail_flow(pair_id, flow_id).await;
         }
         Ok(released)
     }
@@ -2068,7 +2100,6 @@ async fn close_pair(mut pair: Pair) {
     }
 }
 
-#[cfg(any(target_os = "windows", test))]
 mod bandwidth;
 
 #[cfg(test)]

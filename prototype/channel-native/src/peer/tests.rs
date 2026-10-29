@@ -250,6 +250,321 @@ async fn rejected_ice_candidates_preserve_connectivity_and_the_open_channel() ->
 }
 
 #[tokio::test]
+async fn optional_opaque_admission_preserves_selected_rtp_and_the_open_channel() -> Result<()> {
+    async fn message(channel: &dyn DataChannel, expected: &str) -> Result<()> {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(event) = channel.poll().await {
+                if let webrtc::data_channel::DataChannelEvent::OnMessage(message) = event {
+                    assert_eq!(message.data.as_ref(), expected.as_bytes());
+                    return Ok(());
+                }
+            }
+            Err(anyhow!("remote channel closed before delivery"))
+        })
+        .await?
+    }
+    async fn packet(track: &dyn TrackRemote) -> Result<rtp::Packet> {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while let Some(event) = track.poll().await {
+                if let TrackRemoteEvent::OnRtpPacket(packet) = event {
+                    return Ok(packet);
+                }
+            }
+            Err(anyhow!("remote track closed before RTP arrived"))
+        })
+        .await?
+    }
+    let (mut d, mut events, mut commands, _stop) = driver();
+    let pair = Uuid::new_v4();
+    d.update(
+        vec![PairInfo {
+            id: pair,
+            peer_id: Uuid::new_v4(),
+            rooms: vec!["room".into()],
+            incoming: vec![],
+            outgoing: vec![],
+        }],
+        vec![],
+        vec![],
+    )
+    .await?;
+    let voice = Uuid::new_v4();
+    let screen = Uuid::new_v4();
+    for (id, kind) in [(voice, Kind::Voice), (screen, Kind::Screen)] {
+        d.publications.insert(
+            id,
+            PublicationInfo {
+                id,
+                kind,
+                room_id: "room".into(),
+                session_id: d.session,
+                user_id: d.session,
+                muted: false,
+            },
+        );
+    }
+    let selected = Uuid::new_v4();
+    output(&mut d, pair, selected, voice, RtpCodecKind::Audio).await?;
+    d.refresh_outputs().await?;
+    let selected_key = (selected, RtpCodecKind::Audio);
+    let selected_output = &d.pairs[&pair].outputs[&selected_key];
+    let selected_id = selected_output.id;
+    let selected_sender = selected_output.sender.id();
+    let selected_source = selected_output.source;
+    let pc = d.pairs[&pair].pc.clone();
+    let remote_id = Uuid::new_v4();
+    let remote = builder(true, SenderReports::default(), MediaFeedback::default())?
+        .with_handler(Arc::new(Handler {
+            pair: remote_id,
+            events: d.events.clone(),
+            overflow: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8)),
+        }))
+        .with_udp_addrs(vec!["0.0.0.0:0".into()])
+        .build()
+        .await?;
+    negotiate(&mut d, pair, &remote).await?;
+    let channel = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut channel = None;
+        loop {
+            if d.pairs[&pair].connected() && channel.is_some() {
+                return Ok::<_, anyhow::Error>(channel.unwrap());
+            }
+            match events.recv().await.unwrap() {
+                Event::Candidate(id, candidate) if id == pair => {
+                    remote.add_ice_candidate(ice_candidate(candidate)).await?;
+                }
+                Event::Candidate(_, candidate) => {
+                    pc.add_ice_candidate(ice_candidate(candidate)).await?;
+                }
+                Event::Channel(id, current) if id == remote_id => {
+                    if current.label().await? == "piik-room" {
+                        channel = Some(current);
+                    }
+                }
+                _ => {}
+            }
+        }
+    })
+    .await??;
+    let base = d.pairs[&pair].dc.as_ref().unwrap().1.clone();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while base.ready_state().await? != rtc::data_channel::RTCDataChannelState::Open {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    let rtp = |sequence_number, size| rtp::Packet {
+        header: rtp::header::Header {
+            version: 2,
+            sequence_number,
+            timestamp: u32::from(sequence_number) * 960,
+            marker: true,
+            ..Default::default()
+        },
+        payload: vec![0xf8; size].into(),
+    };
+    d.relay.write(selected_source, rtp(1, 88));
+    let selected_track = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(Event::Track(id, track)) = events.recv().await {
+                if id == remote_id {
+                    return track;
+                }
+            }
+        }
+    })
+    .await?;
+    assert_eq!(packet(&*selected_track).await?.header.sequence_number, 1);
+    base.send_text("before admission").await?;
+    message(&*channel, "before admission").await?;
+
+    let optional = Uuid::new_v4();
+    let incoming = Uuid::new_v4();
+    d.pairs
+        .get_mut(&pair)
+        .unwrap()
+        .plan
+        .outgoing
+        .push(FlowBinding {
+            id: optional,
+            publication_id: screen,
+            input_flow_id: Some(incoming),
+            selected: false,
+        });
+    let mut source_ids = Vec::new();
+    for kind in [RtpCodecKind::Video, RtpCodecKind::Audio] {
+        let source = Source {
+            id: Uuid::new_v4(),
+            publication_id: screen,
+            kind,
+            origin: SourceOrigin::Incoming {
+                pair: Uuid::new_v4(),
+                flow_id: incoming,
+                stream: Uuid::new_v4().to_string(),
+            },
+            codec: if kind == RtpCodecKind::Audio {
+                codec()
+            } else {
+                RTCRtpCodec {
+                    mime_type: "video/VP8".into(),
+                    clock_rate: 90_000,
+                    ..Default::default()
+                }
+            },
+            feed: SourceFeed::Rtp {
+                keyframes: watch::channel(0).0,
+                report: Default::default(),
+            },
+        };
+        source_ids.push((source.id, kind));
+        d.sources.insert(source.id, source);
+    }
+    let (target, bandwidth) = watch::channel(100_000.0);
+    d.pairs.get_mut(&pair).unwrap().bandwidth = bandwidth;
+    d.refresh_outputs().await?;
+    assert_eq!(d.pairs[&pair].outputs.len(), 1, "unknown trials must wait");
+    assert!(d.pairs[&pair].rejected_outputs.is_empty());
+    for (source, kind) in &source_ids {
+        d.relay.write(
+            *source,
+            rtp(
+                10,
+                if *kind == RtpCodecKind::Video {
+                    988
+                } else {
+                    188
+                },
+            ),
+        );
+    }
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    d.refresh_outputs().await?;
+    let admitted: Vec<_> = source_ids
+        .iter()
+        .map(|(_, kind)| {
+            let out = &d.pairs[&pair].outputs[&(optional, *kind)];
+            (out.id, out.sender.id(), out.rtp_sink().unwrap())
+        })
+        .collect();
+    assert_eq!(d.pairs[&pair].outputs.len(), 3);
+    d.refresh_outputs().await?;
+    for ((_, kind), (id, sender, _)) in source_ids.iter().zip(&admitted) {
+        let out = &d.pairs[&pair].outputs[&(optional, *kind)];
+        assert_eq!(out.id, *id);
+        assert_eq!(out.sender.id(), *sender);
+    }
+    negotiate(&mut d, pair, &remote).await?;
+    for (source, kind) in &source_ids {
+        d.relay.write(
+            *source,
+            rtp(
+                11,
+                if *kind == RtpCodecKind::Video {
+                    988
+                } else {
+                    188
+                },
+            ),
+        );
+    }
+    tokio::time::timeout(Duration::from_secs(5), async {
+        let mut received = HashSet::new();
+        while received.len() < 2 {
+            if let Some(Event::Track(id, track)) = events.recv().await {
+                if id == remote_id {
+                    assert_eq!(packet(&*track).await?.header.sequence_number, 11);
+                    received.insert(track.kind().await);
+                }
+            }
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    while commands.try_recv().is_ok() {}
+    let now = Instant::now();
+    let selected_cost = d.relay.bitrate(selected_source, now).unwrap();
+    let optional_cost: u64 = source_ids
+        .iter()
+        .map(|(source, _)| d.relay.bitrate(*source, now).unwrap())
+        .sum();
+    assert!(selected_cost < 1_600 && selected_cost + optional_cost > 1_600);
+    target.send_replace(1_600.0);
+    d.refresh_outputs().await?;
+    d.refresh_outputs().await?;
+    let p = &d.pairs[&pair];
+    assert_eq!(p.outputs.len(), 1);
+    assert_eq!(p.outputs[&selected_key].id, selected_id);
+    assert_eq!(p.outputs[&selected_key].sender.id(), selected_sender);
+    assert!(Arc::ptr_eq(&p.pc, &pc));
+    assert!(Arc::ptr_eq(&p.dc.as_ref().unwrap().1, &base));
+    assert!(p.connected());
+    let senders: HashSet<_> = pc
+        .get_senders()
+        .await
+        .iter()
+        .map(|sender| sender.id())
+        .collect();
+    for (_, sender, sink) in admitted {
+        assert!(sink.is_closed(), "the actual candidate writer must retire");
+        assert!(!senders.contains(&sender));
+    }
+    let failed: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok())
+        .filter_map(|event| match event {
+            NativeEvent::Command(Command::FlowState {
+                flow_id,
+                state: FlowState::Failed,
+                ..
+            }) => Some(flow_id),
+            NativeEvent::Command(Command::LinkState {
+                state: LinkState::Failed,
+                ..
+            }) => panic!("shared pair failed"),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(failed, vec![optional]);
+    // A new companion track does not revive this still-leased failed trial,
+    // even after its input is measured and connection headroom returns.
+    let old_audio = source_ids
+        .iter()
+        .find(|(_, kind)| *kind == RtpCodecKind::Audio)
+        .unwrap()
+        .0;
+    let mut late_audio = d.sources.remove(&old_audio).unwrap();
+    late_audio.id = Uuid::new_v4();
+    let late_audio_id = late_audio.id;
+    d.sources.insert(late_audio_id, late_audio);
+    target.send_replace(100_000.0);
+    d.refresh_outputs().await?;
+    d.relay.write(late_audio_id, rtp(12, 188));
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    let admission = d.bandwidth_plans(Instant::now());
+    assert!(!admission[&pair].waiting.contains(&optional));
+    assert!(!admission[&pair].rejected.contains(&optional));
+    d.refresh_outputs().await?;
+    assert_eq!(d.pairs[&pair].outputs.len(), 1);
+    assert_eq!(d.pairs[&pair].outputs[&selected_key].id, selected_id);
+    assert!(
+        !std::iter::from_fn(|| commands.try_recv().ok()).any(|event| matches!(
+            event,
+            NativeEvent::Command(Command::FlowState {
+                state: FlowState::Failed,
+                ..
+            })
+        ))
+    );
+    d.relay.write(selected_source, rtp(2, 88));
+    assert_eq!(packet(&*selected_track).await?.header.sequence_number, 2);
+    base.send_text("after rejection").await?;
+    message(&*channel, "after rejection").await?;
+    close_pair(d.pairs.remove(&pair).unwrap()).await;
+    remote.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn ipv6_candidates_connect_and_release_their_udp_ports() -> Result<()> {
     use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 
@@ -406,21 +721,17 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
                 selected: true,
             }],
         }],
-        vec![],
-        vec![],
-    )
-    .await?;
-    d.publications.insert(
-        publication,
-        PublicationInfo {
+        vec![PublicationInfo {
             id: publication,
             kind: Kind::Screen,
             room_id: "room".into(),
             session_id: d.session,
             user_id: d.session,
             muted: false,
-        },
-    );
+        }],
+        vec![],
+    )
+    .await?;
     let epoch = Instant::now() - Duration::from_secs(1);
     let time = CaptureTime {
         epoch,
@@ -893,12 +1204,12 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         .any(|sender| sender.id() == readmitted.sender.id()));
     negotiate(&mut d, pair, &*remote).await?;
     let failed = &d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)];
-    let (source, output, writer) = (failed.source, failed.id, failed.rtp_sink().unwrap());
+    let (source, output_id, writer) = (failed.source, failed.id, failed.rtp_sink().unwrap());
     d.event(Event::OutputFailed {
         pair,
         key: (voice_flow, RtpCodecKind::Audio),
         source,
-        output,
+        output: output_id,
     })
     .await?;
     assert!(writer.is_closed());
@@ -912,6 +1223,71 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
     assert!(d.pairs[&pair]
         .outputs
         .contains_key(&(screen_flow, RtpCodecKind::Video)));
+    // A new companion's local-offer failure retires the entire optional flow,
+    // including its previously negotiated primary, while selected work stays.
+    let optional = Uuid::new_v4();
+    output(&mut d, pair, optional, screen, RtpCodecKind::Video).await?;
+    d.pairs
+        .get_mut(&pair)
+        .unwrap()
+        .plan
+        .outgoing
+        .iter_mut()
+        .find(|binding| binding.id == optional)
+        .unwrap()
+        .selected = false;
+    negotiate(&mut d, pair, &*remote).await?;
+    let selected: HashSet<_> = d.pairs[&pair]
+        .outputs
+        .iter()
+        .filter(|(key, _)| key.0 != optional)
+        .map(|(_, out)| out.id)
+        .collect();
+    output(&mut d, pair, optional, screen, RtpCodecKind::Audio).await?;
+    let optional_writers: Vec<_> = d.pairs[&pair]
+        .outputs
+        .iter()
+        .filter(|(key, _)| key.0 == optional)
+        .map(|(_, out)| (out.sender.id(), out.rtp_sink().unwrap()))
+        .collect();
+    while commands.try_recv().is_ok() {}
+    let attempted = d.pairs[&pair].output_ids();
+    d.finish_offer(
+        pair,
+        true,
+        attempted,
+        Err(anyhow!("optional companion rejected")),
+    )
+    .await?;
+    assert_eq!(d.pairs[&pair].output_ids(), selected);
+    assert!(d.pairs[&pair].connected());
+    assert!(Arc::ptr_eq(&d.pairs[&pair].dc.as_ref().unwrap().1, &base));
+    let senders: HashSet<_> = d.pairs[&pair]
+        .pc
+        .get_senders()
+        .await
+        .iter()
+        .map(|sender| sender.id())
+        .collect();
+    for (sender, writer) in optional_writers {
+        assert!(writer.is_closed());
+        assert!(!senders.contains(&sender));
+    }
+    let failed: Vec<_> = std::iter::from_fn(|| commands.try_recv().ok())
+        .filter_map(|event| match event {
+            NativeEvent::Command(Command::FlowState {
+                flow_id,
+                state: FlowState::Failed,
+                ..
+            }) => Some(flow_id),
+            NativeEvent::Command(Command::LinkState {
+                state: LinkState::Failed,
+                ..
+            }) => panic!("shared pair failed"),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(failed, vec![optional]);
     let attempted = d.pairs[&pair].output_ids();
     assert!(d
         .finish_offer(pair, false, attempted, Err(anyhow!("initial offer")))

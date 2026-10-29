@@ -22,6 +22,7 @@ use rtc::{
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
+    time::{Duration, Instant},
 };
 use tokio::sync::{mpsc, watch, Notify};
 use uuid::Uuid;
@@ -350,30 +351,126 @@ impl Source {
 // current source identity and writer handles; readers hold this lock only long
 // enough to enqueue one packet. No SDP, SQLite, or signaling await is on this path.
 #[derive(Clone, Default)]
-pub(crate) struct Relay(Arc<Mutex<HashMap<Uuid, Vec<mpsc::Sender<rtp::Packet>>>>>);
+pub(crate) struct Relay(Arc<Mutex<HashMap<Uuid, RelaySource>>>);
+#[derive(Default)]
+struct RelaySource {
+    targets: Vec<mpsc::Sender<rtp::Packet>>,
+    rate: Rate,
+}
+#[derive(Default)]
+struct Rate {
+    start: Option<Instant>,
+    bytes: u64,
+    bps: Option<u64>,
+}
+impl Rate {
+    fn observe(&mut self, now: Instant, bytes: usize) {
+        if self.bps == Some(0) {
+            self.start = Some(now);
+            self.bps = None;
+        }
+        self.start.get_or_insert(now);
+        self.bytes += bytes as u64;
+    }
+    fn sample(&mut self, now: Instant) -> Option<u64> {
+        let elapsed = now.duration_since(self.start?);
+        if elapsed >= Duration::from_secs(1) {
+            self.bps = Some((self.bytes as f64 * 8.0 / elapsed.as_secs_f64()) as u64);
+            self.start = Some(now);
+            self.bytes = 0;
+        }
+        self.bps
+    }
+}
 impl Relay {
     pub fn remove(&self, source: Uuid) {
         self.0.lock().unwrap().remove(&source);
     }
     pub fn set(&self, source: Uuid, targets: Vec<mpsc::Sender<rtp::Packet>>) {
-        self.0.lock().unwrap().insert(source, targets);
+        self.0.lock().unwrap().entry(source).or_default().targets = targets;
     }
     pub fn retain(&self, sources: &std::collections::HashSet<Uuid>) {
         self.0.lock().unwrap().retain(|id, _| sources.contains(id));
     }
     pub fn write(&self, source: Uuid, packet: rtp::Packet) {
-        let routes = self.0.lock().unwrap();
-        if let Some(targets) = routes.get(&source) {
-            for target in targets {
+        let mut routes = self.0.lock().unwrap();
+        if let Some(source) = routes.get_mut(&source) {
+            source
+                .rate
+                .observe(Instant::now(), packet.payload.len() + 12);
+            for target in &source.targets {
                 let _ = target.try_send(packet.clone());
             }
         }
+    }
+    pub fn bitrate(&self, source: Uuid, now: Instant) -> Option<u64> {
+        self.0.lock().unwrap().get_mut(&source)?.rate.sample(now)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn relay_measures_ingress_once_and_keeps_rate_with_its_source() {
+        let relay = Relay::default();
+        let source = Uuid::new_v4();
+        let packet = rtp::Packet {
+            payload: vec![0; 88].into(),
+            ..Default::default()
+        };
+        let (first, mut first_rx) = mpsc::channel(4);
+        let (second, mut second_rx) = mpsc::channel(4);
+        relay.write(source, packet.clone());
+        relay.set(source, vec![first, second]);
+        assert_eq!(relay.bitrate(source, Instant::now()), None);
+        relay.write(source, packet.clone());
+        assert_eq!(first_rx.try_recv().unwrap(), packet);
+        assert_eq!(second_rx.try_recv().unwrap(), packet);
+        relay.set(source, vec![]);
+        relay.write(source, packet.clone());
+        assert!(first_rx.try_recv().is_err());
+        assert!(second_rx.try_recv().is_err());
+        let start = relay.0.lock().unwrap()[&source].rate.start.unwrap();
+        assert_eq!(
+            relay.bitrate(source, start + Duration::from_secs(1)),
+            Some(1600)
+        );
+        relay.set(source, vec![]);
+        assert_eq!(
+            relay.bitrate(source, start + Duration::from_secs(2)),
+            Some(0)
+        );
+
+        let resumed = start + Duration::from_secs(3);
+        relay
+            .0
+            .lock()
+            .unwrap()
+            .get_mut(&source)
+            .unwrap()
+            .rate
+            .observe(resumed, 100);
+        assert_eq!(relay.bitrate(source, resumed), None);
+        // One static packet has a real cost even without a second arrival.
+        assert_eq!(
+            relay.bitrate(source, resumed + Duration::from_secs(1)),
+            Some(800)
+        );
+        assert_eq!(
+            relay.bitrate(source, resumed + Duration::from_secs(2)),
+            Some(0)
+        );
+        relay.remove(source);
+        relay.set(source, vec![]);
+        assert_eq!(
+            relay.bitrate(source, resumed + Duration::from_secs(3)),
+            None
+        );
+        relay.retain(&Default::default());
+        assert!(!relay.0.lock().unwrap().contains_key(&source));
+    }
 
     #[test]
     fn media_feedback_preserves_sdk_metadata_without_exposing_consumed_rtcp() -> Result<()> {

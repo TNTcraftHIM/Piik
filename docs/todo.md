@@ -13,7 +13,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   and platform packaging over the shared UI and Native participant.
   Integrate the verified transport probing/feedback and incoming-H264 derivation
   candidates with aggregate application demand and upstream DTLS/SCTP fixes.
-  Complete admission for optional opaque RTP that competes with selected media.
   Carry forward the [2.x Native reachability behavior](./standards/routing-transport.md):
   Gateway mapping and coordinated UDP preparation belong to
   the existing connection owner, rather than another routing layer.

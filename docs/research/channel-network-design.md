@@ -642,8 +642,15 @@ Each physical encoder has its own feed identity. Failure is applied atomically
 against an output's current or required pending feed; a failed optional upgrade
 preserves the incumbent. The existing driver loop consumes latest targets
 without queuing intermediate values.
-Opaque forwarding still needs its own demand/admission treatment; counting its
-traffic does not make it independently adjustable.
+The same connection budget admits optional flows only after selected demand.
+Opaque RTP is measured once at its source before fanout, including sources with
+no current outputs. A trial's picture and sound are admitted together; unknown
+cost waits through the existing driver tick without failing its lease. A trial
+that no longer fits retires its outputs through the existing flow-failure owner,
+preserving selected media and the connection. Pending selected video reserves
+trial capacity before its sender is ready. An otherwise empty connection still
+starts ordinary forwarding: the SDK's initial estimate is not measured capacity.
+No new retry timer, route protocol or adjustable-opaque representation is added.
 The isolated incoming-H264 candidate shares complete source access units between
 original forwarding and one demand-driven Windows GPU decoder. Decoded frames
 reuse the local capture's encoding and retirement owners. Its stable outputs
