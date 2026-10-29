@@ -69,6 +69,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **RTC upstream submissions.** The prepared DTLS-role, transport/GoogCc,
   H264 parser and complete-sample changes await external-publication approval.
+  The prebound-UDP capability addition also awaits approval. Awaitable portmapper
+  shutdown is optional and is not required for the current Native integration.
   Submit the approved scope and verify the combined Native adapter before
   updating its fixed dependency. Local implementation and verification continue.
 - [ ] **Maintenance publication.** Held on 2026-10-27. Completed fixes stay on

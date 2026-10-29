@@ -80,6 +80,9 @@ source patch or registry-cache edit is used. When an upstream release includes
 both fixes, update both pins, run the existing App and Native Browser checks, and
 remove both patch entries.
 
+Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
+to prepare and review updates without changing the current pin.
+
 ## Run
 
 Start the [domain and shared Web interface](../channel-server/README.md#run),

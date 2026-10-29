@@ -1,5 +1,8 @@
 # Scoped Go Dependency Repairs
 
+Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
+to compare retained patches with current official source.
+
 The root `go.mod` replaces these two modules with local source. They retain
 their original module paths and Apache-2.0 licenses. The checked-in source,
 upstream tests and focused regressions are built and tested by

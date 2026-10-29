@@ -127,6 +127,36 @@ protocol identifiers; use normal language-specific identifier conventions.
   their own licenses and notices. GPL/AGPL implementation sources remain
   study-only unless a separate distribution decision accepts their obligations.
 
+## Temporary Dependency Patches
+
+Distinguish an upstream defect from a missing capability or a Piik integration
+error. Reproduce defects through the dependency's public API without Piik;
+keep application policy in Piik. Evaluate larger feature additions as dependency
+choices, rather than treating them as small fixes.
+
+The [Go provenance](./internal/thirdparty/README.md) and
+[Native provenance](./prototype/channel-native/README.md#rtc-dependency) own
+official baselines, retained patches and removal criteria. Review upstream when
+changing a patched dependency and before phase acceptance. Do not create a second
+patch inventory or edit shared package caches.
+
+Prepare an update from the recorded base and patch head in a new directory:
+
+```sh
+node scripts/sync-upstream.mjs --source <fork-url-or-local-clone> --upstream <official-url-or-local-clone> --base <official-base> --head <patch-head> --out build/upstream-candidate
+```
+
+The tool fetches official `HEAD` (or `--onto <ref>`) and replays the patch range.
+It records exact revisions, upstream-equivalent patches and conflicts in
+`.git/piik-upstream-sync.json`, with the successful range comparison in
+`.git/piik-upstream-range-diff.txt`. Existing clones, local edits and Piik pins
+remain unchanged. Conflicts stay in the candidate for review.
+
+Inspect that comparison, then run the dependency's relevant checks and Piik's
+existing reproduction or acceptance gate before changing a pin. When upstream
+covers the retained behavior, remove the replacement. The tool prepares source;
+it does not publish changes or approve a dependency update.
+
 ## Verification Entrypoints
 
 Every retained test must be collected by a documented verification entry point.
