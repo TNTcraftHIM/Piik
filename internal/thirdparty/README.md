@@ -1,4 +1,4 @@
-# Scoped Go Dependency Repairs
+# Scoped Go Dependency Changes
 
 Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
 to compare retained patches with current official source.
@@ -18,7 +18,9 @@ Modified upstream files carry a notice; formatting follows the project Go
 toolchain. The package notice collector reads the replacement modules' license
 files directly, so App archives retain their attribution.
 
-These repairs preserve the existing gateway selector and PCPv6 composition.
+Assigned-port and deletion handling repair NAT-PMP behavior. The Context methods
+extend cancellation support; the shorter optional PCPv6 waits are Piik's mapping
+budget policy. These changes preserve the gateway selector and PCPv6 composition.
 The [NAT research owner](../../docs/research/nat-traversal.md#gateway-and-survey-limits)
 describes the runtime limits. Do not add a second gateway client in Piik.
 
@@ -38,8 +40,6 @@ the temporary allocator input described below. No build-time patch is applied.
 
 Measurement corrections are marked in the modified files: probe finalization
 returns the current acknowledged capacity and rejects invalid/empty feedback;
-inconclusive probes use existing backoff from completion without growing the
-next probe or reporting measured congestion;
 probe timing begins with its first acknowledged packet, excluding pre-probe idle
 time; congestion statistics retain the packet that starts each new CTR group,
 including its received/lost accounting; overlapping TWCC feedback changes each
@@ -50,10 +50,12 @@ advances in send order with a receive-time watermark, while older ACKs repair
 counts without rewinding it. Reset reseeds that delay baseline without discarding
 delivery history. Piik's shared
 forwarding package uses this copy for both individual transports and publications.
-Delay inference tolerates ordinary clock-rate skew using RFC 6817 A.2's
+Two recovery policies accompany those corrections. Inconclusive probes use
+existing backoff from completion without growing the next probe or reporting
+measured congestion. Delay inference tolerates clock-rate skew using RFC 6817 A.2's
 500 ppm virtual-sender-clock allowance; packet timestamps, acknowledged traffic
 and loss remain unadjusted. Long, lossless TWCC controls and real queue/loss
-recovery controls fence this measurement repair.
+recovery controls exercise both policies.
 Its regression checks use real TWCC feedback and retain the no-feedback and
 idle-before-probe controls. The
 [media research owner](../../docs/research/node-local-media-design.md#send-queue-recovery)
