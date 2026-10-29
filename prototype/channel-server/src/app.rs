@@ -23,6 +23,7 @@ use futures_util::{stream::FuturesUnordered, SinkExt, StreamExt};
 use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target},
+    input::{Desktop, Mode, SourceView},
     peer::CaptureLease,
     session::{self, HostCommand, Hosting, OpenRoom, StartCapture},
 };
@@ -109,6 +110,7 @@ struct App {
     registry: Mutex<Registry>,
     closing: watch::Sender<bool>,
     launch: Mutex<Option<hosted::Launch>>,
+    desktop: Desktop,
 }
 
 impl App {
@@ -155,6 +157,7 @@ impl App {
                 key: None,
             };
             let management = Hosting {
+                desktop: Some(self.desktop.clone()),
                 // An approved origin owns this namespace. Remote UUIDs only select
                 // data inside it, after run_host verifies the real Domain Welcome.
                 directory: self
@@ -219,6 +222,7 @@ impl App {
             std::mem::take(&mut registry.hosts).into_values().collect()
         };
         stop_hosts(hosts).await;
+        self.desktop.close();
         if let Some(launch) = self.launch.lock().await.take() {
             launch.close().await;
         }
@@ -269,6 +273,7 @@ pub async fn serve(
     let assets =
         ServeDir::new(&config.assets).fallback(ServeFile::new(config.assets.join("index.html")));
     let app = Arc::new(App {
+        desktop: Desktop::new()?,
         config,
         port: address.port(),
         token: Uuid::new_v4().to_string(),
@@ -304,7 +309,15 @@ pub async fn serve(
     }
     axum::serve(listener, router)
         .with_graceful_shutdown(async move {
-            stop.await;
+            tokio::pin!(stop);
+            let mut tick = tokio::time::interval(Duration::from_millis(100));
+            loop {
+                tokio::select! {
+                    _ = &mut stop => break,
+                    _ = tick.tick() => app.desktop.tick(),
+                }
+            }
+            app.desktop.revoke();
             app.shutdown().await;
         })
         .await?;
@@ -577,6 +590,22 @@ enum Operation {
     StopCapture {
         publication_id: Uuid,
     },
+    InputPolicy {
+        publication_id: Uuid,
+        mode: Mode,
+        password: Option<String>,
+        simultaneous: Option<bool>,
+    },
+    InputDecide {
+        publication_id: Uuid,
+        controller_session_id: Uuid,
+        intent: Uuid,
+        allow: bool,
+    },
+    InputShortcut {
+        publication_id: Uuid,
+        key: u8,
+    },
 }
 async fn connection(
     socket: WebSocket,
@@ -602,7 +631,9 @@ async fn connection(
             let mut host = None;
             let mut captures: BTreeMap<Uuid, CaptureLease> = BTreeMap::new();
             let mut audio_errors = FuturesUnordered::new();
+            let mut input_states = FuturesUnordered::new();
             loop {
+                let mut initial_input = None;
                 let message = tokio::select! {
                     message = async {
                         if host.is_some() { Ok(queue.recv().await) }
@@ -613,6 +644,15 @@ async fn connection(
                         if error.is_some() && captures.get(&publication_id).is_some_and(|lease| !lease.is_stopped()) {
                             let event = json!({"type":"capture_audio_failed","publicationId":publication_id});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
+                        continue;
+                    }
+                    Some((publication_id, changed, state)) = input_states.next(), if !input_states.is_empty() => {
+                        let state: Option<SourceView> = state;
+                        if let Some(state) = state.filter(|_| captures.get(&publication_id).is_some_and(|lease| !lease.is_stopped())) {
+                            let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                            input_states.push(next_input_state(publication_id, changed));
                         }
                         continue;
                     }
@@ -680,6 +720,14 @@ async fn connection(
                                                     (publication_id, error.await.ok())
                                                 });
                                             }
+                                            if let Some(state) = &lease.input_state {
+                                                initial_input =
+                                                    Some((publication_id, state.borrow().clone()));
+                                                input_states.push(next_input_state(
+                                                    publication_id,
+                                                    state.clone(),
+                                                ));
+                                            }
                                             captures.insert(publication_id, lease);
                                             Ok(json!({"publicationId":publication_id}))
                                         }
@@ -692,6 +740,65 @@ async fn connection(
                                 drop(captures.remove(&publication_id));
                                 Ok(Value::Null)
                             }
+                            Operation::InputPolicy {
+                                publication_id,
+                                mode,
+                                password,
+                                simultaneous,
+                            } => (|| -> Result<Value> {
+                                let lease = captures
+                                    .get(&publication_id)
+                                    .filter(|lease| !lease.is_stopped())
+                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
+                                let source = lease
+                                    .remote
+                                    .as_ref()
+                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
+                                if let Some(password) = password {
+                                    source.set_policy(mode, &password)?;
+                                } else if lease
+                                    .input_state
+                                    .as_ref()
+                                    .is_none_or(|state| state.borrow().mode != mode)
+                                {
+                                    source.set_mode(mode)?;
+                                }
+                                if let Some(enabled) = simultaneous {
+                                    source.set_simultaneous(enabled)?;
+                                }
+                                Ok(Value::Null)
+                            })(),
+                            Operation::InputDecide {
+                                publication_id,
+                                controller_session_id,
+                                intent,
+                                allow,
+                            } => (|| -> Result<Value> {
+                                let lease = captures
+                                    .get(&publication_id)
+                                    .filter(|lease| !lease.is_stopped())
+                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
+                                let source = lease
+                                    .remote
+                                    .as_ref()
+                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
+                                source.decide(controller_session_id, intent, allow)?;
+                                Ok(Value::Null)
+                            })(),
+                            Operation::InputShortcut {
+                                publication_id,
+                                key,
+                            } => (|| -> Result<Value> {
+                                let lease = captures
+                                    .get(&publication_id)
+                                    .filter(|lease| !lease.is_stopped())
+                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
+                                if lease.remote.is_none() {
+                                    bail!("input_source_unavailable");
+                                }
+                                app.desktop.set_shortcut(key)?;
+                                Ok(json!({"key":key,"available":true}))
+                            })(),
                         };
                         match result {
                             Ok(result) => json!({"id":request.id,"result":result}),
@@ -705,6 +812,15 @@ async fn connection(
                     writer.send(Message::Text(response.to_string().into())),
                 )
                 .await??;
+                if let Some((publication_id, state)) = initial_input {
+                    let event =
+                        json!({"type":"input_state","publicationId":publication_id,"state":state});
+                    timeout(
+                        IO_TIMEOUT,
+                        writer.send(Message::Text(event.to_string().into())),
+                    )
+                    .await??;
+                }
             }
             Ok(())
         };
@@ -718,6 +834,17 @@ async fn connection(
     // while a Native request is awaiting admission or a room-host response.
     let _ = timeout(IO_TIMEOUT, writer.close()).await;
     result
+}
+async fn next_input_state(
+    publication: Uuid,
+    mut changed: watch::Receiver<SourceView>,
+) -> (Uuid, watch::Receiver<SourceView>, Option<SourceView>) {
+    let state = changed
+        .changed()
+        .await
+        .ok()
+        .map(|_| changed.borrow_and_update().clone());
+    (publication, changed, state)
 }
 async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Value> {
     let policy: RoomState = serde_json::from_str(policy)?;

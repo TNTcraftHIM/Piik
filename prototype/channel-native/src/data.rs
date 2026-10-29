@@ -21,6 +21,7 @@ pub(crate) const CONTROL_QUEUE: usize = FILE_MAX_PENDING_RANGES * 4;
 pub(crate) enum Lane {
     Control,
     Bulk,
+    Input,
 }
 
 pub(crate) struct Message {
@@ -42,6 +43,11 @@ pub(crate) fn queue_controls(
 }
 pub(crate) enum MessageScope {
     File(crate::file::FileScope),
+    Input {
+        snapshot: watch::Receiver<Option<Snapshot>>,
+        local: Uuid,
+        binding: piik_channel_core::input::InputBinding,
+    },
     Conversation {
         snapshot: watch::Receiver<Option<Snapshot>>,
         local: Uuid,
@@ -54,6 +60,14 @@ impl MessageScope {
     fn allowed(&self) -> bool {
         match self {
             Self::File(scope) => scope.allowed(),
+            Self::Input {
+                snapshot,
+                local,
+                binding,
+            } => snapshot
+                .borrow()
+                .as_ref()
+                .is_some_and(|state| binding.current(*local, state)),
             Self::Conversation {
                 snapshot,
                 local,
@@ -72,7 +86,9 @@ impl MessageScope {
     async fn changed(&mut self) -> bool {
         match self {
             Self::File(scope) => scope.changed().await,
-            Self::Conversation { snapshot, .. } => snapshot.changed().await.is_ok(),
+            Self::Conversation { snapshot, .. } | Self::Input { snapshot, .. } => {
+                snapshot.changed().await.is_ok()
+            }
         }
     }
 }
@@ -122,14 +138,17 @@ struct Writer {
 pub(crate) struct Senders {
     pub control: mpsc::Sender<Message>,
     pub bulk: mpsc::Sender<Message>,
+    pub input: mpsc::Sender<Message>,
     control_binding: watch::Sender<Option<Binding>>,
     bulk_binding: watch::Sender<Option<Binding>>,
+    input_binding: watch::Sender<Option<Binding>>,
 }
 impl Senders {
     pub fn current(&self, lane: Lane, token: Uuid, open: bool) -> bool {
         let state = match lane {
             Lane::Control => &self.control_binding,
             Lane::Bulk => &self.bulk_binding,
+            Lane::Input => &self.input_binding,
         };
         state.borrow().as_ref().is_some_and(|binding| {
             binding.token == token && (!open || binding.state == RTCDataChannelState::Open)
@@ -139,6 +158,7 @@ impl Senders {
 pub(crate) struct DataLink {
     control: Writer,
     bulk: Writer,
+    input: Writer,
 }
 impl DataLink {
     pub fn new(pair: Uuid, state: Arc<AtomicU8>, events: mpsc::Sender<crate::peer::Event>) -> Self {
@@ -150,21 +170,25 @@ impl DataLink {
                 CONTROL_QUEUE,
                 events.clone(),
             ),
-            bulk: writer(pair, Lane::Bulk, state, BULK_QUEUE, events),
+            bulk: writer(pair, Lane::Bulk, state.clone(), BULK_QUEUE, events.clone()),
+            input: writer(pair, Lane::Input, state, 8, events),
         }
     }
     pub fn senders(&self) -> Senders {
         Senders {
             control: self.control.input.clone(),
             bulk: self.bulk.input.clone(),
+            input: self.input.input.clone(),
             control_binding: self.control.binding.clone(),
             bulk_binding: self.bulk.binding.clone(),
+            input_binding: self.input.binding.clone(),
         }
     }
     pub fn bind(&self, lane: Lane, token: Uuid, channel: Arc<dyn DataChannel>) -> Ready {
         let binding = match lane {
             Lane::Control => &self.control.binding,
             Lane::Bulk => &self.bulk.binding,
+            Lane::Input => &self.input.binding,
         };
         binding.send_replace(Some(Binding {
             token,
@@ -180,6 +204,7 @@ impl DataLink {
         match lane {
             Lane::Control => &self.control.binding,
             Lane::Bulk => &self.bulk.binding,
+            Lane::Input => &self.input.binding,
         }
         .send_if_modified(|value| {
             if let Some(binding) = value {
@@ -191,7 +216,7 @@ impl DataLink {
         });
     }
     pub async fn close(self) {
-        for writer in [self.control, self.bulk] {
+        for writer in [self.control, self.bulk, self.input] {
             let _ = writer.cancel.send(true);
             let _ = writer.task.await;
         }
@@ -263,8 +288,12 @@ fn writer(
                 continue;
             };
             let send = async {
+                if lane == Lane::Input && dc.channel.outstanding_bytes().await? + bytes.len() > 8192
+                {
+                    return Err(anyhow::anyhow!("input_channel_busy"));
+                }
                 match lane {
-                    Lane::Control => {
+                    Lane::Control | Lane::Input => {
                         dc.channel
                             .send_text(
                                 std::str::from_utf8(&bytes)
@@ -274,6 +303,7 @@ fn writer(
                     }
                     Lane::Bulk => dc.channel.send(bytes.as_slice().into()).await,
                 }
+                .map_err(anyhow::Error::from)
             };
             tokio::pin!(send);
             let result = loop {

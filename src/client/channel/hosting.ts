@@ -14,6 +14,8 @@ interface RoomHosting {
   createSessionSigner(seed: Uint8Array): Promise<SessionSigner>;
   verify_reply(packet: string, key: Uint8Array): string;
   route_conversation(packet: string, local: string, state: string, from?: string): string;
+  route_input(frame: string, local: string, state: string, from?: string, binding?: string): string;
+  input_binding_current(binding: string, local: string, state: string): boolean;
   encode_control(frame: string): Uint8Array;
   decode_control(bytes: Uint8Array): string;
   initializeFiles(): Promise<void>;

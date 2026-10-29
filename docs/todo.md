@@ -9,8 +9,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Complete Native low-bandwidth adaptation, input
-  and platform packaging over the shared UI and Native participant.
+  Rust owners. Complete Native low-bandwidth adaptation, Browser-to-Native
+  OS input acceptance, optional gamepad/platform input and packaging over the shared
+  UI and Native participant.
   Integrate the verified transport probing/feedback and incoming-H264 derivation
   candidates with aggregate application demand and upstream DTLS/SCTP fixes.
   Complete coordinated UDP preparation from the

@@ -1,5 +1,5 @@
 import init, { attachment_result, conversation_replies, create_room_policy, history_page, history_page_size, prepare_confirmation, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
-export { AttachmentHash, FileDelivery, attachment_limits, attachment_media_type, decode_control, encode_control, route_conversation, verify_reply } from "../pkg/piik_channel_browser.js";
+export { AttachmentHash, FileDelivery, attachment_limits, attachment_media_type, decode_control, encode_control, route_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
 export async function initializeFiles(): Promise<void> { await init(); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await init(); return new SessionSigner(seed); }
 import type { ChannelMessage, ConversationAddress, ConversationReply, RoomSummary, SignedConversationPacket } from "../../../src/client/channel/protocol";

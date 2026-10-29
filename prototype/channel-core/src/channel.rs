@@ -20,6 +20,7 @@ pub struct Channel {
     id: Uuid,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
+    input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
     ice_servers: Vec<Value>,
 }
 
@@ -47,6 +48,7 @@ impl Channel {
             id: Uuid::new_v4(),
             remote: BTreeMap::new(),
             transports: TransportBook::default(),
+            input_registrations: BTreeMap::new(),
             ice_servers,
         }
     }
@@ -125,6 +127,26 @@ impl Channel {
                         payload,
                     },
                 ));
+            }
+            Command::InputRegister {
+                publication_id,
+                flow_id,
+                secret,
+            } => {
+                let source = self
+                    .input_source(session_id, publication_id, flow_id)
+                    .ok_or("unassigned_input_route")?;
+                let registrations = self.input_registrations.entry(source).or_default();
+                registrations.retain(|r| {
+                    r.publication_id != publication_id || r.controller_session_id != session_id
+                });
+                registrations.push(crate::input::InputRegistration {
+                    publication_id,
+                    controller_session_id: session_id,
+                    flow_id,
+                    secret,
+                });
+                events.extend(self.input_states());
             }
             Command::LinkState { pair_id, state } => {
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
@@ -301,6 +323,60 @@ impl Channel {
         }
     }
 
+    fn input_source(&self, controller: Uuid, publication: Uuid, flow: Uuid) -> Option<Uuid> {
+        let session = self.identity.sessions.get(&controller)?;
+        if !self.identity.member(session.user_id).ok()?.participates {
+            return None;
+        }
+        self.remote
+            .values()
+            .filter(|room| room.binding.is_some())
+            .find_map(|room| {
+                let projection = room.projection.as_ref()?;
+                let view = projection.views.get(&controller)?;
+                if !view.room.authorized || !view.subscriptions.contains(&publication) {
+                    return None;
+                }
+                let source = view
+                    .publications
+                    .iter()
+                    .find(|p| p.id == publication && p.kind == Kind::Screen)?
+                    .session_id;
+                projection
+                    .flows
+                    .iter()
+                    .any(|f| {
+                        f.id == flow
+                            && f.publication_id == publication
+                            && f.receiver == controller
+                            && f.selected
+                    })
+                    .then_some(source)
+            })
+    }
+
+    // Secrets have only this private source-directed event, never room-host work,
+    // public snapshots or the durable directory.
+    pub(crate) fn input_states(&mut self) -> Vec<(Uuid, Event)> {
+        let mut events = Vec::new();
+        for (source, mut registrations) in std::mem::take(&mut self.input_registrations) {
+            registrations.retain(|r| {
+                self.input_source(r.controller_session_id, r.publication_id, r.flow_id)
+                    == Some(source)
+            });
+            events.push((
+                source,
+                Event::InputState {
+                    registrations: registrations.clone(),
+                },
+            ));
+            if !registrations.is_empty() {
+                self.input_registrations.insert(source, registrations);
+            }
+        }
+        events
+    }
+
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
         if state.version != 3 || state.hosted_rooms.len() > 32 {
             return Err("invalid_state");
@@ -318,6 +394,7 @@ impl Channel {
             .map(|(id, summary)| (id, RemoteRoom::restored(summary)))
             .collect();
         self.transports = TransportBook::default();
+        self.input_registrations.clear();
         Ok(())
     }
 

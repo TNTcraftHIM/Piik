@@ -136,6 +136,43 @@ pub fn route_conversation(
 }
 
 #[wasm_bindgen]
+pub fn route_input(
+    frame: &str,
+    local: &str,
+    state: &str,
+    from: Option<String>,
+    binding: Option<String>,
+) -> Result<String, JsValue> {
+    let mut frame = parse::<piik_channel_core::input::InputFrame>(frame)?;
+    let local = Uuid::parse_str(local).map_err(|_| error("invalid_request"))?;
+    let from = from
+        .map(|id| Uuid::parse_str(&id))
+        .transpose()
+        .map_err(|_| error("invalid_request"))?;
+    let binding = binding
+        .map(|value| parse::<piik_channel_core::input::InputBinding>(&value))
+        .transpose()?;
+    let route =
+        piik_channel_core::input::route(&mut frame, local, &parse(state)?, from, binding.as_ref())
+            .map_err(error)?;
+    encode(&serde_json::json!({ "frame": frame, "route": route }))
+}
+
+#[wasm_bindgen]
+pub fn input_binding_current(binding: &str, local: &str, state: &str) -> bool {
+    let Ok(binding) = parse::<piik_channel_core::input::InputBinding>(binding) else {
+        return false;
+    };
+    let Ok(local) = Uuid::parse_str(local) else {
+        return false;
+    };
+    let Ok(state) = parse(state) else {
+        return false;
+    };
+    binding.current(local, &state)
+}
+
+#[wasm_bindgen]
 pub fn encode_control(frame: &str) -> Result<Vec<u8>, JsValue> {
     conversation::encode_control(&parse(frame)?).map_err(error)
 }
@@ -239,11 +276,9 @@ pub struct FileDelivery(piik_channel_core::file_delivery::FileDelivery);
 impl FileDelivery {
     #[wasm_bindgen(constructor)]
     pub fn new(session_id: &str) -> Result<Self, JsValue> {
-        Ok(Self(
-            piik_channel_core::file_delivery::FileDelivery::new(
-                Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
-            ),
-        ))
+        Ok(Self(piik_channel_core::file_delivery::FileDelivery::new(
+            Uuid::parse_str(session_id).map_err(|_| error("invalid_session"))?,
+        )))
     }
     pub fn update(&mut self, plans: &str) -> Result<String, JsValue> {
         encode(&self.0.update(parse(plans)?))

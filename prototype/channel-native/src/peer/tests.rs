@@ -28,6 +28,7 @@ fn driver() -> (
             captures: HashMap::new(),
             relay: Relay::default(),
             files: Files::new(Uuid::nil()),
+            inputs: input::Inputs::new(Uuid::nil(), watch::channel(None).1, None),
         },
         input,
         output,

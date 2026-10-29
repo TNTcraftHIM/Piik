@@ -1,7 +1,8 @@
 import type { RoomSummary } from "./protocol";
 import { z } from "zod";
 import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
-import { nativeCaptureTargetSchema, type NativeCaptureTarget } from "../native/wire";
+import { nativeCaptureTargetSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type RemoteStopShortcut } from "../native/wire";
+import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
@@ -10,6 +11,9 @@ const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSche
   processAudio: z.boolean(), systemAudio: z.boolean() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
+const inputControlStateSchema = remoteControlStateSchema.extend({ stopShortcut: remoteShortcutKeySchema.nullable().optional() });
+export type ChannelRemoteControlState = z.infer<typeof inputControlStateSchema>;
+const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema }).strict();
 class AppCompatibilityError extends Error {}
 
 function identity(body: unknown, port: number): void {
@@ -48,7 +52,8 @@ export class ChannelApp {
   get screens(): ReadonlySet<string> { return this.captures; }
 
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
-    onClose: () => void, onAudioFailure: (publicationId: string) => void) {
+    onClose: () => void, onAudioFailure: (publicationId: string) => void,
+    onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {}) {
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
     const lost = () => { this.close(); onClose(); };
     this.timer = setTimeout(lost, 10000);
@@ -65,6 +70,11 @@ export class ChannelApp {
     socket.onmessage = ({ data }) => {
       try {
         const reply = JSON.parse(String(data)) as { type?: string; id: string; result?: unknown; error?: string };
+        if (reply.type === "input_state") {
+          const event = inputStateSchema.parse(reply);
+          if (this.captures.has(event.publicationId)) onInputState(event.publicationId, event.state);
+          return;
+        }
         if (reply.type === "capture_audio_failed") {
           const { publicationId } = captureAudioFailureSchema.parse(reply);
           if (this.captures.has(publicationId)) onAudioFailure(publicationId);
@@ -111,6 +121,22 @@ export class ChannelApp {
   async stopCapture(publicationId: string): Promise<void> {
     if (!this.captures.delete(publicationId)) return;
     if (this.connected) await this.request({ type: "stop_capture", publicationId });
+  }
+
+  async inputPolicy(publicationId: string, mode: RemoteControlMode, password?: string): Promise<void> {
+    await this.request({ type: "input_policy", publicationId, mode, ...(password !== undefined ? { password } : {}) });
+  }
+
+  async inputDecide(publicationId: string, controllerSessionId: string, intent: string, allow: boolean): Promise<void> {
+    await this.request({ type: "input_decide", publicationId, controllerSessionId, intent, allow });
+  }
+
+  async inputSimultaneous(publicationId: string, mode: RemoteControlMode, simultaneous: boolean): Promise<void> {
+    await this.request({ type: "input_policy", publicationId, mode, simultaneous });
+  }
+
+  async inputShortcut(publicationId: string, key: number): Promise<RemoteStopShortcut> {
+    return remoteStopShortcutSchema.parse(await this.request({ type: "input_shortcut", publicationId, key }));
   }
 
   stopCaptures(): void {

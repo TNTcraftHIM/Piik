@@ -268,6 +268,7 @@ pub struct Hosting {
     pub identity: (Uuid, Uuid),
     pub commands: mpsc::Receiver<HostCommand>,
     pub ready: watch::Sender<Option<Result<(), String>>>,
+    pub desktop: Option<crate::input::Desktop>,
 }
 
 /// The calling App or Server owns this hosting future independently of its pages.
@@ -576,15 +577,25 @@ impl Session {
                         .map(ice_server)
                         .collect::<Result<Vec<_>, _>>()?;
                     let (commands, receiver) = mpsc::channel(64);
+                    let snapshot = watch::channel(None).0;
+                    let peers = NativePeers::with_input(
+                        session_id,
+                        ice,
+                        commands,
+                        snapshot.subscribe(),
+                        self.hosting
+                            .as_ref()
+                            .and_then(|hosting| hosting.desktop.clone()),
+                    );
                     self.live = Some(Live {
                         session: session_id,
                         room: RoomTurns {
                             rooms,
                             local: session_id,
                             signer: self.signer.clone(),
-                            snapshot: watch::channel(None).0,
+                            snapshot,
                         },
-                        peers: NativePeers::new(session_id, ice, commands),
+                        peers,
                         commands: receiver,
                         pairs: BTreeSet::new(),
                     });
@@ -648,6 +659,19 @@ impl Session {
                 );
             }
             Event::State { state } => self.state(state, socket).await?,
+            Event::InputState { registrations } => {
+                if let Some(live) = &mut self.live {
+                    await_peer(
+                        live.peers.input_registrations(registrations),
+                        &mut live.commands,
+                        &live.pairs,
+                        &mut live.room,
+                        &live.peers,
+                        socket,
+                    )
+                    .await?;
+                }
+            }
             Event::HostBound {
                 room_id,
                 binding_id,

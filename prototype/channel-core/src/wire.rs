@@ -88,6 +88,11 @@ pub enum Command {
         publication_id: Uuid,
         enabled: bool,
     },
+    InputRegister {
+        publication_id: Uuid,
+        flow_id: Uuid,
+        secret: [u8; 32],
+    },
     Voice {
         room_id: String,
         joined: bool,
@@ -402,6 +407,9 @@ pub struct ChatMessage {
     rename_all_fields = "camelCase"
 )]
 pub enum Event {
+    InputState {
+        registrations: Vec<crate::input::InputRegistration>,
+    },
     RoomReply {
         room_id: String,
         #[serde(skip_serializing_if = "Option::is_none")]

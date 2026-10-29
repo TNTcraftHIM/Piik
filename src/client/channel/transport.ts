@@ -27,6 +27,7 @@ interface TransportOptions {
   data?(kind: "control" | "chunk", data: string | Uint8Array): void;
   dataState?(ready: boolean): void;
   bulkClosed?(): void;
+  input?(channel: RTCDataChannel | null): void;
 }
 
 /** One physical pair. Flows own stream bindings and senders, never source tracks. */
@@ -50,6 +51,8 @@ export class ChannelTransport {
   private rooms = new Set<string>();
   private channel: RTCDataChannel | null = null;
   private bulk: RTCDataChannel | null = null;
+  private input: RTCDataChannel | null = null;
+  private inputEnabled = false;
   private writers = new Map<RTCDataChannel, ChannelWriter>();
   private lifetime = new AbortController();
   private baseFailed = false;
@@ -63,13 +66,19 @@ export class ChannelTransport {
     this.pc.onnegotiationneeded = () => { if (!this.localOfferFailed) this.offer(); };
     this.pc.onconnectionstatechange = () => {
       if (this.pc.connectionState === "connected") {
+        if (this.inputEnabled) options.input?.(this.input);
         options.dataState?.(true);
         options.connected();
         this.reportBaseReady();
         this.syncDeadline();
-      } else if (this.pc.connectionState === "failed") { options.dataState?.(false); this.fail(); }
+      } else if (this.pc.connectionState === "failed") { options.dataState?.(false); options.input?.(null); this.fail(); }
+      else if (["disconnected", "closed"].includes(this.pc.connectionState)) options.input?.(null);
     };
     this.pc.ondatachannel = ({ channel }) => {
+      if (channel.label === "piik-input") {
+        if (this.input) channel.close(); else this.installInput(channel);
+        return;
+      }
       if ((channel.label !== "piik-room" && channel.label !== "piik-file") || (channel.label === "piik-room" ? this.channel : this.bulk)) { channel.close(); return; }
       this.installChannel(channel);
     };
@@ -81,6 +90,39 @@ export class ChannelTransport {
         options.receive(flowId, stream);
       }
     };
+  }
+
+  /** Input follows selected screens, independently of room-base leases. */
+  setInputEnabled(enabled: boolean): void {
+    const changed = this.inputEnabled !== enabled;
+    this.inputEnabled = enabled;
+    if (enabled && !this.input && !this.options.polite && !this.closed && !["failed", "closed"].includes(this.pc.connectionState)) {
+      this.installInput(this.pc.createDataChannel("piik-input", { ordered: true }));
+      this.retryOffer();
+    } else if (changed) this.options.input?.(enabled ? this.input : null);
+  }
+
+  private installInput(channel: RTCDataChannel): void {
+    this.input = channel;
+    const current = () => !this.closed && this.input === channel;
+    channel.addEventListener("open", () => { if (current() && this.inputEnabled) this.options.input?.(channel); });
+    const lost = () => {
+      if (!current()) return;
+      this.input = null;
+      this.options.input?.(null);
+      channel.close();
+    };
+    channel.addEventListener("close", lost);
+    channel.addEventListener("error", lost);
+    if (this.inputEnabled) this.options.input?.(channel);
+  }
+
+  sendInput(frame: string): boolean {
+    const channel = this.input;
+    if (!this.inputEnabled || channel?.readyState !== "open" || this.closed || this.pc.connectionState !== "connected") return false;
+    if (frame.length > 8192 || channel.bufferedAmount > 8192) { channel.close(); return false; }
+    try { channel.send(frame); return true; }
+    catch { channel.close(); return false; }
   }
 
   /** Room leases share one reliable ordered channel on this physical pair. */
@@ -418,6 +460,7 @@ export class ChannelTransport {
     const released = [...this.sending.values()].some(output => output.senders.length > 0);
     this.closed = true;
     this.options.dataState?.(false);
+    this.options.input?.(null);
     this.lifetime.abort();
     for (const writer of this.writers.values()) writer.close();
     this.writers.clear();
@@ -429,6 +472,7 @@ export class ChannelTransport {
     this.pc.ondatachannel = null;
     this.channel?.close();
     this.bulk?.close();
+    this.input?.close();
     this.channel = null;
     this.pc.close();
     this.sending.clear();

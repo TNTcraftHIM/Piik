@@ -1,6 +1,7 @@
 export const INPUT_CHANNEL = "piik-remote-input-prototype-v1";
 export type InputIdentity = { endpointId: string; secret: string };
-type Packet = { id?: string; epoch?: string; data?: string; closed?: boolean; ready?: boolean };
+export type InputPacket = { id?: string; epoch?: string; data?: string; closed?: boolean; ready?: boolean };
+type Packet = InputPacket;
 export type InputTransport = Pick<RTCDataChannel, "readyState" | "bufferedAmount" | "send" | "close" | "addEventListener" | "removeEventListener">;
 
 function packet(data: unknown): Packet | null {
@@ -125,8 +126,8 @@ export class InputRoute {
 
 // Keys arrive over authenticated room signaling. An intermediate Viewer/SFU
 // transports ciphertext and cannot impersonate the approved controller.
-class EncryptedInput extends EventTarget implements InputTransport {
-  readonly epoch = crypto.randomUUID().replaceAll("-", "");
+export class EncryptedInput extends EventTarget implements InputTransport {
+  readonly epoch: string;
   readyState: RTCDataChannelState = "open";
   bufferedAmount = 0;
   private received = 0n;
@@ -134,8 +135,10 @@ class EncryptedInput extends EventTarget implements InputTransport {
   private outbound = Promise.resolve();
   private inbound = Promise.resolve();
   private incomingBytes = 0;
-  constructor(private readonly identity: InputIdentity, private readonly counter: { sent: bigint }, private readonly transmit: (packet: Packet) => void) {
+  constructor(private readonly identity: InputIdentity, private readonly counter: { sent: bigint }, private readonly transmit: (packet: Packet) => void,
+    epoch = crypto.randomUUID().replaceAll("-", "")) {
     super();
+    this.epoch = epoch;
     this.key = crypto.subtle.importKey("raw", Uint8Array.from(identity.secret.match(/../g)!, b => parseInt(b, 16)), "AES-GCM", false, ["encrypt", "decrypt"]);
   }
   send(data: string | Blob | ArrayBuffer | ArrayBufferView): void {

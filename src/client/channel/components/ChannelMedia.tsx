@@ -8,6 +8,8 @@ import { playbackFailure } from "../../media/viewer-playback";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
+import { RemoteControl } from "../../components/living/RemoteControl";
+import type { InputTransport } from "../../remote-control/input-route";
 import "./channel-media.css";
 
 /** Literal prototype copy, shared production geometry and guidance. */
@@ -56,8 +58,9 @@ function ChannelVideoInput({ input, visible, label, register, frame, issue, play
     }} />;
 }
 
-export function ChannelVideo({ stream, local, label, inputs, onPresentation }: {
+export function ChannelVideo({ stream, local, label, inputs, onPresentation, input }: {
   stream: MediaStream; local: boolean; label: string; inputs?: readonly ChannelScreenInput[];
+  input?: InputTransport;
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
 }) {
   const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false };
@@ -220,6 +223,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation }: {
           onChange={event => output.current?.setLevel(Number(event.currentTarget.value))} />
       </>}
       <span className="c3-mini-space" />
+      {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId} />}
       <Btn icon={fullscreen.active ? "contract" : "expand"} size="dense" quiet
         title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen" : "playback.fullscreen"}
         hint={fullscreenFailed || !fullscreen.ready ? "hint-fullscreen-unavailable" : fullscreen.active ? "hint-fullscreen-exit" : "hint-fullscreen"}

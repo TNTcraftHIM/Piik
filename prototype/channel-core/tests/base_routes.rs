@@ -63,6 +63,218 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
 }
 
 #[test]
+fn input_registration_is_private_and_follows_only_the_committed_picture() {
+    use piik_channel_core::input::{self, InputFrame};
+    use std::collections::BTreeMap;
+
+    for commit in [false, true] {
+        let mut network = RoomNetwork::new();
+        // The room operator is not the publisher: it must never receive keys.
+        let connections: Vec<_> = (0..4).map(|_| Uuid::new_v4()).collect();
+        let sessions: Vec<_> = connections
+            .iter()
+            .map(|c| join(&mut network, *c, None).0)
+            .collect();
+        let room = network.create(connections[0], RoomAccess::Public, false);
+        for index in 1..4 {
+            browse(&mut network, connections[index], &room, true);
+            let edge = network
+                .state(connections[index])
+                .pairs
+                .iter()
+                .find(|p| p.rooms.contains(&room))
+                .unwrap()
+                .clone();
+            let parent = sessions.iter().position(|s| *s == edge.peer_id).unwrap();
+            for endpoint in [connections[index], connections[parent]] {
+                command(
+                    &mut network,
+                    endpoint,
+                    json!({"type":"base_state","roomId":room,"pairId":edge.id,"ready":true}),
+                );
+            }
+        }
+        let relay = sessions
+            .iter()
+            .position(|s| {
+                *s == network
+                    .state(connections[3])
+                    .pairs
+                    .iter()
+                    .find(|p| p.rooms.contains(&room))
+                    .unwrap()
+                    .peer_id
+            })
+            .unwrap();
+        let source = if relay == 1 { 2 } else { 1 };
+        assert!(relay == 1 || relay == 2);
+        let publication = publish(&mut network, connections[source], &room, "screen");
+        command(
+            &mut network,
+            connections[3],
+            json!({"type":"subscribe","publicationId":publication,"enabled":true}),
+        );
+        let incoming = |network: &RoomNetwork, index: usize, selected: bool| {
+            network
+                .state(connections[index])
+                .pairs
+                .iter()
+                .find_map(|pair| {
+                    pair.incoming
+                        .iter()
+                        .find(|flow| {
+                            flow.publication_id == publication && flow.selected == selected
+                        })
+                        .map(|flow| (pair.id, flow.id))
+                })
+                .unwrap()
+        };
+        let operator_flow = incoming(&network, 0, true).1;
+        let denied = network.command(connections[0], json!({"type":"input_register","publicationId":publication,"flowId":operator_flow,"secret":vec![7u8;32]}));
+        assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "unassigned_input_route")), "room administration without watching does not grant input");
+        for index in [0, relay] {
+            command(
+                &mut network,
+                connections[index],
+                json!({"type":"subscribe","publicationId":publication,"enabled":true}),
+            );
+        }
+        let leaf = incoming(&network, 3, true).1;
+        let registered = network.command(connections[3], json!({"type":"input_register","publicationId":publication,"flowId":leaf,"secret":vec![7u8;32]}));
+        let private: Vec<_> = registered
+            .events
+            .iter()
+            .filter_map(|(connection, event)| {
+                if let Event::InputState { registrations } = event {
+                    Some((*connection, registrations))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert!(private.len() == 1 && private[0].0 == connections[source]);
+        assert!(
+            private[0].1.len() == 1
+                && private[0].1[0].secret == [7; 32]
+                && private[0].1[0].flow_id == leaf
+        );
+        for connection in &connections {
+            assert!(!serde_json::to_string(network.state(*connection))
+                .unwrap()
+                .contains("\"secret\""));
+        }
+        assert!(!serde_json::to_string(&network.authority.export_state())
+            .unwrap()
+            .contains("\"secret\""));
+
+        // Exercise the actual projected multi-hop lineage in both directions.
+        let mut frame = InputFrame {
+            publication_id: publication,
+            controller_session_id: sessions[3],
+            route_id: leaf,
+            flow_id: leaf,
+            data: Some(json!({"opaque":"encrypted payload"})),
+            closed: None,
+            ready: None,
+        };
+        let mut bindings = BTreeMap::new();
+        let (mut endpoint, mut from) = (sessions[3], None);
+        loop {
+            let index = sessions.iter().position(|s| *s == endpoint).unwrap();
+            let routed = input::route(
+                &mut frame,
+                endpoint,
+                network.state(connections[index]),
+                from,
+                None,
+            )
+            .unwrap();
+            bindings.insert(endpoint, routed.binding);
+            let Some(next) = routed.next_hop else {
+                assert_eq!(endpoint, sessions[source]);
+                break;
+            };
+            from = Some(endpoint);
+            endpoint = next;
+        }
+        assert_eq!(
+            bindings.len(),
+            4,
+            "the fixture must cover an internal relay, not only a direct pair"
+        );
+        from = None;
+        loop {
+            let index = sessions.iter().position(|s| *s == endpoint).unwrap();
+            let routed = input::route(
+                &mut frame,
+                endpoint,
+                network.state(connections[index]),
+                from,
+                bindings.get(&endpoint),
+            )
+            .unwrap();
+            let Some(next) = routed.next_hop else {
+                assert_eq!(endpoint, sessions[3]);
+                break;
+            };
+            from = Some(endpoint);
+            endpoint = next;
+        }
+        assert_eq!(frame.route_id, leaf);
+        assert_eq!(frame.flow_id, leaf);
+        assert_eq!(frame.data, Some(json!({"opaque":"encrypted payload"})));
+
+        for index in [0, relay, 3] {
+            let (pair, flow) = incoming(&network, index, true);
+            command(
+                &mut network,
+                connections[index],
+                json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":"decoded"}),
+            );
+        }
+        let trial = incoming(&network, 3, false);
+        let denied = network.command(connections[3], json!({"type":"input_register","publicationId":publication,"flowId":trial.1,"secret":vec![9u8;32]}));
+        assert!(denied.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "unassigned_input_route")), "a prepared trial cannot replace the committed input secret");
+        if commit {
+            for index in [relay, 3] {
+                let (pair, flow) = incoming(&network, index, false);
+                let effects = network.command(
+                    connections[index],
+                    json!({"type":"flow_state","pairId":pair,"flowId":flow,"state":"switch_ready"}),
+                );
+                if index == 3 {
+                    assert!(effects.events.iter().any(|(connection, event)| *connection == connections[source] && matches!(event, Event::InputState { registrations } if registrations.is_empty())));
+                }
+            }
+            assert!(
+                !bindings[&sessions[3]].current(sessions[3], network.state(connections[3])),
+                "queued old input cannot use a newly committed path"
+            );
+            let stale = network.command(connections[3], json!({"type":"input_register","publicationId":publication,"flowId":leaf,"secret":vec![7u8;32]}));
+            assert!(stale
+                .events
+                .iter()
+                .any(|(_, event)| matches!(event, Event::Error { .. })));
+            let fresh = incoming(&network, 3, true).1;
+            let registered = network.command(connections[3], json!({"type":"input_register","publicationId":publication,"flowId":fresh,"secret":vec![9u8;32]}));
+            assert!(registered.events.iter().any(|(connection, event)| *connection == connections[source] && matches!(event, Event::InputState { registrations } if registrations.len() == 1 && registrations[0].secret == [9;32] && registrations[0].flow_id == fresh)));
+        } else {
+            let effects = network.command(
+                connections[3],
+                json!({"type":"flow_state","pairId":trial.0,"flowId":trial.1,"state":"failed"}),
+            );
+            assert!(bindings[&sessions[3]].current(sessions[3], network.state(connections[3])));
+            assert!(effects.events.iter().any(|(connection, event)| *connection == connections[source] && matches!(event, Event::InputState { registrations } if registrations.len() == 1 && registrations[0].flow_id == leaf)));
+        }
+        let stopped = network.command(
+            connections[3],
+            json!({"type":"subscribe","publicationId":publication,"enabled":false}),
+        );
+        assert!(stopped.events.iter().any(|(connection, event)| *connection == connections[source] && matches!(event, Event::InputState { registrations } if registrations.is_empty())));
+    }
+}
+
+#[test]
 fn revoking_a_private_transit_retires_its_branch_and_keeps_its_public_pair() {
     let mut network = RoomNetwork::new();
     let connections: Vec<_> = (0..4).map(|_| Uuid::new_v4()).collect();

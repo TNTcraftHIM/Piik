@@ -9,6 +9,9 @@ import { ChannelTransport } from "../src/client/channel/transport";
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
+import { ChannelInput } from "../src/client/channel/input";
+import { RemoteInputSession } from "../src/client/remote-control/input-session";
+import type { InputTransport } from "../src/client/remote-control/input-route";
 
 class ChannelSocket {
   static OPEN = 1;
@@ -207,6 +210,30 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
 
+    const controllerSessionId = crypto.randomUUID(), intent = crypto.randomUUID().replaceAll("-", "");
+    const remote = { mode: "ask", platform: "windows", requests: [{ id: intent, peerId: controllerSessionId, state: "pending" }] };
+    app.receive({ type: "input_state", publicationId, state: remote });
+    expect(session.getSnapshot().remoteControls.get(publicationId)).toEqual(remote);
+    await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 10, available: false });
+    const rejectedShortcut = session.inputShortcut(publicationId, 11);
+    expect(app.sent.at(-1)).toMatchObject({ type: "input_shortcut", publicationId, key: 11 });
+    app.receive({ id: app.sent.at(-1)!.id, error: "input_shortcut_unavailable" });
+    await expect(rejectedShortcut).rejects.toThrow("input_shortcut_unavailable");
+    expect(session.getSnapshot().remoteControls.get(publicationId)?.stopShortcut).toBeUndefined();
+    const registeringShortcut = session.inputShortcut(publicationId, 9);
+    app.receive({ id: app.sent.at(-1)!.id, result: { key: 9, available: true } });
+    await expect(registeringShortcut).resolves.toEqual({ key: 9, available: true });
+    await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 9, available: true });
+    const enabling = session.inputPolicy(publicationId, "ask");
+    expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId, mode: "ask" });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await enabling;
+    const approving = session.inputDecide(publicationId, intent, true);
+    expect(app.sent.at(-1)).toMatchObject({ type: "input_decide", publicationId, controllerSessionId, intent, allow: true });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await approving;
+    expect(socket.sent.some(command => command.type === "input_policy" || command.type === "input_decide")).toBe(false);
+
     app.receive({ type: "capture_audio_failed", publicationId });
     expect(session.getSnapshot().error).toBe("capture_audio_failed");
     expect(session.getSnapshot().appConnected).toBe(true);
@@ -224,6 +251,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     socket.receive({ type: "state", state });
     await stopping;
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(session.getSnapshot().remoteControls.size).toBe(0);
     expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
     session.close();
     expect(app.readyState).toBe(3);
@@ -571,6 +599,139 @@ class RoomPeerConnection extends EventTarget {
   }
   connected() { this.connectionState = "connected"; this.onconnectionstatechange?.(); }
 }
+
+test("screen input shares its existing pair and retains only the committed flow's control session", async () => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  RoomPeerConnection.instances = [];
+  const { session } = await setup();
+  const local = "00000000-0000-4000-8000-000000000001", source = "00000000-0000-4000-8000-000000000002";
+  const publicationId = crypto.randomUUID(), pairId = crypto.randomUUID(), first = crypto.randomUUID(), trial = crypto.randomUUID();
+  let state = { ...session.getSnapshot().state!, subscriptions: [publicationId],
+    publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const, muted: false }],
+    pairs: [{ id: pairId, peerId: source, rooms: [] as string[], outgoing: [],
+      incoming: [{ id: first, publicationId, selected: true, inputFlowId: null }] }],
+  };
+  const register = vi.fn(), changed = vi.fn();
+  let channels: ReadonlyMap<string, InputTransport> = new Map();
+  let connected = true;
+  const input = new ChannelInput({ context: () => ({ sessionId: local, state, connected }), register,
+    send: (peer, frame) => media.sendInput(peer, frame), changed: value => { channels = value; changed(value); } });
+  const media = new ChannelMedia(() => {}, () => {}, undefined, undefined, undefined,
+    (pair, channel) => input.setChannel(pair, channel));
+  let control: RemoteInputSession | undefined;
+  try {
+    media.update(local, state);
+    const pc = RoomPeerConnection.instances.at(-1)!;
+    expect(pc.channels.map(channel => channel.label)).toEqual(["piik-input"]);
+    expect(pc.channels[0].options).toEqual({ ordered: true });
+    pc.connected(); pc.channels[0].open(); input.update();
+    const endpoint = channels.get(publicationId)!;
+    expect(endpoint).toBeDefined();
+    expect(register).toHaveBeenCalledOnce();
+    expect(register.mock.calls[0][0]).toMatchObject({ type: "input_register", publicationId, flowId: first, secret: expect.any(Array) });
+    expect(register.mock.calls[0][0].secret).toHaveLength(32);
+    control = new RemoteInputSession(endpoint, () => {});
+    (endpoint as unknown as EventTarget).dispatchEvent(new MessageEvent("message", { data: JSON.stringify({ platform: "windows", mode: "ask", state: "ready", capabilities: ["text"] }) }));
+    control.request();
+    expect(control.state?.state).toBe("pending");
+    state = { ...state, pairs: [{ ...state.pairs[0], incoming: [...state.pairs[0].incoming, { id: trial, publicationId, selected: false, inputFlowId: null }] }] };
+    media.update(local, state); input.update();
+    state = { ...state, pairs: [{ ...state.pairs[0], incoming: state.pairs[0].incoming.filter(flow => flow.id !== trial) }] };
+    media.update(local, state); input.update();
+    expect(channels.get(publicationId)).toBe(endpoint);
+    expect(control.state?.state).toBe("pending");
+    expect(register).toHaveBeenCalledOnce();
+    endpoint.close();
+    expect(register).toHaveBeenCalledOnce(); // Logical close cannot synchronously create a replacement.
+    input.update();
+    const refreshed = channels.get(publicationId)!;
+    expect(refreshed).not.toBe(endpoint);
+    expect(register).toHaveBeenCalledTimes(2);
+    expect(register.mock.calls[1][0].secret).not.toEqual(register.mock.calls[0][0].secret);
+    control.dispose(); control = new RemoteInputSession(refreshed, () => {});
+    state = { ...state, pairs: [{ ...state.pairs[0], incoming: [{ ...state.pairs[0].incoming[0], id: trial }] }] };
+    media.update(local, state); input.update();
+    expect(refreshed.readyState).toBe("closed");
+    expect(control.state).toBeNull();
+    expect(channels.get(publicationId)).not.toBe(refreshed);
+    expect(register).toHaveBeenCalledTimes(3);
+    const replacement = channels.get(publicationId)!;
+    pc.connectionState = "disconnected"; pc.onconnectionstatechange?.();
+    expect(replacement.readyState).toBe("closed");
+    expect(channels.size).toBe(0);
+    expect(RoomPeerConnection.instances).toHaveLength(1);
+    expect(pc.close).not.toHaveBeenCalled();
+    connected = false;
+    pc.connected();
+    expect(channels.size).toBe(0);
+    connected = true; input.update();
+    const recovered = channels.get(publicationId)!;
+    expect(recovered).toBeDefined();
+    pc.channels[0].close();
+    expect(recovered.readyState).toBe("closed");
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(pc.channels).toHaveLength(1);
+    media.update(local, state); input.update();
+    expect(pc.channels.map(channel => channel.label)).toEqual(["piik-input", "piik-input"]);
+    pc.channels[1].open();
+    expect(channels.get(publicationId)?.readyState).toBe("open");
+    expect(channels.get(publicationId)).not.toBe(recovered);
+    expect(RoomPeerConnection.instances).toHaveLength(1);
+    expect(register).toHaveBeenCalledTimes(5);
+
+    // Drive the actual Browser relay adapter through its shared-core boundary;
+    // routing policy itself is covered by the core's selected-lineage tests.
+    const upstreamPair = crypto.randomUUID(), downstreamPair = crypto.randomUUID(), upstreamFlow = crypto.randomUUID();
+    const controller = "00000000-0000-4000-8000-000000000003";
+    const binding = { publicationId, controllerSessionId: controller, routeId: trial,
+      upstream: { pairId: upstreamPair, peerId: source, flowId: upstreamFlow },
+      downstream: { pairId: downstreamPair, peerId: controller, flowId: trial } };
+    const relayState = { ...state, subscriptions: [], pairs: [
+      { id: upstreamPair, peerId: source, rooms: ["first"], outgoing: [], incoming: [{ id: upstreamFlow, publicationId, selected: true, inputFlowId: null }] },
+      { id: downstreamPair, peerId: controller, rooms: ["first"], incoming: [], outgoing: [{ id: trial, publicationId, selected: true, inputFlowId: upstreamFlow }] },
+    ] };
+    vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
+      route_input: (frame: string) => JSON.stringify({ frame: { ...JSON.parse(frame), flowId: upstreamFlow }, route: { nextHop: source, binding } }),
+      input_binding_current: () => true,
+    } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+    const relayInput = new ChannelInput({ context: () => ({ sessionId: local, state: relayState, connected: true }), register: vi.fn(),
+      send: (peer, frame) => relayMedia.sendInput(peer, frame), changed: () => {} });
+    const relayMedia = new ChannelMedia(() => {}, () => {}, undefined, undefined, undefined,
+      (pair, channel) => relayInput.setChannel(pair, channel));
+    try {
+      const start = RoomPeerConnection.instances.length;
+      relayMedia.update(local, relayState);
+      const [up, down] = RoomPeerConnection.instances.slice(start);
+      for (const transport of [up, down]) { transport.connected(); for (const channel of transport.channels) channel.open(); }
+      const upInput = up.channels.find(channel => channel.label === "piik-input")!;
+      const downInput = down.channels.find(channel => channel.label === "piik-input")!;
+      const frame = { publicationId, controllerSessionId: controller, routeId: trial, flowId: trial,
+        data: { id: controller.replaceAll("-", ""), epoch: trial.replaceAll("-", ""), data: "opaque" } };
+      downInput.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(frame) }));
+      await vi.waitFor(() => expect(upInput.send).toHaveBeenCalledOnce());
+      expect(JSON.parse(upInput.send.mock.calls[0][0])).toMatchObject({ flowId: upstreamFlow, data: frame.data });
+      downInput.close();
+      expect(upInput.send).toHaveBeenCalledTimes(2);
+      expect(JSON.parse(upInput.send.mock.calls[1][0])).toEqual({ publicationId, controllerSessionId: controller,
+        routeId: trial, flowId: upstreamFlow, closed: true });
+      relayInput.setChannel(downstreamPair, null);
+      expect(upInput.send).toHaveBeenCalledTimes(2);
+      expect(upInput.readyState).toBe("open");
+      for (const transport of [up, down]) {
+        expect(transport.close).not.toHaveBeenCalled();
+        expect(transport.channels.find(channel => channel.label === "piik-room")?.readyState).toBe("open");
+      }
+      relayMedia.update(local, relayState); relayInput.update();
+      const nextInput = down.channels.filter(channel => channel.label === "piik-input").at(-1)!;
+      expect(nextInput).not.toBe(downInput);
+      nextInput.open();
+      nextInput.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(frame) }));
+      await vi.waitFor(() => expect(upInput.send).toHaveBeenCalledTimes(3));
+      expect(JSON.parse(upInput.send.mock.calls[2][0])).toMatchObject({ flowId: upstreamFlow, data: frame.data });
+      expect(up.channels.filter(channel => channel.label === "piik-input")).toHaveLength(1);
+    } finally { relayInput.reset(); relayMedia.reset(); }
+  } finally { control?.dispose(); input.reset(); media.reset(); session.close(); }
+});
 
 class RoomAudio {
   static instances: RoomAudio[] = [];

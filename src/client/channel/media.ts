@@ -41,7 +41,8 @@ export class ChannelMedia {
     private changed: (streams: ReadonlyMap<string, MediaStream>, screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void,
     private data?: (peer: string, kind: "control" | "chunk", data: string | Uint8Array) => void,
     private dataState?: (peer: string, ready: boolean) => void,
-    private bulkClosed?: (peer: string) => void) {}
+    private bulkClosed?: (peer: string) => void,
+    private input?: (pairId: string, channel: RTCDataChannel | null) => void) {}
 
   setLocal(id: string, stream: MediaStream): void {
     this.local.set(id, stream);
@@ -84,6 +85,7 @@ export class ChannelMedia {
           data: (kind, data) => { if (this.peers.get(plan.id)?.plan.rooms.length) this.data?.(plan.peerId, kind, data); },
           dataState: ready => this.dataState?.(plan.peerId, ready),
           bulkClosed: () => this.bulkClosed?.(plan.peerId),
+          input: channel => this.input?.(plan.id, channel),
           connected: () => {
             this.send({ type: "link_state", pairId: plan.id, state: "connected" });
             const current = this.peers.get(plan.id);
@@ -100,6 +102,8 @@ export class ChannelMedia {
       } else peer.plan = plan;
       for (const room of peer.baseReady) if (!plan.rooms.includes(room)) peer.baseReady.delete(room);
       peer.transport.setRooms(plan.rooms);
+      peer.transport.setInputEnabled([...plan.incoming, ...plan.outgoing].some(flow => flow.selected
+        && state.publications.some(publication => publication.id === flow.publicationId && publication.kind === "screen")));
       if (peer.transport.isBaseReady()) this.reportBase(peer, true);
       for (const [flowId, input] of peer.inputs) {
         if (!plan.incoming.some(flow => flow.id === flowId)) {
@@ -135,6 +139,11 @@ export class ChannelMedia {
       // send rejection must not retire a replacement to the same participant.
       if (this.peers.get(peer.plan.id) === peer) throw error;
     });
+  }
+
+  sendInput(peerId: string, frame: string): boolean {
+    const peer = [...this.peers.values()].find(peer => peer.plan.peerId === peerId);
+    return peer?.transport.sendInput(frame) ?? false;
   }
 
   private receive(pairId: string, flowId: string, stream: MediaStream): void {

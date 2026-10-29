@@ -1,4 +1,5 @@
 import { ChannelMedia } from "./media";
+import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
@@ -6,7 +7,9 @@ import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type NativeCaptureSources } from "./app-link";
 import { isClientActivated } from "../lib/session";
-import type { NativeCaptureTarget } from "../native/wire";
+import type { NativeCaptureTarget, RemoteStopShortcut } from "../native/wire";
+import type { RemoteControlMode } from "../remote-control/protocol";
+import { readRoomPreferences } from "../lib/room-preferences";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -29,7 +32,7 @@ export class ChannelSession {
     appConnected: false,
     ownedScreens: new Set(),
     state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
-    streams: new Map(), screenInputs: new Map(), error: null, inviteURL: null, pending: new Set(),
+    streams: new Map(), screenInputs: new Map(), inputChannels: new Map(), remoteControls: new Map(), error: null, inviteURL: null, pending: new Set(),
   };
   private listeners = new Set<() => void>();
   private socket: WebSocket | null = null;
@@ -68,11 +71,19 @@ export class ChannelSession {
     file: (peer, control) => this.attachments.data(peer, "control", control),
     reply: reply => this.receiveConversation(reply),
   });
+  private input = new ChannelInput({
+    context: () => ({ sessionId: this.view.sessionId, state: this.view.state,
+      connected: this.view.connection === "connected" && this.socket?.readyState === WebSocket.OPEN }),
+    register: command => this.send(command),
+    send: (peer, frame) => this.media.sendInput(peer, frame),
+    changed: inputChannels => this.patch({ inputChannels }),
+  });
   private media = new ChannelMedia(command => this.send(command), (streams, screenInputs) => this.patch({ streams, screenInputs }),
     (peer, kind, data) => {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
       else void this.conversation.receive(peer, data as string).catch(() => {});
-    }, (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer));
+    }, (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer),
+    (pair, channel) => this.input.setChannel(pair, channel));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
 
@@ -84,7 +95,8 @@ export class ChannelSession {
   private patch(patch: Partial<ChannelView>): void {
     const ownedScreens = new Set(this.app?.screens);
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
-    this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens };
+    const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
+    this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens, remoteControls };
     for (const listener of this.listeners) listener();
   }
 
@@ -284,6 +296,7 @@ export class ChannelSession {
       }
     }
     this.media.update(sessionId, state);
+    this.input.update();
     this.attachments.update(sessionId, state.files, state.channel.rooms);
     this.sendConversations();
     this.releaseUnusedMicrophone();
@@ -414,9 +427,11 @@ export class ChannelSession {
         const app = new ChannelApp(health, state.channel.id, self.id, this.credential, self.name, () => {
           if (this.app !== app) return;
           this.app = undefined;
-          this.patch({});
+          this.patch({ remoteControls: new Map() });
         }, () => {
           if (this.app === app) this.patch({ error: "capture_audio_failed" });
+        }, (id, state) => {
+          if (this.app === app) this.patch({ remoteControls: new Map(this.view.remoteControls).set(id, state) });
         });
         this.app = app;
       }
@@ -428,6 +443,38 @@ export class ChannelSession {
   }
 
   activateApp = (): Promise<void> => this.action("app", async () => { await this.connectApp(); });
+
+  inputPolicy = (publicationId: string, mode: RemoteControlMode, password?: string): Promise<void> =>
+    this.action(`input:${publicationId}`, async () => {
+      if (!this.app?.screens.has(publicationId)) throw new Error("capture_unavailable");
+      await this.app.inputPolicy(publicationId, mode, password);
+    });
+
+  inputDecide = (publicationId: string, requestId: string, allow: boolean): Promise<void> =>
+    this.action(`input:${publicationId}:${requestId}`, async () => {
+      const request = this.view.remoteControls.get(publicationId)?.requests.find(request => request.id === requestId);
+      if (!this.app?.screens.has(publicationId) || !request) throw new Error("input_unavailable");
+      await this.app.inputDecide(publicationId, request.peerId, request.id, allow);
+    });
+
+  inputSimultaneous = (publicationId: string, enabled: boolean): Promise<void> =>
+    this.action(`input:${publicationId}`, async () => {
+      const state = this.view.remoteControls.get(publicationId);
+      if (!this.app?.screens.has(publicationId) || !state) throw new Error("input_unavailable");
+      await this.app.inputSimultaneous(publicationId, state.mode, enabled);
+    });
+
+  inputShortcut = async (publicationId: string, key?: number): Promise<RemoteStopShortcut> => {
+    const app = this.app, state = this.view.remoteControls.get(publicationId);
+    if (!app?.screens.has(publicationId) || !state) throw new Error("input_unavailable");
+    if (key === undefined) return { key: state.stopShortcut ?? readRoomPreferences().remoteStopKey, available: state.stopShortcut != null };
+    const shortcut = await app.inputShortcut(publicationId, key);
+    const current = this.view.remoteControls.get(publicationId);
+    if (this.app === app && app.screens.has(publicationId) && current && shortcut.available && current.stopShortcut !== shortcut.key) {
+      this.patch({ remoteControls: new Map(this.view.remoteControls).set(publicationId, { ...current, stopShortcut: shortcut.key }) });
+    }
+    return shortcut;
+  };
 
   private async browserStorage(channelId: string, userId: string) {
     const runtime = await loadRoomHosting(), database = roomDatabaseName(channelId, userId);
@@ -723,6 +770,7 @@ export class ChannelSession {
   private releaseMedia(): void {
     this.captureEpoch += 1;
     this.app?.stopCaptures();
+    this.input.reset();
     this.attachments.reset();
     this.media.reset();
     this.local.clear();

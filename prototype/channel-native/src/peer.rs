@@ -8,6 +8,7 @@ use crate::{
     },
 };
 use anyhow::{anyhow, Context, Result};
+use futures_util::StreamExt;
 use piik_channel_core::conversation::{ControlFrame, SignedPacket};
 use piik_channel_core::file_room::FilePlan;
 use piik_channel_core::wire::Snapshot;
@@ -79,6 +80,8 @@ pub enum NativeEvent {
 pub struct CaptureLease {
     ready: oneshot::Receiver<Result<()>>,
     pub audio_error: Option<oneshot::Receiver<String>>,
+    pub remote: Option<crate::input::Source>,
+    pub input_state: Option<watch::Receiver<crate::input::SourceView>>,
     #[cfg(target_os = "windows")]
     control: crate::media::local::Control,
 }
@@ -100,6 +103,9 @@ impl CaptureLease {
         }
     }
     pub fn stop(&self) {
+        if let Some(source) = &self.remote {
+            source.close();
+        }
         #[cfg(target_os = "windows")]
         self.control.stop();
     }
@@ -110,6 +116,7 @@ impl Drop for CaptureLease {
     }
 }
 enum Input {
+    Registrations(Vec<piik_channel_core::input::InputRegistration>),
     Update(
         Vec<PairInfo>,
         Vec<PublicationInfo>,
@@ -129,6 +136,8 @@ enum Input {
     ),
 }
 pub(crate) enum Event {
+    InputMessage(Uuid, Uuid, piik_channel_core::input::InputFrame),
+    InputClosed(Uuid, Uuid),
     Negotiate(Uuid),
     Candidate(Uuid, RTCIceCandidate),
     State(Uuid, RTCPeerConnectionState),
@@ -231,6 +240,7 @@ struct Pair {
     tasks: HashMap<Uuid, Reader>,
     dc: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
     bulk: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
+    input: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
     data: DataLink,
     state: Arc<AtomicU8>,
     dc_open: bool,
@@ -258,6 +268,7 @@ struct OfferWork {
     rooms: Vec<String>,
     control: Option<Uuid>,
     bulk: Option<Uuid>,
+    input: Option<Uuid>,
 }
 
 impl Pair {
@@ -282,6 +293,7 @@ impl Pair {
             rooms: self.plan.rooms.clone(),
             control: self.dc.as_ref().map(|(token, _, _)| *token),
             bulk: self.bulk.as_ref().map(|(token, _, _)| *token),
+            input: self.input.as_ref().map(|(token, _, _)| *token),
         }
     }
 
@@ -347,12 +359,28 @@ struct Driver {
     captures: HashMap<Uuid, crate::media::local::Producer>,
     relay: Relay,
     files: Files,
+    inputs: input::Inputs,
 }
 impl NativePeers {
     pub fn new(
         session_id: Uuid,
         ice_servers: Vec<RTCIceServer>,
         commands: mpsc::Sender<NativeEvent>,
+    ) -> Self {
+        Self::with_input(
+            session_id,
+            ice_servers,
+            commands,
+            watch::channel(None).1,
+            None,
+        )
+    }
+    pub fn with_input(
+        session_id: Uuid,
+        ice_servers: Vec<RTCIceServer>,
+        commands: mpsc::Sender<NativeEvent>,
+        snapshot: watch::Receiver<Option<Snapshot>>,
+        desktop: Option<crate::input::Desktop>,
     ) -> Self {
         // Callback events are control-only. They must never await the PC driver that
         // invokes them. RTP has a separate bounded queue and separate poll tasks.
@@ -380,10 +408,12 @@ impl NativePeers {
                 captures: HashMap::new(),
                 relay: Relay::default(),
                 files: Files::new(session_id),
+                inputs: input::Inputs::new(session_id, snapshot, desktop),
             };
             let mut tick = tokio::time::interval(Duration::from_secs(1));
             enum Turn {
                 Input(Input),
+                Reply(Uuid, crate::input::Reply),
                 Event(Event),
                 SourceReady(SourceReady),
                 Bandwidth,
@@ -395,11 +425,22 @@ impl NativePeers {
                     request=inputs.recv()=>match request {Some(request)=>Turn::Input(request),None=>break},
                     Some(event)=event_rx.recv()=>Turn::Event(event),
                     Some(source)=ready_rx.recv()=>Turn::SourceReady(source),
+                    Some((video,reply))=d.inputs.replies.next()=>Turn::Reply(video,reply),
                     _=bandwidth_changed.notified()=>Turn::Bandwidth,
                     _=tick.tick()=>Turn::Tick,
                 };
                 let work = async {
                     match turn {
+                        Turn::Reply(video, reply) => {
+                            if let Some(outgoing) = d.inputs.reply(video, reply) {
+                                d.send_input(outgoing).await;
+                            }
+                        }
+                        Turn::Input(Input::Registrations(registrations)) => {
+                            for outgoing in d.inputs.registrations(registrations) {
+                                d.send_input(outgoing).await;
+                            }
+                        }
                         Turn::Input(Input::Update(plans, info, files, done)) => {
                             let result = d.update(plans, info, files).await;
                             let _ = done.send(result);
@@ -440,6 +481,11 @@ impl NativePeers {
                         }
                         Turn::Event(event) => {
                             let id = match &event {
+                                Event::InputMessage(..)
+                                | Event::InputClosed(..)
+                                | Event::DataWriteFailed {
+                                    lane: Lane::Input, ..
+                                } => None,
                                 #[cfg(target_os = "windows")]
                                 Event::CaptureEnded { .. }
                                 | Event::CaptureAudioEnded { .. }
@@ -479,6 +525,7 @@ impl NativePeers {
                 };
                 tokio::select! {_=cancelled.changed()=>break,_=work=>{}}
             }
+            d.inputs.close();
             #[cfg(target_os = "windows")]
             {
                 for producer in d.captures.values() {
@@ -566,6 +613,13 @@ impl NativePeers {
             .send(Input::Update(pairs, publications, files, tx))
             .await?;
         rx.await?
+    }
+    pub async fn input_registrations(
+        &self,
+        registrations: Vec<piik_channel_core::input::InputRegistration>,
+    ) -> Result<()> {
+        self.input.send(Input::Registrations(registrations)).await?;
+        Ok(())
     }
     pub async fn signal(&self, pair_id: Uuid, payload: Signal) -> Result<()> {
         let (tx, rx) = oneshot::channel();
@@ -708,6 +762,50 @@ fn builder(
         ))
 }
 impl Driver {
+    async fn send_input(&mut self, outgoing: input::Outgoing) {
+        let mut pending = std::collections::VecDeque::from([outgoing]);
+        while let Some(outgoing) = pending.pop_front() {
+            let Some(pair) = self
+                .pairs
+                .get(&outgoing.pair)
+                .filter(|p| p.plan.peer_id == outgoing.peer && p.connected())
+            else {
+                continue;
+            };
+            let Some((token, _, _)) = &pair.input else {
+                continue;
+            };
+            let token = *token;
+            let senders = pair.data.senders();
+            if senders.current(Lane::Input, token, true)
+                && senders.input.try_send(outgoing.message).is_err()
+            {
+                pending.extend(self.close_input(outgoing.pair, token).await);
+            }
+        }
+    }
+
+    async fn close_input(&mut self, id: Uuid, token: Uuid) -> Vec<input::Outgoing> {
+        let Some(pair) = self.pairs.get_mut(&id) else {
+            return vec![];
+        };
+        if !pair
+            .input
+            .as_ref()
+            .is_some_and(|(current, _, _)| *current == token)
+        {
+            return vec![];
+        }
+        let messages = self.inputs.disconnected(id);
+        pair.data.unbind(Lane::Input);
+        if let Some((_, channel, task)) = pair.input.take() {
+            task.abort();
+            let _ = task.await;
+            let _ = channel.close().await;
+        }
+        messages
+    }
+
     async fn output_failed(&mut self, pair: Uuid, key: TrackKey, source: Uuid, output: Uuid) {
         let Some(p) = self.pairs.get_mut(&pair) else {
             return;
@@ -787,7 +885,7 @@ impl Driver {
         );
         let (producer, ready, audio_error) = crate::media::local::Producer::start(
             publication,
-            target,
+            target.clone(),
             settings,
             audio,
             self.ready_sources.clone(),
@@ -795,9 +893,22 @@ impl Driver {
             self.relay.clone(),
             self.cancel.clone(),
         )?;
+        let remote = self
+            .inputs
+            .source(publication, producer.video, target)
+            .unwrap_or_else(|error| {
+                eprintln!("Native input unavailable: {error}");
+                None
+            });
+        let (remote, input_state) = match remote {
+            Some((remote, state)) => (Some(remote), Some(state)),
+            None => (None, None),
+        };
         let lease = CaptureLease {
             ready,
             audio_error,
+            remote,
+            input_state,
             control: producer.control.clone(),
         };
         self.captures.insert(publication, producer);
@@ -814,6 +925,7 @@ impl Driver {
             return Ok(());
         }
         let producer = self.captures.remove(&publication).unwrap();
+        self.inputs.end_source(publication);
         let error = match producer.task.await {
             Ok(error) => error,
             Err(error) => Some(error.to_string()),
@@ -860,6 +972,7 @@ impl Driver {
         publications: Vec<PublicationInfo>,
         files: Vec<FilePlan>,
     ) -> Result<()> {
+        self.inputs.reconcile();
         self.files.update(files, &plans).await;
         self.publications = publications.into_iter().map(|p| (p.id, p)).collect();
         let needed: HashSet<_> = plans
@@ -895,6 +1008,9 @@ impl Driver {
             .collect();
         let mut released = false;
         for id in removed {
+            for message in self.inputs.disconnected(id) {
+                self.send_input(message).await;
+            }
             if let Some(pair) = self.pairs.remove(&id) {
                 released |= !pair.outputs.is_empty();
                 self.links.lock().unwrap().remove(&pair.plan.peer_id);
@@ -960,6 +1076,7 @@ impl Driver {
                             tasks: HashMap::new(),
                             dc: None,
                             bulk: None,
+                            input: None,
                             data,
                             state,
                             dc_open: false,
@@ -1015,6 +1132,11 @@ impl Driver {
                 let p = self.pairs.get(&id).unwrap();
                 if !p.plan.rooms.is_empty() && !p.polite && !p.base_failed && p.bulk.is_none() {
                     let dc = p.pc.create_data_channel("piik-file", None).await?;
+                    self.install_dc(id, dc).await?;
+                }
+                let p = self.pairs.get(&id).unwrap();
+                if !p.polite && p.input.is_none() {
+                    let dc = p.pc.create_data_channel("piik-input", None).await?;
                     self.install_dc(id, dc).await?;
                 }
                 Ok::<_, anyhow::Error>(())
@@ -1281,14 +1403,16 @@ impl Driver {
         let lane = match label.as_str() {
             "piik-room" => Lane::Control,
             "piik-file" => Lane::Bulk,
+            "piik-input" => Lane::Input,
             _ => {
                 dc.close().await?;
                 return Ok(());
             }
         };
-        if p.plan.rooms.is_empty()
+        if (lane != Lane::Input && p.plan.rooms.is_empty())
             || (lane == Lane::Control && p.dc.is_some())
             || (lane == Lane::Bulk && p.bulk.is_some())
+            || (lane == Lane::Input && p.input.is_some())
         {
             dc.close().await?;
             return Ok(());
@@ -1346,21 +1470,39 @@ impl Driver {
                             }
                         }
                         Lane::Bulk => files.chunk(peer, token, message.data.as_ref()).await,
+                        Lane::Input => {
+                            if !ready.open() || message.data.len() > 8192 {
+                                continue;
+                            }
+                            if let Ok(frame) = serde_json::from_slice(message.data.as_ref()) {
+                                if events
+                                    .send(Event::InputMessage(id, token, frame))
+                                    .await
+                                    .is_err()
+                                {
+                                    break;
+                                }
+                            }
+                        }
                     },
                     DataChannelEvent::OnClose | DataChannelEvent::OnError => {
                         if ready.set(false) {
-                            files
-                                .closed(
-                                    peer,
-                                    lane,
-                                    token,
-                                    lane == Lane::Control || data::terminal(&state),
-                                )
-                                .await;
+                            if lane != Lane::Input {
+                                files
+                                    .closed(
+                                        peer,
+                                        lane,
+                                        token,
+                                        lane == Lane::Control || data::terminal(&state),
+                                    )
+                                    .await;
+                            }
                             let event = if lane == Lane::Control {
                                 Event::Dc(id, token, false)
-                            } else {
+                            } else if lane == Lane::Bulk {
                                 Event::Bulk(id, token)
+                            } else {
+                                Event::InputClosed(id, token)
                             };
                             let _ = events.send(event).await;
                         }
@@ -1373,8 +1515,10 @@ impl Driver {
         let value = Some((token, dc, task));
         if lane == Lane::Control {
             p.dc = value;
-        } else {
+        } else if lane == Lane::Bulk {
             p.bulk = value;
+        } else {
+            p.input = value;
         }
         Ok(())
     }
@@ -1435,6 +1579,9 @@ impl Driver {
         }
     }
     async fn fail(&mut self, id: Uuid) {
+        for message in self.inputs.disconnected(id) {
+            self.send_input(message).await;
+        }
         self.fail_base(id).await;
         self.send(Command::LinkState {
             pair_id: id,
@@ -1540,12 +1687,34 @@ impl Driver {
     }
     async fn event(&mut self, event: Event) -> Result<()> {
         match event {
+            Event::InputMessage(id, token, frame) => {
+                if let Some(p) = self
+                    .pairs
+                    .get(&id)
+                    .filter(|p| p.connected() && p.data.senders().current(Lane::Input, token, true))
+                {
+                    if let Some(outgoing) = self.inputs.receive(p.plan.peer_id, frame) {
+                        self.send_input(outgoing).await;
+                    }
+                }
+            }
+            Event::InputClosed(id, token) => {
+                for message in self.close_input(id, token).await {
+                    self.send_input(message).await;
+                }
+            }
             Event::DataWriteFailed {
                 pair,
                 lane,
                 token,
                 temporary,
             } => {
+                if lane == Lane::Input {
+                    for message in self.close_input(pair, token).await {
+                        self.send_input(message).await;
+                    }
+                    return Ok(());
+                }
                 if let Some(p) = self.pairs.get(&pair) {
                     self.files
                         .receiver()
@@ -1623,6 +1792,11 @@ impl Driver {
                 }
             }
             Event::State(id, state) => {
+                if state != RTCPeerConnectionState::Connected {
+                    for message in self.inputs.disconnected(id) {
+                        self.send_input(message).await;
+                    }
+                }
                 if let Some(p) = self.pairs.get_mut(&id) {
                     if p.connected() {
                         self.send(Command::LinkState {
@@ -2096,7 +2270,10 @@ async fn close_pair(mut pair: Pair) {
         mapping.close().await;
     }
     let _ = pair.pc.close().await;
-    for (_, _, task) in [pair.dc.take(), pair.bulk.take()].into_iter().flatten() {
+    for (_, _, task) in [pair.dc.take(), pair.bulk.take(), pair.input.take()]
+        .into_iter()
+        .flatten()
+    {
         task.abort();
         let _ = task.await;
     }
@@ -2111,6 +2288,7 @@ async fn close_pair(mut pair: Pair) {
 }
 
 mod bandwidth;
+mod input;
 mod mapping;
 
 #[cfg(test)]

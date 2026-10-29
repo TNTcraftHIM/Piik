@@ -14,6 +14,7 @@ pub mod file_room;
 pub mod history;
 pub mod host;
 mod identity;
+pub mod input;
 mod publication;
 mod remote;
 mod room;
@@ -634,7 +635,10 @@ impl Authority {
         Ok(())
     }
 
-    fn broadcast(&self, except: Option<Uuid>, effects: &mut Effects) {
+    fn broadcast(&mut self, except: Option<Uuid>, effects: &mut Effects) {
+        for (source, event) in self.channel.input_states() {
+            self.deliver(source, event, effects);
+        }
         for session in self.channel.identity.sessions.values().filter(|session| {
             Some(session.id) != except
                 && session

@@ -42,6 +42,15 @@ retiring its encoder. The [network design](../../docs/research/channel-network-d
 owns measured behavior and the fixed-resolution encoding boundary;
 [TODO](../../docs/todo.md) owns remaining adaptation, input and platform work.
 
+Windows keyboard, mouse and text input share one App-owned desktop executor.
+The Browser reuses the existing remote-control and source-consent components;
+input returns over the selected screen route on the same peer connections.
+Capture leases own consent and held-key cleanup, independently of room hosting.
+Global stop uses a process-only Windows hotkey selected by the Browser preference.
+The [activity model](../../docs/research/channel-network-design.md#activity-and-lifecycle)
+owns authorization and retirement; optional gamepads and other input platforms
+remain in the Native work item in TODO.
+
 The App entry point keeps the Windows MTA alive outside its async runtime.
 Cached WinRT factories span successive captures and source-list refreshes; their
 runtime must therefore span the process, while capture workers still stop and

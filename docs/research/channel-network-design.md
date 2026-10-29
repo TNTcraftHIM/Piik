@@ -425,6 +425,13 @@ the selected flow retires the affected grants and held input. Native input uses
 the existing capture-source identity and page-owned capture lifetime. One App
 process owns the physical desktop executor across its approved sites; hosting a
 room does not extend a closed page's permission to control that desktop.
+The domain admits controller registrations against the selected subscription and
+delivers their keys only to the source endpoint. Room operators and relays do not
+receive them. A lost input channel propagates retirement along the remaining
+selected hops without closing media. Transport retirement releases held input;
+removing or replacing an authenticated registration also retires its cipher.
+The App's global stop returns active sources to explicit approval. Its key is a
+Browser preference; the App holds only the current process registration.
 
 | Event | Outcome |
 | --- | --- |

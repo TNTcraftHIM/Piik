@@ -1,7 +1,10 @@
 import type { ChannelMessage, ChannelSnapshot, ChannelUser, RoomSettings } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { NativeCaptureTarget } from "../native/wire";
-import type { NativeCaptureSources } from "./app-link";
+import type { NativeCaptureSources, ChannelRemoteControlState } from "./app-link";
+import type { RemoteStopShortcut } from "../native/wire";
+import type { InputTransport } from "../remote-control/input-route";
+import type { RemoteControlMode } from "../remote-control/protocol";
 
 export interface ChannelScreenInput {
   flowId: string;
@@ -23,6 +26,8 @@ export interface ChannelView {
   historyByRoom: Record<string, { hasMore: boolean; before?: number; atLatest: boolean }>;
   streams: ReadonlyMap<string, MediaStream>;
   screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>;
+  inputChannels: ReadonlyMap<string, InputTransport>;
+  remoteControls: ReadonlyMap<string, ChannelRemoteControlState>;
   error: string | null;
   inviteURL: string | null;
   pending: ReadonlySet<string>;
@@ -49,6 +54,10 @@ export interface ChannelActions {
   watch(publicationId: string): Promise<void>;
   unwatch(publicationId: string): Promise<void>;
   screenPresentation(flowId: string, stream: MediaStream, state: ScreenPresentation): void;
+  inputPolicy(publicationId: string, mode: RemoteControlMode, password?: string): Promise<void>;
+  inputDecide(publicationId: string, requestId: string, allow: boolean): Promise<void>;
+  inputSimultaneous(publicationId: string, enabled: boolean): Promise<void>;
+  inputShortcut(publicationId: string, key?: number): Promise<RemoteStopShortcut>;
   joinVoice(roomId: string, listenOnly?: boolean): Promise<void>;
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;

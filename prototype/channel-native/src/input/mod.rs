@@ -1,0 +1,938 @@
+//! Source consent and physical input share one process-owned desktop executor.
+//! Room admission and selected-route validation happen before registration here.
+mod cipher;
+mod keyboard;
+#[cfg(test)]
+mod tests;
+#[cfg(target_os = "windows")]
+mod windows;
+
+use crate::capture::Target;
+use anyhow::{anyhow, bail, ensure, Result};
+use cipher::Cipher;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
+use subtle::ConstantTimeEq;
+use tokio::sync::{mpsc, watch};
+use uuid::Uuid;
+
+const MAX_CONTROLLERS: usize = 20;
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Mode {
+    #[default]
+    Off,
+    Ask,
+    Room,
+    Password,
+}
+
+/// Trusted domain registration, never accepted from an input relay.
+pub struct Registration {
+    pub controller: Uuid,
+    pub flow: Uuid,
+    pub secret: [u8; 32],
+}
+
+#[derive(Clone, Debug)]
+pub struct Reply {
+    pub publication: Uuid,
+    pub controller: Uuid,
+    pub flow: Uuid,
+    /// The encrypted inner packet's `data`, with id=controller.simple()/epoch=flow.simple().
+    pub data: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestView {
+    pub id: String,
+    pub peer_id: Uuid,
+    pub state: &'static str,
+    pub endpoint_id: String,
+}
+
+/// Matches the shared native remote-control state, without secret or grant tokens.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceView {
+    pub mode: Mode,
+    pub platform: &'static str,
+    pub requests: Vec<RequestView>,
+    pub co_play: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gamepad: Option<bool>,
+    pub simultaneous: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stop_shortcut: Option<u8>,
+}
+
+#[derive(Clone)]
+pub struct Desktop(
+    Arc<Mutex<Executor>>,
+    #[cfg(target_os = "windows")] Arc<Mutex<Option<windows::Shortcut>>>,
+);
+
+/// Clones refer to the same capture identity. Explicit close retires every clone.
+#[derive(Clone)]
+pub struct Source(Arc<SourceHandle>);
+struct SourceHandle {
+    desktop: Desktop,
+    video: Uuid,
+    publication: Uuid,
+}
+impl Drop for SourceHandle {
+    fn drop(&mut self) {
+        self.desktop.0.lock().unwrap().close(self.video);
+    }
+}
+
+impl Desktop {
+    pub fn new() -> Result<Self> {
+        #[cfg(target_os = "windows")]
+        {
+            Ok(Self::with_sink(Box::new(windows::System)))
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            Ok(Self::with_sink(Box::new(Unsupported)))
+        }
+    }
+
+    fn with_sink(sink: Box<dyn Sink>) -> Self {
+        Self(
+            Arc::new(Mutex::new(Executor {
+                sink,
+                sources: BTreeMap::new(),
+                owner: None,
+                releases: BTreeSet::new(),
+            })),
+            #[cfg(target_os = "windows")]
+            Arc::new(Mutex::new(None)),
+        )
+    }
+
+    /// Browser preferences own the key; Native holds only this process binding.
+    pub fn set_shortcut(&self, key: u8) -> Result<()> {
+        ensure!((1..=11).contains(&key), "invalid_input_shortcut");
+        #[cfg(target_os = "windows")]
+        {
+            let mut current = self.1.lock().unwrap();
+            if current.as_ref().is_some_and(|shortcut| shortcut.key == key) {
+                return Ok(());
+            }
+            let next = windows::Shortcut::new(key, Arc::downgrade(&self.0))?;
+            *current = Some(next);
+            for source in self.0.lock().unwrap().sources.values() {
+                source
+                    .view
+                    .send_modify(|view| view.stop_shortcut = Some(key));
+            }
+            Ok(())
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            bail!("input_platform_unavailable")
+        }
+    }
+
+    pub fn source(
+        &self,
+        publication: Uuid,
+        video: Uuid,
+        target: Target,
+    ) -> Result<(Source, mpsc::Receiver<Reply>, watch::Receiver<SourceView>)> {
+        #[cfg(target_os = "windows")]
+        let shortcut = self.1.lock().unwrap();
+        #[cfg(target_os = "windows")]
+        let shortcut_view = shortcut.as_ref().map(|s| s.key);
+        #[cfg(not(target_os = "windows"))]
+        let shortcut_view = None;
+        let mut executor = self.0.lock().unwrap();
+        ensure!(
+            !executor.sources.contains_key(&video),
+            "input_source_already_active"
+        );
+        let (replies, receiver) = mpsc::channel(64);
+        let (view, changed) = watch::channel(SourceView {
+            mode: Mode::Off,
+            platform: platform(),
+            requests: vec![],
+            co_play: true,
+            gamepad: None,
+            simultaneous: false,
+            stop_shortcut: shortcut_view,
+        });
+        executor.sources.insert(
+            video,
+            SourceState {
+                publication,
+                target,
+                mode: Mode::Off,
+                password: [0; 32],
+                password_retry: None,
+                simultaneous: false,
+                available: true,
+                controllers: BTreeMap::new(),
+                replies,
+                view,
+            },
+        );
+        Ok((
+            Source(Arc::new(SourceHandle {
+                desktop: self.clone(),
+                video,
+                publication,
+            })),
+            receiver,
+            changed,
+        ))
+    }
+
+    /// The App owns one 100 ms observation/cleanup tick across its sites and sources.
+    pub fn tick(&self) {
+        let mut executor = self.0.lock().unwrap();
+        executor.retry_releases();
+        if let Some(video) = executor.owner {
+            let _ = executor.with_source(video, |e, source| {
+                e.observe(source);
+                Ok(())
+            });
+        }
+    }
+
+    pub fn revoke(&self) {
+        self.0.lock().unwrap().revoke();
+    }
+
+    pub fn close(&self) {
+        let mut executor = self.0.lock().unwrap();
+        let ids: Vec<_> = executor.sources.keys().copied().collect();
+        for id in ids {
+            executor.close(id);
+        }
+        executor.retry_releases();
+        drop(executor);
+        #[cfg(target_os = "windows")]
+        self.1.lock().unwrap().take();
+    }
+}
+
+impl Source {
+    pub fn publication(&self) -> Uuid {
+        self.0.publication
+    }
+    pub fn video(&self) -> Uuid {
+        self.0.video
+    }
+    fn run(
+        &self,
+        action: impl FnOnce(&mut Executor, &mut SourceState) -> Result<()>,
+    ) -> Result<()> {
+        self.0
+            .desktop
+            .0
+            .lock()
+            .unwrap()
+            .with_source(self.0.video, action)
+    }
+    pub fn close(&self) {
+        self.0.desktop.0.lock().unwrap().close(self.0.video);
+    }
+
+    pub fn set_mode(&self, mode: Mode) -> Result<()> {
+        self.set_policy(mode, "")
+    }
+    pub fn set_policy(&self, mode: Mode, password: &str) -> Result<()> {
+        ensure!(
+            password.len() <= 512 && (mode == Mode::Password) == !password.is_empty(),
+            "invalid_input_policy"
+        );
+        self.run(|e, source| {
+            ensure!(
+                source.available || mode == Mode::Off,
+                "input_source_unavailable"
+            );
+            e.revoke_all(source);
+            source.mode = mode;
+            source.password = Sha256::digest(password.as_bytes()).into();
+            Ok(())
+        })
+    }
+
+    pub fn set_simultaneous(&self, enabled: bool) -> Result<()> {
+        self.run(|e, source| {
+            if source.simultaneous != enabled {
+                e.revoke_all(source);
+                source.simultaneous = enabled;
+            }
+            Ok(())
+        })
+    }
+
+    pub fn register(&self, registration: Registration) -> Result<()> {
+        self.run(|e, source| {
+            if source
+                .controllers
+                .get(&registration.controller)
+                .is_some_and(|c| c.flow == registration.flow && c.secret == registration.secret)
+            {
+                return Ok(());
+            }
+            if let Some(mut old) = source.controllers.remove(&registration.controller) {
+                e.release(source, &mut old);
+            }
+            ensure!(
+                source.controllers.len() < MAX_CONTROLLERS,
+                "input_controller_limit"
+            );
+            source.controllers.insert(
+                registration.controller,
+                Controller {
+                    flow: registration.flow,
+                    secret: registration.secret,
+                    cipher: Cipher::new(&registration.secret),
+                    intent: None,
+                    grant: None,
+                    held: BTreeSet::new(),
+                    suspended: false,
+                    failed: false,
+                    reason: None,
+                    last: None,
+                },
+            );
+            Ok(())
+        })
+    }
+
+    pub fn retire(&self, controller: Uuid, flow: Uuid) -> Result<()> {
+        self.run(|e, source| {
+            if source
+                .controllers
+                .get(&controller)
+                .is_some_and(|c| c.flow == flow)
+            {
+                let mut c = source.controllers.remove(&controller).unwrap();
+                e.release(source, &mut c);
+            }
+            Ok(())
+        })
+    }
+
+    /// Carrier loss ends consent, while the domain-owned registration and its
+    /// replay counter survive until the selected flow/secret is actually retired.
+    pub fn release(&self, controller: Uuid, flow: Uuid) -> Result<()> {
+        self.run(|e, source| {
+            if source
+                .controllers
+                .get(&controller)
+                .is_some_and(|c| c.flow == flow)
+            {
+                let mut c = source.controllers.remove(&controller).unwrap();
+                e.release(source, &mut c);
+                source.controllers.insert(controller, c);
+            }
+            Ok(())
+        })
+    }
+
+    pub fn decide(&self, controller: Uuid, intent: Uuid, allow: bool) -> Result<()> {
+        let video = self.0.video;
+        self.run(|e, source| {
+            ensure!(
+                source
+                    .controllers
+                    .get(&controller)
+                    .is_some_and(|c| c.intent == Some(intent)),
+                "input_request_retired"
+            );
+            let mut c = source.controllers.remove(&controller).unwrap();
+            let result = if allow && c.grant.is_none() {
+                // Explicit handover may replace this source's exclusive controller.
+                if !source.simultaneous {
+                    e.revoke_all(source);
+                }
+                e.grant(video, source, &mut c)
+            } else {
+                if !allow {
+                    e.release(source, &mut c);
+                }
+                Ok(())
+            };
+            source.controllers.insert(controller, c);
+            result
+        })
+    }
+
+    pub fn receive(&self, controller: Uuid, flow: Uuid, data: &str) -> Result<()> {
+        let video = self.0.video;
+        self.run(|e, source| {
+            let Some(c) = source
+                .controllers
+                .get_mut(&controller)
+                .filter(|c| c.flow == flow)
+            else {
+                return Ok(());
+            };
+            // Relay garbage has no authority and must not revoke a legitimate grant.
+            let Ok(plain) = c.cipher.open(data, flow) else {
+                return Ok(());
+            };
+            let Ok(command) = serde_json::from_slice::<Command>(&plain) else {
+                return Ok(());
+            };
+            let mut c = source.controllers.remove(&controller).unwrap();
+            let result = e.command(video, source, &mut c, command);
+            source.controllers.insert(controller, c);
+            result
+        })
+    }
+}
+
+fn platform() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "darwin"
+    } else {
+        std::env::consts::OS
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+struct Bounds {
+    left: i32,
+    top: i32,
+    width: i32,
+    height: i32,
+}
+enum TargetState {
+    Ready(Bounds),
+    Suspended,
+    Lost,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Held {
+    Key(u16),
+    Button(u8),
+}
+#[derive(Clone, Debug, PartialEq)]
+enum Action {
+    Move(f64, f64),
+    Relative(i32, i32),
+    Held(Held, bool),
+    Wheel(i32),
+    Text(String),
+}
+trait Sink: Send {
+    fn observe(&mut self, target: &Target) -> TargetState;
+    fn apply(&mut self, bounds: Bounds, action: &Action) -> Result<()>;
+}
+#[cfg(not(target_os = "windows"))]
+struct Unsupported;
+#[cfg(not(target_os = "windows"))]
+impl Sink for Unsupported {
+    fn observe(&mut self, _: &Target) -> TargetState {
+        TargetState::Lost
+    }
+    fn apply(&mut self, _: Bounds, _: &Action) -> Result<()> {
+        bail!("input_platform_unavailable")
+    }
+}
+
+struct Executor {
+    sink: Box<dyn Sink>,
+    sources: BTreeMap<Uuid, SourceState>,
+    owner: Option<Uuid>,
+    /// Only failed releases survive their grant; never replay presses or motion.
+    releases: BTreeSet<Held>,
+}
+struct SourceState {
+    publication: Uuid,
+    target: Target,
+    mode: Mode,
+    password: [u8; 32],
+    password_retry: Option<Instant>,
+    simultaneous: bool,
+    available: bool,
+    controllers: BTreeMap<Uuid, Controller>,
+    replies: mpsc::Sender<Reply>,
+    view: watch::Sender<SourceView>,
+}
+struct Controller {
+    flow: Uuid,
+    secret: [u8; 32],
+    cipher: Cipher,
+    intent: Option<Uuid>,
+    grant: Option<String>,
+    held: BTreeSet<Held>,
+    suspended: bool,
+    failed: bool,
+    reason: Option<&'static str>,
+    last: Option<RemoteState>,
+}
+
+#[derive(Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RemoteState {
+    state: &'static str,
+    mode: Mode,
+    platform: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    intent: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    grant: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
+    co_play: bool,
+    capabilities: Vec<&'static str>,
+    input_failed: bool,
+}
+
+impl Executor {
+    fn revoke(&mut self) {
+        let ids: Vec<_> = self.sources.keys().copied().collect();
+        for id in ids {
+            let _ = self.with_source(id, |e, source| {
+                e.revoke_all(source);
+                // Local stop requires fresh consent, including automatic modes.
+                if source.mode != Mode::Off {
+                    source.mode = Mode::Ask;
+                    source.password = [0; 32];
+                }
+                Ok(())
+            });
+        }
+    }
+    fn with_source(
+        &mut self,
+        video: Uuid,
+        action: impl FnOnce(&mut Self, &mut SourceState) -> Result<()>,
+    ) -> Result<()> {
+        let mut source = self
+            .sources
+            .remove(&video)
+            .ok_or_else(|| anyhow!("input_source_retired"))?;
+        let result = action(self, &mut source);
+        self.emit(&mut source);
+        if self.owner == Some(video) && !source.controllers.values().any(|c| c.grant.is_some()) {
+            self.owner = None;
+        }
+        self.sources.insert(video, source);
+        result
+    }
+
+    fn close(&mut self, video: Uuid) {
+        if let Some(mut source) = self.sources.remove(&video) {
+            source.available = false;
+            self.revoke_all(&mut source);
+            self.emit(&mut source);
+        }
+        if self.owner == Some(video) {
+            self.owner = None;
+        }
+    }
+
+    fn retry_releases(&mut self) {
+        self.releases.retain(|held| {
+            self.sink
+                .apply(Bounds::default(), &Action::Held(*held, false))
+                .is_err()
+        });
+    }
+
+    fn release_holds(&mut self, source: &SourceState, c: &mut Controller) {
+        for held in std::mem::take(&mut c.held) {
+            if !source
+                .controllers
+                .values()
+                .any(|other| other.held.contains(&held))
+                && self
+                    .sink
+                    .apply(Bounds::default(), &Action::Held(held, false))
+                    .is_err()
+            {
+                self.releases.insert(held);
+            }
+        }
+    }
+    fn release(&mut self, source: &SourceState, c: &mut Controller) {
+        self.release_holds(source, c);
+        c.intent = None;
+        c.grant = None;
+        c.suspended = false;
+        c.failed = false;
+        c.reason = None;
+    }
+    fn revoke_all(&mut self, source: &mut SourceState) {
+        let ids: Vec<_> = source.controllers.keys().copied().collect();
+        for id in ids {
+            let mut c = source.controllers.remove(&id).unwrap();
+            self.release(source, &mut c);
+            source.controllers.insert(id, c);
+        }
+    }
+
+    fn observe(&mut self, source: &mut SourceState) -> Option<Bounds> {
+        match self.sink.observe(&source.target) {
+            TargetState::Ready(bounds) => {
+                for c in source.controllers.values_mut() {
+                    c.suspended = false;
+                }
+                Some(bounds)
+            }
+            TargetState::Suspended => {
+                let ids: Vec<_> = source.controllers.keys().copied().collect();
+                for id in ids {
+                    let mut c = source.controllers.remove(&id).unwrap();
+                    if c.grant.is_some() {
+                        self.release_holds(source, &mut c);
+                        c.suspended = true;
+                    }
+                    source.controllers.insert(id, c);
+                }
+                None
+            }
+            TargetState::Lost => {
+                source.available = false;
+                self.revoke_all(source);
+                None
+            }
+        }
+    }
+
+    fn grant(&mut self, video: Uuid, source: &mut SourceState, c: &mut Controller) -> Result<()> {
+        ensure!(
+            source.available && source.mode != Mode::Off,
+            "input_source_unavailable"
+        );
+        if self.owner.is_some_and(|owner| owner != video)
+            || (!source.simultaneous
+                && source
+                    .controllers
+                    .values()
+                    .any(|other| other.grant.is_some()))
+        {
+            c.reason = Some("busy");
+            c.intent = None;
+            bail!("input_busy");
+        }
+        let mut token = [0; 32];
+        getrandom::fill(&mut token).map_err(|_| anyhow!("input_random_unavailable"))?;
+        c.grant = Some(token.iter().map(|byte| format!("{byte:02x}")).collect());
+        c.reason = None;
+        self.owner = Some(video);
+        match self.sink.observe(&source.target) {
+            TargetState::Ready(_) => c.suspended = false,
+            TargetState::Suspended => c.suspended = true,
+            TargetState::Lost => {
+                source.available = false;
+                self.release(source, c);
+                self.revoke_all(source);
+            }
+        }
+        Ok(())
+    }
+
+    fn command(
+        &mut self,
+        video: Uuid,
+        source: &mut SourceState,
+        c: &mut Controller,
+        command: Command,
+    ) -> Result<()> {
+        match command {
+            Command::Sync | Command::Capabilities { .. } => c.last = None,
+            Command::Release { intent } => {
+                if c.intent == Some(intent) {
+                    self.release(source, c);
+                }
+            }
+            Command::Request { intent, password } => {
+                if !source.available || source.mode == Mode::Off {
+                    c.last = None;
+                    return Ok(());
+                }
+                if c.intent == Some(intent) {
+                    return Ok(());
+                }
+                self.release(source, c);
+                c.intent = Some(intent);
+                match source.mode {
+                    Mode::Ask => {}
+                    Mode::Room => self.grant(video, source, c)?,
+                    Mode::Password => {
+                        let now = Instant::now();
+                        let digest: [u8; 32] =
+                            Sha256::digest(password.as_deref().unwrap_or("").as_bytes()).into();
+                        c.reason = if source.password_retry.is_some_and(|deadline| now < deadline) {
+                            Some("retry")
+                        } else {
+                            source.password_retry = Some(now + Duration::from_secs(1));
+                            (!bool::from(digest.ct_eq(&source.password))).then_some("password")
+                        };
+                        if c.reason.is_some() {
+                            c.intent = None;
+                        } else {
+                            self.grant(video, source, c)?;
+                        }
+                    }
+                    Mode::Off => {}
+                }
+            }
+            Command::Input { grant, event } => {
+                if c.grant.as_deref() != Some(&grant) || !source.available {
+                    return Ok(());
+                }
+                self.retry_releases();
+                if matches!(event, InputEvent::Reset) {
+                    self.release_holds(source, c);
+                    return Ok(());
+                }
+                let bounds = match self.sink.observe(&source.target) {
+                    TargetState::Ready(bounds) => {
+                        c.suspended = false;
+                        bounds
+                    }
+                    TargetState::Suspended => {
+                        self.release_holds(source, c);
+                        c.suspended = true;
+                        return Ok(());
+                    }
+                    TargetState::Lost => {
+                        source.available = false;
+                        self.release(source, c);
+                        self.revoke_all(source);
+                        return Ok(());
+                    }
+                };
+                let Some(action) = event.action() else {
+                    return Ok(());
+                };
+                let releasing = matches!(action, Action::Held(_, false));
+                if !releasing && !self.releases.is_empty() {
+                    c.failed = true;
+                    return Ok(());
+                }
+                let result = match &action {
+                    Action::Held(held, down) => {
+                        if *down {
+                            let shared = source
+                                .controllers
+                                .values()
+                                .any(|other| other.held.contains(held));
+                            let result = if c.held.contains(held) || !shared {
+                                self.sink.apply(bounds, &action)
+                            } else {
+                                Ok(())
+                            };
+                            if result.is_ok() {
+                                c.held.insert(*held);
+                            }
+                            result
+                        } else if c.held.remove(held)
+                            && !source
+                                .controllers
+                                .values()
+                                .any(|other| other.held.contains(held))
+                        {
+                            let result = self.sink.apply(bounds, &action);
+                            if result.is_err() {
+                                self.releases.insert(*held);
+                            }
+                            result
+                        } else {
+                            Ok(())
+                        }
+                    }
+                    Action::Text(_) => {
+                        if source
+                            .controllers
+                            .values()
+                            .any(|other| other.grant.is_some())
+                        {
+                            return Ok(());
+                        }
+                        self.release_holds(source, c);
+                        if self.releases.is_empty() {
+                            self.sink.apply(bounds, &action)
+                        } else {
+                            Err(anyhow!("input_cleanup_pending"))
+                        }
+                    }
+                    _ => self.sink.apply(bounds, &action),
+                };
+                // A rejected operation is not permission revocation and is never replayed.
+                c.failed = result.is_err();
+            }
+        }
+        Ok(())
+    }
+
+    fn emit(&mut self, source: &mut SourceState) {
+        let count = source
+            .controllers
+            .values()
+            .filter(|c| c.grant.is_some())
+            .count();
+        let ids: Vec<_> = source.controllers.keys().copied().collect();
+        for id in ids {
+            let mut c = source.controllers.remove(&id).unwrap();
+            let state = RemoteState {
+                state: if !source.available || source.mode == Mode::Off {
+                    "unavailable"
+                } else if c.grant.is_some() {
+                    if c.suspended {
+                        "suspended"
+                    } else {
+                        "active"
+                    }
+                } else if c.intent.is_some() {
+                    "pending"
+                } else {
+                    "ready"
+                },
+                mode: source.mode,
+                platform: platform(),
+                intent: c.intent.map(|id| id.simple().to_string()),
+                grant: c.grant.clone(),
+                reason: c.reason,
+                co_play: true,
+                capabilities: if count <= 1 {
+                    vec!["inputFeedback", "text"]
+                } else {
+                    vec!["inputFeedback"]
+                },
+                input_failed: c.failed,
+            };
+            if c.last.as_ref() != Some(&state) {
+                let reply = serde_json::to_vec(&state)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|bytes| c.cipher.seal(&bytes, c.flow));
+                let sent = reply.is_ok_and(|data| {
+                    source
+                        .replies
+                        .try_send(Reply {
+                            publication: source.publication,
+                            controller: id,
+                            flow: c.flow,
+                            data,
+                        })
+                        .is_ok()
+                });
+                if sent {
+                    c.last = Some(state);
+                } else {
+                    // Backpressure stops the grant, but the authenticated route
+                    // remains registered and its next sync can recover consent.
+                    self.release(source, &mut c);
+                    c.last = None;
+                }
+            }
+            source.controllers.insert(id, c);
+        }
+        let view = SourceView {
+            mode: source.mode,
+            platform: platform(),
+            co_play: true,
+            gamepad: None,
+            simultaneous: source.simultaneous,
+            stop_shortcut: source.view.borrow().stop_shortcut,
+            requests: source
+                .controllers
+                .iter()
+                .filter_map(|(id, c)| {
+                    c.intent.map(|intent| RequestView {
+                        id: intent.simple().to_string(),
+                        peer_id: *id,
+                        endpoint_id: id.simple().to_string(),
+                        state: if c.grant.is_none() {
+                            "pending"
+                        } else if c.suspended {
+                            "suspended"
+                        } else {
+                            "active"
+                        },
+                    })
+                })
+                .collect(),
+        };
+        source.view.send_if_modified(|current| {
+            if *current == view {
+                false
+            } else {
+                *current = view;
+                true
+            }
+        });
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum Command {
+    Sync,
+    Capabilities {
+        #[serde(rename = "inputFeedback")]
+        _feedback: Option<bool>,
+    },
+    Request {
+        intent: Uuid,
+        password: Option<String>,
+    },
+    Release {
+        intent: Uuid,
+    },
+    #[serde(untagged)]
+    Input {
+        grant: String,
+        #[serde(flatten)]
+        event: InputEvent,
+    },
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum InputEvent {
+    Move { x: f64, y: f64 },
+    Relative { dx: i32, dy: i32 },
+    Key { code: String, down: bool },
+    Button { button: u8, down: bool },
+    Wheel { delta: i32 },
+    Text { text: String },
+    Reset,
+}
+impl InputEvent {
+    fn action(self) -> Option<Action> {
+        match self {
+            Self::Move { x, y }
+                if x.is_finite()
+                    && y.is_finite()
+                    && (0.0..=1.0).contains(&x)
+                    && (0.0..=1.0).contains(&y) =>
+            {
+                Some(Action::Move(x, y))
+            }
+            Self::Relative { dx, dy }
+                if (-32767..=32767).contains(&dx) && (-32767..=32767).contains(&dy) =>
+            {
+                Some(Action::Relative(dx, dy))
+            }
+            Self::Key { code, down } => {
+                keyboard::scan(&code).map(|scan| Action::Held(Held::Key(scan), down))
+            }
+            Self::Button { button, down } if button <= 4 => {
+                Some(Action::Held(Held::Button(button), down))
+            }
+            Self::Wheel { delta } if (-1200..=1200).contains(&delta) => Some(Action::Wheel(delta)),
+            Self::Text { text } if text.len() <= 2048 && !text.contains('\0') => {
+                Some(Action::Text(text))
+            }
+            _ => None,
+        }
+    }
+}

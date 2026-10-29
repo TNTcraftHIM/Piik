@@ -196,10 +196,17 @@ export function ChannelPreviewPage() {
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
+            input: channel.inputChannels.get(publication.id),
+            remoteControl: (() => {
+              const remote = channel.remoteControls.get(publication.id);
+              return remote && { ...remote, requests: remote.requests.map(request => ({ ...request,
+                name: nameOfUser(state?.sessions.find(session => session.id === request.peerId)?.userId ?? request.peerId) })) };
+            })(),
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id),
           }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected && can("subscribe")}
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
-            onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation} />
+            onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
+            onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
           {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} messages={channel.messagesByRoom[roomId] ?? []}
             users={state?.users ?? []} canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}
