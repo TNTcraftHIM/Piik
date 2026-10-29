@@ -19,9 +19,11 @@ xcrun swiftc \
   -swift-version 5 \
   -target "$architecture-apple-macos13.0" \
   -framework AVFoundation \
+  -framework AppKit \
   -framework AudioToolbox \
   -framework CoreAudio \
   -framework CoreMedia \
+  -framework CoreImage \
   -framework CoreVideo \
   -framework ScreenCaptureKit \
   -framework VideoToolbox \
