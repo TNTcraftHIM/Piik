@@ -16,6 +16,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   optional opaque RTP that competes with selected media.
   Native relay demand must also account for weaker downstream branches without
   lowering healthy ones.
+  Carry forward the [2.x Native reachability behavior](./standards/routing-transport.md):
+  IPv6, gateway mapping, coordinated UDP preparation and ICE restart belong to
+  the existing connection owner, rather than another routing layer.
   Resolve the observed NVIDIA MFT shutdown access violation before Native acceptance;
   its matched dump and symbols are retained with the local capture evidence.
   Reuse mature components and the shared

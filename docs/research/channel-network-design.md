@@ -370,6 +370,13 @@ every other user. Joining or repairing a tree uses mature ICE/STUN handling and
 the existing bounded retry principles. Reuse reachable participants as relays;
 do not add an all-pairs probe, full mesh or periodic topology rebalance.
 
+App Local discovers addresses through Binding-only STUN on its selected LAN
+interface, without contacting public STUN services. That listener belongs to
+the local domain's lifetime; Browser and Native participants receive the same
+discovery configuration. Public invitations and approved external sites retain
+their domain's configured ICE servers. An individual rejected ICE candidate
+does not retire the connection or its other candidate paths.
+
 Prepare a replacement, prove it usable, commit, then release old work. A base
 edge requires an open DataChannel and an installed control path, not merely a
 connected PeerConnection. Silent voice readiness uses transport and forwarding
