@@ -174,6 +174,16 @@ impl Input {
         state.active = active;
         state.queue.clear();
         state.waiting_keyframe = true;
+        if !active {
+            // Unused encoders may retire while paused. Keep only the selection
+            // for fresh-IDR resumption, not an incumbent to fall back to.
+            if let Some(video) = state.current.take() {
+                state.pending.get_or_insert(Pending {
+                    video,
+                    required: true,
+                });
+            }
+        }
         let selected = state.selected().cloned();
         drop(state);
         self.changed.notify_one();
@@ -383,16 +393,12 @@ mod tests {
         );
         low.write(frame(4, true)); // A static image older than the sender clock.
         low.write(frame(6, false));
-        assert!(input
-            .state
-            .lock()
-            .unwrap()
-            .current
-            .as_ref()
-            .unwrap()
-            .same(&high));
         high.write(frame(7, true));
-        assert_eq!(input.recv().await.unwrap().bytes, vec![7]);
+        {
+            let recv = input.recv();
+            tokio::pin!(recv);
+            assert!(futures_util::poll!(recv).is_pending());
+        }
         low.write(frame(8, true));
         assert_eq!(input.recv().await.unwrap().bytes, vec![8]);
         assert!(!high.needed());
@@ -457,6 +463,19 @@ mod tests {
         );
         assert!(input.recv().await.is_none());
         assert!(!replacement.needed());
+
+        let paused = low.subscribe();
+        low.write(frame(4));
+        paused.recv().await.unwrap();
+        paused.set_active(false);
+        assert!(!low.needed()); // The producer retires this unused limited encoder.
+        paused.select(&high, false)?;
+        paused.set_active(true);
+        assert!(
+            paused.failed(&high),
+            "resumption has no live incumbent to preserve after its encoder was retired"
+        );
+        assert!(paused.recv().await.is_none());
         Ok(())
     }
 }
