@@ -559,11 +559,8 @@ Its [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc3895
 owns sockets, candidate gathering and protocol deadlines. Its
 [interceptor registry](https://github.com/webrtc-rs/rtc/blob/2a732df55ca4bcf26b80914fa0f570cfaf74cfcb/src/peer_connection/configuration/interceptor_registry.rs)
 provides RTCP, GCC/TWCC and pacing; congestion control needs explicit configuration.
-The configured Native/Browser proof now receives real sender reports and TWCC
-feedback that updates the GCC target; a deterministic library check verifies
-the pacer's finite queue and rate-dependent release timing. Piik owns encoder
-demand, bounded queued work and the source's RTP timeline, rather than
-reimplementing those network algorithms.
+Piik owns encoder demand, bounded queued work and the source's RTP timeline;
+the transport library owns congestion control and pacing.
 
 The SDK's GCC target is one physical connection's budget, not an allocation for
 each outbound track. Consume it once for that connection's active media. As in
@@ -571,13 +568,27 @@ each outbound track. Consume it once for that connection's active media. As in
 allocate before passing demand to encoders. Independently constrained branches
 need actual independently rate-controlled outputs; copying the same encoded
 packets or applying a minimum/maximum to one shared encoder cannot provide that.
-The pinned SDK's stock GCC and pacer do not provide active bandwidth probing or
-application-limited recovery. Feeding the actual estimator deterministic feedback,
-its default 300 kbps target took 42.7 seconds to reach 8 Mbps in an uncongested
-model; restoring capacity after a simulated delay-queue bottleneck took 106.7
-seconds. Complete this transport-level recovery using mature components before
-enforcing its target as the encoder limit; do not compensate with Piik-specific
-quality scores or bitrate overrides.
+The pinned SDK's stock GCC and pacer lack active probing and application-limited
+recovery. An isolated candidate connects the community
+[Rust port of GoogCc](https://github.com/kixelated/goog_cc) to the existing history,
+Pacer and RTX owner, retaining the async adapter's sockets and candidate gathering.
+Its small executor follows [WebRTC's BitrateProber](https://webrtc.googlesource.com/src/+/main/modules/pacing/bitrate_prober.cc).
+Probe padding reuses real cached RTX media; internal controller messages finish
+inside the interceptor chain without depending on an application event.
+
+With real ICE/DTLS/SRTP/TWCC over a controlled UDP link, a 300 kbps target reaches
+8 Mbps in 42.77 seconds with stock GCC and 0.47 seconds with the candidate.
+Probing starts on first media, also after 30 seconds of silence; static media can
+learn capacity before motion resumes. Two Chrome receivers complete probing,
+decode and switch encodings with stable track/SSRC/SDP. Encoder allocation is the
+next integration step.
+
+For a 20-second 600 kbps FIFO bottleneck, peak network backlog falls from 18,654
+to 325 packets, but target recovery to 8 Mbps still takes 36.6 seconds. Payload
+demand and encrypted wire capacity have different overhead. Keeping 60 seconds
+of history instead of 2 preserves late feedback but takes 41.3 seconds to recover.
+Retention and extended sequence identity belong to the existing history owner;
+keep feedback correct rather than adding Piik-specific recovery scores.
 
 Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each

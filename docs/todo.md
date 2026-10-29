@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-28
+Last reviewed: 2026-10-29
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -11,10 +11,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete Native encoder-demand adaptation, input
   and platform packaging over the shared UI and Native participant.
-  Connect the independently controlled encoding outputs to each outgoing flow's
-  source selection, allocate each physical connection's budget across its active
-  media, and complete transport bandwidth probing/recovery. Native relay demand
-  must also account for weaker downstream branches without lowering healthy ones.
+  Connect transport demand and each physical connection's budget to its active
+  media and independently controlled encoding outputs. Integrate the verified
+  transport probing candidate and finish its feedback-retention boundary.
+  Native relay demand must also account for weaker downstream branches without
+  lowering healthy ones.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
