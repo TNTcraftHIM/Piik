@@ -23,8 +23,17 @@ The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
 The selecting page holds the capture lease: closing it stops its captures while
 App-hosted rooms continue. Startup completes after the first encoded access unit;
-errors before that point return to the page. Native source audio, encoder-demand
-adaptation, input and platform packaging remain subsequent stages.
+errors before that point return to the page. Optional WASAPI source audio uses
+process loopback for a selected window and render-device loopback for a screen.
+The Rust Opus encoder shares the picture's capture clock and routes. Silence does
+not delay picture startup; an audio failure warns the page while picture sharing
+continues. Encoder-demand adaptation, input and platform packaging remain
+subsequent stages.
+
+The App entry point keeps the Windows MTA alive outside its async runtime.
+Cached WinRT factories span successive captures and source-list refreshes; their
+runtime must therefore span the process, while capture workers still stop and
+join with their individual page lease.
 
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs in one flow share a stream while owning separate SSRCs and

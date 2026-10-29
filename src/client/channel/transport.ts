@@ -1,5 +1,6 @@
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { decodedVideoFrameSamples } from "../webrtc/stats";
+import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
 
 const MAX_FILE_FRAME_BYTES = 8192;
@@ -264,7 +265,7 @@ export class ChannelTransport {
       const channel = this.channel, bulk = this.bulk;
       this.makingOffer = true;
       try {
-        try { await this.pc.setLocalDescription(); }
+        try { await this.pc.setLocalDescription(preferOpusStereoReceive(await this.pc.createOffer())); }
         catch (error) {
           if (!this.stableSenders || this.pendingOffer || this.pc.signalingState !== "stable"
             || this.closed || ["failed", "closed"].includes(this.pc.connectionState)) throw error;
@@ -357,7 +358,7 @@ export class ChannelTransport {
         for (const candidate of this.candidates.splice(0)) await addRemoteIceCandidate(this.pc, { ...candidate, candidate: candidate.candidate ?? "" });
         if (description.type === "offer") {
           const senders = new Map([...this.sending.values()].flatMap(output => output.senders.map(sender => [sender, sender.track] as const)));
-          await this.pc.setLocalDescription();
+          await this.pc.setLocalDescription(preferOpusStereoReceive(await this.pc.createAnswer()));
           if (!this.closed) { this.confirmSenders(senders); this.sendDescription(senders, payload.exchangeId!); }
         }
       } else if (payload.candidate && !this.ignoreOffer) {

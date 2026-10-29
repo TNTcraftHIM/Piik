@@ -1,15 +1,10 @@
 //! Adapter-bound asynchronous hardware MFT. No capture/RTP policy lives here.
 use super::{
     windows::{RawFrame, Shared},
-    EncodedFrame, Settings,
+    CaptureClock, EncodedFrame, Settings,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
-use std::{
-    mem::ManuallyDrop,
-    ptr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{mem::ManuallyDrop, ptr, sync::Arc};
 use windows::{
     core::{implement, IUnknown, Interface, Ref},
     Win32::{
@@ -21,7 +16,6 @@ use windows::{
         Media::MediaFoundation::*,
         System::{
             Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, COINIT_MULTITHREADED},
-            Performance::{QueryPerformanceCounter, QueryPerformanceFrequency},
             Variant::VARIANT,
         },
     },
@@ -276,14 +270,7 @@ impl Encoder {
         let mut last_capture = None;
         let mut origin: Option<i64> = None;
         let mut last_pts = -1;
-        let mut frequency = 0;
-        let mut ticks = 0;
-        unsafe {
-            QueryPerformanceFrequency(&mut frequency)?;
-            QueryPerformanceCounter(&mut ticks)?;
-        }
-        let clock = Instant::now();
-        let clock_qpc = ((ticks as i128) * 10_000_000 / (frequency as i128)) as i64;
+        let clock = CaptureClock::new()?;
         enum Work {
             Stop,
             Event(windows::core::Result<u32>),
@@ -334,13 +321,7 @@ impl Encoder {
                             need_input += 1;
                         } else if kind == METransformHaveOutput.0 as u32 {
                             let (bytes, pts, keyframe) = encoder.output()?;
-                            let delta = origin.unwrap() + pts - clock_qpc;
-                            let duration = Duration::from_nanos(delta.unsigned_abs() * 100);
-                            let presentation_time = if delta >= 0 {
-                                clock + duration
-                            } else {
-                                clock - duration
-                            };
+                            let presentation_time = clock.instant(origin.unwrap() + pts);
                             if !shared.output(EncodedFrame {
                                 bytes,
                                 presentation_time,
@@ -356,11 +337,7 @@ impl Encoder {
                     last_capture = Some(frame.qpc);
                     let mut qpc = frame.qpc;
                     if repeated || (force && origin.is_some_and(|first| qpc - first <= last_pts)) {
-                        let mut now = 0;
-                        unsafe {
-                            QueryPerformanceCounter(&mut now)?;
-                        }
-                        qpc = ((now as i128) * 10_000_000 / (frequency as i128)) as i64;
+                        qpc = clock.now()?;
                     }
                     let first = *origin.get_or_insert(qpc);
                     let pts = qpc - first;

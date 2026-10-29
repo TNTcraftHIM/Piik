@@ -581,6 +581,11 @@ non-cloneable capture lease whose drop stops the producer directly, even while
 signaling is reconnecting; the Native driver owns worker completion. Room
 admission precedes capture, and the first encoded access unit completes startup.
 The Browser previews its Native share through the ordinary subscription route.
+Optional source audio belongs to the same page lease. WASAPI supplies original
+sample timestamps; the Rust Opus encoder uses the video's source-time mapping
+and separate audio outputs. A silent source does not block picture startup, and
+an audio failure retires only its audio outputs. Stereo receive negotiation belongs
+to the shared transport, including retained connections that change SDP roles.
 
 Registered capabilities, negotiated SDP and the source's actual SPS are distinct
 facts. Match equivalent H.264 profiles and packetization using the SDK; inspect
@@ -593,7 +598,7 @@ SDP negotiation and measured decoding retain their separate meanings. Keep the
 existing decoded-frame route proof; metadata alone must not retire a working
 connection or permanently reject its flow.
 Removing the last incoming demand releases its reader even if the publication
-remains in the room directory. Native source audio, encoder-demand adaptation
+remains in the room directory. Native encoder-demand adaptation
 and SFU integration remain later stages. This isolated dependency does
 not replace the current 2.x Native media core.
 

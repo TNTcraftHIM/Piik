@@ -3,8 +3,13 @@ use piik_channel_prototype::app::{serve, Config};
 use std::{env, path::PathBuf};
 use tokio::net::TcpListener;
 
+fn main() -> Result<()> {
+    let _capture_runtime = piik_channel_native::capture::Runtime::new()?;
+    run()
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn run() -> Result<()> {
     let config = Config {
         data_root: match env::var_os("PIIK_CHANNEL_APP_DATA_DIR") {
             Some(directory) => PathBuf::from(directory),

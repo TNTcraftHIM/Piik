@@ -65,6 +65,8 @@ export function ChannelPreviewPage() {
       ? copy("与 App 的连接已断开。请确认 App 正在运行，然后重试。", "Connection to the App was lost. Check that it is running, then retry.")
     : channel.error === "capture_failed"
       ? copy("未能开始分享，请重新选择窗口或屏幕。", "Could not start sharing. Choose a window or screen again.")
+    : channel.error === "capture_audio_failed"
+      ? copy("无法分享声音，画面分享仍在继续。", "Could not share sound. Screen sharing continues.")
     : channel.error === "owner_mismatch"
       ? copy("App 中的房间数据属于另一个域或账号。请确认当前站点和登录账号。", "The App room data belongs to another domain or account. Check the current site and signed-in account.")
     : /room_host_conflict|room_storage_in_use/.test(channel.error)

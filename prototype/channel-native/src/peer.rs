@@ -78,8 +78,9 @@ pub enum NativeEvent {
 /// The controlling page owns cancellation; the Driver owns and joins the worker.
 pub struct CaptureLease {
     ready: oneshot::Receiver<Result<()>>,
+    pub audio_error: Option<oneshot::Receiver<String>>,
     #[cfg(target_os = "windows")]
-    control: crate::capture::Control,
+    control: crate::media::local::Control,
 }
 impl CaptureLease {
     /// First encoded access unit, independent of any viewer's connection.
@@ -123,6 +124,7 @@ enum Input {
         Uuid,
         crate::capture::Target,
         crate::capture::Settings,
+        bool,
         oneshot::Sender<Result<CaptureLease>>,
     ),
 }
@@ -147,6 +149,12 @@ pub(crate) enum Event {
     },
     #[cfg(target_os = "windows")]
     CaptureEnded {
+        publication_id: Uuid,
+        source: Uuid,
+    },
+    #[cfg(target_os = "windows")]
+    CaptureAudioEnded {
+        publication_id: Uuid,
         source: Uuid,
     },
     DataWriteFailed {
@@ -397,17 +405,24 @@ impl NativePeers {
                             #[cfg(target_os = "windows")]
                             let publications = d
                                 .captures
-                                .values()
-                                .filter(|p| !p.control.is_stopped())
-                                .map(|p| p.publication_id)
+                                .iter()
+                                .filter(|(_, p)| !p.control.is_stopped())
+                                .map(|(publication, _)| *publication)
                                 .collect();
                             #[cfg(not(target_os = "windows"))]
                             let publications = vec![];
                             let _ = done.send(publications);
                         }
                         #[cfg(target_os = "windows")]
-                        Turn::Input(Input::StartCapture(publication, target, settings, done)) => {
-                            let _ = done.send(d.start_capture(publication, target, settings));
+                        Turn::Input(Input::StartCapture(
+                            publication,
+                            target,
+                            settings,
+                            audio,
+                            done,
+                        )) => {
+                            let _ =
+                                done.send(d.start_capture(publication, target, settings, audio));
                         }
                         Turn::Input(Input::Signal(id, signal, done)) => {
                             if let Err(error) = d.signal(id, signal).await {
@@ -419,7 +434,9 @@ impl NativePeers {
                         Turn::Event(event) => {
                             let id = match &event {
                                 #[cfg(target_os = "windows")]
-                                Event::CaptureEnded { .. } => None,
+                                Event::CaptureEnded { .. } | Event::CaptureAudioEnded { .. } => {
+                                    None
+                                }
                                 Event::OutputFailed { pair, .. } => Some(*pair),
                                 Event::SourceEnded { pair, .. } => Some(*pair),
                                 Event::DataWriteFailed { pair, .. } => Some(*pair),
@@ -551,18 +568,25 @@ impl NativePeers {
         publication_id: Uuid,
         target: crate::capture::Target,
         settings: crate::capture::Settings,
+        audio: bool,
     ) -> Result<CaptureLease> {
         #[cfg(target_os = "windows")]
         {
             let (tx, rx) = oneshot::channel();
             self.input
-                .send(Input::StartCapture(publication_id, target, settings, tx))
+                .send(Input::StartCapture(
+                    publication_id,
+                    target,
+                    settings,
+                    audio,
+                    tx,
+                ))
                 .await?;
             rx.await?
         }
         #[cfg(not(target_os = "windows"))]
         {
-            let _ = (publication_id, target, settings);
+            let _ = (publication_id, target, settings, audio);
             anyhow::bail!("capture_unavailable")
         }
     }
@@ -577,12 +601,12 @@ impl NativePeers {
         Ok(())
     }
 }
-fn codec() -> RTCRtpCodec {
+pub(crate) fn codec() -> RTCRtpCodec {
     RTCRtpCodec {
         mime_type: MIME_TYPE_OPUS.into(),
         clock_rate: 48000,
         channels: 2,
-        sdp_fmtp_line: "minptime=10;useinbandfec=1".into(),
+        sdp_fmtp_line: "minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=510000".into(),
         rtcp_feedback: vec![],
     }
 }
@@ -672,6 +696,7 @@ impl Driver {
         publication: Uuid,
         target: crate::capture::Target,
         settings: crate::capture::Settings,
+        audio: bool,
     ) -> Result<CaptureLease> {
         anyhow::ensure!(
             self.publications
@@ -681,18 +706,14 @@ impl Driver {
             "publication_not_owned"
         );
         anyhow::ensure!(
-            !self
-                .captures
-                .values()
-                .any(|p| p.publication_id == publication),
+            !self.captures.contains_key(&publication),
             "capture_already_active"
         );
-        let source_id = Uuid::new_v4();
-        let (producer, ready) = crate::media::local::Producer::start(
-            source_id,
+        let (producer, ready, audio_error) = crate::media::local::Producer::start(
             publication,
             target,
             settings,
+            audio,
             self.ready_sources.clone(),
             self.events.clone(),
             self.relay.clone(),
@@ -700,30 +721,53 @@ impl Driver {
         )?;
         let lease = CaptureLease {
             ready,
+            audio_error,
             control: producer.control.clone(),
         };
-        self.captures.insert(source_id, producer);
+        self.captures.insert(publication, producer);
         Ok(lease)
     }
 
     #[cfg(target_os = "windows")]
-    async fn capture_ended(&mut self, source_id: Uuid) -> Result<()> {
-        let Some(producer) = self.captures.remove(&source_id) else {
+    async fn capture_ended(&mut self, publication: Uuid, source_id: Uuid) -> Result<()> {
+        if !self
+            .captures
+            .get(&publication)
+            .is_some_and(|p| p.video == source_id)
+        {
             return Ok(());
-        };
+        }
+        let producer = self.captures.remove(&publication).unwrap();
         let error = match producer.task.await {
             Ok(error) => error,
             Err(error) => Some(error.to_string()),
         };
         self.sources.remove(&source_id);
         self.relay.remove(source_id);
+        if let Some(audio) = producer.audio {
+            self.sources.remove(&audio);
+            self.relay.remove(audio);
+        }
         self.refresh_media(false).await?;
         let event = NativeEvent::CaptureEnded {
-            publication_id: producer.publication_id,
+            publication_id: publication,
             error,
         };
         let mut cancelled = self.cancel.clone();
         tokio::select! { _ = cancelled.changed() => {}, _ = self.commands.send(event) => {} }
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    async fn capture_audio_ended(&mut self, publication: Uuid, source: Uuid) -> Result<()> {
+        if let Some(producer) = self.captures.get_mut(&publication) {
+            if producer.audio == Some(source) {
+                producer.audio = None;
+                self.sources.remove(&source);
+                self.relay.remove(source);
+                self.refresh_media(false).await?;
+            }
+        }
         Ok(())
     }
 
@@ -756,10 +800,10 @@ impl Driver {
                 }
         });
         #[cfg(target_os = "windows")]
-        for producer in self.captures.values() {
+        for (publication, producer) in &self.captures {
             if !self
                 .publications
-                .get(&producer.publication_id)
+                .get(publication)
                 .is_some_and(|p| p.session_id == self.session)
             {
                 producer.control.stop();
@@ -1434,7 +1478,15 @@ impl Driver {
             }
             Event::SourceEnded { pair, key, source } => self.source_ended(pair, key, source).await,
             #[cfg(target_os = "windows")]
-            Event::CaptureEnded { source } => self.capture_ended(source).await?,
+            Event::CaptureEnded {
+                publication_id,
+                source,
+            } => self.capture_ended(publication_id, source).await?,
+            #[cfg(target_os = "windows")]
+            Event::CaptureAudioEnded {
+                publication_id,
+                source,
+            } => self.capture_audio_ended(publication_id, source).await?,
             Event::OutputFailed {
                 pair,
                 key,
@@ -1738,10 +1790,9 @@ impl Driver {
             }
             SourceOrigin::Local => {
                 #[cfg(target_os = "windows")]
-                let active = self
-                    .captures
-                    .get(&source.id)
-                    .is_some_and(|p| !p.control.is_stopped());
+                let active = self.captures.get(&publication).is_some_and(|p| {
+                    !p.control.is_stopped() && (p.video == source.id || p.audio == Some(source.id))
+                });
                 #[cfg(not(target_os = "windows"))]
                 let active = false;
                 if !active || self.publications[&publication].session_id != self.session {

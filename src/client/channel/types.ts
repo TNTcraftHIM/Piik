@@ -1,6 +1,7 @@
 import type { ChannelMessage, ChannelSnapshot, ChannelUser, RoomSettings } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { NativeCaptureTarget } from "../native/wire";
+import type { NativeCaptureSources } from "./app-link";
 
 export interface ChannelScreenInput {
   flowId: string;
@@ -42,8 +43,8 @@ export interface ChannelActions {
   revokeRoomAccess(roomId: string, userId: string): Promise<void>;
   setRoles(userId: string, roles: string[]): Promise<void>;
   startScreen(roomId: string): Promise<void>;
-  nativeSources(): Promise<NativeCaptureTarget[]>;
-  startNativeScreen(roomId: string, target: NativeCaptureTarget): Promise<void>;
+  nativeSources(): Promise<NativeCaptureSources>;
+  startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean): Promise<void>;
   stopScreen(publicationId: string): Promise<void>;
   watch(publicationId: string): Promise<void>;
   unwatch(publicationId: string): Promise<void>;

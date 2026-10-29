@@ -108,6 +108,7 @@ struct Handler {
     events: mpsc::Sender<Event>,
     packets: mpsc::Sender<rtp::Packet>,
     received: Arc<Mutex<Vec<Arc<dyn TrackRemote>>>>,
+    control: Arc<Mutex<Option<Arc<dyn webrtc::data_channel::DataChannel>>>>,
 }
 #[async_trait::async_trait]
 impl PeerConnectionEventHandler for Handler {
@@ -129,6 +130,9 @@ impl PeerConnectionEventHandler for Handler {
             .unwrap();
     }
     async fn on_data_channel(&self, dc: Arc<dyn webrtc::data_channel::DataChannel>) {
+        if dc.label().await.unwrap() == "piik-room" {
+            *self.control.lock().unwrap() = Some(dc.clone());
+        }
         tokio::spawn(async move { while dc.poll().await.is_some() {} });
     }
     async fn on_track(&self, track: Arc<dyn TrackRemote>) {
@@ -153,6 +157,7 @@ struct Endpoint {
     received: Arc<Mutex<Vec<Arc<dyn TrackRemote>>>>,
     pli: Arc<std::sync::atomic::AtomicUsize>,
     reports: Arc<Mutex<Vec<rtc::rtcp::sender_report::SenderReport>>>,
+    control: Arc<Mutex<Option<Arc<dyn webrtc::data_channel::DataChannel>>>>,
 }
 fn codec() -> RTCRtpCodec {
     RTCRtpCodec {
@@ -239,6 +244,7 @@ async fn endpoint_clock(
         );
     }
     let received = Arc::new(Mutex::new(vec![]));
+    let control = Arc::new(Mutex::new(None));
     let pc: Arc<dyn PeerConnection> = Arc::new(
         PeerConnectionBuilder::<String>::new()
             .with_media_engine(media)
@@ -248,6 +254,7 @@ async fn endpoint_clock(
                 events,
                 packets,
                 received: received.clone(),
+                control: control.clone(),
             }))
             .with_udp_addrs(vec!["0.0.0.0:0".into()])
             .build()
@@ -255,7 +262,7 @@ async fn endpoint_clock(
     );
     let polite = id > native_id;
     if !polite {
-        pc.create_data_channel("piik-room", None).await?;
+        *control.lock().unwrap() = Some(pc.create_data_channel("piik-room", None).await?);
     }
     Ok(Endpoint {
         pc,
@@ -267,6 +274,7 @@ async fn endpoint_clock(
         received,
         pli,
         reports,
+        control,
     })
 }
 async fn add_source(
@@ -412,6 +420,7 @@ async fn pump(
     mut pause: watch::Receiver<bool>,
     reports: mpsc::Sender<Command>,
     loss: Arc<Mutex<Loss>>,
+    conversations: Option<mpsc::Sender<piik_channel_core::conversation::SignedPacket>>,
 ) -> Result<()> {
     loop {
         tokio::select! {
@@ -422,7 +431,7 @@ async fn pump(
          Event::Candidate(id,c)=>native.signal(id,Signal{candidate:Some(c),description:None,tracks:None,resync:None,exchange_id:None}).await?,
         },
         Some(event)=commands.recv(),if !*pause.borrow()=>match event {
-         NativeEvent::Conversation {..} => {},
+         NativeEvent::Conversation {packet,..} => { if let Some(observer)=&conversations {let _=observer.try_send(packet);} },
          NativeEvent::CaptureEnded {..} => {},
          NativeEvent::Command(command) => match command {
          Command::Signal{pair_id:id,payload}=>{
@@ -542,7 +551,7 @@ async fn h264_sps_reaches_two_children_with_default_receive_levels_on_retained_p
         let (_pause, paused) = watch::channel(false);
         let task = tokio::spawn(pump(
             native.clone(), HashMap::from([(source_id, source), (children[0], first), (children[1], second)]),
-            rx, event_rx, stopped, paused, reports, Arc::new(Mutex::new(Loss::default())),
+            rx, event_rx, stopped, paused, reports, Arc::new(Mutex::new(Loss::default())), None,
         ));
         let mut ready = std::collections::HashSet::new();
         while ready.len() < 3 {
@@ -647,6 +656,8 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         let source_pc = source.pc.clone();
         let source_tracks = source.tracks.clone();
         let child_pc = child.pc.clone();
+        let child_control = child.control.clone();
+        let (conversations, mut conversation_rx) = mpsc::channel(1);
         let mut audio_sender = None;
         for sender in source_pc.get_senders().await {
             if sender.track().kind().await == RtpCodecKind::Audio {
@@ -697,6 +708,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             paused,
             reports,
             Arc::new(Mutex::new(Loss::default())),
+            Some(conversations),
         ));
         let mut ready = std::collections::HashSet::new();
         while ready.len() < 2 {
@@ -709,6 +721,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                 ready.insert(pair_id);
             }
         }
+        let original_control = child_control.lock().unwrap().clone().unwrap();
         let audio_on = Arc::new(std::sync::atomic::AtomicBool::new(true));
         let send_audio = audio_on.clone();
         let sending = tokio::spawn(async move {
@@ -953,19 +966,20 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             child_pc.sctp().await.unwrap().state().await?,
             rtc::peer_connection::transport::RTCSctpTransportState::Connected
         );
-        // The base PC survives an unsubscribe/resubscribe of this same publication.
-        // Old reader/sender completion must keep its retired flow identity.
+        // Start/stop/start retains both PCs and their base DataChannels, but the
+        // replacement owns a new publication and distinct audio/video sources.
+        let next_publication = Uuid::new_v4();
         let new_incoming = FlowBinding {
             selected: true,
             input_flow_id: None,
             id: Uuid::new_v4(),
-            publication_id: publication,
+            publication_id: next_publication,
         };
         let new_outgoing = FlowBinding {
             selected: true,
             input_flow_id: Some(new_incoming.id),
             id: Uuid::new_v4(),
-            publication_id: publication,
+            publication_id: next_publication,
         };
         let plans = |active: bool| {
             vec![
@@ -994,22 +1008,73 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             ]
         };
         let info = PublicationInfo {
-            id: publication,
+            id: next_publication,
             room_id: "screen".into(),
             session_id: source_id,
             user_id: source_id,
             kind: Kind::Screen,
             muted: false,
         };
-        native
-            .update(plans(false), vec![info.clone()], vec![])
-            .await?;
+        native.update(plans(false), vec![], vec![]).await?;
+        timeout(Duration::from_secs(3), async {
+            loop {
+                let mut inactive = true;
+                for transceiver in child_pc.get_transceivers().await {
+                    inactive &= !matches!(
+                        transceiver.current_direction().await?,
+                        rtc::rtp_transceiver::RTCRtpTransceiverDirection::Recvonly
+                            | rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendrecv
+                    );
+                }
+                if inactive && child_pc.pending_remote_description().await.is_none() {
+                    break;
+                }
+                sleep(Duration::from_millis(10)).await;
+            }
+            Ok::<_, anyhow::Error>(())
+        })
+        .await??;
         native.update(plans(true), vec![info], vec![]).await?;
         let stream = Uuid::new_v4().to_string();
         *source_tracks.lock().unwrap() = vec![WireTrack {
             flow_id: new_incoming.id,
             stream_id: stream.clone(),
         }];
+        let replacement_audio = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
+            stream.clone(),
+            Uuid::new_v4().to_string(),
+            "replacement Opus".into(),
+            RtpCodecKind::Audio,
+            vec![RTCRtpEncodingParameters {
+                rtp_coding_parameters: RTCRtpCodingParameters {
+                    ssrc: Some(0x4444),
+                    ..Default::default()
+                },
+                codec: codec(),
+                ..Default::default()
+            }],
+        )));
+        source_pc.add_track(replacement_audio.clone()).await?;
+        let replacing_audio = tokio::spawn(async move {
+            for seq in 0..300u16 {
+                replacement_audio
+                    .write_rtp(packet(seq, 7_000_000 + seq as u32 * 960, 0x4444))
+                    .await?;
+                sleep(Duration::from_millis(20)).await;
+            }
+            Ok::<_, anyhow::Error>(())
+        });
+        // Audio must actually reach the child before video is allocated, matching
+        // a live WASAPI source whose activation precedes the hardware encoder.
+        timeout(Duration::from_secs(5), async {
+            loop {
+                let packet = packet_rx.recv().await.unwrap();
+                if packet.header.payload_type == 111 && packet.header.timestamp >= 7_000_000 {
+                    break;
+                }
+            }
+        })
+        .await?;
         let replacement = local_video(stream, 0x3333);
         source_pc.add_track(replacement.clone()).await?;
         let replacing = tokio::spawn(async move {
@@ -1021,7 +1086,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                             payload_type: 96,
                             ssrc: 0x3333,
                             sequence_number: seq,
-                            timestamp: 1000 + seq as u32 * 3000,
+                            timestamp: 9_000_000 + seq as u32 * 3000,
                             marker: true,
                             ..Default::default()
                         },
@@ -1050,7 +1115,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         let next = timeout(Duration::from_secs(5), async {
             loop {
                 let packet = packet_rx.recv().await.unwrap();
-                if packet.header.ssrc != ssrc && packet.header.timestamp < 100_000 {
+                if packet.header.payload_type == 96 && packet.header.timestamp >= 9_000_000 {
                     break packet;
                 }
             }
@@ -1076,8 +1141,26 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             child_pc.sctp().await.unwrap().state().await?,
             rtc::peer_connection::transport::RTCSctpTransportState::Connected
         );
+        let signer = piik_channel_core::conversation::SessionSigner::from_seed([17; 32]);
+        let signed = signer
+            .sign(child_id, &serde_json::json!({"probe":"after A/V restart"}))
+            .map_err(anyhow::Error::msg)?;
+        let frame = piik_channel_core::conversation::encode_control(
+            &piik_channel_core::conversation::ControlFrame::Conversation(signed.clone()),
+        )
+        .map_err(anyhow::Error::msg)?;
+        original_control.send(frame.as_slice().into()).await?;
+        let arrived = timeout(Duration::from_secs(3), conversation_rx.recv())
+            .await?
+            .unwrap();
+        assert_eq!(
+            arrived.payload, signed.payload,
+            "the original base DC delivers after A/V restart"
+        );
         replacing.abort();
         let _ = replacing.await;
+        replacing_audio.abort();
+        let _ = replacing_audio.await;
         stop.send(true)?;
         task.await??;
         Arc::try_unwrap(native)
@@ -1176,6 +1259,7 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
                 pause_rx,
                 report_tx,
                 loss.clone(),
+                None,
             ));
             // Start only after all three real reliable DCs are ready.
             timeout(Duration::from_secs(12), async {
@@ -1246,6 +1330,7 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
             preparing.iter_mut().find(|pair| pair.id == receiver).unwrap().outgoing.push(shadow_outgoing);
             native.update(preparing.clone(), vec![info.clone()], vec![]).await?;
             let eb = Endpoint {
+                control: Arc::new(Mutex::new(None)),
                 pc: b_pc,
                 pending: false,
                 polite: b > native_id,

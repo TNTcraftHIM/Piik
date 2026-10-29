@@ -4,7 +4,7 @@ import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessag
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
-import { ChannelApp, discoverChannelAppHealth } from "./app-link";
+import { ChannelApp, discoverChannelAppHealth, type NativeCaptureSources } from "./app-link";
 import { isClientActivated } from "../lib/session";
 import type { NativeCaptureTarget } from "../native/wire";
 
@@ -415,6 +415,8 @@ export class ChannelSession {
           if (this.app !== app) return;
           this.app = undefined;
           this.patch({});
+        }, () => {
+          if (this.app === app) this.patch({ error: "capture_audio_failed" });
         });
         this.app = app;
       }
@@ -607,12 +609,12 @@ export class ChannelSession {
     if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); throw new Error("closed"); }
     await this.publish("screen", roomId, stream);
   });
-  nativeSources = async (): Promise<NativeCaptureTarget[]> => (await this.connectApp()).sources();
-  startNativeScreen = (roomId: string, target: NativeCaptureTarget): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  nativeSources = async (): Promise<NativeCaptureSources> => (await this.connectApp()).sources();
+  startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const epoch = this.captureEpoch;
     const app = await this.connectApp();
     if (epoch !== this.captureEpoch) throw new Error("closed");
-    const id = await app.startCapture(roomId, target);
+    const id = await app.startCapture(roomId, target, audio);
     if (epoch !== this.captureEpoch || this.app !== app) {
       await app.stopCapture(id);
       throw new Error("closed");

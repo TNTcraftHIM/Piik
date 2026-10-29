@@ -6,6 +6,10 @@ import { nativeCaptureTargetSchema, type NativeCaptureTarget } from "../native/w
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
 type AppHealth = z.infer<typeof healthSchema>;
+const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
+  processAudio: z.boolean(), systemAudio: z.boolean() }).strict();
+export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
+const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
 class AppCompatibilityError extends Error {}
 
 function identity(body: unknown, port: number): void {
@@ -43,7 +47,8 @@ export class ChannelApp {
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return this.captures; }
 
-  constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string, onClose: () => void) {
+  constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
+    onClose: () => void, onAudioFailure: (publicationId: string) => void) {
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
     const lost = () => { this.close(); onClose(); };
     this.timer = setTimeout(lost, 10000);
@@ -59,7 +64,12 @@ export class ChannelApp {
     });
     socket.onmessage = ({ data }) => {
       try {
-        const reply = JSON.parse(String(data)) as { id: string; result?: unknown; error?: string };
+        const reply = JSON.parse(String(data)) as { type?: string; id: string; result?: unknown; error?: string };
+        if (reply.type === "capture_audio_failed") {
+          const { publicationId } = captureAudioFailureSchema.parse(reply);
+          if (this.captures.has(publicationId)) onAudioFailure(publicationId);
+          return;
+        }
         const request = this.requests.get(reply.id);
         if (!request) return;
         this.requests.delete(reply.id);
@@ -85,15 +95,15 @@ export class ChannelApp {
     return this.request({ type: "open", policy });
   }
 
-  async sources(): Promise<NativeCaptureTarget[]> {
+  async sources(): Promise<NativeCaptureSources> {
     await this.ready;
-    return z.array(nativeCaptureTargetSchema).parse(await this.request({ type: "targets" }));
+    return captureSourcesSchema.parse(await this.request({ type: "targets" }));
   }
 
-  async startCapture(roomId: string, target: NativeCaptureTarget): Promise<string> {
+  async startCapture(roomId: string, target: NativeCaptureTarget, audio = false): Promise<string> {
     await this.ready;
     const result = z.object({ publicationId: z.uuid() }).strict()
-      .parse(await this.request({ type: "start_capture", roomId, target }));
+      .parse(await this.request({ type: "start_capture", roomId, target, audio }));
     this.captures.add(result.publicationId);
     return result.publicationId;
   }

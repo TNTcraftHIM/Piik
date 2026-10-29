@@ -1218,11 +1218,13 @@ dependencies = [
  "getrandom 0.3.4",
  "piik-channel-core",
  "rtc",
+ "rusty-opus",
  "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
  "uuid",
+ "wasapi",
  "webrtc",
  "windows",
  "windows-capture",
@@ -1827,6 +1829,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusty-opus"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46604e6809c06441da1cfdde1f0cc25a4f2bf42c7d005aa387c2875c02d78762"
+
+[[package]]
 name = "sansio"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2289,6 +2297,19 @@ name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
+
+[[package]]
+name = "wasapi"
+version = "0.26.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1b5f8804a710cf7a18b07610225abb127e562f3249a1f3ed88a6f045c5444910"
+dependencies = [
+ "log",
+ "num-integer",
+ "thiserror 2.0.21",
+ "windows",
+ "windows-core",
+]
 
 [[package]]
 name = "wasi"

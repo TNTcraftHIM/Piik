@@ -242,6 +242,7 @@ pub struct StartCapture {
     pub room_id: String,
     pub target: Target,
     pub settings: Settings,
+    pub audio: bool,
     pub result: oneshot::Sender<Result<CaptureLease, String>>,
 }
 
@@ -812,8 +813,12 @@ impl Session {
             return Ok(());
         }
         let result = await_peer(
-            live.peers
-                .start_capture(publication_id, request.target, request.settings),
+            live.peers.start_capture(
+                publication_id,
+                request.target,
+                request.settings,
+                request.audio,
+            ),
             &mut live.commands,
             &live.pairs,
             &mut live.room,

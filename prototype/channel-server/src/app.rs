@@ -19,7 +19,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use futures_util::{SinkExt, StreamExt};
+use futures_util::{stream::FuturesUnordered, SinkExt, StreamExt};
 use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target},
@@ -571,6 +571,8 @@ enum Operation {
     StartCapture {
         room_id: String,
         target: Target,
+        #[serde(default)]
+        audio: bool,
     },
     StopCapture {
         publication_id: Uuid,
@@ -599,11 +601,21 @@ async fn connection(
         let processing = async {
             let mut host = None;
             let mut captures: BTreeMap<Uuid, CaptureLease> = BTreeMap::new();
+            let mut audio_errors = FuturesUnordered::new();
             loop {
-                let message = if host.is_some() {
-                    queue.recv().await
-                } else {
-                    timeout(IO_TIMEOUT, queue.recv()).await?
+                let message = tokio::select! {
+                    message = async {
+                        if host.is_some() { Ok(queue.recv().await) }
+                        else { timeout(IO_TIMEOUT, queue.recv()).await }
+                    } => message?,
+                    Some((publication_id, error)) = audio_errors.next(), if !audio_errors.is_empty() => {
+                        let error: Option<String> = error;
+                        if error.is_some() && captures.get(&publication_id).is_some_and(|lease| !lease.is_stopped()) {
+                            let event = json!({"type":"capture_audio_failed","publicationId":publication_id});
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
+                        continue;
+                    }
                 };
                 let Some(text) = message else { break };
                 let value: Value = serde_json::from_str(&text)?;
@@ -645,14 +657,29 @@ async fn connection(
                                 Some(_) => capture_targets().await,
                                 None => Err(anyhow!("hello_required")),
                             },
-                            Operation::StartCapture { room_id, target } => match &host {
+                            Operation::StartCapture {
+                                room_id,
+                                target,
+                                audio,
+                            } => match &host {
                                 Some(commands) => {
                                     captures.retain(|_, lease| !lease.is_stopped());
                                     let publication_id = Uuid::new_v4();
-                                    match start_capture(commands, publication_id, room_id, target)
-                                        .await
+                                    match start_capture(
+                                        commands,
+                                        publication_id,
+                                        room_id,
+                                        target,
+                                        audio,
+                                    )
+                                    .await
                                     {
-                                        Ok(lease) => {
+                                        Ok(mut lease) => {
+                                            if let Some(error) = lease.audio_error.take() {
+                                                audio_errors.push(async move {
+                                                    (publication_id, error.await.ok())
+                                                });
+                                            }
                                             captures.insert(publication_id, lease);
                                             Ok(json!({"publicationId":publication_id}))
                                         }
@@ -710,13 +737,15 @@ async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Valu
 async fn capture_targets() -> Result<Value> {
     #[cfg(target_os = "windows")]
     {
-        Ok(serde_json::to_value(
-            tokio::task::spawn_blocking(piik_channel_native::capture::targets).await??,
-        )?)
+        tokio::task::spawn_blocking(|| {
+            let sources = piik_channel_native::capture::targets()?;
+            let audio = piik_channel_native::capture::audio_capabilities();
+            Ok(json!({"sources": sources, "processAudio": audio.process_audio, "systemAudio": audio.system_audio}))
+        }).await?
     }
     #[cfg(not(target_os = "windows"))]
     {
-        Ok(json!([]))
+        Ok(json!({"sources": [], "processAudio": false, "systemAudio": false}))
     }
 }
 
@@ -725,6 +754,7 @@ async fn start_capture(
     publication_id: Uuid,
     room_id: String,
     target: Target,
+    audio: bool,
 ) -> Result<CaptureLease> {
     if !cfg!(target_os = "windows") {
         bail!("capture_unavailable");
@@ -736,6 +766,7 @@ async fn start_capture(
             room_id,
             target,
             settings: CAPTURE_SETTINGS,
+            audio,
             result,
         }))
         .await

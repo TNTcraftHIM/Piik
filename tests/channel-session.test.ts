@@ -173,7 +173,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
   } finally { session.close(); }
 });
 
-test("Native capture previews before its Browser snapshot arrives and stops through its App owner", async () => {
+test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -183,8 +183,15 @@ test("Native capture previews before its Browser snapshot arrives and stops thro
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    const starting = session.startNativeScreen("first", { kind: "display", sourceId: "1", title: "Test display" });
+    const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
+    const listing = session.nativeSources();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    const sources = { sources: [target], processAudio: false, systemAudio: true };
+    app.receive({ id: app.sent.at(-1)!.id, result: sources });
+    await expect(listing).resolves.toEqual(sources);
+    const starting = session.startNativeScreen("first", target, true);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    expect(app.sent.at(-1)).toMatchObject({ type: "start_capture", roomId: "first", target, audio: true });
     app.receive({ id: app.sent.at(-1)!.id, result: { publicationId } });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("subscribe"));
     const watch = socket.sent.at(-1)!;
@@ -199,6 +206,17 @@ test("Native capture previews before its Browser snapshot arrives and stops thro
     await starting;
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
+
+    app.receive({ type: "capture_audio_failed", publicationId });
+    expect(session.getSnapshot().error).toBe("capture_audio_failed");
+    expect(session.getSnapshot().appConnected).toBe(true);
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
+    expect(session.getSnapshot().state?.publications).toEqual(published.publications);
+    expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
+    expect(app.sent.some(command => command.type === "stop_capture")).toBe(false);
+    session.clearError();
+    app.receive({ type: "capture_audio_failed", publicationId: crypto.randomUUID() });
+    expect(session.getSnapshot().error).toBeNull();
 
     const stopping = session.stopScreen(publicationId);
     expect(app.sent.at(-1)).toMatchObject({ type: "stop_capture", publicationId });
@@ -544,11 +562,12 @@ class RoomPeerConnection extends EventTarget {
     this.remoteDescription = description;
     this.signalingState = description.type === "offer" ? "have-remote-offer" : "stable";
   }
-  async setLocalDescription() {
-    const type = this.signalingState === "have-remote-offer" ? "answer" : "offer";
-    const value = { type, sdp: `${type}-${this.channels.length}-${this.senders.length}` } as RTCSessionDescriptionInit;
+  async createOffer(): Promise<RTCSessionDescriptionInit> { return { type: "offer", sdp: `offer-${this.channels.length}-${this.senders.length}` }; }
+  async createAnswer(): Promise<RTCSessionDescriptionInit> { return { type: "answer", sdp: `answer-${this.channels.length}-${this.senders.length}` }; }
+  async setLocalDescription(description?: RTCSessionDescriptionInit) {
+    const value = description ?? await (this.signalingState === "have-remote-offer" ? this.createAnswer() : this.createOffer());
     this.localDescription = { ...value, toJSON: () => ({ ...value }) };
-    this.signalingState = type === "offer" ? "have-local-offer" : "stable";
+    this.signalingState = value.type === "offer" ? "have-local-offer" : "stable";
   }
   connected() { this.connectionState = "connected"; this.onconnectionstatechange?.(); }
 }
@@ -1362,6 +1381,56 @@ test.each(["candidate", "audio", "source", "pending", "late", "channel", "initia
     expect(failed).not.toHaveBeenCalled();
     expect(pc.senders.some(sender => sender.track === following)).toBe(true);
   } finally { transports.forEach(transport => transport.close()); }
+});
+
+test("shared media negotiates stereo reception in both offer directions without replacing voice or picture tracks", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const sent: ChannelSignal[][] = [[], []], failed = vi.fn();
+  const transports = sent.map((signals, index) => new ChannelTransport({
+    polite: Boolean(index), iceServers: [], send: signal => signals.push(signal),
+    receive() {}, connected() {}, base() {}, failed,
+  }));
+  const connections = RoomPeerConnection.instances;
+  const voice = remoteTrack("audio"), audio = remoteTrack("audio"), video = remoteTrack("video");
+  const sdp = ["v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0",
+    ...[0, 1].flatMap(mid => ["m=audio 9 UDP/TLS/RTP/SAVPF 111", `a=mid:${mid}`, "a=sendrecv",
+      "a=rtpmap:111 opus/48000/2", "a=fmtp:111 minptime=10;useinbandfec=1"]),
+    "m=video 9 UDP/TLS/RTP/SAVPF 96", "a=mid:2", "a=sendrecv", "a=rtpmap:96 VP8/90000", "",
+  ].join("\r\n");
+  try {
+    transports[0].setOutgoing(new Map([
+      ["voice", { kind: "voice", stream: remoteStream("voice", [voice]) }],
+      ["picture", { kind: "screen", stream: remoteStream("picture", [video, audio]) }],
+    ]));
+    const senders = [...connections[0].senders];
+    for (const pc of connections) {
+      vi.spyOn(pc, "createOffer").mockResolvedValue({ type: "offer", sdp });
+      vi.spyOn(pc, "createAnswer").mockResolvedValue({ type: "answer", sdp });
+    }
+    for (const offerer of [0, 1, 0]) {
+      const answerer = 1 - offerer;
+      sent[0].length = 0; sent[1].length = 0;
+      connections[offerer].onnegotiationneeded?.();
+      await vi.waitFor(() => expect(sent[offerer].some(value => value.description?.type === "offer")).toBe(true));
+      const offer = sent[offerer].find(value => value.description?.type === "offer")!;
+      expect(offer.description?.sdp?.match(/stereo=1/g)).toHaveLength(2);
+      expect(offer.description?.sdp?.match(/maxaveragebitrate=510000/g)).toHaveLength(2);
+      expect(connections[offerer].localDescription?.sdp).toBe(offer.description?.sdp);
+      transports[answerer].signal(offer);
+      await vi.waitFor(() => expect(sent[answerer].some(value => value.description?.type === "answer")).toBe(true));
+      const answer = sent[answerer].find(value => value.description?.type === "answer")!;
+      expect(answer.description?.sdp?.match(/stereo=1/g)).toHaveLength(2);
+      expect(connections[answerer].localDescription?.sdp).toBe(answer.description?.sdp);
+      transports[offerer].signal(answer);
+      await vi.waitFor(() => expect(connections[offerer].signalingState).toBe("stable"));
+      expect(connections[offerer].remoteDescription?.sdp).toBe(answer.description?.sdp);
+      expect(connections[answerer].remoteDescription?.sdp).toBe(offer.description?.sdp);
+      expect(connections[0].senders).toEqual(senders);
+    }
+    expect(failed).not.toHaveBeenCalled();
+    for (const track of [voice, audio, video]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { for (const transport of transports) transport.close(); }
 });
 
 test.each(["offer", "answer"])("resync recovers a lost %s on the same transport with its original track manifest", async lost => {

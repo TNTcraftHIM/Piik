@@ -1,10 +1,94 @@
-//! Native video producer, independent of rooms, RTP and presentation.
+//! Native capture producers, independent of rooms and RTP.
+#[cfg(target_os = "windows")]
+mod audio;
 #[cfg(target_os = "windows")]
 mod mf;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
+pub use audio::{audio_capabilities, AudioCapture, AudioControl};
+#[cfg(target_os = "windows")]
 pub use windows::{targets, Capture, Control};
+
+/// Keep this guard at the process entry point, outside the async runtime.
+/// WinRT caches agile factories across captures; their MTA must outlive every
+/// worker, including the idle gaps between captures and capability probes.
+pub struct Runtime {
+    #[cfg(target_os = "windows")]
+    mta: ::windows::Win32::System::Com::CO_MTA_USAGE_COOKIE,
+}
+impl Runtime {
+    pub fn new() -> anyhow::Result<Self> {
+        Ok(Self {
+            #[cfg(target_os = "windows")]
+            mta: unsafe { ::windows::Win32::System::Com::CoIncrementMTAUsage()? },
+        })
+    }
+}
+#[cfg(target_os = "windows")]
+impl Drop for Runtime {
+    fn drop(&mut self) {
+        let _ = unsafe { ::windows::Win32::System::Com::CoDecrementMTAUsage(self.mta) };
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioCapabilities {
+    pub process_audio: bool,
+    pub system_audio: bool,
+}
+
+#[cfg(not(target_os = "windows"))]
+pub fn audio_capabilities() -> AudioCapabilities {
+    AudioCapabilities::default()
+}
+
+#[derive(Debug)]
+pub struct AudioFrame {
+    /// 960 interleaved stereo sample frames (20 ms at 48 kHz).
+    pub samples: Vec<f32>,
+    /// The first sample's capture time, never buffer delivery time.
+    pub presentation_time: std::time::Instant,
+}
+
+/// WGC and WASAPI both timestamp capture in QPC units of 100 ns.
+#[cfg(target_os = "windows")]
+struct CaptureClock {
+    frequency: i64,
+    qpc: i64,
+    instant: std::time::Instant,
+}
+#[cfg(target_os = "windows")]
+impl CaptureClock {
+    fn new() -> anyhow::Result<Self> {
+        let mut frequency = 0;
+        let mut ticks = 0;
+        unsafe {
+            ::windows::Win32::System::Performance::QueryPerformanceFrequency(&mut frequency)?;
+            ::windows::Win32::System::Performance::QueryPerformanceCounter(&mut ticks)?;
+        }
+        Ok(Self {
+            frequency,
+            qpc: ((ticks as i128) * 10_000_000 / frequency as i128) as i64,
+            instant: std::time::Instant::now(),
+        })
+    }
+    fn now(&self) -> anyhow::Result<i64> {
+        let mut ticks = 0;
+        unsafe { ::windows::Win32::System::Performance::QueryPerformanceCounter(&mut ticks)? };
+        Ok(((ticks as i128) * 10_000_000 / self.frequency as i128) as i64)
+    }
+    fn instant(&self, qpc: i64) -> std::time::Instant {
+        let delta = qpc - self.qpc;
+        let duration = std::time::Duration::from_nanos(delta.unsigned_abs() * 100);
+        if delta >= 0 {
+            self.instant + duration
+        } else {
+            self.instant - duration
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]

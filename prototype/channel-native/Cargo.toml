@@ -27,6 +27,8 @@ getrandom = "=0.3.4"
 rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }
 
 [target.'cfg(windows)'.dependencies]
+wasapi = "=0.26.0"
+rusty-opus = "=1.0.2"
 windows-capture = "=2.0.1"
 windows-core = "=0.62.2"
-windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_Performance", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation"] }
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_Performance", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation", "Win32_Media_Audio", "Win32_Security"] }

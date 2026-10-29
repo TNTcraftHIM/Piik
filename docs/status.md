@@ -39,7 +39,8 @@ domain through Local HTTPS or Cloudflare Quick Tunnel; its rooms retain their
 identity and storage across local-port and invitation-address changes.
 The shared source picker connects Windows hardware H264 capture to the same
 Native endpoint and routing model, preserving its original presentation clock.
-The selecting page owns that capture independently of App room hosting.
+Optional source sound uses WASAPI and a Rust Opus encoder, retaining independent
+stereo channels. The selecting page owns both captures independently of App room hosting.
 [TODO](./todo.md) owns remaining Native media/input and platform work.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.

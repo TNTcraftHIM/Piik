@@ -12,7 +12,14 @@ export function preferRoomVoiceAudio(description: RTCSessionDescriptionInit): RT
   return preferOpusReceive(description, false);
 }
 
-function preferOpusReceive(answer: RTCSessionDescriptionInit, stereo: boolean): RTCSessionDescriptionInit {
+/** A shared transport can receive several pictures and voices in either SDP role.
+ * Stereo reception also accepts mono input; it does not configure capture. */
+export function preferOpusStereoReceive(description: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
+  return preferOpusReceive(description, true, "receiving");
+}
+
+function preferOpusReceive(answer: RTCSessionDescriptionInit, stereo: boolean,
+  scope: "single" | "all" | "receiving" = stereo ? "single" : "all"): RTCSessionDescriptionInit {
   const preferences = { stereo: stereo ? "1" : "0", maxaveragebitrate: String(OPUS_RECEIVE_MAX_BITRATE) };
   try {
     if (!answer.sdp?.trim()) {
@@ -30,9 +37,10 @@ function preferOpusReceive(answer: RTCSessionDescriptionInit, stereo: boolean): 
     }
 
     const audioSections = session.media.filter(
-      (media) => media.type === "audio" && media.port !== 0,
+      (media) => media.type === "audio" && media.port !== 0
+        && (scope !== "receiving" || !["sendonly", "inactive"].includes(media.direction ?? session.direction ?? "sendrecv")),
     );
-    if (!audioSections.length || (stereo && audioSections.length !== 1)) {
+    if (!audioSections.length || (scope === "single" && audioSections.length !== 1)) {
       return answer;
     }
 

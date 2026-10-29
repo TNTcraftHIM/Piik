@@ -452,7 +452,9 @@ impl Output {
                         },
                         payload: packet.payload,
                     };
-                    track.write_rtp(packet).await?;
+                    // SDK send errors contain the rejected media packet.
+                    track.write_rtp(packet).await
+                        .map_err(|_| anyhow::anyhow!("encoded RTP writer unavailable"))?;
                 }
                 Ok::<_, anyhow::Error>(())
             }

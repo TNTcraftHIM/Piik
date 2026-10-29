@@ -30,8 +30,8 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     if (!appConnected) { setSources({ kind: "browser" }); return; }
     setSources(previous => ({ kind: "loading", appDetected: true,
       sources: previous.kind === "ready" ? previous.sources : undefined }));
-    void nativeSources().then(targets => {
-      if (request.current === current) setSources({ kind: "ready", sources: targets, processAudio: false, systemAudio: false });
+    void nativeSources().then(result => {
+      if (request.current === current) setSources({ kind: "ready", ...result });
     }, () => {
       if (request.current === current) setSources({ kind: "failed" });
     });
@@ -56,9 +56,9 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => setOpen(event.newState === "open")}>
       {open && <CaptureSourcePicker nativeSources={sources} browserSupported={browserSupported} cameraSupported={false}
-        initialTab="window" initialAudio={false} selectionDisabled={disabled || busy}
+        initialTab="window" selectionDisabled={disabled || busy}
         onBrowser={() => start(() => startScreen(roomId))}
-        onNative={target => start(() => startNativeScreen(roomId, target))}
+        onNative={(target, audio) => start(() => startNativeScreen(roomId, target, audio))}
         onPreview={noPreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}
