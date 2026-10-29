@@ -148,6 +148,10 @@ and pending route revisions, and one candidate connection identity. SFU routes
 also carry a publication generation. Duplicate current messages are idempotent;
 stale asynchronous results fail closed.
 
+Revision allocation belongs to the room's lifetime, including stopped shares and
+replacement controllers. Releasing a controller does not make its revisions
+available again; ending room authority releases the sequence.
+
 The old committed route remains authoritative while the candidate prepares.
 Parent and child prepare the same server-issued connection identity. Standard
 ICE connected is progress only. For availability work, the exact candidate child

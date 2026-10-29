@@ -453,11 +453,20 @@ type SfuPublisherQualityEvidenceInput struct {
 	AcceptedAtMs          int64
 }
 
+// RevisionSequence belongs to the room, including across controller replacement.
+// Its zero value is ready to use; the caller serializes access with controller calls.
+type RevisionSequence struct {
+	latest int64
+}
+
 // Options configures a Controller. DebugRoomID empty disables the sanitised
 // route debug events.
 type Options struct {
 	HostPeerID  string
 	DebugRoomID string
+	// Revisions may be shared by successive controllers for the same room.
+	// nil gives this controller its own sequence.
+	Revisions *RevisionSequence
 	// DebugLog receives sanitized route events. nil disables them; the effect
 	// layer owns environment, logger and retention policy.
 	DebugLog                  func(string, ...any)
@@ -492,7 +501,7 @@ type Controller struct {
 	hostPublication                   *HostPublication
 	operation                         *operation
 	revision                          int64
-	latestRevision                    int64
+	revisions                         *RevisionSequence
 	factVersion                       int64
 	nextJoinOrder                     int64
 	paused                            bool
