@@ -910,7 +910,7 @@ impl Driver {
                                     .with_ice_servers(self.ice.clone())
                                     .build(),
                             )
-                            .with_udp_addrs(vec!["0.0.0.0:0".into()])
+                            .with_udp_addrs(vec!["0.0.0.0:0".into(), "[::]:0".into()])
                             .build()
                             .await?,
                     );

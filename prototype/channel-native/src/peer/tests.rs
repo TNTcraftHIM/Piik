@@ -250,6 +250,126 @@ async fn rejected_ice_candidates_preserve_connectivity_and_the_open_channel() ->
 }
 
 #[tokio::test]
+async fn ipv6_candidates_connect_and_release_their_udp_ports() -> Result<()> {
+    use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+
+    match std::net::UdpSocket::bind((Ipv6Addr::LOCALHOST, 0)) {
+        Ok(socket) => drop(socket),
+        Err(error)
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::AddrNotAvailable | std::io::ErrorKind::Unsupported
+            ) =>
+        {
+            eprintln!("IPv6 loopback is unavailable: {error}");
+            return Ok(());
+        }
+        Err(error) => return Err(error.into()),
+    }
+    let (mut d, mut events, _commands, _stop) = driver();
+    let pair = Uuid::new_v4();
+    d.update(
+        vec![PairInfo {
+            id: pair,
+            peer_id: Uuid::new_v4(),
+            rooms: vec!["room".into()],
+            incoming: vec![],
+            outgoing: vec![],
+        }],
+        vec![],
+        vec![],
+    )
+    .await?;
+    let remote_id = Uuid::new_v4();
+    let remote = builder(true, SenderReports::default(), MediaFeedback::default())?
+        .with_handler(Arc::new(Handler {
+            pair: remote_id,
+            events: d.events.clone(),
+            overflow: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8)),
+        }))
+        .with_udp_addrs(vec!["[::1]:0".into()])
+        .build()
+        .await?;
+    negotiate(&mut d, pair, &remote).await?;
+    let mut ports = HashSet::new();
+    let channel = tokio::time::timeout(Duration::from_secs(5), async {
+        let mut channel = None;
+        loop {
+            if d.pairs[&pair].connected() && channel.is_some() {
+                return Ok::<_, anyhow::Error>(channel.unwrap());
+            }
+            match events.recv().await.unwrap() {
+                Event::Candidate(id, candidate) => {
+                    let fields: Vec<_> = candidate
+                        .candidate
+                        .as_deref()
+                        .unwrap()
+                        .split_whitespace()
+                        .collect();
+                    let ip: IpAddr = fields[4].parse()?;
+                    if !ip.is_ipv6() {
+                        continue;
+                    }
+                    ports.insert(SocketAddr::new(ip, fields[5].parse()?));
+                    if id == pair {
+                        remote.add_ice_candidate(ice_candidate(candidate)).await?;
+                    } else {
+                        d.signal(
+                            pair,
+                            Signal {
+                                candidate: Some(candidate),
+                                description: None,
+                                tracks: None,
+                                exchange_id: None,
+                                resync: None,
+                            },
+                        )
+                        .await?;
+                    }
+                }
+                Event::Channel(id, current) if id == remote_id => {
+                    if current.label().await? == "piik-room" {
+                        channel = Some(current);
+                    }
+                }
+                _ => {}
+            }
+        }
+    })
+    .await;
+    let result = async {
+        let channel = channel??;
+        assert!(ports.len() >= 2, "both PCs must gather an IPv6 candidate");
+        let base = d.pairs[&pair].dc.as_ref().unwrap().1.clone();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while base.ready_state().await? != rtc::data_channel::RTCDataChannelState::Open {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            base.send_text("IPv6 transport").await?;
+            while let Some(event) = channel.poll().await {
+                if let webrtc::data_channel::DataChannelEvent::OnMessage(message) = event {
+                    assert_eq!(message.data.as_ref(), b"IPv6 transport");
+                    return Ok::<_, anyhow::Error>(());
+                }
+            }
+            Err(anyhow!("IPv6 channel closed before delivery"))
+        })
+        .await??;
+        Ok::<_, anyhow::Error>(())
+    }
+    .await;
+    close_pair(d.pairs.remove(&pair).unwrap()).await;
+    remote.close().await?;
+    result?;
+    for address in ports {
+        std::net::UdpSocket::bind(address)
+            .with_context(|| format!("IPv6 UDP port retained after PC close: {address}"))?;
+    }
+    Ok(())
+}
+
+#[tokio::test]
 async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding() -> Result<()> {
     use crate::{
         capture::EncodedFrame,
