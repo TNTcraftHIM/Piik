@@ -7,7 +7,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
 	"github.com/pion/webrtc/v4"
 )
 

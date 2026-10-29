@@ -23,14 +23,14 @@ const AUDIO_PROBE = `(() => {
   window.RTCPeerConnection = class extends BrowserPeer {
     constructor(...args) { super(...args); peers.push(this); }
   };
-  window.__piikGateMediaStats = async () => Promise.all(peers.map(async peer => ({
+  window.__silipGateMediaStats = async () => Promise.all(peers.map(async peer => ({
     state: peer.connectionState,
     stats: Array.from((await peer.getStats()).values()).filter(row =>
       ['media-source','outbound-rtp','inbound-rtp','candidate-pair'].includes(row.type))
   })));
-  window.__piikGateAudioEnergy = async () => {
+  window.__silipGateAudioEnergy = async () => {
     const trackId = document.querySelector('video')?.srcObject?.getAudioTracks()[0]?.id;
-    const diagnostic = window.__piikGateAudioStats = { hasAudioTrack: !!trackId, peerCount: peers.length, inbound: [] };
+    const diagnostic = window.__silipGateAudioStats = { hasAudioTrack: !!trackId, peerCount: peers.length, inbound: [] };
     if (!trackId) return 0;
     for (const peer of peers) {
       if (peer.connectionState !== 'connected') continue;
@@ -60,32 +60,32 @@ async function udpPort(requested = 0): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  if (process.env.PIIK_EMBEDDED_SFU_GATE !== "true") {
-    throw new Error("PIIK_EMBEDDED_SFU_GATE=true is required; this is an explicit local Browser media gate");
+  if (process.env.SILIP_EMBEDDED_SFU_GATE !== "true") {
+    throw new Error("SILIP_EMBEDDED_SFU_GATE=true is required; this is an explicit local Browser media gate");
   }
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
-  const nativeArm = process.env.PIIK_EMBEDDED_SFU_NATIVE === "true";
-  const sfuOnly = process.env.PIIK_EMBEDDED_SFU_ONLY === "true";
-  const displayArm = process.env.PIIK_EMBEDDED_SFU_DISPLAY === "true";
+  const nativeArm = process.env.SILIP_EMBEDDED_SFU_NATIVE === "true";
+  const sfuOnly = process.env.SILIP_EMBEDDED_SFU_ONLY === "true";
+  const displayArm = process.env.SILIP_EMBEDDED_SFU_DISPLAY === "true";
   if (displayArm && nativeArm) throw new Error("Display and Native capture are separate arms");
-  const requestedSize = process.env.PIIK_EMBEDDED_SFU_VIDEO_SIZE?.trim();
+  const requestedSize = process.env.SILIP_EMBEDDED_SFU_VIDEO_SIZE?.trim();
   const captureSize = parseVideoGateSize(requestedSize || "1280x720");
   const sizeArgument = requestedSize ? JSON.stringify(captureSize) : "undefined";
-  const twoRooms = process.env.PIIK_EMBEDDED_SFU_TWO_ROOMS === "true";
+  const twoRooms = process.env.SILIP_EMBEDDED_SFU_TWO_ROOMS === "true";
   if (twoRooms && !nativeArm) throw new Error("Two-room arm requires Native publication");
-  const codec = process.env.PIIK_EMBEDDED_SFU_CODEC?.trim() || "vp8";
+  const codec = process.env.SILIP_EMBEDDED_SFU_CODEC?.trim() || "vp8";
   if (codec !== "vp8" && codec !== "h264") throw new Error("SFU gate codec must be vp8 or h264");
-  const captureBinary = process.env.PIIK_CAPTURE_PROCESS?.trim();
+  const captureBinary = process.env.SILIP_CAPTURE_PROCESS?.trim();
   if (nativeArm && (process.platform !== "win32" || !captureBinary)) {
-    throw new Error("Native arm requires Windows and PIIK_CAPTURE_PROCESS");
+    throw new Error("Native arm requires Windows and SILIP_CAPTURE_PROCESS");
   }
   await mkdir(BUILD_ROOT, { recursive: true });
-  const binary = join(BUILD_ROOT, `piik-server${process.platform === "win32" ? ".exe" : ""}`);
-  const appBinary = join(BUILD_ROOT, "piik-app.exe");
-  for (const command of nativeArm ? ["piik-server", "piik-app"] : ["piik-server"]) {
-    const build = spawnSync(process.env.PIIK_GO?.trim() || "go", [
-      "build", "-p", "1", "-trimpath", "-o", command === "piik-server" ? binary : appBinary, `./cmd/${command}`,
+  const binary = join(BUILD_ROOT, `silip-server${process.platform === "win32" ? ".exe" : ""}`);
+  const appBinary = join(BUILD_ROOT, "silip-app.exe");
+  for (const command of nativeArm ? ["silip-server", "silip-app"] : ["silip-server"]) {
+    const build = spawnSync(process.env.SILIP_GO?.trim() || "go", [
+      "build", "-p", "1", "-trimpath", "-o", command === "silip-server" ? binary : appBinary, `./cmd/${command}`,
     ], { cwd: ROOT, env: { ...process.env, GOMAXPROCS: "2" }, encoding: "utf8", windowsHide: true, timeout: 120_000 });
     if (build.error || build.status !== 0) throw build.error ?? new Error(build.stderr || `${command} build failed`);
   }
@@ -94,8 +94,8 @@ async function main(): Promise<void> {
   ]);
   const origin = `http://127.0.0.1:${vitePort}`;
   const backend = `http://127.0.0.1:${serverPort}`;
-  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
-  const sourceProfile = nativeArm ? await mkdtemp(join(tmpdir(), "piik-client-media-")) : null;
+  const profile = await mkdtemp(join(tmpdir(), "silip-client-media-"));
+  const sourceProfile = nativeArm ? await mkdtemp(join(tmpdir(), "silip-client-media-")) : null;
   const [sourcePort, sourceDebugPort] = nativeArm ? [await reservePort(), await reservePort()] : [0, 0];
   const result = { passed: false, arm: `${nativeArm ? "native" : displayArm ? "display" : "browser"}-${codec}-simulcast${twoRooms ? "-two-rooms" : ""}`, stage: "start",
     sfuOnly, captureSize, stereoSeparationDb: null as number[] | null,
@@ -151,8 +151,8 @@ async function main(): Promise<void> {
   try {
     server = spawn(binary, [], { cwd: ROOT, stdio: "pipe", windowsHide: true,
       env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot,
-        PIIK_ENV: "development", PIIK_DEBUG: "route", LISTEN_HOST: "127.0.0.1", PORT: String(serverPort),
-        PIIK_LOG_DIR: join(BUILD_ROOT, "logs"),
+        SILIP_ENV: "development", SILIP_DEBUG: "route", LISTEN_HOST: "127.0.0.1", PORT: String(serverPort),
+        SILIP_LOG_DIR: join(BUILD_ROOT, "logs"),
         PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: origin,
         SFU_LISTEN_HOST: "127.0.0.1", SFU_UDP_PORT: String(mediaPort), SFU_PUBLIC_IP: "127.0.0.1",
         SFU_ONLY: String(sfuOnly) },
@@ -169,7 +169,7 @@ async function main(): Promise<void> {
         instance.middlewares.use((request, response, next) => {
           if (request.url === "/embedded-sfu-source") {
             response.setHeader("Content-Type", "text/html; charset=utf-8");
-            response.end(`<!doctype html><title>Piik SFU captured source</title><style>body{margin:0}canvas{width:100vw;height:100vh}</style>
+            response.end(`<!doctype html><title>Silip SFU captured source</title><style>body{margin:0}canvas{width:100vw;height:100vh}</style>
               <canvas width="${captureSize.width}" height="${captureSize.height}"></canvas><script>
               const canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d');let n=0;
               function draw(){ctx.fillStyle='#167d8d';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#f2d748';
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
       result.stage = "native-app-start";
       app = spawn(appBinary, ["--site", origin, "--capture-process", captureBinary!,
         "--config", join(profile, "client.json")], { cwd: ROOT, stdio: "pipe", windowsHide: true,
-        env: { ...process.env, GOMAXPROCS: "2", PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
+        env: { ...process.env, GOMAXPROCS: "2", SILIP_CLIENT_GATE_NO_BROWSER: "true" } });
       processStarted("app", app);
       app.stderr.resume();
       nativePort = (await readAppEndpoint(app, { timeoutMs: 15_000, ignoreNonEndpointLines: true })).port;
@@ -214,7 +214,7 @@ async function main(): Promise<void> {
     chrome = await launchChrome(chromePath, debugPort, profile, [
       "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
       "--disable-extensions", "--disable-background-networking", "--autoplay-policy=no-user-gesture-required",
-      ...(displayArm ? ["--auto-select-tab-capture-source-by-title=Piik SFU captured source"] : [
+      ...(displayArm ? ["--auto-select-tab-capture-source-by-title=Silip SFU captured source"] : [
         "--disable-background-timer-throttling", "--disable-backgrounding-occluded-windows", "--disable-renderer-backgrounding"]),
       "--disable-features=WebRtcHideLocalIpsWithMdns",
     ]);
@@ -320,7 +320,7 @@ async function main(): Promise<void> {
       result.displayLifecycle = { hiddenFrames: hidden.frames, hiddenElapsedMs: Date.now() - hiddenStart,
         lowLayerDecoded: false, resumed: false, replaced: false };
       result.mediaDiagnostics = await Promise.all([host, viewer].map(page =>
-        evaluate(cdp!, page, "window.__piikGateMediaStats()", Date.now() + 3_000)));
+        evaluate(cdp!, page, "window.__silipGateMediaStats()", Date.now() + 3_000)));
       result.stage = "display-layer-demand";
       await call(host, "gate.demandLayers(1)");
       const half = fittedCaptureSize(result.high!, result.high!.width / 2, result.high!.height / 2);
@@ -393,11 +393,11 @@ async function main(): Promise<void> {
   } catch (error) {
     result.error = error instanceof Error ? error.message : String(error);
     if (cdp) result.mediaDiagnostics = await Promise.all([host, viewer].map(page => page ?
-      evaluate(cdp!, page, "window.__piikGateMediaStats?.()", Date.now() + 3_000).catch(() => null) : null));
+      evaluate(cdp!, page, "window.__silipGateMediaStats?.()", Date.now() + 3_000).catch(() => null) : null));
     if (viewer && cdp) result.viewer = await call<Snapshot>(viewer, "gate.snapshot()", 3_000).catch(() => null);
     if (host && cdp) result.host = await call<Snapshot>(host, "gate.snapshot()", 3_000).catch(() => null);
     if (viewer && cdp && result.stage === "decoded-audio-energy") result.audioDiagnostics = await evaluate(
-      cdp, viewer, "window.__piikGateAudioStats ?? null", Date.now() + 3_000).catch(() => null);
+      cdp, viewer, "window.__silipGateAudioStats ?? null", Date.now() + 3_000).catch(() => null);
     if (serverError) result.error += `; server: ${serverError}`;
   } finally {
     const pagesStopped = await Promise.all([host, viewer, secondHost, secondViewer].map((page) =>

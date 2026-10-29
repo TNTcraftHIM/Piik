@@ -95,9 +95,9 @@ test("explicit chat export keeps received text in order without identities, reac
   session.receive(second);
   session.send({ kind: "chat", text: "not confirmed" });
   const text = formatChatTranscript(session.getSnapshot().messages);
-  expect(text).toBe("\uFEFFPiik chat\r\n\r\n[1970-01-01T00:00:00.000Z] 朋友\r\n中文 👋 <b>text</b>\r\n\r\n[1970-01-01T00:00:01.000Z] 朋友\r\nHello\r\n");
+  expect(text).toBe("\uFEFFSilip chat\r\n\r\n[1970-01-01T00:00:00.000Z] 朋友\r\n中文 👋 <b>text</b>\r\n\r\n[1970-01-01T00:00:01.000Z] 朋友\r\nHello\r\n");
   expect(text).not.toMatch(/other_peer|request_1234|not confirmed/);
-  expect(formatChatTranscript([{ ...first, payload: { kind: "reaction", reaction: "heart" } }])).toBe("\uFEFFPiik chat\r\n\r\n");
+  expect(formatChatTranscript([{ ...first, payload: { kind: "reaction", reaction: "heart" } }])).toBe("\uFEFFSilip chat\r\n\r\n");
   session.close();
 });
 

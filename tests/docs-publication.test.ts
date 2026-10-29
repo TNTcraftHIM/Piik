@@ -21,7 +21,7 @@ describe("reader documentation publication", () => {
         document: { documentElement: { classList: { toggle: (_name: string, value: boolean) => { dark = value; } } } },
         localStorage: { getItem: (key: string) => {
           if (blocked) throw new Error("Storage disabled");
-          expect(key).toBe("piik:ui-theme");
+          expect(key).toBe("silip:ui-theme");
           return preference;
         } },
         window: { matchMedia: () => ({ matches: systemDark }) },
@@ -33,18 +33,18 @@ describe("reader documentation publication", () => {
     expect(githubSlug("Join a friend's room")).toBe("join-a-friends-room");
     expect(githubSlug("2. Enable HTTPS")).toBe("2-enable-https");
     expect(githubSlug("可选：启用媒体兜底")).toBe("可选启用媒体兜底");
-    expect(githubSlug("Piik &amp; **friends**")).toBe("piik-friends");
+    expect(githubSlug("Silip &amp; **friends**")).toBe("silip-friends");
   });
 
   it("keeps translated guides and anchors local, while linking unpublished references to their source", () => {
     const guide = "docs/guide/getting-started.zh-CN.md";
-    expect(documentLink("../../cmd/piik-app/README.zh-CN.md#诊断", guide)).toBe("./app.html#诊断");
-    expect(documentLink("./getting-started.md#share-with-piik-app", guide)).toBe("./../getting-started.html#share-with-piik-app");
+    expect(documentLink("../../cmd/silip-app/README.zh-CN.md#诊断", guide)).toBe("./app.html#诊断");
+    expect(documentLink("./getting-started.md#share-with-silip-app", guide)).toBe("./../getting-started.html#share-with-silip-app");
     expect(documentLink("/docs/operations/self-hosting.zh-CN.md", guide)).toBe("./self-hosting.html");
     expect(documentLink("../standards/configuration.md#diagnostics", guide))
-      .toBe("https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/configuration.md#diagnostics");
-    expect(documentLink("../todo.md", guide)).toBe("https://github.com/TNTcraftHIM/Piik/blob/main/docs/todo.md");
-    for (const href of ["#选择-app-模式", "?lang=en", "https://demo.piik.tv", "mailto:example@example.com"]) {
+      .toBe("https://github.com/P4-aaaul/Silip/blob/main/docs/standards/configuration.md#diagnostics");
+    expect(documentLink("../todo.md", guide)).toBe("https://github.com/P4-aaaul/Silip/blob/main/docs/todo.md");
+    for (const href of ["#选择-app-模式", "?lang=en", "https://silip.example", "mailto:example@example.com"]) {
       expect(documentLink(href, guide)).toBe(href);
     }
   });

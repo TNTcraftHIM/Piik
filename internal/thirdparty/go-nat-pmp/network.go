@@ -1,4 +1,4 @@
-// Modified by Piik: stop socket I/O and retransmissions on context cancellation.
+// Modified by Silip: stop socket I/O and retransmissions on context cancellation.
 package natpmp
 
 import (

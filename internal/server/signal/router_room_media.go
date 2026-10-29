@@ -1,8 +1,8 @@
 package signal
 
 import (
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/route"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/route"
 )
 
 func videoConnectionID(snapshot route.RouteSnapshot, edge route.CommittedEdge) string {

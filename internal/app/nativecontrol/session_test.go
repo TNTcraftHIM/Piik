@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativehost"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -122,7 +122,7 @@ func TestRemoteStopShortcutRequiresAnOwnedShare(t *testing.T) {
 }
 
 func TestMain(tests *testing.M) {
-	if path := os.Getenv("PIIK_SOURCE_LIST_FIXTURE"); path != "" {
+	if path := os.Getenv("SILIP_SOURCE_LIST_FIXTURE"); path != "" {
 		payload, err := os.ReadFile(path)
 		if err != nil {
 			os.Exit(1)
@@ -130,14 +130,14 @@ func TestMain(tests *testing.M) {
 		_, _ = os.Stdout.Write(payload)
 		os.Exit(0)
 	}
-	if marker := os.Getenv("PIIK_SOURCE_PROBE_FIXTURE"); marker != "" {
+	if marker := os.Getenv("SILIP_SOURCE_PROBE_FIXTURE"); marker != "" {
 		if err := os.WriteFile(marker, nil, 0600); err != nil {
 			os.Exit(1)
 		}
 		time.Sleep(10 * time.Second)
 		os.Exit(0)
 	}
-	if directory := os.Getenv("PIIK_QUIET_CAPTURE_FIXTURE"); directory != "" {
+	if directory := os.Getenv("SILIP_QUIET_CAPTURE_FIXTURE"); directory != "" {
 		runQuietCaptureFixture(directory)
 		os.Exit(0)
 	}
@@ -176,7 +176,7 @@ func TestSourceListFitsTheControlEnvelope(t *testing.T) {
 		if err := os.WriteFile(path, payload.Bytes(), 0600); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("PIIK_SOURCE_LIST_FIXTURE", path)
+		t.Setenv("SILIP_SOURCE_LIST_FIXTURE", path)
 		session := New(executable, nativecapture.Capabilities{}, false, nil)
 		defer session.Close()
 		value, err := awaitControlResponse(t, session,
@@ -203,7 +203,7 @@ func runQuietCaptureFixture(directory string) {
 	if err := os.WriteFile(filepath.Join(directory, "arguments.json"), arguments, 0600); err != nil {
 		os.Exit(1)
 	}
-	if os.Getenv("PIIK_PENDING_CAPTURE_FIXTURE") == "true" {
+	if os.Getenv("SILIP_PENDING_CAPTURE_FIXTURE") == "true" {
 		_ = os.WriteFile(filepath.Join(directory, "prepared"), nil, 0600)
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		return
@@ -282,7 +282,7 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 	for _, capabilities := range []struct{ optIn, microphone bool }{{false, true}, {true, true}, {true, false}} {
 		optIn, microphone := capabilities.optIn, capabilities.microphone
 		t.Run(strconv.FormatBool(optIn)+"/microphone="+strconv.FormatBool(microphone), func(t *testing.T) {
-			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
+			t.Setenv("SILIP_QUIET_CAPTURE_FIXTURE", t.TempDir())
 			executable, err := os.Executable()
 			if err != nil {
 				t.Fatal(err)
@@ -353,7 +353,7 @@ func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing
 func TestRemoteInputRequiresPageOptIn(t *testing.T) {
 	for _, optIn := range []bool{false, true} {
 		t.Run(strconv.FormatBool(optIn), func(t *testing.T) {
-			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
+			t.Setenv("SILIP_QUIET_CAPTURE_FIXTURE", t.TempDir())
 			executable, err := os.Executable()
 			if err != nil {
 				t.Fatal(err)
@@ -389,7 +389,7 @@ func TestCaptureBorderPreferenceFollowsSourceAndProfile(t *testing.T) {
 	for _, supported := range []bool{false, true} {
 		t.Run(strconv.FormatBool(supported), func(t *testing.T) {
 			directory := t.TempDir()
-			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", directory)
+			t.Setenv("SILIP_QUIET_CAPTURE_FIXTURE", directory)
 			executable, err := os.Executable()
 			if err != nil {
 				t.Fatal(err)
@@ -458,7 +458,7 @@ func TestQuietHostUpdatePreservesControlAndCancelsCleanly(t *testing.T) {
 				slog.SetDefault(slog.New(slog.NewJSONHandler(&trace, &slog.HandlerOptions{Level: slog.LevelDebug})))
 			}
 			directory := t.TempDir()
-			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", directory)
+			t.Setenv("SILIP_QUIET_CAPTURE_FIXTURE", directory)
 			executable, err := os.Executable()
 			if err != nil {
 				t.Fatal(err)

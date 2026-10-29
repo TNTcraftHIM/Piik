@@ -1,4 +1,4 @@
-// Modified by Piik: exercise optional IPv6 against the real caller budget.
+// Modified by Silip: exercise optional IPv6 against the real caller budget.
 package nat
 
 import (
@@ -273,7 +273,7 @@ func TestDualStackReportsPinholeLeftOpenWhenRollbackFails(t *testing.T) {
 func TestDualStackMappingDoesNotWaitOutAnUnresponsiveIPv6Server(t *testing.T) {
 	ipv6 := &fakePCPMapper{unresponsive: true}
 	gateway := newNATWithPCPIPv6(&fakeNAT{port: 4242}, ipv6)
-	// Use the production child timeout inside Piik's three-second mapping
+	// Use the production child timeout inside Silip's three-second mapping
 	// budget. A shorter test-only timeout hides the competing parent deadline.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

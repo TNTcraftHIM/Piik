@@ -9,8 +9,8 @@ The static website source is `site/`. Its content and design follow the
 | --- | --- |
 | Website | [piik.tv](https://piik.tv) |
 | P2P-only demo on the separate US server | [demo.piik.tv](https://demo.piik.tv) |
-| App downloads and release notes | [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) |
-| Download mirror for domestic access | [Gitee Releases](https://gitee.com/TNTcraftHIM/Piik/releases) |
+| App downloads and release notes | [GitHub Releases](https://github.com/P4-aaaul/Silip/releases) |
+| Download mirror for domestic access | [Gitee Releases](https://gitee.com/P4-aaaul/Silip/releases) |
 | Documentation source | [Reader guides](../guide/README.md), with a separate [developer map](../README.md) |
 
 GitHub Pages serves `piik.tv` behind
@@ -42,13 +42,13 @@ The chosen demo allows entry without a site password and provides P2P sharing
 without SFU fallback. Use the [self-hosting runbook](./self-hosting.md) with:
 
 ```dotenv
-PIIK_ENV=production
+SILIP_ENV=production
 LISTEN_HOST=127.0.0.1
 PORT=8787
 PUBLIC_BASE_URL=https://demo.piik.tv
 ALLOWED_ORIGINS=https://demo.piik.tv
 SITE_ACCESS_PASSWORD=
-ROOM_DATABASE_PATH=/var/lib/piik/rooms.sqlite
+ROOM_DATABASE_PATH=/var/lib/silip/rooms.sqlite
 ROOM_EMPTY_TIMEOUT_SECONDS=3600
 MAX_VIEWERS_PER_ROOM=20
 STUN_URLS=stun:stun.piik.tv:3478
@@ -61,7 +61,7 @@ but leave `stun.piik.tv` DNS-only. Allow UDP 3478/3479/3480 directly to the serv
 Cloudflare's ordinary HTTP proxy does not carry STUN. Caddy terminates origin
 HTTPS/WSS. The demo uses the
 standard [systemd service](./service-management.md#systemd), with its release
-under `/opt/piik/current` and configuration at `/etc/piik/piik.env`. The service
+under `/opt/silip/current` and configuration at `/etc/silip/silip.env`. The service
 unit provides the SQLite state directory. Room ownership, invitations and private-room
 admission still apply. The [configuration reference](../standards/configuration.md)
 owns each setting and its bounds.
@@ -103,7 +103,7 @@ node --env-file=.env.maintenance.local scripts/release-maintenance.mjs server-ch
 `website-check` reads the two rule phases, checks fresh HTML and compares
 root/index asset references. `website-purge` clears those entry points from
 Cloudflare; visitors' Browser caches remain separate. `server-check` is a read-only
-SSH check of the Linux `piik` service, running package and public health.
+SSH check of the Linux `silip` service, running package and public health.
 Keep separate ignored env files or SSH aliases for different Server targets;
 keep private connection details out of scripts. For package upload, cutover
 and recovery, follow [Server deployment](../deployment.md).
@@ -133,8 +133,8 @@ Preview the built output, not `site/index.html`: the source is a template whose
 shared theme controls and welcome text are filled in by the website build.
 Publish the static `build/site/` output. Vite preview supports HTTP byte ranges
 for seeking the soundtrack. Keep asset links relative so both a custom
-domain and GitHub's `/Piik/` project path work. For a nested deployment, set
-`PIIK_DOCS_BASE=/Piik/docs/` when building; ordinary custom-domain builds use `/docs/`.
+domain and GitHub's `/Silip/` project path work. For a nested deployment, set
+`SILIP_DOCS_BASE=/Silip/docs/` when building; ordinary custom-domain builds use `/docs/`.
 
 The [public-film source](../../site/film/README.md) owns the selected artwork and
 its runtime. The ordinary build includes only A's required runtime, fonts, audio
@@ -146,7 +146,7 @@ Their HTML references come from the same build, including imported
 dependencies; fixed filenames must not mix a new page with cached old controls
 or styles. Publish the complete output together.
 
-Favicons share the [App artwork and exports](../../cmd/piik-app/DEVELOPMENT.md#desktop-icons).
+Favicons share the [App artwork and exports](../../cmd/silip-app/DEVELOPMENT.md#desktop-icons).
 The website build copies the public SVG/PNG/ICO assets for the homepage, film
 and documentation, keeping their URLs stable.
 
@@ -241,7 +241,7 @@ each provider's native latest-attachment route:
 - GitHub: `releases/latest/download/asset-name.zip`
   ([documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)).
 - Gitee: `releases/download/latest/asset-name.zip`
-  ([Windows download](https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip)).
+  ([Windows download](https://gitee.com/P4-aaaul/Silip/releases/download/latest/silip-app-windows-amd64.zip)).
 
 Both links follow provider publication without a website rebuild. Supported App
 architecture choices stay visible; one selection updates both providers' links.

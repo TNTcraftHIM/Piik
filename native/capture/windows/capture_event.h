@@ -6,7 +6,7 @@
 #include <memory>
 #include <utility>
 
-namespace piik::capture {
+namespace silip::capture {
 
 // Revocation does not join an in-flight WinRT callback. Let the delegate retain
 // its signal until the final callback returns, without retaining the capture.
@@ -16,4 +16,4 @@ inline auto CaptureEventHandler(std::shared_ptr<winrt::handle> event) {
   };
 }
 
-}  // namespace piik::capture
+}  // namespace silip::capture

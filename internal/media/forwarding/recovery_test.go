@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
@@ -28,8 +28,8 @@ import (
 // case adds real Opus encode/decode and live bitrate changes. No video decoder,
 // capture device or physical network participates.
 func TestTransportConstrainedDormantRecovery(t *testing.T) {
-	if os.Getenv("PIIK_TRANSPORT_RECOVERY") == "" {
-		t.Skip("set PIIK_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
+	if os.Getenv("SILIP_TRANSPORT_RECOVERY") == "" {
+		t.Skip("set SILIP_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
 	}
 	for _, scenario := range []string{"video-only", "numeric-audio", "within-lowest-output", "encoded-frame-bursts", "raw-forwarding"} {
 		t.Run(scenario, func(t *testing.T) { checkTransportRecovery(t, scenario) })

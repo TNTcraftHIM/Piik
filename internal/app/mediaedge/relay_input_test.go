@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"

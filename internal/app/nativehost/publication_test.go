@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
 )
 
 func TestPublicationGenerationFencesNativeControl(t *testing.T) {

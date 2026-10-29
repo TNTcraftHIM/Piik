@@ -1,5 +1,5 @@
 // Film A — 预告状 THE CALLING CARD (graphic collage × industrial microtype). 128 BPM, 34 bars, 64 s, zh / en.
-// Module contract: see engine/ENGINE.md. Used by films/A/index.html, tools/render.py and <piik-promo film="A">.
+// Module contract: see engine/ENGINE.md. Used by films/A/index.html, tools/render.py and <silip-promo film="A">.
 import { Film, clock, h, T, show } from '../../engine/core.js';
 import { grainLayer } from '../../engine/tex.js';
 import { STRINGS } from './strings.js';

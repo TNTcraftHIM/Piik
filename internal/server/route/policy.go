@@ -1,6 +1,6 @@
 package route
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 // SetRoutePolicy applies the server-validated policy for a new share to the
 // retained room controller. Existing routes stay physical while the ordinary

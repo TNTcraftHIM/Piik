@@ -11,14 +11,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"runtime"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
 
-	appfailure "github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/app/lan"
+	appfailure "github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/app/lan"
 )
 
 // appAssets stands in for the embedded Vite build the App ships.
@@ -29,7 +28,7 @@ func appAssets() fs.FS {
 }
 
 func TestLauncherCompressesEntryAndAssetsWithoutChangingAPI(t *testing.T) {
-	body := []byte(strings.Repeat("Piik launcher asset ", 400))
+	body := []byte(strings.Repeat("Silip launcher asset ", 400))
 	assets := fstest.MapFS{
 		"index.html":    {Data: body},
 		"assets/app.js": {Data: body},
@@ -115,7 +114,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 		if selection != (Selection{Mode: ModeLink, Language: "vis", Debug: true}) {
 			t.Fatalf("selection = %+v", selection)
 		}
-		server.SetResult("http://localhost:8787/#piik-client=1", nil)
+		server.SetResult("http://localhost:8787/#silip-client=1", nil)
 	case <-time.After(time.Second):
 		t.Fatal("launcher did not emit a selection")
 	}
@@ -128,7 +127,7 @@ func TestLauncherServesStateAndCompletesOneSelection(t *testing.T) {
 			Target string `json:"target"`
 		}
 		if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&launch) != nil ||
-			launch.Target != "http://localhost:8787/#piik-client=1" {
+			launch.Target != "http://localhost:8787/#silip-client=1" {
 			t.Fatalf("launcher result = %d, %+v", response.StatusCode, launch)
 		}
 	case <-time.After(time.Second):
@@ -177,7 +176,7 @@ func TestLauncherReentryReturnsTheExistingRoom(t *testing.T) {
 	// A second page or rapid repeat entry must join the accepted startup.
 	go enter(t.Context())
 	go enter(t.Context())
-	target := "http://localhost:8787/#piik-client=1"
+	target := "http://localhost:8787/#silip-client=1"
 	server.SetResult(target, nil)
 	check := func(response *http.Response) {
 		t.Helper()
@@ -215,7 +214,7 @@ func TestRoomFailureInvalidatesReadyTargetButKeepsSiteApprovalAvailable(t *testi
 	server.changeSite = func(site string, allowed bool) ([]string, error) { return []string{}, nil }
 	origin := strings.TrimSuffix(server.URL(), "/client")
 	server.Begin()
-	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	server.SetResult("http://localhost:8787/#silip-client=1", nil)
 	server.SetResult("", errors.New("public invitation link stopped"))
 	response, err := http.Get(origin + "/api/client-launcher")
 	if err != nil {
@@ -319,7 +318,7 @@ func TestFailedAttemptCanRetryWithoutReplacingAnOlderRequestResult(t *testing.T)
 	case <-time.After(time.Second):
 		t.Fatal("failure did not permit retry")
 	}
-	server.SetResult("http://localhost:8787/#piik-client=1", nil)
+	server.SetResult("http://localhost:8787/#silip-client=1", nil)
 	if server.Begin() {
 		t.Fatal("successful room allowed replacement")
 	}
@@ -350,18 +349,13 @@ func TestLauncherIncludesTheInjectedBuildVersionAndRevision(t *testing.T) {
 	}
 	defer response.Body.Close()
 	var state struct {
-		Version       string `json:"version"`
-		Revision      string `json:"revision"`
-		PackageTarget string `json:"packageTarget"`
-		DefaultMode   Mode   `json:"defaultMode"`
-	}
-	packageTarget := runtime.GOOS + "-" + runtime.GOARCH
-	if runtime.GOOS == "android" {
-		packageTarget = "android-universal"
+		Version     string `json:"version"`
+		Revision    string `json:"revision"`
+		DefaultMode Mode   `json:"defaultMode"`
 	}
 	if response.StatusCode != http.StatusOK || json.NewDecoder(response.Body).Decode(&state) != nil ||
 		state.Version != version || state.Revision != revision ||
-		state.PackageTarget != packageTarget || state.DefaultMode != ModeLink {
+		state.DefaultMode != ModeLink {
 		t.Fatalf("launcher build = %d, %+v", response.StatusCode, state)
 	}
 }
@@ -423,7 +417,7 @@ func TestLauncherPassesTheChosenLANAddressToTheApp(t *testing.T) {
 	selected := make(chan Selection, 1)
 	go func() {
 		selected <- <-server.Selection()
-		server.SetResult("http://localhost:8787/#piik-client=1", nil)
+		server.SetResult("http://localhost:8787/#silip-client=1", nil)
 	}()
 	response, err := localPost(strings.TrimSuffix(server.URL(), "/client")+"/api/client-launcher/launch",
 		"application/json", strings.NewReader(`{"mode":"local","language":"en","lanAddress":"192.168.1.4"}`))
@@ -483,7 +477,7 @@ func TestLauncherPreservesAnOptionalLocalPassword(t *testing.T) {
 				if selection.Mode != ModeLocal || selection.Language != "zh" || selection.LocalAccessPassword != password {
 					t.Fatalf("selection = %+v", selection)
 				}
-				server.SetResult("http://localhost:8787/#piik-client=1", nil)
+				server.SetResult("http://localhost:8787/#silip-client=1", nil)
 			case <-time.After(time.Second):
 				t.Fatal("launcher did not emit a selection")
 			}
@@ -587,7 +581,7 @@ func TestLauncherReportsSafeBoundedFailureDetails(t *testing.T) {
 	if err := json.NewDecoder(response.Body).Decode(&failure); err != nil || response.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("failure response = %d, %v", response.StatusCode, err)
 	}
-	if failure.Reason != string(appfailure.TunnelExited) || failure.Error != "Piik App could not start" || !strings.Contains(failure.Detail, "public tunnel failed") ||
+	if failure.Reason != string(appfailure.TunnelExited) || failure.Error != "Silip App could not start" || !strings.Contains(failure.Detail, "public tunnel failed") ||
 		strings.Contains(failure.Detail, "private-secret") || len([]rune(failure.Detail)) > 2051 {
 		t.Fatalf("unsafe or missing failure detail: %+v", failure)
 	}

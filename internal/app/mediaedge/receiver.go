@@ -8,9 +8,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
 	"github.com/pion/rtcp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
@@ -149,14 +149,14 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		}
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
-			slog.Debug("piik-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())
+			slog.Debug("silip-client", "event", "media-connection-state", "direction", "inbound", "state", state.String())
 		}
 		var selected *SelectedPair
 		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) && (receiver.events.ConnectionState != nil || debug) {
 			if pair, pairErr := receiver.SelectedPair(); pairErr == nil {
 				selected = &pair
 				if debug {
-					slog.Debug("piik-client", "event", "media-selected-path", "direction", "inbound",
+					slog.Debug("silip-client", "event", "media-selected-path", "direction", "inbound",
 						"localType", pair.Local.String(), "remoteType", pair.Remote.String(), "natTraversalPath", pair.NatTraversalPath)
 				}
 			}

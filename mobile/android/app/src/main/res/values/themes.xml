@@ -1,5 +1,5 @@
 <resources>
- <style name="PiikTheme" parent="android:style/Theme.Material.Light">
+ <style name="SilipTheme" parent="android:style/Theme.Material.Light">
   <item name="android:windowLightStatusBar">true</item>
   <item name="android:windowLightNavigationBar">true</item>
   <item name="android:statusBarColor">?android:attr/colorBackground</item>

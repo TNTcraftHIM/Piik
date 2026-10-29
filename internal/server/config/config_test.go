@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // Ported from tests/server-config.test.ts.
@@ -26,7 +26,7 @@ func env(parts ...map[string]string) map[string]string {
 }
 
 var productionBase = map[string]string{
-	"PIIK_ENV":             "production",
+	"SILIP_ENV":            "production",
 	"PUBLIC_BASE_URL":      "https://share.test",
 	"SITE_ACCESS_PASSWORD": "host-password-12",
 	"STUN_URLS":            "stun:stun.test:3478",
@@ -50,7 +50,7 @@ func mustLoad(t *testing.T, environment map[string]string) Config {
 }
 
 func TestLoadDevelopmentDefaults(t *testing.T) {
-	config := mustLoad(t, map[string]string{"PIIK_ENV": "development", "PORT": "9123"})
+	config := mustLoad(t, map[string]string{"SILIP_ENV": "development", "PORT": "9123"})
 
 	if config.Env != EnvironmentDevelopment {
 		t.Errorf("Env = %q", config.Env)
@@ -440,7 +440,7 @@ func TestLoadRejects(t *testing.T) {
 
 		// Production requirements.
 		{"production without STUN", map[string]string{
-			"PIIK_ENV": "production", "PUBLIC_BASE_URL": "https://share.test",
+			"SILIP_ENV": "production", "PUBLIC_BASE_URL": "https://share.test",
 			"SITE_ACCESS_PASSWORD": "host-password-12",
 		}, "STUN is required in production"},
 
@@ -499,13 +499,13 @@ func TestLoadRejects(t *testing.T) {
 
 		// Runtime environment (DECISIONS D8).
 		{"NODE_ENV is removed", map[string]string{"NODE_ENV": "production"},
-			"NODE_ENV is no longer supported; use PIIK_ENV"},
+			"NODE_ENV is no longer supported; use SILIP_ENV"},
 		{"blank NODE_ENV is removed", map[string]string{"NODE_ENV": ""},
-			"NODE_ENV is no longer supported; use PIIK_ENV"},
-		{"test environment is gone", map[string]string{"PIIK_ENV": "test"},
-			"PIIK_ENV must be development or production"},
-		{"blank environment", map[string]string{"PIIK_ENV": ""},
-			"PIIK_ENV must be development or production"},
+			"NODE_ENV is no longer supported; use SILIP_ENV"},
+		{"test environment is gone", map[string]string{"SILIP_ENV": "test"},
+			"SILIP_ENV must be development or production"},
+		{"blank environment", map[string]string{"SILIP_ENV": ""},
+			"SILIP_ENV must be development or production"},
 
 		// Removed variables carrying their own replacement.
 		{"removed relay downstream setting", map[string]string{"MAX_PEER_RELAY_DOWNSTREAM_EDGES": "2"},

@@ -51,7 +51,7 @@ describe("copy catalog", () => {
     vi.stubGlobal("navigator", { language: "ja-JP" });
     vi.stubGlobal("window", {
       localStorage: {
-        getItem: (key: string) => key === "piik:ui-lang" ? lang : mode,
+        getItem: (key: string) => key === "silip:ui-lang" ? lang : mode,
       },
       addEventListener: () => {},
     });
@@ -111,7 +111,7 @@ describe("copy catalog", () => {
       fr: { ...registry.locales.en, name: "Français", short: "FR", tag: "fr" },
     });
     try {
-      const stored = new Map<string, string>([["piik:ui-lang", "fr"]]);
+      const stored = new Map<string, string>([["silip:ui-lang", "fr"]]);
       vi.stubGlobal("navigator", { language: "en-US" });
       vi.stubGlobal("document", { documentElement: { lang: "en" } });
       vi.stubGlobal("window", {
@@ -134,7 +134,7 @@ describe("copy catalog", () => {
       expect(copy.t(copy.currentLang(), "common.host")).toBe("Host");
 
       const presentation = { lang: copy.currentLang(), vis: false, theme: null };
-      window.location.hash = new URL(clientLaunchURL("https://site.example/#piik-client=1", presentation)).hash;
+      window.location.hash = new URL(clientLaunchURL("https://site.example/#silip-client=1", presentation)).hash;
       expect(takeClientLaunchBootstrap().presentation).toEqual({ ...presentation, explicit: [] });
       expect(registry.consoleLanguage(presentation.lang, false)).toBe("en");
       expect(registry.consoleLanguage(presentation.lang, true)).toBe("vis");

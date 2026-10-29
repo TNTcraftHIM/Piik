@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-namespace piik::capture {
+namespace silip::capture {
 
 struct InputEnvelope final {
   uint8_t kind = 0;
@@ -98,4 +98,4 @@ class InputEnvelopes final {
   InputEnvelope frame_;
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

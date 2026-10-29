@@ -1,4 +1,4 @@
-// Piik film engine — kinetic typography helpers (ransom-note letters, split text, decode/typewriter).
+// Silip film engine — kinetic typography helpers (ransom-note letters, split text, decode/typewriter).
 import { h, rng, pick, range, clamp, prog, E, T } from './core.js';
 import { C } from './art.js';
 

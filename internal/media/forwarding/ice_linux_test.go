@@ -15,7 +15,7 @@ import (
 // Run only in a disposable network namespace with lab0 at 10.77.0.2/24.
 // This exercises real interface replacement without changing the host network.
 func TestUDPMuxRefreshesHostCandidates(t *testing.T) {
-	if os.Getenv("PIIK_INTERFACE_LAB") != "1" {
+	if os.Getenv("SILIP_INTERFACE_LAB") != "1" {
 		t.Skip("requires the isolated Linux interface fixture")
 	}
 	self, err := os.Readlink("/proc/self/ns/net")

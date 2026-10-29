@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="16 30 302 220">
+  <title>Silip</title>
+  <style>svg { color: #22303e; } @media (prefers-color-scheme: dark) { svg { color: #dde8f3; } }</style>
+  <g fill="none" stroke="currentColor" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M77.5 121.5A26 19 0 1 0 55 150A26 19 0 1 1 32.5 178.5"/>
+    <path d="M116 112V184M156 44V184M196 112V184M236 112V236"/>
+    <circle cx="270" cy="150" r="34"/>
+  </g>
+  <path fill="currentColor" fill-rule="evenodd" d="M96 74a20 20 0 1 0 40 0a20 20 0 1 0-40 0ZM116 75a8 8 0 1 0 16 0a8 8 0 1 0-16 0ZM176 74a20 20 0 1 0 40 0a20 20 0 1 0-40 0ZM196 75a8 8 0 1 0 16 0a8 8 0 1 0-16 0Z"/>
+</svg>

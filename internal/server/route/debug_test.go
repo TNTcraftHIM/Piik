@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 func TestDiagnosticReadersAcceptCurrentRoomProducer(t *testing.T) {
@@ -79,7 +79,7 @@ func TestControllerDebugRequiresInjectedSinkAndRoom(t *testing.T) {
 	}
 	c := &Controller{debugRoomID: "1234", debugLog: sink}
 	c.debug("operation-started", "child", "viewer-1")
-	if len(kinds) != 1 || kinds[0] != "piik-route" ||
+	if len(kinds) != 1 || kinds[0] != "silip-route" ||
 		len(events) != 1 || events[0] != "operation-started" {
 		t.Fatalf("injected sink received kinds=%v events=%v", kinds, events)
 	}

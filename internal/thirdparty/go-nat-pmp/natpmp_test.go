@@ -1,4 +1,4 @@
-// Modified by Piik: adapt the existing protocol tests to context-aware calls.
+// Modified by Silip: adapt the existing protocol tests to context-aware calls.
 package natpmp
 
 import (

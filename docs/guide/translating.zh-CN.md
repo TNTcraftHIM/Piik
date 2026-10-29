@@ -1,10 +1,10 @@
-# 参与 Piik 翻译
+# 参与 Silip 翻译
 
 [English](./translating.md) · [贡献指南](../../CONTRIBUTING.md)
 
-Piik 提供简体中文和英文，可通过 GitHub Issue 与 Pull Request（PR）建议措辞、修正译文或新增语言。
+Silip 提供简体中文和英文，可通过 GitHub Issue 与 Pull Request（PR）建议措辞、修正译文或新增语言。
 
-只想改一句话，可以直接[提交建议](https://github.com/TNTcraftHIM/Piik/issues/new/choose)：
+只想改一句话，可以直接[提交建议](https://github.com/P4-aaaul/Silip/issues/new/choose)：
 写明语言、页面或控件、原文、建议译文及理由。附上截图或进入该页面的步骤，便于理解上下文；
 截图中请移除私人邀请链接、密码和个人内容。提交措辞建议无需搭建开发环境。
 
@@ -150,4 +150,4 @@ Markdown 修改在暂存新文件后执行 `node scripts/check-docs.mjs`，并�
 - [Godot 翻译指南](https://contributing.godotengine.org/en/latest/other/translations.html)：查找源码上下文，协作统一术语。
 - [Weblate 翻译说明](https://docs.weblate.org/en/latest/user/translating.html#translating-special-text-safely)：处理占位符与标记语法。
 - [W3C 语言标签指南](https://www.w3.org/International/questions/qa-choosing-language-tags)：用 BCP 47 标签区分语言及其变体。
-- [Unicode CLDR 语言名称](https://cldr.unicode.org/translation/displaynames/languagelocale-names)：菜单名称参考，也可用浏览器 `Intl.DisplayNames` 查找语言本名；Piik 按钮简称在登记表中选定。
+- [Unicode CLDR 语言名称](https://cldr.unicode.org/translation/displaynames/languagelocale-names)：菜单名称参考，也可用浏览器 `Intl.DisplayNames` 查找语言本名；Silip 按钮简称在登记表中选定。

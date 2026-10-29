@@ -1,15 +1,15 @@
 ---
 name: ponytail
 description: >
-  Choose the smallest coherent implementation for Piik coding, code review,
+  Choose the smallest coherent implementation for Silip coding, code review,
   refactoring and implementation design, including dependency choices.
   Also use when Ponytail or YAGNI is requested; not for ordinary prose or status.
 license: MIT
 ---
 
-# Ponytail · Piik
+# Ponytail · Silip
 
-Reduce what Piik must own while delivering the complete requested experience.
+Reduce what Silip must own while delivering the complete requested experience.
 This is an implementation method under [AGENTS.md](../../../AGENTS.md), not
 permission to reduce scope or defer design. The repo adaptation and license are
 documented in [UPSTREAM.md](./UPSTREAM.md).

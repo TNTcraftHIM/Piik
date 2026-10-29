@@ -32,16 +32,16 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/room"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu/sfutest"
+	"github.com/P4-aaaul/Silip/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/room"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/sfu/sfutest"
 )
 
 const (
 	allowedOrigin    = "http://allowed.test"
-	siteAccessCookie = "piik-site-access=granted"
+	siteAccessCookie = "silip-site-access=granted"
 	defaultWait      = 2 * time.Second
 )
 
@@ -2869,7 +2869,7 @@ func TestSignalTerminatesStaleV12BeforeAuthentication(t *testing.T) {
 	invalidClient := openClient(t, h)
 	invalidClient.sendJSON(map[string]any{
 		"type":     "authenticate",
-		"protocol": "piik-v12",
+		"protocol": "silip-v12",
 		"roomId":   h.room.RoomID,
 		"role":     protocol.RoleViewer,
 		"clientId": "invalid-client",

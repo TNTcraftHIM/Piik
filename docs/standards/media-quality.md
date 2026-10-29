@@ -38,7 +38,7 @@ with that share. Browser capture reuses the stable HostAudio source/microphone
 output; Native capture reuses its mixer and microphone API. Room voice has its
 own room lifetime. Both microphones may be enabled intentionally; the UI warns
 that listeners may hear the same speech twice through the separate deliveries.
-Piik does not automatically mute either microphone or switch between them.
+Silip does not automatically mute either microphone or switch between them.
 
 - The Web Host may share a display, application window, Browser tab or camera and may
   stop, synchronously pause/resume audio and video, or switch source.
@@ -361,7 +361,7 @@ Each ordinary Browser PeerConnection owns stock WebRTC congestion control and
 sender adaptation. Ordinary clones share one underlying media source and therefore
 do not provide complete simultaneous isolation: framework source-wants aggregation
 may still partially reduce frames available to sibling clones. Sibling outputs may differ;
-Piik does not impose a room-wide minimum. The Host's one Browser SFU
+Silip does not impose a room-wide minimum. The Host's one Browser SFU
 publication uses the share-generation codec and selected ceilings. Its ordinary
 simulcast outputs follow pinned LiveKit screen-share construction: original and
 half size at the same frame rate, with a quarter-bitrate lower ceiling and its
@@ -457,7 +457,7 @@ native source. This gives one difficult path stock per-sender adaptation without
 lowering the shared representation for healthy paths. It adds no quality score,
 timer, or room-wide media setting.
 
-Piik does not maintain an application bitrate/resolution ladder, scene
+Silip does not maintain an application bitrate/resolution ladder, scene
 detector, periodic quality controller, manual SFU layer selector, or
 application-defined whole-room lowest-common-denominator target.
 
@@ -469,7 +469,7 @@ outgoing fanout; native gain precedes the shared Opus encoder. Source replacemen
 preserves the level, and room voice remains independent. Viewer volume adds only
 local listening gain.
 
-Piik supports mono and stereo Opus content through the existing audio
+Silip supports mono and stereo Opus content through the existing audio
 track. Mono inputs remain valid; Browser and Native mixing use a stereo output.
 A stereo receive preference or two-channel declaration does not prove distinct
 source channels. [Fidelity evidence](../research/media-fidelity.md#stereo) owns

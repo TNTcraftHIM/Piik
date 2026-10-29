@@ -9,7 +9,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // Handlers compare authenticatedSession pointers to reject work from an

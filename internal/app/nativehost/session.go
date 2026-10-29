@@ -13,12 +13,12 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -205,7 +205,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 		var audioErr error
 		audioStream, audioErr = session.startSourceAudio(audioCtx, options.Video.Target, options.ExcludeAudio)
 		if audioErr != nil {
-			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
+			slog.DebugContext(ctx, "silip-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
 		}
 		session.audioStream = audioStream
 	}
@@ -225,7 +225,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 			mediaedge.PhysicalSourceCapacity(options.EdgeCapacity), options.Profile.AudioBitrate,
 		)
 		if audioErr != nil {
-			slog.DebugContext(ctx, "piik-client", "event", "capture-audio-source-failed", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
+			slog.DebugContext(ctx, "silip-client", "event", "capture-audio-source-failed", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
 			if audioStream != nil {
 				_ = audioStream.Close()
 			}
@@ -271,7 +271,7 @@ func Start(parent context.Context, options Options) (*Session, error) {
 			}
 			input, audioErr := session.startSourceAudio(audioCtx, options.Video.Target, options.ExcludeAudio)
 			if audioErr != nil {
-				slog.DebugContext(ctx, "piik-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
+				slog.DebugContext(ctx, "silip-client", "event", "capture-audio-unavailable", "share", diagnostics.ID(options.ShareID), diagnostics.Error(audioErr))
 				return
 			}
 			session.mu.Lock()
@@ -995,7 +995,7 @@ func (session *Session) run(videoDone <-chan error, audioStarting <-chan struct{
 		level = slog.LevelWarn
 	}
 	if slog.Default().Enabled(session.ctx, level) {
-		slog.Log(session.ctx, level, "piik-client", "event", "share-ended", "share", diagnostics.ID(session.shareID), "failed", result != nil, diagnostics.Error(result))
+		slog.Log(session.ctx, level, "silip-client", "event", "share-ended", "share", diagnostics.ID(session.shareID), "failed", result != nil, diagnostics.Error(result))
 	}
 	session.done <- result
 	close(session.done)
@@ -1036,7 +1036,7 @@ func (session *Session) runVideo() error {
 				}
 				continue
 			}
-			slog.DebugContext(session.ctx, "piik-client", "event", "capture-video-read-ended",
+			slog.DebugContext(session.ctx, "silip-client", "event", "capture-video-read-ended",
 				"share", diagnostics.ID(session.shareID), "canceled", session.ctx.Err() != nil, "eof", errors.Is(err, io.EOF), diagnostics.Error(err))
 			if errors.Is(err, nativecapture.ErrSourceCanceled) {
 				return fail(err)
@@ -1104,7 +1104,7 @@ func (session *Session) runVideo() error {
 			}
 			status.applyBackend(&session.videoOptions)
 			session.mu.Unlock()
-			slog.Debug("piik-client", "event", "capture-state", "state", status.State, "codec", status.Codec,
+			slog.Debug("silip-client", "event", "capture-state", "state", status.State, "codec", status.Codec,
 				"share", diagnostics.ID(session.shareID), "width", status.Width, "height", status.Height, "fps", status.FPS,
 				"hardware", status.HardwareOnly, "adapterIndex", status.AdapterIndex, "encoderIndex", status.EncoderIndex,
 				"adapterName", diagnostics.SafeText(status.AdapterName), "encoderName", diagnostics.SafeText(status.EncoderName),
@@ -1153,7 +1153,7 @@ func (session *Session) runVideo() error {
 				}
 			}
 		case nativecapture.FrameLayerUnavailable:
-			slog.DebugContext(session.ctx, "piik-client", "event", "capture-output-unavailable",
+			slog.DebugContext(session.ctx, "silip-client", "event", "capture-output-unavailable",
 				"share", diagnostics.ID(session.shareID), "layer", frame.Layer, "detail", diagnostics.SafeText(string(frame.Data)))
 			if session.source == nil {
 				return fail(errors.New("native output ended before its source state"))
@@ -1227,7 +1227,7 @@ func (session *Session) currentStream() CaptureStream {
 }
 
 func captureProfileFailure(ctx context.Context, profile nativecapture.VideoProfile, stage string, err error) error {
-	slog.DebugContext(ctx, "piik-client", "event", "capture-profile-rejected", "stage", stage,
+	slog.DebugContext(ctx, "silip-client", "event", "capture-profile-rejected", "stage", stage,
 		"width", profile.Width, "height", profile.Height, "fps", profile.Framerate, "bitrate", profile.Bitrate, diagnostics.Error(err))
 	return err
 }
@@ -1296,7 +1296,7 @@ func waitForCaptureProfile(
 				send(result{stage: "status-invalid", err: err})
 				return
 			}
-			slog.DebugContext(ctx, "piik-client", "event", "capture-profile-observed", "state", state.State,
+			slog.DebugContext(ctx, "silip-client", "event", "capture-profile-observed", "state", state.State,
 				"expectedCodec", codec, "actualCodec", state.Codec, "expectedProfile", profile,
 				"actualWidth", state.Width, "actualHeight", state.Height, "actualFPS", state.FPS,
 				"expectedOutputs", stream.Outputs(), "actualOutputs", state.Outputs)
@@ -1420,7 +1420,7 @@ func (session *Session) runAudio() {
 				continue
 			}
 		}
-		slog.DebugContext(session.ctx, "piik-client", "event", "capture-audio-stream-ended",
+		slog.DebugContext(session.ctx, "silip-client", "event", "capture-audio-stream-ended",
 			"share", diagnostics.ID(session.shareID), "frameKind", frame.Kind, "eof", errors.Is(err, io.EOF),
 			"canceled", session.ctx.Err() != nil, diagnostics.Error(err))
 		// Audio failure leaves video live. Only an explicit source replacement

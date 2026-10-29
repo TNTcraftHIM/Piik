@@ -18,7 +18,7 @@ outside the cutover window. See [nft output options](https://netfilter.org/proje
 
 ## Release Boundary
 
-A routine Server release changes only the built Piik server binary and
+A routine Server release changes only the built Silip server binary and
 the Browser assets it embeds. It does not change infrastructure,
 service units, proxy/firewall rules, secrets, media listener configuration, or
 persistent room state.
@@ -46,13 +46,13 @@ The packager refuses a dirty tree, builds the Browser assets and the
 linux/amd64 server binary (or linux/arm64 with `--arch arm64`) from that exact revision without cgo, records the
 full revision, emits a runtime archive plus path/size/SHA-256 manifest and release descriptor, and
 extracts its own artifact to verify it. The archive contains exactly
-`piik-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
-the archive, manifest, and descriptor together to `/opt/piik/uploads`.
+`silip-server`, `LICENSE`, `THIRD-PARTY-NOTICES.txt`, and `REVISION`. Upload
+the archive, manifest, and descriptor together to `/opt/silip/uploads`.
 ARM64 file names include `-linux-arm64` after the revision; x64 names stay
 unchanged. The deployment wrapper rejects a package for another host architecture.
 
 `--os windows --arch amd64` packages the same Server core as
-`piik-<revision>-windows-amd64-runtime.zip`, with `piik-server.exe` in place of the
+`silip-<revision>-windows-amd64-runtime.zip`, with `silip-server.exe` in place of the
 Linux executable. It uses the same descriptor and checksum inventory; containers
 and `release-server.sh` remain Linux-only. Windows operation follows the
 [self-hosting guide](./operations/self-hosting.md).
@@ -67,9 +67,9 @@ The same Server descriptor is also the App assembly input. On each
 target platform, provide that platform's Go toolchain:
 
 ```sh
-PIIK_GO=/path/to/go node scripts/assemble-app.mjs \
-  /outside/repository/server-release/piik-<revision>.release.json \
-  /outside/repository/piik-app \
+SILIP_GO=/path/to/go node scripts/assemble-app.mjs \
+  /outside/repository/server-release/silip-<revision>.release.json \
+  /outside/repository/silip-app \
   --target windows-amd64 \
   --capture /path/to/platform-capture \
   --tunnel /path/to/cloudflared
@@ -136,45 +136,14 @@ Do not build or run the full repository check on a constrained production host.
 That host runs only the packaged binary and needs no Node, npm, or dependency
 install.
 
-## Update Check
+## Build Identity
 
 Builds carry a product version plus full source revision. Packagers use one
 release plan or exact Git tag and inject its identity into Server, App and Web;
 untagged local candidates use `development`. Schema-2 package descriptors carry
 the same pair and artifact hashes. The [version policy](./standards/versioning.md)
-owns ordering and first-public-release readiness.
-
-The default App launcher starts immediately, then checks GitHub Releases in the
-background, falling back to the Gitee mirror if GitHub is unavailable. The
-[release-source policy](./standards/versioning.md#release-sources) owns selection
-and provenance checks. It shows a link only when
-the latest stable release is newer, the same version has a known different source
-SHA, or a development build can choose the official release. These notices are
-distinct; a different SHA alone is not called newer.
-The request sends no current revision, credentials, room data, or media data;
-network errors, private-repository responses, and missing releases are treated
-as no notice. Checking does not download an archive, replace files, or interrupt
-a running share; the user can follow the update link to download the App ZIP.
-
-An operator can perform the corresponding read-only Server check:
-
-```sh
-bash deploy/check-release.sh
-```
-
-The Server also checks once in the background after startup and logs an available
-release with its download URL. It does not delay startup, periodically poll,
-notify room participants or install anything.
-
-The script runs the deployed binary's `--check-release`, using that binary's
-injected identity, and prints one JSON result with versions, available source
-SHAs and the release URL. Exit `0` means no newer/different official build,
-`10` means `update-available`, `different-build` or `official-release`, and `20`
-means the check is unavailable. It does not accept a separate revision file.
-For a private repository, inject a short-lived `GITHUB_TOKEN`
-through the operator environment; never place it in the repository or command
-line. The command does not mutate files, services, containers, or persistent
-state.
+owns ordering and first-public-release readiness. Silip has no in-product update
+check; update by pulling source changes and rebuilding.
 
 ## Atomic Cutover
 
@@ -186,21 +155,21 @@ their own scoped recovery procedure under [CONTRIBUTING](../CONTRIBUTING.md).
 Run the tracked server entry with the uploaded descriptor:
 
 ```sh
-sudo env PIIK_PUBLIC_ORIGIN=https://share.example.com \
+sudo env SILIP_PUBLIC_ORIGIN=https://share.example.com \
   bash /path/to/repository/deploy/release-server.sh \
-  /opt/piik/uploads/piik-<revision>.release.json
+  /opt/silip/uploads/silip-<revision>.release.json
 ```
 
 The wrapper:
 
 1. takes a deployment lock and validates the descriptor, revision, archive,
-   manifest, current Go process, Piik/nginx service state, and public origin;
+   manifest, current Go process, Silip/nginx service state, and public origin;
 2. rejects unexpected archive paths, links, file types, or duplicate inodes;
 3. extracts to a new release directory and verifies every file hash and size;
 4. validates production configuration by running the packaged binary's
    configuration check as the service user under a bounded runtime;
 5. proves the old and new releases share no regular-file inode;
-6. atomically switches `/opt/piik/current`, starts the service, and polls
+6. atomically switches `/opt/silip/current`, starts the service, and polls
    bounded local/public health; and
 7. restores the exact prior symlink and service when cutover or health fails.
 
@@ -227,8 +196,8 @@ Verify only the surfaces relevant to the release:
 
 - local and public `/healthz` return `{"status":"ok"}`;
 - the public HTML references the new immutable main asset;
-- Piik and nginx have expected active/restart state;
-- Piik owns each configured STUN/SFU UDP listener and public reachability
+- Silip and nginx have expected active/restart state;
+- Silip owns each configured STUN/SFU UDP listener and public reachability
   matches the configuration;
 - the current symlink and served revision match the descriptor;
 - room creation, Host authentication, one direct Viewer, and configured SFU
@@ -242,7 +211,7 @@ to [verification status](./verification-status.md), not routine postflight.
 ## Recovery
 
 Before cutover, the wrapper keeps the exact prior release path. On failure after
-the switch begins, it stops Piik, restores that path atomically, restarts the
+the switch begins, it stops Silip, restores that path atomically, restarts the
 service, and waits for health. A failed recovery exits distinctly and requires
 operator intervention; it must not silently report the new release as active.
 

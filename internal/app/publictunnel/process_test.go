@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	appfailure "github.com/TNTcraftHIM/Piik/internal/app/failure"
+	appfailure "github.com/P4-aaaul/Silip/internal/app/failure"
 )
 
 func TestMain(tests *testing.M) {
-	if mode := os.Getenv("PIIK_TUNNEL_FIXTURE"); mode != "" {
+	if mode := os.Getenv("SILIP_TUNNEL_FIXTURE"); mode != "" {
 		if mode == "deadline-detail" {
 			fmt.Fprintln(os.Stderr, `{"level":"error","message":"edge discovery failed","error":"DNS lookup failed token=fixture-secret"}`)
 			fmt.Fprintln(os.Stderr, `{"level":"info","message":"retrying"}`)
@@ -33,7 +33,7 @@ func TestMain(tests *testing.M) {
 			fmt.Fprintln(os.Stdout, "trailing ordinary output")
 			os.Exit(7)
 		}
-		if record := os.Getenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS"); record != "" {
+		if record := os.Getenv("SILIP_TUNNEL_FIXTURE_ATTEMPTS"); record != "" {
 			previous, _ := os.ReadFile(record)
 			var paths []string
 			if len(previous) > 0 {
@@ -58,19 +58,19 @@ func TestMain(tests *testing.M) {
 			if writeErr != nil || closeErr != nil {
 				os.Exit(9)
 			}
-			failures, _ := strconv.Atoi(os.Getenv("PIIK_TUNNEL_FIXTURE_FAILURES"))
+			failures, _ := strconv.Atoi(os.Getenv("SILIP_TUNNEL_FIXTURE_FAILURES"))
 			if len(paths) < failures {
 				fmt.Fprintln(os.Stderr, `{"level":"error","message":"older recovered failure"}`)
 				fmt.Fprintln(os.Stderr, `{"level":"error","message":"fixture allocation unavailable","error":"connect timeout token=fixture-secret"}`)
 				fmt.Fprintln(os.Stderr, `{"level":"warn","message":"cleanup warning"}`)
 				fmt.Fprintln(os.Stderr, `{"level":"info","message":"cleanup complete"}`)
-				code, _ := strconv.Atoi(os.Getenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE"))
+				code, _ := strconv.Atoi(os.Getenv("SILIP_TUNNEL_FIXTURE_EXIT_CODE"))
 				os.Exit(code)
 			}
 		}
 		if mode == "tcp-only" {
 			// Model the pinned Quick Tunnel's opt-in protocol fallback. Without
-			// both flags, an unavailable UDP edge consumes Piik's startup budget.
+			// both flags, an unavailable UDP edge consumes Silip's startup budget.
 			for name, want := range map[string]string{"--protocol": "auto", "--max-edge-addr-retries": "0"} {
 				index := slices.Index(os.Args, name)
 				if index < 0 || index+1 >= len(os.Args) || os.Args[index+1] != want {
@@ -86,7 +86,7 @@ func TestMain(tests *testing.M) {
 		if mode == "fail-after-ready" {
 			fmt.Println(`{"level":"fatal","message":"fixture exit failure"}`)
 			for {
-				if _, err := os.Stat(os.Getenv("PIIK_TUNNEL_FIXTURE_EXIT")); err == nil {
+				if _, err := os.Stat(os.Getenv("SILIP_TUNNEL_FIXTURE_EXIT")); err == nil {
 					os.Exit(7)
 				}
 				time.Sleep(time.Millisecond)
@@ -105,7 +105,7 @@ func TestStartupRetainsPlainDependencyFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_TUNNEL_FIXTURE", "plain-exit")
+	t.Setenv("SILIP_TUNNEL_FIXTURE", "plain-exit")
 	directory := t.TempDir()
 	process, err := startAttempt(t.Context(), executable, "http://127.0.0.1:8787", directory)
 	var failure *exec.ExitError
@@ -127,7 +127,7 @@ func TestStartupDeadlineRetainsSanitizedDependencyCause(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_TUNNEL_FIXTURE", "deadline-detail")
+	t.Setenv("SILIP_TUNNEL_FIXTURE", "deadline-detail")
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	directory := t.TempDir()
@@ -161,10 +161,10 @@ func TestStartupRetriesOnlyRetiredPreReadyChildren(t *testing.T) {
 	} {
 		t.Run(sample.name, func(t *testing.T) {
 			record := filepath.Join(t.TempDir(), "attempts")
-			t.Setenv("PIIK_TUNNEL_FIXTURE", "ready")
-			t.Setenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS", record)
-			t.Setenv("PIIK_TUNNEL_FIXTURE_FAILURES", strconv.Itoa(sample.failures))
-			t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE", strconv.Itoa(sample.exitCode))
+			t.Setenv("SILIP_TUNNEL_FIXTURE", "ready")
+			t.Setenv("SILIP_TUNNEL_FIXTURE_ATTEMPTS", record)
+			t.Setenv("SILIP_TUNNEL_FIXTURE_FAILURES", strconv.Itoa(sample.failures))
+			t.Setenv("SILIP_TUNNEL_FIXTURE_EXIT_CODE", strconv.Itoa(sample.exitCode))
 			process, err := Start(t.Context(), executable, "http://127.0.0.1:8787", "")
 			if sample.ready {
 				if err != nil || process == nil {
@@ -226,10 +226,10 @@ func TestStartupRetriesShareCancellationAndDeadline(t *testing.T) {
 	} {
 		t.Run(sample.name, func(t *testing.T) {
 			record := filepath.Join(t.TempDir(), "attempts")
-			t.Setenv("PIIK_TUNNEL_FIXTURE", "starting")
-			t.Setenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS", record)
-			t.Setenv("PIIK_TUNNEL_FIXTURE_FAILURES", "1")
-			t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE", "7")
+			t.Setenv("SILIP_TUNNEL_FIXTURE", "starting")
+			t.Setenv("SILIP_TUNNEL_FIXTURE_ATTEMPTS", record)
+			t.Setenv("SILIP_TUNNEL_FIXTURE_FAILURES", "1")
+			t.Setenv("SILIP_TUNNEL_FIXTURE_EXIT_CODE", "7")
 			bound, stop := context.WithTimeout(t.Context(), 10*time.Second)
 			defer stop()
 			ctx, cancel := context.WithCancel(bound)
@@ -249,10 +249,10 @@ func TestStartupRetriesShareCancellationAndDeadline(t *testing.T) {
 	}
 	t.Run("shared deadline", func(t *testing.T) {
 		record := filepath.Join(t.TempDir(), "attempts")
-		t.Setenv("PIIK_TUNNEL_FIXTURE", "starting")
-		t.Setenv("PIIK_TUNNEL_FIXTURE_ATTEMPTS", record)
-		t.Setenv("PIIK_TUNNEL_FIXTURE_FAILURES", "1")
-		t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT_CODE", "7")
+		t.Setenv("SILIP_TUNNEL_FIXTURE", "starting")
+		t.Setenv("SILIP_TUNNEL_FIXTURE_ATTEMPTS", record)
+		t.Setenv("SILIP_TUNNEL_FIXTURE_FAILURES", "1")
+		t.Setenv("SILIP_TUNNEL_FIXTURE_EXIT_CODE", "7")
 		const timeout = 2 * time.Second
 		ctx, cancel := context.WithTimeout(t.Context(), timeout)
 		defer cancel()
@@ -298,7 +298,7 @@ func TestStartupEnablesCloudflaredProtocolFallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_TUNNEL_FIXTURE", "tcp-only")
+	t.Setenv("SILIP_TUNNEL_FIXTURE", "tcp-only")
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	process, err := Start(ctx, executable, "http://127.0.0.1:8787", "")
@@ -335,8 +335,8 @@ func TestCloseKeepsAnObservedFailureWhileLogsDrain(t *testing.T) {
 		t.Fatal(err)
 	}
 	exit := filepath.Join(t.TempDir(), "exit")
-	t.Setenv("PIIK_TUNNEL_FIXTURE", "fail-after-ready")
-	t.Setenv("PIIK_TUNNEL_FIXTURE_EXIT", exit)
+	t.Setenv("SILIP_TUNNEL_FIXTURE", "fail-after-ready")
+	t.Setenv("SILIP_TUNNEL_FIXTURE_EXIT", exit)
 	entered, release := make(chan struct{}), make(chan struct{})
 	resume := sync.OnceFunc(func() { close(release) })
 	previous := slog.Default()
@@ -398,7 +398,7 @@ func TestReadyTunnelWaitsForItsExplicitOrderedClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_TUNNEL_FIXTURE", "ready")
+	t.Setenv("SILIP_TUNNEL_FIXTURE", "ready")
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	process, err := Start(ctx, executable, "http://127.0.0.1:8787", "")
@@ -430,7 +430,7 @@ func TestStartupCancellationStillRetiresTheTunnel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_TUNNEL_FIXTURE", "starting")
+	t.Setenv("SILIP_TUNNEL_FIXTURE", "starting")
 	ctx, cancel := context.WithTimeout(t.Context(), 150*time.Millisecond)
 	defer cancel()
 	started := time.Now()
@@ -446,7 +446,7 @@ func TestStartupCancellationStillRetiresTheTunnel(t *testing.T) {
 func TestMissingTunnelExplainsHowToRestoreThePackage(t *testing.T) {
 	_, err := Start(t.Context(), filepath.Join(t.TempDir(), "missing-tunnel"), "http://127.0.0.1:8787", "")
 	var cause *os.PathError
-	if !errors.As(err, &cause) || appfailure.Of(err) != appfailure.TunnelUnavailable || !strings.Contains(err.Error(), "extract the complete Piik archive") {
+	if !errors.As(err, &cause) || appfailure.Of(err) != appfailure.TunnelUnavailable || !strings.Contains(err.Error(), "extract the complete Silip archive") {
 		t.Fatalf("missing tunnel lost its cause or recovery instruction: %v", err)
 	}
 }

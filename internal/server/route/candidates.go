@@ -5,7 +5,7 @@ import (
 	"slices"
 	"sort"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // AllowsViewerRoutePreference applies site and Host policy before a Viewer choice.

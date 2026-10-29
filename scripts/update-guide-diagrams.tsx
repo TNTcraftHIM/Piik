@@ -43,12 +43,12 @@ function AudioPaths({ english }: { english: boolean }) {
 function NetworkPaths({ english }: { english: boolean }) {
   return <svg xmlns="http://www.w3.org/2000/svg" width="600" height="340" viewBox="0 0 600 340" role="img" aria-labelledby="title desc">
     <title id="title">{english ? "Web and media use separate connections" : "网页与媒体使用不同的连接"}</title>
-    <desc id="desc">{english ? "The Host and friend connect to the Piik site for the web page and chat. Picture and sound need a separate media connection, directly or through forwarding." : "房主和朋友通过 Piik 站点访问网页与聊天；画面和声音需要另建媒体连接，可通过直连或服务器转发传输。"}</desc>
+    <desc id="desc">{english ? "The Host and friend connect to the Silip site for the web page and chat. Picture and sound need a separate media connection, directly or through forwarding." : "房主和朋友通过 Silip 站点访问网页与聊天；画面和声音需要另建媒体连接，可通过直连或服务器转发传输。"}</desc>
     <style>{style}</style>
     <path className="path" d="M164 174h28V64h32m152 0h28v110h28" />
     <rect className="node" x="224" y="8" width="152" height="112" rx="20" />
     <g className="glyph" transform="translate(274 18)"><Glyph name="server" size={52} /></g>
-    <text x="300" y="101">{english ? "Piik site" : "Piik 站点"}</text>
+    <text x="300" y="101">{english ? "Silip site" : "Silip 站点"}</text>
     {[{ x: 12, label: english ? "Host" : "房主" }, { x: 436, label: english ? "Friend" : "朋友" }].map(node => <g key={node.x}>
       <rect className="node" x={node.x} y="136" width="152" height="160" rx="20" />
       <g className="glyph" transform={`translate(${node.x + 46} 164)`}><Glyph name="window" size={60} /></g>
@@ -72,7 +72,7 @@ function VirtualLanSteps({ english }: { english: boolean }) {
     { icon: "link", title: "发送完整邀请链接", detail: "朋友核对本地证书，进入房间" },
   ];
   return <svg xmlns="http://www.w3.org/2000/svg" width="600" height="380" viewBox="0 0 600 380" role="img" aria-labelledby="title desc">
-    <title id="title">{english ? "Use Piik over a virtual LAN" : "通过虚拟局域网使用 Piik"}</title>
+    <title id="title">{english ? "Use Silip over a virtual LAN" : "通过虚拟局域网使用 Silip"}</title>
     <desc id="desc">{steps.map(step => `${step.title}: ${step.detail}`).join(". ")}</desc>
     <style>{style}</style>
     {steps.map((step, i) => <g key={step.icon} transform={`translate(0 ${i * 128})`}>

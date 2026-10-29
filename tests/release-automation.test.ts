@@ -21,12 +21,12 @@ describe("release automation", () => {
     });
     expect(splitReleaseHeadline(opening.replaceAll("\n\n", "\r\n\r\n\r\n")).headline)
       .toEqual({ "zh-CN": { title: "远程同乐，轮到你啦！", description: "" }, en: { title: "Play together. Your turn!", description: "" } });
-    const explained = "**Play together. Your turn!**\n\nPiik now supports remote control and remote co-play.\n\n" +
-      "**远程同乐，轮到你啦！**\n\nPiik 现已支持远程控制与远程同乐。";
+    const explained = "**Play together. Your turn!**\n\nSilip now supports remote control and remote co-play.\n\n" +
+      "**远程同乐，轮到你啦！**\n\nSilip 现已支持远程控制与远程同乐。";
     expect(splitReleaseHeadline(`${explained}\n\n### English\n\nSharing fixes.`)).toEqual({
       headline: {
-        en: { title: "Play together. Your turn!", description: "Piik now supports remote control and remote co-play." },
-        "zh-CN": { title: "远程同乐，轮到你啦！", description: "Piik 现已支持远程控制与远程同乐。" },
+        en: { title: "Play together. Your turn!", description: "Silip now supports remote control and remote co-play." },
+        "zh-CN": { title: "远程同乐，轮到你啦！", description: "Silip 现已支持远程控制与远程同乐。" },
       },
       notes: "### English\n\nSharing fixes.",
     });
@@ -37,12 +37,12 @@ describe("release automation", () => {
   });
 
   it("validates the PR body against its net product diff before the squash", () => {
-    const root = mkdtempSync(join(tmpdir(), "piik-pr-notes-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-pr-notes-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
     const commit = () => { git("add", "."); git("commit", "-m", "checkpoint without release notes"); return git("rev-parse", "HEAD"); };
     try {
       git("init", "--quiet", "--initial-branch=main");
-      git("config", "user.name", "Piik fixture");
+      git("config", "user.name", "Silip fixture");
       git("config", "user.email", "fixture@example.invalid");
       git("config", "commit.gpgSign", "false");
       mkdirSync(join(root, "public"));
@@ -81,7 +81,7 @@ describe("release automation", () => {
   }, 15_000);
 
   it("publishes reviewed notes, excludes private history and retains every unreleased phase on retries", () => {
-    const root = mkdtempSync(join(tmpdir(), "piik-release-notes-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-release-notes-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
     const commit = (message: string, path = "index.html") => {
       mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -92,30 +92,30 @@ describe("release automation", () => {
     };
     try {
       git("init", "--quiet", "--initial-branch=main");
-      git("config", "user.name", "Piik fixture");
+      git("config", "user.name", "Silip fixture");
       git("config", "user.email", "fixture@example.invalid");
       git("config", "commit.gpgSign", "false");
       commit("chore: private history without release copy");
       const launch = commit("feat: launch\n\n## Problem\nInternal discussion\n\n## Release notes\n" +
         "<!-- Editor guidance -->\n### 开始分享\n\n- 一起玩，一起看。\n\n## Verification\nInternal log");
-      const first = releaseNotes(root, "v1.0.0", launch, "fixture/Piik");
+      const first = releaseNotes(root, "v1.0.0", launch, "fixture/Silip");
       expect(first).toContain("### 开始分享\n\n- 一起玩，一起看。");
       expect(first).toContain(`/tree/${launch}`);
       expect(first).not.toMatch(/private history|Internal|Editor guidance/);
       git("tag", "-a", "v1.0.0", "-m", "Launch");
-      expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
+      expect(releaseNotes(root, "v1.0.0", launch, "fixture/Silip")).toBe(first);
       const website = commit("feat(site)!: redesign the homepage", "site/index.html");
-      expect(() => releaseNotes(root, "v1.0.1", website, "fixture/Piik")).toThrow("No release changes");
-      expect(releaseNotes(root, "v1.0.1", website, "fixture/Piik", { allowEmpty: true })).toBe("");
+      expect(() => releaseNotes(root, "v1.0.1", website, "fixture/Silip")).toThrow("No release changes");
+      expect(releaseNotes(root, "v1.0.1", website, "fixture/Silip", { allowEmpty: true })).toBe("");
       const candidate = JSON.parse(execFileSync(process.execPath, [planner, "build"], {
-        cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.1" },
+        cwd: root, encoding: "utf8", env: { ...process.env, SILIP_BUILD_VERSION: "v1.0.1" },
       }));
       expect(candidate).toMatchObject({ version: "v1.0.1", publish: false });
       commit("fix: repair playback\n\n## Release notes\n**Earlier theme**\n\n**旧主题**\n\n- Playback resumes after reconnecting.");
-      const opening = "**Play together. Your turn!**\n\nPiik now supports remote control and remote co-play.\n\n" +
-        "**远程同乐，轮到你啦！**\n\nPiik 现已支持远程控制与远程同乐。";
+      const opening = "**Play together. Your turn!**\n\nSilip now supports remote control and remote co-play.\n\n" +
+        "**远程同乐，轮到你啦！**\n\nSilip 现已支持远程控制与远程同乐。";
       const next = commit(`feat: add a sharing option\n\n## Release notes\n${opening}\n\n- Choose a window to share.`);
-      const notes = releaseNotes(root, "v1.1.0", next, "fixture/Piik");
+      const notes = releaseNotes(root, "v1.1.0", next, "fixture/Silip");
       expect(notes.startsWith(opening)).toBe(true);
       expect(notes).not.toMatch(/旧主题|Earlier theme/);
       expect(notes).toContain("- Playback resumes after reconnecting.\n\n- Choose a window to share.");
@@ -123,29 +123,29 @@ describe("release automation", () => {
       expect(notes).not.toContain("开始分享");
       expect(notes).not.toContain("redesign");
       const omitted = commit("fix: reconnect\n\n## Release notes\n- Reconnect reliably.");
-      const plain = releaseNotes(root, "v1.1.0", omitted, "fixture/Piik");
+      const plain = releaseNotes(root, "v1.1.0", omitted, "fixture/Silip");
       expect(splitReleaseHeadline(plain).headline).toBeNull();
       expect(plain).toContain("- Playback resumes after reconnecting.\n\n- Choose a window to share.\n\n- Reconnect reliably.");
       git("tag", "v1.1.0", next);
-      expect(releaseNotes(root, "v1.1.0", next, "fixture/Piik")).toBe(notes);
+      expect(releaseNotes(root, "v1.1.0", next, "fixture/Silip")).toBe(notes);
       // A checkout may have advanced; generation still uses the requested SHA.
-      expect(releaseNotes(root, "v1.0.0", launch, "fixture/Piik")).toBe(first);
+      expect(releaseNotes(root, "v1.0.0", launch, "fixture/Silip")).toBe(first);
       for (const section of ["", "## Release notes", "## Release notes\n<!-- Fill in -->\n### Changes",
         "## Release notes\n- One\n## Release notes\n- Two", `## Release notes\n${opening}`]) {
         git("checkout", "--quiet", "--detach", next);
         const invalid = commit(`chore: maintenance\n\n${section}`);
-        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("one nonempty");
+        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Silip")).toThrow("one nonempty");
       }
       for (const damaged of ["????????????", "Updated \uFFFD capture"]) {
         git("checkout", "--quiet", "--detach", next);
         const invalid = commit(`fix: capture\n\n## Release notes\n${damaged}`);
-        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Piik")).toThrow("damaged Release notes");
+        expect(() => releaseNotes(root, "v1.1.1", invalid, "fixture/Silip")).toThrow("damaged Release notes");
       }
     } finally { rmSync(root, { recursive: true, force: true }); }
   }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.
 
   it("plans from immutable tags and all unreleased main changes without editing version files", () => {
-    const root = mkdtempSync(join(tmpdir(), "piik-release-plan-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-release-plan-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
     const plan = () => JSON.parse(execFileSync(process.execPath, [planner, "plan"], { cwd: root, encoding: "utf8" }));
     const commit = (message: string, path = "index.html") => {
@@ -156,13 +156,13 @@ describe("release automation", () => {
     };
     try {
       git("init", "--quiet", "--initial-branch=main");
-      git("config", "user.name", "Piik fixture");
+      git("config", "user.name", "Silip fixture");
       git("config", "user.email", "fixture@example.invalid");
       git("config", "commit.gpgSign", "false");
       commit("chore: initial");
       expect(plan().version).toBe("v1.0.0");
       const candidate = JSON.parse(execFileSync(process.execPath, [planner, "build"], {
-        cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.0" },
+        cwd: root, encoding: "utf8", env: { ...process.env, SILIP_BUILD_VERSION: "v1.0.0" },
       }));
       expect(candidate).toMatchObject({ version: "v1.0.0", publish: false });
       expect(git("tag")).toBe("");
@@ -175,8 +175,7 @@ describe("release automation", () => {
         "scripts/publish-container.mjs",
         "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
         "scripts/network-lab.ts", "scripts/network-lab/endpoint.ts", "scripts/network-lab/stun/main.go",
-        "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml",
-        ".github/workflows/gitee-mirror.yml", "scripts/release-mirror-source.mjs"]) {
+        "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml"]) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
         writeFileSync(join(root, path), "Peripheral content");
       }
@@ -193,7 +192,7 @@ describe("release automation", () => {
       expect(plan().version).toBe("v2.0.0");
       expect(git("tag")).toBe("v1.0.0");
       const reused = spawnSync(process.execPath, [planner, "build"], {
-        cwd: root, encoding: "utf8", env: { ...process.env, PIIK_BUILD_VERSION: "v1.0.0" },
+        cwd: root, encoding: "utf8", env: { ...process.env, SILIP_BUILD_VERSION: "v1.0.0" },
       });
       expect(reused.status).not.toBe(0);
       expect(reused.stderr).toContain("two source revisions");
@@ -201,12 +200,12 @@ describe("release automation", () => {
   }, 15_000); // Real Git subprocesses share the runner with the rest of the suite.
 
   it("keeps shipped assets, build inputs and moves across the website boundary release-worthy", () => {
-    const root = mkdtempSync(join(tmpdir(), "piik-release-paths-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-release-paths-"));
     const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
     const plan = () => JSON.parse(execFileSync(process.execPath, [planner, "plan"], { cwd: root, encoding: "utf8" }));
     try {
       git("init", "--quiet", "--initial-branch=main");
-      git("config", "user.name", "Piik fixture");
+      git("config", "user.name", "Silip fixture");
       git("config", "user.email", "fixture@example.invalid");
       git("config", "commit.gpgSign", "false");
       mkdirSync(join(root, "public"));
@@ -215,7 +214,7 @@ describe("release automation", () => {
       git("commit", "-m", "feat: launch");
       git("tag", "v1.0.0");
       for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "internal/server/app/app.go",
-        "cmd/piik-app/piik.ico", "native/capture/windows/build.ps1", "public/guide.md",
+        "cmd/silip-app/silip.ico", "native/capture/windows/build.ps1", "public/guide.md",
         "licenses/NOTICE.md", "LICENSE", "package-lock.json", "go.mod",
         "scripts/check-go.mjs", "scripts/app-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
         "new-product-input.json"]) {
@@ -240,7 +239,7 @@ describe("release automation", () => {
   }, 15_000);
 
   it("accepts only a complete same-build package set before contacting GitHub", () => {
-    const root = mkdtempSync(join(tmpdir(), "piik-release-assets-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-release-assets-"));
     const version = "v1.0.0";
     const revision = "a".repeat(40);
     const run = () => spawnSync(process.execPath, [publisher, root, version, revision, "--dry-run"], { encoding: "utf8" });

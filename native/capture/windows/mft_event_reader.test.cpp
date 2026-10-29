@@ -6,7 +6,7 @@
 #include <future>
 #include <thread>
 
-using namespace piik::capture::windows;
+using namespace silip::capture::windows;
 using Microsoft::WRL::ComPtr;
 using namespace std::chrono_literals;
 

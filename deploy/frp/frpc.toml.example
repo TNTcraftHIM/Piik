@@ -1,4 +1,4 @@
-# Run beside Piik; inject the same nonempty FRP_TOKEN into frpc and frps.
+# Run beside Silip; inject the same nonempty FRP_TOKEN into frpc and frps.
 # See docs/operations/self-hosting.md for the public HTTPS proxy and frps setup.
 serverAddr = "relay.example.com"
 serverPort = 7000
@@ -6,16 +6,16 @@ auth.token = "{{ .Envs.FRP_TOKEN }}"
 transport.tls.enable = true
 
 [[proxies]]
-name = "piik-web"
+name = "silip-web"
 type = "tcp"
 localIP = "127.0.0.1"
 localPort = 8787
 remotePort = 8787
 
 [[proxies]]
-name = "piik-sfu"
+name = "silip-sfu"
 type = "udp"
 localIP = "127.0.0.1"
-# All three ports must match: localPort, remotePort, Piik's SFU_UDP_PORT.
+# All three ports must match: localPort, remotePort, Silip's SFU_UDP_PORT.
 localPort = 7882
 remotePort = 7882

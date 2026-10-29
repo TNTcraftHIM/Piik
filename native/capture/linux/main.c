@@ -78,7 +78,7 @@ struct CaptureRun {
   guint original_output;
   const EncoderInfo *encoder_info;
   const char *restore_token;
-  PiikPortalCapture *portal;
+  SilipPortalCapture *portal;
   GMutex lock;
   char *failure;
   gint stopping;
@@ -302,7 +302,7 @@ static gboolean video_stack_available(void) {
   for (guint index = 0; index < G_N_ELEMENTS(required); ++index) {
     if (!has_factory(required[index])) return FALSE;
   }
-  return piik_portal_available();
+  return silip_portal_available();
 }
 
 static gboolean audio_stack_available(void) {
@@ -329,7 +329,7 @@ static int write_probe(void) {
       "\"remoteInput\":%s,\"adapters\":[",
       kCaptureProtocol, build, video ? "true" : "false",
       audio ? "true" : "false", audio ? "true" : "false",
-      video && piik_portal_input_available() ? "true" : "false");
+      video && silip_portal_input_available() ? "true" : "false");
   g_free(build);
   if (encoders->len > 0) {
     g_string_append(json,
@@ -639,7 +639,7 @@ static void fail_run(CaptureRun *run, const char *message) {
   // quit(). The pipeline bus queues the failure and owns its callback lifetime.
   if (first) gst_element_post_message(run->pipeline,
       gst_message_new_application(GST_OBJECT(run->pipeline),
-          gst_structure_new_empty("piik-capture-failed")));
+          gst_structure_new_empty("silip-capture-failed")));
 }
 
 static void fail_output(VideoOutput *output, const char *message) {
@@ -652,7 +652,7 @@ static void fail_output(VideoOutput *output, const char *message) {
 }
 
 static GstFlowReturn output_chain(GstPad *pad, GstObject *parent, GstBuffer *buffer) {
-  VideoOutput *output = g_object_get_data(G_OBJECT(pad), "piik-output");
+  VideoOutput *output = g_object_get_data(G_OBJECT(pad), "silip-output");
   GstFlowReturn flow = gst_proxy_pad_chain_default(pad, parent, buffer);
   if (flow >= GST_FLOW_OK) return flow;
   // Bus errors arrive asynchronously. Contain the queue's failed flow here,
@@ -677,7 +677,7 @@ static gboolean isolate_output(VideoOutput *output) {
     gst_object_unref(input);
     return FALSE;
   }
-  g_object_set_data(G_OBJECT(input), "piik-output", output);
+  g_object_set_data(G_OBJECT(input), "silip-output", output);
   gst_pad_set_chain_function(input, output_chain);
   gst_object_unref(input);
   g_object_set(output->gate, "drop", TRUE, NULL);
@@ -719,7 +719,7 @@ static gboolean set_output_active(VideoOutput *output, gboolean enabled) {
 }
 
 static gboolean apply_control(CaptureRun *run, char *line) {
-  if (g_str_has_prefix(line, "I ")) return piik_portal_input(run->portal, line + 2);
+  if (g_str_has_prefix(line, "I ")) return silip_portal_input(run->portal, line + 2);
   char *values[4] = {0};
   guint count = 0;
   g_auto(GStrv) tokens = g_strsplit_set(line, " \t\r", -1);
@@ -928,7 +928,7 @@ static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
   (void)bus;
   CaptureRun *run = data;
   if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_APPLICATION &&
-      gst_message_has_name(message, "piik-capture-failed")) {
+      gst_message_has_name(message, "silip-capture-failed")) {
     g_main_loop_quit(run->loop);
   } else if (GST_MESSAGE_TYPE(message) == GST_MESSAGE_ERROR) {
     GError *error = NULL;
@@ -936,10 +936,10 @@ static gboolean bus_message(GstBus *bus, GstMessage *message, gpointer data) {
     gst_message_parse_error(message, &error, &debug);
     const char *cause = error == NULL ? "GStreamer pipeline failed" : error->message;
     if (error != NULL) {
-      fprintf(stderr, "Piik GStreamer error: source=%s domain=%s code=%d detail=%s\n",
+      fprintf(stderr, "Silip GStreamer error: source=%s domain=%s code=%d detail=%s\n",
               GST_MESSAGE_SRC(message) == NULL ? "unknown" : GST_OBJECT_NAME(GST_MESSAGE_SRC(message)),
               g_quark_to_string(error->domain), error->code, error->message);
-      if (debug != NULL) fprintf(stderr, "Piik GStreamer context: %s\n", debug);
+      if (debug != NULL) fprintf(stderr, "Silip GStreamer context: %s\n", debug);
     }
     VideoOutput *failed = NULL;
     for (guint index = 0; index < run->output_count; ++index) {
@@ -1156,7 +1156,7 @@ stopped:
   char *failure = g_strdup(run->failure);
   g_mutex_unlock(&run->lock);
   if (failure != NULL) {
-    fprintf(stderr, "Piik capture unavailable: %s\n", failure);
+    fprintf(stderr, "Silip capture unavailable: %s\n", failure);
     g_free(failure);
     return 2;
   }
@@ -1179,7 +1179,7 @@ static void append_video_scale(GString *pipeline, const VideoProfile *profile) {
   g_string_append(pipeline, "pixel-aspect-ratio=1/1 ! ");
 }
 
-static char *pipewire_target(const PiikPortalCapture *portal) {
+static char *pipewire_target(const SilipPortalCapture *portal) {
   // target-object accepts a name or object serial; path accepts a node ID.
   return portal->target_object != NULL
       ? g_strdup_printf("target-object=%s", portal->target_object)
@@ -1207,11 +1207,11 @@ static int capture_video(int count, char **values) {
   }
   const EncoderInfo *encoder_info = g_ptr_array_index(encoders, encoder_index);
   GError *error = NULL;
-  PiikPortalCapture portal = {.pipewire_fd = -1};
-  gboolean remote_input = g_strcmp0(g_getenv("PIIK_CAPTURE_REMOTE_INPUT"), "1") == 0;
-  if (!encoded && !piik_portal_capture_open(
-          g_getenv("PIIK_XDP_RESTORE_TOKEN"), remote_input, &portal, &error)) {
-    fprintf(stderr, "Piik capture unavailable: %s\n",
+  SilipPortalCapture portal = {.pipewire_fd = -1};
+  gboolean remote_input = g_strcmp0(g_getenv("SILIP_CAPTURE_REMOTE_INPUT"), "1") == 0;
+  if (!encoded && !silip_portal_capture_open(
+          g_getenv("SILIP_XDP_RESTORE_TOKEN"), remote_input, &portal, &error)) {
+    fprintf(stderr, "Silip capture unavailable: %s\n",
             error == NULL ? "screen selection failed" : error->message);
     g_clear_error(&error);
     g_ptr_array_unref(encoders);
@@ -1254,11 +1254,11 @@ static int capture_video(int count, char **values) {
   GstElement *pipeline = gst_parse_launch(pipeline_text->str, &error);
   g_string_free(pipeline_text, TRUE);
   if (pipeline == NULL || error != NULL) {
-    fprintf(stderr, "Piik capture unavailable: %s\n",
+    fprintf(stderr, "Silip capture unavailable: %s\n",
             error == NULL ? "video pipeline failed" : error->message);
     g_clear_error(&error);
     if (pipeline != NULL) gst_object_unref(pipeline);
-    piik_portal_capture_close(&portal);
+    silip_portal_capture_close(&portal);
     g_ptr_array_unref(encoders);
     return 2;
   }
@@ -1301,7 +1301,7 @@ static int capture_video(int count, char **values) {
     if (output->branch == NULL || output->branch == pipeline || output->gate == NULL) goto cleanup;
     if (!isolate_output(output)) goto cleanup;
     if (!prepare_encoder(output)) {
-      fprintf(stderr, "Piik capture unavailable: hardware encoder is incompatible\n");
+      fprintf(stderr, "Silip capture unavailable: hardware encoder is incompatible\n");
       goto cleanup;
     }
     if (output->failed) continue;
@@ -1350,7 +1350,7 @@ cleanup:
   g_main_loop_unref(run.loop);
   g_mutex_clear(&run.lock);
   gst_object_unref(pipeline);
-  piik_portal_capture_close(&portal);
+  silip_portal_capture_close(&portal);
   g_ptr_array_unref(encoders);
   return result;
 }
@@ -1439,7 +1439,7 @@ static int capture_audio(int count, char **values) {
 }
 
 int main(int argc, char **argv) {
-  // Piik owns this CLI. Opaque device IDs must never become GStreamer flags.
+  // Silip owns this CLI. Opaque device IDs must never become GStreamer flags.
   gst_init(NULL, NULL);
   if (argc == 2 && strcmp(argv[1], "--probe") == 0) return write_probe();
   if (argc == 2 && strcmp(argv[1], "--list") == 0) return write_sources();
@@ -1450,6 +1450,6 @@ int main(int argc, char **argv) {
   if (argc > 1 && (strcmp(argv[1], "--capture-audio") == 0 || strcmp(argv[1], "--capture-microphone") == 0)) {
     return capture_audio(argc, argv);
   }
-  fprintf(stderr, "Piik capture unavailable: unsupported command\n");
+  fprintf(stderr, "Silip capture unavailable: unsupported command\n");
   return 2;
 }

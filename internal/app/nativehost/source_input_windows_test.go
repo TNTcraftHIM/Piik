@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
 )
 
 type sourceInputCapture struct {
@@ -45,7 +45,7 @@ func (s rejectedSourceStream) Close() error                           { return n
 func (s rejectedSourceStream) Outputs() []nativecapture.OutputProfile { return nil }
 
 func TestSourcePreparationPreservesInputAuthorizationUntilCommit(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

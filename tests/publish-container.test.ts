@@ -5,14 +5,14 @@ vi.mock("node:child_process", () => ({ execFileSync: command }));
 vi.mock("../scripts/release-artifacts.mjs", () => ({ readReleaseArtifacts: artifacts }));
 
 const version = "v1.2.1", revision = "a".repeat(40), digest = "b".repeat(64);
-const repository = "TNTcraftHIM/Piik", image = `piik-candidate:${revision}`;
-const tag = `ghcr.io/tntcrafthim/piik:${version}`;
+const repository = "P4-aaaul/Silip", image = `silip-candidate:${revision}`;
+const tag = `ghcr.io/p4-aaaul/silip:${version}`;
 const linuxServers = ["amd64", "arm64"].map(arch => ({
-  name: `piik-aaaaaaa-${arch}-runtime.tar.gz`, sha256: arch === "amd64" ? digest : "d".repeat(64), arch,
+  name: `silip-aaaaaaa-${arch}-runtime.tar.gz`, sha256: arch === "amd64" ? digest : "d".repeat(64), arch,
   goos: "linux",
 }));
 const servers = [...linuxServers, {
-  name: "piik-aaaaaaa-windows-amd64-runtime.zip", sha256: "e".repeat(64), arch: "amd64", goos: "windows",
+  name: "silip-aaaaaaa-windows-amd64-runtime.zip", sha256: "e".repeat(64), arch: "amd64", goos: "windows",
 }];
 type Scenario = { existing?: boolean; draft?: boolean; badArchive?: boolean;
   wrongSource?: boolean; wrongImage?: boolean; remoteMismatch?: boolean;
@@ -51,7 +51,7 @@ async function publish(options: Scenario = {}) {
         "org.opencontainers.image.version": version,
         "org.opencontainers.image.revision": (options.wrongImage && arch === "arm64") || (options.remoteMismatch && remote)
           ? "c".repeat(40) : revision,
-        "tv.piik.server.sha256": servers.find(server => server.arch === arch)!.sha256,
+        "io.github.p4aaaul.silip.server.sha256": servers.find(server => server.arch === arch)!.sha256,
       } } }]);
     }
     if (args[0] === "manifest") {
@@ -84,7 +84,7 @@ describe("container publication", () => {
     await publish();
     expect(artifacts).toHaveBeenCalledWith("artifacts", version, revision);
     expect(pushes()).toEqual([`${tag}-amd64`, `${tag}-arm64`]);
-    expect(indexes()).toEqual([[tag, `${tag}-amd64`, `${tag}-arm64`], ["ghcr.io/tntcrafthim/piik:latest", tag]]);
+    expect(indexes()).toEqual([[tag, `${tag}-amd64`, `${tag}-arm64`], ["ghcr.io/p4-aaaul/silip:latest", tag]]);
   });
   it.each([
     { draft: true }, { badArchive: true }, { wrongSource: true }, { wrongImage: true },

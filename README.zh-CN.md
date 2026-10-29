@@ -1,12 +1,9 @@
-<p align="center"><img src="./docs/assets/brand-mark.svg" width="64" height="64" alt="Piik 吉祥物"></p>
-<h1 align="center">Piik</h1>
-<p align="center"><strong>来，看点<br>好康的。</strong><br>私密屏幕共享，邀请最多 20 位朋友观看。</p>
+<h1 align="center"><img src="./docs/assets/wordmark.svg" width="220" alt="Silip"></h1>
+<p align="center"><strong>Pasilip naman!</strong><br>私密屏幕共享，邀请最多 20 位朋友观看。</p>
 <p align="center">
-  <a href="https://piik.tv/?lang=zh-CN">官网</a> ·
-  <a href="https://github.com/TNTcraftHIM/Piik/releases">下载</a> ·
-  <a href="https://gitee.com/TNTcraftHIM/Piik/releases">Gitee 镜像</a> ·
-  <a href="https://demo.piik.tv">在线版</a> ·
-  <a href="https://piik.tv/docs/zh/">文档中心</a>
+  <a href="./docs/guide/getting-started.zh-CN.md">开始使用</a> ·
+  <a href="./cmd/silip-app/DEVELOPMENT.md#run-from-source">从源码构建</a> ·
+  <a href="./docs/guide/README.zh-CN.md">文档</a>
 </p>
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-36564f?style=flat-square" alt="MIT 许可"></a>
@@ -15,8 +12,8 @@
 </p>
 <p align="center"><a href="./README.md">English</a> · 简体中文</p>
 
-Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一起看电影、展示绘画或分享照片。
-选择画面，把邀请链接发给朋友，对方用浏览器即可观看。也支持自部署，搭建自己的 Piik 站点。
+Silip 是一个免费开源的私密屏幕共享工具，适合游戏直播、一起看电影、展示绘画或分享照片。
+选择画面，把邀请链接发给朋友，对方用浏览器即可观看。也支持自部署，搭建自己的 Silip 站点。
 
 <details open>
 <summary>客厅小剧场 · 展开 / 收起动画</summary>
@@ -30,18 +27,18 @@ Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一
 ## 功能
 
 - **观看无须安装。** 朋友通过邀请链接，用电脑或手机浏览器加入。
-- **用 Piik App 或已有 Piik 站点分享。** 支持屏幕、窗口、浏览器标签页和摄像头；可选来源与音频能力取决于平台。
+- **用 Silip App 或已有 Silip 站点分享。** 支持屏幕、窗口、浏览器标签页和摄像头；可选来源与音频能力取决于平台。
 - **优先直接连接。** 画面优先在设备之间传输（P2P），自建站点可启用媒体转发（SFU）自动兜底。
 - **房间由你管理。** 支持邀请链接、房间号和可选的房间密码，一位房主、最多 20 位观众。
 - **边看边聊。** 加入房间语音，发送文字和表情，也可开启弹幕。
-- **让朋友接手操作。** 通过 Piik App 分享窗口或屏幕并授权远控，也可允许多人共用键鼠或使用受支持的手柄一起玩，随时结束控制。[查看设置方法](./docs/guide/remote-control.zh-CN.md)。
+- **让朋友接手操作。** 通过 Silip App 分享窗口或屏幕并授权远控，也可允许多人共用键鼠或使用受支持的手柄一起玩，随时结束控制。[查看设置方法](./docs/guide/remote-control.zh-CN.md)。
 - **灵活的观看方式。** 支持深浅主题、播放控制、画中画和连接拓扑查看。
 - **一个程序就能建站。** 网页、房间管理和可选的媒体转发打包在同一服务端程序中。
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="./docs/assets/room-zh-dark.png">
-    <img src="./docs/assets/room-zh-light.png" width="860" alt="Piik 房间：共享的游戏画面、播放控件、聊天入口和坐在沙发上的朋友，房主戴着小金冠。">
+    <img src="./docs/assets/room-zh-light.png" width="860" alt="Silip 房间：共享的游戏画面、播放控件、聊天入口和坐在沙发上的朋友，房主戴着小金冠。">
   </picture><br>
   <sub>界面预览 · 示例房间与生成的游戏画面</sub>
 </p>
@@ -50,12 +47,8 @@ Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一
 
 **观看分享：** 打开朋友发来的邀请链接。画面没有自动播放时，点击**播放**即可。
 
-**分享画面：** 推荐下载 **Piik App**。想免安装，也可以打开在线版直接创建房间。
-
-| 从这里开始 | 需要做什么 |
-| --- | --- |
-| [使用在线版](https://demo.piik.tv) | 用电脑浏览器分享画面；手机浏览器支持摄像头访问时，也可选择摄像头分享。 |
-| [下载 Piik App](https://piik.tv/?lang=zh-CN#download) | 电脑上解压程序包，手机或平板安装 App。打开 Piik，选择**公网邀请**，点击**进入 Piik**。 |
+**分享画面：** [从源码构建 Silip App](./cmd/silip-app/DEVELOPMENT.md#run-from-source)，
+运行后选择**公网邀请**，点击**进入 Silip**。
 
 <p align="center"><img src="./docs/assets/quickstart.svg" width="640" alt="选择画面，发送邀请，一起观看。"></p>
 
@@ -65,33 +58,31 @@ Piik 是一个免费开源的私密屏幕共享工具，适合游戏直播、一
 打开 **互动 → 语音** 即可一起聊天，开播前后都能使用。
 房主开启语音后，大家自行加入收听，想说话时再打开自己的麦克风。
 
-Piik 默认跟随系统语言，中文系统显示简体中文，其他语言显示英文。
+Silip 默认跟随系统语言，中文系统显示简体中文，其他语言显示英文。
 顶部的 **中 / EN / ✦** 可切换中英文或体验纯视觉模式。
-Piik App 可创建本地房间或临时公网邀请，也能在后台为已授权站点提供采集能力。分享期间需保持 App 运行。
+Silip App 可创建本地房间或临时公网邀请，也能在后台为已授权站点提供采集能力。分享期间需保持 App 运行。
 
 [**图文上手教程 →**](./docs/guide/getting-started.zh-CN.md) · [**问题排查 →**](./docs/guide/troubleshooting.zh-CN.md)
 
-选择以 **`piik-app`** 开头的程序包；教程介绍安装、选择画面和邀请朋友的完整步骤。
-
-浏览器采集需要 HTTPS 或 `localhost`。Piik App 的公网邀请和在线版使用 P2P，
+浏览器采集需要 HTTPS 或 `localhost`。Silip App 的本地房间和公网邀请使用 P2P，
 参与者之间需要可用的 UDP 通路。校园网、画面连接失败或虚拟局域网的用法，见[网络排查与连接方案](./docs/guide/network.zh-CN.md)。
 
 ## 自行部署
 
-部署 Piik Server，为朋友搭建自己的站点。
+部署 Silip Server，为朋友搭建自己的站点。
 
-<p><a href="./docs/operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Piik"></a></p>
+<p><a href="./docs/operations/self-hosting.zh-CN.md#使用-docker-compose"><img src="https://img.shields.io/badge/Deploy_with-Docker_Compose-2764c4?style=for-the-badge&amp;logo=docker&amp;logoColor=white" alt="使用 Docker Compose 部署 Silip"></a></p>
 
-Piik Server 是内置网页界面的独立程序，支持 Windows x64 和 Linux x64／ARM64。
-根据服务器架构下载 Linux x64 的 `piik-<revision>-runtime.tar.gz` 或 ARM64 的
-`piik-<revision>-linux-arm64-runtime.tar.gz`，解压后运行：
+Silip Server 是内置网页界面的独立程序，支持 Windows x64 和 Linux x64／ARM64。
+根据服务器架构下载 Linux x64 的 `silip-<revision>-runtime.tar.gz` 或 ARM64 的
+`silip-<revision>-linux-arm64-runtime.tar.gz`，解压后运行：
 
 ```sh
-./piik-server
+./silip-server
 ```
 
-Windows x64 可下载 `piik-<revision>-windows-amd64-runtime.zip`，解压后在 PowerShell
-运行 `./piik-server.exe`；配置方式相同。
+Windows x64 可下载 `silip-<revision>-windows-amd64-runtime.zip`，解压后在 PowerShell
+运行 `./silip-server.exe`；配置方式相同。
 
 打开 `http://localhost:8787` 即可在本机试用。对外提供服务时，
 再配置域名、HTTPS 反向代理和 STUN 地址。房间数据保存在 SQLite 中。
@@ -106,20 +97,8 @@ Windows x64 可下载 `piik-<revision>-windows-amd64-runtime.zip`，解压后在
 [翻译教程](./docs/guide/translating.zh-CN.md)开始，也可以从
 [项目目录说明](./docs/standards/engineering.md#repository-layout)了解代码结构。
 
-## 许可
+## 致谢与许可
 
-Piik 自有代码采用 [MIT 许可](./LICENSE)，依赖保留各自的[许可与声明](./licenses/README.md)。
+Silip 基于 TNTcraft 与 Piik 贡献者开发的 [Piik](https://github.com/TNTcraftHIM/Piik)，感谢原作者的开源。
 
-## 项目动态
-
-<p align="center">
-  <a href="https://trendshift.io/repositories/236065"><img src="https://trendshift.io/api/badge/trendshift/repositories/236065/daily?language=TypeScript" width="250" alt="Piik 的 Trendshift 趋势"></a>
-</p>
-<p align="center">
-  <a href="https://www.star-history.com/#TNTcraftHIM/Piik&amp;Date">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=TNTcraftHIM/Piik&amp;type=Date&amp;theme=dark">
-      <img src="https://api.star-history.com/svg?repos=TNTcraftHIM/Piik&amp;type=Date" width="760" alt="Piik GitHub 星标增长趋势">
-    </picture>
-  </a>
-</p>
+Silip 代码采用 [MIT 许可](./LICENSE)，保留 Piik 的原始版权声明；依赖保留各自的[许可与声明](./licenses/README.md)。

@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 
 class GateFailure final : public std::runtime_error {
  public:
@@ -34,4 +34,4 @@ inline void Check(HRESULT result, const std::string& stage) {
   }
 }
 
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows

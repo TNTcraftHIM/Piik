@@ -8,7 +8,7 @@
 
 ## Current Ownership
 
-`cmd/piik-server` (Hosted) and `cmd/piik-app` (App) compose the
+`cmd/silip-server` (Hosted) and `cmd/silip-app` (App) compose the
 same application from `internal/server` and own only their defaults,
 reachability, and lifecycle policy. Within that scope `protocol` owns wire types,
 strict decoding, and shared scalars; `config` owns environment validation plus
@@ -49,8 +49,8 @@ under [ADR-0013](../adr/0013-embedded-node-local-media.md).
 
 ```text
 one Go module
-cmd/piik-server -> shared server application
-cmd/piik-app -> shared server application + launcher + native media
+cmd/silip-server -> shared server application
+cmd/silip-app -> shared server application + launcher + native media
 internal/server    -> rooms, routing, HTTP/signaling, persistence, SFU adapters
 internal/app       -> current native and platform boundaries
 one React/Vite static artifact -> embedded in both binaries
@@ -133,7 +133,7 @@ origin, site-access password, one STUN URL, loopback listen host), polled
 `/healthz` every 10 ms until `{"status":"ok"}`, waited 5 s idle, sampled
 resident memory through PowerShell `WorkingSet64`, then killed the process.
 Five runs per side; the median is reported. Before is the Node baseline at tag
-`baseline-b20fd88`; after is `piik-server` under the same script.
+`baseline-b20fd88`; after is `silip-server` under the same script.
 
 | metric | before | after |
 | --- | ---: | ---: |
@@ -144,9 +144,9 @@ Five runs per side; the median is reported. Before is the Node baseline at tag
 The before total is the Node runtime (91,694,408 B), the production
 `node_modules` tree (12,640,469 B in 1,513 files), `dist/client` (1,492,721 B)
 and `dist/server` (856,898 B). The after total is the linux/amd64
-`piik-server` built with `-s -w` and embedded assets (13,983,906 B) plus its
+`silip-server` built with `-s -w` and embedded assets (13,983,906 B) plus its
 notices and `REVISION`. For reference, the windows/amd64 binaries are
-14,276,608 B (`piik-server`) and 22,703,104 B (`piik-app`, which also
+14,276,608 B (`silip-server`) and 22,703,104 B (`silip-app`, which also
 carries Pion and the terminal UI); the App package additionally drops the
 Node runtime and dependency tree it used to ship beside its Go executable.
 

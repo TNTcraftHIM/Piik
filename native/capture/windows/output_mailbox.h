@@ -8,7 +8,7 @@
 #include <stdexcept>
 #include <utility>
 
-namespace piik::capture {
+namespace silip::capture {
 
 // One codec worker consumes raw inputs; only its not-yet-encoded input is replaceable.
 template <typename Frame>
@@ -116,4 +116,4 @@ class OutputMailbox final {
   bool key_requested_ = true;
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

@@ -1,4 +1,4 @@
-export const INPUT_CHANNEL = "piik-remote-input-prototype-v1";
+export const INPUT_CHANNEL = "silip-remote-input-prototype-v1";
 export type InputIdentity = { endpointId: string; secret: string };
 type Packet = { id?: string; epoch?: string; data?: string; closed?: boolean; ready?: boolean };
 export type InputTransport = Pick<RTCDataChannel, "readyState" | "bufferedAmount" | "send" | "close" | "addEventListener" | "removeEventListener">;

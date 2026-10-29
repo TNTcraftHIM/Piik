@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
+	"github.com/P4-aaaul/Silip/internal/media/inputroute"
 )
 
 func TestRoutedInputRejectsForgeryReflectionAndReplay(t *testing.T) {

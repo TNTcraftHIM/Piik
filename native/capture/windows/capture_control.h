@@ -6,7 +6,7 @@
 #include <string>
 #include <string_view>
 
-namespace piik::capture {
+namespace silip::capture {
 
 constexpr int kMaxOutputs = 6;
 
@@ -55,4 +55,4 @@ class CaptureControls final {
   }
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

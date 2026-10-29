@@ -30,15 +30,15 @@ import {
 
 const ROOT = resolve(import.meta.dirname, "..");
 const BUILD_ROOT = join(ROOT, "build", "go-check");
-export const SOURCE_TITLE = "Piik Native Gate Source";
+export const SOURCE_TITLE = "Silip Native Gate Source";
 
 type GateMode = "local" | "one-link";
 type VideoCodec = "h264" | "vp8";
 
 const CODEC_PROBE = `(() => {
   const fitSize = ${fittedCaptureSize.toString()}, matchesSize = ${matchesCaptureSize.toString()};
-  window.__piikGateFitsProfile = (width, height) => {
-    const video = document.querySelector('video'), source = window.__piikGateSourceSize;
+  window.__silipGateFitsProfile = (width, height) => {
+    const video = document.querySelector('video'), source = window.__silipGateSourceSize;
     return Boolean(video && source && matchesSize(video.videoWidth, video.videoHeight, fitSize(source, width, height)));
   };
   const peers = [], BrowserPeer = RTCPeerConnection;
@@ -46,7 +46,7 @@ const CODEC_PROBE = `(() => {
   window.WebSocket = class extends BrowserSocket {
     constructor(...args) { super(...args); sockets.push(this); }
   };
-  window.__piikGatePublicSignal = () => sockets.some((socket) => {
+  window.__silipGatePublicSignal = () => sockets.some((socket) => {
     const url = new URL(socket.url);
     return socket.readyState === WebSocket.OPEN && url.protocol === 'wss:' &&
       url.host === location.host && url.pathname === '/signal';
@@ -54,7 +54,7 @@ const CODEC_PROBE = `(() => {
   window.RTCPeerConnection = class extends BrowserPeer {
     constructor(...args) { super(...args); peers.push(this); }
   };
-  window.__piikGateVideoCodec = async () => {
+  window.__silipGateVideoCodec = async () => {
     const trackId = document.querySelector('video')?.srcObject?.getVideoTracks()[0]?.id;
     if (!trackId) return null;
     for (const peer of peers) {
@@ -263,7 +263,7 @@ async function clickHostControl(
 
 async function readVideoCodec(cdp: CdpConnection, page: PageHandle): Promise<VideoCodec> {
   const codec = await waitForValue(
-    (deadline) => evaluate<VideoCodec | null>(cdp, page, "window.__piikGateVideoCodec()", deadline),
+    (deadline) => evaluate<VideoCodec | null>(cdp, page, "window.__silipGateVideoCodec()", deadline),
     (value) => value === "vp8" || value === "h264",
     5_000,
   );
@@ -277,19 +277,19 @@ async function assertVideoCodec(cdp: CdpConnection, page: PageHandle, expected: 
 }
 
 function remoteOptions(): RemoteGateOptions {
-  const host = process.env.PIIK_REMOTE_HOST?.trim();
-  const user = process.env.PIIK_REMOTE_USER?.trim() || "root";
-  const key = process.env.PIIK_REMOTE_SSH_KEY?.trim();
+  const host = process.env.SILIP_REMOTE_HOST?.trim();
+  const user = process.env.SILIP_REMOTE_USER?.trim() || "root";
+  const key = process.env.SILIP_REMOTE_SSH_KEY?.trim();
   if (!host || !key) {
     throw new Error(
-      "PIIK_REMOTE_HOST and PIIK_REMOTE_SSH_KEY are required",
+      "SILIP_REMOTE_HOST and SILIP_REMOTE_SSH_KEY are required",
     );
   }
   return {
     host,
     user,
     key,
-    bindAddress: process.env.PIIK_REMOTE_BIND_ADDRESS?.trim() || null,
+    bindAddress: process.env.SILIP_REMOTE_BIND_ADDRESS?.trim() || null,
   };
 }
 
@@ -313,10 +313,10 @@ async function runRemotePeerGate(
   viewerGrant: string,
   origin: string,
 ): Promise<RemoteGateResult> {
-  const ssh = process.env.PIIK_SSH?.trim() || "ssh";
-  const scp = process.env.PIIK_SCP?.trim() || "scp";
+  const ssh = process.env.SILIP_SSH?.trim() || "ssh";
+  const scp = process.env.SILIP_SCP?.trim() || "scp";
   const destination = `${options.user}@${options.host}`;
-  const remotePath = `/tmp/piik-peer-gate-${randomBytes(8).toString("hex")}`;
+  const remotePath = `/tmp/silip-peer-gate-${randomBytes(8).toString("hex")}`;
   const transportOptions = remoteTransportOptions(options);
   try {
     run(scp, [...transportOptions, binary, `${destination}:${remotePath}`], ROOT, process.env, 30_000);
@@ -396,7 +396,7 @@ async function runRemotePeerGate(
 }
 
 export function powershell(): string {
-  return process.env.PIIK_POWERSHELL?.trim() || join(
+  return process.env.SILIP_POWERSHELL?.trim() || join(
     process.env.SystemRoot || "C:\\Windows",
     "System32",
     "WindowsPowerShell",
@@ -575,37 +575,37 @@ async function main(): Promise<void> {
   if (process.platform !== "win32") {
     throw new Error("The native Host gate currently requires Windows");
   }
-  if (process.env.PIIK_CLIENT_NATIVE_HOST_GATE !== "true") {
-    throw new Error("PIIK_CLIENT_NATIVE_HOST_GATE=true is required");
+  if (process.env.SILIP_CLIENT_NATIVE_HOST_GATE !== "true") {
+    throw new Error("SILIP_CLIENT_NATIVE_HOST_GATE=true is required");
   }
-  const linkMedia = process.env.PIIK_CLIENT_LINK_MEDIA_GATE === "true";
+  const linkMedia = process.env.SILIP_CLIENT_LINK_MEDIA_GATE === "true";
   const mode: GateMode = linkMedia ? "one-link" : "local";
   const crashGate =
-    process.env.PIIK_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
+    process.env.SILIP_CLIENT_NATIVE_HOST_CRASH_GATE === "true";
   if (crashGate && mode !== "local") {
     throw new Error("App crash gate requires local mode");
   }
   const sourceKind: "window" | "display" =
-    process.env.PIIK_CLIENT_NATIVE_HOST_SOURCE === "display"
+    process.env.SILIP_CLIENT_NATIVE_HOST_SOURCE === "display"
       ? "display"
       : "window";
-  const requestedCodec = process.env.PIIK_CLIENT_NATIVE_HOST_CODEC?.trim() || "auto";
+  const requestedCodec = process.env.SILIP_CLIENT_NATIVE_HOST_CODEC?.trim() || "auto";
   if (requestedCodec !== "auto" && requestedCodec !== "h264" && requestedCodec !== "vp8") {
-    throw new Error("PIIK_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
+    throw new Error("SILIP_CLIENT_NATIVE_HOST_CODEC must be auto, h264, or vp8");
   }
   const remote = mode === "one-link" &&
-    Boolean(process.env.PIIK_REMOTE_HOST?.trim() || process.env.PIIK_REMOTE_SSH_KEY?.trim())
+    Boolean(process.env.SILIP_REMOTE_HOST?.trim() || process.env.SILIP_REMOTE_SSH_KEY?.trim())
       ? remoteOptions() : null;
   const chromePath = process.env.CHROME_PATH?.trim();
   if (!chromePath) throw new Error("CHROME_PATH is required");
-  const lanAddress = process.env.PIIK_CLIENT_GATE_LAN_ADDRESS?.trim();
-  const go = process.env.PIIK_GO?.trim() || "go";
-  const tunnel = process.env.PIIK_CLOUDFLARED?.trim() || join(
+  const lanAddress = process.env.SILIP_CLIENT_GATE_LAN_ADDRESS?.trim();
+  const go = process.env.SILIP_GO?.trim() || "go";
+  const tunnel = process.env.SILIP_CLOUDFLARED?.trim() || join(
     BUILD_ROOT,
     "cloudflared.exe",
   );
-  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
-  const sourceProfile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
+  const profile = await mkdtemp(join(tmpdir(), "silip-client-media-"));
+  const sourceProfile = await mkdtemp(join(tmpdir(), "silip-client-media-"));
   await mkdir(BUILD_ROOT, { recursive: true });
   const diagnosticDirectory = await mkdtemp(join(BUILD_ROOT, "native-host-gate-"));
   const sourcePort = await reservePort();
@@ -614,9 +614,9 @@ async function main(): Promise<void> {
   const sourceDebugPort = await reservePort();
   const appConfig = join(profile, "client.json");
   const captureBuild = BUILD_ROOT;
-  const appBinary = join(BUILD_ROOT, "piik-app.exe");
-  const captureBinary = join(captureBuild, "piik-capture.exe");
-  const remoteBinary = join(BUILD_ROOT, "piik-peer-gate-linux");
+  const appBinary = join(BUILD_ROOT, "silip-app.exe");
+  const captureBinary = join(captureBuild, "silip-capture.exe");
+  const remoteBinary = join(BUILD_ROOT, "silip-peer-gate-linux");
   let source: { close(): Promise<void> } | null = null;
   let app: ChildProcessWithoutNullStreams | null = null;
   let sourceChrome: ChildProcessWithoutNullStreams | null = null;
@@ -689,13 +689,13 @@ async function main(): Promise<void> {
     process.stderr.write(`${JSON.stringify({ stage, status: "finished", at: new Date().toISOString() })}\n`);
     stage = "app-build";
     run(go, [
-      "build", "-p", "1", "-trimpath", "-o", appBinary, "./cmd/piik-app",
+      "build", "-p", "1", "-trimpath", "-o", appBinary, "./cmd/silip-app",
     ], ROOT, { ...process.env, GOMAXPROCS: "2" });
     if (remote) {
       stage = "remote-peer-build";
       run(
         go,
-        ["build", "-trimpath", "-o", remoteBinary, "./cmd/piik-peer-gate"],
+        ["build", "-trimpath", "-o", remoteBinary, "./cmd/silip-peer-gate"],
         ROOT,
         { ...process.env, GOOS: "linux", GOARCH: "amd64", CGO_ENABLED: "0" },
       );
@@ -723,8 +723,8 @@ async function main(): Promise<void> {
       windowsHide: true,
       env: {
         ...process.env,
-        PIIK_DEBUG: "",
-        PIIK_CLIENT_GATE_NO_BROWSER: "true",
+        SILIP_DEBUG: "",
+        SILIP_CLIENT_GATE_NO_BROWSER: "true",
       },
     });
     app.stderr.resume();
@@ -756,7 +756,7 @@ async function main(): Promise<void> {
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10_000);
     const hostBootstrap = new URLSearchParams({
       ...(appInfo.password ? { "client-access": appInfo.password } : {}),
-      "piik-client": "1",
+      "silip-client": "1",
     }).toString();
     stage = "host-page";
     const host = await createPage(
@@ -836,7 +836,7 @@ async function main(): Promise<void> {
           cdp!,
           host,
           "(async () => ({invite: document.querySelector('.lr-invite-url')?.value || null, " +
-            "native: (await window.__piikGateVideoCodec()) !== null, " +
+            "native: (await window.__silipGateVideoCodec()) !== null, " +
             "body: document.body.innerText.slice(0, 500)}))()",
           deadline,
         ),
@@ -936,7 +936,7 @@ async function main(): Promise<void> {
       result.viewerWidth = viewerState.width;
       result.viewerHeight = viewerState.height;
       await evaluate<void>(cdp, viewer,
-        `window.__piikGateSourceSize = ${JSON.stringify({ width: viewerState.width, height: viewerState.height })}`,
+        `window.__silipGateSourceSize = ${JSON.stringify({ width: viewerState.width, height: viewerState.height })}`,
         Date.now() + 5_000);
       await assertVideoCodec(cdp, viewer, actualCodec);
       if (mode === "one-link") {
@@ -945,7 +945,7 @@ async function main(): Promise<void> {
           `location.origin === ${JSON.stringify(appInfo.publicOrigin)} && location.pathname === ${JSON.stringify(viewerURL.pathname)}`,
           Date.now() + 5_000);
         result.publicViewerSignal = await evaluate<boolean>(cdp, viewer,
-          "window.__piikGatePublicSignal()", Date.now() + 5_000);
+          "window.__silipGatePublicSignal()", Date.now() + 5_000);
       } else {
       await evaluate<boolean>(
         cdp,
@@ -953,8 +953,8 @@ async function main(): Promise<void> {
         `(() => {
           const video = document.querySelector('video');
           if (!video) return false;
-          window.__piikGateMedia = video.srcObject;
-          return window.__piikGateMedia !== null;
+          window.__silipGateMedia = video.srcObject;
+          return window.__silipGateMedia !== null;
         })()`,
         Date.now() + 5_000,
       );
@@ -968,7 +968,7 @@ async function main(): Promise<void> {
           (deadline) => evaluate<boolean>(
             cdp!,
             viewer,
-            `window.__piikGateFitsProfile(${width}, ${height})`,
+            `window.__silipGateFitsProfile(${width}, ${height})`,
             deadline,
           ),
           Boolean,
@@ -1019,7 +1019,7 @@ async function main(): Promise<void> {
           cdp!,
           viewer,
           `(() => { const video = document.querySelector('video'); return Boolean(
-            video && window.__piikGateFitsProfile(2560, 1440) &&
+            video && window.__silipGateFitsProfile(2560, 1440) &&
             video.getVideoPlaybackQuality().totalVideoFrames >= ${viewerState.frames + 10}
           ); })()`,
           deadline,
@@ -1054,8 +1054,8 @@ async function main(): Promise<void> {
       stage = "native-4k-decode";
       result.fourKQualityChanged = await waitForValue(deadline => evaluate<boolean>(cdp!, viewer, `(() => {
         const video = document.querySelector('video');
-        return Boolean(video && window.__piikGateFitsProfile(3840, 2160) &&
-          video.srcObject === window.__piikGateMedia &&
+        return Boolean(video && window.__silipGateFitsProfile(3840, 2160) &&
+          video.srcObject === window.__silipGateMedia &&
           video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBefore4K + 10});
       })()`, deadline), Boolean, 20_000);
       await assertVideoCodec(cdp, viewer, actualCodec);
@@ -1071,8 +1071,8 @@ async function main(): Promise<void> {
       result.customQualityChanged = await waitForValue(
         deadline => evaluate<boolean>(cdp!, viewer, `(() => {
           const video = document.querySelector('video');
-          return Boolean(video && window.__piikGateFitsProfile(960, 600) &&
-            video.srcObject === window.__piikGateMedia &&
+          return Boolean(video && window.__silipGateFitsProfile(960, 600) &&
+            video.srcObject === window.__silipGateMedia &&
             video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeCustom + 10});
         })()`, deadline), Boolean, 20_000);
       await assertVideoCodec(cdp, viewer, actualCodec);
@@ -1095,7 +1095,7 @@ async function main(): Promise<void> {
           `document.querySelector('video')?.getVideoPlaybackQuality().totalVideoFrames ?? 0`, Date.now() + 5_000);
         await waitForValue(deadline => evaluate<boolean>(cdp!, viewer, `(() => {
           const video = document.querySelector('video');
-          return Boolean(video && video.srcObject === window.__piikGateMedia &&
+          return Boolean(video && video.srcObject === window.__silipGateMedia &&
             video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 3});
         })()`, deadline), Boolean, 20_000);
         await assertVideoCodec(cdp, viewer, actualCodec);
@@ -1220,7 +1220,7 @@ async function main(): Promise<void> {
               frames: video?.getVideoPlaybackQuality().totalVideoFrames ?? 0,
               width: video?.videoWidth ?? 0,
               height: video?.videoHeight ?? 0,
-              sameMedia: Boolean(video && video.srcObject === window.__piikGateMedia),
+              sameMedia: Boolean(video && video.srcObject === window.__silipGateMedia),
             };
           })()`,
           deadline,
@@ -1282,8 +1282,8 @@ async function main(): Promise<void> {
           await waitForValue((deadline) => evaluate<boolean>(cdp!, viewer,
             `(() => {
               const video = document.querySelector('video');
-              return Boolean(video && video.srcObject === window.__piikGateMedia &&
-                window.__piikGateFitsProfile(${width}, ${height}) &&
+              return Boolean(video && video.srcObject === window.__silipGateMedia &&
+                window.__silipGateFitsProfile(${width}, ${height}) &&
                 video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 10});
             })()`, deadline,
           ), Boolean, 20_000);
@@ -1316,7 +1316,7 @@ async function main(): Promise<void> {
           await waitForValue((deadline) => evaluate<boolean>(cdp!, viewer,
             `(() => {
               const video = document.querySelector('video');
-              return Boolean(video && video.srcObject === window.__piikGateMedia &&
+              return Boolean(video && video.srcObject === window.__silipGateMedia &&
                 video.getVideoPlaybackQuality().totalVideoFrames >= ${before + 30});
             })()`, deadline,
           ), Boolean, 20_000);
@@ -1371,7 +1371,7 @@ async function main(): Promise<void> {
           `(() => {
             const video = document.querySelector('video');
             return Boolean(
-              video && video.srcObject === window.__piikGateMedia &&
+              video && video.srcObject === window.__silipGateMedia &&
               video.videoWidth > 0 && video.videoWidth <= 854 && video.videoHeight > 0 && video.videoHeight <= 480 &&
               video.getVideoPlaybackQuality().totalVideoFrames >= ${framesBeforeSourceChange + 10}
             );
@@ -1394,7 +1394,7 @@ async function main(): Promise<void> {
           return diagnostics.split(/\r?\n/).some((line) => {
             try {
               const record = JSON.parse(line);
-              return record.msg === "piik-route" && record.event === "sender-quality-evidence" &&
+              return record.msg === "silip-route" && record.event === "sender-quality-evidence" &&
                 (record.state === "healthy" || record.state === "degraded");
             } catch {
               return false;
@@ -1479,7 +1479,7 @@ async function main(): Promise<void> {
           `(() => {
             const video = document.querySelector('video');
             return Boolean(video && video.srcObject &&
-              video.srcObject !== window.__piikGateMedia &&
+              video.srcObject !== window.__silipGateMedia &&
               video.videoWidth > 0 && video.videoWidth <= 854 && video.videoHeight > 0 && video.videoHeight <= 480);
           })()`,
           deadline,

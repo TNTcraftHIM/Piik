@@ -1,9 +1,9 @@
 package signal
 
 import (
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/room"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/room"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
 )
 
 type voiceMember struct {

@@ -1,11 +1,11 @@
-# Help translate Piik
+# Help translate Silip
 
 [中文](./translating.zh-CN.md) · [Contributing](../../CONTRIBUTING.md)
 
-Piik includes Simplified Chinese and English. Suggest wording, correct a
+Silip includes Simplified Chinese and English. Suggest wording, correct a
 translation or add a language through GitHub issues and pull requests.
 
-For a wording suggestion, [open an issue](https://github.com/TNTcraftHIM/Piik/issues/new/choose)
+For a wording suggestion, [open an issue](https://github.com/P4-aaaul/Silip/issues/new/choose)
 with the language, page/control, current text, proposed text and reason. Include
 a screenshot or steps to reach it; remove private invitations, passwords and
 personal content. You can send a suggestion without setting up development tools.
@@ -15,7 +15,7 @@ personal content. You can send a suggestion without setting up development tools
 1. Try the affected screen and read the nearby controls. Check both existing
    languages when helpful; the [terminology and voice guide](../standards/naming.md#voice-and-terminology)
    owns names and writing style.
-2. Fork Piik and work on a branch from current `main`, following
+2. Fork Silip and work on a branch from current `main`, following
    [Contributing](../../CONTRIBUTING.md#lean-workflow). Small text edits can also
    be proposed through GitHub's file editor.
 3. Find the text in the files below. In a locale file, change the string value
@@ -185,4 +185,4 @@ for code changes follow [Contributing](../../CONTRIBUTING.md#verification-entryp
 - [Godot translation guide](https://contributing.godotengine.org/en/latest/other/translations.html): locate source context and coordinate terminology.
 - [Weblate translation guidance](https://docs.weblate.org/en/latest/user/translating.html#translating-special-text-safely): handle placeholders and markup carefully.
 - [W3C language-tag guidance](https://www.w3.org/International/questions/qa-choosing-language-tags): use BCP 47 tags to identify languages and their variants.
-- [Unicode CLDR language names](https://cldr.unicode.org/translation/displaynames/languagelocale-names): menu-name reference. Browser `Intl.DisplayNames` can help find native names; choose Piik's short button label in the registry.
+- [Unicode CLDR language names](https://cldr.unicode.org/translation/displaynames/languagelocale-names): menu-name reference. Browser `Intl.DisplayNames` can help find native names; choose Silip's short button label in the registry.

@@ -18,14 +18,14 @@ import (
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // Environment selects development-only behavior. A stale unit file must fail
 // closed rather than fall back to development.
 type Environment string
 
-// The two accepted PIIK_ENV values.
+// The two accepted SILIP_ENV values.
 const (
 	EnvironmentDevelopment Environment = "development"
 	EnvironmentProduction  Environment = "production"
@@ -61,7 +61,7 @@ var removedEnvironmentVariables = []struct{ name, reason string }{
 	{"ROOM_TTL_SECONDS", "use ROOM_EMPTY_TIMEOUT_SECONDS for empty-room retention"},
 	{"ROOM_LEASE_SECONDS", "use ROOM_EMPTY_TIMEOUT_SECONDS for empty-room retention"},
 	{"ACCESS_PASSWORD", "use SITE_ACCESS_PASSWORD"},
-	{"NODE_ENV", "use PIIK_ENV"},
+	{"NODE_ENV", "use SILIP_ENV"},
 }
 
 // SFUConfig enables the embedded UDP media listener.
@@ -228,7 +228,7 @@ func Load(env map[string]string) (Config, error) {
 }
 
 func parseEnvironment(env map[string]string) (Environment, error) {
-	value, present := env["PIIK_ENV"]
+	value, present := env["SILIP_ENV"]
 	if !present {
 		return EnvironmentDevelopment, nil
 	}
@@ -236,7 +236,7 @@ func parseEnvironment(env map[string]string) (Environment, error) {
 	case EnvironmentDevelopment, EnvironmentProduction:
 		return Environment(value), nil
 	}
-	return "", errors.New("PIIK_ENV must be development or production")
+	return "", errors.New("SILIP_ENV must be development or production")
 }
 
 // parseBoolean defaults an absent value to false.

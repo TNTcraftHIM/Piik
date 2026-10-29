@@ -7,7 +7,7 @@ upstream tests and focused regressions are built and tested by
 
 | Module | Source baseline | Local changes |
 | --- | --- | --- |
-| `go-nat` | [netbirdio/go-nat at 6b2c8c5c74e8](https://github.com/netbirdio/go-nat/tree/6b2c8c5c74e8331ed41811cfd2fdc4c3dd8c3ff0) | NAT-PMP honors contexts, assigned ports and deletion; optional PCPv6 finishes inside Piik's mapping budget so it cannot withhold successful IPv4; regressions retain both gateway paths |
+| `go-nat` | [netbirdio/go-nat at 6b2c8c5c74e8](https://github.com/netbirdio/go-nat/tree/6b2c8c5c74e8331ed41811cfd2fdc4c3dd8c3ff0) | NAT-PMP honors contexts, assigned ports and deletion; optional PCPv6 finishes inside Silip's mapping budget so it cannot withhold successful IPv4; regressions retain both gateway paths |
 | `go-nat-pmp` | [jackpal/go-nat-pmp v1.0.2](https://github.com/jackpal/go-nat-pmp/tree/v1.0.2) | Context-aware request methods, deadline/cancellation through UDP I/O, adapted recorder/test caller, and a module manifest |
 
 Upstream source and tests are retained, excluding examples and CI configuration.
@@ -17,7 +17,7 @@ files directly, so App archives retain their attribution.
 
 These repairs preserve the existing gateway selector and PCPv6 composition.
 The [NAT research owner](../../docs/research/nat-traversal.md#gateway-and-survey-limits)
-describes the runtime limits. Do not add a second gateway client in Piik.
+describes the runtime limits. Do not add a second gateway client in Silip.
 
 When maintained upstream revisions cover these fixes and the same regressions
 pass, replace both local module directives with version pins, remove their source
@@ -45,7 +45,7 @@ the receive-time baseline. Only new observations advance congestion state.
 Group loss membership covers the packet tracker's history. Delay measurement
 advances in send order with a receive-time watermark, while older ACKs repair
 counts without rewinding it. Reset reseeds that delay baseline without discarding
-delivery history. Piik's shared
+delivery history. Silip's shared
 forwarding package uses this copy for both individual transports and publications.
 Delay inference tolerates ordinary clock-rate skew using RFC 6817 A.2's
 500 ppm virtual-sender-clock allowance; packet timestamps, acknowledged traffic
@@ -66,7 +66,7 @@ The LiveKit dependency includes
 [upstream #5013](https://github.com/livekit/livekit/pull/5013), which restores
 probe delivery after cached RTX packets expire. Its earlier
 [padding correction](https://github.com/livekit/livekit/pull/4993) also replaces
-Piik's former padding writer. Those repairs use the upstream dependency; no
+Silip's former padding writer. Those repairs use the upstream dependency; no
 additional LiveKit package is copied here. The local send-side measurement
 corrections above remain necessary.
 
@@ -74,7 +74,7 @@ The dependency also includes [upstream #5018](https://github.com/livekit/livekit
 and [#5019](https://github.com/livekit/livekit/pull/5019): dummy-start timestamp
 offsets stay within the RTP clock's wrap domain and are cleared on receiver
 restart. These correct layer/source-switch continuity in the existing DownTrack;
-Piik adds no timestamp repair alongside it.
+Silip adds no timestamp repair alongside it.
 
 The retained detector also includes [upstream #4935](https://github.com/livekit/livekit/pull/4935)
 and its regression from v1.13.9, adapted to standard Go assertions. Reserved
@@ -90,7 +90,7 @@ based on upstream `cde3991916cf`. Its only changes are an optional local encoder
 demand input to `StreamAllocator` and regression tests. Native publication uses
 that input; ordinary forwarding leaves it unset. The existing allocator still
 owns probe timing, congestion response and allocation; encoder demand does not
-change track-deficiency state. No allocator source is copied into Piik and no
+change track-deficiency state. No allocator source is copied into Silip and no
 build-time patch is applied.
 
 The explicit `TestPublicationConstrainedRecovery` gate and the upstream tests

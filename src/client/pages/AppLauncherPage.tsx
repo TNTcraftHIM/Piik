@@ -4,7 +4,6 @@ import { z } from "zod";
 import { BrandMark } from "../components/living/BrandMark";
 import { HintComic } from "../components/living/hints";
 import { LoadingStatus } from "../components/living/WaitingStatus";
-import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { AppHeader } from "../components/living/Header";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { Btn, Pill } from "../components/living/primitives";
@@ -13,10 +12,6 @@ import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
-import {
-  checkReleaseUpdate,
-  type ReleaseUpdateNotice,
-} from "../lib/release-update";
 
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
@@ -30,7 +25,6 @@ const launcherStateSchema = z.object({
   detail: z.string().optional(),
   revision: z.string(),
   version: z.string().default("development"),
-  packageTarget: z.string().optional(),
   controlPort: z.number().int().optional(),
   debug: z.boolean().optional(),
   lan: z.object({
@@ -60,7 +54,6 @@ export function AppLauncherPage() {
   const [debugError, setDebugError] = useState(false);
   const [reload, setReload] = useState(0);
   const [lan, setLan] = useState<z.infer<typeof launcherStateSchema>["lan"]>();
-  const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
   const [version, setVersion] = useState<string>();
   const [target, setTarget] = useState<string>();
   const [controlPort, setControlPort] = useState<number>();
@@ -86,13 +79,12 @@ export function AppLauncherPage() {
     // The requesting page still verifies authorized health before using App.
     // The opener closes this page. Finish an explicitly selected startup
     // preference first, and leave a failed save visible for correction.
-    if (!manualSite && approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "piik-app-approved", site: requestedSite }, requestedSite);
+    if (!manualSite && approvalCurrent && !siteBusy && !siteError) window.opener?.postMessage({ type: "silip-app-approved", site: requestedSite }, requestedSite);
   }, [manualSite, approvalCurrent, requestedSite, siteBusy, siteError]);
 
   useEffect(() => {
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let checkedRelease = false;
     let restoredSettings = false;
     let reading = false;
     const readState = () => {
@@ -132,16 +124,6 @@ export function AppLauncherPage() {
           : previous?.kind === "load" ? null : previous);
         setLoading(false);
         if (state.starting) timer = setTimeout(() => void readState(), 750);
-        if (checkedRelease) return;
-        checkedRelease = true;
-        void checkReleaseUpdate({
-          version: state.version,
-          revision: state.revision,
-        }, { packageTarget: state.packageTarget })
-          .then((notice) => {
-            if (current && notice) setUpdate(notice);
-          })
-          .catch(() => undefined);
       })
       .catch(() => {
         if (!fresh()) return;
@@ -267,7 +249,7 @@ export function AppLauncherPage() {
 
   async function approveSite(site: string): Promise<void> {
     if (await changeSite(site, "site", openOnApproval) && manualSite) {
-      window.location.replace(launchURL(`${site}/#piik-client=1`));
+      window.location.replace(launchURL(`${site}/#silip-client=1`));
     }
   }
 
@@ -338,7 +320,7 @@ export function AppLauncherPage() {
               {(!approvalCurrent || (manualSite && siteBusy)) && <Btn icon="check" title={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"}
                 cap={manualSite ? "client.connect.approveAndOpen" : "client.connect.approve"} tone="primary"
                 hint="hint-client-site" busy={siteBusy} disabled={!validSite || siteBusy} onClick={() => void approveSite(requestedSite)} />}
-              {manualSite && approvalCurrent && !siteBusy && <a className="lr-btn is-primary" href={launchURL(`${requestedSite}/#piik-client=1`)}>
+              {manualSite && approvalCurrent && !siteBusy && <a className="lr-btn is-primary" href={launchURL(`${requestedSite}/#silip-client=1`)}>
                 <Glyph name="arrowRight" size={19} />
                 <span className={vis ? "visually-hidden" : "lr-cap"}>{t("client.connect.openSite")}</span>
               </a>}
@@ -375,13 +357,11 @@ export function AppLauncherPage() {
             onLocalAccessPasswordChange={setLocalAccessPassword}
             lan={lan && { ...lan, onChange: (selected) => setLan({ ...lan, selected }) }}
             onSubmit={launch}
-          >
-            {update && <AppReleaseNotice update={update} />}
-          </LauncherForm>
+          />
         )}
       </main>
       <footer className="lr-client-footer">
-        <a className="lr-btn is-dense is-quiet" href="https://github.com/TNTcraftHIM/Piik" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
+        <a className="lr-btn is-dense is-quiet" href="https://github.com/P4-aaaul/Silip" target="_blank" rel="noopener noreferrer">GitHub<span aria-hidden="true"> ↗</span></a>
         {version && <p className="lr-client-version">
           <span className={vis ? "visually-hidden" : undefined}>{t("client.launch.version", { version })}</span>
           {vis && <span aria-hidden="true">{version}</span>}

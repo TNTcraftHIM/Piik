@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strconv"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
 )
 
 // EntryURL selects the App runtime without carrying authority in the query.
@@ -17,10 +17,10 @@ func EntryURL(raw string, controlPort int) string {
 	if err != nil {
 		return raw
 	}
-	fragment.Set("piik-client", "1")
+	fragment.Set("silip-client", "1")
 	query := parsed.Query()
 	if controlPort >= loopback.DefaultPortStart && controlPort <= loopback.DefaultPortEnd {
-		query.Set("piik-client-port", strconv.Itoa(controlPort))
+		query.Set("silip-client-port", strconv.Itoa(controlPort))
 	}
 	parsed.RawQuery = query.Encode()
 	parsed.Fragment, parsed.RawFragment = "", ""

@@ -3,7 +3,7 @@ package nativeviewer
 import (
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 	"github.com/pion/webrtc/v4"
 )
 

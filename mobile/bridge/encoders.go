@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 type encoderCapability struct {

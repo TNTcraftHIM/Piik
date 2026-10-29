@@ -109,14 +109,14 @@ an explicitly controlled input-frame boundary is required. In particular,
 
 | Module / primary source | Responsibility | Boundary |
 | --- | --- | --- |
-| Piik `mediaedge.Source`, `Edge`, Native capture generations | Encoded-source ownership and existing share/route identity | The shared forwarding adapter owns transport integration; capture does not own routing |
+| Silip `mediaedge.Source`, `Edge`, Native capture generations | Encoded-source ownership and existing share/route identity | The shared forwarding adapter owns transport integration; capture does not own routing |
 | Pion PeerConnections and RTP/RTCP interceptors | ICE, encryption, packetization and feedback | Each connection retains its packet and feedback identity |
 | [LiveKit media components](https://github.com/livekit/livekit/tree/v1.13.6/pkg/sfu) | Bandwidth estimation, allocation, layer selection, RTP projection and recovery probing | Narrow adapter; scoped upstream repairs and their removal gates live in [dependency provenance](../../internal/thirdparty/README.md) |
 | [libwebrtc encoder pipeline](./webrtc-encoder-pool.md) | Rate/resource adaptation for each shared local output | A complete pipeline owns its codec lifetime; a codec cache alone cannot provide equivalent adaptation |
 | MFT/VideoToolbox/GStreamer/libvpx capture adapters and [libyuv](https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/README.md) | Platform capture, conversion/scaling and encoding | Received-source decoding and GPU surface sharing remain real work; physical cost is platform-dependent |
 | [GStreamer tee](https://gstreamer.freedesktop.org/documentation/coreelements/tee.html) / [queue](https://gstreamer.freedesktop.org/documentation/coreelements/queue.html) | Shared frame ownership with branch isolation on Linux | Default queue sizes are not accepted latency budgets |
 
-Upstream licenses and notices remain part of the packaged artifacts; Piik's MIT
+Upstream licenses and notices remain part of the packaged artifacts; Silip's MIT
 license does not replace them. [TODO](../todo.md) owns remaining work, and
 [verification status](../verification-status.md) separates controlled evidence
 from physical capture, game cadence and public-network acceptance.
@@ -347,7 +347,7 @@ compare the selected complete media adapter against the same release trace.
 Run the probe explicitly from the repository root, optionally with
 `-frame-bursts`; it writes only ignored `build/embedded-media` diagnostics. It is
 not a default unit/CI task. The observed cadence sensitivity is a reason to test
-the real packet path, not to introduce a Piik congestion score.
+the real packet path, not to introduce a Silip congestion score.
 
 ### Embedded Service Composition
 
@@ -365,7 +365,7 @@ room database or accepting signaling. Failed startup returns all sockets;
 the existing Close/End owner retires STUN too. No service supervisor or second
 availability flag is needed.
 
-The implementation uses a thin Piik SFU with LiveKit **media-core components**,
+The implementation uses a thin Silip SFU with LiveKit **media-core components**,
 without its RTC room or service. The initial stock-Pion/LiveKit comparison passed
 compilation and ReceiverBase/DownTrack projection; two receiving PCs demonstrated an
 unaffected high-output sibling and high/low/high allocation under forced budgets.
@@ -462,7 +462,7 @@ changes preserve upstream estimation, loss handling and probe scheduling.
 
 Probe padding has no media payload; its size belongs to `Header.PaddingSize`
 and Pion serializes it once. The pinned LiveKit revision includes
-[upstream #4993](https://github.com/livekit/livekit/pull/4993), so Piik's former
+[upstream #4993](https://github.com/livekit/livekit/pull/4993), so Silip's former
 payload-stripping writer is removed. The SDK scheduling proxy still accounts
 for those wire bytes because its size calculation omits RTP padding; only the
 original packet reaches serialization and TWCC. Both publication and
@@ -522,7 +522,7 @@ reduced encoding. Single-output and two-declared-RID controls both reproduced it
 [LiveKit #5016](https://github.com/livekit/livekit/pull/5016) adds explicit unmet
 encoder demand to that allocator's existing padding probe. Demand is
 withdrawn for inactive/retired or sufficiently allocated output; desired output
-never replaces measured bitrate or capacity. Piik now uses this input.
+never replaces measured bitrate or capacity. Silip now uses this input.
 Encoder demand must not mark ordinary tracks deficient: a real DownTrack
 allocation control reproduces a blocked layer upgrade despite spare capacity
 when the two meanings are combined. Demand is checked by the existing periodic
@@ -533,7 +533,7 @@ theirs. Regression controls reproduce both omissions while preserving the
 pause, idle, probe-mode and capacity gates. Resetting BWE does not itself raise
 the encoder budget; measured probe feedback remains necessary.
 [Provenance and removal](../../internal/thirdparty/README.md#local-encoder-probe-demand)
-own the temporary pin. Piik does not copy the complete allocator or add a probe
+own the temporary pin. Silip does not copy the complete allocator or add a probe
 owner. `SetChannelCapacity` is not a substitute: it overrides capacity and
 disables probing. A minimum-capacity setting would not prove measured recovery.
 
@@ -567,7 +567,7 @@ probing retain their policy; removing demand fails the upstream regressions.
 Short-pulse controls do not justify importing another product's cadence
 thresholds into congestion response.
 
-Live audio changes exposed a related scope mismatch: Piik's TWCC tracks only
+Live audio changes exposed a related scope mismatch: Silip's TWCC tracks only
 video, but the adapter deducted audio from that measured capacity and included
 audio in expected probe usage. After restoring 320 kbps Opus, this could remove
 an already recovered video layer on a healthy 6 Mbps link. The adapter now uses
@@ -698,7 +698,7 @@ establishes the same behavior. Pion's
 [underutilized-source discussion](https://github.com/pion/interceptor/issues/156)
 likewise distinguishes unoffered traffic from capacity and points to
 application-limited detection and probing. This is guidance, not a drop-in repair
-for Piik's retained detector.
+for Silip's retained detector.
 
 On 2026-10-18 the owner deferred replacing the loss estimator: sustained high
 loss may reduce quality, and a custom model is not justified by the present
@@ -742,8 +742,8 @@ and the existing pinned libvpx build, using the same MSVC flags as the earlier
 CPU probe. Generate its JSONL under `build/embedded-media`, then run:
 
 ```powershell
-$env:PIIK_ENCODED_FIXTURE = 'build/embedded-media/encoded-group.fixture.jsonl'
-$env:PIIK_ENCODED_OUTPUT = 'build/embedded-media/encoded-group.received.json'
+$env:SILIP_ENCODED_FIXTURE = 'build/embedded-media/encoded-group.fixture.jsonl'
+$env:SILIP_ENCODED_OUTPUT = 'build/embedded-media/encoded-group.received.json'
 & .\build\embedded-media\mediaedge.test.exe '-test.run=TestEncodedGroupVP8Fixture' '-test.v' '-test.timeout=30s'
 node scripts/encoded-group-decode.mjs
 ```

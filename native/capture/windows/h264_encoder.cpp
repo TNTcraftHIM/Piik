@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <charconv>
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 
 namespace {
 constexpr DWORD kMaxEncodedSampleBytes = 4 * 1024 * 1024;
@@ -736,4 +736,4 @@ void LiveEncoder::WaitForInput(EncoderClock::time_point probe_deadline) {
   }
 }
 
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows

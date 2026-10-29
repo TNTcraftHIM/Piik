@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useRotatingText } from "./use-text-rotation";
 
-const BRAND_TITLE = "Piik";
+const BRAND_TITLE = "Silip";
 
 export function composeDocumentTitle(
   ...parts: Array<string | null | undefined>

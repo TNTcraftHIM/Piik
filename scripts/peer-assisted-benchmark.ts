@@ -1658,7 +1658,7 @@ function buildBenchmarkInitScript(options: {
 }): string {
   const serialized = JSON.stringify(options);
   return `(() => {
-    if (globalThis.__PIIK_BENCHMARK__) return;
+    if (globalThis.__SILIP_BENCHMARK__) return;
     const options = ${serialized};
     const expectedRoleCap = options.expectedEndpointCap;
     // The parameter-readback arm exercises ordinary senders. Pool producers
@@ -1667,7 +1667,7 @@ function buildBenchmarkInitScript(options: {
       Object.defineProperty(RTCRtpSender.prototype, "createEncodedStreams", { value: undefined, configurable: true });
     }
     if (options.clearHostRoom) {
-      try { localStorage.removeItem("piik:host-room:v1"); } catch {}
+      try { localStorage.removeItem("silip:host-room:v1"); } catch {}
     }
     const state = {
       label: options.label,
@@ -2203,7 +2203,7 @@ function buildBenchmarkInitScript(options: {
     function markShareRequested() {
       state.shareRequestedAtEpochMs = Date.now();
     }
-    Object.defineProperty(globalThis, "__PIIK_BENCHMARK__", {
+    Object.defineProperty(globalThis, "__SILIP_BENCHMARK__", {
       configurable: false,
       value: { sample, progress, snapshot, senderDegradationPreferences, markShareRequested, requestRouteDiagnosticSnapshot, routeDiagnosticTimingSamples, stop: () => clearInterval(videoObserver) },
     });
@@ -2239,23 +2239,23 @@ function buildStep(command: string, args: string[], failure: string): void {
   }
 }
 
-// buildServer compiles the Piik server this run starts. The Web assets are
+// buildServer compiles the Silip server this run starts. The Web assets are
 // embedded, so the Vite build precedes the Go build and the Browser reaches the
 // same bundle the binary serves.
 function buildServer(): string {
-  const go = process.env.PIIK_GO?.trim() || "go";
+  const go = process.env.SILIP_GO?.trim() || "go";
   const buildRoot = join(REPO_ROOT, "build", "peer-benchmark");
   mkdirSync(buildRoot, { recursive: true });
   const output = join(buildRoot,
-    process.platform === "win32" ? "piik-server.exe" : "piik-server");
+    process.platform === "win32" ? "silip-server.exe" : "silip-server");
   if (process.platform === "win32") {
     buildStep(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:web"],
       "Web UI build failed");
   } else {
     buildStep("npm", ["run", "build:web"], "Web UI build failed");
   }
-  buildStep(go, ["build", "-trimpath", "-o", output, "./cmd/piik-server"],
-    "Piik server build failed");
+  buildStep(go, ["build", "-trimpath", "-o", output, "./cmd/silip-server"],
+    "Silip server build failed");
   return output;
 }
 
@@ -2408,7 +2408,7 @@ async function createPage(
     await waitForPage(
       cdp,
       page,
-      "document.readyState === 'complete' && Boolean(globalThis.__PIIK_BENCHMARK__)",
+      "document.readyState === 'complete' && Boolean(globalThis.__SILIP_BENCHMARK__)",
       15_000,
       "page initialization",
       signal,
@@ -2461,7 +2461,7 @@ async function quickSnapshot(
   return evaluate<PageObservation>(
     cdp,
     page,
-    "globalThis.__PIIK_BENCHMARK__.snapshot()",
+    "globalThis.__SILIP_BENCHMARK__.snapshot()",
   );
 }
 
@@ -2472,7 +2472,7 @@ async function detailedSample(
   return evaluate<PageObservation>(
     cdp,
     page,
-    "globalThis.__PIIK_BENCHMARK__.sample()",
+    "globalThis.__SILIP_BENCHMARK__.sample()",
   );
 }
 
@@ -2483,7 +2483,7 @@ async function progressSample(
   return evaluate<PageObservation>(
     cdp,
     page,
-    "globalThis.__PIIK_BENCHMARK__.progress()",
+    "globalThis.__SILIP_BENCHMARK__.progress()",
   );
 }
 
@@ -2574,7 +2574,7 @@ async function startHost(
       profile.click();
       const start = document.querySelector('.lr-entry-actions button.lr-tv-big.is-action[aria-label]');
       if (!(start instanceof HTMLButtonElement)) throw new Error('Start button missing');
-      globalThis.__PIIK_BENCHMARK__.markShareRequested();
+      globalThis.__SILIP_BENCHMARK__.markShareRequested();
       start.click();
       return true;
     })()`,
@@ -2585,7 +2585,7 @@ async function startHost(
   await waitForPage(
     cdp,
     page,
-    "globalThis.__PIIK_BENCHMARK__.snapshot().peerId !== null",
+    "globalThis.__SILIP_BENCHMARK__.snapshot().peerId !== null",
     timeoutMs,
     "host signaling authentication",
     signal,
@@ -2632,7 +2632,7 @@ async function requestRouteTimingSummary(
   const requested = await evaluate<boolean>(
     cdp,
     hostPage,
-    "globalThis.__PIIK_BENCHMARK__.requestRouteDiagnosticSnapshot()",
+    "globalThis.__SILIP_BENCHMARK__.requestRouteDiagnosticSnapshot()",
   );
   if (!requested) {
     throw new Error("Host route diagnostic request was unavailable");
@@ -2640,7 +2640,7 @@ async function requestRouteTimingSummary(
   await waitForPage(
     cdp,
     hostPage,
-    "globalThis.__PIIK_BENCHMARK__.routeDiagnosticTimingSamples() !== null",
+    "globalThis.__SILIP_BENCHMARK__.routeDiagnosticTimingSamples() !== null",
     timeoutMs,
     "Host route diagnostic snapshot",
     signal,
@@ -2648,7 +2648,7 @@ async function requestRouteTimingSummary(
   const samples = await evaluate<BenchmarkRouteTimingSamples>(
     cdp,
     hostPage,
-    "globalThis.__PIIK_BENCHMARK__.routeDiagnosticTimingSamples()",
+    "globalThis.__SILIP_BENCHMARK__.routeDiagnosticTimingSamples()",
   );
   return summarizeBenchmarkRouteTiming(samples);
 }
@@ -2826,7 +2826,7 @@ async function runQualityControlSmoke(
         waitForPage(
           cdp,
           page,
-          `JSON.stringify(globalThis.__PIIK_BENCHMARK__.snapshot().qualitySettings) === ${serializedSettings}`,
+          `JSON.stringify(globalThis.__SILIP_BENCHMARK__.snapshot().qualitySettings) === ${serializedSettings}`,
           10_000,
           `${settings.degradationPreference} quality propagation`,
           signal,
@@ -2855,7 +2855,7 @@ async function runQualityControlSmoke(
       sendingPages.map(async (page) => {
         const expectedCount = activeSenderCounts.get(page.label) ?? 0;
         const predicate = `(() => {
-          const values = globalThis.__PIIK_BENCHMARK__.senderDegradationPreferences();
+          const values = globalThis.__SILIP_BENCHMARK__.senderDegradationPreferences();
           return values.length === ${expectedCount} &&
             values.every((value) => value === ${JSON.stringify(preference)});
         })()`;
@@ -2867,7 +2867,7 @@ async function runQualityControlSmoke(
           `${preference} sender parameter readback`,
           signal,
         ).catch(async error => {
-          const values = await evaluate(cdp, page, "globalThis.__PIIK_BENCHMARK__.senderDegradationPreferences()");
+          const values = await evaluate(cdp, page, "globalThis.__SILIP_BENCHMARK__.senderDegradationPreferences()");
           throw new Error(`${errorMessage(error)}; expected ${expectedCount} sender(s), received ${JSON.stringify(values)}`);
         });
         return evaluate<boolean>(cdp, page, `Boolean(${predicate})`);
@@ -3224,7 +3224,7 @@ async function runCase(
       cdp,
       hostPage,
       `(() => {
-        const grant = sessionStorage.getItem('piik:viewer-grant:${roomId}');
+        const grant = sessionStorage.getItem('silip:viewer-grant:${roomId}');
         return grant ? location.origin + '/r/${roomId}#v=' + grant : '';
       })()`,
     );
@@ -3551,7 +3551,7 @@ async function main(): Promise<number> {
     const appPort = externalServer ? null : await reservePort();
     const debugPort = await reservePort();
     const baseUrl = externalServer?.origin ?? `http://127.0.0.1:${appPort}`;
-    profileDirectory = await mkdtemp(join(tmpdir(), "piik-peer-benchmark-"));
+    profileDirectory = await mkdtemp(join(tmpdir(), "silip-peer-benchmark-"));
     if (appPort !== null) {
       // An explicit environment and a profile working directory: the measured
       // configuration is exactly these values, never the repository's .env or
@@ -3560,7 +3560,7 @@ async function main(): Promise<number> {
       server = startProcess(buildServer(), [], {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
-        PIIK_ENV: "development",
+        SILIP_ENV: "development",
         PORT: String(appPort),
         LISTEN_HOST: "127.0.0.1",
         PUBLIC_BASE_URL: baseUrl,

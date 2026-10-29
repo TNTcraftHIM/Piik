@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-namespace piik::capture {
+namespace silip::capture {
 
 inline constexpr uint32_t kMaxVideoDimension = 8192;
 inline constexpr uint64_t kMaxVideoPixels = 36'864 * 16 * 16;
@@ -29,4 +29,4 @@ inline bool ValidCodedVideoSize(uint32_t width, uint32_t height) {
          static_cast<uint64_t>(width) * height <= kMaxCodedVideoPixels;
 }
 
-}  // namespace piik::capture
+}  // namespace silip::capture

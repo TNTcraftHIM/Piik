@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Modified by Piik: start probe timing at its first acknowledged packet.
+// Modified by Silip: start probe timing at its first acknowledged packet.
 package sendsidebwe
 
 import (

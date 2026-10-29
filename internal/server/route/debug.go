@@ -3,7 +3,7 @@ package route
 import (
 	"strconv"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // debugCandidate is the `{route, transition}` item of "operation-started".
@@ -30,7 +30,7 @@ func (c *Controller) debug(event string, details ...any) {
 		"revision", c.revision,
 		"factVersion", c.factVersion)
 	args = append(args, details...)
-	c.debugLog("piik-route", args...)
+	c.debugLog("silip-route", args...)
 }
 
 // debugPeer returns "host", "viewer-<joinOrder>" or "viewer-unknown".

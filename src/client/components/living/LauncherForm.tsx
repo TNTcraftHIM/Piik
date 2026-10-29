@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, type CSSProperties, type FormEvent, type MouseEvent, type ReactNode } from "react";
-import { BrandMark } from "./BrandMark";
+import { BrandWordmark } from "./BrandMark";
 import { Tooltip } from "./Tooltip";
 import { WelcomeLine } from "./WelcomeLine";
 import { SiteAddressEntry } from "./SiteAddressEntry";
@@ -120,8 +120,7 @@ export function LauncherForm({
     <form className="lr-client-launch-panel" onSubmit={onSubmit}>
       <header className="lr-client-launch-heading">
         <div className="lr-client-launch-brand">
-          <BrandMark size={52} motion="once" />
-          <h1 className="lr-client-launch-title">Piik<span className="lr-client-brand-dot">.</span> <small>App</small></h1>
+          <h1 className="lr-client-launch-title"><BrandWordmark className="lr-client-wordmark" /> <small>App</small></h1>
         </div>
         <WelcomeLine />
       </header>
@@ -151,7 +150,7 @@ export function LauncherForm({
         </div>
         {siteError && <p role="alert">{siteError}</p>}
         {sites.length > 0 && <div className="lr-client-approved-sites" role="list">{sites.map((site, index) => <div key={site} className="lr-client-approved-site" role="listitem">
-          <a href={entryURL(`${site}/#piik-client=1`)} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
+          <a href={entryURL(`${site}/#silip-client=1`)} target="_blank" rel="noopener noreferrer" onClick={onOpen}>{site}<span aria-hidden="true">&nbsp;↗</span></a>
           <div className="lr-client-site-actions">
             <Btn icon="star" title="client.connect.openOnStart" size="dense" pressed={startupSite === site}
               hint="hint-client-site" disabled={siteBusy} onClick={() => onToggleStartupSite(site)} />

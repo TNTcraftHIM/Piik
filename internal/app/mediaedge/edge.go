@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 )
@@ -174,23 +174,23 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 		})
 	}
 	connection.OnICEConnectionStateChange(func(state webrtc.ICEConnectionState) {
-		log.Debug("piik-client", "event", "media-ice-state", "direction", "outbound", "local", options.Local, "state", state.String())
+		log.Debug("silip-client", "event", "media-ice-state", "direction", "outbound", "local", options.Local, "state", state.String())
 	})
 	if dtls := edge.sender.Transport(); dtls != nil {
 		dtls.OnStateChange(func(state webrtc.DTLSTransportState) {
-			log.Debug("piik-client", "event", "media-dtls-state", "direction", "outbound", "local", options.Local, "state", state.String())
+			log.Debug("silip-client", "event", "media-dtls-state", "direction", "outbound", "local", options.Local, "state", state.String())
 		})
 	}
 	connection.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
 		isCurrentState := func(expected webrtc.PeerConnectionState) bool { return connection.ConnectionState() == expected }
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {
-			log.Debug("piik-client", "event", "media-connection-state", "direction", "outbound", "local", options.Local, "state", state.String())
+			log.Debug("silip-client", "event", "media-connection-state", "direction", "outbound", "local", options.Local, "state", state.String())
 		}
 		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) {
 			if err := edge.transport.SetConnected(); err != nil {
 				if debug {
-					log.Debug("piik-client", "event", "media-activation-failed", diagnostics.Error(err))
+					log.Debug("silip-client", "event", "media-activation-failed", diagnostics.Error(err))
 				}
 				_ = connection.Close()
 				return
@@ -202,7 +202,7 @@ func (engine *Engine) NewEdge(source *Source, options EdgeOptions) (_ *Edge, err
 			if pair, pairErr := edge.SelectedPair(); pairErr == nil {
 				selected = &pair
 				if debug {
-					log.Debug("piik-client", "event", "media-selected-path", "direction", "outbound", "local", options.Local,
+					log.Debug("silip-client", "event", "media-selected-path", "direction", "outbound", "local", options.Local,
 						"localType", pair.Local.String(), "remoteType", pair.Remote.String(), "natTraversalPath", pair.NatTraversalPath)
 				}
 			}
@@ -489,7 +489,7 @@ func logLocalMediaCandidateCounts(logger *slog.Logger, report webrtc.StatsReport
 					tcp++
 				}
 			}
-			logger.Debug("piik-client", "event", "media-candidate-counts", "local", true,
+			logger.Debug("silip-client", "event", "media-candidate-counts", "local", true,
 				"direction", string(direction), "type", kind.String(), "udp", udp, "tcp", tcp)
 		}
 	}

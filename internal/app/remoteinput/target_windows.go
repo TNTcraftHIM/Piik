@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 	"golang.org/x/sys/windows"
 )
 

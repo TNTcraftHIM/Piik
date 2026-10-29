@@ -6,7 +6,7 @@
 #include <functional>
 #include <string>
 
-namespace piik::capture {
+namespace silip::capture {
 
 constexpr UINT32 kAudioSampleRate = 48'000;
 constexpr UINT16 kAudioChannels = 2;
@@ -33,4 +33,4 @@ HRESULT CaptureSystemAudio(HANDLE stop_event, const StopProbe& stop_probe,
                            const ReadyWriter& ready_writer,
                            const PCMWriter& writer);
 
-}  // namespace piik::capture
+}  // namespace silip::capture

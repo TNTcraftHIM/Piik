@@ -1,6 +1,6 @@
 package route
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 // MaxRelayVolunteerChildren is the steady fanout of a willing ordinary peer.
 // The existing single operation may reserve one additional physical copy.

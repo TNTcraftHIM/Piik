@@ -80,7 +80,7 @@ func TestSourceListRejectsMalformedOutputEvenAfterTheReturnedPrefix(t *testing.T
 }
 
 func TestCaptureStopHelper(t *testing.T) {
-	mode := os.Getenv("PIIK_CAPTURE_STOP_FIXTURE")
+	mode := os.Getenv("SILIP_CAPTURE_STOP_FIXTURE")
 	if mode == "" {
 		return
 	}
@@ -108,7 +108,7 @@ func TestCaptureStopHelper(t *testing.T) {
 	}
 	// A platform capture must get time to release its session before process exit.
 	time.Sleep(50 * time.Millisecond)
-	if err := os.WriteFile(os.Getenv("PIIK_CAPTURE_STOP_MARKER"), []byte("released"), 0600); err != nil {
+	if err := os.WriteFile(os.Getenv("SILIP_CAPTURE_STOP_MARKER"), []byte("released"), 0600); err != nil {
 		os.Exit(5)
 	}
 	os.Exit(0)
@@ -120,7 +120,7 @@ func TestCaptureFailureSurvivesProcessRetirementWithoutDebugLogging(t *testing.T
 		t.Fatal(err)
 	}
 	stream, err := startStreamWithEnvironment(t.Context(), executable,
-		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"PIIK_CAPTURE_STOP_FIXTURE=startup-stage"})
+		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"SILIP_CAPTURE_STOP_FIXTURE=startup-stage"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestCaptureStopUsesOneBoundedRetirementPath(t *testing.T) {
 			marker := filepath.Join(t.TempDir(), "released")
 			stream, err := startStreamWithEnvironment(ctx, executable,
 				[]string{"-test.run=^TestCaptureStopHelper$"},
-				[]string{"PIIK_CAPTURE_STOP_FIXTURE=" + mode, "PIIK_CAPTURE_STOP_MARKER=" + marker})
+				[]string{"SILIP_CAPTURE_STOP_FIXTURE=" + mode, "SILIP_CAPTURE_STOP_MARKER=" + marker})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -240,7 +240,7 @@ func TestRemoteInputDoesNotBlockOnAStalledCapture(t *testing.T) {
 		t.Fatal(err)
 	}
 	stream, err := startStreamWithEnvironment(t.Context(), executable,
-		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"PIIK_CAPTURE_STOP_FIXTURE=unresponsive"})
+		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"SILIP_CAPTURE_STOP_FIXTURE=unresponsive"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestCaptureFailureDebugUsesOnlyFixedFields(t *testing.T) {
 			if err := json.Unmarshal(output.Bytes(), &record); err != nil {
 				t.Fatal(err)
 			}
-			if len(record) != 8 || record["event"] != "capture-process-failed" || record["msg"] != "piik-client" ||
+			if len(record) != 8 || record["event"] != "capture-process-failed" || record["msg"] != "silip-client" ||
 				record["level"] != "DEBUG" || record["exitCode"] != float64(2) || record["stage"] != check.stage ||
 				record["hresult"] != check.hresult || record["canceled"] != check.canceled || strings.Contains(output.String(), "private") {
 				t.Fatalf("diagnostic leaked or changed fields: %s", output.String())

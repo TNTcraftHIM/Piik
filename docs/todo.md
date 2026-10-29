@@ -29,15 +29,19 @@ own behavior; research and Git/PRs own evidence and completed history.
   diagnostic ZIP to identify the rejected system operation.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
-  supplies the allocator input Piik needs, verify recovery and remove the
+  supplies the allocator input Silip needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
 
 ## Next
 
-- [ ] **Release headlines in App and Server update checks.** Keep the prepared
-  implementation on `archive/deferred-prototypes` for a later feature release. It consumes
-  the existing [headline contract](./standards/versioning.md#release-notes).
+- [ ] **Website copy after the Silip rebrand.** `site/index.html` still presents
+  Piik's hosted online version, download cards and `piik.tv` links. Rewrite it for
+  Silip's self-hosted use, or retire the website and its workflow.
+- [ ] **Rebrand screenshots and scenes.** README/guide screenshots
+  (`docs/assets/room-*.png`, `docs/assets/guide/`) show the Piik header; regenerate
+  them with `npm run update:guide-images`. The website game, living-room scene
+  and film still feature Piik's TV character.
 
 ## Held By Owner
 
@@ -64,7 +68,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
-- **Piik 3.0 scope.** Explore independent room, chat, voice and screen-share
+- **Silip 3.0 scope.** Explore independent room, chat, voice and screen-share
   lifecycles, with optional image/file exchange, retaining the current topology
   and route controller. Compare continued Go with scoped Rust components before
   choosing implementation scope. The [hosting and subscription assessment](./research/room-interactions.md#multi-room-and-distributed-hosting-assessment)
@@ -73,7 +77,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The
   [co-play assessment](./research/room-interactions.md#remote-co-play) owns
-  platform evidence; Piik does not bundle or install optional input drivers.
+  platform evidence; Silip does not bundle or install optional input drivers.
 - **Platform output.** A registered receiver may act as an ordinary Viewer after
   the [platform-output gate](./research/platform-output.md) passes.
 - **Additional languages.** Review community catalogs and rendered UI through
@@ -86,8 +90,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   reports first-launch blocking; the troubleshooting guide provides a scoped
   opening procedure, not a signing fix. Verify downloaded bundles on a Mac when
   signing becomes available.
-- **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
-  and retain Gitee; do not add a self-hosted mirror. Reopen for new provider evidence.
 - **Automatic local chat history.** Manual TXT export already exists. Automatic
   storage needs a stable room-incarnation identity, bounded retention and deletion;
   reusable room codes must not combine conversations.

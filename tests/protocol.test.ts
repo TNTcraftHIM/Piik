@@ -163,7 +163,7 @@ describe("client signaling protocol", () => {
   });
 
   it("uses the current strict signaling generation", () => {
-    expect(SIGNALING_PROTOCOL).toBe("piik-v24");
+    expect(SIGNALING_PROTOCOL).toBe("silip-v24");
   });
 
   it("keeps signaling challenges strict and sequence-only", () => {

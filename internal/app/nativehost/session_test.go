@@ -16,15 +16,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 )
 
 func TestMain(tests *testing.M) {
-	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "backend" {
-		for _, key := range []string{"PIIK_CAPTURE_STARTING", "PIIK_CAPTURE_ACTIVE"} {
+	if os.Getenv("SILIP_NATIVEHOST_PIPE_FIXTURE") == "backend" {
+		for _, key := range []string{"SILIP_CAPTURE_STARTING", "SILIP_CAPTURE_ACTIVE"} {
 			writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameStatus, Data: []byte(os.Getenv(key))})
-			if layer := os.Getenv("PIIK_CAPTURE_UNAVAILABLE"); key == "PIIK_CAPTURE_STARTING" && layer != "" {
+			if layer := os.Getenv("SILIP_CAPTURE_UNAVAILABLE"); key == "SILIP_CAPTURE_STARTING" && layer != "" {
 				value, _ := strconv.Atoi(layer)
 				writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameLayerUnavailable, Layer: value, Data: []byte("fixture")})
 			}
@@ -32,15 +32,15 @@ func TestMain(tests *testing.M) {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
-	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "audio-recovery" {
+	if os.Getenv("SILIP_NATIVEHOST_PIPE_FIXTURE") == "audio-recovery" {
 		runAudioRecoveryCapture()
 		os.Exit(0)
 	}
-	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "echo" {
+	if os.Getenv("SILIP_NATIVEHOST_PIPE_FIXTURE") == "echo" {
 		_, _ = io.Copy(os.Stdout, os.Stdin)
 		os.Exit(0)
 	}
-	if os.Getenv("PIIK_NATIVEHOST_PIPE_FIXTURE") == "1" {
+	if os.Getenv("SILIP_NATIVEHOST_PIPE_FIXTURE") == "1" {
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
 	}
@@ -73,8 +73,8 @@ func (stream *retiringCaptureStream) Close() error {
 }
 
 func TestCloseReleasesUpdateLockBeforeWaitingForCaptureRetirement(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
-	t.Setenv("PIIK_VIDEO_START_GATE", filepath.Join(t.TempDir(), "video"))
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_VIDEO_START_GATE", filepath.Join(t.TempDir(), "video"))
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -186,7 +186,7 @@ func TestEdgeReplacementFencesNativeControl(t *testing.T) {
 }
 
 func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "1")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "1")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -340,11 +340,11 @@ func TestCaptureFailureBelongsToSelectedStream(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
-			t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+			t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "backend")
+			t.Setenv("SILIP_CAPTURE_STARTING", string(captureStatePayload(t,
 				`{"state":"starting","codec":"vp8","adapterIndex":0,"adapterName":"Fixture","adapterIdentity":"0:0","encoderName":"VP8","encoderIdentity":"vp8"}`)))
-			t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
-			t.Setenv("PIIK_CAPTURE_UNAVAILABLE", "0")
+			t.Setenv("SILIP_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
+			t.Setenv("SILIP_CAPTURE_UNAVAILABLE", "0")
 			executable, err := os.Executable()
 			check(err)
 			ctx, cancel := context.WithCancel(t.Context())
@@ -354,7 +354,7 @@ func TestCaptureFailureBelongsToSelectedStream(t *testing.T) {
 			previous, err := nativecapture.StartVideo(ctx, executable, options)
 			check(err)
 			defer previous.Close()
-			t.Setenv("PIIK_CAPTURE_UNAVAILABLE", "")
+			t.Setenv("SILIP_CAPTURE_UNAVAILABLE", "")
 			replacement, err := nativecapture.StartVideo(ctx, executable, options)
 			check(err)
 			defer replacement.Close()
@@ -448,10 +448,10 @@ func TestCaptureFailureBelongsToSelectedStream(t *testing.T) {
 }
 
 func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
-	t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "backend")
+	t.Setenv("SILIP_CAPTURE_STARTING", string(captureStatePayload(t,
 		`{"state":"starting","codec":"vp8","adapterIndex":0,"adapterName":"Fixture","adapterIdentity":"0:0","encoderName":"VP8","encoderIdentity":"vp8"}`)))
-	t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
+	t.Setenv("SILIP_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -484,8 +484,8 @@ func TestPreparedCaptureOutlivesItsPermissionOperation(t *testing.T) {
 }
 
 func TestCaptureProfileRetainsSelectedBackendAndFittedSize(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
-	t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "backend")
+	t.Setenv("SILIP_CAPTURE_STARTING", string(captureStatePayload(t,
 		`{"state":"starting","hardwareOnly":true,"codec":"h264","adapterIndex":1,"adapterName":"GPU","adapterIdentity":"0:1","encoderIndex":2,"encoderName":"H264","encoderIdentity":"encoder"}`)))
 	var active CaptureState
 	if err := json.Unmarshal(captureStatePayload(t,
@@ -497,7 +497,7 @@ func TestCaptureProfileRetainsSelectedBackendAndFittedSize(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_CAPTURE_ACTIVE", string(payload))
+	t.Setenv("SILIP_CAPTURE_ACTIVE", string(payload))
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -505,7 +505,7 @@ func TestCaptureProfileRetainsSelectedBackendAndFittedSize(t *testing.T) {
 	profile := nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}
 	for _, failed := range []string{"", "0", "1", "5", "6"} {
 		t.Run("unavailable-"+failed, func(t *testing.T) {
-			t.Setenv("PIIK_CAPTURE_UNAVAILABLE", failed)
+			t.Setenv("SILIP_CAPTURE_UNAVAILABLE", failed)
 			stream, err := nativecapture.StartVideo(t.Context(), executable, nativecapture.VideoOptions{
 				Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "h264", Profile: profile, OutputGroups: 4,
 			})
@@ -542,7 +542,7 @@ func TestCaptureProfileRetainsSelectedBackendAndFittedSize(t *testing.T) {
 }
 
 func TestOutputPlanPreservesOriginalStartupAndIndependentActivation(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "echo")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "echo")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)

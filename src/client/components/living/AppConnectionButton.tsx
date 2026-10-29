@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { activateClient, isClientActivated, watchClientActivation } from "../../lib/session";
-import { useProjectLink } from "../../lib/use-project-link";
 import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
@@ -24,9 +23,9 @@ interface ConnectionAttempt {
 export function AppConnectionButton({ onConnected }: AppConnectionProps) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
-  const wakeURL = androidAppIntent("piik://app");
+  const wakeURL = androidAppIntent("silip://app");
   const [helpOpen, setHelpOpen] = useState(false);
-  const downloadURL = useProjectLink("/#download", "https://github.com/TNTcraftHIM/Piik/releases/latest", helpOpen);
+  const downloadURL = "https://github.com/P4-aaaul/Silip/releases/latest";
   const helpId = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const help = useRef<HTMLDivElement>(null);
@@ -91,7 +90,7 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     };
     const onMessage = (event: MessageEvent) => {
       if (!attempt.popup || event.source !== attempt.popup || !approvalOrigin || event.origin !== approvalOrigin ||
-          event.data?.type !== "piik-app-approved" || event.data.site !== window.location.origin) return;
+          event.data?.type !== "silip-app-approved" || event.data.site !== window.location.origin) return;
       // A message or browser return asks us to verify App-owned permission.
       void verifyApproval(true);
     };

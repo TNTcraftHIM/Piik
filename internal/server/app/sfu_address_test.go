@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
-	"github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
 )
 
 func TestSFUPublicHostnameStartsTheExistingMediaRuntime(t *testing.T) {

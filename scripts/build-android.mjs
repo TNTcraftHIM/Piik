@@ -29,9 +29,9 @@ if ((release && tunnelOnly) || (release !== Boolean(output)))
 if (output && existsSync(output)) throw new Error('Android release output must not already exist.');
 const releaseRevision = release ? assertCleanRevision(root) : undefined;
 if (release) {
-  for (const name of ['PIIK_ANDROID_KEYSTORE', 'PIIK_ANDROID_STORE_PASSWORD', 'PIIK_ANDROID_KEY_ALIAS', 'PIIK_ANDROID_KEY_PASSWORD'])
+  for (const name of ['SILIP_ANDROID_KEYSTORE', 'SILIP_ANDROID_STORE_PASSWORD', 'SILIP_ANDROID_KEY_ALIAS', 'SILIP_ANDROID_KEY_PASSWORD'])
     if (!process.env[name]) throw new Error(`Android release signing requires ${name}.`);
-  if (!existsSync(process.env.PIIK_ANDROID_KEYSTORE)) throw new Error('Android release keystore does not exist.');
+  if (!existsSync(process.env.SILIP_ANDROID_KEYSTORE)) throw new Error('Android release keystore does not exist.');
 }
 if (!process.env.ANDROID_NDK_HOME || (!tunnelOnly && (!process.env.ANDROID_HOME || !gradleHome))) {
   throw new Error('Set ANDROID_HOME, ANDROID_NDK_HOME and GRADLE_HOME to the installed SDK, NDK and Gradle distribution.');
@@ -66,18 +66,18 @@ run('git', ['apply', '--unidiff-zero', `--directory=${join('build', 'android-clo
   join(adapter, 'edge-fallback.patch')]);
 const overlay = join(cache, 'overlay.json');
 writeFileSync(overlay, JSON.stringify({ Replace: {
-  [join(source, 'cmd', 'cloudflared', 'piik_android_dns.go')]: join(adapter, 'android_dns.go'),
+  [join(source, 'cmd', 'cloudflared', 'silip_android_dns.go')]: join(adapter, 'android_dns.go'),
   [join(source, 'supervisor', 'tunnel.go')]: join(patched, 'supervisor', 'tunnel.go'),
-  [join(source, 'supervisor', 'piik_fallback_test.go')]: join(adapter, 'fallback_test.go'),
+  [join(source, 'supervisor', 'silip_fallback_test.go')]: join(adapter, 'fallback_test.go'),
 } }, null, 2));
 const [hostOS, hostArch] = execFileSync('go', ['env', 'GOHOSTOS', 'GOHOSTARCH'], {
   cwd: root, encoding: 'utf8', windowsHide: true,
 }).trim().split(/\r?\n/);
 const fallbackTest = join(cache, `fallback.test${hostOS === 'windows' ? '.exe' : ''}`);
-run('go', ['test', '-c', '-mod=readonly', `-overlay=${overlay}`, '-tags=piik_cloudflared',
+run('go', ['test', '-c', '-mod=readonly', `-overlay=${overlay}`, '-tags=silip_cloudflared',
   '-o', fallbackTest, './supervisor'], { cwd: source,
   env: { ...process.env, GOOS: hostOS, GOARCH: hostArch, CGO_ENABLED: '0', GOWORK: 'off' } });
-run(fallbackTest, ['-test.run=^TestPiikExhaustedQuicHandshakeFallsBack$', '-test.count=1']);
+run(fallbackTest, ['-test.run=^TestSilipExhaustedQuicHandshakeFallsBack$', '-test.count=1']);
 const host = { win32: 'windows-x86_64', linux: 'linux-x86_64', darwin: 'darwin-x86_64' }[process.platform];
 if (!host) throw new Error('Unsupported NDK build host.');
 const tools = join(process.env.ANDROID_NDK_HOME, 'toolchains', 'llvm', 'prebuilt', host, 'bin');
@@ -91,7 +91,7 @@ for (const [abi, arch, target, machine] of [
   mkdirSync(dirname(output), { recursive: true });
   const env = { ...process.env, GOOS: 'android', GOARCH: arch, CGO_ENABLED: '1',
     CC: `"${clang}" --target=${target}`, GOWORK: 'off' };
-  run('go', ['build', '-mod=readonly', `-overlay=${overlay}`, '-tags=piik_cloudflared', '-trimpath', '-buildvcs=false', '-buildmode=pie',
+  run('go', ['build', '-mod=readonly', `-overlay=${overlay}`, '-tags=silip_cloudflared', '-trimpath', '-buildvcs=false', '-buildmode=pie',
     `-ldflags=-s -w -X main.Version=${CLOUDFLARED_VERSION} -X main.BuildTime=source-pinned -linkmode=external -extldflags=-Wl,-z,max-page-size=16384`,
     '-o', output, './cmd/cloudflared'], { cwd: source, env });
   chmodSync(output, 0o755);
@@ -119,12 +119,12 @@ if (!tunnelOnly) {
   if (!launcher) throw new Error('GRADLE_HOME does not contain a Gradle launcher.');
   const frameDropper = join(root, 'native', 'third_party', 'webrtc-frame-dropper');
   for (const [abi, target] of [['arm64-v8a', 'aarch64-linux-android29'], ['x86_64', 'x86_64-linux-android29']]) {
-    const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libpiik_frame_dropper.so');
+    const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libsilip_frame_dropper.so');
     mkdirSync(dirname(output), { recursive: true });
     run(join(tools, `clang++${exe}`), [`--target=${target}`, '-std=c++17', '-O2', '-fPIC', '-shared',
       '-static-libstdc++', '-fno-exceptions', '-fno-rtti', '-fvisibility=hidden',
       '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '-Wl,--exclude-libs,ALL',
-      '-Wl,-z,defs', '-Wl,-z,max-page-size=16384', '-Wl,-soname,libpiik_frame_dropper.so',
+      '-Wl,-z,defs', '-Wl,-z,max-page-size=16384', '-Wl,-soname,libsilip_frame_dropper.so',
       '-I', frameDropper, join(android, 'frame_dropper.cc'),
       join(frameDropper, 'modules', 'video_coding', 'utility', 'frame_dropper.cc'),
       join(frameDropper, 'rtc_base', 'numerics', 'exp_filter.cc'), '-o', output]);
@@ -137,19 +137,19 @@ if (!tunnelOnly) {
         throw new Error(`Unexpected FrameDropper Android dependency: ${library}`);
     console.log(`Android WebRTC FrameDropper: ${abi} (static C++ runtime, 16KB)`);
   }
-  const webEnv = { ...process.env, VITE_PIIK_VERSION: version, VITE_PIIK_REVISION: revision };
+  const webEnv = { ...process.env, VITE_SILIP_VERSION: version, VITE_SILIP_REVISION: revision };
   if (process.platform === 'win32') run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm run build:web'], { env: webEnv });
   else run('npm', ['run', 'build:web'], { env: webEnv });
   writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'), 'go');
-  writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
+  writeAndroidAppIcon(join(root, 'cmd', 'silip-app', 'silip.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'silip.png'));
   mkdirSync(join(android, 'app', 'libs'), { recursive: true });
-  run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
-    `-ldflags=-s -w -checklinkname=0 -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Release=${version} -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Revision=${revision}`,
-    '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/bridge']);
+  run(process.env.SILIP_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
+    `-ldflags=-s -w -checklinkname=0 -X github.com/P4-aaaul/Silip/internal/app/buildinfo.Release=${version} -X github.com/P4-aaaul/Silip/internal/app/buildinfo.Revision=${revision}`,
+    '-javapkg', 'io.github.p4aaaul.silip', '-o', join(android, 'app', 'libs', 'silip.aar'), './mobile/bridge']);
   // Recreate the final ZIP so replaced native libraries leave no free blocks.
   run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
     '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android, '--no-daemon',
-    `-PpiikVersion=${versionName}`, `-PpiikVersionCode=${versionCode}`,
+    `-PsilipVersion=${versionName}`, `-PsilipVersionCode=${versionCode}`,
     release ? ':app:packageRelease' : ':app:packageDebug', '--rerun',
     release ? ':app:assembleRelease' : ':app:assembleDebug', '--console=plain']);
   const variant = release ? 'release' : 'debug';
@@ -161,7 +161,7 @@ if (!tunnelOnly) {
       'verify', '--verbose', '--print-certs', apk], { encoding: 'utf8', windowsHide: true });
     if (/CN=Android Debug\b/i.test(signing)) throw new Error('A release APK cannot use an Android debug signing key.');
     const badging = execFileSync(join(sdkTools, `aapt${exe}`), ['dump', 'badging', apk], { encoding: 'utf8', windowsHide: true });
-    if (!badging.includes(`package: name='tv.piik.android' versionCode='${versionCode}' versionName='${versionName}'`) ||
+    if (!badging.includes(`package: name='io.github.p4aaaul.silip.android' versionCode='${versionCode}' versionName='${versionName}'`) ||
         /application-debuggable/.test(badging) || !badging.includes("native-code: 'arm64-v8a' 'x86_64'"))
       throw new Error('Android release identity, ABIs or debuggable flag differs from the package contract.');
     const { id: target, artifact } = ANDROID_APP_PACKAGE_TARGET;
@@ -172,6 +172,6 @@ if (!tunnelOnly) {
     writeFileSync(join(output, `${artifact}.sha256`), `${digest}  ${artifact}\n`, 'ascii');
     writeFileSync(join(output, artifact.replace(/\.apk$/, '.release.json')),
       `${JSON.stringify({ schema: 2, version, revision, target, artifact, artifactSha256: digest }, null, 2)}\n`);
-    console.log(`Piik Android signed release APK: ${join(output, artifact)}`);
-  } else console.log(`Piik Android development APK: ${apk}`);
+    console.log(`Silip Android signed release APK: ${join(output, artifact)}`);
+  } else console.log(`Silip Android development APK: ${apk}`);
 }

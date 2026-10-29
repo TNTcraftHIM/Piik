@@ -18,11 +18,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/room"
-	"github.com/TNTcraftHIM/Piik/internal/server/route"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/ordered"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/room"
+	"github.com/P4-aaaul/Silip/internal/server/route"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
 )
 
 const (
@@ -30,7 +30,7 @@ const (
 )
 
 func routeDebugEnabled() bool {
-	return routeDebugFlag(os.Getenv("PIIK_DEBUG")) ||
+	return routeDebugFlag(os.Getenv("SILIP_DEBUG")) ||
 		slog.Default().Enabled(context.Background(), slog.LevelDebug)
 }
 
@@ -1571,7 +1571,7 @@ func (r *router) debug(roomID, event string, details ...any) {
 	args := make([]any, 0, 4+len(details))
 	args = append(args, "event", event, "roomId", roomID)
 	args = append(args, details...)
-	slog.Info("piik-route", args...)
+	slog.Info("silip-route", args...)
 }
 
 // sendRoomError notifies only the connected host.

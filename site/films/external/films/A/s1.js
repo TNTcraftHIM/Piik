@@ -1,4 +1,4 @@
-// Film A · Act 1 — cold open (alone with the CPU), friends elsewhere, the idea, Piik appears.
+// Film A · Act 1 — cold open (alone with the CPU), friends elsewhere, the idea, Silip appears.
 import { h, s, T, ST, O, kf, tw, prog, E, clamp, lerp, rng, noise, shake, show, pulse } from '../../engine/core.js';
 import { C, CAST, mascot, person, burst, focusLines, streaks, halftone, stripes, rays } from '../../engine/art.js';
 import { ransom, ransomPop } from '../../engine/type.js';
@@ -123,7 +123,7 @@ export function build(film, K) {
     };
   });
 
-  // ------------------------------------------------ S4 · the idea: eye cut-in, ransom, Piik appears
+  // ------------------------------------------------ S4 · the idea: eye cut-in, ransom, Silip appears
   film.scene('s4-idea', snap(A(5, 1)), snap(A(7, 1)), root => {
     root.style.background = C.yellow;
     const fl = s('svg', { width: 1920, height: 1080, style: 'position:absolute;left:0;top:0' }, root);
@@ -142,7 +142,7 @@ export function build(film, K) {
     const mc = h('div', { class: 'abs' }, root);
     const m = mascot({ stroke: C.ink, fill: C.cream, size: 420 });
     mc.appendChild(m.el);
-    const wm = h('div', { class: 'abs nowrap', html: 'Piik<span class="identity-dot">.</span>' }, root);
+    const wm = h('div', { class: 'abs nowrap', html: 'Silip<span class="identity-dot">.</span>' }, root);
     Object.assign(wm.style, { left: '1010px', top: '420px', font: WORDMARK(210), letterSpacing: '-10px', color: C.ink });
     const wmS = h('div', { class: 'abs hud nowrap', text: S.wordmarkSub }, root);
     Object.assign(wmS.style, { left: '1022px', top: '650px', font: '600 30px/1 "Barlow Condensed"', letterSpacing: '.2em', color: C.ink });

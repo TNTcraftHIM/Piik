@@ -20,7 +20,7 @@ async function runtime(delay: number) {
       requests.push(request.url!);
       setTimeout(() => {
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ protocol: NATIVE_CLIENT_PROTOCOL, service: "piik-client",
+        response.end(JSON.stringify({ protocol: NATIVE_CLIENT_PROTOCOL, service: "silip-client",
           port, instanceToken: "a".repeat(43), nativeMedia: { video: true },
           ...(request.url === "/connect-discovery" ? { connectURL: `http://127.0.0.1:${port}/client` } : {}),
         }));
@@ -61,15 +61,15 @@ it("selects the launched runtime over a faster resident App and never substitute
   const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
   // Both actual HTTP stubs are discoverable; the older one responds first.
   await expect(discoverNativeHealth()).resolves.toMatchObject({ port: old.port });
-  page.location.search = `?piik-client-port=${selected.port}`;
-  page.location.hash = "piik-client=1";
+  page.location.search = `?silip-client-port=${selected.port}`;
+  page.location.hash = "silip-client=1";
   takeClientLaunchBootstrap();
   old.requests.length = 0;
   await expect(discoverNativeHealth()).resolves.toMatchObject({ port: selected.port });
   await expect(discoverNativeConnect()).resolves.toContain(`127.0.0.1:${selected.port}/client?`);
   expect(old.requests).toEqual([]);
   expect(page.location.href).toBe("http://127.0.0.1:8787/");
-  expect([...saved.keys()]).toEqual(["piik:client-launch:v1"]);
+  expect([...saved.keys()]).toEqual(["silip:client-launch:v1"]);
   expect([...tabSaved.values()]).toEqual([String(selected.port)]);
   takeClientLaunchBootstrap(); // Consuming an already-clean URL keeps this page's affinity.
   expect(clientRuntimePort()).toBe(selected.port);
@@ -86,8 +86,8 @@ it("selects the launched runtime over a faster resident App and never substitute
   await expect(reloadedDiscovery.discoverNativeHealth()).resolves.toBeNull();
   expect(old.requests).toEqual([]);
   // A new explicit launch replaces this tab's previous selection.
-  page.location.search = `?piik-client-port=${old.port}`;
-  page.location.hash = "piik-client=1";
+  page.location.search = `?silip-client-port=${old.port}`;
+  page.location.hash = "silip-client=1";
   reloaded.takeClientLaunchBootstrap();
   expect(reloaded.clientRuntimePort()).toBe(old.port);
   expect([...tabSaved.values()]).toEqual([String(old.port)]);

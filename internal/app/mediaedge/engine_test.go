@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtp"
 	"github.com/pion/turn/v5"

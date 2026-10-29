@@ -8,7 +8,7 @@ This file owns the website and README content structure. The
 Lead with friends sharing something worth seeing: a game, a drawing, a film or
 travel photos. The [copy guide](./naming.md#voice-and-terminology) owns
 Chinese/English voice and role labels. A visitor should
-understand what Piik does, choose an entry and complete the first useful action.
+understand what Silip does, choose an entry and complete the first useful action.
 
 | Surface | Reader's question | Content |
 | --- | --- | --- |
@@ -70,21 +70,21 @@ Keep three presentation responsibilities distinct:
 
 | Layer | Owns | Review question |
 | --- | --- | --- |
-| Shared identity | Mascot geometry and wink, gold sparkle, wordmark/orange dot, public-page brand control | Does this read as the same Piik at every size and entry? |
+| Shared identity | Peeking-eyes mark, mango sparks, eyed wordmark, public-page brand control | Does this read as the same Silip at every size and entry? |
 | Product demonstration | Actual components, labels, source selection, room controls and participants with sample data | Does the pictured action still match the current product? |
 | Promotional composition | Original scenery, large typography, framing, transitions and optional music | Does the spectacle help a newcomer understand the product and find the next action? |
 
-Use one public-page brand component for the homepage and film. The mascot's
-curved wink and gold sparkle are recognizable features; a prop or a pictured
-game does not replace its face with another expression. Original RPG scenery
+Use one public-page brand component for the homepage and film. The mark's
+peeking pupils and mango sparks are recognizable features; a prop or a pictured
+game does not replace its eyes with another expression. Original RPG scenery
 can suggest exploration through terrain, ruins and small discoveries without
 borrowing another product's characters, named places, logos or artwork.
 
-Homepage sections follow the visitor's decisions: understand Piik and find the
+Homepage sections follow the visitor's decisions: understand Silip and find the
 primary download action, see the sharing steps, choose a short tutorial, resolve
 questions, then find platform downloads, detailed documentation and source.
 The primary download link lets returning visitors skip the tutorials. Guide
-choices run from the online site to App to an existing Piik site, with only the
+choices run from the online site to App to an existing Silip site, with only the
 online entry expanded initially. The existing-site guide explains connecting the
 App to a site run by the reader or their group, and direct browser use. The App
 tutorial's mode descriptions link to that guide. When using the public site as an example,
@@ -135,7 +135,7 @@ the role badge identifies the host independently of the activity.
 Keep participant drawings consistent across the site, READMEs,
 interface captures and tooltip/status comics.
 
-Present Piik as an open-source project: plain explanations, room for tinkering,
+Present Silip as an open-source project: plain explanations, room for tinkering,
 and an invitation to contribute. Keep the friendly illustration and avoid
 company-style pitches, repeated slogans or claims about a support team.
 The short comics illustrate choosing, inviting and joining, following the
@@ -156,9 +156,9 @@ real captured workload. GitHub-native Markdown/HTML must remain useful on mobile
 and in both themes without custom CSS.
 
 The product UI remains mascot-only. On the website, keep the header's TV
-mascot before the Piik name. The wordmark and mascot do not transform
+mascot before the Silip name. The wordmark and mascot do not transform
 into one another. Match the product's
-playful style through the mascot's wink and short comic interactions. An
+playful style through the mark's peek and short comic interactions. An
 original room illustration is shared by the site and READMEs. Interface previews
 use generated scenes and sample participants. Keep private invitations,
 user identities and personal media out of published assets; no external fonts
@@ -173,7 +173,7 @@ precedence when following a link.
 
 Use static HTML, CSS, SVG and small scripts for the homepage and film; no router,
 CMS, translation dependency or new application backend. The documentation section
-uses VitePress's standard navigation and search with Piik's colours and mascot.
+uses VitePress's standard navigation and search with Silip's colours and mascot.
 It compiles existing Markdown; [website operations](../operations/website.md#documentation-build)
 owns its publication list and build boundary. The selected public film A uses
 authored artwork; its pictured interfaces require deliberate updates when the

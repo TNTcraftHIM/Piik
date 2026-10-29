@@ -88,7 +88,7 @@ try {
     await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
     port = (server.address() as { port: number }).port;
     debugPort = await reservePort();
-    profile = await mkdtemp(join(tmpdir(), 'piik-client-media-'));
+    profile = await mkdtemp(join(tmpdir(), 'silip-client-media-'));
     chrome = await launchChrome(process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', debugPort, profile,
         ['--headless=new', '--no-first-run', '--autoplay-policy=no-user-gesture-required',
             ...(displaySource ? [`--window-size=${size?.width ?? 1920},${size?.height ?? 1200}`, '--force-device-scale-factor=1',

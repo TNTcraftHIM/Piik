@@ -26,7 +26,7 @@ the same Browser build.
 ## Decision
 
 1. One Go module at the repository root owns the product core.
-   `cmd/piik-server` (Hosted) and `cmd/piik-app` (App) are entry
+   `cmd/silip-server` (Hosted) and `cmd/silip-app` (App) are entry
    points over the same `internal/server` packages and own only their defaults,
    reachability, and lifecycle policy. Neither reimplements rooms, admission,
    signaling, or routing. The TypeScript server, its bundled runtime, the process

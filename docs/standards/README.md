@@ -1,4 +1,4 @@
-# Piik standards
+# Silip standards
 
 Current product and engineering rules live here. Start with the affected subject;
 the [ownership map](./documentation.md#owners) explains where each fact belongs.

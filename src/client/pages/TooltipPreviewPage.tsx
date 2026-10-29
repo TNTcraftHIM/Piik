@@ -68,7 +68,7 @@ export function TooltipPreviewPage() {
       <AppHeader led={<LedStrip state="live" label={t("state.signal.connected")} comic="signal-connected" />} />
       <main className="lr-room lr-tooltip-preview">
         <header className="lr-tooltip-preview-head">
-          <h1>{en ? "Piik · UI catalogue" : "Piik · UI 控件大全"}</h1>
+          <h1>{en ? "Silip · UI catalogue" : "Silip · UI 控件大全"}</h1>
           <p>{en ? "Actual components, sample data. Comics loop while displayed. Use the corner buttons to open the same tooltip on hover, focus or tap." : "正式组件，示例数据。漫画在展示期间循环；悬停、聚焦或点击角上的按钮，可查看实际提示。"}</p>
           <label><input type="checkbox" checked={reducedMotion} onChange={event => setReducedMotion(event.target.checked)} />
             {en ? "Reduced motion" : "减少动态效果"}</label>

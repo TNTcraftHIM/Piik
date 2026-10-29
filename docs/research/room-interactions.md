@@ -277,7 +277,7 @@ and forced-SFU arms. The existing network laboratory also exercises voice across
 Browser/App endpoint combinations, blocked direct paths and UDP interruption.
 These synthetic-device checks do not establish microphone echo behavior, public
 NAT success rates or 21-person all-speaking audio capacity.
-`PIIK_ROOM_VOICE_LEGACY_WEB` optionally points the same normal-page gate at an
+`SILIP_ROOM_VOICE_LEGACY_WEB` optionally points the same normal-page gate at an
 older checkout and records its revision, checking that an older Viewer retains
 picture playback without subscribing to voice events.
 Product owners are [room voice](../standards/rooms-access.md#room-voice) and
@@ -413,7 +413,7 @@ These are routing observations, not physical-device echo-cancellation acceptance
 
 [Document Picture-in-Picture](https://developer.chrome.com/docs/web-platform/document-picture-in-picture)
 places the current interaction panel in an always-on-top window without installing a
-PWA or implementing an App window. Piik uses one stable React portal:
+PWA or implementing an App window. Silip uses one stable React portal:
 the same session, DOM, draft, reading position and controls remain in use.
 Visibility, focus, tooltip placement and dismissal follow the displaying document.
 Theme and language follow the opener. The browser owns window movement and sizing;
@@ -686,7 +686,7 @@ and macOS Command shortcuts, without depending
 on the local OS delivering that combination to the page. Physical system-key
 capture remains subject to the local OS and Browser; even the
 [Keyboard Lock API](https://developer.chrome.com/docs/capabilities/web-apis/keyboard-lock)
-only receives keys the OS permits. Piik does not install a global keyboard hook
+only receives keys the OS permits. Silip does not install a global keyboard hook
 or simulate the protected Ctrl+Alt+Delete sequence. Closing the keyboard returns
 focus to the control surface.
 The multiline text field owns IME composition and preserves a pasted draft;
@@ -725,7 +725,7 @@ requires a major release.
 distinguish malicious behavior, unwanted software and user choice/control.
 Attended remote control is a legitimate feature, but input injection and its
 potential misuse can invite additional security review or enterprise blocking.
-No source establishes a numerical false-positive increase for Piik.
+No source establishes a numerical false-positive increase for Silip.
 [SmartScreen reputation](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/smartscreen-reputation)
 and [Chrome download warnings](https://support.google.com/chrome/answer/6261569?hl=en)
 are also distinct from a confirmed malware detection; signing does not guarantee
@@ -736,7 +736,7 @@ Do not recommend antivirus exclusions as its deployment model.
 ### Remote Co-play
 
 [Steam Remote Play Together](https://partner.steamgames.com/doc/features/remoteplay)
-lets remote participants act as local players in the Host's game. For Piik, this
+lets remote participants act as local players in the Host's game. For Silip, this
 retains one shared picture. Games that support a shared keyboard can use separate
 key bindings for the Host and remote player without an input driver. Independent
 gamepads instead need per-player virtual controller slots. The co-play candidate
@@ -791,7 +791,7 @@ is not a Browser WebRTC input component; both implementations remain study-only
 under the project's license policy.
 
 The current candidate uses a Windows x64 adapter for the public ViGEmBus device
-interface. The Host installs the optional driver; Piik packages no input SDK or
+interface. The Host installs the optional driver; Silip packages no input SDK or
 driver binary. [Parsec also uses a virtual USB driver](https://support.parsec.app/hc/en-us/articles/32381705301908-Setup-Gamepad).
 [ViGEmBus is end-of-life](https://docs.nefarius.at/projects/ViGEm/End-of-Life/);
 the [final 1.22.0 installer](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0)
@@ -800,7 +800,7 @@ The current [libvirtualhid platform matrix](https://github.com/LizardByte/libvir
 offers a common API, but Windows/macOS require installed licensed components;
 Linux uses kernel input facilities and device permissions. Its library is MIT,
 while drivers/brokers have a [separate source-available license](https://github.com/LizardByte/libvirtualhid/blob/dfff3ea8c34022c915799740806c17c0ed5c2492/LICENSE.md).
-These separate terms do not grant free driver distribution with Piik.
+These separate terms do not grant free driver distribution with Silip.
 The adapter uses the [published bus requests](https://github.com/nefarius/ViGEmClient/blob/b66d02d57e32cc8595369c53418b843e958649b4/include/ViGEm/km/BusShared.h)
 through Windows device APIs, without loading the client DLL. A bus file handle
 owns a driver session; allocated serials identify this session's controllers,
@@ -920,8 +920,8 @@ remains subject to process-integrity restrictions, and a successful call only
 proves insertion into the system input stream, not acceptance by a game.
 [Windows marks injected keyboard events](https://learn.microsoft.com/en-us/windows/win32/api/winuser/ns-winuser-kbdllhookstruct).
 [BattlEye distinguishes blocking/kicks from bans](https://www.battleye.com/support/faq/);
-its policy does not certify Piik or another game's anti-cheat. No current evidence
-establishes Piik game compatibility or a ban probability. Virtual controller
+its policy does not certify Silip or another game's anti-cheat. No current evidence
+establishes Silip game compatibility or a ban probability. Virtual controller
 drivers are likewise not an anti-cheat exemption. Keep integration on supported
 platform APIs and maintained input backends; do not add process injection,
 protection bypasses or forced background input to make a rejected game work.
@@ -929,7 +929,7 @@ protection bypasses or forced background input to make a rejected game work.
 ## Primary References And Rationale
 
 - [LiveKit media and data](https://docs.livekit.io/frontends/build/media-data/)
-  separates publications from finite data. Piik already has an authenticated
+  separates publications from finite data. Silip already has an authenticated
   signaling channel; adding the LiveKit room service solely for chat is unnecessary.
 - [LiveKit text streams](https://docs.livekit.io/transport/data/text-streams/)
   distinguishes current-participant delivery from persistent history. The
@@ -946,19 +946,19 @@ protection bypasses or forced background input to make a rejected game work.
   provide sequential, non-interrupting announcements alongside visual effects.
 - [Meet reactions](https://support.google.com/meet/answer/13151720?hl=en)
   attach expressions to participants and let viewers reduce visual distraction.
-  Piik likewise keeps reactions outside the shared picture, with explicit local
+  Silip likewise keeps reactions outside the shared picture, with explicit local
   display preference and a separate accessible event description.
 - [Microsoft participant cards](https://support.microsoft.com/en-us/outlook/profile-cards-in-microsoft-365)
-  place person-specific actions on the selected person. Piik uses that direct
+  place person-specific actions on the selected person. Silip uses that direct
   entry on its existing couch rather than requiring a second participant list.
 - [Native popovers](https://developer.mozilla.org/en-US/docs/Web/API/Popover_API/Using)
   provide top-layer placement, light dismissal and focus return without adding
-  a second overlay framework. Piik owns the bounded card's anchor and contents.
+  a second overlay framework. Silip owns the bounded card's anchor and contents.
 - [Animation time](https://developer.mozilla.org/en-US/docs/Web/API/Animation/currentTime)
   lets a newly mounted or resumed effect seek to its remaining phase. The
   [clock comparison](https://developer.mozilla.org/en-US/docs/Web/API/Performance/now#ticking_during_sleep)
   explains why replacing wall time with a monotonic clock alone would not solve
   cross-platform sleep and resume.
 - [niconico playback controls](https://help.nicochannel.jp/hc/ja/articles/4414625162777-%E5%8B%95%E7%94%BB%E3%81%AE%E8%A6%96%E8%81%B4%E6%96%B9%E6%B3%95)
-  keep comment display optional alongside playback. Piik likewise separates
+  keep comment display optional alongside playback. Silip likewise separates
   each viewer's overlay preference from message delivery and the conversation.

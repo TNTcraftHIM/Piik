@@ -5,7 +5,7 @@ import { Glyph } from "../../ui/icons";
 import { useAnchoredPopover } from "./use-anchored-popover";
 
 // The registry owns languages; the native popover owns visibility and dismissal.
-// This control adds Piik's presentation, viewport placement and menu navigation.
+// This control adds Silip's presentation, viewport placement and menu navigation.
 export function LanguageControl() {
   const { lang, vis, t, setLang, setVis } = useCopy();
   const menuId = useId();

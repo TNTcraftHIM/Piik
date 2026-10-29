@@ -26,11 +26,11 @@
 #include <utility>
 #include <vector>
 
-namespace piik::capture {
+namespace silip::capture {
 enum class OutputKind : UINT8;
 }
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 
 using Microsoft::WRL::ComPtr;
 
@@ -227,4 +227,4 @@ class LiveEncoder final : public VideoEncoder {
   bool started_ = false;
 };
 
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows

@@ -168,7 +168,7 @@ export function RemoteControlsPreview() {
         ]);
       }}>{en ? "Simulate multiple controllers" : "模拟多人控制"}</button>
     </div>
-    <Couch view="host" host={{ key: "preview-host", name: "Piik", you: true }}
+    <Couch view="host" host={{ key: "preview-host", name: "Silip", you: true }}
       entries={participants.map(person => {
         const grant = requests.find(request => request.peerId === person.peerId && request.state !== "pending");
         return { key: person.peerId, name: person.name, status: STATUS_CATALOG.connected, selectable: false,

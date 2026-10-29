@@ -19,24 +19,24 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/app/lan"
-	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
-	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
-	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
-	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
+	"github.com/P4-aaaul/Silip/internal/app/buildinfo"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/app/lan"
+	"github.com/P4-aaaul/Silip/internal/app/launcher"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativecontrol"
+	"github.com/P4-aaaul/Silip/internal/app/publictunnel"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	serverapp "github.com/P4-aaaul/Silip/internal/server/app"
+	serverconfig "github.com/P4-aaaul/Silip/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/webassets"
+	"github.com/P4-aaaul/Silip/internal/tlsconfig"
 )
 
 const (
@@ -67,7 +67,7 @@ type Options struct {
 
 func Run(ctx context.Context, options Options) (returnedErr error) {
 	ctx, cancel := context.WithCancel(ctx)
-	options.Debug = options.Debug || debugEnabled(os.Getenv("PIIK_DEBUG"))
+	options.Debug = options.Debug || debugEnabled(os.Getenv("SILIP_DEBUG"))
 	options.console = newConsole(cancel, options.DisableBrowser)
 	var recorder *diagnostics.Recorder
 	var diagnosticsMu sync.Mutex
@@ -85,7 +85,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		var err error
 		recorder, err = openDiagnostics(options.LogDir)
 		if err != nil {
-			return errors.Join(failure.Diagnostics, fmt.Errorf("Piik App diagnostics are unavailable: %w", err))
+			return errors.Join(failure.Diagnostics, fmt.Errorf("Silip App diagnostics are unavailable: %w", err))
 		}
 		recorder.Context("build", map[string]any{"version": buildinfo.Version(), "revision": buildinfo.Revision})
 		previous, previousWriter, previousFlags := slog.Default(), log.Writer(), log.Flags()
@@ -102,7 +102,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		log.SetOutput(dependencyLog)
 		log.SetFlags(previousFlags)
 		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: recorder.Export})
-		slog.Debug("piik-client", "event", "diagnostics-enabled")
+		slog.Debug("silip-client", "event", "diagnostics-enabled")
 		return nil
 	}
 	if options.Debug {
@@ -110,7 +110,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			return err
 		}
 	}
-	slog.Debug("piik-client", "event", "start", "version", buildinfo.Version(), "revision", buildinfo.Revision)
+	slog.Debug("silip-client", "event", "start", "version", buildinfo.Version(), "revision", buildinfo.Revision)
 	options.console.show(consoleView{state: "starting"})
 	if err := validateMode(options); err != nil {
 		return errors.Join(failure.Configuration, err)
@@ -123,21 +123,21 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		var err error
 		configPath, err = appconfig.DefaultPath()
 		if err != nil {
-			return errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration is unavailable: %w", err))
+			return errors.Join(failure.Configuration, fmt.Errorf("Silip App configuration is unavailable: %w", err))
 		}
 	}
 	config, err := appconfig.LoadOrCreate(configPath)
 	if err != nil {
-		return errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration is unavailable: %w", err))
+		return errors.Join(failure.Configuration, fmt.Errorf("Silip App configuration is unavailable: %w", err))
 	}
 	config, err = applyMode(config, options)
 	if err != nil {
 		return errors.Join(failure.Configuration, err)
 	}
-	slog.Debug("piik-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
+	slog.Debug("silip-client", "event", "configuration", "siteConfigured", config.Site != "", "localAccessProtected", config.LocalAccessPassword != "")
 	if options.SiteSet {
 		if err = appconfig.Save(configPath, config); err != nil {
-			return errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration is unavailable: %w", err))
+			return errors.Join(failure.Configuration, fmt.Errorf("Silip App configuration is unavailable: %w", err))
 		}
 	}
 	nativeMedia := discoverNativeMedia(ctx, options.CaptureProcess)
@@ -158,7 +158,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			"localAccessProtected": config.LocalAccessPassword != ""})
 		recorder.Context("capture", nativeMedia.capture)
 		recorder.Binary("captureExecutable", nativeMedia.captureProcess)
-		slog.Debug("piik-client", "event", "native-capabilities",
+		slog.Debug("silip-client", "event", "native-capabilities",
 			"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
 			"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,
 			"softwareVP8", nativeMedia.capabilities.SoftwareVP8, diagnostics.Error(nativeMedia.discoveryErr))
@@ -166,7 +166,7 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 	recordContext(options, config)
 	qualityPreference, preferenceErr := appconfig.LoadQualityPreference(configPath)
 	if preferenceErr != nil {
-		slog.Debug("piik-client", "event", "quality-preference-load-failed", diagnostics.Error(preferenceErr))
+		slog.Debug("silip-client", "event", "quality-preference-load-failed", diagnostics.Error(preferenceErr))
 	}
 	control, err := loopback.Start(ctx, loopback.Options{
 		AllowedOrigins:    allowedOrigins(config.ApprovedSites(), options.Port),
@@ -176,10 +176,10 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 		QualityPreference: qualityPreference,
 	})
 	if err != nil {
-		return errors.Join(failure.NativeControl, fmt.Errorf("Piik App native control could not start: %w", err))
+		return errors.Join(failure.NativeControl, fmt.Errorf("Silip App native control could not start: %w", err))
 	}
 	defer func() { returnedErr = errors.Join(returnedErr, control.Close()) }()
-	slog.Debug("piik-client", "event", "control-ready")
+	slog.Debug("silip-client", "event", "control-ready")
 	if options.console.machine {
 		if err = printEndpoint(control.Endpoint()); err != nil {
 			return err
@@ -209,7 +209,7 @@ func finishRun(console *console, recorder *diagnostics.Recorder, restoreLogger f
 	err = errors.Join(err, console.stop(err))
 	exportPath := ""
 	if recorder != nil {
-		slog.Debug("piik-client", "event", "stopped", "failed", err != nil, diagnostics.Error(err))
+		slog.Debug("silip-client", "event", "stopped", "failed", err != nil, diagnostics.Error(err))
 		if console.program == nil || err != nil {
 			path, exportErr := recorder.Export()
 			console.send(consoleExportResult{path: path, err: exportErr})
@@ -351,7 +351,7 @@ func runLauncher(
 			next.LocalAccessPassword = selection.LocalAccessPassword
 		})
 		if err != nil {
-			err = errors.Join(failure.Configuration, fmt.Errorf("Piik App configuration could not be saved: %w", err))
+			err = errors.Join(failure.Configuration, fmt.Errorf("Silip App configuration could not be saved: %w", err))
 			return err
 		}
 		if err = configureDiagnostics(&options, selectedConfig); err != nil {
@@ -410,7 +410,7 @@ func runLauncher(
 				return errors.Join(roomErr, err)
 			case err := <-launch.Done():
 				if err != nil {
-					return errors.Join(roomErr, failure.Launcher, fmt.Errorf("Piik App launcher stopped unexpectedly: %w", err))
+					return errors.Join(roomErr, failure.Launcher, fmt.Errorf("Silip App launcher stopped unexpectedly: %w", err))
 				}
 				return roomErr
 			}
@@ -421,7 +421,7 @@ func runLauncher(
 		}
 		launch.SetResult("", roomErr)
 		initialOptions.console.show(consoleView{state: "setup", entry: launch.URL(), problem: roomErr})
-		slog.Debug("piik-client", "event", "local-room-stopped", diagnostics.Error(roomErr))
+		slog.Debug("silip-client", "event", "local-room-stopped", diagnostics.Error(roomErr))
 	}
 }
 
@@ -432,7 +432,7 @@ func applyMode(config appconfig.Config, options Options) (appconfig.Config, erro
 	if options.SiteSet {
 		site, err := appconfig.NormalizeSite(options.Site)
 		if err != nil || site == "" {
-			return appconfig.Config{}, errors.New("Piik Site must be an HTTP or HTTPS origin")
+			return appconfig.Config{}, errors.New("Silip Site must be an HTTP or HTTPS origin")
 		}
 		sites, _ := appconfig.NormalizeSites(append([]string{site}, config.ApprovedSites()...))
 		config.SetApprovedSites(sites)
@@ -458,7 +458,7 @@ func debugEnabled(value string) bool {
 
 func openDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	if directory = strings.TrimSpace(directory); directory == "" {
-		directory = strings.TrimSpace(os.Getenv("PIIK_LOG_DIR"))
+		directory = strings.TrimSpace(os.Getenv("SILIP_LOG_DIR"))
 	}
 	if directory != "" {
 		return diagnostics.Open(directory, "client", buildinfo.Revision)
@@ -475,16 +475,16 @@ func openDiagnostics(directory string) (*diagnostics.Recorder, error) {
 	if cacheErr != nil {
 		return nil, errors.Join(err, cacheErr)
 	}
-	return diagnostics.Open(filepath.Join(cache, "Piik", "logs"), "client", buildinfo.Revision)
+	return diagnostics.Open(filepath.Join(cache, "Silip", "logs"), "client", buildinfo.Revision)
 }
 
 func openSite(site string, options Options, controlPort int) {
-	slog.Debug("piik-client", "event", "mode", "mode", "site")
+	slog.Debug("silip-client", "event", "mode", "mode", "site")
 	targetURL := launcher.EntryURL(site, controlPort)
 	view := consoleView{mode: "site", state: "ready", entry: targetURL}
 	options.console.show(view)
 	if options.console.machine {
-		fmt.Printf("Piik Site: %s\n", site)
+		fmt.Printf("Silip Site: %s\n", site)
 	}
 	if !options.DisableBrowser {
 		options.console.openBrowser(targetURL)
@@ -492,7 +492,7 @@ func openSite(site string, options Options, controlPort int) {
 	if options.Ready != nil {
 		options.Ready(targetURL)
 	}
-	slog.Debug("piik-client", "event", "site-ready")
+	slog.Debug("silip-client", "event", "site-ready")
 }
 
 func runLocal(ctx context.Context, options Options, config appconfig.Config,
@@ -506,7 +506,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 	if options.Link {
 		view.mode = "link"
 	}
-	slog.Debug("piik-client", "event", "mode", "mode", view.mode)
+	slog.Debug("silip-client", "event", "mode", "mode", view.mode)
 	options.console.show(view)
 	bindAddress := net.IPv4zero
 	if !options.Link {
@@ -564,7 +564,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		}
 		defer func() { returnedErr = errors.Join(returnedErr, tunnel.Close()) }()
 		publicOrigin = tunnel.Origin()
-		slog.Debug("piik-client", "event", "public-link-ready")
+		slog.Debug("silip-client", "event", "public-link-ready")
 	}
 
 	localConfig, err := serverconfig.Local(serverconfig.LocalOptions{
@@ -601,7 +601,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		}
 		return errors.Join(failure.LocalServer, err)
 	}
-	slog.Debug("piik-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
+	slog.Debug("silip-client", "event", "local-server-ready", "port", options.Port, "publicLink", publicOrigin != "")
 
 	// The readiness lines follow the listener, which the packaged smoke and the
 	// public-link gate both read from stdout before they probe the port.
@@ -646,7 +646,7 @@ func runLocal(ctx context.Context, options Options, config appconfig.Config,
 		return errors.Join(failure.LocalServer, err)
 	case err = <-control.Done():
 		if err != nil {
-			return errors.Join(failure.NativeControl, fmt.Errorf("Piik App native control stopped unexpectedly: %w", err))
+			return errors.Join(failure.NativeControl, fmt.Errorf("Silip App native control stopped unexpectedly: %w", err))
 		}
 		return nil
 	case <-tunnelDone:
@@ -726,7 +726,7 @@ func localSTUNURLs(link bool) (stunURLs []string, natPredictionSTUNURLs []string
 	if !link {
 		return nil, nil, nil
 	}
-	return appconfig.PublicSTUNURLs(os.Getenv("PIIK_STUN_URLS"))
+	return appconfig.PublicSTUNURLs(os.Getenv("SILIP_STUN_URLS"))
 }
 
 // endLocalServer is step 1 of the ADR-0010 item 12 unwind: every room ends,
@@ -756,7 +756,7 @@ func tunnelExecutable(configured string) string {
 func printEndpoint(endpoint loopback.Endpoint) error {
 	payload, err := json.Marshal(endpoint)
 	if err != nil {
-		return errors.New("Piik App endpoint is unavailable")
+		return errors.New("Silip App endpoint is unavailable")
 	}
 	fmt.Println(string(payload))
 	return nil

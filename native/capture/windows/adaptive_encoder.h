@@ -5,7 +5,7 @@
 #include <functional>
 #include <memory>
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 
 struct AdaptiveAccessUnit final {
   EncodedAccessUnit access_unit;
@@ -37,4 +37,4 @@ class AdaptiveEncoder final {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows

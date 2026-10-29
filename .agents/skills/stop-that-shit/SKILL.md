@@ -1,17 +1,17 @@
 ---
 name: stop-that-shit
 description: >
-  Keep Piik implementation, debugging and review proportionate and complete.
+  Keep Silip implementation, debugging and review proportionate and complete.
   Use to control speculative defenses, research or verification loops, and
   when Stop That Shit or removal of overengineering is requested.
 license: MIT
 ---
 
-# Stop That Shit · Piik
+# Stop That Shit · Silip
 
 ## 项目取舍
 
-Piik 是供朋友分享的小项目。优先简单、好用、漂亮和实际效果，积极采用有收益的成熟方案与新技术。
+Silip 是供朋友分享的小项目。优先简单、好用、漂亮和实际效果，积极采用有收益的成熟方案与新技术。
 不要按假想的百万级规模设计，不要追求覆盖一切极端情况、无限兼容或零风险。
 复杂度、验证时间和维护负担都是真实成本。用户已经授权的合理工作，应当推进到可用结果。
 

@@ -91,7 +91,7 @@ unverified device coverage.
 OBS's [Windows virtual-camera output](https://github.com/obsproject/obs-studio/blob/a1fbf1015f4079b79dc9ef4f6abecf67920e93cf/plugins/win-dshow/virtualcam.c)
 uses `raw_video` and writes raw NV12 frames, not an encoded H.264 stream. Virtual
 camera alone therefore does not require an OBS encode/decode round trip before
-Piik's encoder. Source decoding, composition, pixel conversion and copies may
+Silip's encoder. Source decoding, composition, pixel conversion and copies may
 still cost resources. Do not promise a zero-copy path or describe every virtual
 camera setup as double encoding.
 
@@ -99,7 +99,7 @@ Direct OBS ingestion is not currently implemented. OBS's
 [WHIP output](https://obsproject.com/kb/whip-streaming-guide) would be the relevant
 standard to evaluate if a measured virtual-camera bottleneck justified another
 input. It would still need an explicit publication/admission lifecycle and
-integration with Piik's existing media owner; an RTMP listener alone would not
+integration with Silip's existing media owner; an RTMP listener alone would not
 provide that. Keep this outside the current microphone/camera change.
 
 Camera selection belongs in the existing Camera tab and uses the same named
@@ -154,14 +154,14 @@ is not established by Browser emulation or a loopback audio test.
 This is a source/API assessment, not an implemented or device-verified feature.
 Keep it outside the current candidate until a concrete use case justifies that
 pairing and input ownership. An audio device already exposed by the operating
-system can use Piik's existing microphone selector without this extension.
+system can use Silip's existing microphone selector without this extension.
 
 ## Primary Technical References
 
 - [Google Meet audio controls](https://support.google.com/meet/answer/10409699?hl=en)
   keeps microphone settings next to the frequent mute action.
 - [OBS audio mixer](https://obsproject.com/kb/audio-mixer-guide) separates source
-  volume, mute and monitoring; Piik uses only the controls needed for commentary.
+  volume, mute and monitoring; Silip uses only the controls needed for commentary.
 
 - [Web Audio stream destination](https://www.w3.org/TR/webaudio-1.0/#MediaStreamAudioDestinationNode)
   produces a single audio track from the audio graph.

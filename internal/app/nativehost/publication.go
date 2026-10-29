@@ -3,8 +3,8 @@ package nativehost
 import (
 	"errors"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
 	"github.com/pion/webrtc/v4"
 )
 

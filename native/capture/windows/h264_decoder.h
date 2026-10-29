@@ -19,7 +19,7 @@
 #include <string>
 #include <utility>
 
-namespace piik::capture {
+namespace silip::capture {
 
 // One inbox decoder owns the compressed reference chain. Consumers must finish
 // copying/retaining an output sample before the callback returns.
@@ -202,4 +202,4 @@ class H264Decoder final {
   bool configured_ = false;
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

@@ -1,6 +1,6 @@
-//go:build piik_cloudflared
+//go:build silip_cloudflared
 
-// Compiled by overlay into the pinned upstream supervisor package, not Piik.
+// Compiled by overlay into the pinned upstream supervisor package, not Silip.
 package supervisor
 
 import (
@@ -13,7 +13,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-func TestPiikExhaustedQuicHandshakeFallsBack(t *testing.T) {
+func TestSilipExhaustedQuicHandshakeFallsBack(t *testing.T) {
 	log := zerolog.Nop()
 	for _, mode := range []string{"auto", "quic"} {
 		t.Run(mode, func(t *testing.T) {

@@ -56,9 +56,9 @@ function buildWebAssets() {
 
 function checkCore() {
   buildWebAssets();
-  const go = process.env.PIIK_GO?.trim() || "go";
+  const go = process.env.SILIP_GO?.trim() || "go";
   const goRoot = run(go, ["env", "GOROOT"], { capture: true });
-  const gofmt = process.env.PIIK_GOFMT?.trim() ||
+  const gofmt = process.env.SILIP_GOFMT?.trim() ||
     join(goRoot, "bin", process.platform === "win32" ? "gofmt.exe" : "gofmt");
   const unformatted = run(gofmt, ["-l", "cmd", "internal", "mobile/bridge"], { capture: true });
   if (unformatted) {
@@ -77,10 +77,10 @@ function checkCore() {
     return true;
   });
   const builds = buildTargets.flatMap((target) =>
-    ["piik-app", "piik-peer-gate"].map((command) => ({ target, command })),
+    ["silip-app", "silip-peer-gate"].map((command) => ({ target, command })),
   );
   builds.push(...SERVER_PACKAGE_TARGETS.map(target => ({
-    target: { ...target, id: `${target.goos}-${target.goarch}`, cgo: false }, command: "piik-server",
+    target: { ...target, id: `${target.goos}-${target.goarch}`, cgo: false }, command: "silip-server",
   })));
   for (const { target, command } of builds) {
     const outputName = target.goos === "windows"
@@ -96,7 +96,7 @@ function runGoTests(go, packagesToTest = GO_TEST_PACKAGES, flags = []) {
   if (process.platform !== "win32") {
     run(go, ["test", ...flags, ...packagesToTest.filter((entry) => entry.startsWith("./"))]);
     // PCP and NAT-PMP both require port 5351. Serialize only their fixture
-    // packages, keeping ordinary Piik tests parallel and using portable loopback.
+    // packages, keeping ordinary Silip tests parallel and using portable loopback.
     run(go, ["test", ...flags, "-p=1", ...packagesToTest.filter((entry) => !entry.startsWith("./"))]);
     return;
   }
@@ -141,7 +141,7 @@ function checkPlatformCapture() {
       "7",
       "pwsh.exe",
     );
-    const powershell = process.env.PIIK_POWERSHELL?.trim() ||
+    const powershell = process.env.SILIP_POWERSHELL?.trim() ||
       (existsSync(modernPowerShell)
         ? modernPowerShell
         : (existsSync(systemPowerShell) ? systemPowerShell : "pwsh"));
@@ -155,13 +155,13 @@ function checkPlatformCapture() {
       buildRoot,
       "-Check",
     ]);
-    executable = join(buildRoot, "piik-capture.exe");
+    executable = join(buildRoot, "silip-capture.exe");
   } else if (process.platform === "darwin") {
     run("sh", [join(captureRoot, "darwin", "build.sh"), buildRoot]);
-    executable = join(buildRoot, "piik-capture");
+    executable = join(buildRoot, "silip-capture");
   } else {
     run("sh", [join(captureRoot, "linux", "build.sh"), buildRoot, "--check"]);
-    executable = join(buildRoot, "piik-capture");
+    executable = join(buildRoot, "silip-capture");
   }
   if (!existsSync(executable)) {
     throw new Error("Native capture build did not produce its executable");
@@ -220,7 +220,7 @@ function checkPlatformCapture() {
 
 if (mode === "--race") {
   buildWebAssets();
-  runGoTests(process.env.PIIK_GO?.trim() || "go", [
+  runGoTests(process.env.SILIP_GO?.trim() || "go", [
     "./internal/app/portmapping", "./internal/app/mediaedge",
     "./internal/app/nativecontrol", "./internal/app/loopback",
     "./internal/media/forwarding",
@@ -231,4 +231,4 @@ if (mode === "--race") {
   if (mode !== "--capture-only") checkCore();
   if (mode !== "--core") checkPlatformCapture();
 }
-process.stdout.write("Piik checks passed.\n");
+process.stdout.write("Silip checks passed.\n");

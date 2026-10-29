@@ -24,7 +24,7 @@ type macGamepadBackend struct {
 
 type macGamepad struct {
 	backend *macGamepadBackend
-	device  *C.PiikGamepad
+	device  *C.SilipGamepad
 }
 
 func openGamepadBackend() (gamepadBackend, error) {
@@ -59,7 +59,7 @@ func (b *macGamepadBackend) Open() (gamepadDevice, error) {
 	}
 	neutral := gamepadHIDReport(gamepadReport{})
 	var result C.uint32_t
-	device := C.piik_gamepad_open((*C.uint8_t)(unsafe.Pointer(&gamepadHIDDescriptor[0])), C.size_t(len(gamepadHIDDescriptor)),
+	device := C.silip_gamepad_open((*C.uint8_t)(unsafe.Pointer(&gamepadHIDDescriptor[0])), C.size_t(len(gamepadHIDDescriptor)),
 		(*C.uint8_t)(unsafe.Pointer(&neutral[0])), C.size_t(len(neutral)), &result)
 	if device == nil {
 		return nil, macGamepadResult("create virtual HID gamepad", result)
@@ -77,7 +77,7 @@ func (d *macGamepad) Update(report gamepadReport) error {
 		return errors.New("virtual gamepad device is closed")
 	}
 	data := gamepadHIDReport(report)
-	return macGamepadResult("write virtual HID gamepad", C.piik_gamepad_update(d.device, (*C.uint8_t)(unsafe.Pointer(&data[0]))))
+	return macGamepadResult("write virtual HID gamepad", C.silip_gamepad_update(d.device, (*C.uint8_t)(unsafe.Pointer(&data[0]))))
 }
 
 func (d *macGamepad) closeLocked() error {
@@ -85,7 +85,7 @@ func (d *macGamepad) closeLocked() error {
 		return nil
 	}
 	neutral := gamepadHIDReport(gamepadReport{})
-	result := C.piik_gamepad_close(d.device, (*C.uint8_t)(unsafe.Pointer(&neutral[0])))
+	result := C.silip_gamepad_close(d.device, (*C.uint8_t)(unsafe.Pointer(&neutral[0])))
 	d.device = nil
 	delete(d.backend.devices, d)
 	return macGamepadResult("retire virtual HID gamepad", result)

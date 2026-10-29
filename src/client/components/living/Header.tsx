@@ -11,7 +11,6 @@ import { applyTheme, currentTheme, subscribeTheme } from "../../ui/theme";
 import { Glyph } from "../../ui/icons";
 import { AppConnectionButton } from "./AppConnectionButton";
 import { useAnchoredPopover } from "./use-anchored-popover";
-import { useProjectLink } from "../../lib/use-project-link";
 import { Btn } from "./primitives";
 
 export type LedState = "live" | "busy" | "warn" | "bad" | "off";
@@ -81,9 +80,9 @@ export function BrowserDiagnosticsButton({ quiet, size }: Pick<ComponentProps<ty
     text={vis ? undefined : debugTitle} place="below" align="end">{debugButton}</Tooltip>;
 }
 
-const webVersion = import.meta.env.VITE_PIIK_VERSION ?? "development";
+const webVersion = import.meta.env.VITE_SILIP_VERSION ?? "development";
 const webRelease = /^v\d+\.\d+\.\d+$/.test(webVersion)
-  ? `https://github.com/TNTcraftHIM/Piik/releases/tag/${webVersion}` : null;
+  ? `https://github.com/P4-aaaul/Silip/releases/tag/${webVersion}` : null;
 
 function BrowserHelpMenu() {
   const { lang, vis, t } = useCopy();
@@ -92,8 +91,7 @@ function BrowserHelpMenu() {
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel);
-  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
+  const guide = `https://github.com/P4-aaaul/Silip/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`;
   return <>
     <Tooltip kind="hint-help" text={vis ? undefined : t("help.hint")} disabled={open} place="below" align="end">
       <button ref={trigger} type="button" className="lr-btn is-compact is-quiet"
@@ -105,9 +103,9 @@ function BrowserHelpMenu() {
       className={`lr-anchored-card lr-help-menu${vis ? " is-visual" : ""}`} onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
-      <header><strong>Piik Web</strong>
+      <header><strong>Silip Web</strong>
         {webRelease ? <a href={webRelease} target="_blank" rel="noopener noreferrer"
-          aria-label={`Piik Web ${webVersion}`}>{webVersion}</a> : <span>{webVersion}</span>}
+          aria-label={`Silip Web ${webVersion}`}>{webVersion}</a> : <span>{webVersion}</span>}
       </header>
       <nav aria-label={t("help.title")}>
         {open && <>

@@ -16,19 +16,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/app/lan"
-	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
-	"github.com/TNTcraftHIM/Piik/internal/app/publictunnel"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
-	"github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/webassets"
-	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
+	"github.com/P4-aaaul/Silip/internal/app/buildinfo"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/app/lan"
+	"github.com/P4-aaaul/Silip/internal/app/launcher"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/nativecontrol"
+	"github.com/P4-aaaul/Silip/internal/app/publictunnel"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	serverapp "github.com/P4-aaaul/Silip/internal/server/app"
+	"github.com/P4-aaaul/Silip/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/server/webassets"
+	"github.com/P4-aaaul/Silip/internal/tlsconfig"
 )
 
 // The App process owns the room runtime; the platform owns capture resources.
@@ -55,11 +55,11 @@ func Start(platform Platform, lanAddress string, codecCapabilities string, dataD
 	if platform == nil {
 		return nil, errors.New("mobile capture platform is unavailable")
 	}
-	if activationURL != "" && activationURL != "piik://media" {
+	if activationURL != "" && activationURL != "silip://media" {
 		return nil, errors.New("mobile media activation URL is invalid")
 	}
 	if webassets.FS() == nil {
-		return nil, errors.New("build the Piik Web assets before the mobile library")
+		return nil, errors.New("build the Silip Web assets before the mobile library")
 	}
 	if !filepath.IsAbs(temporaryDirectory) {
 		return nil, errors.New("mobile cache directory is unavailable")
@@ -239,7 +239,7 @@ func (r *Runtime) startLocal(selection launcher.Selection, address string) (targ
 	}()
 	options := config.LocalOptions{PublicAddress: address, Port: port, SiteAccessPassword: selection.LocalAccessPassword}
 	if link {
-		options.STUNURLs, options.NATPredictionSTUNURLs, err = appconfig.PublicSTUNURLs(os.Getenv("PIIK_STUN_URLS"))
+		options.STUNURLs, options.NATPredictionSTUNURLs, err = appconfig.PublicSTUNURLs(os.Getenv("SILIP_STUN_URLS"))
 		if err != nil {
 			return "", err
 		}
@@ -366,7 +366,7 @@ func (r *Runtime) stop(reason failure.Reason) {
 func (r *Runtime) approveSite(value string) (string, error) {
 	site, err := appconfig.NormalizeSite(value)
 	if err != nil || !strings.HasPrefix(site, "https://") {
-		return "", errors.New("Enter an HTTPS Piik site origin")
+		return "", errors.New("Enter an HTTPS Silip site origin")
 	}
 	r.configMu.Lock()
 	sites := r.config.ApprovedSites()

@@ -1,26 +1,26 @@
 plugins { id 'com.android.application' }
 android {
- namespace 'tv.piik.android'
+ namespace 'io.github.p4aaaul.silip.android'
  compileSdk 35
  defaultConfig {
-  applicationId 'tv.piik.android'; minSdk 29; targetSdk 35
-  versionCode providers.gradleProperty('piikVersionCode').getOrElse('1').toInteger()
-  versionName providers.gradleProperty('piikVersion').getOrElse('development')
+  applicationId 'io.github.p4aaaul.silip.android'; minSdk 29; targetSdk 35
+  versionCode providers.gradleProperty('silipVersionCode').getOrElse('1').toInteger()
+  versionName providers.gradleProperty('silipVersion').getOrElse('development')
   ndk { abiFilters 'arm64-v8a', 'x86_64' }
  }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
  packaging { jniLibs { useLegacyPackaging = true } }
  signingConfigs {
   release {
-   def keystore = System.getenv('PIIK_ANDROID_KEYSTORE')
+   def keystore = System.getenv('SILIP_ANDROID_KEYSTORE')
    if (keystore) {
     storeFile file(keystore)
-    storePassword System.getenv('PIIK_ANDROID_STORE_PASSWORD')
-    keyAlias System.getenv('PIIK_ANDROID_KEY_ALIAS')
-    keyPassword System.getenv('PIIK_ANDROID_KEY_PASSWORD')
+    storePassword System.getenv('SILIP_ANDROID_STORE_PASSWORD')
+    keyAlias System.getenv('SILIP_ANDROID_KEY_ALIAS')
+    keyPassword System.getenv('SILIP_ANDROID_KEY_PASSWORD')
    }
   }
  }
  buildTypes { release { signingConfig signingConfigs.release } }
 }
-dependencies { implementation files('libs/piik.aar') }
+dependencies { implementation files('libs/silip.aar') }

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Modified by Piik: use feedback state; the first receive timestamp can be zero.
+// Modified by Silip: use feedback state; the first receive timestamp can be zero.
 // Track loss membership for the full packet history, independently of ACK count.
 // Tolerate ordinary clock-rate skew in delay inference, retaining raw traffic measurements.
 package sendsidebwe

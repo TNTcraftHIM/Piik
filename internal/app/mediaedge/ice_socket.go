@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/portmapping"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/app/portmapping"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
 	"github.com/pion/ice/v4"
 	"github.com/pion/stun/v4"
 	"github.com/pion/webrtc/v4"
@@ -53,7 +53,7 @@ func (engine *Engine) adoptICESocket(connection net.PacketConn, servers []webrtc
 		engine: engine, ctx: ctx, cancel: cancel,
 		localPort: connection.LocalAddr().(*net.UDPAddr).Port,
 		mux: forwarding.NewUDPMux(ice.UDPMuxParams{
-			Logger: diagnostics.PionLoggerFactory().NewLogger("piik-ice"), UDPConn: connection,
+			Logger: diagnostics.PionLoggerFactory().NewLogger("silip-ice"), UDPConn: connection,
 		}),
 	}
 	if prepared, ok := connection.(*PunchedSocket); ok {

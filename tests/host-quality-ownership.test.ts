@@ -325,7 +325,7 @@ describe("Camera replacement ownership", () => {
     current.manualVideoCodecPreference.mockImplementation(codec => ({ primary: codec }));
     current.bridge.start.mockResolvedValue(nativeStream);
     Object.assign(current.bridge, { stream: nativeStream });
-    Object.assign(current.client.health, { activationURL: "piik://media" });
+    Object.assign(current.client.health, { activationURL: "silip://media" });
     return { ...current, nativeControl, remoteSnapshot, picture, previous, camera, nativeStream, oldBridge, peer, nativePeer, startedPeerStreams, replacePublication };
   }
 
@@ -1220,7 +1220,7 @@ describe("Host quality ownership", () => {
 
   it("offers Android confirmation for pending native capture, then keeps frame waiting passive", async () => {
     const current = fixture();
-    Object.assign(current.client.health, { activationURL: "piik://media" });
+    Object.assign(current.client.health, { activationURL: "silip://media" });
     current.context.phase = "starting";
     current.nativeShareGenerationRef.current = null;
     const started = deferred<{ audio: boolean; codec: "h264" }>();
@@ -1231,7 +1231,7 @@ describe("Host quality ownership", () => {
     await vi.waitFor(() => expect(current.client.startShare).toHaveBeenCalledOnce());
     expect(current.renderNativePermission()).toBe(true);
     current.context.confirmNativePermission();
-    expect(current.window.location.assign).toHaveBeenCalledWith("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
+    expect(current.window.location.assign).toHaveBeenCalledWith("intent://media#Intent;scheme=silip;package=io.github.p4aaaul.silip.android;end");
     started.resolve({ audio: false, codec: "h264" });
     await vi.waitFor(() => expect(current.bridge.start).toHaveBeenCalledOnce());
     expect(current.renderNativePermission()).toBe(false);

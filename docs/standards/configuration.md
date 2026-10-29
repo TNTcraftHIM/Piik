@@ -20,7 +20,7 @@ service secret store or an untracked access-restricted environment file.
 
 | Variable | Contract |
 | --- | --- |
-| `PIIK_ENV` | `development` or `production`, default `development`; set `production` for server deployments to enable production validation and Secure site-access cookies for configured HTTPS destinations. |
+| `SILIP_ENV` | `development` or `production`, default `development`; set `production` for server deployments to enable production validation and Secure site-access cookies for configured HTTPS destinations. |
 | `LISTEN_HOST` | Defaults to `0.0.0.0`; bare-metal production normally uses `127.0.0.1`. |
 | `PORT` | Positive TCP port, default `8787`; the tracked release wrapper supports only that default. |
 | `PUBLIC_BASE_URL` | Exact public HTTP(S) origin; production requires HTTPS. |
@@ -67,7 +67,7 @@ Automatic SFU fallback runs inside the Hosted process when `SFU_UDP_PORT` is set
 | --- | --- |
 | `SFU_UDP_PORT` | Optional UDP media port `1..65535`; unset or blank disables SFU and fixes Privacy mode on for every room. Set `7882` for the standard public listener and allow the Host to choose Privacy mode. |
 | `SFU_LISTEN_HOST` | IPv4 bind address, default `0.0.0.0`; independent of HTTP `LISTEN_HOST`. Read only when SFU is enabled. |
-| `SFU_PUBLIC_IP` | Optional advertised IPv4 address or DNS hostname for a host behind NAT. A hostname resolves to IPv4 at startup; restart Piik after its address changes. Forward the same UDP port as `SFU_UDP_PORT`. Read only when SFU is enabled. |
+| `SFU_PUBLIC_IP` | Optional advertised IPv4 address or DNS hostname for a host behind NAT. A hostname resolves to IPv4 at startup; restart Silip after its address changes. Forward the same UDP port as `SFU_UDP_PORT`. Read only when SFU is enabled. |
 | `SFU_ONLY` | `false` by default. `true` requires `SFU_UDP_PORT` and sends every room through SFU, without Peer candidates or background P2P convergence. Applies after Server restart. |
 
 SFU control uses the application's authenticated signaling connection. No
@@ -88,7 +88,7 @@ This policy needs sufficient server bandwidth and a working UDP route; it is not
 a TURN/TCP fallback. App Local/public-link and the public Demo remain P2P-only.
 
 The SQLite parent directory must exist and be writable. The systemd template
-sets `/var/lib/piik/rooms.sqlite` under its managed state directory; the
+sets `/var/lib/silip/rooms.sqlite` under its managed state directory; the
 container image sets `/home/nonroot/rooms.sqlite` under its writable data
 directory. Keep the existing database path and data across application updates.
 Room authority has no idle expiry by default; the separate site-access cookie keeps its
@@ -101,23 +101,23 @@ environment file cannot silently drop a deployment out of production. The
 private deployment uses its scoped atomic updater. Supported public upgrades and
 any compatibility handling follow the active [versioning contract](./versioning.md).
 
-## Piik App Configuration
+## Silip App Configuration
 
-Piik App stores `Piik/client.json` under the operating system's user configuration
+Silip App stores `Silip/client.json` under the operating system's user configuration
 directory (`%APPDATA%` on Windows, `~/Library/Application Support` on macOS,
 and `$XDG_CONFIG_HOME` or `~/.config` on Linux). The App manages its `version`
 schema field. The user settings are:
 
 | Setting | Contract |
 | --- | --- |
-| `site` / `sites` | The first approved Piik Site origin and optional additional origins. Local confirmation or explicit `--site` adds approval without replacing other sites; the launcher revokes each independently. Existing single-site configuration remains valid. |
+| `site` / `sites` | The first approved Silip Site origin and optional additional origins. Local confirmation or explicit `--site` adds approval without replacing other sites; the launcher revokes each independently. Existing single-site configuration remains valid. |
 | `localAccessPassword` | Empty by default. Optional password for the App's Local room authority, with the same exact-match behavior as `SITE_ACCESS_PASSWORD`. It is separate from a hosted site's password. |
 
 Before rolling back to an App that supports only one approved Site, revoke all
 but one Site in the current launcher. This removes the additional `sites` field
 that older Apps cannot read, while preserving the remaining approval and password.
 
-For public invitations, the optional `PIIK_STUN_URLS` environment variable
+For public invitations, the optional `SILIP_STUN_URLS` environment variable
 replaces all built-in STUN destinations. It accepts a comma-separated list of
 up to six `stun:` URLs, using the Server's URL validation. With three or more
 destinations, the second and third also supply NAT prediction observations;
@@ -135,11 +135,11 @@ the App's numeric UDP port (default `8787`). This lets Browsers
 discover usable addresses on routed virtual LANs without relying on multicast
 name discovery or contacting a public STUN service. HTTP and STUN have one
 application startup/shutdown owner; public-link mode does not bind this LAN
-endpoint. Allow Piik through the firewall on the selected network for both TCP
+endpoint. Allow Silip through the firewall on the selected network for both TCP
 and UDP; STUN carries address discovery, not shared media.
 
-For example, in PowerShell, set `$env:PIIK_STUN_URLS = 'stun:your-stun.example:3478'`
-before running `./piik-app.exe`. Use a service you trust: STUN sees participants'
+For example, in PowerShell, set `$env:SILIP_STUN_URLS = 'stun:your-stun.example:3478'`
+before running `./silip-app.exe`. Use a service you trust: STUN sees participants'
 public network addresses, but does not receive shared media.
 
 The Site's App button requests local confirmation for the page's exact origin.
@@ -199,9 +199,9 @@ Diagnostics are local and opt-in. Enable them **before** reproducing the problem
 
 | Surface | Enable | Export |
 | --- | --- | --- |
-| App | Enable **Debug launch** with the small chip icon after the theme control in the mode selector, or start with `--debug` / `PIIK_DEBUG=client` | Press `D` in the terminal for a ZIP |
+| App | Enable **Debug launch** with the small chip icon after the theme control in the mode selector, or start with `--debug` / `SILIP_DEBUG=client` | Press `D` in the terminal for a ZIP |
 | Browser Host/Viewer | Open **Help → Debug** after the theme control and confirm the reload, or add `?debug=1` before any invitation fragment | **Help → Web report** downloads the browser report |
-| Hosted Server | Start with `--debug`, `PIIK_DEBUG=server` or `PIIK_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
+| Hosted Server | Start with `--debug`, `SILIP_DEBUG=server` or `SILIP_DEBUG=route` | On Unix, `kill -USR1 <pid>`; also exported at orderly shutdown |
 
 App **Debug launch** starts App collection immediately, including while waiting
 for a Site. Pages subsequently opened from the launcher also collect Browser
@@ -209,7 +209,7 @@ logs; already-open Site pages use their own Debug control. It records Native
 capability results and subsequent capture, connection and local-server activity.
 Use `--debug` for failures before the launcher opens. This choice does not change
 the saved App configuration.
-When bypassing the mode selector, `--debug` and `PIIK_DEBUG=client` enable backend
+When bypassing the mode selector, `--debug` and `SILIP_DEBUG=client` enable backend
 collection; enable the Browser control separately for browser-side diagnosis.
 
 The Browser entry reloads the current page so collection includes connection
@@ -226,20 +226,20 @@ reports. The Server exposes no HTTP diagnostic export or pprof endpoint.
 App/Server ZIP and Browser JSON reports are separate: when investigating
 Browser/App cooperation, include both from the same reproduction. Exporting
 either report does not stop an active share or upload anything. Browser export
-also remains available as `await window.__PIIK_DEBUG__.export()` in DevTools.
+also remains available as `await window.__SILIP_DEBUG__.export()` in DevTools.
 
-App logs go to `logs` beside the executable, falling back to `Piik/logs`
+App logs go to `logs` beside the executable, falling back to `Silip/logs`
 in the OS user-cache directory when that default is unwritable. The TUI shows
 the actual path and the exported ZIP. `--log-dir` overrides
-`PIIK_LOG_DIR`; an explicit directory must be writable. Choosing a
+`SILIP_LOG_DIR`; an explicit directory must be writable. Choosing a
 directory alone does not enable collection. Non-interactive Apps export at
 orderly shutdown; a returned App error also exports before the terminal closes.
-On App, `PIIK_DEBUG=route` alone retains console route
+On App, `SILIP_DEBUG=route` alone retains console route
 tracing; use `--debug` for file collection and the `D` action.
 
-Hosted logs use `PIIK_LOG_DIR`, otherwise systemd `LOGS_DIRECTORY`,
+Hosted logs use `SILIP_LOG_DIR`, otherwise systemd `LOGS_DIRECTORY`,
 otherwise `logs` under the working directory. The service unit supplies
-`/var/log/piik` with mode `0700`. Normal service notices remain in the
+`/var/log/silip` with mode `0700`. Normal service notices remain in the
 journal; detailed dependency records go into the report. Windows Server has no
 Unix signal trigger; forced process termination cannot create a final snapshot.
 
@@ -302,10 +302,10 @@ project references and the reasons for this collection boundary.
 | Port | Scope | Owner |
 | ---: | --- | --- |
 | TCP 80/443 | public | HTTP redirect and HTTPS/WSS reverse proxy |
-| UDP 3478 | public | in-process STUN-only Piik listener |
-| UDP 3479/3480 | public when NAT prediction is enabled | in-process auxiliary STUN-only Piik listeners |
-| UDP 7882 (or `SFU_UDP_PORT`) | public when SFU enabled | in-process Piik WebRTC media |
-| TCP 8787 | private behind a proxy, or reachable within the chosen LAN for direct HTTPS | Piik application |
+| UDP 3478 | public | in-process STUN-only Silip listener |
+| UDP 3479/3480 | public when NAT prediction is enabled | in-process auxiliary STUN-only Silip listeners |
+| UDP 7882 (or `SFU_UDP_PORT`) | public when SFU enabled | in-process Silip WebRTC media |
+| TCP 8787 | private behind a proxy, or reachable within the chosen LAN for direct HTTPS | Silip application |
 
 TCP 3478, TCP/TLS 5349, TURN relay ranges, media TCP, and other media
 ports remain closed. HTTPS/WSS transport is independent of the UDP-only media
@@ -315,7 +315,7 @@ When `NAT_PREDICTION_ENABLED=true`, the server derives
 `stun:<same-hostname>:3479` and `:3480` from the first ordinary STUN authority
 on UDP 3478. Current pages use the advertised capability automatically unless
 the site requires SFU-only media. It adds no media route or third-party service. It needs both
-cloud security-group rules and the host firewall. Piik
+cloud security-group rules and the host firewall. Silip
 binds every required UDP listener before opening room persistence or accepting
 signaling; a bind failure rolls back all newly owned sockets. Close and End
 retire these listeners with the application. No other service may own the same

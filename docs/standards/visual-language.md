@@ -1,6 +1,6 @@
 # Visual Language
 
-This is the single design requirement for Piik's shared Web/App interface:
+This is the single design requirement for Silip's shared Web/App interface:
 control/surface selection, illustration, semantic colour, motion and guidance.
 New UI work follows this file and the local `/__tooltip-preview` catalogue.
 [Media status](./media-status.md) owns which facts justify each status;
@@ -12,7 +12,7 @@ sequences, and literal scene objects for people, rooms and media. Glyphs do not
 form sentences. The same meaning and visual hierarchy must work in Chinese,
 English and pure-visual modes, in both themes and at narrow widths.
 
-Piik's living room uses simple silhouettes, generous space, rounded controls
+Silip's living room uses simple silhouettes, generous space, rounded controls
 and a small responsive bounce. Clear hierarchy and legible interaction keep
 the playful details easy to use.
 The [copy guide](./naming.md#voice-and-terminology) owns its voice.
@@ -361,37 +361,32 @@ selection tasks visually interchangeable.
 
 ## Cast And Objects
 
-The brand mascot keeps its own identity, separate from ordinary participants.
+The brand mark keeps its own identity, separate from ordinary participants.
 Participant characters should leave room for that distinctive presence.
 
-The App badge and favicons derive from [one SVG](../../public/favicon.svg):
-a dark navy tile, warm white television outline and small gold sparkle. The
-unfilled television, antenna, feet and wink keep the proportions of `BrandMark`;
-do not give the badge a filled case or a separate screen. This palette stays
-fixed across system themes. Let the television fill the tile with optical
-padding so the surrounding tile does not make the mascot look undersized.
-At 16–24 px, strengthen the outline and open eye, and omit the decorative
-sparkle and tile rim. Keep the antenna, feet and wink at every size. Render
-each export at its target viewport; check actual 16/24/32/48 px on light and
-dark backgrounds rather than judging only an enlarged master. This follows
+The Silip mark is two lowercase i's whose dots are eyes, pupils glancing to the
+side: the *silip* (peek). The App badge and favicons derive from
+[one SVG](../../public/favicon.svg): navy ink (`#22303e`) eyes and stems on a
+mango tile (`#f5b417`). This palette stays fixed across system themes. At
+16–24 px, thicken the stems and omit the pupils so the pair still reads as
+"ii". Render each export at its target viewport; check actual 16/24/32/48 px on
+light and dark backgrounds rather than judging only an enlarged master. This follows
 [Microsoft's small-size silhouette guidance](https://learn.microsoft.com/en-us/windows/apps/design/iconography/app-icon-design)
 and [GNOME's detail guidance](https://developer.gnome.org/hig/guidelines/app-icons.html#detail).
-Inline brand
-marks keep the same wink identity and outline. Their standard gesture keeps the
-body and feet still: the face appears with both eyes open, followed by a short
-antenna sway, wink, then two gold sparks. The
-[shared brand animation](../../src/client/components/living/brand-mark.css)
+Inline brand marks keep the unboxed mark. Their standard gesture: the stems
+draw, the eyes pop up, the pupils peek aside and back, the eyes blink, then two
+mango sparks. The [shared brand animation](../../src/client/components/living/brand-mark.css)
 owns timing, sparkle origins and trajectories for the product, website and
-film closing card; looping presentations leave a quiet interval between gestures.
-Reduced motion shows the static wink. A held film ending continues the complete
-shared gesture, while the wordmark and address remain still.
-Their stroke inherits the local surface's text colour:
+documentation header; looping presentations leave a quiet interval between gestures.
+Reduced motion shows the resting mark.
+Marks and the [wordmark](../assets/wordmark.svg) inherit the local surface's text colour:
 dark ink on light surfaces, light ink on dark surfaces, including deliberately
-light panels within a dark page. Gold sparkles remain a brand accent in both
+light panels within a dark page. Mango sparks remain the brand accent in both
 forms. Do not assign black/white outlines independently at each call site.
 The badge identifies App packages, browser tabs and search results. In-page
-branding and the [README mark](../assets/brand-mark.svg) keep the unboxed outline;
-changing the badge does not restyle the UI, wordmark or illustrations.
+branding and the [README mark](../assets/brand-mark.svg) keep the unboxed mark;
+changing the badge does not restyle the UI, wordmark or illustrations. The
+illustrated TV character in website scenes is a cast member, not the brand mark.
 
 | Meaning | Representation |
 | --- | --- |
@@ -557,9 +552,9 @@ support the task and use lighter icons or copy when another drawing adds noise.
 
 | Context | Illustration and literal content | Playful caption |
 | --- | --- | --- |
-| Page loading or site access check | The shared wink mascot with the actual loading operation; no room or media-path claim | None |
-| App room startup | The shared wink mascot with the actual operation | One secondary waiting caption |
-| Confirmed App readiness | Wink mascot with literal readiness in dedicated feedback or its tooltip; an inline summary beside an existing main brand uses a status icon. Neither implies an active media route. | None |
+| Page loading or site access check | The shared peeking mark with the actual loading operation; no room or media-path claim | None |
+| App room startup | The shared peeking mark with the actual operation | One secondary waiting caption |
+| Confirmed App readiness | Peeking mark with literal readiness in dedicated feedback or its tooltip; an inline summary beside an existing main brand uses a status icon. Neither implies an active media route. | None |
 | Source listing/start/switch, room joining, media setup/recovery, waiting for the Host | The corresponding comic with the current status; only the existing state owner can declare waiting | The same waiting pool while the wait exists |
 | Error, limitation, pause, ended room or required user action | The corresponding comic and clear reason/action; settled movement keeps that verdict readable | None |
 | Small controls, tooltips and inline results | Existing action/status icon and contextual guidance when needed; retain direct actions | None |
@@ -703,10 +698,10 @@ failure; lack of PiP support is a limitation.
 
 ## Motion Grammar
 
-The brand mascot keeps its body still: antenna twitch, wink, then two sparkles.
+The brand mark keeps its stems still: the pupils peek aside and back, the eyes blink, then two sparks.
 Web/App and website identity marks share `site/assets/brand-motion.css`.
-An entrance draws the shell once and starts the gesture only after the last
-stroke completes; loading repeats the gesture without redrawing the shell.
+An entrance draws the stems once and starts the gesture only after the last
+stroke completes; loading repeats the gesture without redrawing the stems.
 Page readiness never waits for this decoration.
 
 | Presentation | Rule |
@@ -831,7 +826,7 @@ defines the shared selection, focus and keyboard contract.
 [GNOME popovers](https://developer.gnome.org/hig/patterns/containers/popovers.html)
 and [utility panes](https://developer.gnome.org/hig/patterns/containers/utility-panes.html)
 distinguish brief contextual adjustments from tools alongside the main view.
-Piik's floating/detached tool choice applies that distinction to watching and
+Silip's floating/detached tool choice applies that distinction to watching and
 remote input; [Document Picture-in-Picture](https://developer.chrome.com/docs/web-platform/document-picture-in-picture)
 supplies the optional native window and its lifetime boundary.
 
@@ -852,5 +847,5 @@ moving the pointer away.
 
 [Carbon loading guidance](https://carbondesignsystem.com/components/loading/usage/)
 supports avoiding competing indicators and keeping required user actions distinct
-from passive loading. Piik's selected waiting captions and fifteen-second cadence are its
+from passive loading. Silip's selected waiting captions and fifteen-second cadence are its
 own presentation choice.

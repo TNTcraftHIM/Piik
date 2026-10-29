@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"

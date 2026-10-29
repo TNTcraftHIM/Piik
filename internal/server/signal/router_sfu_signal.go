@@ -6,11 +6,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/route"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/route"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/rtcerr"
 )

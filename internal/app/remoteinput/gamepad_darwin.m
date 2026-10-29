@@ -9,7 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct PiikGamepad {
+struct SilipGamepad {
   IOHIDUserDeviceRef device;
   dispatch_queue_t queue;
   size_t report_size;
@@ -27,12 +27,12 @@ static bool entitled(void) {
   return allowed;
 }
 
-PiikGamepad *piik_gamepad_open(const uint8_t *descriptor, size_t descriptor_size,
+SilipGamepad *silip_gamepad_open(const uint8_t *descriptor, size_t descriptor_size,
                                const uint8_t *neutral, size_t report_size,
                                uint32_t *result) {
   @autoreleasepool {
     *result = kIOReturnNoMemory;
-    PiikGamepad *pad = calloc(1, sizeof(*pad));
+    SilipGamepad *pad = calloc(1, sizeof(*pad));
     if (!pad) return NULL;
     pad->report = malloc(report_size);
     if (!pad->report) { free(pad); return NULL; }
@@ -42,8 +42,8 @@ PiikGamepad *piik_gamepad_open(const uint8_t *descriptor, size_t descriptor_size
       @kIOHIDReportDescriptorKey: [NSData dataWithBytes:descriptor length:descriptor_size],
       @kIOHIDVendorIDKey: @0,
       @kIOHIDProductIDKey: @1,
-      @kIOHIDProductKey: @"Piik Remote Gamepad",
-      @kIOHIDManufacturerKey: @"Piik",
+      @kIOHIDProductKey: @"Silip Remote Gamepad",
+      @kIOHIDManufacturerKey: @"Silip",
       @kIOHIDTransportKey: @"Virtual",
       @kIOHIDSerialNumberKey: [[NSUUID UUID] UUIDString]
     };
@@ -57,7 +57,7 @@ PiikGamepad *piik_gamepad_open(const uint8_t *descriptor, size_t descriptor_size
       free(pad);
       return NULL;
     }
-    pad->queue = dispatch_queue_create("tv.piik.remote-gamepad", DISPATCH_QUEUE_SERIAL);
+    pad->queue = dispatch_queue_create("io.github.p4aaaul.silip.remote-gamepad", DISPATCH_QUEUE_SERIAL);
     if (!pad->queue) {
       CFRelease(pad->device);
       free(pad->report);
@@ -85,7 +85,7 @@ PiikGamepad *piik_gamepad_open(const uint8_t *descriptor, size_t descriptor_size
       free(pad);
     });
     IOHIDUserDeviceActivate(pad->device);
-    *result = piik_gamepad_update(pad, neutral);
+    *result = silip_gamepad_update(pad, neutral);
     if (*result != kIOReturnSuccess) {
       IOHIDUserDeviceCancel(pad->device);
       return NULL;
@@ -94,7 +94,7 @@ PiikGamepad *piik_gamepad_open(const uint8_t *descriptor, size_t descriptor_size
   }
 }
 
-uint32_t piik_gamepad_update(PiikGamepad *pad, const uint8_t *report) {
+uint32_t silip_gamepad_update(SilipGamepad *pad, const uint8_t *report) {
   __block IOReturn result;
   dispatch_sync(pad->queue, ^{
     result = IOHIDUserDeviceHandleReportWithTimeStamp(pad->device,
@@ -104,8 +104,8 @@ uint32_t piik_gamepad_update(PiikGamepad *pad, const uint8_t *report) {
   return result;
 }
 
-uint32_t piik_gamepad_close(PiikGamepad *pad, const uint8_t *neutral) {
-  uint32_t result = piik_gamepad_update(pad, neutral);
+uint32_t silip_gamepad_close(SilipGamepad *pad, const uint8_t *neutral) {
+  uint32_t result = silip_gamepad_update(pad, neutral);
   IOHIDUserDeviceCancel(pad->device);
   return result;
 }

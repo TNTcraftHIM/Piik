@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 	"github.com/livekit/mediatransportutil"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
@@ -26,8 +26,8 @@ import (
 // One real VP8 derived process, no desktop capture. The link changes capacity;
 // production BWE, output admission and codec controls supply every adaptation.
 func TestRelayNetworkVP8Fixture(t *testing.T) {
-	if os.Getenv("PIIK_RELAY_NETWORK") == "" {
-		t.Skip("set PIIK_RELAY_NETWORK=1, PIIK_NATIVE_CAPTURE and PIIK_ENCODED_FIXTURE")
+	if os.Getenv("SILIP_RELAY_NETWORK") == "" {
+		t.Skip("set SILIP_RELAY_NETWORK=1, SILIP_NATIVE_CAPTURE and SILIP_ENCODED_FIXTURE")
 	}
 	check := func(err error) {
 		t.Helper()
@@ -35,7 +35,7 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	input, err := os.Open(os.Getenv("PIIK_ENCODED_FIXTURE"))
+	input, err := os.Open(os.Getenv("SILIP_ENCODED_FIXTURE"))
 	check(err)
 	defer input.Close()
 	var motion [][]byte
@@ -67,7 +67,7 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 	check(err)
 	defer engine.Close()
 	source, err := engine.newSource("vp8", 2, 2, &RelayOptions{
-		CaptureProcess: os.Getenv("PIIK_NATIVE_CAPTURE"),
+		CaptureProcess: os.Getenv("SILIP_NATIVE_CAPTURE"),
 		Capabilities:   nativecapture.Capabilities{SoftwareVP8: true, Adapters: []nativecapture.Adapter{{Index: 0}}},
 	}, nil)
 	check(err)
@@ -332,9 +332,9 @@ func TestRelayNetworkVP8Fixture(t *testing.T) {
 			recovered = true
 		}
 	}
-	outputPath := os.Getenv("PIIK_ENCODED_OUTPUT")
+	outputPath := os.Getenv("SILIP_ENCODED_OUTPUT")
 	if outputPath == "" {
-		t.Fatal("PIIK_ENCODED_OUTPUT must name the ignored received-frame artifact")
+		t.Fatal("SILIP_ENCODED_OUTPUT must name the ignored received-frame artifact")
 	}
 	data, err := json.Marshal(delivered)
 	check(err)

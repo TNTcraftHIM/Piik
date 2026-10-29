@@ -189,7 +189,7 @@ export class BrowserVoiceEndpoint {
     pc.onconnectionstatechange = () => { if (this.current(connection)) this.changed(); };
     if (this.isOfferer(config)) {
       pc.addTransceiver("audio", { direction: "recvonly" });
-      pc.createDataChannel("piik-room-voice");
+      pc.createDataChannel("silip-room-voice");
     }
     return connection;
   }

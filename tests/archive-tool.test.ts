@@ -8,14 +8,14 @@ import { createZip, extractZip, tarExecutable } from "../scripts/archive-tool.mj
 
 describe("App ZIP distribution", () => {
   it("round-trips hidden files, spaced paths and executable permissions", () => {
-    const root = mkdtempSync(join(tmpdir(), "piik-archive-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-archive-"));
     try {
       const source = join(root, "assembled app");
       const extracted = join(root, "extracted app");
-      const archive = join(root, "Piik App.zip");
+      const archive = join(root, "Silip App.zip");
       const files = {
-        "piik-app": "#!/bin/sh\nexit 0\n",
-        "Piik App.app/Contents/MacOS/piik-app": "#!/bin/sh\nexit 0\n",
+        "silip-app": "#!/bin/sh\nexit 0\n",
+        "Silip App.app/Contents/MacOS/silip-app": "#!/bin/sh\nexit 0\n",
         "runtime/.native/画面.txt": "Native capture\n",
         ".release-metadata": "Hidden metadata\n",
       };
@@ -24,7 +24,7 @@ describe("App ZIP distribution", () => {
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, content);
       }
-      const executables = ["piik-app", "Piik App.app/Contents/MacOS/piik-app"];
+      const executables = ["silip-app", "Silip App.app/Contents/MacOS/silip-app"];
       for (const name of executables) chmodSync(join(source, name), 0o755);
       createZip(source, archive);
       expect(readFileSync(archive).subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]));

@@ -9,7 +9,7 @@ vi.mock("../src/client/native/client", () => ({ discoverNativeHealth: vi.fn(), i
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 const health = nativeHealthSchema.parse({
-  protocol: NATIVE_CLIENT_PROTOCOL, service: "piik-client", port: NATIVE_CLIENT_PORT_START,
+  protocol: NATIVE_CLIENT_PROTOCOL, service: "silip-client", port: NATIVE_CLIENT_PORT_START,
   instanceToken: "a".repeat(43), qualityPreference: true,
 });
 
@@ -90,7 +90,7 @@ describe("App quality preference transport", () => {
     await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(3));
     expect(fetcher).toHaveBeenLastCalledWith(`http://127.0.0.1:${health.port}/quality-preference`, expect.objectContaining({
       method: "PUT", body: JSON.stringify(latest), cache: "no-store",
-      headers: expect.objectContaining({ "X-Piik-Instance": health.instanceToken }),
+      headers: expect.objectContaining({ "X-Silip-Instance": health.instanceToken }),
     }));
     controller.abort();
     preference.save(DEFAULT_QUALITY_SETTINGS);

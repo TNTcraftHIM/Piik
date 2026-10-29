@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // LocalOptions describes App-selected Local composition. It never reads the

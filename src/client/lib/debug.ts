@@ -39,7 +39,7 @@ function safeText(value: string): string {
     .replace(/\bv=0\r?\n[\s\S]*/g, "[redacted SDP]")
     .replace(/\b(?:set-cookie|cookie|authorization)\s*:[^\r\n]*/gi, "[redacted credential header]")
     .replace(/\b(?:Bearer|Basic)\s+[^\s,;"']+/gi, "[redacted authorization]")
-    .replace(/piik-client-v\d+\.[A-Za-z0-9_-]+/g, "[redacted Client capability]")
+    .replace(/silip-client-v\d+\.[A-Za-z0-9_-]+/g, "[redacted Client capability]")
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[redacted token]")
     .replace(/\b(?:[a-z]*token|[a-z]*grant|password|passwd|secret|authorization|cookie|ice-pwd)["']?\s*[=:]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[redacted credential]")
     .replace(/(?:https?|wss?):\/\/[^\s<>"')]+/gi, (text) => {
@@ -122,7 +122,7 @@ export function debugEvent(scope: string, event: string, details: DebugDetails =
       retainedBytes -= events.shift()!.bytes;
       evictedEvents++;
     }
-    console.info("[piik]", record);
+    console.info("[silip]", record);
   } catch { /* Diagnostics must not interrupt the operation being observed. */ }
 }
 
@@ -193,8 +193,8 @@ export async function exportBrowserDebug(): Promise<string> {
   }
   return JSON.stringify({
     capturedAt: new Date().toISOString(), startedAt, protocol: SIGNALING_PROTOCOL,
-    build: { version: buildEnvironment?.VITE_PIIK_VERSION ?? "development",
-      revision: buildEnvironment?.VITE_PIIK_REVISION ?? "development" },
+    build: { version: buildEnvironment?.VITE_SILIP_VERSION ?? "development",
+      revision: buildEnvironment?.VITE_SILIP_REVISION ?? "development" },
     asset: new URL(import.meta.url).pathname.split("/").at(-1),
     environment: sanitize(environment).value,
     history: { maxEvents: MAX_EVENTS, maxBytes: MAX_BYTES, retainedBytes,
@@ -209,12 +209,12 @@ export async function exportBrowserDebug(): Promise<string> {
 
 export async function downloadBrowserDebug(): Promise<void> {
   downloadBlob(new Blob([await exportBrowserDebug()], { type: "application/json" }),
-    `piik-browser-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+    `silip-browser-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
 }
 
 export function installBrowserDebug(): (() => void) | undefined {
   if (!browserDebugEnabled) return;
-  window.__PIIK_DEBUG__ = {
+  window.__SILIP_DEBUG__ = {
     events: snapshot,
     clear: () => { evictedEvents += events.length; events.length = 0; retainedBytes = 0; },
     export: exportBrowserDebug,
@@ -232,7 +232,7 @@ export function installBrowserDebug(): (() => void) | undefined {
 
 declare global {
   interface Window {
-    __PIIK_DEBUG__?: {
+    __SILIP_DEBUG__?: {
       events: () => readonly BrowserDebugEvent[];
       clear: () => void;
       export: () => Promise<string>;

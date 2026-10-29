@@ -119,8 +119,8 @@ const pageAssets = await build({
 const demoEntries = { 'film/ui/ui': fileURLToPath(new URL('film/ui/main.tsx', source)) };
 const demoAssets = await build({
   ...sharedBuild, entryPoints: demoEntries, format: 'iife', jsx: 'automatic', legalComments: 'linked',
-  define: { 'import.meta': 'piikFilmBuild', 'process.env.NODE_ENV': '"production"' },
-  banner: { js: 'const piikFilmBuild = { url: document.currentScript.src, env: { DEV: false } };' },
+  define: { 'import.meta': 'silipFilmBuild', 'process.env.NODE_ENV': '"production"' },
+  banner: { js: 'const silipFilmBuild = { url: document.currentScript.src, env: { DEV: false } };' },
 });
 writeWebLicenseNotices(fileURLToPath(new URL('../', import.meta.url)), fileURLToPath(new URL('film/ui/third-party-licenses.txt', output)));
 // HTML and its scripts/styles must share a content identity across CDN caches.
@@ -142,7 +142,7 @@ for (const [page, base] of [
   const html = (await readFile(location, "utf8")).replace(
     /\b(src|href)="([^"?#]+\.(?:js|css))"/g,
     (_, attribute, href) => {
-      const key = new URL(href, `https://piik.invalid/${base}`).pathname.slice(1);
+      const key = new URL(href, `https://silip.invalid/${base}`).pathname.slice(1);
       const asset = assets.get(key);
       if (!asset) throw new Error(`Unbundled website asset: ${page}: ${href}`);
       return `${attribute}="./${relative(base || ".", asset).replaceAll("\\", "/")}"`;

@@ -5,7 +5,7 @@ import { iceCandidateSchema, sfuMediaSchema, positiveUint32Schema, qualityResolu
   nullableSafeEvidenceNumber, nullableSafeEvidenceInteger } from "../../shared/protocol";
 
 export const NATIVE_CLIENT_PROTOCOL = 10;
-export const NATIVE_CLIENT_SUBPROTOCOL = "piik-client-v10";
+export const NATIVE_CLIENT_SUBPROTOCOL = "silip-client-v10";
 
 const decimalIdentifierSchema = z.string().regex(/^[1-9]\d{0,19}$/);
 const opaqueIdentifierSchema = z
@@ -17,7 +17,7 @@ const opaqueIdentifierSchema = z
 // Discovery descriptions may grow; control responses and events stay strict.
 export const nativeDiscoveryIdentitySchema = z.object({
   protocol: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
-  service: z.literal("piik-client"),
+  service: z.literal("silip-client"),
   port: z
     .number()
     .int()
@@ -28,7 +28,7 @@ export const nativeDiscoveryIdentitySchema = z.object({
 export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
   protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
   qualityPreference: z.boolean().optional(),
-  activationURL: z.literal("piik://media").optional(),
+  activationURL: z.literal("silip://media").optional(),
   instanceToken: z
     .string()
     .length(43)

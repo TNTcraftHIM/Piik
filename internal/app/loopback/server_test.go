@@ -20,7 +20,7 @@ import (
 const testOrigin = "https://share.example.com"
 
 func TestHealthActivationURLIsOptionalAndOriginBound(t *testing.T) {
-	for _, activation := range []string{"", "piik://media"} {
+	for _, activation := range []string{"", "silip://media"} {
 		t.Run(activation, func(t *testing.T) {
 			server := startTestServerWithOptions(t, Options{
 				AllowedOrigins: []string{testOrigin}, ActivationURL: activation,
@@ -39,7 +39,7 @@ func TestHealthActivationURLIsOptionalAndOriginBound(t *testing.T) {
 			if present != (activation != "") {
 				t.Fatalf("activationURL presence = %t, want %t", present, activation != "")
 			}
-			if present && string(field) != `"piik://media"` {
+			if present && string(field) != `"silip://media"` {
 				t.Fatalf("activationURL = %s", field)
 			}
 			denied := doHealthRequest(t, endpoint, endpoint.Host, testOrigin+".other")

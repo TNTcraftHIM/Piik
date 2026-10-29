@@ -15,8 +15,8 @@ done < scripts/required-project-paths.txt
 git diff --check
 git diff --cached --check
 
-if [ -n "${PIIK_BASE_SHA:-}" ] && [ "$PIIK_BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
-  git diff --check "$PIIK_BASE_SHA"...HEAD
+if [ -n "${SILIP_BASE_SHA:-}" ] && [ "$SILIP_BASE_SHA" != "0000000000000000000000000000000000000000" ]; then
+  git diff --check "$SILIP_BASE_SHA"...HEAD
 fi
 
 node scripts/check-docs.mjs

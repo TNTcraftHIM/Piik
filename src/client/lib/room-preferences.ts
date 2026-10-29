@@ -2,7 +2,7 @@ import { z } from "zod";
 import { viewerRoutePreferenceSchema } from "../../shared/protocol";
 import { remoteControlModeSchema, remoteShortcutKeySchema } from "../remote-control/protocol";
 
-const STORAGE_KEY = "piik:room-preferences:v1";
+const STORAGE_KEY = "silip:room-preferences:v1";
 export const CHAT_OVERLAY_LIMITS = { scale: [.8, 1.3], opacity: [.4, 1], speed: [.5, 1.5] } as const;
 export const CHAT_OVERLAY_DEFAULTS = { scale: 1, opacity: 1, speed: 1, colorBySender: false };
 export const REMOTE_KEYBOARD_PAGES = ["letters", "symbols", "functions", "text"] as const;

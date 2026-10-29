@@ -1,5 +1,5 @@
 // This laboratory-only external STUN endpoint uses the same mature Binding
-// implementation as Piik. It keeps ordinary discovery available in prediction
+// implementation as Silip. It keeps ordinary discovery available in prediction
 // on/off and IPv6 trials without adding product configuration.
 package main
 

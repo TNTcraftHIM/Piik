@@ -82,7 +82,7 @@ export function RemoteKeyboard({ input, close, mouseControl, touch, platform, on
     };
   }, [presses, owner]);
   useEffect(() => {
-    if (owner !== document) owner.title = `${t("remote.keyboard")} · Piik`;
+    if (owner !== document) owner.title = `${t("remote.keyboard")} · Silip`;
   }, [owner, t]);
   const rows = page === "text" ? [] : mac && page === "functions"
     ? ROWS.functions.slice(0, 2)

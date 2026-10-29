@@ -308,7 +308,7 @@ default screen-share publication can expose original and lower representations,
 and server BWE can forward a lower representation to a constrained subscriber
 while another receives the highest available representation.
 
-Calling the pinned client's own encoding calculator with Piik's exact
+Calling the pinned client's own encoding calculator with Silip's exact
 publish options produces two VP8 encodings for every accepted profile:
 
 | Profile | Lower representation | Original representation |
@@ -317,7 +317,7 @@ publish options produces two VP8 encodings for every accepted profile:
 | 1080p30 | 1/2 scale, 1.25 Mbps, 30 fps | 5 Mbps, 30 fps |
 | 1080p60 | 1/2 scale, 2 Mbps, 60 fps | 8 Mbps, 60 fps |
 
-Both encodings start without an explicit RTP `priority` because Piik's
+Both encodings start without an explicit RTP `priority` because Silip's
 custom `screenShareEncoding` replaces LiveKit's priority-bearing preset while
 retaining its default `simulcast: true`. The audio encoding is `high` priority.
 Priority can only redistribute bandwidth within that PeerConnection and request
@@ -528,7 +528,7 @@ This separation also exists in upstream WebRTC: its
 [probe controller](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/congestion_controller/goog_cc/probe_controller.cc)
 keeps maximum allocation separate from estimated bandwidth, while encoder
 resource adaptation has its own conditions. The current-main inspection does
-not identify a particular Browser's build. Piik's
+not identify a particular Browser's build. Silip's
 [Browser controls](./browser-local-encoding-pool.md#sustained-h264-recovery)
 include both successful recovery and content-dependent encoder hysteresis after
 allocation recovered. Native controls separately cover budget restoration,
@@ -550,7 +550,7 @@ network congestion response and recovery demand are separate responsibilities.
 WebRTC's pinned [probe controller](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/congestion_controller/goog_cc/probe_controller.cc)
 already distinguishes a large bandwidth drop, a bounded recovery-probe window,
 ALR and maximum allocation. Its [quality scaler](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/modules/video_coding/utility/quality_scaler.cc)
-separately requires samples and smoothed QP evidence. Piik's Native encoder uses
+separately requires samples and smoothed QP evidence. Silip's Native encoder uses
 that encoder owner but receives transport budgets from Pion/LiveKit; copying a
 GCC field trial into the encoder would not repair publication allocation.
 The [publication demand repair](./node-local-media-design.md#send-queue-recovery)
@@ -571,15 +571,15 @@ cadence loss; topology churn and CSS presentation were not required causes.
 
 ### Native Encoder Policy Experiments
 
-Piik evaluated the encoder controls below in its existing Native pipeline.
+Silip evaluated the encoder controls below in its existing Native pipeline.
 The congestion-window setting illustrates a separate transport boundary; it
-cannot configure Piik's Pion/LiveKit transport through encoder configuration.
-The dropper and bitrate-adjuster experiments below measure the current Piik
+cannot configure Silip's Pion/LiveKit transport through encoder configuration.
+The dropper and bitrate-adjuster experiments below measure the current Silip
 pipeline, not another application's complete implementation.
 
 | Native setting | Meaning and transfer boundary |
 | --- | --- |
-| `WebRTC-CongestionWindow/QueueSize:350,MinBitrate:300000,DropFrame:false/` | Configure GCC congestion-window pushback. The 350 ms queue allowance and 300 kbps pushback floor are not a guaranteed media bitrate; disabling drop-frame-only pushback does not disable congestion control. Piik's Native transport is Pion/LiveKit, so this encoder-side field trial cannot configure that transport. |
+| `WebRTC-CongestionWindow/QueueSize:350,MinBitrate:300000,DropFrame:false/` | Configure GCC congestion-window pushback. The 350 ms queue allowance and 300 kbps pushback floor are not a guaranteed media bitrate; disabling drop-frame-only pushback does not disable congestion control. Silip's Native transport is Pion/LiveKit, so this encoder-side field trial cannot configure that transport. |
 | `WebRTC-VideoRateControl/bitrate_adjuster:false/` | Disable WebRTC's encoder overshoot bitrate adjuster. This does not disable the codec's own rate control. |
 | `WebRTC-FrameDropper/Disabled/` | Disable the external encoder frame dropper; other codec, queue and transport drop paths remain. |
 
@@ -587,12 +587,12 @@ The [upstream parser](https://webrtc.googlesource.com/src/+/6f37672d358475cd1754
 and [encoder contract](https://webrtc.googlesource.com/src/+/6f37672d358475cd17544121a12494da454d85fb/api/video_codecs/video_encoder.h)
 explain these independent controls. Encoder backend options are not portable
 merely because they have similar names. Media Foundation does not expose every
-NVENC quality/cost control; Piik's limited
+NVENC quality/cost control; Silip's limited
 [profile comparison](./native-client-media.md#native-h264-motion-quality)
 does not establish parity with another native pipeline.
 
 Shared encoding needs independent per-receiver rate and dependency state.
-Piik separates incompatible consumer budgets into
+Silip separates incompatible consumer budgets into
 [output groups](./webrtc-encoder-pool.md#compatible-output-groups) and uses
 LiveKit's per-output forwarding state. Replacing that partition with one rate
 aggregate changes its semantics.
@@ -602,7 +602,7 @@ request versus actual output: [Chromium's Media Foundation adapter](https://chro
 records whether a keyframe request was fulfilled and delivers the actual frame
 type rather than failing solely because it was not fulfilled.
 
-A Windows inconsistency in Piik required a repair: every forced live
+A Windows inconsistency in Silip required a repair: every forced live
 request required immediate SPS/PPS/IDR output or failed that codec output.
 Windows now retains recovery intent until actual independent output, matching
 the existing macOS/Linux behavior. First-output admission, bitstream validation
@@ -616,12 +616,12 @@ frame and decoded its remaining 45 frames. This establishes controlled behavior,
 not a diagnosis of an untraced user's driver failure.
 
 Color conversion already has an explicit matrix/range owner and fidelity checks;
-Piik retains its tagged BT.601 WebRTC SDR contract. Individual talker loss also
-belongs to a different audio-feedback model than Piik's shared screen-audio
+Silip retains its tagged BT.601 WebRTC SDR contract. Individual talker loss also
+belongs to a different audio-feedback model than Silip's shared screen-audio
 output; it does not justify a per-viewer audio encoder.
 
 The two encoder field trials were applied, together and separately, to the
-existing Windows NV12/MFT H264 lab. The control retained Piik's selected
+existing Windows NV12/MFT H264 lab. The control retained Silip's selected
 [QP settings](./webrtc-encoder-pool.md#budget-restoration). Input was the same
 1080p30 synthetic motion, a 5 Mbps ceiling and a 12 Mbps Pion link with 20 ms
 router delay. Impairments limited that link to 400 kbps. Recovery below requires
@@ -631,7 +631,7 @@ AU delivery, not decoded pictures or Browser-rendered freezes.
 
 | Encoder experiment | Three one-second limits: recovery / longest receive gap | Fifteen-second limit: recovery / longest receive gap |
 | --- | --- | --- |
-| Current Piik settings | 1.9 s / 1.48 s | 22.2 s / 6.43 s |
+| Current Silip settings | 1.9 s / 1.48 s | 22.2 s / 6.43 s |
 | Both encoder trials | 17.3 s / 2.84 s | 16.2 s / 14.96 s |
 | Only disable frame dropper | 8.1 s / 2.83 s | Not run |
 | Only disable bitrate adjuster | 15.2 s / 1.97 s | Not run |
@@ -645,7 +645,7 @@ they do not estimate another application's performance or field failure rates.
 Production retains the existing dropper and adjuster. No new controller,
 FFmpeg dependency or periodic connection reset follows from this comparison.
 
-A separate control applied bitrate-update thresholds at Piik's
+A separate control applied bitrate-update thresholds at Silip's
 existing Native encoder demand input, without changing the transport estimator.
 At fixed 30 fps, updates passed only when their difference exceeded 10% or
 200 kbps. Four 120-second runs used the same link impairments above. Recovery
@@ -661,12 +661,12 @@ Filtering reduced demand updates from 1,829 to 17 and from 1,706 to 6,
 respectively, but delayed recovery and delivered fewer picture AUs overall.
 The shorter worst gaps are a tradeoff, not an established overall improvement;
 no filter is retained. The control also varies from the earlier runs, so their
-1.9-second recovery is not a guaranteed recovery time. These remain Piik
-experiments with the current Piik pipeline.
+1.9-second recovery is not a guaranteed recovery time. These remain Silip
+experiments with the current Silip pipeline.
 
 A follow-up tested whether tighter native rate control could make the two
 trials useful together. NVIDIA recommends small VBV for low-latency encoding;
-Piik's lab set the MFT
+Silip's lab set the MFT
 [H264 HRD buffer in bytes](https://learn.microsoft.com/en-us/windows/win32/codecapi/avenccommonbuffersize-property)
 to one or four frames at each rate change. On the RTX 4070 SUPER / driver 617.42,
 initial values read back correctly, but live writes returned success while

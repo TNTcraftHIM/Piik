@@ -21,7 +21,7 @@
 #endif
 
 using Clock = std::chrono::steady_clock;
-using piik::capture::Vp8Encoder;
+using silip::capture::Vp8Encoder;
 
 namespace {
 

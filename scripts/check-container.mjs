@@ -16,9 +16,9 @@ if (process.argv.length !== 4 || !image || !/^[0-9a-f]{40}$/.test(revision ?? ""
   throw new Error("Usage: node scripts/check-container.mjs <local-image> <full-source-sha>");
 }
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const project = `piik-check-${randomUUID()}`;
+const project = `silip-check-${randomUUID()}`;
 const workspace = resetBuildWorkspace(root, "container-check", project);
-const environment = { ...process.env, PIIK_IMAGE: image };
+const environment = { ...process.env, SILIP_IMAGE: image };
 function docker(...args) {
   return execFileSync("docker", args, {
     cwd: workspace, env: environment, encoding: "utf8", timeout: 90_000,
@@ -85,7 +85,7 @@ try {
   assert.equal(metadata.Os, "linux");
   assert.equal(metadata.Architecture, process.arch === "x64" ? "amd64" : process.arch);
   assert.ok(["amd64", "arm64"].includes(metadata.Architecture));
-  assert.match(compose("run", "--rm", "--no-deps", "piik", "--check-config"), /config=ok/);
+  assert.match(compose("run", "--rm", "--no-deps", "silip", "--check-config"), /config=ok/);
   compose("up", "-d", "--pull", "never");
   await until(async () => assert.deepEqual(await (await request("/healthz")).json(), { status: "ok" }), "ready");
   await expectServices(false, false);
@@ -99,13 +99,13 @@ try {
   })).json();
   assert.match(room.roomId, /^[1-9][0-9]{3}$/);
   assert.ok(room.hostToken);
-  const container = JSON.parse(docker("inspect", compose("ps", "-q", "piik")))[0];
+  const container = JSON.parse(docker("inspect", compose("ps", "-q", "silip")))[0];
   assert.equal(container.HostConfig.ReadonlyRootfs, true);
   assert.ok(container.HostConfig.CapDrop.includes("ALL"));
   assert.ok(container.HostConfig.SecurityOpt.some((value) => value.startsWith("no-new-privileges")));
 
   // Recreate with optional services on the same persistent room volume.
-  writeFileSync(join(workspace, ".env"), `${sample}\nSFU_UDP_PORT=7882\nSFU_PUBLIC_IP=127.0.0.1\nNAT_PREDICTION_ENABLED=true\nPIIK_DEBUG=server\n`);
+  writeFileSync(join(workspace, ".env"), `${sample}\nSFU_UDP_PORT=7882\nSFU_PUBLIC_IP=127.0.0.1\nNAT_PREDICTION_ENABLED=true\nSILIP_DEBUG=server\n`);
   compose("up", "-d", "--force-recreate", "--pull", "never");
   await until(() => expectServices(true, true), "optional services");
   await request(`/api/rooms/${room.roomId}/access`, {
@@ -114,16 +114,16 @@ try {
     body: JSON.stringify({ action: "set-code-entry-policy", policy: "private" }),
   });
   for (const port of [3478, 3479, 3480]) await binding(port);
-  compose("kill", "--signal", "SIGUSR1", "piik");
+  compose("kill", "--signal", "SIGUSR1", "silip");
   const state = join(workspace, "state");
   mkdirSync(state);
   await until(() => {
-    compose("cp", "piik:/home/nonroot/.", state);
+    compose("cp", "silip:/home/nonroot/.", state);
     assert.ok(readdirSync(join(state, "logs")).some((name) => name.endsWith(".zip")));
   }, "diagnostic export");
   assert.equal(readFileSync(join(state, "rooms.sqlite")).subarray(0, 16).toString(), "SQLite format 3\0");
   compose("stop");
-  const stopped = JSON.parse(docker("inspect", compose("ps", "-aq", "piik")))[0];
+  const stopped = JSON.parse(docker("inspect", compose("ps", "-aq", "silip")))[0];
   assert.equal(stopped.State.ExitCode, 0, "SIGTERM must shut down cleanly");
   process.stdout.write("Container checks passed: P2P, embedded services, room persistence, diagnostics and shutdown.\n");
 } catch (error) {

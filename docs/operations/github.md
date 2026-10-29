@@ -19,17 +19,16 @@ check settings remain a repository-owner decision. PR/issue
 templates live in `.github/`; [naming](../../CONTRIBUTING.md#commit-pr-and-branch-names)
 is shared with automatic version selection.
 
-These protections are active, including conversation resolution. GitHub Pages
-uses the **GitHub Actions** publishing source and the `piik.tv` custom domain;
-the repository homepage points to `https://piik.tv`. The dedicated Website
+`P4-aaaul/Silip` does not have these protections or GitHub Pages configured yet;
+enabling them is the owner's decision. When enabled, the dedicated Website
 workflow publishes the static site under [website operations](./website.md).
 
 ## Enable Automatic Publication Once
 
 Before enabling, accept the release packages, compatibility baseline, public
 copy and repository visibility; finish main protection. Then set repository
-Actions variable `PIIK_RELEASES_ENABLED` to `true`. This is a repository setting,
-not an environment variable for Piik App or Server.
+Actions variable `SILIP_RELEASES_ENABLED` to `true`. This is a repository setting,
+not an environment variable for Silip App or Server.
 
 Subsequent accepted PRs merged to main use the existing CI workflow. Product
 changes calculate one version, validate, package Server and all App targets,
@@ -63,10 +62,10 @@ must not replace a newer release's `latest` designation.
 To stop future automatic publication, remove/set false the activation variable;
 this does not alter existing releases or a currently running workflow. Inspect
 the active run separately. No pipeline step changes visibility or installs an
-update into a running Piik deployment.
+update into a running Silip deployment.
 
 For accepted contribution PRs that should merge without a release, set
-`PIIK_RELEASES_ENABLED=false` before merging and confirm no active publishing
+`SILIP_RELEASES_ENABLED=false` before merging and confirm no active publishing
 run will release the changes. Keep it false through subsequent merges until
 the next release is authorized. Then restore `true` before that release's
 integration merge. The existing release planner and notes collector include
@@ -75,88 +74,18 @@ release or version-record commit is needed.
 
 ## Container Registry
 
-The Server image uses `ghcr.io/tntcrafthim/piik`. The publishing job authenticates
+The Server image uses `ghcr.io/p4-aaaul/silip`. The publishing job authenticates
 with `GITHUB_TOKEN` and `packages: write`; no additional registry secret is needed.
 The image's source label links it to this repository. GitHub's
 [Container registry guide](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
 owns the registry permission and visibility behavior.
 
-At first publication, set the Piik container package's visibility to **public**
+At first publication, set the Silip container package's visibility to **public**
 in its GitHub package settings; repository visibility alone does not do this.
 Verify both its version tag and `latest` with an anonymous pull before announcing
 the Docker download. Keep repository Actions access enabled for later releases.
 Image checks, version identity and retries follow
 [container distribution](../standards/versioning.md#container-distribution).
-
-## Gitee Download Mirror
-
-[TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik) is a public README/Release
-mirror. Source, documentation and issues stay on GitHub. The **Gitee mirror**
-workflow uses the repository Actions secret `GITEE_TOKEN`, which is configured; rotate it there
-when needed. Never put it in source, a remote URL or a distributed package.
-GitHub publication continues to use the workflow's scoped token.
-
-After a successful main-push CI run, **Gitee mirror** downloads that run's original
-artifacts and runs `scripts/mirror-release.mjs`. It skips runs that did not publish
-the current GitHub release. GitHub publication and **Website** do not depend on
-mirror success. A mirror failure stays visible in its own failed workflow; an
-unfinished Gitee release remains a preview.
-
-Rerun **Gitee mirror** to verify existing files and upload only missing ones.
-Read retries cover the complete JSON or attachment body, not just response
-headers. A partial attachment is discarded and its checksum starts again on
-the next bounded attempt. Uploads and other mutations are not blindly retried
-after an ambiguous timeout; rerunning inventories existing attachments first.
-Operation and package progress identify which transfer failed without recording
-tokens. A successful retry does not by itself identify the earlier network cause.
-For a separate retry, dispatch it on `main` with the **original CI run ID**:
-
-```sh
-gh workflow run gitee-mirror.yml --repo TNTcraftHIM/Piik --ref main -f run_id=RUN_ID
-```
-
-The source must be a completed main-push run of this repository's CI workflow,
-matching the latest published GitHub release. Manual recovery also accepts a
-legacy CI run that failed after GitHub publication. The workflow executes trusted
-main tooling and treats downloaded artifacts only as data. Old retries cannot
-complete a mirror for a superseded release. Both publishers reject changing a
-published package; use a corrected new version if its bytes are wrong.
-
-For a local retry, first let any active mirror workflow finish. Use the release
-revision's scripts and original complete build output retained outside the
-checkout. Earlier versions can have a different
-package set. While the publishing run's artifacts are available, download all packages
-into one directory (replace `RUN_ID`, `FULL_SOURCE_SHA` and `VERSION`):
-
-```sh
-for artifact in piik-server piik-server-linux-arm64 piik-server-windows-amd64 piik-app-windows-amd64 piik-app-linux-amd64 piik-app-linux-arm64 piik-app-darwin-arm64 piik-app-darwin-amd64 piik-app-android-universal; do
-  gh run download RUN_ID --repo TNTcraftHIM/Piik \
-    --name "$artifact-FULL_SOURCE_SHA" --dir /tmp/piik-mirror
-done
-node scripts/mirror-release.mjs /tmp/piik-mirror VERSION FULL_SOURCE_SHA
-```
-
-Use a fresh directory. Public Release downloads contain only runtime archives;
-mirror verification also needs the original descriptors, manifest and checksum
-files. If CI artifacts have expired, recover that complete output from the
-operator's retained copy. Rebuilding a published version is not a metadata
-recovery procedure. See [artifact retention](../deployment.md#build-host).
-
-Use the release's actual version and full `target_commitish` SHA, with
-`GITEE_TOKEN` supplied through the publisher environment. `--dry-run` after the
-three arguments checks local identity, checksums and attachment sizes without
-publishing. The [release-source policy](../standards/versioning.md#release-sources)
-owns provenance, selection and quota limits. The first public release passed
-complete matching mirror download acceptance for every Server and App package.
-
-Release postflight applies the [two-version mirror retention policy](../standards/versioning.md#release-sources).
-After verifying the latest mirror and its fallback against GitHub, inventory
-older releases with `/releases/{id}/attach_files`, verify their GitHub originals,
-then remove only the reviewed attachments through
-`DELETE /releases/{id}/attach_files/{attachment_id}`. Recheck both retained
-versions and the anonymous `download/latest` links afterward. Keep deletion
-inventories and verification results with operator release records, not source
-history. The upload script does not itself delete older attachments.
 
 ## Platform References
 

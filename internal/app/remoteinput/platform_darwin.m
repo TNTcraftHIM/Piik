@@ -40,22 +40,22 @@ static bool focused_window(uint32_t pid, CGRect rect) {
   return focused;
 }
 
-PiikInputTargetResult piik_input_target(bool window, uint32_t id, uint32_t pid, uint64_t created,
-                       PiikInputBounds *bounds) {
+SilipInputTargetResult silip_input_target(bool window, uint32_t id, uint32_t pid, uint64_t created,
+                       SilipInputBounds *bounds) {
   CGRect rect = CGRectNull;
   bool focused = true;
   if (!window) {
-    if (!CGDisplayIsActive(id)) return PiikInputTargetUnavailable;
+    if (!CGDisplayIsActive(id)) return SilipInputTargetUnavailable;
     rect = CGDisplayBounds(id);
   } else {
     struct proc_bsdinfo process = {0};
-    if (!pid || !created) return PiikInputTargetInvalid;
+    if (!pid || !created) return SilipInputTargetInvalid;
     if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &process, sizeof(process)) != sizeof(process))
-      return PiikInputTargetUnavailable;
+      return SilipInputTargetUnavailable;
     if (process.pbi_start_tvsec * 1000000ULL + process.pbi_start_tvusec != created)
-      return PiikInputTargetInvalid;
+      return SilipInputTargetInvalid;
     CFArrayRef windows = CGWindowListCopyWindowInfo(kCGWindowListOptionAll, kCGNullWindowID);
-    if (!windows) return PiikInputTargetUnavailable;
+    if (!windows) return SilipInputTargetUnavailable;
     bool found = false;
     for (CFIndex index = 0; index < CFArrayGetCount(windows); ++index) {
       CFDictionaryRef entry = CFArrayGetValueAtIndex(windows, index);
@@ -66,7 +66,7 @@ PiikInputTargetResult piik_input_target(bool window, uint32_t id, uint32_t pid, 
       CFDictionaryRef geometry = CFDictionaryGetValue(entry, kCGWindowBounds);
       if (geometry) CGRectMakeWithDictionaryRepresentation(geometry, &rect);
     }
-    if (!found) { CFRelease(windows); return PiikInputTargetInvalid; }
+    if (!found) { CFRelease(windows); return SilipInputTargetInvalid; }
     // Public AX has no CGWindowID. Match the actual key window's geometry only
     // when it identifies exactly one window of this process; z-order is not focus.
     unsigned matches = 0;
@@ -81,9 +81,9 @@ PiikInputTargetResult piik_input_target(bool window, uint32_t id, uint32_t pid, 
     focused = matches == 1 && focused_window(pid, rect);
     CFRelease(windows);
   }
-  if (CGRectIsNull(rect) || CGRectIsEmpty(rect)) return PiikInputTargetUnavailable;
-  *bounds = (PiikInputBounds){rect.origin.x, rect.origin.y, rect.size.width, rect.size.height, focused};
-  return PiikInputTargetReady;
+  if (CGRectIsNull(rect) || CGRectIsEmpty(rect)) return SilipInputTargetUnavailable;
+  *bounds = (SilipInputBounds){rect.origin.x, rect.origin.y, rect.size.width, rect.size.height, focused};
+  return SilipInputTargetReady;
 }
 
 static bool post(CGEventRef event, uint64_t flags) {
@@ -94,7 +94,7 @@ static bool post(CGEventRef event, uint64_t flags) {
   return true;
 }
 
-bool piik_input_key(CGEventSourceRef source, uint16_t code, bool down,
+bool silip_input_key(CGEventSourceRef source, uint16_t code, bool down,
                     uint64_t flags, bool repeat) {
   CGEventRef event = CGEventCreateKeyboardEvent(source, code, down);
   if (event) {
@@ -104,9 +104,9 @@ bool piik_input_key(CGEventSourceRef source, uint16_t code, bool down,
   return post(event, flags);
 }
 
-bool piik_input_pointer(CGEventSourceRef source, double x, double y,
+bool silip_input_pointer(CGEventSourceRef source, double x, double y,
                         int button, bool down, int drag, bool relative,
-                        uint64_t flags, PiikInputClick *click) {
+                        uint64_t flags, SilipInputClick *click) {
   CGEventRef current = CGEventCreate(NULL);
   if (!current) return false;
   CGPoint point = CGEventGetLocation(current);
@@ -143,12 +143,12 @@ bool piik_input_pointer(CGEventSourceRef source, double x, double y,
   return post(event, flags);
 }
 
-bool piik_input_scroll(CGEventSourceRef source, int32_t delta, uint64_t flags) {
+bool silip_input_scroll(CGEventSourceRef source, int32_t delta, uint64_t flags) {
   // The shared input session already normalizes wheel deltas to positive up.
   return post(CGEventCreateScrollWheelEvent(source, kCGScrollEventUnitPixel, 1, delta), flags);
 }
 
-bool piik_input_text(CGEventSourceRef source, const uint16_t *text, size_t length) {
+bool silip_input_text(CGEventSourceRef source, const uint16_t *text, size_t length) {
   CGEventRef down = CGEventCreateKeyboardEvent(source, 0, true);
   CGEventRef up = CGEventCreateKeyboardEvent(source, 0, false);
   if (!down || !up) {
@@ -161,7 +161,7 @@ bool piik_input_text(CGEventSourceRef source, const uint16_t *text, size_t lengt
   return post(down, 0) && post(up, 0);
 }
 
-bool piik_input_stop_pressed(uint16_t key) {
+bool silip_input_stop_pressed(uint16_t key) {
   // Inspect only the local emergency chord; no event tap or key log.
   CGEventSourceStateID state = kCGEventSourceStateHIDSystemState;
   return (CGEventSourceKeyState(state, 59) || CGEventSourceKeyState(state, 62)) &&

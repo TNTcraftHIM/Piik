@@ -9,10 +9,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 )
 
 const audioPeriod = 20 * time.Millisecond
@@ -99,7 +99,7 @@ func (mix *audioMix) read(input *audioInput, microphone bool) {
 		if err != nil || frame.Kind != nativecapture.FramePCM || len(frame.Data) != nativeaudio.FrameBytes || frame.Duration != audioPeriod {
 			mix.mu.Unlock()
 			mix.inputEnded(input, microphone)
-			slog.DebugContext(mix.ctx, "piik-client", "event", "audio-input-ended", "microphone", microphone, diagnostics.Error(err))
+			slog.DebugContext(mix.ctx, "silip-client", "event", "audio-input-ended", "microphone", microphone, diagnostics.Error(err))
 			_ = input.stream.Close()
 			return
 		}

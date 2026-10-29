@@ -9,7 +9,7 @@ import (
 )
 
 // CheckAudioReceiveLimit admits unchanged Opus forwarding. A receiver may not
-// lower the shared source or its siblings. Piik receivers declare the full Opus
+// lower the shared source or its siblings. Silip receivers declare the full Opus
 // range; an omitted preference uses codec defaults, not an unrestricted rate.
 func CheckAudioReceiveLimit(description string, sourceCeiling int) error {
 	var session sdp.SessionDescription

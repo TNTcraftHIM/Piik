@@ -9,9 +9,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
 	"github.com/pion/interceptor"
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -196,7 +196,7 @@ func (engine *Engine) newSource(codec string, capacity, layers int, relay *Relay
 		source.relay = &relayDerivation{source: source, options: *relay}
 	}
 	media, err := forwarding.NewEncodedSource(forwarding.SourceOptions{
-		ID: "screen", StreamID: "piik-native", Codec: videoCodecs[codec],
+		ID: "screen", StreamID: "silip-native", Codec: videoCodecs[codec],
 		Formats: make([]forwarding.LayerFormat, layers), MaxPackets: encoded.MaxPacketWindow,
 		OnRTCP: func(layer int, packets []rtcp.Packet) {
 			for _, packet := range packets {

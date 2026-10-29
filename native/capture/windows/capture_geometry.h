@@ -8,7 +8,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace piik::capture {
+namespace silip::capture {
 
 inline SIZE DisplayedFrameSize(SIZE captured, SIZE desktop, SIZE target,
                                DISPLAYCONFIG_SCALING scaling,
@@ -57,4 +57,4 @@ inline SIZE BoundedFrameSize(SIZE content, SIZE ceiling) {
   };
 }
 
-}  // namespace piik::capture
+}  // namespace silip::capture

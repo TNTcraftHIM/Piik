@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 )
 
 func TestVolunteerFanoutSharesBoundedOutputsAndReleasesPhysicalCapacity(t *testing.T) {

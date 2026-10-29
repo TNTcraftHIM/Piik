@@ -3,7 +3,7 @@ package route
 import (
 	"maps"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // SetVoiceListeners supplies current room permission, not a second topology.

@@ -63,7 +63,7 @@ it("accepts repeated retirement of an absent Linux gate profile", async () => {
     vi.resetModules();
     const { cleanupRun } = await import("../scripts/browser-gate-harness");
     const resources = { cdp: null, native: null, chrome: null, server: null,
-      profile: join(tmpdir(), "piik-client-media-AbCd12"), ports: [] };
+      profile: join(tmpdir(), "silip-client-media-AbCd12"), ports: [] };
     expect((await cleanupRun(resources)).profileRemoved).toBe(true);
     expect((await cleanupRun(resources)).profileRemoved).toBe(true);
     expect(rm).not.toHaveBeenCalled();

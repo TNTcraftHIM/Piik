@@ -7,13 +7,13 @@ export const FILMS = {
 };
 
 const UI_CSS = `
-:host { all: initial; display: block; position: relative; container-type: inline-size; font: 16px/1.2 system-ui, sans-serif; color: var(--ink); color-scheme: inherit; width: 100%; aspect-ratio: var(--ar, 16 / 9); background: var(--piik-dark-wall); overflow: hidden; border-radius: var(--piik-radius, 0px); contain: content; -webkit-tap-highlight-color: transparent; }
+:host { all: initial; display: block; position: relative; container-type: inline-size; font: 16px/1.2 system-ui, sans-serif; color: var(--ink); color-scheme: inherit; width: 100%; aspect-ratio: var(--ar, 16 / 9); background: var(--silip-dark-wall); overflow: hidden; border-radius: var(--silip-radius, 0px); contain: content; -webkit-tap-highlight-color: transparent; }
 :host([hidden]) { display: none; }
 .pk-bar, .pk-bar *, .pk-cover, .pk-cover *, .pk-status { box-sizing: border-box; }
 .pk-frame { position: absolute; inset: 0; }
 #wrap { position: absolute; left: 0; top: 0; overflow: hidden; }
 #stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.pk-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(transparent, color-mix(in srgb, var(--piik-dark-wall) 24%, transparent)); cursor: pointer; transition: opacity .25s; }
+.pk-cover { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(transparent, color-mix(in srgb, var(--silip-dark-wall) 24%, transparent)); cursor: pointer; transition: opacity .25s; }
 .pk-cover[hidden], .pk-loading[hidden], .pk-status:empty { display: none; }
 .pk-big { --button-size: clamp(56px, 9cqw, 88px); --button-icon-size: clamp(24px, 4cqw, 36px); width: var(--button-size); padding: 0; }
 .pk-bar { position: absolute; inset: auto 8px max(8px, env(safe-area-inset-bottom)); width: min(640px, calc(100% - 16px)); flex-wrap: nowrap; gap: 4px; font: 600 12px/1.2 system-ui, sans-serif; opacity: 0; pointer-events: none; transform: translateY(6px); transition: opacity 180ms ease, transform 220ms var(--spring); }
@@ -23,7 +23,7 @@ const UI_CSS = `
 button { font-family: inherit; cursor: pointer; touch-action: manipulation; }
 .pk-track { flex: 1; width: 100%; min-width: 24px; height: var(--control-compact-size); padding: 0; margin: 0 4px; accent-color: var(--action); cursor: pointer; }
 .pk-time { flex: none; margin-inline: 4px; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 500; }
-.pk-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--piik-dark-ink); font: 600 13px system-ui, sans-serif; opacity: .8; }
+.pk-loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--silip-dark-ink); font: 600 13px system-ui, sans-serif; opacity: .8; }
 :host([controls="none"]) .pk-bar { display: none; }
 :host(:not([data-playing]):not([data-ended])) .pk-bar { opacity: 1; pointer-events: auto; transform: none; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--action); outline-offset: 2px; }
@@ -39,7 +39,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--action); ou
 const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 
 
-export class PiikPromo extends HTMLElement {
+export class SilipPromo extends HTMLElement {
   static get observedAttributes() { return ['lang', 'film']; }
   constructor() {
     super();
@@ -169,7 +169,7 @@ export class PiikPromo extends HTMLElement {
     const play = this.playing ? label('Pause', '暂停') : this.t >= this.duration && this.duration ? label('Replay', '重播') : label('Play', '播放');
     this.toggleAttribute('data-playing', this.playing);
     this.setAttribute('role', 'group');
-    this.setAttribute('aria-label', this.meta?.title[this.lang2()] || label('Piik film', 'Piik 短片'));
+    this.setAttribute('aria-label', this.meta?.title[this.lang2()] || label('Silip film', 'Silip 短片'));
     this.$('.pk-bar').setAttribute('aria-label', label('Playback controls', '播放控制'));
     this.$('.pk-pp').innerHTML = this.playing ? ICON.pause : this.t >= this.duration && this.duration ? ICON.refresh : ICON.play;
     this.$('.pk-pp').setAttribute('aria-label', play);
@@ -251,7 +251,7 @@ export class PiikPromo extends HTMLElement {
         film?.dispose?.();
         if (current()) {
           this.status('The film could not load. Try Play again.', '短片暂时无法加载，请点击播放重试。');
-          console.warn('[piik] film unavailable', error);
+          console.warn('[silip] film unavailable', error);
         }
         return null;
       } finally {
@@ -363,10 +363,10 @@ export class PiikPromo extends HTMLElement {
     }
   }
 }
-if (!customElements.get('piik-promo')) customElements.define('piik-promo', PiikPromo);
+if (!customElements.get('silip-promo')) customElements.define('silip-promo', SilipPromo);
 
 export function mount(container, opts = {}) {
-  const element = document.createElement('piik-promo');
+  const element = document.createElement('silip-promo');
   for (const [key, value] of Object.entries(opts)) if (value !== false && value != null) element.setAttribute(key, value === true ? '' : value);
   container.appendChild(element);
   return element;

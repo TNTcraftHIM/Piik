@@ -3,9 +3,9 @@ package nativecontrol
 import (
 	"context"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativehost"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
 )
 
 // CaptureProvider supplies the platform capture operations used by the control

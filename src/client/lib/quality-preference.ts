@@ -5,7 +5,7 @@ import {
 } from "../../shared/protocol";
 import { supportsCaptureProfile } from "../media/quality";
 
-const STORAGE_KEY = "piik:quality-preference:v1";
+const STORAGE_KEY = "silip:quality-preference:v1";
 
 export function readPreferredQuality(): QualitySettings {
   try {

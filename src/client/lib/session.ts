@@ -12,9 +12,9 @@ import { withBrowserDebug } from "./debug";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../native/discovery-ports";
 
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{8,128}$/;
-const CLIENT_LAUNCH_STORAGE_KEY = "piik:client-launch:v1";
-const CLIENT_RUNTIME_STORAGE_KEY = "piik:client-runtime-port";
-const CLIENT_ACTIVATION_EVENT = "piik-client-activation";
+const CLIENT_LAUNCH_STORAGE_KEY = "silip:client-launch:v1";
+const CLIENT_RUNTIME_STORAGE_KEY = "silip:client-runtime-port";
+const CLIENT_ACTIVATION_EVENT = "silip-client-activation";
 // Keep the selected App through this tab's reloads, without copying it into invites.
 let clientPortInPage = parseClientRuntimePort(readSessionValue(CLIENT_RUNTIME_STORAGE_KEY));
 let clientActivatedInPage = clientPortInPage !== null;
@@ -48,8 +48,8 @@ export function watchClientActivation(changed: () => void): () => void {
     window.removeEventListener("storage", onStorage);
   };
 }
-const HOST_ROOM_STORAGE_KEY = "piik:host-room:v1";
-const HOST_ROOM_PREFERENCE_STORAGE_KEY = "piik:host-room-preference:v1";
+const HOST_ROOM_STORAGE_KEY = "silip:host-room:v1";
+const HOST_ROOM_PREFERENCE_STORAGE_KEY = "silip:host-room-preference:v1";
 const hostRoomStorageSchema = createRoomResponseSchema.pick({
   roomId: true,
   hostToken: true,
@@ -149,15 +149,15 @@ export interface ClientLaunchPresentation {
 export function clientLaunchURL(target: string, presentation: ClientLaunchPresentation, debug?: boolean, controlPort?: number): string {
   const url = new URL(target);
   const params = new URLSearchParams(url.hash.slice(1));
-  if (controlPort !== undefined) url.searchParams.set("piik-client-port", String(controlPort));
-  params.set("piik-lang", presentation.lang);
-  params.set("piik-mode", presentation.vis ? "vis" : "text");
-  params.set("piik-theme", presentation.theme ?? "system");
+  if (controlPort !== undefined) url.searchParams.set("silip-client-port", String(controlPort));
+  params.set("silip-lang", presentation.lang);
+  params.set("silip-mode", presentation.vis ? "vis" : "text");
+  params.set("silip-theme", presentation.theme ?? "system");
   // Keep the public tuple for older Sites. The non-secret provenance goes in
   // the query: an unknown fragment key would corrupt their exact #v= parser.
-  url.searchParams.delete("piik-preferences");
+  url.searchParams.delete("silip-preferences");
   if (presentation.explicit?.length) {
-    url.searchParams.set("piik-preferences", presentation.explicit.join(","));
+    url.searchParams.set("silip-preferences", presentation.explicit.join(","));
   }
   url.hash = params.toString();
   return withBrowserDebug(url.toString(), debug);
@@ -167,25 +167,25 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
   const keys = [
     "client-access",
-    "piik-client",
-    "piik-lang",
-    "piik-mode",
-    "piik-theme",
+    "silip-client",
+    "silip-lang",
+    "silip-mode",
+    "silip-theme",
   ] as const;
   const query = new URLSearchParams(window.location.search);
-  const present = keys.some((key) => params.has(key)) || query.has("piik-preferences") || query.has("piik-client-port");
+  const present = keys.some((key) => params.has(key)) || query.has("silip-preferences") || query.has("silip-client-port");
   const accessValue = params.get("client-access");
-  const launchedFromFragment = params.get("piik-client") === "1";
+  const launchedFromFragment = params.get("silip-client") === "1";
   if (launchedFromFragment) {
     clientActivatedInPage = true;
-    clientPortInPage = parseClientRuntimePort(query.get("piik-client-port"));
+    clientPortInPage = parseClientRuntimePort(query.get("silip-client-port"));
     if (clientPortInPage !== null) writeSessionValue(CLIENT_RUNTIME_STORAGE_KEY, String(clientPortInPage));
     else try { window.sessionStorage.removeItem(CLIENT_RUNTIME_STORAGE_KEY); } catch { /* Storage is optional. */ }
   }
-  const lang = params.get("piik-lang");
-  const mode = params.get("piik-mode");
-  const theme = params.get("piik-theme");
-  const preferenceFields = query.get("piik-preferences")?.split(",") ?? [];
+  const lang = params.get("silip-lang");
+  const mode = params.get("silip-mode");
+  const theme = params.get("silip-theme");
+  const preferenceFields = query.get("silip-preferences")?.split(",") ?? [];
   const presentation: Partial<ClientLaunchPresentation> = {
     ...(isLang(lang) ? { lang } : {}),
     ...(mode === "vis" || mode === "text" ? { vis: mode === "vis" } : {}),
@@ -215,8 +215,8 @@ export function takeClientLaunchBootstrap(): ClientLaunchBootstrap {
   };
   if (present) {
     for (const key of keys) params.delete(key);
-    query.delete("piik-preferences");
-    query.delete("piik-client-port");
+    query.delete("silip-preferences");
+    query.delete("silip-client-port");
     const search = query.toString();
     const remaining = params.toString();
     window.history.replaceState(
@@ -372,7 +372,7 @@ function claimHostRoom(
         byte.toString(16).padStart(2, "0"),
       ).join("");
       await locks.request(
-        `piik:host-room:${room.roomId}:${identity}`,
+        `silip:host-room:${room.roomId}:${identity}`,
         { ifAvailable: true },
         async (lock) => {
           resolveReady(lock !== null);
@@ -620,7 +620,7 @@ export function clearViewerGrant(roomId: string): void {
 }
 
 function viewerGrantStorageKey(roomId: string): string {
-  return `piik:viewer-grant:${roomId}`;
+  return `silip:viewer-grant:${roomId}`;
 }
 
 function isValidViewerGrant(value: string): boolean {
@@ -628,7 +628,7 @@ function isValidViewerGrant(value: string): boolean {
 }
 
 export function getStableClientId(role: "host" | "viewer", roomId: string): string {
-  const storageKey = `piik:client-id:${role}:${roomId}`;
+  const storageKey = `silip:client-id:${role}:${roomId}`;
   const existing = readSessionValue(storageKey);
   if (existing && CLIENT_ID_PATTERN.test(existing)) {
     return existing;

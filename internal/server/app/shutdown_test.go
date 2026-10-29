@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/room"
+	"github.com/P4-aaaul/Silip/internal/server/room"
 )
 
 type admittedBody struct {

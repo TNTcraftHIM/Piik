@@ -16,7 +16,7 @@ const files = artifacts.files.map((file) => file.path);
 if (option === "--dry-run") {
   process.stdout.write(`${JSON.stringify({ version, revision, targets: artifacts.targets, files: files.length })}\n`);
 } else {
-  const repository = process.env.GITHUB_REPOSITORY || "TNTcraftHIM/Piik";
+  const repository = process.env.GITHUB_REPOSITORY || "P4-aaaul/Silip";
   const gh = (...args) => execFileSync("gh", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   function verifyTag(required = false) {
     // A successful empty match is absence; API/authentication errors must fail.
@@ -52,7 +52,7 @@ if (option === "--dry-run") {
     }
   }
   const checksums = artifacts.files.map((file) => `${file.sha256}  ${file.name}`).join("\n");
-  const start = "<!-- piik-build-checksums:start -->", end = "<!-- piik-build-checksums:end -->";
+  const start = "<!-- silip-build-checksums:start -->", end = "<!-- silip-build-checksums:end -->";
   const generated = `${start}\n<details>\n<summary>构建与校验 / Build and checksums</summary>\n\n` +
     `[Source / 源码: ${revision}](https://github.com/${repository}/commit/${revision})\n\n` +
     `SHA-256:\n\n\`\`\`text\n${checksums}\n\`\`\`\n\n</details>\n${end}`;
@@ -66,12 +66,12 @@ if (option === "--dry-run") {
   // Preserve reviewed prose while refreshing only this generated draft section.
   const body = begin < 0 ? `${copy}\n\n${generated}\n`
     : copy.slice(0, begin) + generated + copy.slice(finish + end.length);
-  const notes = join(tmpdir(), `piik-release-notes-${randomUUID()}.md`);
+  const notes = join(tmpdir(), `silip-release-notes-${randomUUID()}.md`);
   writeFileSync(notes, body, { flag: "wx" });
   try {
     if (!existing) {
       gh("release", "create", version, "--repo", repository, "--target", revision,
-        "--draft", "--title", `Piik ${version}`, "--notes-file", notes);
+        "--draft", "--title", `Silip ${version}`, "--notes-file", notes);
     } else {
       gh("release", "edit", version, "--repo", repository, "--notes-file", notes);
     }

@@ -1,6 +1,6 @@
 # Windows Capture Process
 
-This isolated Windows process provides native capture for Piik App. It
+This isolated Windows process provides native capture for Silip App. It
 enumerates local displays and visible top-level windows, binds each window to
 its PID and process creation time, and has independent modes for:
 
@@ -73,7 +73,7 @@ records current evidence and limits.
 
 The implementation follows Microsoft's MIT-licensed reference samples and
 official API contracts without copying their WIL framework. The retained MF
-fixture compiles the same encoder source with `PIIK_H264_FIXTURE`; there is
+fixture compiles the same encoder source with `SILIP_H264_FIXTURE`; there is
 not a second product MFT implementation.
 Shared local outputs use stock WebRTC source/encoder adaptation. H264 keeps
 native NV12 surfaces, while WebRTC VP8 reads back into I420. The existing capture

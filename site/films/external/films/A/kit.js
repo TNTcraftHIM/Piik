@@ -330,7 +330,7 @@ export function callingCard(parent, { w = 560, hgt = 780, lines, sign, top: topL
   front.inner.style.backgroundImage = `url(${paperURL()})`;
   const band = h('div', { class: 'abs' }, front.inner);
   Object.assign(band.style, { left: '-80px', top: '250px', width: w + 160 + 'px', height: '260px', background: C.yellow, transform: 'rotate(-11deg)' });
-  const top = h('div', { class: 'abs hud nowrap', html: `<span>PIIK · INVITATION</span><span>${topLabel}</span>` }, front.inner);
+  const top = h('div', { class: 'abs hud nowrap', html: `<span>SILIP · INVITATION</span><span>${topLabel}</span>` }, front.inner);
   Object.assign(top.style, { left: '0', top: '0', width: w - 24 + 'px', padding: '18px 26px', boxSizing: 'border-box', display: 'flex', justifyContent: 'space-between', background: C.ink2, color: C.cream, font: '600 22px/1 "Barlow Condensed"', letterSpacing: '.2em' });
   const r1 = ransom(front.inner, lines[0], { size: sizes[0], seed, tilt: 6, punctColor: C.ink2, punctScale: 0.8 });
   const r2 = ransom(front.inner, lines[1], { size: sizes[1], seed: seed + 7, tilt: 7, punctColor: C.ink2, punctScale: 0.8 });
@@ -354,7 +354,7 @@ export function callingCard(parent, { w = 560, hgt = 780, lines, sign, top: topL
   const bm = mascot({ stroke: C.ink, fill: C.cream, size: 320, sparkles: false });
   back.inner.appendChild(bm.el);
   Object.assign(bm.el.style, { position: 'absolute', left: (w - 24 - 320) / 2 + 'px', top: '180px' });
-  const bw = h('div', { class: 'abs nowrap', html: 'Piik<span class="identity-dot">.</span>' }, back.inner);
+  const bw = h('div', { class: 'abs nowrap', html: 'Silip<span class="identity-dot">.</span>' }, back.inner);
   Object.assign(bw.style, { left: '0', width: w - 24 + 'px', textAlign: 'center', top: '540px', font: WORDMARK(120), letterSpacing: '-6px', color: C.ink });
   return { el, front, back, r1, r2, sg };
 }

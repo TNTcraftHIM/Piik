@@ -1,4 +1,4 @@
-// Piik film engine — core.
+// Silip film engine — core.
 // Every frame is a pure function of time t (seconds): no CSS transitions, no wall-clock animation.
 // That makes frames reproducible, renderable out of order (parallel workers) and frame-locked to the audio.
 

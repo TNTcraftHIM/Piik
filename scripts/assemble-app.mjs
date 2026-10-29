@@ -137,7 +137,7 @@ function readDescriptor(path) {
 function assertOutputDirectory(repositoryRoot, outputRoot, target) {
   const path = relative(repositoryRoot, outputRoot);
   const candidateOutput = join(repositoryRoot, "build", "app-package", target.id,
-    "candidate", `piik-app-${target.id}`);
+    "candidate", `silip-app-${target.id}`);
   if (outputRoot !== candidateOutput &&
       (path === "" || (path.split(/[\\/]/)[0] !== ".." && !isAbsolute(path)))) {
     fail("App output must be outside the repository or its exact candidate workspace");
@@ -204,8 +204,8 @@ if (tunnelPath) assertTargetExecutable(tunnelPath, target, "Public tunnel runtim
 
 const descriptor = readDescriptor(descriptorPath);
 const version = descriptor.version;
-process.env.VITE_PIIK_VERSION = version;
-process.env.VITE_PIIK_REVISION = descriptor.revision;
+process.env.VITE_SILIP_VERSION = version;
+process.env.VITE_SILIP_REVISION = descriptor.revision;
 const revision = assertCleanRevision(repositoryRoot, descriptor.revision);
 const artifactPath = join(dirname(descriptorPath), descriptor.artifact);
 if (!existsSync(artifactPath) || sha256(artifactPath) !== descriptor.artifactSha256) {
@@ -252,15 +252,15 @@ try {
 
   const appName = target.appName;
   const appPath = join(runtimeRoot, appName);
-  const goCommand = process.env.PIIK_GO?.trim() || "go";
+  const goCommand = process.env.SILIP_GO?.trim() || "go";
   run(goCommand, [
     "build",
     "-trimpath",
     "-ldflags",
-    `-s -w -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Revision=${revision} -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Release=${version}`,
+    `-s -w -X github.com/P4-aaaul/Silip/internal/app/buildinfo.Revision=${revision} -X github.com/P4-aaaul/Silip/internal/app/buildinfo.Release=${version}`,
     "-o",
     appPath,
-    "./cmd/piik-app",
+    "./cmd/silip-app",
   ], repositoryRoot, goBuildEnvironment(target));
   chmodSync(appPath, 0o755);
   assertTargetExecutable(appPath, target, "App executable");
@@ -271,7 +271,7 @@ try {
     target,
     version,
     revision,
-    iconPath: join(repositoryRoot, "cmd", "piik-app", "piik.ico"),
+    iconPath: join(repositoryRoot, "cmd", "silip-app", "silip.ico"),
   });
   writeFileSync(join(runtimeRoot, "REVISION"), `${revision}\n`, "ascii");
 

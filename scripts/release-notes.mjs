@@ -69,11 +69,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       throw new Error("Use release-notes.mjs <version> <full-SHA> [--github-summary]");
     }
     const body = releaseNotes(process.cwd(), version, revision,
-      process.env.GITHUB_REPOSITORY || "TNTcraftHIM/Piik", { allowEmpty: Boolean(option) });
+      process.env.GITHUB_REPOSITORY || "P4-aaaul/Silip", { allowEmpty: Boolean(option) });
     if (option) {
       if (!process.env.GITHUB_STEP_SUMMARY) throw new Error("GITHUB_STEP_SUMMARY is missing");
       appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-        `## Release notes preview: Piik ${version}\n\n${body || "No product changes; this candidate does not publish a release.\n"}`);
+        `## Release notes preview: Silip ${version}\n\n${body || "No product changes; this candidate does not publish a release.\n"}`);
     }
     process.stdout.write(body);
   }

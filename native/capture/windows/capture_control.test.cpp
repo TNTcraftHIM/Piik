@@ -17,10 +17,10 @@
 void CheckOutputPipe() {
   HANDLE input = nullptr, output = nullptr;
   assert(CreatePipe(&input, &output, nullptr, 4096));
-  piik::capture::ProtocolWriter writer(output);
+  silip::capture::ProtocolWriter writer(output);
   assert(SUCCEEDED(writer.WriteBegin(333'333, 333'333)));
   const std::array<BYTE, 3> payload{1, 2, 3};
-  assert(SUCCEEDED(writer.Write(piik::capture::OutputKind::vp8, 1,
+  assert(SUCCEEDED(writer.Write(silip::capture::OutputKind::vp8, 1,
       333'333, 333'333, payload.data(), static_cast<DWORD>(payload.size()), 1, 320, 180)));
   std::array<BYTE, 67> data{};
   DWORD received = 0;
@@ -32,7 +32,7 @@ void CheckOutputPipe() {
   std::vector<BYTE> large(256 * 1024, 128);
   HRESULT result = S_OK;
   std::thread blocked([&]() {
-    result = writer.Write(piik::capture::OutputKind::vp8, 0,
+    result = writer.Write(silip::capture::OutputKind::vp8, 0,
         666'666, 333'333, large.data(), static_cast<DWORD>(large.size()), 1, 320, 180);
   });
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
@@ -56,7 +56,7 @@ void CheckOutputPipe() {
 
 void CheckMailboxWorkers() {
   struct Input { uint32_t index; };
-  using Mailbox = piik::capture::OutputMailbox<Input>;
+  using Mailbox = silip::capture::OutputMailbox<Input>;
   std::array<Mailbox, 3> mailboxes{Mailbox(90'000), Mailbox(300'000), Mailbox(1'200'000)};
   std::array<std::thread, 3> workers;
   std::array<uint32_t, 3> last{}, count{}, retired{}, bitrate{};
@@ -156,7 +156,7 @@ void CheckMailboxWorkers() {
 }
 
 void CheckIndependentActivation() {
-  using Mailbox = piik::capture::OutputMailbox<int>;
+  using Mailbox = silip::capture::OutputMailbox<int>;
   Mailbox original(300'000), extra(90'000, false);
   original.Submit(std::make_shared<int>(1));
   const auto original_frame = original.Take();
@@ -194,7 +194,7 @@ void CheckInputEnvelopes() {
   control[5] = 7;
   control[31] = 4;
   control += "K -1";
-  piik::capture::InputEnvelopes parser;
+  silip::capture::InputEnvelopes parser;
   assert(parser.Feed(std::string_view(control).substr(0, 11)).empty());
   assert(!parser.Empty());
   const auto controls = parser.Feed(std::string_view(control).substr(11));
@@ -208,7 +208,7 @@ void CheckInputEnvelopes() {
 }
 
 int main() {
-  using piik::capture::CaptureControls;
+  using silip::capture::CaptureControls;
   assert(CaptureControls::Parse("K -1").layer == -1);
   assert(CaptureControls::Parse("A 5 1").layer == 5);
   assert(CaptureControls::Parse("A 5 1").value == 1);
@@ -227,8 +227,8 @@ int main() {
   catch (const std::runtime_error&) { rejected = true; }
   assert(rejected);
 
-  piik::capture::Vp8Encoder encoder(160, 90, 30, 90'000);
-  piik::capture::Vp8Decoder decoder;
+  silip::capture::Vp8Encoder encoder(160, 90, 30, 90'000);
+  silip::capture::Vp8Decoder decoder;
   std::vector<uint8_t> pixels(160 * 90 * 3 / 2, 128);
   for (uint32_t frame = 0; frame < 12; ++frame) {
     if (frame == 4) encoder.SetBitrate(30'000);

@@ -7,7 +7,7 @@ together. The Host shares an App window or screen; friends join in their browser
 
 ## Start remote control
 
-1. Share through Piik App using **Apps / Windows** or **Screens**.
+1. Share through Silip App using **Apps / Windows** or **Screens**.
 2. Open **Remote control** below the picture and turn it on. It starts with
    **Ask each time**.
 3. Your friend selects **Request control** in their playback bar. On the Host
@@ -50,7 +50,7 @@ Both Host and Viewers can see who has joined; ending control removes the marker.
 ## Gamepads
 
 The Host installs any required external input components from their official
-source. Piik does not bundle, download or install third-party gamepad SDKs or
+source. Silip does not bundle, download or install third-party gamepad SDKs or
 drivers on any platform.
 
 | Host system | Current gamepad support |
@@ -60,25 +60,25 @@ drivers on any platform.
 | macOS | Independent gamepads are not available in the current App; the native backend needs Apple authorization. |
 
 Each remote player can use one browser-recognized controller as a separate
-Xbox 360 controller on a **Windows x64 Host**. Piik transports and maps its input;
+Xbox 360 controller on a **Windows x64 Host**. Silip transports and maps its input;
 the Host's optional ViGEmBus driver creates the virtual device.
 
 1. On the Host, install the official
    [ViGEmBus 1.22.0 release](https://github.com/nefarius/ViGEmBus/releases/tag/v1.22.0)
    and follow its restart prompt. ViGEm is end-of-life; 1.22.0 is its final
    installer and removes the old updater. If it is already installed, reuse it.
-2. Extract and open the updated Windows x64 Piik App package, then enable
+2. Extract and open the updated Windows x64 Silip App package, then enable
    **Remote control**. App detects the installed driver; no DLL
    copying or SDK configuration is needed.
 3. On each friend's computer, connect a standard-layout gamepad, open the
    viewing page and press a controller button so the browser recognizes it.
-   Obtain remote-control approval; Piik automatically uses the first connected
+   Obtain remote-control approval; Silip automatically uses the first connected
    controller with the browser's standard mapping. No additional approval is needed.
 4. Keep the viewing page focused. In the game, join as a controller player.
 
 XInput has four controller slots in total, including controllers already
 connected to the Host. Disconnect an unused controller or end that Viewer's
-remote control to free a slot. Piik does not
+remote control to free a slot. Silip does not
 choose the game's player number; use the game's join and assignment controls.
 Each approved Viewer uses their own virtual controller. Disconnecting the
 controller removes that device while remote-control permission remains; ending remote

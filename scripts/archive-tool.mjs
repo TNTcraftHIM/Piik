@@ -34,9 +34,9 @@ function Check-Folder($folder, [string]$source) {
     if ($entry.PSIsContainer) { Check-Folder $item.GetFolder $entry.FullName }
   }
 }
-Check-Folder $shell.NameSpace($env:PIIK_ZIP_ARCHIVE) $env:PIIK_ZIP_SOURCE
+Check-Folder $shell.NameSpace($env:SILIP_ZIP_ARCHIVE) $env:SILIP_ZIP_SOURCE
 `], { stdio: "pipe", windowsHide: true, timeout: 30_000,
-      env: { ...process.env, PIIK_ZIP_ARCHIVE: archive, PIIK_ZIP_SOURCE: resolve(source) },
+      env: { ...process.env, SILIP_ZIP_ARCHIVE: archive, SILIP_ZIP_SOURCE: resolve(source) },
     });
   }
 }

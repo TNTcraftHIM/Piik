@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	diagnostic "github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	diagnostic "github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
 	livekitsfu "github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"

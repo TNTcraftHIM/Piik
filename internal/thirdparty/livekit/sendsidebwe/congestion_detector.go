@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Modified by Piik: finalize probes from valid acknowledged measurements,
+// Modified by Silip: finalize probes from valid acknowledged measurements,
 // not the detector's retained initial capacity; retain packets across CTR groups.
 // Only fresh packet observations may advance congestion state.
 // Inconclusive completed probes back off instead of growing their next duration.

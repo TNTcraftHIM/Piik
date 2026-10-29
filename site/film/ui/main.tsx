@@ -50,7 +50,7 @@ import "./ui.css";
 type Shot = "desktop" | "link" | "idle" | "picker" | "host" | "copied" | "chat" | "draft" | "sent" | "viewer";
 const noop = () => {};
 const roomId = "9527";
-const inviteUrl = `https://invite.piik.example/r/${roomId}`;
+const inviteUrl = `https://invite.silip.example/r/${roomId}`;
 const host = "d27a938b-61f5-4ab2-b8e4-3fc090c3ae18";
 const guests = [
   "779594c8-a92c-48d9-918f-a7d0befa46d1",
@@ -167,11 +167,11 @@ function Screen({ shot }: { shot: Shot }) {
   if (shot === "desktop") return (
     <main className="desktop">
       <div className="desktop-folder">
-        <div className="desktop-path"><Folder size={25} /> Piik App</div>
+        <div className="desktop-path"><Folder size={25} /> Silip App</div>
         <div className="desktop-files">
           <button id="desktop-app" type="button">
             <img src="../../assets/favicon.svg" width="96" height="96" alt="" />
-            <span>piik-app.exe</span>
+            <span>silip-app.exe</span>
           </button>
           <div className="desktop-runtime"><Folder size={70} /><span>runtime</span></div>
         </div>
@@ -428,7 +428,7 @@ window.addEventListener("message", (event) => {
   const data = event.data;
   if (
     event.source !== parent ||
-    data?.type !== "piik-film-ui" ||
+    data?.type !== "silip-film-ui" ||
     !["desktop", "launch", "share", "invite"].includes(data.scene) ||
     !["en", "zh-CN"].includes(data.lang) ||
     !Number.isFinite(data.time) ||
@@ -573,4 +573,4 @@ function paint(data: Frame) {
   point(cursor, t, from, target, moveAt, moveFor, clickAt, hideAt);
   camera.style.transform = `translateY(${-pan}px)`;
 }
-parent.postMessage({ type: "piik-film-ui-ready" }, "*");
+parent.postMessage({ type: "silip-film-ui-ready" }, "*");

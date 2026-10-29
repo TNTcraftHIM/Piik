@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/webrtc/v4"
 )
@@ -52,14 +52,14 @@ func runAudioRecoveryCapture() {
 		if len(os.Args) == 4 && os.Args[2] == "--device" && os.Args[3] == "missing" {
 			os.Exit(2)
 		}
-		if marker := os.Getenv("PIIK_MICROPHONE_WAIT"); marker != "" {
+		if marker := os.Getenv("SILIP_MICROPHONE_WAIT"); marker != "" {
 			_ = os.WriteFile(marker, nil, 0600)
 			<-stopped
 			return
 		}
 	}
 	audio := microphone || (len(os.Args) > 1 && os.Args[1] == "--capture-audio")
-	startupGate := os.Getenv("PIIK_VIDEO_START_GATE")
+	startupGate := os.Getenv("SILIP_VIDEO_START_GATE")
 	if audio && !microphone && startupGate != "" {
 		if _, err := os.Stat(startupGate + ".active"); err != nil {
 			_ = os.WriteFile(startupGate+".early-audio", nil, 0600)
@@ -67,19 +67,19 @@ func runAudioRecoveryCapture() {
 		}
 		_ = os.WriteFile(startupGate+".audio", []byte(os.Args[3]+":"+os.Args[4]), 0600)
 	}
-	if !audio && os.Getenv("PIIK_VIDEO_FAIL") == "1" {
+	if !audio && os.Getenv("SILIP_VIDEO_FAIL") == "1" {
 		_, _ = io.WriteString(os.Stderr, "stage=mft-set-output-type\nhresult=0xc00d36b4\ndetail=private capture target\n")
 		os.Exit(2)
 	}
 	if !microphone && audio && os.Args[2] == "exclude" {
-		if os.Getenv("PIIK_EXCLUSION_FAIL") == "1" {
+		if os.Getenv("SILIP_EXCLUSION_FAIL") == "1" {
 			os.Exit(2)
 		}
-		if marker := os.Getenv("PIIK_EXCLUSION_STARTED"); marker != "" {
+		if marker := os.Getenv("SILIP_EXCLUSION_STARTED"); marker != "" {
 			_ = os.WriteFile(marker, []byte(os.Args[3]+":"+os.Args[4]), 0600)
 		}
 	}
-	if audio && os.Getenv("PIIK_AUDIO_STARTUP") == "no-ready" {
+	if audio && os.Getenv("SILIP_AUDIO_STARTUP") == "no-ready" {
 		<-stopped
 		return
 	}
@@ -109,7 +109,7 @@ func runAudioRecoveryCapture() {
 		status, _ = json.Marshal(CaptureState{State: "active", Codec: "vp8",
 			Width: profile.Width, Height: profile.Height, FPS: profile.Framerate, Outputs: outputs})
 	}
-	marker := os.Getenv("PIIK_AUDIO_WAIT_FOR_VIDEO")
+	marker := os.Getenv("SILIP_AUDIO_WAIT_FOR_VIDEO")
 	if audio && marker != "" {
 		ticker := time.NewTicker(5 * time.Millisecond)
 		defer ticker.Stop()
@@ -164,7 +164,7 @@ func runAudioRecoveryCapture() {
 			Duration: period, KeyFrame: true, Data: data})
 		_ = os.WriteFile(marker, nil, 0600)
 	}
-	if audio && os.Getenv("PIIK_AUDIO_STARTUP") == "silent" {
+	if audio && os.Getenv("SILIP_AUDIO_STARTUP") == "silent" {
 		<-stopped
 		return
 	}
@@ -190,9 +190,9 @@ func runAudioRecoveryCapture() {
 }
 
 func TestMixedSourceAudioWaitsForActiveVideoWithoutBlockingStart(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	gate := filepath.Join(t.TempDir(), "video")
-	t.Setenv("PIIK_VIDEO_START_GATE", gate)
+	t.Setenv("SILIP_VIDEO_START_GATE", gate)
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +235,7 @@ func TestMixedSourceAudioWaitsForActiveVideoWithoutBlockingStart(t *testing.T) {
 }
 
 func TestPendingSourceAudioRetiresWithVideoOrLaterSelection(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +243,7 @@ func TestPendingSourceAudioRetiresWithVideoOrLaterSelection(t *testing.T) {
 	for _, finish := range []string{"stop", "video-failure", "audio-off", "source-replacement", "audio-profile", "video-profile", "audio-on"} {
 		t.Run(finish, func(t *testing.T) {
 			gate := filepath.Join(t.TempDir(), "video")
-			t.Setenv("PIIK_VIDEO_START_GATE", gate)
+			t.Setenv("SILIP_VIDEO_START_GATE", gate)
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			events := make(chan Event, 32)
@@ -319,7 +319,7 @@ func TestPendingSourceAudioRetiresWithVideoOrLaterSelection(t *testing.T) {
 }
 
 func TestFixedSourceAudioWaitsForActiveVideoAndCanCancel(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -327,7 +327,7 @@ func TestFixedSourceAudioWaitsForActiveVideoAndCanCancel(t *testing.T) {
 	for _, cancelStartup := range []bool{false, true} {
 		t.Run(map[bool]string{false: "active", true: "cancelled"}[cancelStartup], func(t *testing.T) {
 			gate := filepath.Join(t.TempDir(), "video")
-			t.Setenv("PIIK_VIDEO_START_GATE", gate)
+			t.Setenv("SILIP_VIDEO_START_GATE", gate)
 			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 			defer cancel()
 			events := make(chan Event, 16)
@@ -389,8 +389,8 @@ func TestFixedSourceAudioWaitsForActiveVideoAndCanCancel(t *testing.T) {
 }
 
 func TestCaptureStartupReturnsNativeFailureCodesWithoutPrivateDetail(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
-	t.Setenv("PIIK_VIDEO_FAIL", "1")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_VIDEO_FAIL", "1")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -413,16 +413,16 @@ func TestCaptureStartupReturnsNativeFailureCodesWithoutPrivateDetail(t *testing.
 }
 
 func TestAudioStartupDoesNotRequireSamplesOrStopVideo(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, mode := range []string{"silent", "no-ready", "drain-video"} {
 		t.Run(mode, func(t *testing.T) {
-			t.Setenv("PIIK_AUDIO_STARTUP", mode)
+			t.Setenv("SILIP_AUDIO_STARTUP", mode)
 			if mode == "drain-video" {
-				t.Setenv("PIIK_AUDIO_WAIT_FOR_VIDEO", filepath.Join(t.TempDir(), "video-drained"))
+				t.Setenv("SILIP_AUDIO_WAIT_FOR_VIDEO", filepath.Join(t.TempDir(), "video-drained"))
 			}
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
@@ -452,7 +452,7 @@ func TestAudioStartupDoesNotRequireSamplesOrStopVideo(t *testing.T) {
 }
 
 func TestAudioEOFWaitsForExplicitSourceReplacement(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	check := func(err error) {
 		t.Helper()
 		if err != nil {

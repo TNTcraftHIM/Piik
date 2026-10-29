@@ -14,7 +14,7 @@
 #include <mfidl.h>
 #include <mftransform.h>
 #include <wmcodecdsp.h>
-#ifdef PIIK_H264_FIXTURE
+#ifdef SILIP_H264_FIXTURE
 #include <pdh.h>
 #include <pdhmsg.h>
 #endif
@@ -38,7 +38,7 @@
 #include "capture_sdr.h"
 #include "process_audio.h"
 #include "h264_encoder.h"
-#ifndef PIIK_H264_FIXTURE
+#ifndef SILIP_H264_FIXTURE
 #include "adaptive_encoder.h"
 #include "capture_control.h"
 #include "capture_input.h"
@@ -92,10 +92,10 @@ IGraphicsCaptureSession5 : public IInspectable {
 
 namespace {
 
-using namespace piik::capture::windows;
+using namespace silip::capture::windows;
 
 constexpr LONGLONG kFastCaptureUpdateInterval100ns = 40'000;
-#ifdef PIIK_H264_FIXTURE
+#ifdef SILIP_H264_FIXTURE
 constexpr UINT32 kFrameRate = kDefaultVideoProfile.frame_rate;
 constexpr UINT32 kBitRate = kDefaultVideoProfile.bit_rate;
 constexpr UINT32 kGopFrames = kFrameRate * 2;
@@ -146,7 +146,7 @@ void PrintAdapters(const std::vector<Adapter>& adapters) {
   }
 }
 
-#ifdef PIIK_H264_FIXTURE
+#ifdef SILIP_H264_FIXTURE
 std::vector<UINT8> SyntheticNv12(
     UINT32 frame_index, const VideoProfile& profile = kDefaultVideoProfile) {
   const auto width = profile.width;
@@ -201,7 +201,7 @@ ComPtr<IMFSample> CreateInputSample(ID3D11Device* device, UINT32 frame_index) {
 }
 #endif
 
-#ifdef PIIK_H264_FIXTURE
+#ifdef SILIP_H264_FIXTURE
 ULONGLONG ProcessCpu100ns() {
   FILETIME created = {};
   FILETIME exited = {};
@@ -362,7 +362,7 @@ struct RunEvidence final {
 };
 #endif
 
-#ifdef PIIK_H264_FIXTURE
+#ifdef SILIP_H264_FIXTURE
 bool IsRecoveryFrame(UINT32 frame) {
   return frame % kGopFrames == 0;
 }
@@ -630,10 +630,10 @@ UINT ParseIndex(const wchar_t* value, const std::string& stage) {
   }
 }
 
-#ifndef PIIK_H264_FIXTURE
-using piik::capture::kMaxProductAccessUnitBytes;
-using piik::capture::OutputKind;
-using piik::capture::ProtocolWriter;
+#ifndef SILIP_H264_FIXTURE
+using silip::capture::kMaxProductAccessUnitBytes;
+using silip::capture::OutputKind;
+using silip::capture::ProtocolWriter;
 
 class UniqueHandle final {
  public:
@@ -727,7 +727,7 @@ class FrameConverter final {
 
     RECT source_rect = {0, 0, static_cast<LONG>(width),
                         static_cast<LONG>(height)};
-    RECT target_rect = piik::capture::FitFrameRect(
+    RECT target_rect = silip::capture::FitFrameRect(
         presentation, {static_cast<LONG>(profile_.width),
                        static_cast<LONG>(profile_.height)});
     RECT output_rect = {0, 0, static_cast<LONG>(profile_.width),
@@ -905,7 +905,7 @@ std::string JSONString(const std::string& value) {
 
 class InputReader final {
  public:
-  std::vector<piik::capture::InputEnvelope> Read(bool blocking = false) {
+  std::vector<silip::capture::InputEnvelope> Read(bool blocking = false) {
     HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
     DWORD available = 0;
     if (input == INVALID_HANDLE_VALUE || input == nullptr) return {};
@@ -926,20 +926,20 @@ class InputReader final {
   }
 
  private:
-  std::vector<piik::capture::InputEnvelope> End() {
+  std::vector<silip::capture::InputEnvelope> End() {
     if (!envelopes_.Empty()) Fail("capture-input-eof", "native input ended within an envelope");
-    piik::capture::InputEnvelope stop;
+    silip::capture::InputEnvelope stop;
     stop.kind = 7;
     stop.data = {'Q'};
     return {std::move(stop)};
   }
-  piik::capture::InputEnvelopes envelopes_;
+  silip::capture::InputEnvelopes envelopes_;
 };
 
 class ControlReader final {
  public:
-  std::vector<piik::capture::CaptureControl> Read() {
-    std::vector<piik::capture::CaptureControl> controls;
+  std::vector<silip::capture::CaptureControl> Read() {
+    std::vector<silip::capture::CaptureControl> controls;
     for (const auto& envelope : input_.Read()) controls.push_back(envelope.Control());
     return controls;
   }
@@ -974,17 +974,17 @@ UINT64 ParseNonNegativeUint64(const wchar_t* value, const std::string& stage) {
   }
 }
 
-piik::capture::TargetKind ParseTargetKind(const wchar_t* value) {
+silip::capture::TargetKind ParseTargetKind(const wchar_t* value) {
   const std::wstring kind(value);
-  if (kind == L"window") return piik::capture::TargetKind::window;
-  if (kind == L"display") return piik::capture::TargetKind::display;
+  if (kind == L"window") return silip::capture::TargetKind::window;
+  if (kind == L"display") return silip::capture::TargetKind::display;
   Fail("argument-target-kind", "capture target kind is unsupported");
 }
 
 struct ProductArguments final {
   enum class Mode { list, microphones, probe, preview, audio, microphone, video, encoded } mode = Mode::list;
-  piik::capture::TargetKind target_kind =
-      piik::capture::TargetKind::window;
+  silip::capture::TargetKind target_kind =
+      silip::capture::TargetKind::window;
   std::wstring microphone_device;
   DWORD pid = 0;
   UINT64 creation_time = 0;
@@ -1011,9 +1011,9 @@ DegradationPreference ParseDegradationPreference(const wchar_t* value) {
 }
 
 void ValidateVideoProfile(const VideoProfile& profile) {
-  if (!piik::capture::ValidVideoFormat(profile.width, profile.height, profile.frame_rate) ||
+  if (!silip::capture::ValidVideoFormat(profile.width, profile.height, profile.frame_rate) ||
       profile.width < 4 || profile.height < 4 ||
-      profile.bit_rate < 100'000 || profile.bit_rate > piik::capture::kMaxVideoBitrate) {
+      profile.bit_rate < 100'000 || profile.bit_rate > silip::capture::kMaxVideoBitrate) {
     Fail("argument-profile", "video profile is outside the product bounds");
   }
 }
@@ -1026,8 +1026,8 @@ void ParseOutputProfiles(ProductArguments& arguments, int first, int count, wcha
     output.height = ParseIndex(values[index + 2], "argument-output-height");
     output.frame_rate = ParseIndex(values[index + 3], "argument-output-fps");
     output.bit_rate = ParseIndex(values[index + 4], "argument-output-bitrate");
-    if (!piik::capture::ValidVideoFormat(output.width, output.height, output.frame_rate) ||
-        output.bit_rate < 1'000 || output.bit_rate > piik::capture::kMaxVideoBitrate) {
+    if (!silip::capture::ValidVideoFormat(output.width, output.height, output.frame_rate) ||
+        output.bit_rate < 1'000 || output.bit_rate > silip::capture::kMaxVideoBitrate) {
       Fail("argument-output", "output profile exceeds codec bounds");
     }
     if (arguments.mode == ProductArguments::Mode::video &&
@@ -1079,8 +1079,8 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   if (count == 5 && std::wstring(values[1]) == L"--capture-audio") {
     arguments.mode = ProductArguments::Mode::audio;
     arguments.exclude_audio = std::wstring(values[2]) == L"exclude";
-    arguments.target_kind = arguments.exclude_audio ? piik::capture::TargetKind::window : ParseTargetKind(values[2]);
-  } else if (count >= 16 && count <= 11 + 5 * piik::capture::kMaxOutputs && (count - 11) % 5 == 0 &&
+    arguments.target_kind = arguments.exclude_audio ? silip::capture::TargetKind::window : ParseTargetKind(values[2]);
+  } else if (count >= 16 && count <= 11 + 5 * silip::capture::kMaxOutputs && (count - 11) % 5 == 0 &&
              std::wstring(values[1]) == L"--encoded-video" &&
              std::wstring(values[2]) == L"--codec" &&
              std::wstring(values[4]) == L"--adapter-index" &&
@@ -1102,7 +1102,7 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
       arguments.profile.bit_rate = std::max(arguments.profile.bit_rate, output.bit_rate);
     }
     return arguments;
-  } else if (count >= 28 && count <= 23 + 5 * piik::capture::kMaxOutputs && (count - 23) % 5 == 0 &&
+  } else if (count >= 28 && count <= 23 + 5 * silip::capture::kMaxOutputs && (count - 23) % 5 == 0 &&
              std::wstring(values[1]) == L"--capture-video" &&
              std::wstring(values[6]) == L"--adapter-index" &&
              std::wstring(values[8]) == L"--mft-index" &&
@@ -1147,11 +1147,11 @@ ProductArguments ParseProductArguments(int count, wchar_t** values) {
   arguments.pid = static_cast<DWORD>(pid);
   arguments.creation_time =
       ParseNonNegativeUint64(values[creation_index], "argument-creation-time");
-  if (arguments.target_kind == piik::capture::TargetKind::window &&
+  if (arguments.target_kind == silip::capture::TargetKind::window &&
       (arguments.pid == 0 || arguments.creation_time == 0)) {
     Fail("argument-window-identity", "window identity is incomplete");
   }
-  if (arguments.target_kind == piik::capture::TargetKind::display &&
+  if (arguments.target_kind == silip::capture::TargetKind::display &&
       (arguments.pid != 0 || arguments.creation_time != 0)) {
     Fail("argument-display-identity", "display identity is invalid");
   }
@@ -1174,17 +1174,17 @@ HRESULT RunAudioCapture(const ProductArguments& arguments) {
   };
   auto pcm = [&writer](UINT64 timestamp100ns, const BYTE* data, DWORD size) {
     return writer.Write(OutputKind::pcm, 0, timestamp100ns,
-                        piik::capture::kAudioChunkDuration100ns, data,
+                        silip::capture::kAudioChunkDuration100ns, data,
                         size);
   };
   if (arguments.mode == ProductArguments::Mode::microphone) {
-    return piik::capture::CaptureMicrophone(arguments.microphone_device, stop.get(), should_stop, ready, pcm);
+    return silip::capture::CaptureMicrophone(arguments.microphone_device, stop.get(), should_stop, ready, pcm);
   }
-  if (arguments.target_kind == piik::capture::TargetKind::display) {
-    return piik::capture::CaptureSystemAudio(
+  if (arguments.target_kind == silip::capture::TargetKind::display) {
+    return silip::capture::CaptureSystemAudio(
         stop.get(), should_stop, ready, pcm);
   }
-  return piik::capture::CaptureProcessAudio(
+  return silip::capture::CaptureProcessAudio(
       arguments.pid, arguments.creation_time, arguments.exclude_audio, stop.get(),
       should_stop,
       ready, pcm);
@@ -1222,8 +1222,8 @@ class AudioCapabilityProbe final {
   };
   explicit AudioCapabilityProbe(
       Clock::time_point deadline = Clock::now() + std::chrono::seconds(1),
-      std::function<bool(bool)> process = piik::capture::ProcessAudioAvailable,
-      std::function<bool()> system = piik::capture::SystemAudioAvailable)
+      std::function<bool(bool)> process = silip::capture::ProcessAudioAvailable,
+      std::function<bool()> system = silip::capture::SystemAudioAvailable)
       : state_(std::make_shared<State>()), deadline_(deadline) {
     Start([process](const std::shared_ptr<State>& state) {
       const bool available = process(false);
@@ -1290,7 +1290,7 @@ void WriteCapabilityProbe(AudioCapabilityProbe audio = AudioCapabilityProbe()) {
          << JSONString(std::to_string(build))
          << ",\"videoCapture\":" << (window_capture ? "true" : "false")
          << ",\"captureBorderControl\":"
-         << (window_capture && piik::capture::CaptureBorder::Supported() ? "true" : "false")
+         << (window_capture && silip::capture::CaptureBorder::Supported() ? "true" : "false")
          << ",\"microphone\":true,\"softwareVP8\":true"
          << ",\"adapters\":[";
   for (size_t adapter_index = 0; adapter_index < adapters.size();
@@ -1632,7 +1632,7 @@ class OutputWorker final {
         }
         std::optional<AdaptiveAccessUnit> output;
         try {
-          const auto size = piik::capture::BoundedFrameSize(input->presentation,
+          const auto size = silip::capture::BoundedFrameSize(input->presentation,
               {static_cast<LONG>(profile_.width), static_cast<LONG>(profile_.height)});
           if (!encoder) {
             encoder = std::make_unique<AdaptiveEncoder>(
@@ -1701,7 +1701,7 @@ class OutputWorker final {
   std::function<void(const AdaptiveAccessUnit&)> on_output_;
   std::function<void(std::exception_ptr)> on_failure_;
   std::function<void()> on_refresh_;
-  using Mailbox = piik::capture::OutputMailbox<CaptureInput>;
+  using Mailbox = silip::capture::OutputMailbox<CaptureInput>;
   Mailbox mailbox_;
   std::thread thread_;
 };
@@ -1803,7 +1803,7 @@ std::string OutputFailureDetail(size_t layer, std::exception_ptr error) {
   }
 }
 
-bool ApplyOutputControl(const piik::capture::CaptureControl& control,
+bool ApplyOutputControl(const silip::capture::CaptureControl& control,
                         const std::vector<std::unique_ptr<OutputWorker>>& workers) {
   if (control.layer >= static_cast<int>(workers.size())) Fail("control-layer", "output layer is unavailable");
   if (control.kind == 'A') {
@@ -1846,7 +1846,7 @@ ComPtr<ID3D11Texture2D> OwnDecodedTexture(const DeviceContext& device, IMFSample
     D3D11_TEXTURE2D_DESC description{};
     original->GetDesc(&description);
     if (description.Format != DXGI_FORMAT_NV12 || description.Width < width || description.Height < height ||
-        !piik::capture::ValidCodedVideoSize(description.Width, description.Height))
+        !silip::capture::ValidCodedVideoSize(description.Width, description.Height))
       Fail("decoded-texture-size", "decoder texture exceeds source bounds");
     description.Width = display_area.right - display_area.left;
     description.Height = display_area.bottom - display_area.top;
@@ -1928,10 +1928,10 @@ void RunEncodedVideo(ProductArguments arguments) {
     for (auto& worker : workers) worker->Join();
   };
   try {
-    std::unique_ptr<piik::capture::H264Decoder> h264;
-    std::unique_ptr<piik::capture::Vp8Decoder> vp8;
-    if (hardware) h264 = std::make_unique<piik::capture::H264Decoder>(device.manager.Get());
-    else vp8 = std::make_unique<piik::capture::Vp8Decoder>();
+    std::unique_ptr<silip::capture::H264Decoder> h264;
+    std::unique_ptr<silip::capture::Vp8Decoder> vp8;
+    if (hardware) h264 = std::make_unique<silip::capture::H264Decoder>(device.manager.Get());
+    else vp8 = std::make_unique<silip::capture::Vp8Decoder>();
     InputReader reader;
     bool began = false;
     UINT64 last_timestamp = 0;
@@ -1989,12 +1989,12 @@ void RunEncodedVideo(ProductArguments arguments) {
 
 void RunVideoCapture(ProductArguments arguments) {
   const bool window_target =
-      arguments.target_kind == piik::capture::TargetKind::window;
+      arguments.target_kind == silip::capture::TargetKind::window;
   HRESULT identity = window_target
-                         ? piik::capture::ValidateWindowTarget(
+                         ? silip::capture::ValidateWindowTarget(
                                arguments.source_id, arguments.pid,
                                arguments.creation_time)
-                         : piik::capture::ValidateDisplayTarget(
+                         : silip::capture::ValidateDisplayTarget(
                                arguments.source_id);
   Check(identity, "target-identity");
 
@@ -2003,7 +2003,7 @@ void RunVideoCapture(ProductArguments arguments) {
   auto encoder = SelectVideoEncoder(arguments, adapters, device);
   const Adapter& adapter = SelectAdapter(adapters, arguments.adapter_index);
   const bool hardware = encoder.kind == OutputKind::h264;
-  piik::capture::CapturePresentation presentation(arguments.target_kind,
+  silip::capture::CapturePresentation presentation(arguments.target_kind,
                                                       arguments.source_id);
   ProtocolWriter writer;
 
@@ -2019,9 +2019,9 @@ void RunVideoCapture(ProductArguments arguments) {
     Check(HRESULT_FROM_WIN32(GetLastError()), "target-process-handle");
   }
   Check(window_target
-            ? piik::capture::ValidateWindowTarget(
+            ? silip::capture::ValidateWindowTarget(
                   arguments.source_id, arguments.pid, arguments.creation_time)
-            : piik::capture::ValidateDisplayTarget(arguments.source_id),
+            : silip::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-before-capture");
   if (window_target) {
     DWORD affinity = 0;
@@ -2041,9 +2041,9 @@ void RunVideoCapture(ProductArguments arguments) {
                                  : CreateCaptureItem(reinterpret_cast<HMONITOR>(
                                        static_cast<UINT_PTR>(arguments.source_id)));
   Check(window_target
-            ? piik::capture::ValidateWindowTarget(
+            ? silip::capture::ValidateWindowTarget(
                   arguments.source_id, arguments.pid, arguments.creation_time)
-            : piik::capture::ValidateDisplayTarget(arguments.source_id),
+            : silip::capture::ValidateDisplayTarget(arguments.source_id),
         "target-identity-after-item");
   auto initial_size = item.Size();
   if (initial_size.Width <= 0 || initial_size.Height <= 0) {
@@ -2057,7 +2057,7 @@ void RunVideoCapture(ProductArguments arguments) {
       initial_size);
   GraphicsCaptureSession capture_session = pool.CreateCaptureSession(item);
   EnableFastCaptureUpdates(capture_session);
-  piik::capture::CaptureBorder border;
+  silip::capture::CaptureBorder border;
 
   auto shutdown = std::make_shared<winrt::handle>(
       CreateEventW(nullptr, TRUE, FALSE, nullptr));
@@ -2068,8 +2068,8 @@ void RunVideoCapture(ProductArguments arguments) {
   }
 
   auto frame_token = pool.FrameArrived(
-      piik::capture::CaptureEventHandler(frame_ready));
-  auto closed_token = item.Closed(piik::capture::CaptureEventHandler(shutdown));
+      silip::capture::CaptureEventHandler(frame_ready));
+  auto closed_token = item.Closed(silip::capture::CaptureEventHandler(shutdown));
   std::vector<std::unique_ptr<OutputWorker>> workers;
   std::atomic<bool> refresh_requested{false};
   std::atomic<bool> active_status_written{false};
@@ -2286,7 +2286,7 @@ void RunVideoCapture(ProductArguments arguments) {
 }
 #endif
 
-#ifdef PIIK_H264_FIXTURE
+#ifdef SILIP_H264_FIXTURE
 struct Arguments final {
   bool list = false;
   std::optional<UINT> adapter_index;
@@ -2349,7 +2349,7 @@ void PrintEvidence(const Adapter& adapter, UINT mft_index,
 
 }  // namespace
 
-#ifdef PIIK_H264_FIXTURE
+#ifdef SILIP_H264_FIXTURE
 int wmain(int argc, wchar_t** argv) {
   try {
     Arguments arguments = ParseArguments(argc, argv);
@@ -2401,13 +2401,13 @@ int wmain(int argc, wchar_t** argv) {
 }
 #endif
 
-#ifndef PIIK_H264_FIXTURE
+#ifndef SILIP_H264_FIXTURE
 int wmain(int argc, wchar_t** argv) {
   try {
     ProductArguments arguments = ParseProductArguments(argc, argv);
-    if (arguments.mode == ProductArguments::Mode::microphones) return piik::capture::WriteMicrophoneList();
+    if (arguments.mode == ProductArguments::Mode::microphones) return silip::capture::WriteMicrophoneList();
     if (arguments.mode == ProductArguments::Mode::list) {
-      return piik::capture::WriteSourceList();
+      return silip::capture::WriteSourceList();
     }
     if (arguments.mode == ProductArguments::Mode::probe) {
       Runtime runtime;
@@ -2418,7 +2418,7 @@ int wmain(int argc, wchar_t** argv) {
       Fail("stdout-binary", "could not switch stdout to binary mode");
     }
     if (arguments.mode == ProductArguments::Mode::preview) {
-      Check(piik::capture::WriteSourcePreview(
+      Check(silip::capture::WriteSourcePreview(
                 arguments.target_kind, arguments.source_id, arguments.pid,
                 arguments.creation_time),
             "capture-preview");

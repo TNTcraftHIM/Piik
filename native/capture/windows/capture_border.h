@@ -8,7 +8,7 @@
 #include <iostream>
 #include <syncstream>
 
-namespace piik::capture {
+namespace silip::capture {
 
 // Sharing defaults and source previews request borderless capture. Windows owns
 // consent and visibility; an optional access request must not delay frames/stop.
@@ -72,4 +72,4 @@ class CaptureBorder final {
   winrt::Windows::Foundation::IAsyncOperation<AccessStatus> access_{nullptr};
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

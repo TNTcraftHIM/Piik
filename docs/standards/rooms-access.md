@@ -236,7 +236,7 @@ This presentation neither grants control nor creates another routing path.
 Optional Windows x64 gamepad use creates independent Xbox 360 devices through
 the public device interface of an already-installed ViGEmBus. Optional input
 drivers and third-party input SDK binaries stay external on every platform:
-Piik does not download, install or bundle them. Each approved Viewer owns their
+Silip does not download, install or bundle them. Each approved Viewer owns their
 virtual device under the same remote-control grant. Windows is subject to the four
 XInput slots shared with the Host's existing devices; slot limits belong to the
 platform backend. Driver connection and target creation determine availability;
@@ -261,7 +261,7 @@ owns backend rationale and measurements.
   in process memory and all rooms disappear on restart.
 - **App Local mode:** the packaged App composes the same memory RoomStore
   and ends every room when its local authority exits. Saved Site/password and
-  last-confirmed mode preferences follow [App configuration](./configuration.md#piik-app-configuration);
+  last-confirmed mode preferences follow [App configuration](./configuration.md#silip-app-configuration);
   rooms and media state remain process-only. A blank password leaves that site open.
 
 Persistence evidence, limits and the earlier cross-restart evaluation live in

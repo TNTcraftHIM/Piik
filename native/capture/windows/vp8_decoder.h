@@ -10,7 +10,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace piik::capture {
+namespace silip::capture {
 
 // Decoder image storage belongs to libvpx until the next Decode call. A single
 // NV12 copy is shared by all derived-output workers after upload.
@@ -74,4 +74,4 @@ class Vp8Decoder final {
   vpx_codec_ctx_t codec_{};
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

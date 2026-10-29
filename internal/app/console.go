@@ -16,11 +16,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/TNTcraftHIM/Piik/internal/app/browser"
-	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
-	"github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/app/browser"
+	"github.com/P4-aaaul/Silip/internal/app/buildinfo"
+	"github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/app/launcher"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/term"
@@ -93,11 +93,11 @@ type console struct {
 }
 
 var consoleCopy = map[string][3]string{
-	"failure.tunnel-exited":      {"Public invite disconnected before it was ready. Try again or use an existing Piik site.", "公网邀请尚未就绪就已断开，请重试或使用已有 Piik 站点。", "!"},
-	"failure.tunnel-timeout":     {"Public invite did not connect in time. Try again or use an existing Piik site.", "公网邀请连接超时，请重试或使用已有 Piik 站点。", "!"},
+	"failure.tunnel-exited":      {"Public invite disconnected before it was ready. Try again or use an existing Silip site.", "公网邀请尚未就绪就已断开，请重试或使用已有 Silip 站点。", "!"},
+	"failure.tunnel-timeout":     {"Public invite did not connect in time. Try again or use an existing Silip site.", "公网邀请连接超时，请重试或使用已有 Silip 站点。", "!"},
 	"failure.tunnel-unavailable": {"The public-invite helper is unavailable. Extract the complete App package again.", "公网邀请辅助程序不可用，请重新完整解压 App 程序包。", "!"},
-	"failure.tunnel-start":       {"Could not start public invite. Check the details or use an existing Piik site.", "无法启动公网邀请，请查看详情或使用已有 Piik 站点。", "!"},
-	"failure.tunnel-stopped":     {"Public invite stopped. Reopen App for a new link or use an existing Piik site.", "公网邀请已停止，请重开 App 获取新链接，或使用已有 Piik 站点。", "!"},
+	"failure.tunnel-start":       {"Could not start public invite. Check the details or use an existing Silip site.", "无法启动公网邀请，请查看详情或使用已有 Silip 站点。", "!"},
+	"failure.tunnel-stopped":     {"Public invite stopped. Reopen App for a new link or use an existing Silip site.", "公网邀请已停止，请重开 App 获取新链接，或使用已有 Silip 站点。", "!"},
 	"failure.local-port":         {"The local port is unavailable. Close the other process or choose another port.", "本地端口不可用，请关闭占用程序或更换端口。", "!"},
 	"failure.local-network":      {"No suitable local invitation address. Check your network and selected address.", "没有合适的局域网邀请地址，请检查网络和所选地址。", "!"},
 	"failure.configuration":      {"Could not apply App settings. Check the details.", "无法应用 App 设置，请查看详情。", "!"},
@@ -107,7 +107,7 @@ var consoleCopy = map[string][3]string{
 	"failure.local-server":       {"The local room service is unavailable. Check the details.", "本地房间服务不可用，请查看详情。", "!"},
 	"local":                      {"Local network", "局域网", "□"},
 	"link":                       {"Public link", "公网链接", "↗"},
-	"site":                       {"Piik Site", "Piik 站点", "@"},
+	"site":                       {"Silip Site", "Silip 站点", "@"},
 	"setup":                      {"App is ready", "App 已就绪", "?"},
 	"starting":                   {"Starting", "正在启动", "…"},
 	"ready":                      {"Ready", "已就绪", "✓"},
@@ -216,10 +216,10 @@ func (console *console) finish(err error, exportPath string) {
 		return
 	}
 	if exportPath != "" {
-		fmt.Fprintln(os.Stderr, "Piik App:", console.plain.text("exported"), exportPath)
+		fmt.Fprintln(os.Stderr, "Silip App:", console.plain.text("exported"), exportPath)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Piik App:", err)
+		fmt.Fprintln(os.Stderr, "Silip App:", err)
 	}
 }
 
@@ -337,7 +337,7 @@ func (model consoleModel) text(key string) string {
 
 func (model consoleModel) View() tea.View {
 	view := tea.NewView(model.content(true))
-	view.WindowTitle = "Piik App"
+	view.WindowTitle = "Silip App"
 	view.AltScreen = true
 	return view
 }
@@ -374,7 +374,7 @@ func (model consoleModel) content(styled bool) string {
 	}
 	var out strings.Builder
 	version := buildinfo.Version()
-	heading := accent.Render("Piik App") + "\n" + muted.Render(version)
+	heading := accent.Render("Silip App") + "\n" + muted.Render(version)
 	if revision != "" && revision != version {
 		heading += "\n" + muted.Render(revision)
 	}
@@ -418,7 +418,7 @@ func (model consoleModel) content(styled bool) string {
 		if item[0] == "entry" {
 			port := 0
 			if source, err := url.Parse(item[1]); err == nil {
-				port, _ = strconv.Atoi(source.Query().Get("piik-client-port"))
+				port, _ = strconv.Atoi(source.Query().Get("silip-client-port"))
 			}
 			address = launcher.EntryURL(address, port)
 		}

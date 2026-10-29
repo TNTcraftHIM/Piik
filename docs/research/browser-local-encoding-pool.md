@@ -327,7 +327,7 @@ The display cases used a 45-second 400 kbps / 4% loss interval followed by
 removing both constraints; 300 ms configured RTT remained. The non-Browser
 fixture captured about 21 fps and does not establish 30 fps performance. Bare
 WebRTC used one cloned track, codec selection and initial sender parameters,
-without Piik's pool, startup guard, quality controller or repeated parameter
+without Silip's pool, startup guard, quality controller or repeated parameter
 writes. It also reproduced the tab restriction with VP8. Keeping the original
 preview playing and using `resizeMode:none` did not remove it.
 
@@ -376,18 +376,18 @@ cleaned up. These single runs isolate a mechanism, not a ranking or field
 diagnosis. A separate 2.5 Mbps, one-second shared-encoding control retained
 1080p without packet loss; a 400 kbps limit is severe congestion for this scene,
 even when brief. H264 recovery latency therefore cannot all be attributed to
-Piik's pool, nor can every small network disturbance be called over-sensitive.
+Silip's pool, nor can every small network disturbance be called over-sensitive.
 The [coupled Native controls](./webrtc-encoder-pool.md#budget-restoration)
 separate transport recovery from Native encoding and frame assembly.
 
 **Short disturbances can enter the persistent state.** Two one-second rate/loss
 pulses, each followed by 40 unconstrained seconds, took the bare tab sender from
-778p to 418p and then 238p; the actual Piik pool comparison ended at 148p.
+778p to 418p and then 238p; the actual Silip pool comparison ended at 148p.
 Targets recovered to about 5 Mbps and actual captured frames remained reduced.
 These single runs establish reachability in both paths, not that the pool is
 worse or that every brief blur has this cause. The fixture retained 300 ms RTT.
 
-A standalone HTML reproduction removed Piik, audio and the network shaper
+A standalone HTML reproduction removed Silip, audio and the network shaper
 entirely. It connected two local PeerConnections, captured its own moving tab,
 selected H264 / balanced, reduced only `maxBitrate` from 5 Mbps to 400 kbps for
 45 seconds, then restored it for 65 seconds. Source frames stayed 270x148 and
@@ -453,7 +453,7 @@ Browser comparison, including initialization failure and callback ordering;
 shared GPU/driver cost remains unproved.
 
 **Optional reuse must preserve the existing rate owner.** A two-Viewer,
-textured-tab H264 comparison exposed a Piik handoff defect. During recovery
+textured-tab H264 comparison exposed a Silip handoff defect. During recovery
 from a one-second rate/loss pulse, a healthy Viewer moved from a 5 Mbps group
 to a lower-budget group because its sampled output was 29 rather than 27 fps
 at the same 1048p. Both reported `qualityLimitationReason:none`, but the same
@@ -526,7 +526,7 @@ WebRTC reads the send configuration from the
 and accepts a positive `x-google-start-bitrate` in its
 [codec bitrate configuration](https://webrtc.googlesource.com/src/+/3a8b0c76e6b7bf0e72141047f82eb2c3f4862c8d/media/engine/webrtc_media_engine.cc).
 An offer-only control lost the hint in Chrome's answer and did not improve
-startup. Piik therefore changes only its owned local answer; external SDP,
+startup. Silip therefore changes only its owned local answer; external SDP,
 codec identity and subsequent sender-budget updates stay unchanged. The
 application writes this hint once per producer, not on each budget change.
 The full two-Viewer VP8 follow-up retained the healthy child at 1048p through
@@ -593,7 +593,7 @@ strongly supports a feedback/size-quantization lock. Actual `VideoFrame`
 dimensions confirm reduced capture independently of stale `getSettings()`.
 Reapplying exact dimensions to the original track did not unblock it.
 
-The Piik sender boundary now forwards bounded raw display frames using
+The Silip sender boundary now forwards bounded raw display frames using
 [Chromium's track streams](https://developer.chrome.com/docs/capabilities/web-apis/mediastreamtrack-insertable-media-processing),
 without resizing, re-encoding or generated cadence. Camera/received tracks and
 unsupported Browsers keep ordinary clones. In the textured-tab comparison,
@@ -609,7 +609,7 @@ encoded frame without them. The input retains the RTC sink's
 [1 fps refresh requirement](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/third_party/blink/renderer/modules/peerconnection/media_stream_video_webrtc_sink.h)
 through the native
 [capture constraint handler](https://raw.githubusercontent.com/chromium/chromium/154.0.8037.58/third_party/blink/renderer/modules/mediastream/media_stream_video_track.cc).
-No frame is synthesized by Piik and no sender quality floor is added.
+No frame is synthesized by Silip and no sender quality floor is added.
 H264 pooling and ordinary VP8 passed static first-frame, live/quiet/paused profile
 updates, resume, source replacement and retirement with actual tab capture.
 Fault checks cover pending replacement and active-input failure without retiring
@@ -659,7 +659,7 @@ do not supply a matching unshipped fix for this reproduction. Preserving the
 hard maximum separately from the soft target lets a numerical reduction escape
 the observed 148p, 180p and 238p fixed points. This is a narrow upstream repair
 candidate, not a compiled or accepted Chromium patch; full capture/adapter
-tests are still required. Updating a Piik package does not replace the user's
+tests are still required. Updating a Silip package does not replace the user's
 Browser implementation.
 
 **The existing preference control can recover this reproduction.** After 65
@@ -667,7 +667,7 @@ seconds stuck at 148p / 10 fps despite restored allocation, changing from
 balanced to `maintain-resolution` restored 1048p within the next two-second
 sample and reached about 30 fps. Switching back to balanced after 30 seconds
 retained that output for another 30 seconds. Bare WebRTC changed only the
-sender's degradation preference; a separate Piik run used `HostPeer`'s existing
+sender's degradation preference; a separate Silip run used `HostPeer`'s existing
 profile update through the pool. Both kept their connection and source; the
 pool retained one producer. Actual source frames recovered too. This provides
 a locally verified manual recovery through the existing clarity preference,
@@ -688,7 +688,7 @@ This compares those owners, not the whole older release or Browser. The
 remain implemented; they address connection generations and startup, not every
 mid-share adaptation state. Field server evidence contains same-parent quality
 attempts that failed proof. There is no confirmed removed protection or recent
-Piik regression. The capture and carrier repairs above address their reproduced
+Silip regression. The capture and carrier repairs above address their reproduced
 defects, not every content-dependent adaptation state.
 Do not weaken candidate proof, impose output floors or reset encoders periodically.
 
@@ -768,8 +768,8 @@ or audiovisual offset. The summary suppresses those unmeasured timing values.
 `--quiet-start` requires a decoded frame before the source animation starts.
 
 For real tab capture through the shared forwarding path, set `CHROME_PATH`,
-`PIIK_EMBEDDED_SFU_GATE=true`, `PIIK_EMBEDDED_SFU_DISPLAY=true` and
-`PIIK_EMBEDDED_SFU_CODEC=h264` or `vp8`, then run `npm run gate:embedded-sfu`.
+`SILIP_EMBEDDED_SFU_GATE=true`, `SILIP_EMBEDDED_SFU_DISPLAY=true` and
+`SILIP_EMBEDDED_SFU_CODEC=h264` or `vp8`, then run `npm run gate:embedded-sfu`.
 This separate arm verifies a hidden Host, decoded original/half-size layers,
 resumed delivery, video-track replacement, profile changes and retirement.
 Track replacement uses a clone of the same visual source; it does not establish

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-26
+Last updated: 2026-10-29
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -78,26 +78,18 @@ delivery and end-to-end HDR remain outside the published phase.
 The immutable release descriptor, runtime `REVISION` and operator deployment
 record own exact identity and postflight results.
 
-The private deployment uses one Go process for Web, room authority/signaling,
-STUN and optional SFU, with nginx for HTTPS. The
+Silip is a personal fork of [Piik](https://github.com/TNTcraftHIM/Piik) at
+`e169b48`. It has no public deployment, website or published release yet: the
+owner builds from source and runs Silip App on their own computer, using Public
+invite for friends. A future Hosted site uses one Go process for Web, room
+authority/signaling, STUN and optional SFU, with nginx for HTTPS; the
 [self-hosting runbook](./operations/self-hosting.md) owns listeners and network
 configuration.
 
-The separate US [public demo](https://demo.piik.tv) is deployed with open site
-entry, persistent room authority and P2P-only media. Cloudflare fronts HTTP/WSS
-and caches static bundles; STUN uses a separate DNS-only hostname. Caddy owns
-origin HTTPS, and the standard systemd service runs the published Server package.
-Demo expires rooms after one hour without authenticated participants; the private
-deployment retains the default of no expiry. The operator record owns exact
-identity and postflight evidence. `piik.tv` runs on GitHub Pages behind
-Cloudflare; website delivery includes a bilingual documentation center built
-from repository guides.
-
-GitHub owns original Server and App packages; Gitee mirrors them without
-rebuilding and verifies anonymous downloads against their checksums. Server
+GitHub Releases on `P4-aaaul/Silip` is the only planned package source. Server
 packages cover Linux x64/ARM64 and Windows x64; Docker images are Linux-only.
 App packages cover Windows x64 and macOS/Linux x64/ARM64.
 Accepted product changes publish through the release workflow; standalone
 website/documentation changes deploy the site without creating App/Server
 versions. [Versioning](./standards/versioning.md) owns release identity, notes,
-compatibility and mirror publication.
+compatibility and publication.

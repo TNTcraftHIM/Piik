@@ -54,7 +54,7 @@ export default {
     remember(location.pathname);
     router.onAfterRouteChanged = remember;
     try {
-      document.documentElement.toggleAttribute('data-reduced-motion', localStorage.getItem('piik:site-reduced-motion') === 'true');
+      document.documentElement.toggleAttribute('data-reduced-motion', localStorage.getItem('silip:site-reduced-motion') === 'true');
     } catch { /* Storage restrictions keep the system motion preference. */ }
   },
 };

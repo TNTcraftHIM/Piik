@@ -1,4 +1,4 @@
-// Modified by Piik: finish optional IPv6 work inside the caller's mapping budget.
+// Modified by Silip: finish optional IPv6 work inside the caller's mapping budget.
 package pcp
 
 import (
@@ -15,7 +15,7 @@ import (
 const externalAddressTimeout = 10 * time.Second
 
 // pinholeTimeout bounds optional IPv6 mapping, health and cleanup work. Keep
-// it inside Piik's three-second mapping budget: joining a silent IPv6 request
+// it inside Silip's three-second mapping budget: joining a silent IPv6 request
 // at the parent deadline can hide an already successful IPv4 result. This is
 // the same local-gateway budget as PCP discovery. Tests may shorten it.
 var pinholeTimeout = 2 * time.Second

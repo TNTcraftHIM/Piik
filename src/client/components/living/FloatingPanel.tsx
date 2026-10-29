@@ -57,7 +57,7 @@ export function FloatingPanel({ id, trigger, title, icon, compact = false, ancho
 
   useLayoutEffect(() => {
     if (!surfaceDocument) return;
-    if (surfaceDocument !== document) surfaceDocument.title = `${title} · Piik`;
+    if (surfaceDocument !== document) surfaceDocument.title = `${title} · Silip`;
   }, [surfaceDocument, title]);
 
   useLayoutEffect(() => {

@@ -11,9 +11,9 @@ afterEach(() => {
 describe("theme preference", () => {
   it("keeps room state compact and the product name first", () => {
     expect(composeDocumentTitle("7063", "Sharing")).toBe(
-      "Piik | 7063 · Sharing",
+      "Silip | 7063 · Sharing",
     );
-    expect(composeDocumentTitle()).toBe("Piik");
+    expect(composeDocumentTitle()).toBe("Silip");
   });
 
   it("follows the system until the user chooses explicitly", async () => {
@@ -49,13 +49,13 @@ describe("theme preference", () => {
     expect(dataset.theme).toBe("dark");
 
     theme.applyTheme("light");
-    expect(values.get("piik:ui-theme")).toBe("light");
+    expect(values.get("silip:ui-theme")).toBe("light");
     onChange({ matches: true });
     expect(dataset.theme).toBe("light");
     expect(theme.currentThemePreference()).toBe("light");
 
     theme.initTheme(null);
-    expect(values.has("piik:ui-theme")).toBe(false);
+    expect(values.has("silip:ui-theme")).toBe(false);
     expect(dataset.theme).toBe("dark");
     expect(theme.currentThemePreference()).toBeNull();
     onChange({ matches: false });
@@ -63,7 +63,7 @@ describe("theme preference", () => {
   });
 
   it.each([false, true])("applies launch theme with blocked storage=%s", async (blocked) => {
-    const values = new Map([["piik:ui-theme", "dark"]]);
+    const values = new Map([["silip:ui-theme", "dark"]]);
     const dataset: Record<string, string> = { theme: "dark" };
     vi.stubGlobal("document", { documentElement: { dataset } });
     vi.stubGlobal("window", {
@@ -81,7 +81,7 @@ describe("theme preference", () => {
     theme.initTheme("light");
     expect(dataset.theme).toBe("light");
     expect(theme.currentThemePreference()).toBe("light");
-    if (!blocked) expect(values.get("piik:ui-theme")).toBe("light");
+    if (!blocked) expect(values.get("silip:ui-theme")).toBe("light");
   });
 
   it("keeps saved themes before first paint unless the launcher explicitly chose one", () => {
@@ -89,13 +89,13 @@ describe("theme preference", () => {
     const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeTruthy();
     for (const [fragment, search, expected] of [
-      ["piik-client=1&piik-theme=light", "", "dark"],
-      ["piik-client=1&piik-theme=system", "", "dark"],
-      ["piik-client=1&piik-theme=light", "?piik-preferences=theme", "light"],
-      ["piik-client=1&piik-theme=system", "?piik-preferences=theme", "light"],
-      ["piik-client=1&piik-theme=light", "?piik-preferences=copy", "dark"],
-      ["piik-theme=light", "?piik-preferences=theme", "dark"],
-      ["piik-client=1&piik-theme=invalid", "?piik-preferences=theme", "dark"],
+      ["silip-client=1&silip-theme=light", "", "dark"],
+      ["silip-client=1&silip-theme=system", "", "dark"],
+      ["silip-client=1&silip-theme=light", "?silip-preferences=theme", "light"],
+      ["silip-client=1&silip-theme=system", "?silip-preferences=theme", "light"],
+      ["silip-client=1&silip-theme=light", "?silip-preferences=copy", "dark"],
+      ["silip-theme=light", "?silip-preferences=theme", "dark"],
+      ["silip-client=1&silip-theme=invalid", "?silip-preferences=theme", "dark"],
     ]) {
       const dataset: Record<string, string> = {};
       runInNewContext(script!, {
@@ -111,7 +111,7 @@ describe("theme preference", () => {
     runInNewContext(script!, {
       document: { documentElement: { dataset } },
       matchMedia: () => ({ matches: false }),
-      location: { hash: "#piik-client=1&piik-theme=dark" },
+      location: { hash: "#silip-client=1&silip-theme=dark" },
       localStorage: { getItem: () => { throw new Error("Storage disabled"); } },
       URLSearchParams,
     });

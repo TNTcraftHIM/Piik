@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 )
 
 func TestMixPCMRetainsSourceGainAndSaturatesStereo(t *testing.T) {
@@ -64,7 +64,7 @@ func TestMixPCMRetainsSourceGainAndSaturatesStereo(t *testing.T) {
 
 func startMixedFixture(t *testing.T) (*Session, nativecapture.VideoOptions, <-chan Event) {
 	t.Helper()
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+	t.Setenv("SILIP_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -100,19 +100,19 @@ func TestAudioExclusionFailureMutesOnlySourceAndNeverFallsBack(t *testing.T) {
 	microphone := session.mixer.microphone
 	session.mixer.mu.Unlock()
 	excluded := &nativecapture.CaptureTarget{Kind: "window", SourceID: "123", PID: 456, CreationTime: "789", Title: "Voice fixture"}
-	for _, fault := range []string{"PIIK_VIDEO_FAIL", "PIIK_EXCLUSION_FAIL"} {
+	for _, fault := range []string{"SILIP_VIDEO_FAIL", "SILIP_EXCLUSION_FAIL"} {
 		if err := session.ReplaceSource(options, true, nil); err != nil {
 			t.Fatal(err)
 		}
 		video := session.stream
 		t.Setenv(fault, "1")
 		attempt := options
-		if fault == "PIIK_VIDEO_FAIL" {
+		if fault == "SILIP_VIDEO_FAIL" {
 			attempt.Target.SourceID = "2"
 		}
 		if err := session.ReplaceSource(attempt, true, excluded); err == nil {
 			t.Fatal("failed exclusion was accepted", fault)
-		} else if fault == "PIIK_VIDEO_FAIL" && !strings.Contains(err.Error(), "mft-set-output-type") {
+		} else if fault == "SILIP_VIDEO_FAIL" && !strings.Contains(err.Error(), "mft-set-output-type") {
 			t.Fatalf("replacement lost the native failure stage: %v", err)
 		}
 		if session.SourceAudio() == nil || *session.SourceAudio() || session.audioStream != nil || session.stream != video {
@@ -121,7 +121,7 @@ func TestAudioExclusionFailureMutesOnlySourceAndNeverFallsBack(t *testing.T) {
 		t.Setenv(fault, "")
 	}
 	marker := filepath.Join(t.TempDir(), "excluded")
-	t.Setenv("PIIK_EXCLUSION_STARTED", marker)
+	t.Setenv("SILIP_EXCLUSION_STARTED", marker)
 	if err := session.ReplaceSource(options, true, excluded); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestSameVideoSourceAudioChangesPreserveCaptureAndConnections(t *testing.T) 
 	}
 	video, source, output, edge := session.stream, session.source, session.audioSource, session.edge("audio_change")
 	// New capture is deliberately unavailable; changing sound must still work.
-	t.Setenv("PIIK_VIDEO_FAIL", "1")
+	t.Setenv("SILIP_VIDEO_FAIL", "1")
 	options.Target.Title = "Renamed display"
 	excluded := &nativecapture.CaptureTarget{Kind: "window", SourceID: "123", PID: 456, CreationTime: "789", Title: "Voice fixture"}
 	for _, selection := range []struct {
@@ -284,7 +284,7 @@ func TestNativeMicrophonePreservesMediaOwnersAcrossInputChanges(t *testing.T) {
 
 func TestStopCancelsPendingMicrophoneWithoutRevivingShare(t *testing.T) {
 	marker := filepath.Join(t.TempDir(), "microphone-started")
-	t.Setenv("PIIK_MICROPHONE_WAIT", marker)
+	t.Setenv("SILIP_MICROPHONE_WAIT", marker)
 	session, _, _ := startMixedFixture(t)
 	result := make(chan error, 1)
 	go func() { enabled := true; result <- session.SetMicrophone(&enabled, nil, nil) }()

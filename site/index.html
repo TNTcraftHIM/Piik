@@ -6,10 +6,10 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="Free, open-source screen sharing for private live streams with friends. Share games, watch movies together, or self-host Piik. Viewers join in a browser."
+      content="Free, open-source screen sharing for private live streams with friends. Share games, watch movies together, or self-host Silip. Viewers join in a browser."
     />
     <meta name="theme-color" content="#f4f3ef" />
-    <title>Piik — Free, open-source screen sharing</title>
+    <title>Silip — Free, open-source screen sharing</title>
     <link rel="canonical" href="https://piik.tv/" />
     <link rel="icon" href="./favicon.ico" />
     <link rel="icon" href="./assets/favicon.png" type="image/png" sizes="96x96" />
@@ -18,7 +18,7 @@
       (() => {
         let theme = new URLSearchParams(location.search).get('theme');
         if (theme !== 'system' && theme !== 'light' && theme !== 'dark') {
-          try { theme = localStorage.getItem('piik:ui-theme'); } catch {}
+          try { theme = localStorage.getItem('silip:ui-theme'); } catch {}
         }
         if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
       })();
@@ -51,7 +51,7 @@
     </svg>
 
     <header class="site-header wrap">
-      <a class="identity" href="#" aria-label="Piik" data-brand>Piik<span class="identity-dot">.</span></a>
+      <a class="identity" href="#" aria-label="Silip" data-brand>Silip</a>
       <nav aria-label="Main">
         <a href="#start"><span lang="en">Get started</span><span lang="zh-CN">使用教程</span></a>
         <a href="#demo"><span lang="en">Use online</span><span lang="zh-CN">在线使用</span></a>
@@ -87,10 +87,10 @@
           </p>
           <div class="hero-actions">
             <a class="lr-btn is-primary button" href="#download"
-              ><span lang="en">Download Piik App</span><span lang="zh-CN">下载 Piik App</span
+              ><span lang="en">Download Silip App</span><span lang="zh-CN">下载 Silip App</span
               ><svg aria-hidden="true"><use href="#download-mark" /></svg></a
             ><a class="text-link" href="https://demo.piik.tv" target="_blank" rel="noopener noreferrer"
-              ><span lang="en">Use Piik online</span><span lang="zh-CN">直接使用在线版</span
+              ><span lang="en">Use Silip online</span><span lang="zh-CN">直接使用在线版</span
               ><span aria-hidden="true"> ↗</span></a
             >
           </div>
@@ -101,7 +101,7 @@
           <div class="film-actions">
             <a class="film-link" href="./film/" data-film-link>
               <span class="film-play" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m9 6 9 6-9 6Z" fill="currentColor" /></svg></span>
-              <span lang="en">A little film about Piik</span><span lang="zh-CN">用一支短片，认识 Piik</span>
+              <span lang="en">A little film about Silip</span><span lang="zh-CN">用一支短片，认识 Silip</span>
               <span class="film-length">64s</span>
             </a>
           </div>
@@ -123,8 +123,8 @@
       </section>
 
       <details class="film-preview wrap" id="film-preview" hidden>
-        <summary><span lang="en">A little film about Piik</span><span lang="zh-CN">用一支短片，认识 Piik</span><span class="film-collapse"><span lang="en">Close</span><span lang="zh-CN">收起</span> ×</span></summary>
-        <iframe id="website-film" title="Piik introduction" allow="fullscreen" allowfullscreen></iframe>
+        <summary><span lang="en">A little film about Silip</span><span lang="zh-CN">用一支短片，认识 Silip</span><span class="film-collapse"><span lang="en">Close</span><span lang="zh-CN">收起</span> ×</span></summary>
+        <iframe id="website-film" title="Silip introduction" allow="fullscreen" allowfullscreen></iframe>
       </details>
 
       <section class="how-section" id="how" aria-labelledby="how-title">
@@ -258,15 +258,15 @@
           </h2>
           <p>
             <span lang="en"
-              >Download the App to start sharing, or open <a href="https://demo.piik.tv">Piik online</a> and use it right in your browser.</span
+              >Download the App to start sharing, or open <a href="https://demo.piik.tv">Silip online</a> and use it right in your browser.</span
             ><span lang="zh-CN"
-              >下载 Piik App，开始分享；也可以直接打开<a href="https://demo.piik.tv">在线版</a>，用浏览器开房间。</span
+              >下载 Silip App，开始分享；也可以直接打开<a href="https://demo.piik.tv">在线版</a>，用浏览器开房间。</span
             >
           </p>
         </div>
         <nav class="guide-links" aria-label="Guides">
           <a href="#demo"><span lang="en">Use online</span><span lang="zh-CN">在线版</span></a
-          ><a href="#guide-app"><span lang="en">Piik App</span><span lang="zh-CN">Piik App</span></a
+          ><a href="#guide-app"><span lang="en">Silip App</span><span lang="zh-CN">Silip App</span></a
           ><a href="#guide-web"><span lang="en">Existing site</span><span lang="zh-CN">已有站点</span></a
           ><a href="#watch"><span lang="en">Join as a viewer</span><span lang="zh-CN">加入房间</span></a>
         </nav>
@@ -286,7 +286,7 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Open Piik online.</span
+                    ><span lang="en">Open Silip online.</span
                     ><span lang="zh-CN">打开在线版。</span></strong
                   >
                   <p>
@@ -349,11 +349,11 @@
                   >
                 </p>
                 <p>
-                  <span lang="en">Self-hosted Piik sites can <a href="./docs/self-hosting.html#optional-media-fallback">enable media forwarding (SFU)</a> as a fallback when a direct connection cannot be established.</span
-                  ><span lang="zh-CN">自行部署的 Piik 站点可以<a href="./docs/zh/self-hosting.html#可选启用媒体兜底">启用媒体转发（SFU）</a>，为直连失败提供兜底。</span>
+                  <span lang="en">Self-hosted Silip sites can <a href="./docs/self-hosting.html#optional-media-fallback">enable media forwarding (SFU)</a> as a fallback when a direct connection cannot be established.</span
+                  ><span lang="zh-CN">自行部署的 Silip 站点可以<a href="./docs/zh/self-hosting.html#可选启用媒体兜底">启用媒体转发（SFU）</a>，为直连失败提供兜底。</span>
                 </p>
                 <a class="lr-btn button download-button" href="https://demo.piik.tv" aria-describedby="demo-status"
-                  ><span lang="en">Use Piik online</span><span lang="zh-CN">直接在线使用</span
+                  ><span lang="en">Use Silip online</span><span lang="zh-CN">直接在线使用</span
                   ><span aria-hidden="true"> ↗</span></a
                 >
               </aside>
@@ -363,7 +363,7 @@
             <summary>
               <span class="guide-number">02</span
               ><span class="guide-heading"
-                ><span lang="en">Share with Piik App</span><span lang="zh-CN">用 Piik App 分享</span
+                ><span lang="en">Share with Silip App</span><span lang="zh-CN">用 Silip App 分享</span
                 ><small
                   ><span lang="en">Download, open and create a room</span
                   ><span lang="zh-CN">下载后直接开房间</span></small
@@ -374,36 +374,36 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Download Piik App.</span
-                    ><span lang="zh-CN">下载 Piik App。</span></strong
+                    ><span lang="en">Download Silip App.</span
+                    ><span lang="zh-CN">下载 Silip App。</span></strong
                   >
                   <p>
-                    <span lang="en"><a href="#download">Download Piik App for your device</a>. On computers, extract the package. On phones and tablets, install the app.</span
-                    ><span lang="zh-CN"><a href="#download">下载适合你设备的 Piik App</a>。电脑上解压后打开，手机或平板安装后打开。</span>
+                    <span lang="en"><a href="#download">Download Silip App for your device</a>. On computers, extract the package. On phones and tablets, install the app.</span
+                    ><span lang="zh-CN"><a href="#download">下载适合你设备的 Silip App</a>。电脑上解压后打开，手机或平板安装后打开。</span>
                   </p>
                   <dl class="launch-files">
                     <div>
                       <dt>Windows</dt>
-                      <dd><span lang="en">Open </span><span lang="zh-CN">打开 </span><code>piik-app.exe</code></dd>
+                      <dd><span lang="en">Open </span><span lang="zh-CN">打开 </span><code>silip-app.exe</code></dd>
                     </div>
                     <div>
                       <dt>macOS</dt>
-                      <dd><span lang="en">Open </span><span lang="zh-CN">打开 </span><code>Piik App.app</code></dd>
+                      <dd><span lang="en">Open </span><span lang="zh-CN">打开 </span><code>Silip App.app</code></dd>
                     </div>
                     <div>
                       <dt>Linux</dt>
-                      <dd><span lang="en">Run </span><span lang="zh-CN">运行 </span><code>./piik-app</code></dd>
+                      <dd><span lang="en">Run </span><span lang="zh-CN">运行 </span><code>./silip-app</code></dd>
                     </div>
                     <div>
                       <dt><span lang="en">Mobile</span><span lang="zh-CN">手机／平板</span></dt>
-                      <dd><span lang="en">Open Piik after installation</span><span lang="zh-CN">安装后打开 Piik</span></dd>
+                      <dd><span lang="en">Open Silip after installation</span><span lang="zh-CN">安装后打开 Silip</span></dd>
                     </div>
                   </dl>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Choose Public invite, then Open Piik.</span
-                    ><span lang="zh-CN">选择「公网邀请」，点击「进入 Piik」。</span></strong
+                    ><span lang="en">Choose Public invite, then Open Silip.</span
+                    ><span lang="zh-CN">选择「公网邀请」，点击「进入 Silip」。</span></strong
                   >
                   <p>
                     <span lang="en"
@@ -463,8 +463,8 @@
                   </div>
                 </dl>
                 <p>
-                  <span lang="en">Already have a Piik site? Keep the App running and <a href="#guide-web">connect from the site</a>.</span>
-                  <span lang="zh-CN">已有 Piik 站点？保持 App 运行，<a href="#guide-web">从站点连接即可</a>。</span>
+                  <span lang="en">Already have a Silip site? Keep the App running and <a href="#guide-web">connect from the site</a>.</span>
+                  <span lang="zh-CN">已有 Silip 站点？保持 App 运行，<a href="#guide-web">从站点连接即可</a>。</span>
                 </p>
                 <p>
                   <span lang="en"
@@ -478,16 +478,16 @@
                 <p>
                   <span lang="en"
                     >Physical-device coverage for the macOS and Linux apps is still limited. Test reports are welcome on
-                    <a href="https://github.com/TNTcraftHIM/Piik/issues">GitHub Issues</a>.
-                    On macOS, native capture requires macOS 13+. On Linux, it needs <a href="https://github.com/TNTcraftHIM/Piik/blob/main/native/capture/linux/README.md">additional system components</a>. Browser capture is also available.</span
+                    <a href="https://github.com/P4-aaaul/Silip/issues">GitHub Issues</a>.
+                    On macOS, native capture requires macOS 13+. On Linux, it needs <a href="https://github.com/P4-aaaul/Silip/blob/main/native/capture/linux/README.md">additional system components</a>. Browser capture is also available.</span
                   ><span lang="zh-CN"
-                    >macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并在
-                    <a href="https://github.com/TNTcraftHIM/Piik/issues">GitHub Issues</a> 反馈。
-                    macOS 原生采集需要 macOS 13 及以上；Linux 原生采集需要<a href="https://github.com/TNTcraftHIM/Piik/blob/main/native/capture/linux/README.md">额外系统组件</a>。也可以用浏览器采集。</span
+                    >macOS 和 Linux 版 Silip App 仍需更多实机测试，欢迎有设备的朋友试用并在
+                    <a href="https://github.com/P4-aaaul/Silip/issues">GitHub Issues</a> 反馈。
+                    macOS 原生采集需要 macOS 13 及以上；Linux 原生采集需要<a href="https://github.com/P4-aaaul/Silip/blob/main/native/capture/linux/README.md">额外系统组件</a>。也可以用浏览器采集。</span
                   >
                 </p>
-                <a href="./docs/getting-started.html#share-with-piik-app" lang="en">Full App guide<span aria-hidden="true">&nbsp;↗</span></a>
-                <a href="./docs/zh/getting-started.html#用-piik-app-分享" lang="zh-CN">完整 Piik App 使用指南<span aria-hidden="true">&nbsp;↗</span></a>
+                <a href="./docs/getting-started.html#share-with-silip-app" lang="en">Full App guide<span aria-hidden="true">&nbsp;↗</span></a>
+                <a href="./docs/zh/getting-started.html#用-silip-app-分享" lang="zh-CN">完整 Silip App 使用指南<span aria-hidden="true">&nbsp;↗</span></a>
               </aside>
             </div>
           </details>
@@ -495,10 +495,10 @@
             <summary>
               <span class="guide-number">03</span
               ><span class="guide-heading"
-                ><span lang="en">Use your group's Piik site</span><span lang="zh-CN">使用已有的 Piik 站点</span
+                ><span lang="en">Use your group's Silip site</span><span lang="zh-CN">使用已有的 Silip 站点</span
                 ><small
-                  ><span lang="en">Open in a browser, or connect with Piik App</span
-                  ><span lang="zh-CN">浏览器直接用，也能搭配 Piik App</span></small
+                  ><span lang="en">Open in a browser, or connect with Silip App</span
+                  ><span lang="zh-CN">浏览器直接用，也能搭配 Silip App</span></small
                 ></span
               >
             </summary>
@@ -506,28 +506,28 @@
               <ol class="guide-steps">
                 <li>
                   <strong
-                    ><span lang="en">Get a Piik site address.</span
+                    ><span lang="en">Get a Silip site address.</span
                     ><span lang="zh-CN">准备一个站点地址。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >A Piik site runs on a server set up by you or someone in your group.
+                      >A Silip site runs on a server set up by you or someone in your group.
                       Use its address, or try the public site at <a href="https://demo.piik.tv">https://demo.piik.tv</a>.</span
-                    ><span lang="zh-CN">Piik 站点由你或朋友部署在服务器上。使用你们已有的地址，
+                    ><span lang="zh-CN">Silip 站点由你或朋友部署在服务器上。使用你们已有的地址，
                       也可以先用公开站点 <a href="https://demo.piik.tv">https://demo.piik.tv</a>。</span>
                   </p>
                 </li>
                 <li>
                   <strong
-                    ><span lang="en">Connect Piik App to the site.</span><span lang="zh-CN">用 App 连接站点。</span></strong
+                    ><span lang="en">Connect Silip App to the site.</span><span lang="zh-CN">用 App 连接站点。</span></strong
                   >
                   <p>
                     <span lang="en"
-                      >Keep Piik App running and open the site in your browser. Click <strong>App</strong> at the top,
+                      >Keep Silip App running and open the site in your browser. Click <strong>App</strong> at the top,
                       check the address on the local confirmation page, then choose <strong>Allow access</strong>.
                       Enter any site passphrase on the site itself.</span
                     ><span lang="zh-CN"
-                      >保持 Piik App 运行，在浏览器打开站点，点击顶部的 <strong>App</strong>。
+                      >保持 Silip App 运行，在浏览器打开站点，点击顶部的 <strong>App</strong>。
                       在本机确认页核对网址，点击<strong>允许使用</strong>。如果站点要求口令，在站点页面输入。</span
                     >
                   </p>
@@ -560,7 +560,7 @@
                 <h3><span lang="en">App and site, together</span><span lang="zh-CN">App 与站点，搭配着用</span></h3>
                 <p>
                   <span lang="en"
-                    >Use the App's window, screen and audio capture with your group's regular Piik address.
+                    >Use the App's window, screen and audio capture with your group's regular Silip address.
                     Your friends can still watch in a browser.</span
                   ><span lang="zh-CN"
                     >用上 App 的窗口、屏幕与声音采集，也保留站点的固定入口。朋友照样用浏览器观看。</span
@@ -568,9 +568,9 @@
                 </p>
                 <p>
                   <span lang="en">With the site's media forwarding (SFU) enabled and the host's Privacy mode off,
-                    Piik can try this fallback when a direct connection is unavailable.
+                    Silip can try this fallback when a direct connection is unavailable.
                     <strong>demo.piik.tv is P2P-only; this fallback is not enabled there.</strong></span>
-                  <span lang="zh-CN">站点启用媒体转发（SFU）、房主关闭隐私模式后，直连不通时，Piik 会自动尝试这条备用路线。
+                  <span lang="zh-CN">站点启用媒体转发（SFU）、房主关闭隐私模式后，直连不通时，Silip 会自动尝试这条备用路线。
                     <strong>demo.piik.tv 仅使用 P2P，未开启 SFU 兜底。</strong></span>
                 </p>
                 <p>
@@ -610,11 +610,11 @@
             </ol>
             <p>
               <span lang="en"
-                >Only have a room code? Select <strong>Join a room</strong> on the same Piik site and enter the
+                >Only have a room code? Select <strong>Join a room</strong> on the same Silip site and enter the
                 four-digit code. Access depends on the host’s settings; a site passphrase or room password may be
                 required.</span
               ><span lang="zh-CN"
-                >只有房间号时，在同一个 Piik
+                >只有房间号时，在同一个 Silip
                 站点选择<strong>加入房间</strong>，输入四位房间号。能否加入由房主设置决定，可能需要站点口令或房间密码。</span
               >
             </p>
@@ -637,18 +637,18 @@
             </summary>
             <p>
               <span lang="en"
-                >Piik App is available for Windows, macOS, Linux and Android. Friends can watch in a computer or phone browser.
+                >Silip App is available for Windows, macOS, Linux and Android. Friends can watch in a computer or phone browser.
                 Physical-device coverage for the macOS and Linux apps is still limited; if you have a device,
-                we'd welcome your test results and <a href="https://github.com/TNTcraftHIM/Piik/issues">feedback</a>.</span
+                we'd welcome your test results and <a href="https://github.com/P4-aaaul/Silip/issues">feedback</a>.</span
               ><span lang="zh-CN"
-                >Piik App 提供 Windows、macOS、Linux 和 Android 版本，朋友可使用电脑或手机浏览器观看。
-                macOS 和 Linux 版 Piik App 仍需更多实机测试，欢迎有设备的朋友试用并<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈问题</a>。</span
+                >Silip App 提供 Windows、macOS、Linux 和 Android 版本，朋友可使用电脑或手机浏览器观看。
+                macOS 和 Linux 版 Silip App 仍需更多实机测试，欢迎有设备的朋友试用并<a href="https://github.com/P4-aaaul/Silip/issues">反馈问题</a>。</span
               >
             </p>
           </details>
           <details id="faq-app">
             <summary>
-              <span lang="en">Why use the App if Piik works in a browser?</span
+              <span lang="en">Why use the App if Silip works in a browser?</span
               ><span lang="zh-CN">有了在线版，为什么还要用 App？</span>
             </summary>
             <p>
@@ -661,11 +661,11 @@
             </p>
             <p>
               <span lang="en"
-                >Already use a Piik site? Keep the App running, click <strong>App</strong> at the top right of that site,
+                >Already use a Silip site? Keep the App running, click <strong>App</strong> at the top right of that site,
                 then approve the connection to use these features on the same page. Friends still only need a browser.
                 <a href="./docs/getting-started.html#use-app-with-an-existing-site">Connection guide<span aria-hidden="true">&nbsp;↗</span></a></span
               ><span lang="zh-CN"
-                >如果你已有常用的 Piik 站点，也可以联动 App：运行 App，在站点右上角点击 <strong>App</strong> 并授权，就能在原网页使用这些功能。观众仍只需浏览器。
+                >如果你已有常用的 Silip 站点，也可以联动 App：运行 App，在站点右上角点击 <strong>App</strong> 并授权，就能在原网页使用这些功能。观众仍只需浏览器。
                 <a href="./docs/zh/getting-started.html#通过已有站点使用-app">连接方法<span aria-hidden="true">&nbsp;↗</span></a></span
 
               >
@@ -678,15 +678,15 @@
             </summary>
             <p>
               <span lang="en"
-                >Yes. Use Piik online, an Internet-accessible Piik site, or Public invite in the App. Public invite gives
+                >Yes. Use Silip online, an Internet-accessible Silip site, or Public invite in the App. Public invite gives
                 your room a temporary address that can change or become unavailable; closing the App ends the room.
                 The online site and Public invite use direct media connections without server forwarding, so some networks
-                may load the page but block the video. You can also use a Piik site with media forwarding enabled
+                may load the page but block the video. You can also use a Silip site with media forwarding enabled
                 for a fallback connection.</span
               ><span lang="zh-CN"
-                >可以使用在线版、能从外网访问的 Piik 站点，或 Piik App 的“公网邀请”。公网邀请的地址是临时的，可能中断或变化，退出 App 后房间也会结束。
+                >可以使用在线版、能从外网访问的 Silip 站点，或 Silip App 的“公网邀请”。公网邀请的地址是临时的，可能中断或变化，退出 App 后房间也会结束。
                 在线版和公网邀请的画面靠设备间直连传输，没有服务器转发兜底；部分网络可能出现页面能打开、画面连不上的情况。
-                也可以使用已启用媒体转发兜底的 Piik 站点。</span
+                也可以使用已启用媒体转发兜底的 Silip 站点。</span
               >
             </p>
           </details>
@@ -696,7 +696,7 @@
             </summary>
             <p>
               <span lang="en"
-                >One host and up to 20 invited viewers fit in a room. Piik is made for a private group hanging out
+                >One host and up to 20 invited viewers fit in a room. Silip is made for a private group hanging out
                 around one screen.</span
               ><span lang="zh-CN"
                 >一个房间支持一位房主和最多 20
@@ -710,11 +710,11 @@
             </summary>
             <p>
               <span lang="en"
-                >Yes. Share an app window or screen through Piik App on a computer, then enable <strong>Remote control</strong> and approve your friends.
+                >Yes. Share an app window or screen through Silip App on a computer, then enable <strong>Remote control</strong> and approve your friends.
                 Turn on <strong>Allow simultaneous control</strong> to share the keyboard and mouse with several friends.
                 Games need to support local multiplayer; see the <a href="./docs/remote-control.html?lang=en">co-play guide</a> for setup and optional gamepads.</span
               ><span lang="zh-CN"
-                >可以。用电脑上的 Piik App 分享程序窗口或屏幕，开启<strong>远程控制</strong>并授权朋友即可。
+                >可以。用电脑上的 Silip App 分享程序窗口或屏幕，开启<strong>远程控制</strong>并授权朋友即可。
                 打开<strong>允许多人同时控制</strong>，还能和多位朋友共用键鼠，一起玩支持本地多人模式的游戏。
                 操作步骤和可选手柄配置见<a href="./docs/zh/remote-control.html">远控与多人同乐指南</a>。</span
               >
@@ -739,8 +739,8 @@
           <details>
             <summary><span lang="en">Do I need my own server?</span><span lang="zh-CN">需要自己搭服务器吗？</span></summary>
             <p>
-              <span lang="en">No. Use <a href="#demo">Piik online</a>, or choose <strong>Public invite</strong> in Piik App to create a temporary room. You can also use a Piik site provided by someone else. For a permanent site under your own domain, see <a href="#docs">self-hosting below</a>.</span>
-              <span lang="zh-CN">不需要。可以直接用<a href="#demo">在线版</a>，或在 Piik App 中选择<strong>公网邀请</strong>创建临时房间，也可以使用别人提供的 Piik 站点。想用自己的域名长期运行一个站点，再看<a href="#docs">下方的自托管说明</a>。</span>
+              <span lang="en">No. Use <a href="#demo">Silip online</a>, or choose <strong>Public invite</strong> in Silip App to create a temporary room. You can also use a Silip site provided by someone else. For a permanent site under your own domain, see <a href="#docs">self-hosting below</a>.</span>
+              <span lang="zh-CN">不需要。可以直接用<a href="#demo">在线版</a>，或在 Silip App 中选择<strong>公网邀请</strong>创建临时房间，也可以使用别人提供的 Silip 站点。想用自己的域名长期运行一个站点，再看<a href="#docs">下方的自托管说明</a>。</span>
             </p>
           </details>
           <div class="faq-more">
@@ -764,13 +764,13 @@
       <section class="download-section wrap" id="download" aria-labelledby="download-title">
         <div class="section-heading">
           <p class="eyebrow"><span lang="en">Download</span><span lang="zh-CN">下载</span></p>
-          <h2 id="download-title"><span lang="en">Get Piik App.</span><span lang="zh-CN">下载 Piik App。</span></h2>
+          <h2 id="download-title"><span lang="en">Get Silip App.</span><span lang="zh-CN">下载 Silip App。</span></h2>
           <p>
             <span lang="en"
               >Share from your computer or phone. Friends join with a link.</span
             ><span lang="zh-CN">电脑或手机上开播，朋友点开链接就能加入。</span>
           </p>
-          <a class="download-release" href="https://github.com/TNTcraftHIM/Piik/releases/latest">
+          <a class="download-release" href="https://github.com/P4-aaaul/Silip/releases/latest">
             <span class="download-headline" id="download-headline" hidden><span lang="en"><strong></strong><span></span></span><span lang="zh-CN"><strong></strong><span></span></span></span>
             <span class="download-release-meta">
               <span id="download-release" hidden>
@@ -802,10 +802,10 @@
               <p class="download-variant">x64</p>
               <a
                 class="lr-btn button download-button"
-                href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-windows-amd64.zip"
+                href="https://github.com/P4-aaaul/Silip/releases/latest/download/silip-app-windows-amd64.zip"
                 ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
                 ><span lang="zh-CN">GitHub 下载</span></a
-              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip"
+              ><a href="https://gitee.com/P4-aaaul/Silip/releases/download/latest/silip-app-windows-amd64.zip"
                 ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
               >
             </article>
@@ -830,10 +830,10 @@
               </fieldset>
               <a
                 class="lr-btn button download-button"
-                href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-darwin-arm64.zip"
+                href="https://github.com/P4-aaaul/Silip/releases/latest/download/silip-app-darwin-arm64.zip"
                 ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
                 ><span lang="zh-CN">GitHub 下载</span></a
-              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-darwin-arm64.zip"
+              ><a href="https://gitee.com/P4-aaaul/Silip/releases/download/latest/silip-app-darwin-arm64.zip"
                 ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
               >
               <p><span lang="en">Native capture requires macOS 13+.</span><span lang="zh-CN">原生采集需 macOS 13 及以上。</span></p>
@@ -860,10 +860,10 @@
               </fieldset>
               <a
                 class="lr-btn button download-button"
-                href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-linux-amd64.zip"
+                href="https://github.com/P4-aaaul/Silip/releases/latest/download/silip-app-linux-amd64.zip"
                 ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span
                 ><span lang="zh-CN">GitHub 下载</span></a
-              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-linux-amd64.zip"
+              ><a href="https://gitee.com/P4-aaaul/Silip/releases/download/latest/silip-app-linux-amd64.zip"
                 ><span lang="en">Download from Gitee</span><span lang="zh-CN">Gitee 国内镜像下载</span></a
               >
             </article>
@@ -889,9 +889,9 @@
               </div>
               <h4 id="download-android">Android</h4>
               <p class="download-variant">ARM64 / x64</p>
-              <a class="lr-btn button download-button" href="https://github.com/TNTcraftHIM/Piik/releases/latest/download/piik-app-android-universal.apk"
+              <a class="lr-btn button download-button" href="https://github.com/P4-aaaul/Silip/releases/latest/download/silip-app-android-universal.apk"
                 ><svg aria-hidden="true"><use href="#download-mark" /></svg><span lang="en">Download from GitHub</span><span lang="zh-CN">GitHub 下载</span></a
-              ><a href="https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-android-universal.zip"
+              ><a href="https://gitee.com/P4-aaaul/Silip/releases/download/latest/silip-app-android-universal.zip"
                 ><span lang="en">Gitee ZIP (extract to install)</span><span lang="zh-CN">Gitee 国内镜像（ZIP，解压安装）</span></a>
               <p class="download-note"><span lang="en">Android 10 or later.</span><span lang="zh-CN">Android 10 及以上。</span></p>
             </article>
@@ -910,8 +910,8 @@
           </div>
         </section>
         <div class="download-help">
-          <a class="lr-btn button" href="https://github.com/TNTcraftHIM/Piik"><span lang="en">View on GitHub</span><span lang="zh-CN">GitHub 项目</span><span aria-hidden="true"> ↗</span></a>
-          <p><span lang="en">Found a problem? <a href="https://github.com/TNTcraftHIM/Piik/issues">Let us know</a>.</span><span lang="zh-CN">遇到问题？欢迎<a href="https://github.com/TNTcraftHIM/Piik/issues">反馈</a>。</span></p>
+          <a class="lr-btn button" href="https://github.com/P4-aaaul/Silip"><span lang="en">View on GitHub</span><span lang="zh-CN">GitHub 项目</span><span aria-hidden="true"> ↗</span></a>
+          <p><span lang="en">Found a problem? <a href="https://github.com/P4-aaaul/Silip/issues">Let us know</a>.</span><span lang="zh-CN">遇到问题？欢迎<a href="https://github.com/P4-aaaul/Silip/issues">反馈</a>。</span></p>
         </div>
       </section>
 
@@ -926,10 +926,10 @@
           </h2>
           <p>
             <span lang="en"
-              >Run your own Piik site on Windows or Linux.
+              >Run your own Silip site on Windows or Linux.
               Windows packages support x64; Linux packages and Docker images support x64 and ARM64.</span
             ><span lang="zh-CN"
-              >在 Windows 或 Linux 上部署自己的 Piik 站点。
+              >在 Windows 或 Linux 上部署自己的 Silip 站点。
               Windows 程序包支持 x64，Linux 程序包和 Docker 镜像支持 x64／ARM64。</span
             >
           </p>
@@ -944,7 +944,7 @@
               </p>
             </li>
             <li>
-              <a href="https://github.com/TNTcraftHIM/Piik/blob/main/docs/standards/configuration.md"
+              <a href="https://github.com/P4-aaaul/Silip/blob/main/docs/standards/configuration.md"
                 ><span lang="en">Configuration</span><span lang="zh-CN">配置参考</span
                 ><span aria-hidden="true"> ↗</span></a
               >
@@ -977,7 +977,7 @@
     <footer class="site-footer wrap">
       <div class="footer-identity">
         <svg aria-hidden="true"><use href="#tv-mark" /></svg
-        ><span>Piik<span class="identity-dot" aria-hidden="true">.</span></span>
+        ><span>Silip<span class="identity-dot" aria-hidden="true">.</span></span>
         <p><span lang="en">Share the good stuff.</span><span lang="zh-CN">来，看点好康的。</span></p>
       </div>
       <div class="footer-links">
@@ -985,10 +985,10 @@
           ><span lang="en">Documentation</span><span lang="zh-CN">文档中心</span></a
         ><a href="./docs/troubleshooting.html?lang=en" data-doc-page="troubleshooting.html"
           ><span lang="en">Troubleshooting</span><span lang="zh-CN">问题排查</span></a
-        ><a href="https://github.com/TNTcraftHIM/Piik"
+        ><a href="https://github.com/P4-aaaul/Silip"
           ><span lang="en">Source on GitHub</span><span lang="zh-CN">GitHub 源码</span
           ><span aria-hidden="true"> ↗</span></a
-        ><a href="https://github.com/TNTcraftHIM/Piik/blob/main/LICENSE"
+        ><a href="https://github.com/P4-aaaul/Silip/blob/main/LICENSE"
           ><span lang="en">MIT license</span><span lang="zh-CN">MIT 许可证</span></a
         ><a href="./assets/platform-notices.txt"
           ><span lang="en">Icon credits</span><span lang="zh-CN">图标署名</span></a
@@ -1009,8 +1009,8 @@
         </p>
       </details>
       <p class="footer-note">
-        <span lang="en">Piik’s own code is MIT-licensed. Contributions are welcome.</span
-        ><span lang="zh-CN">Piik 自有代码采用 MIT 许可，欢迎参与贡献。</span>
+        <span lang="en">Silip’s own code is MIT-licensed. Contributions are welcome.</span
+        ><span lang="zh-CN">Silip 自有代码采用 MIT 许可，欢迎参与贡献。</span>
       </p>
     </footer>
   </body>

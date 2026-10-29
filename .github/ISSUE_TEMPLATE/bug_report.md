@@ -5,7 +5,7 @@ about: Report a reproducible problem / 反馈可复现的问题
 
 ## Environment / 环境
 
-- Piik version and build SHA / Piik 版本与构建 SHA:
+- Silip version and build SHA / Silip 版本与构建 SHA:
 - Browser, App, or Server / 使用端:
 - OS and browser versions / 系统与浏览器版本:
 

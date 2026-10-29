@@ -1,6 +1,6 @@
 # Naming And Copy
 
-This is the naming convention for new and changed Piik code, UI and packaging.
+This is the naming convention for new and changed Silip code, UI and packaging.
 Use the brand for people and predictable lowercase identifiers for tools.
 
 ## Voice And Terminology
@@ -141,21 +141,21 @@ The [visual language](./visual-language.md) owns where these lines appear.
 
 | Surface | Convention | Example |
 | --- | --- | --- |
-| Product and repository | `Piik` | `TNTcraftHIM/Piik` |
-| Standalone application | `Piik App` | Window title, documentation, shortcuts |
-| Hosted service in prose | `Piik Server` | Deployment instructions |
-| Executables and command directories | Lowercase, hyphen-separated | `piik-app[.exe]`, `piik-server[.exe]`, `cmd/piik-app` |
-| Native capture executable | Lowercase component name | `piik-capture[.exe]` |
-| App download archives | Lowercase, fixed target name within each release | `piik-app-windows-amd64.zip` |
-| Package/build directory names | Lowercase and target suffix | `piik-app-windows-amd64` |
-| macOS application bundle | Display name, standard extension | `Piik App.app` |
-| Linux desktop entry | Lowercase file/Exec, display Name | `piik-app.desktop`, `Exec=piik-app`, `Name=Piik App` |
-| Package and service identifiers | Lowercase | npm `piik`, systemd `piik.service`, `tv.piik.app` |
-| Environment variables | Uppercase snake case | `PIIK_DEBUG`, `PIIK_LOG_DIR` |
-| Go module path | Exact repository spelling | `github.com/TNTcraftHIM/Piik` |
+| Product and repository | `Silip` | `P4-aaaul/Silip` |
+| Standalone application | `Silip App` | Window title, documentation, shortcuts |
+| Hosted service in prose | `Silip Server` | Deployment instructions |
+| Executables and command directories | Lowercase, hyphen-separated | `silip-app[.exe]`, `silip-server[.exe]`, `cmd/silip-app` |
+| Native capture executable | Lowercase component name | `silip-capture[.exe]` |
+| App download archives | Lowercase, fixed target name within each release | `silip-app-windows-amd64.zip` |
+| Package/build directory names | Lowercase and target suffix | `silip-app-windows-amd64` |
+| macOS application bundle | Display name, standard extension | `Silip App.app` |
+| Linux desktop entry | Lowercase file/Exec, display Name | `silip-app.desktop`, `Exec=silip-app`, `Name=Silip App` |
+| Package and service identifiers | Lowercase | npm `silip`, systemd `silip.service`, `io.github.p4aaaul.silip.app` |
+| Environment variables | Uppercase snake case | `SILIP_DEBUG`, `SILIP_LOG_DIR` |
+| Go module path | Exact repository spelling | `github.com/P4-aaaul/Silip` |
 
 Use the same lowercase binary names across platforms for predictable commands.
-`Piik App.app` is the user-facing macOS bundle. The packager owns archive contents
+`Silip App.app` is the user-facing macOS bundle. The packager owns archive contents
 and directory layout.
 Keep platform/standard spellings such as `Info.plist`, `LICENSE`, `README.md`
 and `REVISION`. Do not change third-party names or notices to fit this table.
@@ -191,10 +191,10 @@ Content layering reviewed 2026-09-12:
 defers secondary detail while preserving the primary task;
 [GOV.UK's clear-language guidance](https://guidance.publishing.service.gov.uk/writing-to-gov-uk-standards/writing-guidelines/clear-language/)
 keeps specialist content understandable. The layer assignments and Chinese
-examples above are Piik's application of those principles.
+examples above are Silip's application of those principles.
 [NN/g's microcopy guidance](https://www.nngroup.com/articles/3-cs-microcopy/)
 puts clarity before concision and character; this also guides the balance
-between Piik's playful introductions and factual instructions.
+between Silip's playful introductions and factual instructions.
 
 Reviewed 2026-09-10. Desktop standards explicitly separate display names from
 executable identifiers; lowercase executable names are our portability convention.

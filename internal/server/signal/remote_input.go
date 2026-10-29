@@ -1,6 +1,6 @@
 package signal
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 func (s *Server) subscribeRemoteInput(sess *session, actor *authenticatedSession, message protocol.SubscribeRemoteInputMessage) {
 	if sess.remoteInput {

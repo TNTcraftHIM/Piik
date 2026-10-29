@@ -12,7 +12,7 @@ import { filteringProbe, preparePeerProbe, udpProbe } from "./udp";
 export async function endpointWorker(): Promise<void> {
   let chrome: ChildProcessWithoutNullStreams | null = null, app: ChildProcessWithoutNullStreams | null = null;
   let cdp: CdpConnection | null = null, page: PageHandle | null = null;
-  const profile = process.env.PIIK_NETWORK_LAB_PROFILE;
+  const profile = process.env.SILIP_NETWORK_LAB_PROFILE;
   if (!profile) throw new Error("Parent-owned browser profile is required");
   const ports: number[] = [];
   let rendezvous: Awaited<ReturnType<typeof preparePeerProbe>> | null = null;
@@ -51,8 +51,8 @@ export async function endpointWorker(): Promise<void> {
           await waitForSample(deadline => fetchJsonBefore<{ status: string }>(`${origin}/healthz`, deadline),
             value => value.status === "ok", 10_000);
           if (request.app) {
-            app = spawn(resolve(`build/network-lab/bin/piik-app${process.platform === "win32" ? ".exe" : ""}`), ["--site", origin, "--debug", "--config", join(profile, "app.json")],
-              { stdio: "pipe", windowsHide: true, env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true", PIIK_LOG_DIR: join(profile, "logs") } });
+            app = spawn(resolve(`build/network-lab/bin/silip-app${process.platform === "win32" ? ".exe" : ""}`), ["--site", origin, "--debug", "--config", join(profile, "app.json")],
+              { stdio: "pipe", windowsHide: true, env: { ...process.env, SILIP_CLIENT_GATE_NO_BROWSER: "true", SILIP_LOG_DIR: join(profile, "logs") } });
             app.stderr.on("data", data => log("app", data));
             await once(app, "spawn");
             ports.push((await readAppEndpoint(app)).port); app.stdout.resume();

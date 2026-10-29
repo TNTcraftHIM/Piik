@@ -1,19 +1,19 @@
 <resources>
- <string name="app_name">Piik</string>
- <string name="runtime_channel">Piik 本地服务</string>
- <string name="runtime_title">Piik 已就绪</string>
- <string name="runtime_body">可使用本地房间与原生分享。使用完毕后可停止 Piik。</string>
- <string name="runtime_failed">Piik 已停止</string>
- <string name="runtime_restart">打开 Piik 查看并重试。</string>
+ <string name="app_name">Silip</string>
+ <string name="runtime_channel">Silip 本地服务</string>
+ <string name="runtime_title">Silip 已就绪</string>
+ <string name="runtime_body">可使用本地房间与原生分享。使用完毕后可停止 Silip。</string>
+ <string name="runtime_failed">Silip 已停止</string>
+ <string name="runtime_restart">打开 Silip 查看并重试。</string>
  <string name="runtime_open">打开</string>
- <string name="runtime_stop">停止 Piik</string>
+ <string name="runtime_stop">停止 Silip</string>
  <string name="media_waiting">请在浏览器发起屏幕或声音请求。按返回键回到浏览器。</string>
  <string name="no_pending_confirmation">当前没有待确认的屏幕或声音请求。</string>
  <string name="return_browser">返回浏览器</string>
- <string name="no_browser">请安装或启用浏览器以打开 Piik。</string>
+ <string name="no_browser">请安装或启用浏览器以打开 Silip。</string>
  <string name="preparing">正在准备本地屏幕分享…</string>
  <string name="notification_channel">屏幕分享</string>
- <string name="notification_title">Piik 正在分享屏幕</string>
+ <string name="notification_title">Silip 正在分享屏幕</string>
  <string name="notification_body">点击返回并停止分享。</string>
- <string name="restart_piik">重新启动 Piik</string>
+ <string name="restart_silip">重新启动 Silip</string>
 </resources>

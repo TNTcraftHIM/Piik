@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 	"github.com/pion/stun/v4"
 	"golang.org/x/sync/singleflight"
 )

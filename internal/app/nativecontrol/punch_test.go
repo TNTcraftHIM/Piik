@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 )
 
 func TestPunchResponseBackpressureBoundsWorkers(t *testing.T) {

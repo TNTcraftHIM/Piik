@@ -23,17 +23,17 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/app/lan"
-	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/app/buildinfo"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/app/lan"
+	"github.com/P4-aaaul/Silip/internal/app/launcher"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	serverconfig "github.com/P4-aaaul/Silip/internal/server/config"
 )
 
 func TestMain(tests *testing.M) {
-	if mode := os.Getenv("PIIK_APP_TUNNEL_FIXTURE"); mode != "" {
-		if err := os.WriteFile(os.Getenv("PIIK_APP_TUNNEL_STARTED"), nil, 0600); err != nil {
+	if mode := os.Getenv("SILIP_APP_TUNNEL_FIXTURE"); mode != "" {
+		if err := os.WriteFile(os.Getenv("SILIP_APP_TUNNEL_STARTED"), nil, 0600); err != nil {
 			os.Exit(1)
 		}
 		if mode == "failed" {
@@ -45,7 +45,7 @@ func TestMain(tests *testing.M) {
 		}
 		if mode == "ready-failed" {
 			for {
-				if _, err := os.Stat(os.Getenv("PIIK_APP_TUNNEL_EXIT")); err == nil {
+				if _, err := os.Stat(os.Getenv("SILIP_APP_TUNNEL_EXIT")); err == nil {
 					os.Exit(7)
 				}
 				time.Sleep(time.Millisecond)
@@ -62,15 +62,15 @@ func TestPublicLinkStartupDistinguishesCancellationFromFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_DEBUG", "")
+	t.Setenv("SILIP_DEBUG", "")
 	for _, mode := range []string{"starting", "ready", "failed", "ready-failed"} {
 		t.Run(mode, func(t *testing.T) {
 			directory := t.TempDir()
 			marker := filepath.Join(directory, "tunnel-started")
 			exit := filepath.Join(directory, "tunnel-exit")
-			t.Setenv("PIIK_APP_TUNNEL_FIXTURE", mode)
-			t.Setenv("PIIK_APP_TUNNEL_STARTED", marker)
-			t.Setenv("PIIK_APP_TUNNEL_EXIT", exit)
+			t.Setenv("SILIP_APP_TUNNEL_FIXTURE", mode)
+			t.Setenv("SILIP_APP_TUNNEL_STARTED", marker)
+			t.Setenv("SILIP_APP_TUNNEL_EXIT", exit)
 			listener, err := net.Listen("tcp4", "127.0.0.1:0")
 			if err != nil {
 				t.Fatal(err)
@@ -312,8 +312,8 @@ func TestLauncherRetainsItsRuntimeFailureDuringCancellation(t *testing.T) {
 }
 
 func TestLauncherRetriesARetiredFailureWithoutReplacingAReadyRoom(t *testing.T) {
-	t.Setenv("PIIK_APP_TUNNEL_FIXTURE", "ready")
-	t.Setenv("PIIK_APP_TUNNEL_STARTED", filepath.Join(t.TempDir(), "started"))
+	t.Setenv("SILIP_APP_TUNNEL_FIXTURE", "ready")
+	t.Setenv("SILIP_APP_TUNNEL_STARTED", filepath.Join(t.TempDir(), "started"))
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
@@ -671,11 +671,11 @@ func TestAppLaunchURLMarksThePageWithoutChangingOrigin(t *testing.T) {
 	value := launcher.EntryURL("https://share.example/", loopback.DefaultPortStart)
 	parsed, err := url.Parse(value)
 	if err != nil || parsed.Scheme != "https" || parsed.Host != "share.example" ||
-		parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
+		parsed.Query().Get("silip-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 		t.Fatalf("launch URL = %q, %v", value, err)
 	}
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
-	if err != nil || fragment.Get("piik-client") != "1" {
+	if err != nil || fragment.Get("silip-client") != "1" {
 		t.Fatalf("App launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }
@@ -698,7 +698,7 @@ func TestAppDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 		log.SetOutput(previousOutput)
 		slog.SetLogLoggerLevel(previousLevel)
 	})
-	t.Setenv("PIIK_DEBUG", "")
+	t.Setenv("SILIP_DEBUG", "")
 	for _, enabled := range []bool{false, true} {
 		output.Reset()
 		directory := t.TempDir()
@@ -706,7 +706,7 @@ func TestAppDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 		if err == nil {
 			t.Fatal("invalid mode must stop before starting capture or services")
 		}
-		if strings.Contains(output.String(), "piik-client") {
+		if strings.Contains(output.String(), "silip-client") {
 			t.Fatalf("App diagnostics reached stderr: %s", output.String())
 		}
 		content, readErr := os.ReadFile(filepath.Join(directory, "client.log"))
@@ -730,21 +730,21 @@ func TestAppDiagnosticsUseFilesOnlyWhenEnabled(t *testing.T) {
 }
 
 func TestAppConfigurationFailurePreservesSystemCause(t *testing.T) {
-	t.Setenv("PIIK_DEBUG", "")
+	t.Setenv("SILIP_DEBUG", "")
 	blocked := filepath.Join(t.TempDir(), "not-a-directory")
 	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	err := Run(t.Context(), Options{DisableBrowser: true, ConfigPath: filepath.Join(blocked, "client.json")})
 	var cause *os.PathError
-	if !errors.As(err, &cause) || !strings.Contains(err.Error(), "Piik App configuration is unavailable") {
+	if !errors.As(err, &cause) || !strings.Contains(err.Error(), "Silip App configuration is unavailable") {
 		t.Fatalf("configuration failure lost its path/system cause: %v", err)
 	}
 }
 
 func TestAppDiagnosticDirectoryHonorsExplicitSelection(t *testing.T) {
 	environmentDirectory := t.TempDir()
-	t.Setenv("PIIK_LOG_DIR", environmentDirectory)
+	t.Setenv("SILIP_LOG_DIR", environmentDirectory)
 	for _, directory := range []string{"", t.TempDir()} {
 		recorder, err := openDiagnostics(directory)
 		if err != nil {
@@ -797,12 +797,12 @@ func TestFailedCaptureProbeRetainsItsCause(t *testing.T) {
 func TestLaunchURLPreservesLocalAccessInsideThePrivateFragment(t *testing.T) {
 	value := launcher.EntryURL("http://localhost:8787/#client-access=secret", loopback.DefaultPortStart)
 	parsed, err := url.Parse(value)
-	if err != nil || parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
+	if err != nil || parsed.Query().Get("silip-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 		t.Fatalf("local native launch URL = %q, %v", value, err)
 	}
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
 	if err != nil || fragment.Get("client-access") != "secret" ||
-		fragment.Get("piik-client") != "1" {
+		fragment.Get("silip-client") != "1" {
 		t.Fatalf("local native launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }
@@ -811,23 +811,23 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 	for _, password := range []string{"x", "好", " ", "+", "%", "#&?=", " 中文 a+b&c?d=e% "} {
 		t.Run(password, func(t *testing.T) {
 			value := launcher.LocalEntryURL(
-				"http://localhost:8787/?retained=query#retained=a%2Bb%25&client-access=old&piik-lang=zh&piik-mode=text&piik-theme=dark",
+				"http://localhost:8787/?retained=query#retained=a%2Bb%25&client-access=old&silip-lang=zh&silip-mode=text&silip-theme=dark",
 				password,
 				loopback.DefaultPortStart,
 			)
 			for _, target := range []string{value, launcher.EntryURL(value, loopback.DefaultPortStart)} {
 				parsed, err := url.Parse(target)
 				if err != nil || parsed.Query().Get("retained") != "query" ||
-					parsed.Query().Get("piik-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
+					parsed.Query().Get("silip-client-port") != strconv.Itoa(loopback.DefaultPortStart) {
 					t.Fatalf("local launch URL = %q, %v", target, err)
 				}
 				// location.hash stays escaped. Parsing Fragment instead would decode
 				// twice and hide the browser's percent-encoded-password regression.
 				fragment, err := url.ParseQuery(parsed.EscapedFragment())
 				if err != nil || fragment.Get("client-access") != password ||
-					fragment.Get("piik-client") != "1" || fragment.Get("retained") != "a+b%" ||
-					fragment.Get("piik-lang") != "zh" || fragment.Get("piik-mode") != "text" ||
-					fragment.Get("piik-theme") != "dark" {
+					fragment.Get("silip-client") != "1" || fragment.Get("retained") != "a+b%" ||
+					fragment.Get("silip-lang") != "zh" || fragment.Get("silip-mode") != "text" ||
+					fragment.Get("silip-theme") != "dark" {
 					t.Fatalf("browser-visible launch fragment = %q, %v", parsed.EscapedFragment(), err)
 				}
 			}
@@ -840,7 +840,7 @@ func TestLaunchURLEncodesAndClearsOptionalLocalAccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	fragment, err := url.ParseQuery(parsed.EscapedFragment())
-	if err != nil || fragment.Get("client-access") != "" || fragment.Get("piik-client") != "1" {
+	if err != nil || fragment.Get("client-access") != "" || fragment.Get("silip-client") != "1" {
 		t.Fatalf("open local launch fragment = %q, %v", parsed.Fragment, err)
 	}
 }
@@ -897,7 +897,7 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
-			t.Setenv("PIIK_STUN_URLS", testCase.override)
+			t.Setenv("SILIP_STUN_URLS", testCase.override)
 			stunURLs, natPredictionSTUNURLs, err := localSTUNURLs(testCase.link)
 			if err != nil {
 				t.Fatal(err)
@@ -933,7 +933,7 @@ func TestLocalServerOwnsItsSTUNConfiguration(t *testing.T) {
 	}
 	for _, value := range []string{"turn:chosen.test:3478", "stun:a.test:3478,,stun:b.test:3478",
 		"stun:a:1,stun:b:2,stun:c:3,stun:d:4,stun:e:5,stun:f:6,stun:g:7"} {
-		t.Setenv("PIIK_STUN_URLS", value)
+		t.Setenv("SILIP_STUN_URLS", value)
 		if _, _, err := localSTUNURLs(true); err == nil {
 			t.Fatalf("invalid public STUN list accepted: %q", value)
 		}

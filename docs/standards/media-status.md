@@ -160,5 +160,5 @@ sample inputs. They do not add quality facts absent from the real workflow.
 - [LiveKit reconnection](https://docs.livekit.io/intro/basics/connect/#network-changes-and-reconnection):
   transient signaling/media recovery does not always interrupt the picture.
 
-We reuse these distinctions and the existing Piik owners, not a new SDK, scoring
+We reuse these distinctions and the existing Silip owners, not a new SDK, scoring
 algorithm or transport policy.

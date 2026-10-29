@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
+	serverconfig "github.com/P4-aaaul/Silip/internal/server/config"
 )
 
 const currentVersion = 1
@@ -63,7 +63,7 @@ func DefaultPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("find user configuration directory: %w", err)
 	}
-	return filepath.Join(directory, "Piik", "client.json"), nil
+	return filepath.Join(directory, "Silip", "client.json"), nil
 }
 
 func LoadOrCreate(path string) (Config, error) {
@@ -117,7 +117,7 @@ func saveFile(path string, payload []byte) error {
 	}
 	// Keep the last readable configuration until the replacement is complete.
 	// CreateTemp uses 0600 and the same directory keeps the rename on one volume.
-	file, err := os.CreateTemp(filepath.Dir(path), ".piik-config-*")
+	file, err := os.CreateTemp(filepath.Dir(path), ".silip-config-*")
 	if err != nil {
 		return fmt.Errorf("create App configuration replacement: %w", err)
 	}
@@ -151,11 +151,11 @@ func NormalizeSite(value string) (string, error) {
 		parsed.Host == "" || parsed.User != nil ||
 		(parsed.Path != "" && parsed.Path != "/") ||
 		parsed.RawQuery != "" || parsed.Fragment != "" {
-		return "", errors.New("Piik Site must be an HTTP or HTTPS origin")
+		return "", errors.New("Silip Site must be an HTTP or HTTPS origin")
 	}
 	origin := serverconfig.Origin(parsed)
 	if origin == "" {
-		return "", errors.New("Piik Site must have a valid host and port")
+		return "", errors.New("Silip Site must have a valid host and port")
 	}
 	return origin, nil
 }

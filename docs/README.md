@@ -1,8 +1,8 @@
-# Piik Documentation
+# Silip Documentation
 
-[About Piik](../README.md) · [中文介绍](../README.zh-CN.md) · [中文上手指南](./guide/getting-started.zh-CN.md)
+[About Silip](../README.md) · [中文介绍](../README.zh-CN.md) · [中文上手指南](./guide/getting-started.zh-CN.md)
 
-For using Piik, troubleshooting or self-hosting, start with the
+For using Silip, troubleshooting or self-hosting, start with the
 [reader documentation](./guide/README.md) · [中文文档中心](./guide/README.zh-CN.md).
 This page indexes developer and maintainer references.
 
@@ -14,10 +14,10 @@ This page indexes developer and maintainer references.
 | Find a module, interface, lifecycle or source entry point | [Engineering maps and source index](./standards/engineering.md#repository-layout) |
 | Find the shared product, design and lifecycle rules | [Standards index](./standards/README.md) |
 | Deploy or configure a service | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
-| Build App packages and native capture | [App development](../cmd/piik-app/DEVELOPMENT.md) |
+| Build App packages and native capture | [App development](../cmd/silip-app/DEVELOPMENT.md) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
 | Send a useful bug report | [Diagnostics and export](./standards/configuration.md#diagnostics) |
-| Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
+| Translate Silip or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
 | Check release and platform readiness | [Current status](./status.md) |
 
 The introduction, getting-started, App, self-hosting, service-management and translation guides are available in English and Chinese.
@@ -40,7 +40,7 @@ npm run dev
 In a second terminal, start the server. For a POSIX shell:
 
 ```sh
-PORT=8788 PUBLIC_BASE_URL=http://localhost:8787 go run ./cmd/piik-server
+PORT=8788 PUBLIC_BASE_URL=http://localhost:8787 go run ./cmd/silip-server
 ```
 
 Or in PowerShell:
@@ -48,8 +48,8 @@ Or in PowerShell:
 ```powershell
 $env:PORT = '8788'
 $env:PUBLIC_BASE_URL = 'http://localhost:8787'
-go build -o build/dev/piik-server.exe ./cmd/piik-server
-./build/dev/piik-server.exe
+go build -o build/dev/silip-server.exe ./cmd/silip-server
+./build/dev/silip-server.exe
 ```
 
 The fixed Windows executable path avoids repeated firewall prompts from `go run`.
@@ -59,11 +59,11 @@ computer; remote invitations need a reachable origin as described in
 [configuration](./standards/configuration.md).
 Browser capture requires `localhost` or HTTPS.
 
-For the self-contained App, follow [App development](../cmd/piik-app/DEVELOPMENT.md#run-from-source)
-and [packaging](../cmd/piik-app/DEVELOPMENT.md#packaging), including the platform's
+For the self-contained App, follow [App development](../cmd/silip-app/DEVELOPMENT.md#run-from-source)
+and [packaging](../cmd/silip-app/DEVELOPMENT.md#packaging), including the platform's
 native capture requirements.
 
-## Work on Piik
+## Work on Silip
 
 [Contributing](../CONTRIBUTING.md) covers the workflow and choosing focused checks.
 The main verification commands are:
@@ -75,7 +75,7 @@ npm run check:go
 
 Use the [naming and copy guide](./standards/naming.md) for product names,
 commands, role labels and Chinese/English voice.
-Piik-owned code uses [MIT](../LICENSE); see the
+Silip-owned code uses [MIT](../LICENSE); see the
 [licensing guide](../licenses/README.md) for third-party components.
 
 For the public website, see the [introduction design](./standards/public-introduction.md)

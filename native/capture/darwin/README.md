@@ -14,10 +14,10 @@ machine's architecture:
 
 ```sh
 sh native/capture/darwin/build.sh /outside/repository/build
-/outside/repository/build/piik-capture --geometry-self-test
-/outside/repository/build/piik-capture --audio-self-test
-/outside/repository/build/piik-capture --self-test
-/outside/repository/build/piik-capture --probe
+/outside/repository/build/silip-capture --geometry-self-test
+/outside/repository/build/silip-capture --audio-self-test
+/outside/repository/build/silip-capture --self-test
+/outside/repository/build/silip-capture --probe
 ```
 
 `--geometry-self-test` checks content cropping, Retina scaling and rejection of

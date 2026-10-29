@@ -1,4 +1,4 @@
-const storageKey = 'piik:site-language';
+const storageKey = 'silip:site-language';
 const languages = ['en', 'zh-CN'];
 
 export function initialLanguage() {

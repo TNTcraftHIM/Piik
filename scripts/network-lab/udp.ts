@@ -59,7 +59,7 @@ export async function filteringProbe() {
   } finally { socket.close(); }
 }
 
-/** Survey and peer rendezvous retain one socket, independently of ICE/Piik. */
+/** Survey and peer rendezvous retain one socket, independently of ICE/Silip. */
 export async function preparePeerProbe() {
   const socket = createSocket("udp4"), result = { requests: 0, replies: 0, errors: [] as string[] };
   let closed = false, peer: { address: string; port: number } | null = null;

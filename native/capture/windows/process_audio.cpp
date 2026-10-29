@@ -26,7 +26,7 @@ using Microsoft::WRL::RuntimeClass;
 using Microsoft::WRL::RuntimeClassFlags;
 using Microsoft::WRL::ClassicCom;
 
-namespace piik::capture {
+namespace silip::capture {
 namespace {
 class ActivationHandler final : public RuntimeClass<
     RuntimeClassFlags<ClassicCom>, FtmBase, IActivateAudioInterfaceCompletionHandler> {
@@ -300,4 +300,4 @@ HRESULT CaptureMicrophone(const std::wstring& device_id, HANDLE stop_event, cons
   return result;
 }
 
-}  // namespace piik::capture
+}  // namespace silip::capture

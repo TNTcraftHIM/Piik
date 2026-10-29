@@ -7,7 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
 )
 
 // ErrSourceCanceled means the user dismissed the system source-selection dialog.

@@ -19,12 +19,12 @@ build() {
     -o "$output/$2"
 }
 
-build main.c piik-capture
+build main.c silip-capture
 if [ "${2:-}" = "--check" ]; then
-  build main.test.c piik-capture-test
-  "$output/piik-capture-test"
+  build main.test.c silip-capture-test
+  "$output/silip-capture-test"
   cc -std=c11 -O2 -Wall -Wextra -Werror \
     "$source_root/input.test.c" "$source_root/input.c" \
-    $(pkg-config --cflags --libs libportal) -o "$output/piik-input-test"
-  "$output/piik-input-test"
+    $(pkg-config --cflags --libs libportal) -o "$output/silip-input-test"
+  "$output/silip-input-test"
 fi

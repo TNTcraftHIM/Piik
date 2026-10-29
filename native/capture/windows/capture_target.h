@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace piik::capture {
+namespace silip::capture {
 
 enum class TargetKind { window, display };
 
@@ -34,4 +34,4 @@ class CapturePresentation final {
   SIZE presentation_{};
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

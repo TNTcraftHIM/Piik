@@ -1,14 +1,13 @@
-# Your first Piik room
+# Your first Silip room
 
-English · [简体中文](./getting-started.zh-CN.md) · [Back to Piik](../../README.md)
+English · [简体中文](./getting-started.zh-CN.md) · [Back to Silip](../../README.md)
 
-Piik lets one Host share with up to 20 invited Viewers. Choose your starting point:
+Silip lets one Host share with up to 20 invited Viewers. Choose your starting point:
 
 | You want to… | Start here |
 | --- | --- |
 | Watch a friend | [Open their invitation](#join-a-friends-room). No installation. |
-| Share with friends elsewhere | [Piik App → Public invite](#share-with-piik-app). Keep App running. |
-| Share without installing | [Piik online](#use-piik-online), in your browser. |
+| Share with friends elsewhere | [Silip App → Public invite](#share-with-silip-app). Keep App running. |
 | Use your group's site | [Open that site](#share-from-an-existing-site); App capture is optional. |
 
 ![Three steps: pick a window, copy its room invitation, and join friends on the sofa.](../assets/quickstart.svg)
@@ -22,34 +21,21 @@ Piik lets one Host share with up to 20 invited Viewers. Choose your starting poi
 The playback bar controls only your own picture and sound.
 See [playback controls](./sharing.md#playback-controls) for fullscreen, display and sound options.
 
-Only have a four-digit code? Open the same Piik site and select **Join a room**.
+Only have a four-digit code? Open the same Silip site and select **Join a room**.
 Enter the site passphrase or room password if asked. If code entry is unavailable
 or an old link fails, ask the Host for their current invitation.
 
-## Use Piik online
+## Share with Silip App
 
-1. Open [demo.piik.tv](https://demo.piik.tv) in your browser.
-2. Select **Start sharing**, then **Browser** for a screen, window or tab, or
-   **Camera** where your computer or phone browser supports it. Enable source
-   audio if the picker offers it.
-3. Confirm the preview and select **Copy invite link**. Open that link on a
-   second device or send it to a friend.
-4. Select **Stop sharing** when finished.
-
-The online version is provided by the project. Media travels only between participants (P2P);
-restrictive networks may load the page but block video.
-
-## Share with Piik App
-
-1. Download **Piik App** for your platform from
-   [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) or the
-   [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases). On phones and tablets,
-   install the app; extract the APK first if you use the Gitee ZIP. On a computer,
+1. Download **Silip App** for your platform from
+   [GitHub Releases](https://github.com/P4-aaaul/Silip/releases), or
+   [build it from source](../../cmd/silip-app/DEVELOPMENT.md#run-from-source).
+   On phones and tablets, install the app. On a computer,
    extract the whole archive and keep its directory structure intact.
-2. Open `piik-app.exe` on Windows, `Piik App.app` on macOS, or `./piik-app` on Linux.
-   On phones and tablets, open Piik after installation. The launcher opens in your system browser.
+2. Open `silip-app.exe` on Windows, `Silip App.app` on macOS, or `./silip-app` on Linux.
+   On phones and tablets, open Silip after installation. The launcher opens in your system browser.
 3. Choose **Public invite** for friends outside your local network, then select
-   **Open Piik**. Other modes are explained below.
+   **Open Silip**. Other modes are explained below.
 4. Choose **Start sharing**, then select **Browser**, **Camera**, **Apps / Windows**, or
    **Screens** as available. Pick the actual source and sound option.
 5. Copy and send the room invitation. Keep both the App and sharing tab open.
@@ -72,7 +58,7 @@ If macOS blocks the first launch, follow the [Mac opening steps](./troubleshooti
 | `android-universal` | Android 10+; ARM64 and x64 in one APK |
 
 Linux native capture also needs [system components](../../native/capture/linux/README.md).
-See the [App guide](../../cmd/piik-app/README.md) for package and runtime details.
+See the [App guide](../../cmd/silip-app/README.md) for package and runtime details.
 
 </details>
 
@@ -106,34 +92,33 @@ and generates a new public-invitation address.
 
 ### Use App with an existing site
 
-1. Keep Piik App running and open the Piik site in your browser. Enter its site
-   passphrase if asked; [Piik online](https://demo.piik.tv) needs no site passphrase.
-   No room mode needs to be selected in the App launcher.
+1. Keep Silip App running and open the Silip site in your browser. Enter its site
+   passphrase if asked. No room mode needs to be selected in the App launcher.
 2. Click **App** at the top. Allow local-network access if the browser asks.
    When App is found, choose **Open App page**.
 3. Check the site address on the local confirmation page, then choose **Allow access**.
 4. Return to the site, choose **Start sharing**, then **Apps / Windows** or **Screens**.
    Select a source and send the new room invitation to your friends.
 
-You can also choose **Connect Piik App** inside the **Start sharing** source
+You can also choose **Connect Silip App** inside the **Start sharing** source
 selector; its list updates as soon as the connection completes.
 If connection fails, the App button offers **Retry** and **Download App**.
 You can still share and watch in your browser.
 
-Manage [approved sites and the startup favorite](../../cmd/piik-app/README.md#approved-site)
+Manage [approved sites and the startup favorite](../../cmd/silip-app/README.md#approved-site)
 in the App launcher. If video cannot connect, use the [network guide](./network.md).
 
 ### Upgrading
 
 App and site must use the same major version; **2.x and 1.x cannot be used together**.
-To replace App or update a group's site, follow the [upgrade steps](../../cmd/piik-app/README.md#upgrading).
+To replace App or update a group's site, follow the [upgrade steps](../../cmd/silip-app/README.md#upgrading).
 
 ## Share from an existing site
 
-Use an HTTPS Piik site provided by your group or administrator.
+Use an HTTPS Silip site provided by your group or administrator.
 To run your own site, follow [self-hosting](../operations/self-hosting.md).
 
-1. Open your group's Piik site. Enter its site passphrase if asked.
+1. Open your group's Silip site. Enter its site passphrase if asked.
 2. Choose **Start sharing**, then **Browser** to select a screen, window or tab,
    or **Camera** where your computer or phone browser supports it.
    Enable source audio if the picker offers it.

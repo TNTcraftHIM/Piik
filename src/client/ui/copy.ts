@@ -14,8 +14,8 @@ import {
 export type { CopyKey, Lang, TitleFrameKey } from "../locales";
 export type CopyMode = "text" | "vis";
 
-const LANG_STORAGE_KEY = "piik:ui-lang";
-const MODE_STORAGE_KEY = "piik:ui-mode";
+const LANG_STORAGE_KEY = "silip:ui-lang";
+const MODE_STORAGE_KEY = "silip:ui-mode";
 
 interface CopyPrefs {
   lang: Lang;

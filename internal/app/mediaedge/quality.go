@@ -4,8 +4,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
 	"github.com/pion/webrtc/v4"
 )
 

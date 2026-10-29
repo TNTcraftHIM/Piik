@@ -1,4 +1,4 @@
-// Modified by Piik: honor request contexts, gateway-assigned ports and deletion.
+// Modified by Silip: honor request contexts, gateway-assigned ports and deletion.
 package nat
 
 import (

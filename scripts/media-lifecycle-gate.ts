@@ -40,7 +40,7 @@ const output = join(root, "build/media-lifecycle", new Date().toISOString().repl
 await mkdir(output, { recursive: true });
 const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", windowsHide: true }).trim();
 const binaries = await Promise.all(["server", "app"].map(async name => ({ name,
-  sha256: createHash("sha256").update(await readFile(join(root, `build/network-lab/bin/piik-${name}${suffix}`))).digest("hex") })));
+  sha256: createHash("sha256").update(await readFile(join(root, `build/network-lab/bin/silip-${name}${suffix}`))).digest("hex") })));
 await writeFile(join(output, "environment.json"), JSON.stringify({ commit: git("rev-parse", "HEAD"),
   status: git("status", "--short"), platform: process.platform, arch: process.arch, binaries, selected, repeats }, null, 2));
 const controller = new AbortController(), signal = controller.signal;
@@ -62,10 +62,10 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
     udp.once("error", reject); udp.bind(0, "127.0.0.1", () => { const port = udp.address().port; udp.close(() => resolvePort(port)); });
   });
   let serverLog = "";
-  const server = spawn(resolve(root, `build/network-lab/bin/piik-server${suffix}`), [], { cwd: directory, stdio: "pipe", windowsHide: true,
-    env: { ...env, PIIK_ENV: "development", PIIK_DEBUG: "route", ROOM_DATABASE_PATH: ":memory:",
+  const server = spawn(resolve(root, `build/network-lab/bin/silip-server${suffix}`), [], { cwd: directory, stdio: "pipe", windowsHide: true,
+    env: { ...env, SILIP_ENV: "development", SILIP_DEBUG: "route", ROOM_DATABASE_PATH: ":memory:",
       LISTEN_HOST: "127.0.0.1", PORT: String(port), PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: [...new Set([origin, viewerOrigin])].join(","),
-      PIIK_LOG_DIR: join(directory, "logs"),
+      SILIP_LOG_DIR: join(directory, "logs"),
       ...((scenario.sfu || scenario.fallback) ? { SFU_LISTEN_HOST: "127.0.0.1", SFU_UDP_PORT: String(mediaPort),
         SFU_PUBLIC_IP: "127.0.0.1", SFU_ONLY: String(scenario.sfu) } : {}) } });
   let serverFailure: Error | undefined;
@@ -117,16 +117,16 @@ for (let iteration = 0; iteration < repeats && !signal.aborted; iteration++) for
       return fetchJsonBefore<{ status: string }>(`${origin}/healthz`, deadline);
     }, value => value.status === "ok", 15_000);
     for (let index = 0; index < 2; index++) endpoints.push(new Endpoint(null,
-      await mkdtemp(join(tmpdir(), "piik-client-media-")), signal, env));
+      await mkdtemp(join(tmpdir(), "silip-client-media-")), signal, env));
     versions = await Promise.all(endpoints.map((endpoint, index) => endpoint.call<typeof versions[number]>("start", {
       origin: index ? viewerOrigin : origin, app: index ? scenario.viewer : scenario.host,
       loopbackMedia: scenario.sfu || scenario.fallback === true })));
     result.versions = versions;
-    await endpoints[0]!.call("navigate", { url: origin + (scenario.host ? "/#piik-client=1" : "/") });
+    await endpoints[0]!.call("navigate", { url: origin + (scenario.host ? "/#silip-client=1" : "/") });
     const share = () => endpoints[0]!.call<string>("share", { sfuOnly: scenario.sfu });
     const invitation = await share();
     if (scenario.fallback) await endpoints[0]!.call("delay-peer-signals", { delayMs: 15000 });
-    await endpoints[1]!.call("navigate", { url: invitation.replace(origin, viewerOrigin) + (scenario.viewer ? "&piik-client=1" : "") });
+    await endpoints[1]!.call("navigate", { url: invitation.replace(origin, viewerOrigin) + (scenario.viewer ? "&silip-client=1" : "") });
     let received = await media("initial", undefined, scenario.fallback ? "sfu" : undefined);
     if (scenario.fallback) {
       if (!result.samples.some(row => row.host.events.some(event => event.type === "test-signal-delayed"))) throw new Error("Signaling fault was not exercised");

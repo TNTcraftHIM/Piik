@@ -4,8 +4,8 @@ package sfu
 import (
 	"regexp"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/ordered"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // ResourceFence identifies one publication generation within a room share.

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
+	"github.com/P4-aaaul/Silip/internal/tlsconfig"
 )
 
 func loadTLS(env map[string]string, origin *url.URL) (*tls.Config, error) {

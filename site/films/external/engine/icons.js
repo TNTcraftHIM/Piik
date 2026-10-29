@@ -1,4 +1,4 @@
-// Real Piik control icons (24x24, stroke 2, round caps), exported from the product. Generated from ../icons/*.svg.
+// Real Silip control icons (24x24, stroke 2, round caps), exported from the product. Generated from ../icons/*.svg.
 export const ICONS = {
 "camera": {
 "d": "<rect x=\"2\" y=\"6\" width=\"14\" height=\"12\" rx=\"3\"></rect><path d=\"m16 10 6-3v10l-6-3\"></path>",

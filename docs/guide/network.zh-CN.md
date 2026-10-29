@@ -21,11 +21,11 @@
 
 需要长期使用时，可以选择以下方案：
 
-- **有可用的 Piik 站点：** 请管理员[启用服务器媒体转发（SFU）](../operations/self-hosting.zh-CN.md#可选启用媒体兜底)，房主关闭 **隐私模式**，直连失败时即可尝试转发。使用 App 采集时，[授权新站点](./getting-started.zh-CN.md#通过已有站点使用-app)，再发送该站点的邀请。
+- **有可用的 Silip 站点：** 请管理员[启用服务器媒体转发（SFU）](../operations/self-hosting.zh-CN.md#可选启用媒体兜底)，房主关闭 **隐私模式**，直连失败时即可尝试转发。使用 App 采集时，[授权新站点](./getting-started.zh-CN.md#通过已有站点使用-app)，再发送该站点的邀请。
 - **朋友们可以安装组网工具：** 按下方[虚拟局域网步骤](#可选虚拟局域网)，通过 App 的 **本地房间** 分享。
 - **所需的连接被网络阻断：** 换用可用网络，或请网络管理员检查放行。
 
-> **媒体需要 UDP。** `demo.piik.tv` 和 App 的 **公网邀请** 使用纯 P2P。
+> **媒体需要 UDP。** App 的 **本地房间** 和 **公网邀请** 使用纯 P2P。
 > 服务器转发需要站点启用 SFU，并且 UDP 端点可达。
 
 ## 浏览器限制了 WebRTC
@@ -35,7 +35,7 @@
 
 1. 用默认设置、未启用相关隐私扩展的浏览器打开同一邀请，对照能否观看。
 2. 如果新配置可以观看，检查原浏览器中的 **WebRTC** 或 **IP 泄露保护** 选项，恢复允许 WebRTC UDP 的策略。
-3. 修改后刷新 Piik 页面，再尝试分享或观看。学校或公司统一管理的策略需由管理员调整。
+3. 修改后刷新 Silip 页面，再尝试分享或观看。学校或公司统一管理的策略需由管理员调整。
 
 <details>
 <summary>Chrome / Vivaldi 设置</summary>
@@ -58,7 +58,7 @@ Vivaldi 在 **设置 → 隐私和安全 → WebRTC IP 处理** 中提供 **广�
 <summary>STUN：地址发现与服务配置</summary>
 
 STUN 用于发现设备可连接的地址。App 公网邀请会尝试多个服务；地址发现失败时，
-在启动公网邀请前设置 [`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration)，替换内置地址。
+在启动公网邀请前设置 [`SILIP_STUN_URLS`](../standards/configuration.md#silip-app-configuration)，替换内置地址。
 自部署管理员应检查 `STUN_URLS` 是否指向可达的 UDP 服务；HTTP 反向代理不能转发 STUN。
 
 STUN 服务会接收到参与者的公网 IP，请选择信任的服务。
@@ -69,7 +69,7 @@ STUN 服务会接收到参与者的公网 IP，请选择信任的服务。
 <details>
 <summary>IPv6：检查双方网络</summary>
 
-宽带、路由器和双方设备都有可用 IPv6 时，Piik 可以在 IPv4 之外尝试这条路径。
+宽带、路由器和双方设备都有可用 IPv6 时，Silip 可以在 IPv4 之外尝试这条路径。
 同时保留 IPv4；IPv6 仍受防火墙约束。路由器菜单因型号而异，参考厂商的
 [IPv6 配置说明](https://support.google.com/googlehome/answer/6361450?hl=zh-Hans)。
 
@@ -89,24 +89,24 @@ STUN 服务会接收到参与者的公网 IP，请选择信任的服务。
 
 ## 可选：虚拟局域网
 
-虚拟局域网让异地设备像在同一网络中一样互访，再通过 Piik App 的 **本地房间** 分享。
+虚拟局域网让异地设备像在同一网络中一样互访，再通过 Silip App 的 **本地房间** 分享。
 工具必须提供可互访的虚拟 IPv4 地址，同时支持网页访问和 WebRTC UDP；只加速某个游戏的功能不适用。
 选择朋友们都能使用的工具即可：
 
-- **[UU](https://uu.163.com/blog/lan-multiplayer-guide-net.html)：** 使用通用局域网组网入口，加入同一房间。在 Piik 中选择房主的 UU 虚拟 IPv4 地址。
-- **[Tailscale](https://tailscale.com/docs/how-to/quickstart)（英文教程）：** 各设备安装后，邀请朋友加入同一个私有网络（tailnet）。在 Piik 中选择房主的 Tailscale IPv4 地址（`100.x.y.z`）。
-- **[ZeroTier](https://docs.zerotier.com/quickstart/)（英文教程）：** 各设备加入同一个网络 ID，再在管理页面授权这些设备。在 Piik 中选择分配给房主的虚拟 IPv4 地址。
+- **[UU](https://uu.163.com/blog/lan-multiplayer-guide-net.html)：** 使用通用局域网组网入口，加入同一房间。在 Silip 中选择房主的 UU 虚拟 IPv4 地址。
+- **[Tailscale](https://tailscale.com/docs/how-to/quickstart)（英文教程）：** 各设备安装后，邀请朋友加入同一个私有网络（tailnet）。在 Silip 中选择房主的 Tailscale IPv4 地址（`100.x.y.z`）。
+- **[ZeroTier](https://docs.zerotier.com/quickstart/)（英文教程）：** 各设备加入同一个网络 ID，再在管理页面授权这些设备。在 Silip 中选择分配给房主的虚拟 IPv4 地址。
 
 ![虚拟局域网三步：加入同一虚拟网络，在本地房间选择虚拟地址，发送完整邀请并确认证书。](../assets/guide/virtual-lan.zh-CN.svg)
 
 1. **加入同一网络。** 房主和朋友都运行组网工具，进入同一个虚拟局域网。
-2. **房主选择虚拟地址。** 在新版 Piik App 选择 **本地房间**，展开 **局域网邀请地址**，选择组网工具提供的 IP，然后进入房间并分享。
+2. **房主选择虚拟地址。** 在新版 Silip App 选择 **本地房间**，展开 **局域网邀请地址**，选择组网工具提供的 IP，然后进入房间并分享。
 3. **发送完整邀请。** 朋友打开该虚拟 IP 下的 HTTPS 邀请，首次访问先与房主[核对本地证书](./troubleshooting.zh-CN.md#本地-https-证书提示)，再进入房间。不要发送 `localhost` 地址或只发房间号。
-4. **确认画面和声音。** 所有设备保持组网工具运行，房主同时保持 Piik App 运行。虚拟 IP 变化后，房主需重新选择地址并发送新邀请。
+4. **确认画面和声音。** 所有设备保持组网工具运行，房主同时保持 Silip App 运行。虚拟 IP 变化后，房主需重新选择地址并发送新邀请。
 
 遇到问题时，按最先失败的一步检查：
 
-- **网页打不开：** 先查[本地邀请与防火墙](./troubleshooting.zh-CN.md#本地邀请打不开)，确认 Piik 可通过该虚拟网络访问。
+- **网页打不开：** 先查[本地邀请与防火墙](./troubleshooting.zh-CN.md#本地邀请打不开)，确认 Silip 可通过该虚拟网络访问。
 - **网页能开，画面连不上：** 检查工具是否传输媒体 UDP，以及[浏览器 WebRTC 设置](#浏览器限制了-webrtc)。
 - **不能开麦或远控：** 使用 App 生成的 HTTPS 邀请，确认证书，再查[浏览器权限](./troubleshooting.zh-CN.md#无法使用麦克风或远程控制)。支持的浏览器无需公网隧道即可使用这些功能，普通局域网同样适用。
 

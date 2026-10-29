@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" id="still" width="900" height="590" viewBox="0 0 900 590" fill="none" role="img" aria-labelledby="title desc">
   <title id="title">Share the good stuff</title>
-  <desc id="desc">A host with a small gold crown shares an RPG, a pencil drawing, travel photos and a movie. Three friends watch from a warm orange sofa, with the Piik mascot nearby.</desc>
+  <desc id="desc">A host with a small gold crown shares an RPG, a pencil drawing, travel photos and a movie. Three friends watch from a warm orange sofa, with the Silip mascot nearby.</desc>
   <defs>
     <g id="person" fill="currentColor" stroke="none">
       <circle cx="0" cy="-31" r="20"/>
@@ -209,7 +209,7 @@
     </g>
     <circle cx="470" cy="316" r="2.5" fill="#f7f4e9" stroke="none"/>
     <rect x="245" y="346" width="447" height="18" rx="9" fill="#d6b58d"/><path d="M267 365v47m403-47v47"/>
-    <!-- Familiar room objects and the Piik mascot. -->
+    <!-- Familiar room objects and the Silip mascot. -->
     <path d="M126 343v-76m0 45c-27-3-40-18-36-38 25 3 36 17 36 38Zm0-22c28-3 39-19 35-37-24 2-34 18-35 37Z" fill="#79b398"/>
     <path d="M126 272c-21-8-27-26-17-42 19 11 24 25 17 42Z" fill="#a0c7a2"/>
     <path d="m103 334 6 40c2 9 32 9 34 0l6-40Z" fill="#e0bd99"/><path d="M103 334h46"/>

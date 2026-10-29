@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 func TestQualityPreferenceRequiresCurrentOriginAndInstanceWithoutClaimingControl(t *testing.T) {
@@ -48,7 +48,7 @@ func TestQualityPreferenceRequiresCurrentOriginAndInstanceWithoutClaimingControl
 	} {
 		request, _ := http.NewRequest(input.method, endpoint.URL+"/quality-preference", strings.NewReader(input.body))
 		request.Header.Set("Origin", input.origin)
-		request.Header.Set("X-Piik-Instance", input.token)
+		request.Header.Set("X-Silip-Instance", input.token)
 		request.Header.Set("Access-Control-Request-Private-Network", "true")
 		response, err := http.DefaultClient.Do(request)
 		if err != nil {

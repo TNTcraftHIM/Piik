@@ -45,7 +45,7 @@ symptom's simple checks have failed. Change one thing at a time.
 
 ### Android APK will not install
 
-Download the APK from the [App installation steps](./getting-started.md#share-with-piik-app).
+Download the APK from the [App installation steps](./getting-started.md#share-with-silip-app).
 If Android asks, allow this browser or file manager to install the downloaded APK.
 
 If installation reports a conflicting package or signature and you previously
@@ -62,16 +62,16 @@ download and allow this App through macOS's first-launch check:
 
 1. Download the matching Mac ZIP from the project's Releases and compare its
    SHA-256 with the checksum published for that release. In Terminal, run
-   `shasum -a256 ~/Downloads/piik-app-darwin-arm64.zip` (use `darwin-amd64` on Intel).
+   `shasum -a256 ~/Downloads/silip-app-darwin-arm64.zip` (use `darwin-amd64` on Intel).
    If it differs, download again rather than bypassing the warning.
-2. Move the complete `Piik App.app` to Applications. Try opening it, then check
+2. Move the complete `Silip App.app` to Applications. Try opening it, then check
    **System Settings → Privacy & Security → Open Anyway**, as described in
    [Apple's first-launch guidance](https://support.apple.com/102445).
 3. If **Open Anyway** is unavailable and the official ZIP's checksum matches,
    you can remove the download quarantine from this App only, then reopen it:
 
    ```sh
-   xattr -dr com.apple.quarantine "/Applications/Piik App.app"
+   xattr -dr com.apple.quarantine "/Applications/Silip App.app"
    ```
 
 Use the App's actual path if you kept it elsewhere. Keep system-wide security
@@ -109,17 +109,16 @@ The error details help identify which stage failed:
 | `failed to request quick Tunnel` or `api.trycloudflare.com` | The temporary address could not be allocated. Read the cause that follows: check DNS for lookup errors, or outbound HTTPS, proxy rules and service status for connection timeouts. |
 | QUIC timeout, `dial tcp ...:7844` or `TLS handshake with edge` | The connection to a Cloudflare tunnel endpoint failed. Check outbound rules for `cloudflared`, including whether a proxy or game accelerator affects the connection. |
 
-Piik tries HTTP/2 (TCP) when QUIC (UDP) fails. Allow outbound port `7844` for both.
+Silip tries HTTP/2 (TCP) when QUIC (UDP) fails. Allow outbound port `7844` for both.
 See [Cloudflare's connection troubleshooting](https://developers.cloudflare.com/tunnel/troubleshooting/)
 for the requirements. You do not need to open an inbound port on your router.
 
 </details>
 
 **To continue without a public invite:** keep App running, open
-[Piik online](https://demo.piik.tv) or another reachable site, and
+a reachable [self-hosted Silip site](../operations/self-hosting.md), and
 [authorize App capture](./getting-started.md#use-app-with-an-existing-site).
-Send the new site's room invitation. Piik online needs no site passphrase and
-uses P2P media; for server media forwarding, choose an SFU-enabled site.
+Send the new site's room invitation. For server media forwarding, choose an SFU-enabled site.
 If the page opens but video does not connect, follow
 [media connection troubleshooting](#when-video-will-not-connect).
 If the unavailable address is a self-hosted site rather than the App's
@@ -127,20 +126,20 @@ temporary address, ask that site's administrator to check its service.
 
 ### Local invitation will not open
 
-If the browser times out before showing Piik, check access to the Host's App:
+If the browser times out before showing Silip, check access to the Host's App:
 
 1. Keep the host's App running. In **Local room**, select an adapter address
    friends can reach and send the full invitation link. Both devices need a
    reachable LAN or the same virtual LAN; guest Wi-Fi may isolate them.
 2. On the Windows host, open **Windows Security → Firewall & network protection →
-   Allow an app through firewall**. Check the currently running `piik-app.exe`
+   Allow an app through firewall**. Check the currently running `silip-app.exe`
    and allow the network type in use. A virtual adapter may be classified as
    **Public**; advanced rules can restrict access to that adapter and subnet.
 3. After extracting an update to another folder, update any firewall rule that
    points to the old file. Add the current App manually if needed; keep the firewall on.
 
-If App reports **the local port is unavailable**, close an older Piik instance
-using it. If another application needs that port, start Piik with `--port 9876`
+If App reports **the local port is unavailable**, close an older Silip instance
+using it. If another application needs that port, start Silip with `--port 9876`
 and send the newly generated invitation. Both the web and local STUN ports must
 be available; changing only the URL will not move the service.
 
@@ -151,7 +150,7 @@ If the page opens but video does not connect, continue with
 
 ### Local HTTPS certificate warning
 
-Piik App's **Local room**, and servers using `TLS_SELF_SIGNED=true`, generate a
+Silip App's **Local room**, and servers using `TLS_SELF_SIGNED=true`, generate a
 local certificate without asking a public certificate authority. The browser
 therefore shows a certificate warning before opening the invitation.
 
@@ -175,16 +174,16 @@ unexpected warning on a public HTTPS site needs investigation by its operator.
 ### Room code does not work
 
 Open the Host's current full invitation link first. A room code works only on
-its original Piik site. A site with empty-room recycling may have reclaimed the
+its original Silip site. A site with empty-room recycling may have reclaimed the
 room; the Host can create a new one. See [joining a room](./getting-started.md#join-a-friends-room).
 
-If all room codes on the site are in use, retry later or use another Piik site.
-Administrators can configure [empty-room retention](../operations/self-hosting.md#1-configure-and-start-piik)
+If all room codes on the site are in use, retry later or use another Silip site.
+Administrators can configure [empty-room retention](../operations/self-hosting.md#1-configure-and-start-silip)
 to reclaim unused codes.
 
 ### Room creation returns 403
 
-Piik rejects room creation from a browser address that the server has not allowed,
+Silip rejects room creation from a browser address that the server has not allowed,
 even when the page opens normally. The site administrator should:
 
 1. Set `PUBLIC_BASE_URL` to the browser's site address, including the scheme and
@@ -192,7 +191,7 @@ even when the page opens normally. The site administrator should:
 2. Unset or empty `ALLOWED_ORIGINS` to use that address. If several addresses are
    needed, list every trusted origin explicitly, separated by commas. Check for
    an old `http://localhost:8787` override after copying a configuration example.
-3. Restart Piik (recreate the container with `docker compose up -d` for Compose),
+3. Restart Silip (recreate the container with `docker compose up -d` for Compose),
    reload the page and retry.
 
 If the response says `Origin not allowed` with correct settings, check that the
@@ -230,9 +229,9 @@ The source picker distinguishes these outcomes:
 
 | Message | Next step |
 | --- | --- |
-| Cannot connect to Piik App | Confirm the App is running and this site is approved. Close unused Piik tabs using the App, then refresh the list; up to two pages can use the App's native capture or viewing at once. |
-| Piik App and this page are incompatible | Update Piik App and reload the page. |
-| Piik App capture is currently unavailable | Check the App diagnostics for capture or encoder availability. Review your encoding setting or use browser capture. |
+| Cannot connect to Silip App | Confirm the App is running and this site is approved. Close unused Silip tabs using the App, then refresh the list; up to two pages can use the App's native capture or viewing at once. |
+| Silip App and this page are incompatible | Update Silip App and reload the page. |
+| Silip App capture is currently unavailable | Check the App diagnostics for capture or encoder availability. Review your encoding setting or use browser capture. |
 | Could not read the screen and window list | Refresh to retry. If it keeps failing, export both the App and browser Debug reports. |
 | No sources available | The list was read successfully, but this tab has no selectable sources. Check the other source tabs. |
 
@@ -265,7 +264,7 @@ with the copied failure summary and selected source type.
 1. **Compare codecs on the same source.** In **Sharing settings → Picture → Fine-tune picture**, change the
    video codec from **H264** to **Auto** or **VP8**, then start sharing again.
    If VP8 works, you can keep using it while checking the H264 path.
-2. **Update and restart.** Update Piik App and Chrome, and install the appropriate
+2. **Update and restart.** Update Silip App and Chrome, and install the appropriate
    graphics driver from your computer or GPU manufacturer's official support
    page. On laptops with two GPUs, check both drivers. Restart after installation.
 3. **For Chrome, check graphics acceleration and GPU preference.** In Chrome's
@@ -276,7 +275,7 @@ with the copied failure summary and selected source type.
    Completely quit and reopen Chrome before retrying. If it does not help, restore
    **Let Windows decide** ([Microsoft's graphics settings](https://support.microsoft.com/en-us/windows/hardware/display-graphics/optimizations-for-windowed-games-in-windows-11)).
 
-Chrome's graphics preference applies to browser capture. Piik App selects its
+Chrome's graphics preference applies to browser capture. Silip App selects its
 native encoder separately. If it still fails, [save reports](#reporting-a-problem)
 with the codec comparison. If both codecs fail, also check
 [WebRTC restrictions](./network.md#browser-webrtc-restrictions).
@@ -289,7 +288,7 @@ with the codec comparison. If both codecs fail, also check
 
 ### When video will not connect
 
-**No media route available** means Piik has not found a connection to deliver
+**No media route available** means Silip has not found a connection to deliver
 the picture. Check the viewing connection, browser policy and network:
 
 1. **Retry the viewing page.** Use **Reconnect** if available; otherwise refresh
@@ -300,7 +299,7 @@ the picture. Check the viewing connection, browser policy and network:
 3. **Try another network**, such as a phone hotspot. Check your VPN/proxy's UDP
    policy; ask the administrator on a managed network.
 4. **Invite a friend on another network.** A Viewer who receives the picture and
-   has spare forwarding capacity may give Piik another path to you. Piik chooses
+   has spare forwarding capacity may give Silip another path to you. Silip chooses
    it automatically; extra people help only when those connections work.
 
 Still failing? Continue with [advanced network checks](./network.md)
@@ -339,7 +338,7 @@ the game's borderless window mode. Compare an ordinary window, and try both App
 capture and the **Browser** source picker. Protected content may be unavailable
 for capture.
 
-If Piik returns to the start screen after you enter a game, read the reason below
+If Silip returns to the start screen after you enter a game, read the reason below
 the TV and follow [sharing startup checks](#sharing-does-not-start-after-source-selection).
 Include the game and window mode in your [report](#reporting-a-problem).
 
@@ -363,7 +362,7 @@ the border. Windows 10 does not provide this control for its capture API.
 
 #### Windows 11: the border is still visible
 
-1. Select **Apps / Windows** or **Screens** in Piik and leave **Show capture border**
+1. Select **Apps / Windows** or **Screens** in Silip and leave **Show capture border**
    off. A Browser-selected source uses the browser's own capture indicator.
 2. Stop other apps or tabs capturing the same window/display, then restart sharing.
 3. If Windows denied borderless capture, review **Screenshot borders** in Windows
@@ -389,7 +388,7 @@ capture indicators too. Follow the mod's Windows version requirements.
    append `dwm.exe` to **Process inclusion list** and save. Keep existing entries.
 3. Find and install **DWM Custom Projection Border**. In the mod's settings,
    turn on **Disable border** and save.
-4. Stop and restart sharing in Piik, then check whether the border disappears.
+4. Stop and restart sharing in Silip, then check whether the border disappears.
 
 To undo this, disable the mod and restart sharing. Remove the `dwm.exe` entry
 if you added it only for this mod. If desktop problems appear or a Windows
@@ -409,12 +408,12 @@ for current setup details.
   browser, such as Chrome on Android or Safari on iPhone, instead of a chat app's
   embedded browser. **Theater mode** expands playback within the page when the
   browser does not offer screen fullscreen.
-- **Piik controls disappear in fullscreen:** the browser has opened its native
-  video player. Exit fullscreen and use **Theater mode** to keep Piik's playback
+- **Silip controls disappear in fullscreen:** the browser has opened its native
+  video player. Exit fullscreen and use **Theater mode** to keep Silip's playback
   controls, chat overlay and remote input on the page.
 - **Phone fullscreen has black bars:** video preserves its proportions. Try
   landscape, or use **Switch picture fit** on the playback bar to select **Fill**
-  or **Stretch**. Exit the browser's native video player to use Piik's picture-fit
+  or **Stretch**. Exit the browser's native video player to use Silip's picture-fit
   controls. See [viewing controls](./getting-started.md#join-a-friends-room).
 - **Sharing stops after sleep or suspension:** wake the device and return to the
   sharing tab. Start sharing again if needed; browser and OS suspension can
@@ -455,10 +454,10 @@ Use headphones if speakers are feeding sound back into a microphone. Windows
 App screen capture can [exclude a voice app from source audio](./sharing.md#exclude-a-voice-app-from-screen-audio);
 this does not remove acoustic echo.
 
-If a virtual microphone remains audible when muted in Piik, temporarily turn off
+If a virtual microphone remains audible when muted in Silip, temporarily turn off
 **System sound**. If that removes it, the mixer's playback output is also entering
 source audio. Check its playback/monitoring route or share only the desired app's
-window audio. Piik's microphone mute does not mute that separate source.
+window audio. Silip's microphone mute does not mute that separate source.
 
 ### Microphone or remote controls are unavailable
 
@@ -484,10 +483,10 @@ invite** or an HTTPS site with a trusted certificate.
 
 1. The Host shares an App window or screen and enables **Remote control**.
 2. Check the Host against [supported platforms and gamepad setup](./remote-control.md#gamepads).
-   The Host installs external drivers from the official source; Piik includes no
+   The Host installs external drivers from the official source; Silip includes no
    input SDK or driver. Turn Remote control off and on after installation.
 3. The Viewer connects a standard-layout controller and presses a button so the
-   browser detects it, then obtains remote control. Piik automatically uses the
+   browser detects it, then obtains remote control. Silip automatically uses the
    first connected controller with the browser's standard mapping. Keep the viewing
    page focused and join the corresponding player in the game. If all controller
    slots are occupied, disconnect an unused controller or end that Viewer's remote control.
@@ -516,7 +515,7 @@ Use Local room over Tailscale, ZeroTier or UU. [View steps](./network.md#optiona
 
 ## Reporting a problem
 
-Include the Piik version, OS/browser, time, expected result and reproduction steps.
+Include the Silip version, OS/browser, time, expected result and reproduction steps.
 For capture problems, add the source type, codec, GPU/driver and whether another
 source or VP8 works. For network problems, add the network type.
 
@@ -531,7 +530,7 @@ Enable diagnostics before reproducing once, then export before refreshing:
   same attempt. For self-hosted SFU, include the Server report too.
 
 Reports stay on your device. Review private information before sharing them;
-[diagnostics and export](../../cmd/piik-app/README.md#diagnostics) explains their contents.
+[diagnostics and export](../../cmd/silip-app/README.md#diagnostics) explains their contents.
 If you cannot collect logs, send the full error text and reproduction steps.
 
 For other guides, return to [the documentation home](./README.md).

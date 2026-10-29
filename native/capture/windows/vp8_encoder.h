@@ -6,7 +6,7 @@
 
 #include <vpx/vpx_encoder.h>
 
-namespace piik::capture {
+namespace silip::capture {
 
 struct Vp8Frame final {
   bool key_frame = false;
@@ -35,4 +35,4 @@ class Vp8Encoder final {
   unsigned long duration100ns_;
 };
 
-}  // namespace piik::capture
+}  // namespace silip::capture

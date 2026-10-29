@@ -1,4 +1,4 @@
-// Modified by Piik: exercise optional IPv6 against the real caller budget.
+// Modified by Silip: exercise optional IPv6 against the real caller budget.
 package pcp
 
 import (
@@ -172,7 +172,7 @@ func TestAddPortMappingDoesNotWaitOutAnUnresponsiveIPv6Server(t *testing.T) {
 	client6.SetLocalIP(net.ParseIP("::1"))
 	nat := &NAT{client: client, client6: client6}
 
-	// Match Piik's mapping budget without shortening the production child
+	// Match Silip's mapping budget without shortening the production child
 	// timeout: that would conceal the competing parent deadline.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()

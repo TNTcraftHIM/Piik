@@ -1,7 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-linecap="round">
   <style>svg { color: #22303e; } @media (prefers-color-scheme: dark) { svg { color: #dde8f3; } }</style>
-  <path d="m11 4 5 4 5-4"/>
-  <rect x="4" y="8" width="24" height="18" rx="4"/>
-  <circle cx="11.5" cy="16.5" r="1.25" fill="currentColor" stroke="none"/>
-  <path d="M19 17c1.5-1.8 3.2-1.8 4.7 0M10 29l2-3m10 3-2-3"/>
+  <path d="M11 24.5V16.2M21 24.5V16.2" stroke-width="4.2"/>
+  <path fill="currentColor" fill-rule="evenodd" stroke="none" d="M7.5 9a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0ZM11 9.1a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0ZM17.5 9a3.5 3.5 0 1 0 7 0a3.5 3.5 0 1 0-7 0ZM21 9.1a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0-2.8 0Z"/>
 </svg>

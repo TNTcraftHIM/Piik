@@ -1,4 +1,4 @@
-/* Generic film rules — loaded by both standalone pages and the <piik-promo> embed (inside its shadow root). */
+/* Generic film rules — loaded by both standalone pages and the <silip-promo> embed (inside its shadow root). */
 #stage { position: absolute; left: 0; top: 0; overflow: hidden; contain: strict; transform-origin: 0 0;
   font-family: "Noto Sans SC", system-ui, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; }
 #stage * { box-sizing: content-box; }

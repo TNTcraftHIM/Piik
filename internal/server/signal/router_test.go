@@ -33,12 +33,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/room"
-	"github.com/TNTcraftHIM/Piik/internal/server/route"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu/sfutest"
+	"github.com/P4-aaaul/Silip/internal/server/ordered"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/room"
+	"github.com/P4-aaaul/Silip/internal/server/route"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/sfu/sfutest"
 )
 
 const testShareGeneration = "share_generation_12345678"
@@ -683,7 +683,7 @@ func captureRouteDebug(t *testing.T) *debugRecorder {
 	t.Helper()
 	recorder := &debugRecorder{}
 	previousLogger := slog.Default()
-	t.Setenv("PIIK_DEBUG", "route")
+	t.Setenv("SILIP_DEBUG", "route")
 	slog.SetDefault(slog.New(recorder))
 	t.Cleanup(func() {
 		slog.SetDefault(previousLogger)
@@ -694,7 +694,7 @@ func captureRouteDebug(t *testing.T) *debugRecorder {
 func (d *debugRecorder) Enabled(context.Context, slog.Level) bool { return true }
 
 func (d *debugRecorder) Handle(_ context.Context, record slog.Record) error {
-	if record.Message != "piik-route" {
+	if record.Message != "silip-route" {
 		return nil
 	}
 	details := map[string]any{}
@@ -2268,7 +2268,7 @@ func TestRouterDebugFlagParsesLikeNodeDebug(t *testing.T) {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		t.Setenv("PIIK_DEBUG", key)
+		t.Setenv("SILIP_DEBUG", key)
 		if got := routeDebugFlag(key); got != cases[key] {
 			t.Fatalf("routeDebugFlag(%q) = %v, want %v", key, got, cases[key])
 		}
@@ -2276,7 +2276,7 @@ func TestRouterDebugFlagParsesLikeNodeDebug(t *testing.T) {
 			t.Fatalf("routeDebugEnabled with %q = %v, want %v", key, got, cases[key])
 		}
 	}
-	t.Setenv("PIIK_DEBUG", "")
+	t.Setenv("SILIP_DEBUG", "")
 	slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	if !routeDebugEnabled() {
 		t.Fatal("the active diagnostic logger did not enable route events")

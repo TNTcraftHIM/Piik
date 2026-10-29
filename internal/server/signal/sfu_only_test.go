@@ -3,9 +3,9 @@ package signal
 import (
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu/sfutest"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/sfu/sfutest"
 )
 
 func TestSFUOnlyRejectsPeerOnlyBeforeAcquiringShareAuthority(t *testing.T) {

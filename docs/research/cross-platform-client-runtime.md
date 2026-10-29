@@ -18,7 +18,7 @@
 These are architecture references only. No implementation or copyleft source is
 copied.
 
-Piik separates the Browser UI from native capture and media ownership. One Go
+Silip separates the Browser UI from native capture and media ownership. One Go
 process, one Pion media core, and one thin system capture sidecar per platform
 remain sufficient; additional UI runtimes or parallel RTC stacks need an actual
 consumer and a distinct responsibility.
@@ -44,9 +44,9 @@ credentials and route policy stay in the Browser/server protocol.
 
 ## App Composition
 
-The App and Hosted Piik run the same server core, so the local package is
+The App and Hosted Silip run the same server core, so the local package is
 one executable carrying the built Browser assets plus the optional capture and
-tunnel sidecars; [the App README](../../cmd/piik-app/README.md) owns
+tunnel sidecars; [the App README](../../cmd/silip-app/README.md) owns
 that layout. In Local mode the App runs the server in its own process with
 explicit local configuration. While waiting for an approved Site it starts no
 room server; the same process remains the Site's loopback native-media owner.
@@ -63,13 +63,13 @@ Linux remain package gates.
 ## Local And Hosted Reachability
 
 A local page completed discovery and the full control exchange in Chromium
-151.0.7922.138. The hosted Piik origin completed it after Chromium received
+151.0.7922.138. The hosted Silip origin completed it after Chromium received
 its `loopback-network` permission; without that permission the cross-origin
 request was blocked. The gate checks both expected outcomes.
 
-Run `npm run probe:app-loopback` with `PIIK_CLIENT_LOOPBACK_GATE=true`,
-`CHROME_PATH`, `PIIK_CLIENT_EXE`, and `PIIK_CLIENT_GATE_SITE_URL` pointing to
-the reachable HTTPS Site being tested. Use `PIIK_CLIENT_GATE_GRANT_LOOPBACK=true`
+Run `npm run probe:app-loopback` with `SILIP_CLIENT_LOOPBACK_GATE=true`,
+`CHROME_PATH`, `SILIP_CLIENT_EXE`, and `SILIP_CLIENT_GATE_SITE_URL` pointing to
+the reachable HTTPS Site being tested. Use `SILIP_CLIENT_GATE_GRANT_LOOPBACK=true`
 for the permission-granted run; omit it for the permission-blocked run. The gate
 uses an isolated App configuration and Browser profile, and rejects navigation
 failures or redirects to another origin as acceptance evidence.
@@ -100,7 +100,7 @@ Current WebView2 exposes `getDisplayMedia` screen-capture events and its
 Evergreen runtime updates independently; WebKitGTK exposes display capture and
 uses GStreamer for WebRTC. Electron instead bundles one Chromium and Node but
 makes the App responsible for shipping those updates and adds substantial
-package size. These facts do not prove equivalent Piik media behavior.
+package size. These facts do not prove equivalent Silip media behavior.
 
 Only a reproduced Browser-launch failure should open a comparative physical
 gate for Electron, Tauri, Wails, Neutralino, or another shell. That gate must
@@ -149,14 +149,14 @@ The sidecar remains an explicit package input rather than a linked App
 dependency.
 
 The peer topology gate now treats native `getStats()` RTP identity and frame
-totals as its portable core proof. Detailed Piik quality metrics enrich a
+totals as its portable core proof. Detailed Silip quality metrics enrich a
 development run when its source module is served, but their absence on a static
 deployment no longer erases valid native RTCStats.
 
 ### Public Invitation Startup
 
 The pinned cloudflared Quick Tunnel defaults to explicit QUIC, which disables
-its HTTP/2 fallback. Piik requests `--protocol auto` and
+its HTTP/2 fallback. Silip requests `--protocol auto` and
 `--max-edge-addr-retries 0`: try QUIC once, then let cloudflared fall back within
 the existing 30-second startup budget. This affects HTTP/WebSocket control only;
 media routes, tunnel identity and ordered shutdown keep their existing owners.
@@ -167,7 +167,7 @@ code alone does not identify that cause. An abnormal exit now retains the latest
 sanitized dependency error or plain stderr detail in the existing failure result.
 This is the last reported observation, not a classification or a complete log;
 match the same run's `public-tunnel` diagnostics when the detail is insufficient.
-Piik retries a child that exits before readiness, up to four starts with a
+Silip retries a child that exits before readiness, up to four starts with a
 one-second pause between starts, all within the same 30-second acquisition
 deadline. The previous child, output readers and temporary config retire before
 the next start. Cancellation and local setup errors stop acquisition; a ready
@@ -210,7 +210,7 @@ HTTP failure precedes WebRTC candidate exchange and is distinct from media-route
 exhaustion on an already reachable site.
 The pinned [supervisor](https://github.com/cloudflare/cloudflared/blob/2026.8.3/supervisor/supervisor.go)
 uses [indefinite retries with bounded exponential backoff](https://github.com/cloudflare/cloudflared/blob/2026.8.3/retry/backoffhandler.go)
-for recoverable edge disconnects. Piik's four-start acquisition limit is not a
+for recoverable edge disconnects. Silip's four-start acquisition limit is not a
 four-reconnect limit after readiness. Restarting the Quick Tunnel process would
 allocate a new public address rather than repair the old invitation.
 
@@ -219,13 +219,13 @@ allocate a new public address rather than repair the old invitation.
 Reviewed 2026-10-16 against provider documentation and upstream discussions.
 No matched evidence establishes a universally more reachable replacement for
 Quick Tunnel, especially across mainland networks. These are candidates, not
-accepted Piik integrations. Viewers must only open the invitation in a Browser;
+accepted Silip integrations. Viewers must only open the invitation in a Browser;
 requiring their own account, extra software or proxy/network configuration is
 outside this path. Operator-managed tunnels belong with self-hosted Sites.
 
-| Candidate | Relevant capability | Cost to Piik's account-free invitation |
+| Candidate | Relevant capability | Cost to Silip's account-free invitation |
 | --- | --- | --- |
-| [localhost.run](https://localhost.run/docs/forever-free/) | Account-free HTTPS/SSH; the bounded probe below passes Piik HTTP and signaling, including an in-process Go client. | Free domains rotate and are speed-limited. Anonymous reconnection changed the URL; the cold page load was slow. |
+| [localhost.run](https://localhost.run/docs/forever-free/) | Account-free HTTPS/SSH; the bounded probe below passes Silip HTTP and signaling, including an in-process Go client. | Free domains rotate and are speed-limited. Anonymous reconnection changed the URL; the cold page load was slow. |
 | [Pinggy](https://pinggy.io/) | Account-free temporary tunnels and several global regions. | Free tunnels expire after 60 minutes and show a [browser screening page](https://pinggy.io/docs/http_tunnels/screening/). Paid service changes that boundary. |
 | [ngrok](https://ngrok.com/docs/pricing-limits/free-plan-limits) | Account-bound domains; free endpoints have no session timeout. | Account/token setup, usage quotas and a browser interstitial prevent a transparent free replacement. |
 | [cpolar](https://www.cpolar.com/docs) | HTTP(S), WebSocket and selectable mainland/Hong Kong regions. | Requires account/token setup; free addresses may change within 24 hours. Region choice is not proof of access from every ISP. |
@@ -237,7 +237,7 @@ uses a direct TCP dialer. Browser proxy settings or `HTTP_PROXY`/`HTTPS_PROXY`
 alone therefore do not route these connections. [Community #1076](https://github.com/cloudflare/cloudflared/issues/1076)
 reports the same distinction; the still-open [proxy PR #1514](https://github.com/cloudflare/cloudflared/pull/1514)
 does not establish a working Quick Tunnel fix. For users with an existing proxy,
-process/transparent routing must actually cover cloudflared; avoid routing Piik's
+process/transparent routing must actually cover cloudflared; avoid routing Silip's
 unrelated media traffic through it. DNS overrides and another retry cannot repair
 an unreachable edge. Cloudflare's [China Network](https://developers.cloudflare.com/china-network/)
 is a separate Enterprise subscription, not a Quick Tunnel region switch.
@@ -264,7 +264,7 @@ does not repair blocked STUN or UDP.
 On 2026-10-16, an isolated Windows probe established anonymous `nokey` tunnels
 in about 2.5 seconds with OpenSSH and 3 seconds with the existing
 `golang.org/x/crypto/ssh` dependency. The Go probe forwarded only a new in-memory
-Piik core: its public page, invitation origin, Host/Viewer authentication,
+Silip core: its public page, invitation origin, Host/Viewer authentication,
 chat delivery and Viewer WebSocket reconnection passed. A fresh Browser reached
 the HTTPS page without an interstitial; a separate fixture passed Browser WSS
 echo and WebSocket ping/pong. All temporary tunnels and listeners were closed.
@@ -287,10 +287,10 @@ free-name rotation after a few hours and SSH keepalives/restarts, not seamless
 anonymous URL recovery. TCP port 22 being reachable here does not establish
 mainland ISP coverage or an advantage over Cloudflare's transports.
 
-One cold Piik load reached DOMContentLoaded at 18.4 seconds and load at 20.3
+One cold Silip load reached DOMContentLoaded at 18.4 seconds and load at 20.3
 seconds; its 592 kB main script took 17.1 seconds. This is an observed run, not a
 regional benchmark or proof that the documented free-tier speed limit was the
-only cause. The tunnel carries the page and signaling, not Piik's P2P video.
+only cause. The tunnel carries the page and signaling, not Silip's P2P video.
 Together, address turnover and page-load cost favor evaluating it as an initial
 invitation fallback rather than replacing Cloudflare by default or switching an
 active room's address silently.
@@ -318,7 +318,7 @@ Its [feature-upgrade guidance](https://sparkle-project.org/documentation/publish
 also requires capable readers or a separate feed; metadata alone cannot teach
 older readers a new rule.
 
-Piik's primary action opens the download for the target version; release notes
+Silip's primary action opens the download for the target version; release notes
 are optional context. This action hierarchy does not require another installer
 or update infrastructure.
 
@@ -406,7 +406,7 @@ the current rate-control and physical-device acceptance boundaries.
 ### Android Encoder Budget
 
 A 2026-10-26 standalone API 35 emulator probe isolated the software
-`OMX.google.vp8.encoder` from Piik's room and transport. A changing 1080p30
+`OMX.google.vp8.encoder` from Silip's room and transport. A changing 1080p30
 Surface produced about 2.65 Mbps at either a 1 Mbps or 100 kbps CBR request.
 Extending the keyframe interval reduced keyframes, but not that output rate.
 The [AOSP software VPX implementation](https://android.googlesource.com/platform/frameworks/av/+/ffede69924118c5454484164fd590b3474cc716a/media/libstagefright/codecs/on2/enc/SoftVPXEncoder.cpp)
@@ -475,7 +475,7 @@ progress, cancellation and retirement remain part of that session's lifecycle.
 [Synctrain](https://github.com/pixelspark/sushitrain/blob/main/Sushitrain/BackgroundManager.swift)
 provides an existing Go/gomobile implementation to reference.
 
-The next implementation gate is one background-task owner bound to Piik's Go
+The next implementation gate is one background-task owner bound to Silip's Go
 runtime, with explicit Start/Stop and shutdown on expiration. Exercise local
 HTTP/WebSocket, idle room, voice, native capture and return to Safari on a device.
 Hosted HTTPS access to insecure loopback remains a separate

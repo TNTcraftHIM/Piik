@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
 	mediacodec "github.com/livekit/mediatransportutil/pkg/codec"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"

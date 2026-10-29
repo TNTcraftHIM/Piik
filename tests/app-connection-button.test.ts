@@ -78,7 +78,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
     window, document, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
-    wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
+    wakeURL: android ? "intent://app#Intent;scheme=silip;package=io.github.p4aaaul.silip.android;end" : null,
     state, isClientActivated: () => activated,
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
@@ -91,7 +91,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   }) as { connect: (wake?: boolean) => Promise<void>; cleanup: () => void };
   function message(overrides: Record<string, unknown> = {}) {
     window.dispatchEvent(Object.assign(new Event("message"), {
-      source: popup, origin: new URL(approval).origin, data: { type: "piik-app-approved", site }, ...overrides,
+      source: popup, origin: new URL(approval).origin, data: { type: "silip-app-approved", site }, ...overrides,
     }));
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
@@ -116,7 +116,7 @@ describe("App connection approval", () => {
   it("wakes Android in the original tab, then resumes discovery and explicit approval on return", async () => {
     const page = mount(false, "idle", true);
     await page.connect(true);
-    expect(page.window.location.assign).toHaveBeenCalledWith("intent://app#Intent;scheme=piik;package=tv.piik.android;end");
+    expect(page.window.location.assign).toHaveBeenCalledWith("intent://app#Intent;scheme=silip;package=io.github.p4aaaul.silip.android;end");
     expect(page.window.open).not.toHaveBeenCalled();
     expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
     expect(page.activateClient).not.toHaveBeenCalled();
@@ -241,7 +241,7 @@ describe("App connection approval", () => {
     expect(page.window.open).toHaveBeenCalledWith(approval, "_blank");
     for (const invalid of [
       { source: {} }, { origin: "http://127.0.0.1:39722" },
-      { data: { type: "piik-app-approved", site: "https://another.example" } },
+      { data: { type: "silip-app-approved", site: "https://another.example" } },
       { data: { type: "other", site } }, { data: null },
     ]) page.message(invalid);
     expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();

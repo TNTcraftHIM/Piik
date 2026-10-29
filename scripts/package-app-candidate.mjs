@@ -156,7 +156,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
     "--port", String(port),
   ], {
     cwd: root,
-    env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
+    env: { ...process.env, SILIP_CLIENT_GATE_NO_BROWSER: "true" },
     stdio: "pipe",
     windowsHide: true,
   });
@@ -264,7 +264,7 @@ async function verifyPackage(root, target, revision, temporaryRoot) {
 
 function verifyPlatformAssets(root, target) {
   if (target.goos === "linux") {
-    const desktop = join(root, "share", "applications", "piik-app.desktop");
+    const desktop = join(root, "share", "applications", "silip-app.desktop");
     const icon = join(
       root,
       "share",
@@ -272,13 +272,13 @@ function verifyPlatformAssets(root, target) {
       "hicolor",
       "256x256",
       "apps",
-      "piik-app.png",
+      "silip-app.png",
     );
     if (!existsSync(desktop) || !existsSync(icon)) {
       fail("Linux App icon assets are missing");
     }
     const entry = readFileSync(desktop, "utf8");
-    if (!entry.includes("Icon=piik-app\n") || !entry.includes("Terminal=true\n")) {
+    if (!entry.includes("Icon=silip-app\n") || !entry.includes("Terminal=true\n")) {
       fail("Linux desktop entry must retain its icon and interactive terminal");
     }
     if (!readFileSync(icon).subarray(0, 8).equals(Buffer.from([
@@ -288,10 +288,10 @@ function verifyPlatformAssets(root, target) {
     }
   }
   if (target.goos === "darwin") {
-    const bundle = join(root, "Piik App.app");
+    const bundle = join(root, "Silip App.app");
     const executable = join(bundle, "Contents", "MacOS", target.appName);
     const plist = join(bundle, "Contents", "Info.plist");
-    const icon = join(bundle, "Contents", "Resources", "piik.icns");
+    const icon = join(bundle, "Contents", "Resources", "silip.icns");
     if (!existsSync(executable) || !existsSync(plist) || !existsSync(icon)) {
       fail("macOS App bundle is incomplete");
     }
@@ -358,7 +358,7 @@ try {
     capture = join(repositoryRoot, "build", "go-check", target.captureName);
   }
 
-  const packageRoot = join(temporaryRoot, `piik-app-${target.id}`);
+  const packageRoot = join(temporaryRoot, `silip-app-${target.id}`);
   const assembleArguments = [
     join(repositoryRoot, "scripts", "assemble-app.mjs"),
     descriptorPath,
@@ -373,7 +373,7 @@ try {
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
   outputOwned = true;
-  const archiveName = `piik-app-${target.id}.zip`;
+  const archiveName = `silip-app-${target.id}.zip`;
   const archive = join(outputRoot, archiveName);
   createZip(packageRoot, archive);
   const extractedRoot = join(temporaryRoot, "extracted");

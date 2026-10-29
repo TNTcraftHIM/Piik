@@ -23,7 +23,7 @@ import (
 func TestRecorderRotationAndExport(t *testing.T) {
 	directory := t.TempDir()
 	const private = "private-environment-and-media-sentinel"
-	t.Setenv("PIIK_DIAGNOSTICS_TEST_SECRET", private)
+	t.Setenv("SILIP_DIAGNOSTICS_TEST_SECRET", private)
 	if err := os.WriteFile(filepath.Join(directory, "private-config.json"), []byte(private), 0600); err != nil {
 		t.Fatal(err)
 	}

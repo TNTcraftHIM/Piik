@@ -3,7 +3,7 @@
 ## Aesthetic And Design Standard
 
 Apply these constraints and relevant skills throughout every conversation turn,
-feature and action. Piik requires a polished experience and clear engineering:
+feature and action. Silip requires a polished experience and clear engineering:
 high aesthetic standards cover UI, interaction, functional boundaries, lifecycle
 and code. Working behavior alone is insufficient. Preserve the product's intent,
 usability, coherence, maintainability and appropriate extensibility.
@@ -56,7 +56,7 @@ invocation; follow their relevant guidance without importing unrelated workflows
 
 ## Product Contract
 
-- Piik is private screen sharing for one Host and up to 20 authenticated
+- Silip is private screen sharing for one Host and up to 20 authenticated
   Viewers, with Web Host/Viewer/relay as the current product surface.
 - Current product truth is split by owner:
   [rooms/access](./docs/standards/rooms-access.md),

@@ -140,7 +140,7 @@ remain open.
 
 RFC 7587 gives an omitted receive bitrate a mode-dependent default, not an
 unrestricted value, and asks receivers to ignore out-of-range preferences.
-All candidate Piik receivers therefore declare the full Opus range explicitly,
+All candidate Silip receivers therefore declare the full Opus range explicitly,
 including the App's local preview bridge through the same Browser answer helper.
 Browser sender enforcement uses [libwebrtc's existing default calculation](https://webrtc.googlesource.com/src/+/refs/heads/main/modules/audio_coding/codecs/opus/audio_encoder_opus.cc)
 when a peer omits a valid limit. Unchanged forwarding requires an explicit

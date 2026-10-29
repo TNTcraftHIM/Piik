@@ -8,7 +8,7 @@
 
 #include <vpx/vp8cx.h>
 
-namespace piik::capture {
+namespace silip::capture {
 namespace {
 
 void CheckVpx(vpx_codec_err_t result) {
@@ -103,4 +103,4 @@ Vp8Frame Vp8Encoder::Encode(uint8_t* nv12, size_t row_pitch,
   return frame;
 }
 
-}  // namespace piik::capture
+}  // namespace silip::capture

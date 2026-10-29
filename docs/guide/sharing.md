@@ -30,7 +30,7 @@ who joined with the old invitation.
 | Slider or custom value | Sliders cover common values. Type within the field's allowed range for other values; **Use common range** returns to a nearby slider value. |
 | Picture and sound quality | Both still adapt to the source, device and available bandwidth. |
 
-Applied settings are remembered for the current site. Opening Piik through an
+Applied settings are remembered for the current site. Opening Silip through an
 updated App also keeps sharing-quality settings when a public-invite address changes.
 
 ### Include your microphone
@@ -39,7 +39,7 @@ Under **Sharing settings → Sound**, enable **Include my microphone** to add yo
 voice to the shared picture. It starts off for each new share and stops with
 sharing. Viewers hear it through the picture's sound without joining room voice.
 Room voice remains independent. If you enable both microphones, listeners may
-hear you twice; Piik warns you and leaves the choice to you.
+hear you twice; Silip warns you and leaves the choice to you.
 
 ## Cameras and virtual audio inputs
 
@@ -70,7 +70,7 @@ including separate mixers and apps using other playback devices, remain audible.
 For a single application's sound, share it through **Apps / Windows** instead.
 Use headphones to prevent speaker sound entering your microphone.
 
-If your virtual microphone is audible while muted in Piik, temporarily turn off
+If your virtual microphone is audible while muted in Silip, temporarily turn off
 **System sound**. If that removes the voice, check your mixer's playback output
 and monitoring, or share only the desired application's audio.
 

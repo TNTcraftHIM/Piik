@@ -23,7 +23,7 @@ Your own reactions appear above you; reactions sent to a friend fly towards them
 
 Supported desktop browsers show **Open in always-on-top window** in its top-right
 corner. You can read messages, see reactions and select someone to interact with
-while playing. Keep the Piik page open; closing the small window returns it to the page.
+while playing. Keep the Silip page open; closing the small window returns it to the page.
 Use a windowed or borderless game; exclusive fullscreen may cover the window.
 The window has an opaque background and receives mouse clicks.
 

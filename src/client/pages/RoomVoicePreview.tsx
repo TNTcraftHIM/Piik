@@ -3,7 +3,7 @@ import { RoomVoiceControls, RoomVoicePanel, RoomVoiceSettings, type RoomVoiceVie
 import type { RoomVoiceSnapshot } from "../room-voice/session";
 import type { RoomVoiceCommand } from "../../shared/protocol";
 
-const names = new Map([["preview-host", "Piik"], ["preview-friend", "Piik friend"],
+const names = new Map([["preview-host", "Silip"], ["preview-friend", "Silip friend"],
   ...Array.from({ length: 19 }, (_, index): [string, string] => [`preview-friend-${index + 1}`, `Friend ${index + 2}`])]);
 function initialState(viewer: boolean, crowded: boolean): RoomVoiceSnapshot {
   return { peerId: viewer ? "preview-friend" : "preview-host", role: viewer ? "viewer" : "host", connected: true,

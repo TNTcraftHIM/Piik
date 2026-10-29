@@ -16,11 +16,11 @@ import (
 	"testing"
 	"time"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/app/lan"
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/app/lan"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 func TestLocalHTTPSAndLoopbackShareRoomAuthority(t *testing.T) {

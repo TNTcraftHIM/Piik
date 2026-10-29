@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Modified by Piik: apply overlapping feedback once while retaining late ACKs.
+// Modified by Silip: apply overlapping feedback once while retaining late ACKs.
 // Keep delay measurement monotonic without discarding packet/loss accounting.
 package sendsidebwe
 

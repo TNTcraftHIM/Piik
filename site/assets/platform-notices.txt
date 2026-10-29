@@ -6,7 +6,7 @@ Attribution License.
 
 Source: https://developer.android.com/distribute/marketing-tools/brand-guidelines
 License: https://creativecommons.org/licenses/by/3.0/
-Changes by Piik: simplified to a monochrome outline with rounded strokes.
+Changes by Silip: simplified to a monochrome outline with rounded strokes.
 
 Android is a trademark of Google LLC.
 

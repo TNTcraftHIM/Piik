@@ -96,7 +96,7 @@ those policies does not require another count-specific capability flag.
 Representation acceptance still requires local operation/resource admission;
 it is not a promise that every same-major peer can produce a new media format.
 
-Native discovery distinguishes an incompatible Piik App from an absent App and
+Native discovery distinguishes an incompatible Silip App from an absent App and
 reports protocol numbers to local diagnostics; the source picker offers update/
 refresh guidance and Browser operation. Do not reload, reinstall or interrupt
 an active share just because an unrelated product/build label changed.
@@ -119,59 +119,31 @@ builds use code 1 and include the short revision in `versionName`. The shared
 product version remains the only release ordering input; no Android counter is
 maintained separately.
 
-Desktop App archive names are fixed per target: `piik-app-{target}.zip`. Each published
+Desktop App archive names are fixed per target: `silip-app-{target}.zip`. Each published
 tag owns its archive bytes; the full source SHA remains in `REVISION` and the
 release descriptor. Fixed names allow GitHub's native latest-asset links;
-[website operations](../operations/website.md#preview) owns download presentation
-and verification of the matching Gitee mirror.
+[website operations](../operations/website.md#preview) owns download presentation.
 
-Android uses the installable `piik-app-android-universal.apk` for both ARM64 and
+Android uses the installable `silip-app-android-universal.apk` for both ARM64 and
 x64. It follows the same release identity, checksum, complete-target and
-mirror rules. [Android build instructions](../../mobile/README.md#signed-release-apk)
+publication rules. [Android build instructions](../../mobile/README.md#signed-release-apk)
 own signing input and installation details.
 
 Public Release attachments contain the App ZIPs/APK and Server runtime archives
 for the registered package targets. Package descriptors (`.release.json`), file manifests (`.manifest.tsv`)
 and standalone `.sha256` files remain build/deployment inputs in the local output
-and CI artifacts; publishers validate them but do not upload them to GitHub or
-Gitee Releases. The release body includes a collapsed full source SHA and
+and CI artifacts; publishers validate them but do not upload them to GitHub Releases. The release body includes a collapsed full source SHA and
 SHA-256 listing generated from the verified packages. GitHub's automatic source
-archives are separate from Piik's uploaded packages. Retain original build
+archives are separate from Silip's uploaded packages. Retain original build
 metadata with operator deployment records as described in [deployment](../deployment.md).
 
-Update checks compare actual release precedence. The App reports its compiled
-OS/architecture and links to that platform's ZIP in the selected release metadata;
-the release page remains the fallback when no matching attachment is available.
-Fixed archive names and published names with that release's SHA suffix are
-accepted only with the provider's exact release download URL. Downloads start on
-click; checking for an update does not fetch the archive.
-Newer version wins even when the source SHA is unchanged. Same version with a
-different known SHA reports a different official build, not a newer one. A
-development build with a known differing SHA offers the official release as a
-manual choice; it makes no ordering claim. Older releases never cause an update
-notice. Unknown SHA is not inferred from a branch name in GitHub metadata.
-The publisher records a full SHA in `target_commitish` and verifies actual tag
-identity separately. Stable update notices ignore prereleases.
+Silip has no in-product update check. The Browser, App and Server make no
+release-metadata requests; the owner updates by pulling source changes and
+rebuilding, and a published release announces itself only through GitHub.
+Do not add a background release lookup or download link without a new decision.
 
 ### Major-Upgrade Guidance
 
-The App update notice keeps direct download as its primary action, with a small
-Gitee mirror link below it. A newer major adds a short, visible breaking-change
-notice linking to the selected provider's exact release page; ordinary updates
-do not add a separate release-notes control. The Server logs the same distinction
-while preserving its checker JSON and exit codes. This is release guidance,
-not a replacement for actual wire checks.
-Updates remain a manual action. Release prose stays on GitHub/Gitee; the App
-does not fetch or render remote Markdown or add a second changelog store.
-Keep the major warning inline, without a confirmation dialog or mandatory
-website detour. The mirror link opens Gitee releases without depending on the
-website. API response time does not measure package-download throughput;
-do not add speed probes or automatic
-provider switching to an otherwise valid update check.
-
-Older installed Apps cannot acquire new warning UI from release metadata.
-Their historical download behavior is accepted; do not split release feeds or
-force a stepping-stone release solely to make advisory presentation identical.
 Before a major release, put bilingual upgrade guidance near the top of its
 release notes and on the website download entry. Name the actual incompatible
 App/Site combinations, required upgrade order, interruptions and any persistent
@@ -188,7 +160,7 @@ planned version and complete Chinese/English release notes to the owner and
 obtain explicit authorization for that release. Implementation or UI acceptance
 does not authorize publication. Each later release needs fresh confirmation;
 previous release/deployment permission is not standing authority. Once a release
-is authorized, its packaging, mirror retries and matching deployments may proceed
+is authorized, its packaging, publication retries and matching deployments may proceed
 within that scope without asking again. Automation executes the approved release.
 
 After one-time activation, a complete squash PR merged to main runs the existing
@@ -212,13 +184,12 @@ after all required artifacts and checks pass. The publisher verifies matching
 version, source SHA and checksums, then creates/uploads/publishes one GitHub draft.
 When there are no unpublished product changes, CI validates a development build
 and skips packaging and publication; it never assigns an old release version to
-a new source SHA. The separate Website and Gitee mirror workflows follow successful
-main CI independently. Mirror failure must remain visible without blocking GitHub
-publication or Website deployment; retries use the original publishing artifacts.
+a new source SHA. The separate Website workflow follows successful main CI independently;
+retries use the original publishing artifacts.
 Failed draft uploads can resume; published artifacts are never overwritten.
 An older draft retried after a newer release cannot take over `latest`.
 
-`PIIK_RELEASES_ENABLED` is a GitHub repository activation variable, not a product
+`SILIP_RELEASES_ENABLED` is a GitHub repository activation variable, not a product
 setting. Until the first release is explicitly enabled,
 main runs validation and manual `app_checks` dispatches create candidates only.
 Accepted external contributions may merge ahead of a release with this existing
@@ -241,7 +212,7 @@ introduced by this policy.
 
 ## Container Distribution
 
-`ghcr.io/tntcrafthim/piik` wraps the same verified linux/amd64 and linux/arm64
+`ghcr.io/p4-aaaul/silip` wraps the same verified linux/amd64 and linux/arm64
 Server archives as the GitHub release. The packager's optional
 `--container-image <tag>` builds from that architecture's extraction;
 CI checks its Compose recipe on the matching native runner and transfers the verified image
@@ -281,32 +252,32 @@ rewriting main.
 
 The publisher appends generated build identity and package checksums to the
 reviewed text, passes it through a temporary notes file to GitHub, then removes
-that file. Gitee copies the GitHub description. Retrying the same
+that file. Retrying the same
 release preserves its reviewed prose; draft retries refresh only the marked
 generated build/checksum section to match the uploaded bytes. Published releases
 remain unchanged. An exact tag does not move
 the changelog's starting point. Keep no `CHANGELOG.md`, versioned note directory
 or generated history commits. PRs and Git retain editorial provenance.
 
-Keep the Release title `Piik vX.Y.Z`. The body may open with one short bilingual
+Keep the Release title `Silip vX.Y.Z`. The body may open with one short bilingual
 editorial headline. Its lifetime is independent of semver: keep, replace or omit
 it based on what is worth telling readers, not whether the version is a patch
 or minor update. An already-published feature, a verified community milestone,
-thanks or an occasional light aside can lead. Keep Piik's friendly tone without
+thanks or an occasional light aside can lead. Keep Silip's friendly tone without
 forced jokes; never turn an old feature into a claim that it is new in this
 update, advertise an unfinished prototype or trivialize a serious failure.
 
 When used, open with a short bold title followed by one plain paragraph explaining
 that headline's concrete meaning. Write the complete English pair first, then the
-Chinese pair. For example: **Play together. Your turn!** / Piik now supports
-remote control and remote co-play; **远程同乐，轮到你啦！** / Piik 现已支持远程控制与远程同乐。
+Chinese pair. For example: **Play together. Your turn!** / Silip now supports
+remote control and remote co-play; **远程同乐，轮到你啦！** / Silip 现已支持远程控制与远程同乐。
 The explanation states the feature or fact, rather than adding another slogan;
 it does not replace the description of this update below. Keep each title and
 explanation to one authored line, using plain text inside `**...**` and the
 description. The website reads these same pairs from
 the published Release body and displays the current language; it does not keep
 another copy, interpret arbitrary Markdown or guess a headline from older
-releases. Gitee retains the same body. Do not add a campaign registry or automatic
+releases. Do not add a campaign registry or automatic
 version-based inheritance; review any reused headline when preparing the PR.
 
 Then introduce **this update** in each language with one or two factual sentences:
@@ -332,66 +303,18 @@ preserves authored Markdown and appends identity/checksums; it does not infer an
 editorial summary from a version number. Keep provenance and the full changelog
 link after the user-facing explanation.
 
-Piik's release scope and upgrade instructions come from its own accepted changes.
+Silip's release scope and upgrade instructions come from its own accepted changes.
 Editorial references reviewed on 2026-10-19: [Discord's update](https://discord.com/blog/discord-update-september-25-2026)
 combines a friendly voice with concrete changes; [VS Code's version notes](https://code.visualstudio.com/updates/v1_95)
 keep feature highlights alongside subsequent patch fixes. These inform the
-presentation, not Piik's version selection or feature claims.
+presentation, not Silip's version selection or feature claims.
 
 ## Release Sources
 
-GitHub Releases is the primary publication; Gitee is an optional official mirror
-for domestic access, with a minimal README pointing development and documentation
-back to GitHub. The Gitee repository need not copy the source tree. Its README/tag
-commit is not the Piik source revision; release metadata retains the original
-GitHub SHA. Build each target once and copy the same archives, notices,
-version, full source SHA and artifact hashes to both. A Git repository mirror
-alone does not synchronize Release attachments. Keep one release description.
-Update detection reads each provider's API metadata; it does not parse the public
-changelog or download build descriptors. The existing pipeline owns local
-machine-readable build metadata.
-
-The two providers only adapt API fields and download locations into the same
-release model. Share version comparison, channel filtering and package validation.
-The normal background check tries GitHub, then Gitee if the primary is unavailable;
-download links may expose both verified locations. A lagging mirror must not
-cause a downgrade or a version/hash disagreement to be silently accepted.
-Gitee's documented latest endpoint means last updated, so provider normalization
-must select stable release precedence explicitly, not equate provider ordering.
-
-Synchronize only an explicitly published release; branch pushes stay quiet.
-Retrying a failed mirror upload reuses the original package. Advertise a mirrored
-package as available only after its required attachments and matching metadata
-are present. Tokens belong only to publishing, never the distributed Browser/App.
-The public mirror is [TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik).
-The publisher reuses the shared artifact validator, checks every public package
-against GitHub's published asset digest, then uploads and verifies anonymous
-Gitee downloads. Gitee has no draft API: an incomplete mirror remains a preview
-release, and becomes stable only after every file passes. A source marker in
-the release body (`<!-- piik-source: <full-SHA> -->`) preserves the GitHub revision;
-the mirror's `target_commitish` identifies only its own README commit.
-App notices and the operator check share their existing version comparison
-across providers. Each provider has its own deadline; the mirror checks at most
-ten pages of 100 releases and rejects an incomplete listing. An explicit operator
-`--api-url` override checks that endpoint alone. A valid primary result, including
-an up-to-date result, does not consult the mirror.
-
-Gitee currently documents 100 MB per attachment and 1 GB total repository
-attachments for ordinary projects. The mirror rejects files above 100,000,000
-bytes before writing. GitHub retains published history; Gitee retains package
-attachments for the latest stable version and one preceding verified stable
-version. Order by semantic version, not update time; a preview cannot displace
-the fallback. Verify the new mirror completely before retiring older attachments,
-and verify that the fallback's packages remain downloadable and match GitHub.
-Delete only older mirror attachments with verified GitHub originals; retain
-release descriptions and tags. Unknown files or provenance require review.
-Check capacity before upload. Cleanup may reclaim versions outside the two
-retained stable versions; never delete either retained version to make an
-unverified replacement fit. Exhausted storage leaves a pending preview.
-Target authentication, uploads, anonymous metadata/CORS and the complete matching
-Server/three-platform App downloads and SHA-256 checks passed for the public release.
-Use API metadata in the Browser; ordinary asset-link redirects are not guaranteed
-to permit cross-origin fetch, even when a normal download works.
+GitHub Releases on [P4-aaaul/Silip](https://github.com/P4-aaaul/Silip) is the only
+publication. Build each target once; release metadata retains the full source SHA
+and artifact hashes. Tokens belong only to publishing, never the distributed
+Browser/App. There is no release mirror.
 
 ## Public Release Baseline
 
@@ -406,20 +329,18 @@ limits stay in [verification status](../verification-status.md).
   declared public API; build metadata does not determine precedence.
 - [Syncthing releases](https://docs.syncthing.net/users/releases.html) and
   [BEP](https://docs.syncthing.net/specs/bep-v1.html): product versions, peer
-  protocol and storage/upgrade behavior are distinct. Piik does not adopt its
+  protocol and storage/upgrade behavior are distinct. Silip does not adopt its
   minor-release REST-breaking exception for the protected interfaces above.
 - [Go compatibility](https://go.dev/doc/go1compat): name the protected contract
   and its limits instead of promising universal binary/runtime compatibility.
 - [Debug Adapter Protocol evolution](https://microsoft.github.io/debug-adapter-protocol/overview.html):
   stable baseline messages and explicit optional capabilities allow independent
-  endpoints to evolve. Piik uses that principle within its existing WebSocket/JSON
+  endpoints to evolve. Silip uses that principle within its existing WebSocket/JSON
   contracts; it does not replace them with DAP or a generic negotiation framework.
 - [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) provides
   the small release-intent vocabulary; standard SemVer libraries perform ordering.
 - Apple's [bundle build version](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleversion)
   and [release version](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleshortversionstring)
   are numeric; package generation derives both from the release and keeps SHA separately.
-- [GitHub Releases API](https://docs.github.com/en/rest/releases/releases) and
-  [Gitee's official API SDK reference](https://gitee.com/sdk/gitee5j/blob/main/docs/RepositoriesApi.md):
-  provider endpoints and metadata. [Gitee Release documentation](https://help.gitee.com/repository/release/intro)
-  owns its current attachment limits. Provider checks were made on 2026-09-12.
+- [GitHub Releases API](https://docs.github.com/en/rest/releases/releases): release
+  endpoints and metadata used by the publisher.

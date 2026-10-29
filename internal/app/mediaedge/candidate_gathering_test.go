@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 	"github.com/pion/stun/v4"
 	"github.com/pion/turn/v5"
 	"github.com/pion/webrtc/v4"

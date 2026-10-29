@@ -1,6 +1,6 @@
 package signal
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 // Room authority remains in the authenticated session/store. Interaction state
 // ends with that connection; no message history, routing state or retry worker

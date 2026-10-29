@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 
 struct CaptureColor final {
   bool hdr = false;
@@ -206,4 +206,4 @@ class CaptureSdrConverter final {
   Microsoft::WRL::ComPtr<ID2D1Effect> tone_map_, white_level_, srgb_;
 };
 
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows

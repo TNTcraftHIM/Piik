@@ -632,7 +632,7 @@ private final class HardwareEncoder {
         self.layer = layer
         self.onActive = onActive
         self.onFailure = onFailure ?? { done.signal($0) }
-        self.queue = DispatchQueue(label: "piik.capture.encoder.\(layer)")
+        self.queue = DispatchQueue(label: "silip.capture.encoder.\(layer)")
         desiredBitrate = profile.bitrate
         currentBitrate = profile.bitrate
     }
@@ -1943,7 +1943,7 @@ private func capture(_ arguments: [String]) async throws {
     let done = StopSignal()
     let encoders = try EncoderGroup(writer: writer, done: done, profile: profile, outputs: profiles)
     defer { encoders.close() }
-    let captureQueue = DispatchQueue(label: "piik.capture.video")
+    let captureQueue = DispatchQueue(label: "silip.capture.video")
     let output = CaptureOutput(
         encoders: encoders,
         done: done,
@@ -2019,8 +2019,8 @@ private func listMicrophones() throws {
 
 private func captureMicrophone(deviceUID: String = "") throws {
     let done = StopSignal()
-    let control = DispatchQueue(label: "piik.microphone.control")
-    let worker = DispatchQueue(label: "piik.microphone.pcm")
+    let control = DispatchQueue(label: "silip.microphone.control")
+    let worker = DispatchQueue(label: "silip.microphone.pcm")
     let slots = DispatchSemaphore(value: 4)
     let output = AudioCaptureOutput(writer: ProtocolWriter(), done: done)
     var engine: AVAudioEngine?
@@ -2155,7 +2155,7 @@ private func captureAudio(_ arguments: [String]) async throws {
     configuration.excludesCurrentProcessAudio = true
     configuration.sampleRate = 48_000
     configuration.channelCount = 2
-    let queue = DispatchQueue(label: "piik.capture.audio")
+    let queue = DispatchQueue(label: "silip.capture.audio")
     let stream = SCStream(
         filter: filter,
         configuration: configuration,
@@ -2177,7 +2177,7 @@ private func captureAudio(_ arguments: [String]) async throws {
 }
 
 @main
-private struct PiikCapture {
+private struct SilipCapture {
     static func main() async {
         do {
             let arguments = CommandLine.arguments
@@ -2205,7 +2205,7 @@ private struct PiikCapture {
                 try await capture(arguments)
             }
         } catch {
-            let message = "Piik capture unavailable: \(error)\n"
+            let message = "Silip capture unavailable: \(error)\n"
             FileHandle.standardError.write(message.data(using: .utf8) ?? Data())
             Darwin.exit(2)
         }

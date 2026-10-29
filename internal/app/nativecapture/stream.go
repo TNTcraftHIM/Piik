@@ -16,7 +16,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 )
 
 const (
@@ -154,7 +154,7 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 		return nil, errors.New("native capture source list is unavailable")
 	}
 	if err := command.Start(); err != nil {
-		slog.DebugContext(ctx, "piik-client", "event", "capture-source-list-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
+		slog.DebugContext(ctx, "silip-client", "event", "capture-source-list-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		return nil, errors.New("native capture source list is unavailable")
 	}
 	targets, readErr := readSources(stdout)
@@ -163,7 +163,7 @@ func ListSources(parent context.Context, executable string) ([]CaptureTarget, er
 	}
 	waitErr := command.Wait()
 	if waitErr != nil {
-		slog.DebugContext(ctx, "piik-client", "event", "capture-source-list-failed", diagnostics.Error(waitErr), "canceled", ctx.Err() != nil)
+		slog.DebugContext(ctx, "silip-client", "event", "capture-source-list-failed", diagnostics.Error(waitErr), "canceled", ctx.Err() != nil)
 	}
 	if readErr != nil {
 		return nil, errors.New("native capture source list is invalid")
@@ -233,7 +233,7 @@ func PreviewSource(parent context.Context, executable string, target CaptureTarg
 	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
-		slog.DebugContext(ctx, "piik-client", "event", "capture-source-preview-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
+		slog.DebugContext(ctx, "silip-client", "event", "capture-source-preview-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		return nil, errors.New("native capture preview is unavailable")
 	}
 	preview := stdout.Bytes()
@@ -253,10 +253,10 @@ func StartVideo(parent context.Context, executable string, options VideoOptions)
 	}
 	environment := []string(nil)
 	if options.RestoreToken != "" {
-		environment = []string{"PIIK_XDP_RESTORE_TOKEN=" + options.RestoreToken}
+		environment = []string{"SILIP_XDP_RESTORE_TOKEN=" + options.RestoreToken}
 	}
 	if options.RemoteInput {
-		environment = append(environment, "PIIK_CAPTURE_REMOTE_INPUT=1")
+		environment = append(environment, "SILIP_CAPTURE_REMOTE_INPUT=1")
 	}
 	arguments := []string{
 		"--capture-video",
@@ -484,7 +484,7 @@ func startStreamWithEnvironment(
 	logger := slog.Default().With("capture", captureID)
 	command := exec.CommandContext(ctx, executable, arguments...)
 	if logger.Enabled(ctx, slog.LevelDebug) {
-		environment = append(environment, "PIIK_CAPTURE_DEBUG=1")
+		environment = append(environment, "SILIP_CAPTURE_DEBUG=1")
 	}
 	if len(environment) > 0 {
 		command.Env = append(os.Environ(), environment...)
@@ -506,7 +506,7 @@ func startStreamWithEnvironment(
 	if err = command.Start(); err != nil {
 		_ = trace.Close()
 		cancel()
-		logger.DebugContext(ctx, "piik-client", "event", "capture-process-start-failed", diagnostics.Error(err))
+		logger.DebugContext(ctx, "silip-client", "event", "capture-process-start-failed", diagnostics.Error(err))
 		return nil, fmt.Errorf("start native capture process: %w", err)
 	}
 	logger = logger.With("pid", command.Process.Pid)
@@ -517,7 +517,7 @@ func startStreamWithEnvironment(
 			mode = strings.TrimPrefix(arguments[0], "--")
 		}
 	}
-	logger.DebugContext(ctx, "piik-client", "event", "capture-process-started", "mode", mode)
+	logger.DebugContext(ctx, "silip-client", "event", "capture-process-started", "mode", mode)
 	stream := &Stream{
 		cancel: cancel,
 		input:  stdout,
@@ -538,7 +538,7 @@ func startStreamWithEnvironment(
 			stream.failure = fmt.Errorf("native capture failed (stage=%s, hresult=%s): %w", stage, hresult, waitErr)
 		}
 		logCaptureFailure(ctx, waitErr, command.ProcessState.ExitCode(), stderr.Bytes())
-		logger.DebugContext(ctx, "piik-client", "event", "capture-process-ended", "mode", mode,
+		logger.DebugContext(ctx, "silip-client", "event", "capture-process-ended", "mode", mode,
 			"durationMs", time.Since(started).Milliseconds(), "exitCode", command.ProcessState.ExitCode(),
 			"canceled", ctx.Err() != nil, "cancelReason", diagnostics.SafeText(fmt.Sprint(context.Cause(ctx))), diagnostics.Error(waitErr))
 		stream.done <- waitErr
@@ -558,7 +558,7 @@ func logCaptureFailure(ctx context.Context, err error, exitCode int, stderr []by
 	if canceled && stage == "" && hresult == "" {
 		return
 	}
-	slog.DebugContext(ctx, "piik-client", "event", "capture-process-failed",
+	slog.DebugContext(ctx, "silip-client", "event", "capture-process-failed",
 		"exitCode", exitCode, "stage", stage, "hresult", hresult, "canceled", canceled)
 }
 
@@ -581,7 +581,7 @@ func (stream *Stream) Read() (Frame, error) {
 	stream.readMu.Unlock()
 	if err != nil && stream.logger != nil {
 		stream.readEnd.Do(func() {
-			stream.logger.DebugContext(stream.ctx, "piik-client", "event", "capture-stream-ended",
+			stream.logger.DebugContext(stream.ctx, "silip-client", "event", "capture-stream-ended",
 				"eof", errors.Is(err, io.EOF), "canceled", stream.ctx.Err() != nil, diagnostics.Error(err))
 		})
 	}

@@ -22,7 +22,7 @@ Reviewed on 2026-10-13:
   shows that replay can be workload-sensitive. Synthetic delay/loss profiles are
   named impairments, not validated replicas of a carrier or Wi-Fi network.
 - [MirrorNet, NSDI 2026](https://www.usenix.org/conference/nsdi26/presentation/miao)
-  reinforces checking control, data and traffic together. Piik needs that
+  reinforces checking control, data and traffic together. Silip needs that
   consistency, not a large WAN orchestration platform.
 - [RFC 4787](https://www.rfc-editor.org/rfc/rfc4787) separates UDP mapping from
   filtering. Describe both; a random-port Linux SNAT rule alone does not prove a
@@ -41,7 +41,7 @@ The laboratory is complete only when the following are executable and verified:
    remain unchanged. Cancellation and failed setup clean up owned resources.
 2. Existing Pion model tests retain precise mapping/filtering and socket-transfer
    coverage. Real-network calibration independently checks the configured NAT,
-   reachability, delay, rate and loss before attributing an outcome to Piik.
+   reachability, delay, rate and loss before attributing an outcome to Silip.
 3. Browser/Browser, App/Browser, Browser/App and App/App paths use the actual UI,
    signaling and media owners. A generated picture/tone replaces physical capture
    only; no route, SDP, candidate, timeout or readiness is synthesized.
@@ -84,7 +84,7 @@ when picture media uses the App. They reuse the existing routers and cleanup;
 their execution evidence is separate from the previously completed picture matrix.
 
 Actual packets/counters must corroborate each impairment. DevTools accepting a
-network-emulation request is insufficient: an earlier Piik check observed RTP
+network-emulation request is insufficient: an earlier Silip check observed RTP
 outside the requested limits. Keep negative controls, finite deadlines and
 resource limits as part of the laboratory rather than changing product recovery
 to make an experiment pass.
@@ -102,8 +102,8 @@ for this process layer. Root on a production host is not an equivalent setup.
 npm ci
 npm run build:web
 mkdir -p build/network-lab/bin
-CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
-CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app
+CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/silip-server ./cmd/silip-server
+CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/silip-app ./cmd/silip-app
 CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/stun ./scripts/network-lab/stun
 sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite smoke
 ```
@@ -140,7 +140,7 @@ game quality. Frame cadence, bitrate, loss, repair, freezes and QP remain separa
 measurements. These longer cases cap captures at 500,000 packets, retaining only
 each packet's first 96 bytes; ordinary cases keep their 100,000-packet bound.
 
-The [full process acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/40218617697)
+The [full process acceptance](https://github.com/P4-aaaul/Silip/actions/runs/40218617697)
 on 2026-10-25 passed all 83 trials across 43 scenarios on candidate `8db79dd0`,
 with paired enhancement on/off trials where applicable and six negative controls.
 Seventy trials produced progressing media; thirteen exhausted their deliberately
@@ -149,13 +149,13 @@ All owned resources retired and host networking remained unchanged. The matrix
 includes both voice and picture, STUN fallback, every Browser/App pairing,
 address changes, SFU fallback and constrained/recovered quality. It measures the
 laboratory profiles, not an Internet connection-success rate.
-The [paired comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38301455274)
+The [paired comparison](https://github.com/P4-aaaul/Silip/actions/runs/38301455274)
 also passed eight trials across two seeds with alternating enhancement on/off
 order. All four ordinary App/App trials delivered media; all four random-mapping
 trials exhausted their routes. This validates comparison/reporting and establishes
 no enhancement gain for that random-mapping profile.
 
-The [sequential-mapping comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38433597605)
+The [sequential-mapping comparison](https://github.com/P4-aaaul/Silip/actions/runs/38433597605)
 passed sixteen trials across two seeds and all four endpoint pairs. Both enhanced
 App/App trials delivered video and audio after about 23.6 seconds; both disabled controls exhausted
 their routes. Both Apps reported step-one observations, successful preparation
@@ -166,11 +166,11 @@ Browser/Browser and both mixed directions exhausted their routes with either
 setting in this profile. This establishes one complete product path through sequential
 kernel NAT, not a field success rate or general benefit for Browser participants.
 
-The [mixed-endpoint recovery comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38433591403)
+The [mixed-endpoint recovery comparison](https://github.com/P4-aaaul/Silip/actions/runs/38433591403)
 passed eighteen trials: three address-change runs per endpoint pair and three
 ordinary Browser/App and App/App connections each. Browser/App recovery took
 about 4.9 seconds, including the three-second continuity window, compared with
-13..32 seconds [before the repair](https://github.com/TNTcraftHIM/Piik/actions/runs/38430143831).
+13..32 seconds [before the repair](https://github.com/P4-aaaul/Silip/actions/runs/38430143831).
 The Native receiver had removed RTX during codec selection. Packet captures
 showed repeated old primary packets before the fix and negotiated RTX without
 repeated primary sequence numbers afterward. Pion's existing
@@ -178,7 +178,7 @@ repeated primary sequence numbers afterward. Pion's existing
 no new recovery timer or relaxed replay check was added. The other endpoint pairs
 retained their prior recovery range. These controlled observations establish a
 media-recovery repair, not a change in NAT reachability or Internet success rate.
-The [shared-receiver acceptance](https://github.com/TNTcraftHIM/Piik/actions/runs/38439642180)
+The [shared-receiver acceptance](https://github.com/P4-aaaul/Silip/actions/runs/38439642180)
 adds three SFU-only outage trials, three SFU fallback trials and three further
 Browser/App address-change trials. All delivered media and cleaned up their
 resources. SFU outage recovery took about 4.9 seconds; repeated Browser/App
@@ -203,7 +203,7 @@ address before sharing. Preserve, random and sequential SNAT describe observed
 mapping, not every consumer NAT implementation. Sequential cases use nftables'
 number generator and a typed port map: new UDP flows advance through ports
 40000..44095, with the same destination-dependent filter. Calibration must
-observe three consecutive mappings before Piik starts. All four endpoint pairs
+observe three consecutive mappings before Silip starts. All four endpoint pairs
 compare the enhancement capability; this capability also
 changes the retry budget, so aggregate differences do not isolate one mechanism.
 The recorded Native preparation and adoption results distinguish its use from
@@ -239,7 +239,7 @@ times, not exact first-packet timestamps or one-way media latency.
 synthetic picture/tone, stats and cleanup on loopback, without Linux namespaces
 or administrator permissions. Set `CHROME_PATH`, run `npm run build:web`, and
 build the current binaries with
-`go build -o build/network-lab/bin/ ./cmd/piik-server ./cmd/piik-app` first.
+`go build -o build/network-lab/bin/ ./cmd/silip-server ./cmd/silip-app` first.
 `--list` lists cases; `--cases browser-browser,app-app` selects a subset.
 
 The four Browser/App directions exercise initial playback, a quiet source and
@@ -283,11 +283,11 @@ survive that deadline, while each attempted route retains its finite budget.
 An additional continuous `requestVideoFrameCallback` inspection loop can change
 the behavior being measured. On Chromium 152.0.7977.82, it reproduced a receiver
 stall during a P2P/SFU switch while RTP reception continued. Removing only that
-extra observer, retaining pixel readback, decoded-frame counters and Piik's own
+extra observer, retaining pixel readback, decoded-frame counters and Silip's own
 first-frame observer, passed six Auto/P2P/SFU transitions against the same current
 Server: the moving VP8 picture sustained about 30 fps. Installed Chrome
 155.0.8059.84 also passed with the continuous observer. This establishes a
-probe-dependent browser interaction, not a Piik route failure or a particular
+probe-dependent browser interaction, not a Silip route failure or a particular
 upstream fix. Recheck a failed probe with passive frame counters and changing
 pixels before adding playback resets or transport workarounds.
 
@@ -309,16 +309,16 @@ not decoded picture quality. Run it explicitly in a stable executable path:
 
 ```powershell
 go test -c -o build/go-tests/publication-recovery.test.exe ./internal/media/forwarding
-$env:PIIK_TRANSPORT_RECOVERY = '1'
+$env:SILIP_TRANSPORT_RECOVERY = '1'
 & build/go-tests/publication-recovery.test.exe '-test.run=^TestPublicationConstrainedRecovery$' '-test.v' '-test.timeout=8m'
-Remove-Item Env:PIIK_TRANSPORT_RECOVERY
+Remove-Item Env:SILIP_TRANSPORT_RECOVERY
 ```
 
 On other systems, use the same Go command and environment variable with the
 platform executable name. The [publication comparison](./node-local-media-design.md#send-queue-recovery)
 owns measured results and the distinction between encoder demand and capacity.
 
-The [2026-10-14 comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38446966925)
+The [2026-10-14 comparison](https://github.com/P4-aaaul/Silip/actions/runs/38446966925)
 passed two trials for each quality case on candidate `ea2c7268`, using Chrome
 154.0.8037.97 and the moving 720p30 VP8 source. All six retained their connection,
 restored source resolution and cleaned up. Times below start at impairment
@@ -339,7 +339,7 @@ when no received layer fits a child's capacity; it does not create a lower
 encoding for that child.
 
 The v1.9.2 report of persistent self-hosted degradation has no matched trace,
-codec or confirmed route. Piik already forwards encoded video without server
+codec or confirmed route. Silip already forwards encoded video without server
 decoding/transcoding. An opaque UDP relay changes transport feedback and delivery
 semantics; its reported improvement does not isolate CPU, network or an SFU cause.
 The [queue/probe repairs](./node-local-media-design.md#send-queue-recovery) address

@@ -4,21 +4,21 @@ import { posix } from 'node:path';
 export const pages = [
   ['docs/guide/README.md', 'index.md', 'Documentation', 'Start here'],
   ['docs/guide/getting-started.md', 'getting-started.md', 'Getting started', 'Start here'],
-  ['docs/guide/sharing.md', 'sharing.md', 'Sharing and playback', 'Using Piik'],
-  ['docs/guide/room-tools.md', 'room-tools.md', 'Chat, voice and remote control', 'Using Piik'],
-  ['docs/guide/remote-control.md', 'remote-control.md', 'Remote control and playing together', 'Using Piik'],
-  ['cmd/piik-app/README.md', 'app.md', 'App reference', 'Using Piik'],
+  ['docs/guide/sharing.md', 'sharing.md', 'Sharing and playback', 'Using Silip'],
+  ['docs/guide/room-tools.md', 'room-tools.md', 'Chat, voice and remote control', 'Using Silip'],
+  ['docs/guide/remote-control.md', 'remote-control.md', 'Remote control and playing together', 'Using Silip'],
+  ['cmd/silip-app/README.md', 'app.md', 'App reference', 'Using Silip'],
   ['docs/guide/troubleshooting.md', 'troubleshooting.md', 'Troubleshooting', 'Get help'],
   ['docs/guide/network.md', 'network.md', 'Network connections', 'Get help'],
   ['docs/operations/self-hosting.md', 'self-hosting.md', 'Deploy a site', 'Self-hosting'],
   ['docs/operations/service-management.md', 'service-management.md', 'Run and update', 'Self-hosting'],
-  ['docs/guide/translating.md', 'translating.md', 'Translate Piik', 'Contribute'],
+  ['docs/guide/translating.md', 'translating.md', 'Translate Silip', 'Contribute'],
   ['docs/guide/README.zh-CN.md', 'zh/index.md', '文档中心', '开始使用'],
   ['docs/guide/getting-started.zh-CN.md', 'zh/getting-started.md', '快速上手', '开始使用'],
-  ['docs/guide/sharing.zh-CN.md', 'zh/sharing.md', '分享与播放', '使用 Piik'],
-  ['docs/guide/room-tools.zh-CN.md', 'zh/room-tools.md', '聊天、语音与远程控制', '使用 Piik'],
-  ['docs/guide/remote-control.zh-CN.md', 'zh/remote-control.md', '远程控制与多人同乐', '使用 Piik'],
-  ['cmd/piik-app/README.zh-CN.md', 'zh/app.md', 'App 使用参考', '使用 Piik'],
+  ['docs/guide/sharing.zh-CN.md', 'zh/sharing.md', '分享与播放', '使用 Silip'],
+  ['docs/guide/room-tools.zh-CN.md', 'zh/room-tools.md', '聊天、语音与远程控制', '使用 Silip'],
+  ['docs/guide/remote-control.zh-CN.md', 'zh/remote-control.md', '远程控制与多人同乐', '使用 Silip'],
+  ['cmd/silip-app/README.zh-CN.md', 'zh/app.md', 'App 使用参考', '使用 Silip'],
   ['docs/guide/troubleshooting.zh-CN.md', 'zh/troubleshooting.md', '问题排查', '遇到问题'],
   ['docs/guide/network.zh-CN.md', 'zh/network.md', '进阶网络排查', '遇到问题'],
   ['docs/operations/self-hosting.zh-CN.md', 'zh/self-hosting.md', '部署站点', '自部署'],
@@ -26,7 +26,7 @@ export const pages = [
   ['docs/guide/translating.zh-CN.md', 'zh/translating.md', '参与翻译', '参与项目'],
 ].map(([source, path, text, group]) => ({ source, path, text, group }));
 
-export const repository = 'https://github.com/TNTcraftHIM/Piik';
+export const repository = 'https://github.com/P4-aaaul/Silip';
 
 function repositoryReference(href, source) {
   if (/^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(href)) return null;

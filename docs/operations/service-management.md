@@ -7,33 +7,33 @@ This reference covers a persistent Linux service and container maintenance.
 
 ## systemd
 
-The [service template](../../deploy/systemd/piik.service.example) runs as the
-`piik` user, reads `/etc/piik/piik.env`, and starts
-`/opt/piik/current/piik-server`. Create the service account and place the extracted
+The [service template](../../deploy/systemd/silip.service.example) runs as the
+`silip` user, reads `/etc/silip/silip.env`, and starts
+`/opt/silip/current/silip-server`. Create the service account and place the extracted
 release at that path, or point `current` at its release directory. Copy your
-configuration to `/etc/piik/piik.env` and set
-`ROOM_DATABASE_PATH=/var/lib/piik/rooms.sqlite`; the unit creates this state directory.
+configuration to `/etc/silip/silip.env` and set
+`ROOM_DATABASE_PATH=/var/lib/silip/rooms.sqlite`; the unit creates this state directory.
 Keep the environment file readable only by its operator.
 
-Install the template as `/etc/systemd/system/piik.service`, then run:
+Install the template as `/etc/systemd/system/silip.service`, then run:
 
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl enable --now piik
-sudo systemctl status piik
+sudo systemctl enable --now silip
+sudo systemctl status silip
 ```
 
 Keep HTTP bound to loopback when the HTTPS proxy runs on the same host.
 STUN and optional SFU use their own public UDP listeners. An existing nginx
-installation can use the [proxy example](../../deploy/nginx/piik.conf.example)
+installation can use the [proxy example](../../deploy/nginx/silip.conf.example)
 after adapting the domain and certificate paths.
 
 ## Container
 
 Use the [Docker Compose setup](./self-hosting.md#docker-compose) for installation.
-The image is `ghcr.io/tntcrafthim/piik`, with `latest` and matching product version
+The image is `ghcr.io/p4-aaaul/silip`, with `latest` and matching product version
 tags (`vMAJOR.MINOR.PATCH`). Docker selects **linux/amd64** or **linux/arm64**
-to match the host. Set `PIIK_IMAGE` in `.env`
+to match the host. Set `SILIP_IMAGE` in `.env`
 to pin a version or image digest. Updates are explicit; pulling an image does not
 replace a running container.
 
@@ -56,7 +56,7 @@ loopback, publishes the standard UDP ports and enables automatic restart.
 Publishing a port does not enable its service; `.env` controls optional listeners.
 Edit both the application setting and port mapping if changing a listener port.
 Run a host proxy, or adapt the proxy's container networking deliberately: its
-own `127.0.0.1` does not reach Piik in another container.
+own `127.0.0.1` does not reach Silip in another container.
 
 The image's `/home/nonroot` is owned by UID/GID `65532:65532` with mode `0700`.
 A new named volume inherits that directory; an existing volume or bind mount
@@ -64,7 +64,7 @@ must already be writable by that identity. Keep this volume when replacing the
 container. Set `ROOM_DATABASE_PATH=:memory:` for memory-only room authority. Diagnostics
 remain opt-in and use `/home/nonroot/logs`; [export and retention](../standards/configuration.md#diagnostics)
 remain the operator's responsibility. Do not mount application files writable.
-With diagnostics enabled, `docker compose kill --signal=SIGUSR1 piik` requests a local
+With diagnostics enabled, `docker compose kill --signal=SIGUSR1 silip` requests a local
 export without stopping the container; the ZIP remains in the mounted log directory.
 
 Check `/healthz` from the host and public proxy, then verify configured STUN/SFU
@@ -75,12 +75,12 @@ environment and volume backup before replacement. From the deployment directory:
 ```sh
 docker compose pull
 docker compose stop
-docker compose cp piik:/home/nonroot ./piik-data-backup
+docker compose cp silip:/home/nonroot ./silip-data-backup
 docker compose up -d
-docker compose logs --tail=50 piik
+docker compose logs --tail=50 silip
 ```
 
-Use a new backup directory each time. Stop Piik before copying SQLite so its
+Use a new backup directory each time. Stop Silip before copying SQLite so its
 database and journal are consistent. Preserve `.env` separately and protect both
 backups as room credentials. Keep the same Compose project/directory so the named
 volume is reused; `docker compose down --volumes` deletes that data. To roll back,
@@ -91,15 +91,15 @@ The bare-metal `release-server.sh` wrapper does not manage containers.
 ## Operational Verification
 
 - `/healthz` returns `{"status":"ok"}` locally and through the public origin.
-- Piik and the HTTPS proxy are active with expected restart counts and bounded
-  logs/resources; Piik owns the configured STUN/SFU UDP listeners.
+- Silip and the HTTPS proxy are active with expected restart counts and bounded
+  logs/resources; Silip owns the configured STUN/SFU UDP listeners.
 - The official Trickle ICE sample obtains an ordinary UDP `srflx` candidate from
   the configured STUN service and no relay candidate.
 - A direct room presents media on two networks when Peer ICE succeeds.
 - When SFU is enabled, a constrained route creates one managed Host publication
   and only admitted subscriptions over embedded SFU UDP; Peer descendants remain ordinary P2P.
 - Blocking all UDP reaches a clear bounded failure.
-- Restarting Piik in stable mode retains room authority while Browser
+- Restarting Silip in stable mode retains room authority while Browser
   sessions and media reconnect from fresh process state.
 
 Representative network, mobile, audio, 20-Viewer, and long-running evidence is

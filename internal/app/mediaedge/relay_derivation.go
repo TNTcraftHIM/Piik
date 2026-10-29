@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
 	"github.com/livekit/mediatransportutil/pkg/utils"
 	"github.com/pion/rtp"
 )

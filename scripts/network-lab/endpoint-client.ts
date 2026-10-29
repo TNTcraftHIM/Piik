@@ -13,7 +13,7 @@ export class Endpoint {
     const root = resolve(import.meta.dirname, "../..");
     const args = [process.execPath, "--import", "tsx", resolve(root, "scripts/network-lab.ts"), "--worker", "endpoint"];
     this.process = spawn(namespace ? "ip" : args.shift()!, namespace ? ["netns", "exec", namespace, ...args] : args,
-      { cwd: root, env: { ...env, PIIK_NETWORK_LAB_PROFILE: profile }, stdio: "pipe", windowsHide: true });
+      { cwd: root, env: { ...env, SILIP_NETWORK_LAB_PROFILE: profile }, stdio: "pipe", windowsHide: true });
     this.process.stderr.on("data", data => process.stderr.write(data));
     this.process.stdin.on("error", error => this.fail(error));
     createInterface({ input: this.process.stdout }).on("line", line => {

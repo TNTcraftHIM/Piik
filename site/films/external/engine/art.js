@@ -1,4 +1,4 @@
-// Piik film engine — brand art: palette, mascot, little people, sofa, icons, reactions and graphic shapes.
+// Silip film engine — brand art: palette, mascot, little people, sofa, icons, reactions and graphic shapes.
 // Geometry is taken from the brand SVGs (brand/*.svg, characters/*.svg) so characters stay on-model.
 import { s, h, rng, TAU, clamp, lerp } from './core.js';
 import { ICONS } from './icons.js';
@@ -23,7 +23,7 @@ export const CAST = {
 
 // ---------------------------------------------------------------- mascot (TV)
 /**
- * The Piik TV mascot, from brand/mascot.svg (32×32 units, stroke 2.4).
+ * The Silip TV mascot, from brand/mascot.svg (32×32 units, stroke 2.4).
  * Returns {el, set({wink, antenna, squash, look, blink})}. wink: 1 = winking (brand default), 0 = both eyes open.
  */
 export function mascot({ stroke = C.ink, fill = 'none', sw = 2.4, size = 200, sparkles = true } = {}) {
@@ -166,7 +166,7 @@ export function sofa({ width = 640, color = C.yellow, line = C.ink } = {}) {
 }
 
 // ---------------------------------------------------------------- icons & reactions
-/** One of the real Piik control icons as an inline <svg>. */
+/** One of the real Silip control icons as an inline <svg>. */
 export function icon(name, { size = 48, color = C.ink, sw = 2 } = {}) {
   const def = ICONS[name];
   const el = s('svg', { viewBox: '0 0 24 24', width: size, height: size, fill: def.solid ? color : 'none', stroke: def.solid ? 'none' : color, 'stroke-width': sw, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' });

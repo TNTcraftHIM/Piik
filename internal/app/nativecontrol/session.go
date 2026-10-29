@@ -17,14 +17,14 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeviewer"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativehost"
+	"github.com/P4-aaaul/Silip/internal/app/nativeviewer"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -212,7 +212,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if request.ExcludeAudio != nil && !request.MicrophoneMixing {
 			return nil, errors.New("native audio exclusion requires mixed audio")
 		}
-		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
+		slog.Debug("silip-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", nativeQualityProfile(request.Profile), "codec", request.Codec, "audio", request.Audio,
 			"sourceKind", request.Source.Kind, "adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		envelope.reportSourceCancellation = request.ReportSourceCancellation
@@ -354,7 +354,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		if !profile.Valid() {
 			return nil, errors.New("native sharing profile is unsupported")
 		}
-		slog.Debug("piik-client", "event", "native-profile-requested", "requestId", envelope.ID,
+		slog.Debug("silip-client", "event", "native-profile-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "profile", profile)
 		var err error
 		if host := session.current(request.ShareID); host != nil {
@@ -385,7 +385,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 		audio := request.Audio && session.capabilities.Summary().AudioFor(
 			request.Source.Kind,
 		)
-		slog.Debug("piik-client", "event", "native-source-requested", "requestId", envelope.ID,
+		slog.Debug("silip-client", "event", "native-source-requested", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio,
 			"adapterIndex", request.AdapterIndex, "encoderIndex", request.EncoderIndex)
 		result = session.runHostOperation(host, envelope, nil, func() (any, error) {
@@ -398,7 +398,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			if err != nil {
 				return nil, err
 			}
-			slog.Debug("piik-client", "event", "native-source-applied", "requestId", envelope.ID,
+			slog.Debug("silip-client", "event", "native-source-applied", "requestId", envelope.ID,
 				"share", diagnostics.ID(request.ShareID), "sourceKind", request.Source.Kind, "audio", audio)
 			return shareSourceReplacedResponse{
 				responseEnvelope: response(envelope, "share-source-replaced"), ShareID: request.ShareID,
@@ -547,7 +547,7 @@ func (session *Session) Handle(ctx context.Context, payload []byte) (result any,
 			return nil, errors.New("native share does not exist")
 		}
 		host.SetPaused(request.Paused)
-		slog.Debug("piik-client", "event", "native-share-paused", "requestId", envelope.ID,
+		slog.Debug("silip-client", "event", "native-share-paused", "requestId", envelope.ID,
 			"share", diagnostics.ID(request.ShareID), "paused", request.Paused)
 		return response(envelope, "share-paused"), nil
 	default:
@@ -688,7 +688,7 @@ func (session *Session) shareUpdateResult(request requestEnvelope, shareID strin
 	if err != nil {
 		return operationFailure(request, err)
 	}
-	slog.Debug("piik-client", "event", "native-profile-applied", "requestId", request.ID,
+	slog.Debug("silip-client", "event", "native-profile-applied", "requestId", request.ID,
 		"share", diagnostics.ID(shareID), "profile", profile)
 	return shareUpdatedResponse{responseEnvelope: response(request, "share-updated"), ShareID: shareID}
 }
@@ -760,7 +760,7 @@ func (session *Session) startShare(
 	session.host = host
 	session.mu.Unlock()
 	codec := host.Codec()
-	slog.Debug("piik-client", "event", "native-profile-applied", "requestId", envelope.ID,
+	slog.Debug("silip-client", "event", "native-profile-applied", "requestId", envelope.ID,
 		"share", diagnostics.ID(request.ShareID), "profile", profile, "codec", codec, "audio", host.HasAudio())
 	go func() { defer cancel(); session.watchHost(host) }()
 	return shareStartedResponse{
@@ -1230,7 +1230,7 @@ func response(request requestEnvelope, responseType string) responseEnvelope {
 
 func operationFailure(request requestEnvelope, causes ...error) requestFailedResponse {
 	if len(causes) > 0 {
-		slog.Debug("piik-client", "event", "native-operation-failed", "requestId", request.ID,
+		slog.Debug("silip-client", "event", "native-operation-failed", "requestId", request.ID,
 			"requestType", diagnostics.SafeText(request.Type), diagnostics.Error(causes[0]))
 	}
 	code := "operation-failed"
@@ -1259,10 +1259,10 @@ func (session *Session) traceRequest(request requestEnvelope, payload []byte) fu
 		"share", diagnostics.ID(identity.ShareID), "connection", diagnostics.ID(identity.ConnectionID),
 		"sourceConnection", diagnostics.ID(identity.SourceConnectionID), "publication", diagnostics.ID(identity.PublicationGeneration))
 	started := time.Now()
-	logger.Debug("piik-client", "event", "native-request-started")
+	logger.Debug("silip-client", "event", "native-request-started")
 	return func(result any, err error) {
 		failure, rejected := result.(requestFailedResponse)
-		logger.Debug("piik-client", "event", "native-request-ended", "durationMs", time.Since(started).Milliseconds(),
+		logger.Debug("silip-client", "event", "native-request-ended", "durationMs", time.Since(started).Milliseconds(),
 			"failed", err != nil || rejected, "code", failure.Code, diagnostics.Error(err))
 	}
 }

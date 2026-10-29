@@ -30,5 +30,5 @@ it("keeps the primary visual state separate from its decoration", () => {
   vi.spyOn(Math, "random").mockReturnValue(0);
   const frames = getTitleFrames("en", true, "viewerWaiting");
   const title = renderToStaticMarkup(createElement(Title, { parts: ["9527", frames.label], variations: frames.variations }));
-  expect(title).toBe("Piik | 9527 · ⏳ · 👀");
+  expect(title).toBe("Silip | 9527 · ⏳ · 👀");
 });

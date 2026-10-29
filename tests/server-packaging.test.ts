@@ -29,7 +29,7 @@ vi.mock("node:child_process", async (original) => ({
       writeFileSync(args[1]!, "fixture archive");
       if (source.scenario === "archive-failure") return { status: 1, stderr: "archive interrupted" };
     } else if (args[0] === "-tzf") {
-      stdout = "LICENSE\nREVISION\nTHIRD-PARTY-NOTICES.txt\npiik-server\n";
+      stdout = "LICENSE\nREVISION\nTHIRD-PARTY-NOTICES.txt\nsilip-server\n";
     } else if (args[0] === "-xzf") {
       cpSync(join(source.workspace, "runtime"), args[args.indexOf("-C") + 1]!, { recursive: true });
     } else if (!args.join(" ").includes("build:web")) {
@@ -59,12 +59,12 @@ vi.mock("../scripts/archive-tool.mjs", () => ({ tarExecutable: () => "fixture-ta
 
 it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "existing"] as const)(
   "exports a Server release only after all tracked inputs are settled (%s)", async (scenario) => {
-    const root = mkdtempSync(join(tmpdir(), "piik-server-package-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-server-package-"));
     const output = join(root, "release");
     const previousArguments = process.argv;
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    vi.stubEnv("VITE_PIIK_VERSION", "development");
-    vi.stubEnv("VITE_PIIK_REVISION", "");
+    vi.stubEnv("VITE_SILIP_VERSION", "development");
+    vi.stubEnv("VITE_SILIP_REVISION", "");
     source.workspace = join(root, "workspace");
     source.scenario = scenario;
     source.containerRead = false;
@@ -73,12 +73,12 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
         mkdirSync(output);
         writeFileSync(join(output, "user.txt"), "keep");
       }
-      process.argv = [process.execPath, "package-server-release.mjs", output, "--container-image", "piik-fixture:test"];
+      process.argv = [process.execPath, "package-server-release.mjs", output, "--container-image", "silip-fixture:test"];
       vi.resetModules();
       const packaging = import("../scripts/package-server-release.mjs");
       if (scenario === "clean") {
         await packaging;
-        const descriptor = JSON.parse(readFileSync(join(output, "piik-aaaaaaa.release.json"), "utf8"));
+        const descriptor = JSON.parse(readFileSync(join(output, "silip-aaaaaaa.release.json"), "utf8"));
         expect(descriptor.revision).toBe(source.revision);
         expect(existsSync(join(output, descriptor.artifact))).toBe(true);
       } else if (scenario === "existing") {

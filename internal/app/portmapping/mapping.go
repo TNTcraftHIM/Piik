@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 	nat "github.com/netbirdio/go-nat"
 )
 
@@ -146,7 +146,7 @@ func (mapping *Mapping) mapPortLocked(ctx context.Context) {
 	go func() {
 		defer close(done)
 		externalPort, err := mapping.gateway.AddPortMapping(
-			ctx, "udp", mapping.localPort, "Piik", leaseDuration,
+			ctx, "udp", mapping.localPort, "Silip", leaseDuration,
 		)
 		result <- mappingResult{externalPort, err}
 	}()

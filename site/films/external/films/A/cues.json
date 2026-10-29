@@ -30,7 +30,7 @@
     "Fmaj9",
     "E7#9"
    ],
-   "music": "Thin out: kick + hats + held EP pad, rising line under ransom words. Band hit on [6,1]. Leave space at [6,3] for the mascot 'piik!' chirp."
+   "music": "Thin out: kick + hats + held EP pad, rising line under ransom words. Band hit on [6,1]. Leave space at [6,3] for the mascot 'silip!' chirp."
   },
   {
    "id": "step1",
@@ -453,7 +453,7 @@
     6,
     3
    ],
-   "name": "piik_chirp"
+   "name": "silip_chirp"
   },
   {
    "at": [
@@ -1295,7 +1295,7 @@
     33,
     1
    ],
-   "name": "piik_chirp"
+   "name": "silip_chirp"
   },
   {
    "at": [

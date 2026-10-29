@@ -12,17 +12,16 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/app/lan"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/httpassets"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/app/lan"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/httpassets"
 )
 
 const (
@@ -298,17 +297,12 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		target, resultErr = attempt.target, attempt.err
 		starting = !attempt.completed
 	}
-	packageTarget := runtime.GOOS + "-" + runtime.GOARCH
-	if runtime.GOOS == "android" {
-		packageTarget = "android-universal"
-	}
 	state := map[string]any{
 		"sites":               slices.Clone(server.sites),
 		"startupSite":         server.startupSite,
 		"localAccessPassword": server.localAccessPassword,
 		"version":             server.version,
 		"revision":            server.revision,
-		"packageTarget":       packageTarget,
 		"controlPort":         server.controlPort,
 		"target":              target,
 		"starting":            starting,
@@ -462,7 +456,7 @@ func (server *Server) handleLaunch(response http.ResponseWriter, request *http.R
 	server.mu.Unlock()
 	if resultErr != nil {
 		writeJSON(response, http.StatusServiceUnavailable, map[string]string{
-			"error": "Piik App could not start", "detail": errorDetail(resultErr), "reason": string(failure.Of(resultErr)),
+			"error": "Silip App could not start", "detail": errorDetail(resultErr), "reason": string(failure.Of(resultErr)),
 		})
 		return
 	}

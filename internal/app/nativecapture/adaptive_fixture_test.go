@@ -13,11 +13,11 @@ import (
 
 // Opt-in real capture-process check; normal tests never start a codec or GPU.
 func TestAdaptiveOutputFixture(t *testing.T) {
-	executable, fixture := os.Getenv("PIIK_NATIVE_CAPTURE"), os.Getenv("PIIK_ADAPTIVE_INPUT")
+	executable, fixture := os.Getenv("SILIP_NATIVE_CAPTURE"), os.Getenv("SILIP_ADAPTIVE_INPUT")
 	if executable == "" || fixture == "" {
-		t.Skip("set PIIK_NATIVE_CAPTURE and PIIK_ADAPTIVE_INPUT")
+		t.Skip("set SILIP_NATIVE_CAPTURE and SILIP_ADAPTIVE_INPUT")
 	}
-	codec := os.Getenv("PIIK_ADAPTIVE_CODEC")
+	codec := os.Getenv("SILIP_ADAPTIVE_CODEC")
 	if codec == "" {
 		codec = "vp8"
 	}

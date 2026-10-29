@@ -18,7 +18,6 @@ import { HostShareControls } from "../components/living/HostShareControls";
 import { HostRemoteControl } from "../components/living/HostRemoteControl";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
-import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
 import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
@@ -65,20 +64,17 @@ export function ControlsPreview() {
   const [remoteMode, setRemoteMode] = useState<RemoteControlMode>("off");
   const [quality, setQuality] = useState<QualityProfile>(QUALITY_PROFILES["1080p30"]);
   const [launchMode, setLaunchMode] = useState<AppMode>("link");
-  const [majorUpdate, setMajorUpdate] = useState(false);
-  const releaseVersion = majorUpdate ? "v3.0.0" : "v2.2.0";
-  const releaseURL = `https://github.com/TNTcraftHIM/Piik/releases/tag/${releaseVersion}`;
-  const [launchSites, setLaunchSites] = useState(["https://demo.piik.tv"]);
+  const [launchSites, setLaunchSites] = useState(["https://silip.example"]);
   const [startupSite, setStartupSite] = useState("");
   const [launchPassword, setLaunchPassword] = useState("");
   const [launchLan, setLaunchLan] = useState("192.0.2.10");
   const [policy, setPolicy] = useState<"open" | "private">("open");
   const [roomPassword, setRoomPassword] = useState(false);
   const [includeCredential, setIncludeCredential] = useState(true);
-  const roomLink = `https://piik.example/r/9527${includeCredential ? "#v=preview" : ""}`;
+  const roomLink = `https://silip.example/r/9527${includeCredential ? "#v=preview" : ""}`;
   const [paused, setPaused] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
-  const [name, setName] = useState("Piik friend");
+  const [name, setName] = useState("Silip friend");
   const [invalid, setInvalid] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(displayPreview);
   const [sourceRevision, setSourceRevision] = useState(0);
@@ -242,7 +238,7 @@ export function ControlsPreview() {
       </section>
       <section id="input-preview" className="cp-card">
         <header><span className="cp-number">03</span><h2>{en ? "Names, codes and small details" : "名字、房间号，还有小细节。"}</h2></header>
-        <div className="cp-tools"><NameTag name={name || "Piik friend"} identity="preview-name" />
+        <div className="cp-tools"><NameTag name={name || "Silip friend"} identity="preview-name" />
           <label className="lr-input"><Glyph name="pencil" size={17} /><input value={name} aria-label={t("host.name")}
             autoComplete="off" onChange={event => setName(event.target.value)} /></label>
         </div>
@@ -340,13 +336,10 @@ export function ControlsPreview() {
     <section id="launcher-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">08</span><h2>{t("client.launch.title")}</h2></header>
       <div className="cp-tools">
-        <button className="lr-btn" type="button" aria-pressed={majorUpdate} onClick={() => setMajorUpdate(value => !value)}>
-          {en ? "Preview major update" : "预览跨大版本更新"}
-        </button>
         <SwitchItem checked={launchSites.length > 1} label={en ? "Many approved sites" : "多个已授权站点"}
-          onChange={many => { setLaunchSites(many ? ["https://demo.piik.tv", "https://friends.example.org", "https://screen-sharing-with-friends.preview.example.org:8443", "https://movie-night.example.net", "https://192.0.2.10:8787", "https://weekend-games.example.org"] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
+          onChange={many => { setLaunchSites(many ? ["https://silip.example", "https://friends.example.org", "https://screen-sharing-with-friends.preview.example.org:8443", "https://movie-night.example.net", "https://192.0.2.10:8787", "https://weekend-games.example.org"] : ["https://silip.example"]); setStartupSite(""); }} />
         <SwitchItem checked={launchSites.length === 0} label={en ? "No approved sites" : "尚未授权站点"}
-          onChange={empty => { setLaunchSites(empty ? [] : ["https://demo.piik.tv"]); setStartupSite(""); }} />
+          onChange={empty => { setLaunchSites(empty ? [] : ["https://silip.example"]); setStartupSite(""); }} />
       </div>
       <div className="lr-client-launch">
         <LauncherForm mode={launchMode} onModeChange={setLaunchMode}
@@ -358,12 +351,7 @@ export function ControlsPreview() {
             { address: "192.0.2.20", name: "vEthernet (Example Virtual Network Adapter with a Long Name)" },
           ] }}
           localAccessPassword={launchPassword} onLocalAccessPasswordChange={setLaunchPassword}
-          onSubmit={event => event.preventDefault()}>
-          <AppReleaseNotice update={{ kind: majorUpdate ? "major-update" : "update-available",
-            version: releaseVersion, revision: null,
-            url: `https://github.com/TNTcraftHIM/Piik/releases/download/${releaseVersion}/piik-app-windows-amd64.zip`,
-            releaseURL }} />
-        </LauncherForm>
+          onSubmit={event => event.preventDefault()} />
       </div>
     </section>
     <section id="interaction-preview" className="cp-section">
@@ -417,9 +405,9 @@ function InteractionControlsPreview() {
       overlayAction={<RoomChatToggle session={session} />}
       overlaySettings={session && <RoomChatOverlaySettings session={session} />} />
   </StageTv><RoomInteractions session={session} voice={voice} voiceState={voice.room}
-    view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Piik", you: !viewer }} entries={
+    view={viewer ? "viewer" : "host"} host={{ key: "preview-host", name: "Silip", you: !viewer }} entries={
       Array.from({ length: crowded ? 20 : 1 }, (_, index) => ({
-        key: index ? `preview-friend-${index}` : "preview-friend", name: index ? `Friend ${index + 1}` : "Piik friend",
+        key: index ? `preview-friend-${index}` : "preview-friend", name: index ? `Friend ${index + 1}` : "Silip friend",
         you: viewer && index === 0,
         status: deriveParticipantStatus({ upstream: { kind: "peer", peerId: "preview-host" }, mediaReady: true }, true),
       }))

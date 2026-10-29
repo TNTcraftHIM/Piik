@@ -3,7 +3,7 @@
 This directory contains the Android App shell and capture bridge.
 It targets Android 10 or later on ARM64 and x64 devices, using the Android ABI
 identifiers `arm64-v8a` and `x86_64` in one APK.
-Piik opens its existing Web UI in the system browser. An Android service owns
+Silip opens its existing Web UI in the system browser. An Android service owns
 the shared Go runtime until the user stops App; the Activity handles visible
 system consent. A `mediaProjection` foreground service
 owns the approved projection token, display surface, platform encoding and eligible
@@ -23,7 +23,7 @@ The existing WebRTC FrameDropper also gates each encoder's input from its actual
 output size, so a codec that reaches its compression limit can reduce frame rate
 instead of ignoring the allocation. The shared capture clock and other outputs
 continue independently.
-Devices without either encoder can still join rooms. Piik needs an installed
+Devices without either encoder can still join rooms. Silip needs an installed
 system browser.
 TV capture depends on the system's Projection and encoder support. Physical TV
 checks are pending.
@@ -56,14 +56,14 @@ The entry builds the same Web assets, generates the existing icon and license
 notices, binds the Go runtime for both supported ABIs and packages the APK.
 The single mobile Go entry lives in `mobile/bridge`; this command generates its
 Android binding.
-`PIIK_GOMOBILE` may name an installed `gomobile` executable outside `PATH`.
+`SILIP_GOMOBILE` may name an installed `gomobile` executable outside `PATH`.
 
 The build injects the same product version and source revision used by desktop
 App packages. The shared startup page displays that identity; development APKs
 also include their short revision in Android's application version.
 
 The build produces `android/app/build/outputs/apk/debug/app-debug.apk`
-relative to `mobile/`. The application ID remains `tv.piik.android`, so an update
+relative to `mobile/`. The application ID remains `io.github.p4aaaul.silip.android`, so an update
 signed with the same key replaces the previous installation while retaining App settings.
 Generated libraries, APKs, Gradle state and signing material stay
 ignored. The `checklinkname` flag is required by the existing Android networking
@@ -74,22 +74,22 @@ pins and temporary upstream replacements remain owned by the root `go.mod`.
 ### Signed release APK
 
 Use the same entry with `--release --output <new-directory>`. Set
-`PIIK_BUILD_VERSION` to the planned product version, and inject signing material
-through `PIIK_ANDROID_KEYSTORE` (absolute path), `PIIK_ANDROID_STORE_PASSWORD`,
-`PIIK_ANDROID_KEY_ALIAS` and `PIIK_ANDROID_KEY_PASSWORD`. Keep the keystore and
+`SILIP_BUILD_VERSION` to the planned product version, and inject signing material
+through `SILIP_ANDROID_KEYSTORE` (absolute path), `SILIP_ANDROID_STORE_PASSWORD`,
+`SILIP_ANDROID_KEY_ALIAS` and `SILIP_ANDROID_KEY_PASSWORD`. Keep the keystore and
 passwords outside tracked files; back up the long-lived signing key securely.
 Missing signing inputs fail the release build. Release packages reject Android
 debug certificates and debuggable APKs. Release builds require a clean checkout
 and verify that the same clean source revision still owns the final output.
 
-The universal `piik-app-android-universal.apk` contains arm64 and x86-64.
+The universal `silip-app-android-universal.apk` contains arm64 and x86-64.
 The build verifies its signature, package identity, version and ABIs, then writes
 the existing schema-2 release descriptor and SHA-256 sidecar beside the APK.
 The existing CI App matrix publishes it with the matching desktop/Server
 artifacts. Publication requires four repository secrets:
-`PIIK_ANDROID_KEYSTORE_BASE64` (the keystore bytes in Base64),
-`PIIK_ANDROID_STORE_PASSWORD`, `PIIK_ANDROID_KEY_ALIAS` and
-`PIIK_ANDROID_KEY_PASSWORD`. Manual candidate runs use the same release variant
+`SILIP_ANDROID_KEYSTORE_BASE64` (the keystore bytes in Base64),
+`SILIP_ANDROID_STORE_PASSWORD`, `SILIP_ANDROID_KEY_ALIAS` and
+`SILIP_ANDROID_KEY_PASSWORD`. Manual candidate runs use the same release variant
 with a disposable signing key, and never publish.
 
 A formal APK cannot update an earlier debug-signed candidate. Uninstall that
@@ -97,12 +97,12 @@ candidate before installing the first formal release; this removes its saved App
 settings. Later formal updates retain settings when signed with the same key.
 
 Install with `adb install -r <apk>`. The shared startup page offers Local and
-Public link. Use **+** beside the site section to enter a Piik site address;
+Public link. Use **+** beside the site section to enter a Silip site address;
 confirm its displayed origin before allowing and opening it. Approval, revocation
 and the starred startup site use the same management UI as desktop.
 On a connected site, use **App → Open App page** to manage saved origins.
 
-The ongoing notification opens Piik or stops the local backend. Starting screen
+The ongoing notification opens Silip or stops the local backend. Starting screen
 sharing opens App for system recording consent when the browser permits the
 handoff; **Confirm in App** remains available when another click is needed.
 Replacing an active native source reuses recording consent without opening App.
@@ -111,7 +111,7 @@ Opening App while a request is pending also handles
 that request, so sites without the new shortcut can still confirm in App.
 The website's App approval still requires its displayed exact origin; waking
 App does not authorize a site. If the connection card cannot find App, choose
-**Open Piik App**, then return to the same browser page to continue discovery.
+**Open Silip App**, then return to the same browser page to continue discovery.
 Choose **Open App page** and confirm the displayed origin before granting access.
 Camera and room voice use the browser's own permissions.
 
@@ -135,7 +135,7 @@ existing device selector; it joins the same Go mixer and stable shared audio
 track as source sound. The capture service adds microphone foreground eligibility
 only for that input lifetime. Room voice keeps its independent Browser input.
 The browser owns navigation, fullscreen and camera/microphone capture lifetimes;
-Piik owns the native screen and source-audio resources.
+Silip owns the native screen and source-audio resources.
 
 Screen capture and device sound do not turn on the microphone. Native commentary
 is enabled separately and uses Android's voice-communication capture mode for
@@ -145,14 +145,14 @@ microphone path. Headphones also prevent speaker sound from feeding back into
 the microphone.
 
 If a local room stops responding after switching to the browser or locking the
-screen, check Piik's battery and background-activity settings. Some devices
+screen, check Silip's battery and background-activity settings. Some devices
 restrict background network access even while the process remains running.
-Allow unrestricted background activity for Piik and keep its ongoing notification
+Allow unrestricted background activity for Silip and keep its ongoing notification
 enabled. [Xiaomi's network troubleshooting](https://www.mi.com/ph/support/faq/details/KA-538010/)
 describes this battery-policy setting.
 
 Open the invitation in another device's Browser. Local HTTPS requires the usual
-certificate confirmation. Stop from Piik or Android's projection indicator;
+certificate confirmation. Stop from Silip or Android's projection indicator;
 Android can also end projection on screen lock. Capture and optional audio use
 the existing stream replacement transaction; the foreground service owns the
 projection token and its single VirtualDisplay.

@@ -97,7 +97,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
       await withDeadline(() => once(stun!.stdout, "data"), Date.now() + 5000);
     }
     for (let i = 0; i < (scenario.sibling ? 3 : 2); i++) endpoints.push(new Endpoint(network.endpoint(i),
-      await mkdtemp(join(tmpdir(), "piik-client-media-")), signal, labEnvironment()));
+      await mkdtemp(join(tmpdir(), "silip-client-media-")), signal, labEnvironment()));
     stage("calibration");
     const baselines = await Promise.all(endpoints.map(endpoint => endpoint.call<ProbeResult>("probe")));
     result.mappingCalibration = baselines;
@@ -110,7 +110,7 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     const mappings = await Promise.all(pair.map(endpoint => endpoint.call<{ address: string; port: number }>("peer-prepare")));
     const reachability = await Promise.all(pair.map((endpoint, index) => endpoint.call<{ replies: number }>("peer-probe", { peer: mappings[1 - index] })));
     result.peerCalibration = { mappings, reachability };
-    if (scenario.nat.every(mode => mode === "preserve") && reachability.some(probe => probe.replies < 5)) throw new Error("Baseline UDP rendezvous failed independently of Piik");
+    if (scenario.nat.every(mode => mode === "preserve") && reachability.some(probe => probe.replies < 5)) throw new Error("Baseline UDP rendezvous failed independently of Silip");
     if (scenario.ipv6) {
       const probes = await Promise.all(endpoints.map(endpoint => endpoint.call<ProbeResult>("probe", { ipv6: true })));
       if (probes.some(probe => probe.received !== probe.sent || !probe.mappings[0]?.address.startsWith("2001:db8:72:"))) throw new Error("IPv6 calibration failed");
@@ -123,8 +123,8 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
     // Load probes are calibration traffic, never competing with measured media.
     if (scenario.duringShare) setFault("none");
     stage("startup");
-    server = spawn("ip", ["netns", "exec", network.wan, resolve("build/network-lab/bin/piik-server")], {
-      cwd: output, stdio: "pipe", env: { ...labEnvironment(), PIIK_ENV: "development", ROOM_DATABASE_PATH: ":memory:",
+    server = spawn("ip", ["netns", "exec", network.wan, resolve("build/network-lab/bin/silip-server")], {
+      cwd: output, stdio: "pipe", env: { ...labEnvironment(), SILIP_ENV: "development", ROOM_DATABASE_PATH: ":memory:",
         LISTEN_HOST: SITE_IP, PORT: "9000", PUBLIC_BASE_URL: SITE_ORIGIN, ALLOWED_ORIGINS: SITE_ORIGIN,
         STUN_URLS: `stun:${SITE_IP}:3478,stun:${SITE_IP}:3479,stun:${SITE_IP}:3480${scenario.ipv6 ? `,stun:[${SITE_IPV6}]:3478` : ""}`, STUN_LISTEN_HOST: SITE_IP,
         NAT_PREDICTION_ENABLED: String(prediction), ...(scenario.sfu ? { SFU_UDP_PORT: "7882", SFU_LISTEN_HOST: SITE_IP, SFU_PUBLIC_IP: SITE_IP, SFU_ONLY: String(!!scenario.sfuOnly) } : {}) },
@@ -143,10 +143,10 @@ async function runCase(scenario: Scenario, seed: number, prediction: boolean, ou
       await delay(50, undefined, { signal });
     } }, Date.now() + 5000);
     stage("share");
-    await endpoints[0]!.call("navigate", { url: SITE_ORIGIN + (scenario.host === "app" ? "/#piik-client=1" : "/") });
+    await endpoints[0]!.call("navigate", { url: SITE_ORIGIN + (scenario.host === "app" ? "/#silip-client=1" : "/") });
     const invitation = await endpoints[0]!.call<string>("share", { prediction, sfuOnly: scenario.sfuOnly === true });
     const joinedAt = performance.now();
-    await endpoints[1]!.call("navigate", { url: invitation + (scenario.viewer === "app" ? "&piik-client=1" : "") });
+    await endpoints[1]!.call("navigate", { url: invitation + (scenario.viewer === "app" ? "&silip-client=1" : "") });
     if (scenario.sibling) await endpoints[2]!.call("navigate", { url: invitation });
     stage("first-picture");
     let connected = false, exhausted = false;

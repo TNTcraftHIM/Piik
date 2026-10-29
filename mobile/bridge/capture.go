@@ -1,4 +1,4 @@
-// Package bridge binds mobile capture to Piik's existing native session.
+// Package bridge binds mobile capture to Silip's existing native session.
 package bridge
 
 import (
@@ -10,10 +10,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativehost"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
 )
 
 // Platform runs Platform-owned permission and codec work on its appropriate threads.

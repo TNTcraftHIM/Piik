@@ -15,7 +15,7 @@
 #include "api/video/video_adapter.h"
 #undef NDEBUG
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 class AdaptiveEncoder::Impl final {
  public:
   explicit Impl(Factory create, VideoProfile profile, std::unique_ptr<VideoEncoder> initial)
@@ -36,7 +36,7 @@ std::optional<AdaptiveAccessUnit> AdaptiveEncoder::Encode(FrameProducer,
   if (output.bytes.empty()) return std::nullopt;
   return AdaptiveAccessUnit{std::move(output), width, height, 333'333};
 }
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows
 
 class FixtureEncoder final : public VideoEncoder {
  public:
@@ -295,7 +295,7 @@ void CheckPrimaryFailureDetails() {
   assert(text.find("hresult=0x80070005") != std::string::npos);
   // With no COM apartment, the real decoder fails at its first API boundary.
   bool rejected = false;
-  try { piik::capture::H264Decoder decoder(nullptr); }
+  try { silip::capture::H264Decoder decoder(nullptr); }
   catch (const GateFailure& error) {
     rejected = error.stage() == "h264-decoder-create" && error.result() == CO_E_NOTINITIALIZED;
   }
@@ -591,7 +591,7 @@ void CheckDecodedDisplayArea(ID3D11Device* device) {
       "fixtures" / "h264-padding" / "aperture.h264";
   std::ifstream file(path, std::ios::binary);
   assert(file);
-  piik::capture::InputEnvelope input;
+  silip::capture::InputEnvelope input;
   input.kind = 2;
   input.recovery = true;
   input.width = 3840;
@@ -599,7 +599,7 @@ void CheckDecodedDisplayArea(ID3D11Device* device) {
   input.duration = 10'000'000 / 24;
   input.data = std::vector<uint8_t>(std::istreambuf_iterator<char>(file), {});
   unsigned decoded = 0;
-  piik::capture::H264Decoder decoder(nullptr);
+  silip::capture::H264Decoder decoder(nullptr);
   for (unsigned index = 0; index < 4; ++index) {
     input.timestamp = (index + 1) * input.duration;
     decoder.Decode(input, [&](IMFSample* sample, UINT32 width, UINT32 height, LONG stride) {
@@ -735,15 +735,15 @@ int main() {
       assert(error.stage() == "argument-profile");
     }
   }
-  assert(piik::capture::ValidVideoFormat(3840, 2160, 30));
-  assert(piik::capture::ValidVideoFormat(3840, 2160, 60));
-  assert(piik::capture::ValidVideoFormat(2160, 3840, 60));
-  assert(!piik::capture::ValidVideoFormat(3840, 2160, 65));
-  assert(!piik::capture::ValidVideoFormat(UINT32_MAX, UINT32_MAX, UINT32_MAX));
-  assert(piik::capture::ValidCodedVideoSize(3840, 2176));
-  assert(piik::capture::ValidCodedVideoSize(2176, 3840));
-  assert(!piik::capture::ValidCodedVideoSize(3840, 3840));
-  assert(!piik::capture::ValidCodedVideoSize(UINT32_MAX, UINT32_MAX));
+  assert(silip::capture::ValidVideoFormat(3840, 2160, 30));
+  assert(silip::capture::ValidVideoFormat(3840, 2160, 60));
+  assert(silip::capture::ValidVideoFormat(2160, 3840, 60));
+  assert(!silip::capture::ValidVideoFormat(3840, 2160, 65));
+  assert(!silip::capture::ValidVideoFormat(UINT32_MAX, UINT32_MAX, UINT32_MAX));
+  assert(silip::capture::ValidCodedVideoSize(3840, 2176));
+  assert(silip::capture::ValidCodedVideoSize(2176, 3840));
+  assert(!silip::capture::ValidCodedVideoSize(3840, 3840));
+  assert(!silip::capture::ValidCodedVideoSize(UINT32_MAX, UINT32_MAX));
   CheckEncoderCandidates();
   CheckQuietCaptureRefresh();
   CheckH264ProfileCompatibility();

@@ -11,17 +11,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
 	"github.com/pion/webrtc/v4"
 )
 
 // Replays actual SDK encoder output through independent Pion connections. The
 // relays retain derivation capability, but healthy children need only raw reuse.
 func TestRelayChainEncodedFixture(t *testing.T) {
-	fixture := os.Getenv("PIIK_POOL_CHAIN_FIXTURE")
+	fixture := os.Getenv("SILIP_POOL_CHAIN_FIXTURE")
 	if fixture == "" {
-		t.Skip("set PIIK_POOL_CHAIN_FIXTURE and PIIK_NATIVE_CAPTURE")
+		t.Skip("set SILIP_POOL_CHAIN_FIXTURE and SILIP_NATIVE_CAPTURE")
 	}
 	check := func(err error) {
 		t.Helper()
@@ -29,11 +29,11 @@ func TestRelayChainEncodedFixture(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	executable := os.Getenv("PIIK_NATIVE_CAPTURE")
+	executable := os.Getenv("SILIP_NATIVE_CAPTURE")
 	info, err := os.Stat(executable)
 	check(err)
 	if info.IsDir() {
-		t.Fatal("PIIK_NATIVE_CAPTURE must name the existing capture executable")
+		t.Fatal("SILIP_NATIVE_CAPTURE must name the existing capture executable")
 	}
 	input, err := os.Open(fixture)
 	check(err)
@@ -294,7 +294,7 @@ func TestRelayChainEncodedFixture(t *testing.T) {
 	}{len(frames), 2, actual, false, true})
 	check(err)
 	t.Log(string(summary))
-	if output := os.Getenv("PIIK_POOL_CHAIN_OUTPUT"); output != "" {
+	if output := os.Getenv("SILIP_POOL_CHAIN_OUTPUT"); output != "" {
 		check(os.WriteFile(output, append(summary, '\n'), 0o600))
 	}
 }

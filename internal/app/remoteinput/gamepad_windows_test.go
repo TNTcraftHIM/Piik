@@ -67,8 +67,8 @@ func TestGamepadWindowsCapacity(t *testing.T) {
 // This opt-in check creates only its own temporary targets. XInput is read-only
 // observation here; production allocation and ownership use bus sessions alone.
 func TestGamepadNativeLifecycle(t *testing.T) {
-	if os.Getenv("PIIK_GAMEPAD_GATE") != "1" {
-		t.Skip("set PIIK_GAMEPAD_GATE=1 with the official ViGEmBus driver installed; no client DLL is required")
+	if os.Getenv("SILIP_GAMEPAD_GATE") != "1" {
+		t.Skip("set SILIP_GAMEPAD_GATE=1 with the official ViGEmBus driver installed; no client DLL is required")
 	}
 	newBackend := func() gamepadBackend {
 		t.Helper()

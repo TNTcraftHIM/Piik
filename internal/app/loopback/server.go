@@ -16,8 +16,8 @@ import (
 	"sync"
 	"time"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 	"github.com/coder/websocket"
 )
 

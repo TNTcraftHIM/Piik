@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type AnimationEvent } from "react";
+import { useEffect, useId, useRef, useState, type AnimationEvent } from "react";
 import { bindSvgReplayOnPointerEnter } from "../../ui/animation";
 
 export type BrandMotion = "static" | "once" | "loop";
@@ -19,6 +19,8 @@ export function BrandMark({
         ? " is-once"
         : "";
   const markRef = useRef<SVGSVGElement>(null);
+  // Each instance owns its pupil mask; React ids contain characters url() rejects.
+  const pupils = `lr-brand-pupils-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
 
   useEffect(() => {
     setPhase("drawing");
@@ -44,49 +46,50 @@ export function BrandMark({
       viewBox="0 0 32 32"
       fill="none"
       stroke="currentColor"
-      strokeWidth={animated ? 2 : 2.4}
       strokeLinecap="round"
       strokeLinejoin="round"
       aria-hidden="true"
       focusable="false"
     >
-      <g className="lr-brand-shell">
-        <rect className="lr-brand-frame" pathLength={1} x="4" y="8" width="24" height="18" rx="4" />
-        <g className="lr-brand-antenna-motion"><path className="lr-brand-antenna" pathLength={1} d="m11 4 5 4 5-4" /></g>
-        <path className="lr-brand-feet" pathLength={1} d="M10 29l2-3m10 3-2-3"
+      <mask id={pupils} maskUnits="userSpaceOnUse" x="0" y="0" width="32" height="32">
+        <rect width="32" height="32" fill="#fff" />
+        <g className="lr-brand-pupils" fill="#000">
+          <circle cx="12.4" cy="9.1" r="1.4" />
+          <circle cx="22.4" cy="9.1" r="1.4" />
+        </g>
+      </mask>
+      <g className="lr-brand-shell" strokeWidth={4.2}>
+        <path className="lr-brand-stem" pathLength={1} d="M11 24.5V16.2" />
+        <path className="lr-brand-stem" pathLength={1} d="M21 24.5V16.2"
           onAnimationEnd={event => { if (event.animationName === "lr-brand-draw") setPhase("intro"); }} />
       </g>
-      <g className="lr-brand-face">
-        <circle
-          className="lr-brand-eye-left"
-          cx="11.5"
-          cy="16.5"
-          r="1.25"
-          fill="currentColor"
-          stroke="none"
-        />
-        <circle
-          className="lr-brand-eye-open"
-          cx="21.35"
-          cy="16.5"
-          r="1.25"
-          fill="currentColor"
-          stroke="none"
-        />
-        <path
-          className="lr-brand-eye-wink"
-          pathLength={1}
-          d="M19 17c1.5-1.8 3.2-1.8 4.7 0"
-        />
+      <g className="lr-brand-face" mask={`url(#${pupils})`} fill="currentColor" stroke="none">
+        <circle className="lr-brand-eye" cx="11" cy="9" r="3.5" />
+        <circle className="lr-brand-eye" cx="21" cy="9" r="3.5" />
       </g>
-      <g className="lr-brand-sparkles">
-        <path pathLength={1} d="m25 11.5 .8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8.8-1.9Z" />
+      <g className="lr-brand-sparkles" strokeWidth={animated ? 1.6 : 1.8}>
+        <path pathLength={1} d="m27.6 2.4 .7 1.6 1.6.7-1.6.7-.7 1.6-.7-1.6-1.6-.7 1.6-.7.7-1.6Z" />
         <path
           pathLength={1}
-          d="m25 17.2 .45 1.1 1.1.45-1.1.45-.45 1.1-.45-1.1-1.1-.45 1.1-.45.45-1.1Z"
+          d="m28.6 8.6 .4 .9 .9 .4-.9 .4-.4 .9-.4-.9-.9-.4 .9-.4.4-.9Z"
           onAnimationEnd={finishLoopIntro}
         />
       </g>
+    </svg>
+  );
+}
+
+/** The "silip" wordmark: its two i-dots are the mark's peeking eyes. */
+export function BrandWordmark({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="16 30 302 220" role="img" aria-label="Silip">
+      <g fill="none" stroke="currentColor" strokeWidth={24} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M77.5 121.5A26 19 0 1 0 55 150A26 19 0 1 1 32.5 178.5" />
+        <path d="M116 112V184M156 44V184M196 112V184M236 112V236" />
+        <circle cx="270" cy="150" r="34" />
+      </g>
+      <path fill="currentColor" fillRule="evenodd"
+        d="M96 74a20 20 0 1 0 40 0a20 20 0 1 0-40 0ZM116 75a8 8 0 1 0 16 0a8 8 0 1 0-16 0ZM176 74a20 20 0 1 0 40 0a20 20 0 1 0-40 0ZM196 75a8 8 0 1 0 16 0a8 8 0 1 0-16 0Z" />
     </svg>
   );
 }

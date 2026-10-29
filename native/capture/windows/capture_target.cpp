@@ -32,7 +32,7 @@
 #include <utility>
 #include <vector>
 
-namespace piik::capture {
+namespace silip::capture {
 namespace {
 
 using Microsoft::WRL::ComPtr;
@@ -42,7 +42,7 @@ constexpr LONG kPreviewWidth = 320;
 constexpr LONG kPreviewHeight = 180;
 constexpr LONG kMaxPreviewSourceDimension = 2'048;
 constexpr DWORD kBitmapHeaderBytes = 54;
-constexpr wchar_t kPreviewWindowClass[] = L"PiikPreviewWindow";
+constexpr wchar_t kPreviewWindowClass[] = L"SilipPreviewWindow";
 
 SIZE ReadDisplayPresentation(const wchar_t* device_name, SIZE captured) {
   UINT32 path_count = 0;
@@ -1102,4 +1102,4 @@ HRESULT ValidateDisplayTarget(UINT64 source_id) {
              : HRESULT_FROM_WIN32(ERROR_INVALID_MONITOR_HANDLE);
 }
 
-}  // namespace piik::capture
+}  // namespace silip::capture

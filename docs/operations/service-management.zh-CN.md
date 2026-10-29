@@ -6,30 +6,30 @@
 
 ## systemd
 
-[服务模板](../../deploy/systemd/piik.service.example)使用 `piik` 用户运行，
-读取 `/etc/piik/piik.env`，启动 `/opt/piik/current/piik-server`。
+[服务模板](../../deploy/systemd/silip.service.example)使用 `silip` 用户运行，
+读取 `/etc/silip/silip.env`，启动 `/opt/silip/current/silip-server`。
 请创建服务账号，将解压后的发布产物放在该路径，或让 `current` 指向对应发布目录。
-将配置复制到 `/etc/piik/piik.env`，并设置 `ROOM_DATABASE_PATH=/var/lib/piik/rooms.sqlite`；
+将配置复制到 `/etc/silip/silip.env`，并设置 `ROOM_DATABASE_PATH=/var/lib/silip/rooms.sqlite`；
 服务单元会创建这个状态目录。环境文件只应允许运维人员读取。
 
-将模板安装为 `/etc/systemd/system/piik.service`，然后执行：
+将模板安装为 `/etc/systemd/system/silip.service`，然后执行：
 
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl enable --now piik
-sudo systemctl status piik
+sudo systemctl enable --now silip
+sudo systemctl status silip
 ```
 
-HTTPS 代理与 Piik 在同一主机时，让 HTTP 继续绑定回环地址。
+HTTPS 代理与 Silip 在同一主机时，让 HTTP 继续绑定回环地址。
 STUN 和可选的 SFU 使用各自的公网 UDP 监听器。已有 nginx 时，可修改
-[代理示例](../../deploy/nginx/piik.conf.example)中的域名与证书路径后使用。
+[代理示例](../../deploy/nginx/silip.conf.example)中的域名与证书路径后使用。
 
 ## 容器
 
 安装步骤见 [Docker Compose 配置](./self-hosting.zh-CN.md#使用-docker-compose)。
-镜像为 `ghcr.io/tntcrafthim/piik`，提供 `latest` 和对应产品版本标签（`vMAJOR.MINOR.PATCH`），
+镜像为 `ghcr.io/p4-aaaul/silip`，提供 `latest` 和对应产品版本标签（`vMAJOR.MINOR.PATCH`），
 Docker 会按主机架构选择 **linux/amd64** 或 **linux/arm64**。
-在 `.env` 中设置 `PIIK_IMAGE` 可固定版本或镜像摘要。
+在 `.env` 中设置 `SILIP_IMAGE` 可固定版本或镜像摘要。
 更新需要手动执行；仅拉取镜像不会替换正在运行的容器。
 
 [运行时 Dockerfile](../../deploy/container/Dockerfile)封装已验证的 Server 压缩包，
@@ -47,14 +47,14 @@ Docker 会按主机架构选择 **linux/amd64** 或 **linux/arm64**。
 公布标准 UDP 端口，并启用自动重启。公布端口不会开启对应服务，可选监听器由 `.env` 控制。
 修改监听端口时，同时修改应用配置和端口映射。
 请使用主机上的代理，或明确调整代理容器的网络配置；代理容器自己的 `127.0.0.1`
-无法访问另一个容器内的 Piik。
+无法访问另一个容器内的 Silip。
 
 镜像中的 `/home/nonroot` 属于 UID/GID `65532:65532`，权限为 `0700`。
 新的命名数据卷继承该目录；已有数据卷或绑定挂载需要事先允许该身份写入。
 替换容器时保留这个数据卷。设置 `ROOM_DATABASE_PATH=:memory:` 可让房间权威状态只保存在内存中。
 诊断保持手动开启，使用 `/home/nonroot/logs`；[导出与保留](../standards/configuration.md#diagnostics)
 由运维人员负责。不要将应用文件挂载为可写。
-启用诊断后，`docker compose kill --signal=SIGUSR1 piik` 会请求本地导出，不会停止容器；
+启用诊断后，`docker compose kill --signal=SIGUSR1 silip` 会请求本地导出，不会停止容器；
 ZIP 保存在挂载的日志目录中。
 
 从主机与公网代理检查 `/healthz`，再按[运行验证](#运行验证)检查已配置的 STUN/SFU UDP，
@@ -64,12 +64,12 @@ ZIP 保存在挂载的日志目录中。
 ```sh
 docker compose pull
 docker compose stop
-docker compose cp piik:/home/nonroot ./piik-data-backup
+docker compose cp silip:/home/nonroot ./silip-data-backup
 docker compose up -d
-docker compose logs --tail=50 piik
+docker compose logs --tail=50 silip
 ```
 
-每次使用新的备份目录。复制 SQLite 前先停止 Piik，确保数据库和日志文件一致。
+每次使用新的备份目录。复制 SQLite 前先停止 Silip，确保数据库和日志文件一致。
 单独保存 `.env`，并将配置和数据备份视为房间凭据加以保护。
 保留同一个 Compose 项目与目录，以便继续使用原命名数据卷；
 `docker compose down --volumes` 会删除这些数据。
@@ -79,14 +79,14 @@ docker compose logs --tail=50 piik
 ## 运行验证
 
 - 本地和公网来源的 `/healthz` 都返回 `{"status":"ok"}`。
-- Piik 与 HTTPS 代理处于运行状态，重启次数符合预期，日志和资源使用有界；
-  Piik 占有配置中的 STUN/SFU UDP 监听器。
+- Silip 与 HTTPS 代理处于运行状态，重启次数符合预期，日志和资源使用有界；
+  Silip 占有配置中的 STUN/SFU UDP 监听器。
 - 官方 Trickle ICE 示例能从配置的 STUN 服务取得普通 UDP `srflx` 候选，不出现 relay 候选。
 - Peer ICE 成功时，两个网络上的设备能在直连房间中显示媒体。
 - 启用 SFU 时，受限路由通过内嵌 SFU UDP 创建一个受管理的房主发布，且只接纳已授权订阅；
   Peer 后代节点继续使用普通 P2P。
 - 阻断全部 UDP 后，在有限时间内进入明确的失败状态。
-- 使用持久化模式时，重启 Piik 保留房间权威状态；浏览器会话和媒体从新进程状态重新连接。
+- 使用持久化模式时，重启 Silip 保留房间权威状态；浏览器会话和媒体从新进程状态重新连接。
 
 代表性网络、移动端、音频、20 位观众和长时间运行的证据由
 [验证状态](../verification-status.md)跟踪，不记录在本操作手册中。

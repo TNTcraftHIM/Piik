@@ -1,7 +1,7 @@
 ---
 name: context-consistency
 description: >
-  Trace shared meanings and owners across Piik code, UI, copy and lifecycle.
+  Trace shared meanings and owners across Silip code, UI, copy and lifecycle.
   Use for cross-surface consistency work, recurring sibling-path defects or
   repository standardization audits; not every isolated edit.
 ---

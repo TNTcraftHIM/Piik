@@ -17,12 +17,12 @@ const BUILD_ROOT = join(ROOT, "build/go-check");
 // App does on a real network.
 const LAN_ADDRESS = "192.0.2.1";
 
-const initialAudio = process.env.PIIK_CLIENT_GATE_AUDIO !== "false";
-const punchRetry = process.env.PIIK_CLIENT_PUNCH_GATE === "true";
-const captureSize = parseVideoGateSize(process.env.PIIK_CLIENT_GATE_VIDEO_SIZE || "1920x1080");
+const initialAudio = process.env.SILIP_CLIENT_GATE_AUDIO !== "false";
+const punchRetry = process.env.SILIP_CLIENT_PUNCH_GATE === "true";
+const captureSize = parseVideoGateSize(process.env.SILIP_CLIENT_GATE_VIDEO_SIZE || "1920x1080");
 const probe = String.raw`(() => {
-  localStorage.setItem('piik:ui-lang', 'en');
-  localStorage.setItem('piik:ui-mode', 'text');
+  localStorage.setItem('silip:ui-lang', 'en');
+  localStorage.setItem('silip:ui-mode', 'text');
   const pcs = [], requests = [], sockets = [], errors = [];
   window.addEventListener('unhandledrejection', (e) => errors.push(String(e.reason)));
   const codecPreferences = RTCRtpTransceiver.prototype.setCodecPreferences;
@@ -123,20 +123,20 @@ function build(command: string, args: string[]): void {
   }
 }
 
-// startRoomServer builds and starts the Piik server the Browser pages and
-// both Apps share. PIIK_ENV stays development because production
+// startRoomServer builds and starts the Silip server the Browser pages and
+// both Apps share. SILIP_ENV stays development because production
 // requires an HTTPS public origin and STUN; the Web assets are
 // embedded either way.
 async function startRoomServer(
   port: number,
   workingDirectory: string,
 ): Promise<ChildProcessWithoutNullStreams> {
-  const go = process.env.PIIK_GO?.trim() || "go";
+  const go = process.env.SILIP_GO?.trim() || "go";
   await mkdir(BUILD_ROOT, { recursive: true });
   // The server embeds the Vite output, so the Web build precedes the Go build.
   build(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", "npm run build:web"]);
-  const binary = join(BUILD_ROOT, "piik-server.exe");
-  build(go, ["build", "-trimpath", "-o", binary, "./cmd/piik-server"]);
+  const binary = join(BUILD_ROOT, "silip-server.exe");
+  build(go, ["build", "-trimpath", "-o", binary, "./cmd/silip-server"]);
   const origins = [`http://localhost:${port}`, `http://127.0.0.1:${port}`, `http://${LAN_ADDRESS}:${port}`];
   const child = spawn(binary, [], {
     // The gate profile has no .env, and the environment is explicit: the
@@ -146,7 +146,7 @@ async function startRoomServer(
     env: {
       PATH: process.env.PATH,
       SystemRoot: process.env.SystemRoot,
-      PIIK_ENV: "development",
+      SILIP_ENV: "development",
       ROOM_DATABASE_PATH: ":memory:",
       PORT: String(port),
       LISTEN_HOST: "127.0.0.1",
@@ -173,10 +173,10 @@ async function startRoomServer(
 }
 
 async function main(): Promise<void> {
-  if (process.env.PIIK_CLIENT_BROWSER_FANOUT_GATE !== "true") throw new Error("Browser fanout gate was not enabled");
+  if (process.env.SILIP_CLIENT_BROWSER_FANOUT_GATE !== "true") throw new Error("Browser fanout gate was not enabled");
   const chromePath = process.env.CHROME_PATH;
   if (!chromePath) throw new Error("CHROME_PATH is required");
-  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
+  const profile = await mkdtemp(join(tmpdir(), "silip-client-media-"));
   const appPort = await reservePort(), debugPort = await reservePort();
   const origin = `http://localhost:${appPort}`;
   let app: ChildProcessWithoutNullStreams | null = null;
@@ -191,10 +191,10 @@ async function main(): Promise<void> {
   let stage = "startup", error: string | null = null;
   try {
     server = await startRoomServer(appPort, profile);
-    app = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT, "piik-app.exe"), [
+    app = spawn(process.env.SILIP_CLIENT_EXE || join(BUILD_ROOT, "silip-app.exe"), [
       "--site", origin, "--config", join(profile, "client.json"),
-      "--capture-process", join(BUILD_ROOT, "piik-capture.exe"),
-    ], { windowsHide: true, stdio: "pipe", env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" } });
+      "--capture-process", join(BUILD_ROOT, "silip-capture.exe"),
+    ], { windowsHide: true, stdio: "pipe", env: { ...process.env, SILIP_CLIENT_GATE_NO_BROWSER: "true" } });
     await once(app, "spawn");
     app.stderr.resume();
     nativePort = (await readAppEndpoint(app)).port;
@@ -210,7 +210,7 @@ async function main(): Promise<void> {
     checks.browser = version.Browser;
     cdp = await CdpConnection.connect(version.webSocketDebuggerUrl, Date.now() + 10000);
     await cdp.call("Browser.setPermission", { origin, permission: {name:"loopback-network"}, setting:"granted" }, undefined, Date.now()+5000);
-    const host = await createPage(cdp, `${origin}/#piik-client=1`, probe);
+    const host = await createPage(cdp, `${origin}/#silip-client=1`, probe);
     pages.push(host);
     const read = async (page: PageHandle) => {
       const sample = await evaluate<any>(cdp!, page, "fanoutGate.sample()", Date.now()+5000);
@@ -249,10 +249,10 @@ async function main(): Promise<void> {
     url.host = `localhost:${appPort}`;
     invite = url.toString();
     const relayOrigin = `http://127.0.0.1:${appPort}`;
-    relayApp = spawn(process.env.PIIK_CLIENT_EXE || join(BUILD_ROOT,"piik-app.exe"), [
+    relayApp = spawn(process.env.SILIP_CLIENT_EXE || join(BUILD_ROOT,"silip-app.exe"), [
       "--site", relayOrigin, "--config", join(profile,"relay-client.json"),
-      "--capture-process", join(BUILD_ROOT,"piik-capture.exe"),
-    ], { windowsHide:true, stdio:"pipe", env:{...process.env,PIIK_CLIENT_GATE_NO_BROWSER:"true"} });
+      "--capture-process", join(BUILD_ROOT,"silip-capture.exe"),
+    ], { windowsHide:true, stdio:"pipe", env:{...process.env,SILIP_CLIENT_GATE_NO_BROWSER:"true"} });
     await once(relayApp, "spawn");
     relayApp.stderr.resume();
     relayPort = (await readAppEndpoint(relayApp)).port;
@@ -262,7 +262,7 @@ async function main(): Promise<void> {
       stage = `viewer-${index+1}`;
       const context = await cdp.call<{browserContextId: string}>("Target.createBrowserContext", {}, undefined, Date.now()+5000);
       await cdp.call("Browser.setPermission", { origin:index===0?relayOrigin:origin, permission: {name:"loopback-network"}, setting:"granted", browserContextId: context.browserContextId }, undefined, Date.now()+5000);
-      const viewerURL = index===0 ? invite.replace(origin,relayOrigin)+"&piik-client=1" : invite;
+      const viewerURL = index===0 ? invite.replace(origin,relayOrigin)+"&silip-client=1" : invite;
       const viewer = await createPage(cdp, viewerURL, probe, true, context.browserContextId);
       viewers.push(viewer);
       pages.push(viewer);

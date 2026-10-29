@@ -71,7 +71,7 @@ async function browserHandshake(
             });
             if (!response.ok) continue;
             const health = await response.json();
-            if (health.protocol === ${NATIVE_PROTOCOL} && health.service === "piik-client" &&
+            if (health.protocol === ${NATIVE_PROTOCOL} && health.service === "silip-client" &&
                 health.port === port && typeof health.instanceToken === "string" &&
                 typeof health.nativeMedia?.video === "boolean" &&
                 typeof health.nativeMedia?.processAudio === "boolean" &&
@@ -135,20 +135,20 @@ async function main(): Promise<void> {
   if (process.platform !== "win32" && process.platform !== "darwin" && process.platform !== "linux") {
     throw new Error("loopback gate requires a desktop platform");
   }
-  if (process.env.PIIK_CLIENT_LOOPBACK_GATE !== "true") {
+  if (process.env.SILIP_CLIENT_LOOPBACK_GATE !== "true") {
     throw new Error("loopback gate was not explicitly enabled");
   }
   const browserPath = process.env.CHROME_PATH?.trim();
-  const appPath = process.env.PIIK_CLIENT_EXE?.trim();
-  const pageUrl = process.env.PIIK_CLIENT_GATE_SITE_URL?.trim();
+  const appPath = process.env.SILIP_CLIENT_EXE?.trim();
+  const pageUrl = process.env.SILIP_CLIENT_GATE_SITE_URL?.trim();
   if (!browserPath || !appPath || !pageUrl) {
-    throw new Error("CHROME_PATH, PIIK_CLIENT_EXE and PIIK_CLIENT_GATE_SITE_URL are required");
+    throw new Error("CHROME_PATH, SILIP_CLIENT_EXE and SILIP_CLIENT_GATE_SITE_URL are required");
   }
   const pageOrigin = new URL(pageUrl).origin;
   const disposableNoSandbox =
-    process.env.PIIK_CLIENT_GATE_NO_SANDBOX === "true";
+    process.env.SILIP_CLIENT_GATE_NO_SANDBOX === "true";
   const grantLoopback =
-    process.env.PIIK_CLIENT_GATE_GRANT_LOOPBACK === "true";
+    process.env.SILIP_CLIENT_GATE_GRANT_LOOPBACK === "true";
 
   const report: GateReport = {
     passed: false,
@@ -173,14 +173,14 @@ async function main(): Promise<void> {
   let cdp: CdpConnection | null = null;
   let debugPort = 0;
   try {
-    profile = await mkdtemp(join(tmpdir(), "piik-client-loopback-"));
+    profile = await mkdtemp(join(tmpdir(), "silip-client-loopback-"));
     app = spawn(appPath, [
       "--site", pageUrl,
       "--config", join(profile, "client.json"),
     ], {
       stdio: "pipe",
       windowsHide: true,
-      env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
+      env: { ...process.env, SILIP_CLIENT_GATE_NO_BROWSER: "true" },
     });
     app.stderr.resume();
     const endpoint = await readAppEndpoint(app, { timeoutMs: 8_000 });

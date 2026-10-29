@@ -24,12 +24,12 @@ EncoderRate* state(jlong handle) {
 }  // namespace
 
 extern "C" JNIEXPORT jlong JNICALL
-Java_tv_piik_android_FrameDropper_create(JNIEnv*, jclass, jint bitrate, jint fps) {
+Java_tv_silip_android_FrameDropper_create(JNIEnv*, jclass, jint bitrate, jint fps) {
   return reinterpret_cast<jlong>(new (std::nothrow) EncoderRate(bitrate, fps));
 }
 
 extern "C" JNIEXPORT jboolean JNICALL
-Java_tv_piik_android_FrameDropper_shouldEncodeNative(JNIEnv*, jclass, jlong handle,
+Java_tv_silip_android_FrameDropper_shouldEncodeNative(JNIEnv*, jclass, jlong handle,
                                                jlong timestamp, jboolean recovery) {
   EncoderRate& rate = *state(handle);
   if (!recovery && rate.last_input > 0 && timestamp > rate.last_input) {
@@ -44,19 +44,19 @@ Java_tv_piik_android_FrameDropper_shouldEncodeNative(JNIEnv*, jclass, jlong hand
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_tv_piik_android_FrameDropper_fill(JNIEnv*, jclass, jlong handle, jint bytes,
+Java_tv_silip_android_FrameDropper_fill(JNIEnv*, jclass, jlong handle, jint bytes,
                                       jboolean keyframe) {
   state(handle)->dropper.Fill(bytes, !keyframe);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_tv_piik_android_FrameDropper_setBitrate(JNIEnv*, jclass, jlong handle, jint bitrate) {
+Java_tv_silip_android_FrameDropper_setBitrate(JNIEnv*, jclass, jlong handle, jint bitrate) {
   EncoderRate& rate = *state(handle);
   rate.bitrate = bitrate;
   rate.dropper.SetRates(bitrate / 1000.0f, rate.framerate);
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_tv_piik_android_FrameDropper_destroy(JNIEnv*, jclass, jlong handle) {
+Java_tv_silip_android_FrameDropper_destroy(JNIEnv*, jclass, jlong handle) {
   delete state(handle);
 }

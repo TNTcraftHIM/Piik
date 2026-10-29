@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
 )
 
 func TestSavedModeSurvivesRelaunchWithoutChangingLegacyConfig(t *testing.T) {
@@ -126,7 +126,7 @@ func TestStarredSiteSurvivesOtherApprovalsAndClearsOnRevocation(t *testing.T) {
 		}
 		entry := server.URL()
 		if test.want != "" {
-			entry = test.want + "/?piik-client-port=39730#piik-client=1"
+			entry = test.want + "/?silip-client-port=39730#silip-client=1"
 		}
 		if server.EntryURL() != entry {
 			t.Fatalf("startup entry lost its App endpoint: %q, want %q", server.EntryURL(), entry)

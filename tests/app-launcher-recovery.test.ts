@@ -45,17 +45,16 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
     "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "ControlPort", "Target", "Starting", "Sites", "StartupSite",
-    "AppDebug", "Debug", "Error", "Loading", "Update", "RemoteControlPrototype",
+    "AppDebug", "Debug", "Error", "Loading", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;
   })]));
   const window = Object.assign(new EventTarget(), { location: { replace: vi.fn() } });
-  const checkReleaseUpdate = vi.fn(async () => null);
   const timers = new Map<number, () => void>();
   let nextTimer = 0;
   const actions = runInNewContext(executable, {
-    ...setters, z, fetch, window, checkReleaseUpdate,
+    ...setters, z, fetch, window,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode: "link", lang: "en", vis: false, debug: false, appDebug: false, localAccessPassword: "",
@@ -67,7 +66,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
     },
     clearTimeout: (id: number) => timers.delete(id),
   }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
-  return { state, setters, ...actions, checkReleaseUpdate, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
+  return { state, setters, ...actions, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       expect(timers.size).toBe(1);
       const [id, callback] = [...timers][0]!;
@@ -81,12 +80,11 @@ describe("App launcher state recovery", () => {
   it.each([
     ["v2.4.1", "v2.4.1"],
     ["development", "development (aaaaaaa)"],
-  ])("shows the App build identity for %s without changing update inputs", async (version, label) => {
+  ])("shows the App build identity for %s", async (version, label) => {
     const revision = "a".repeat(40);
     const page = mount(vi.fn(async () => response({ ...saved, version, revision })));
     await settle();
     expect(page.state.Version).toBe(label);
-    expect(page.checkReleaseUpdate).toHaveBeenCalledWith({ version, revision }, { packageTarget: undefined });
     page.cleanup();
   });
 
@@ -103,9 +101,9 @@ describe("App launcher state recovery", () => {
     finish({ ok: false, status: 503, json: async () => ({ detail: "Startup failed" }) });
     await first;
     expect(page.state).toMatchObject({ Starting: false, Error: { kind: "launch", detail: "Startup failed" } });
-    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#piik-client=1" }) });
+    fetch.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ target: "https://room.example/#silip-client=1" }) });
     await page.launch(event);
-    expect(page.navigate).toHaveBeenCalledWith("https://room.example/#piik-client=1");
+    expect(page.navigate).toHaveBeenCalledWith("https://room.example/#silip-client=1");
     page.cleanup();
   });
 
@@ -124,10 +122,10 @@ describe("App launcher state recovery", () => {
 
   it("reopens a healthy room without offering another mode or password", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
-      mode: "local", sites: [], startupSite: "", localAccessPassword: "saved password", target: "http://127.0.0.1:8787/#piik-client=1",
+      mode: "local", sites: [], startupSite: "", localAccessPassword: "saved password", target: "http://127.0.0.1:8787/#silip-client=1",
       onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
     }));
-    expect(html).toContain('href="http://127.0.0.1:8787/#piik-client=1"');
+    expect(html).toContain('href="http://127.0.0.1:8787/#silip-client=1"');
     expect(html).not.toContain('role="radiogroup"');
     expect(html).not.toContain('type="password"');
   });
@@ -135,7 +133,7 @@ describe("App launcher state recovery", () => {
   it("renders complete App entries for saved sites and the existing room before any click", () => {
     const html = renderToStaticMarkup(createElement(LauncherForm, {
       mode: "local", sites: saved.sites, startupSite: saved.sites[0]!, localAccessPassword: "",
-      target: "http://127.0.0.1:8787/#piik-client=1",
+      target: "http://127.0.0.1:8787/#silip-client=1",
       entryURL: target => clientLaunchURL(target, { lang: "en", vis: false, theme: "light", explicit: ["theme"] }, false, 39729),
       onModeChange() {}, onToggleStartupSite() {}, onRemoveSite() {}, onLocalAccessPasswordChange() {}, onSubmit() {},
     }));
@@ -143,22 +141,22 @@ describe("App launcher state recovery", () => {
       .map(match => new URL(match[1]!.replaceAll("&amp;", "&")));
     expect(entries).toHaveLength(2);
     for (const entry of entries) {
-      expect(entry.searchParams.get("piik-client-port")).toBe("39729");
-      expect(entry.searchParams.get("piik-preferences")).toBe("theme");
+      expect(entry.searchParams.get("silip-client-port")).toBe("39729");
+      expect(entry.searchParams.get("silip-preferences")).toBe("theme");
       const fragment = new URLSearchParams(entry.hash.slice(1));
-      expect(fragment.get("piik-client")).toBe("1");
-      expect(fragment.get("piik-lang")).toBe("en");
-      expect(fragment.get("piik-theme")).toBe("light");
+      expect(fragment.get("silip-client")).toBe("1");
+      expect(fragment.get("silip-lang")).toBe("en");
+      expect(fragment.get("silip-theme")).toBe("light");
     }
     expect(entries.map(entry => entry.origin)).toEqual([saved.sites[0], "http://127.0.0.1:8787"]);
   });
 
   it("selects only an HTTP(S) origin for explicit approval, including pasted full URLs", () => {
-    expect(siteEntryOrigin(" PIIK.example:443 ")).toBe("https://piik.example");
-    expect(siteEntryOrigin("https://piik.example/r/1234?lang=en#v=private-invitation")).toBe("https://piik.example");
+    expect(siteEntryOrigin(" SILIP.example:443 ")).toBe("https://silip.example");
+    expect(siteEntryOrigin("https://silip.example/r/1234?lang=en#v=private-invitation")).toBe("https://silip.example");
     expect(siteEntryOrigin("https://example.com/my room?q=hello world")).toBe("https://example.com");
     expect(siteEntryOrigin("http://127.0.0.1:8787/")).toBe("http://127.0.0.1:8787");
-    for (const invalid of ["", "https://user:password@piik.example", "javascript:alert(1)", "file:///local", "https://", "not a site"]) {
+    for (const invalid of ["", "https://user:password@silip.example", "javascript:alert(1)", "file:///local", "https://", "not a site"]) {
       expect(siteEntryOrigin(invalid)).toBeNull();
     }
   });
@@ -173,7 +171,7 @@ describe("App launcher state recovery", () => {
     expect(page.state.SiteError).toBe("client.connect.saveFailed");
     fetch.mockResolvedValueOnce(response({ ...saved, sites: [...saved.sites, "https://next.example"] }));
     await page.approveSite("https://next.example");
-    if (manual) expect(page.navigate).toHaveBeenCalledWith("https://next.example/#piik-client=1");
+    if (manual) expect(page.navigate).toHaveBeenCalledWith("https://next.example/#silip-client=1");
     else expect(page.navigate).not.toHaveBeenCalled();
     expect(fetch.mock.calls[1]).toEqual(["/api/client-launcher/site", expect.objectContaining({
       body: JSON.stringify({ site: "https://next.example", allowed: true }),
@@ -229,7 +227,6 @@ describe("App launcher state recovery", () => {
     await settle();
     expect(page.state).toMatchObject({ Mode: "link", LocalAccessPassword: "edited", Lan: { selected: "192.0.2.2" } });
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(page.checkReleaseUpdate).toHaveBeenCalledOnce();
     page.cleanup();
   });
 
@@ -258,7 +255,6 @@ describe("App launcher state recovery", () => {
     page.focus();
     expect(fetch).toHaveBeenCalledOnce();
     expect(page.state).toEqual({});
-    expect(page.checkReleaseUpdate).not.toHaveBeenCalled();
     for (const setter of Object.values(page.setters)) expect(setter).not.toHaveBeenCalled();
   });
 

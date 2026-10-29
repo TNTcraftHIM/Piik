@@ -25,12 +25,12 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/ordered"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
-	"github.com/TNTcraftHIM/Piik/internal/server/room"
-	"github.com/TNTcraftHIM/Piik/internal/server/route"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/server/ordered"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/room"
+	"github.com/P4-aaaul/Silip/internal/server/route"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
 )
 
 // Connection admission, queue and timeout bounds limit the signaling resources

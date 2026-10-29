@@ -18,12 +18,12 @@ import (
 	"testing/fstest"
 	"time"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/app/launcher"
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	serverapp "github.com/TNTcraftHIM/Piik/internal/server/app"
-	serverconfig "github.com/TNTcraftHIM/Piik/internal/server/config"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/app/launcher"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	serverapp "github.com/P4-aaaul/Silip/internal/server/app"
+	serverconfig "github.com/P4-aaaul/Silip/internal/server/config"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -42,7 +42,7 @@ func (control *retiringRoomControl) Close() error {
 }
 
 func TestCloseJoinsLocalControlRetirementWithoutFalseError(t *testing.T) {
-	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+	t.Setenv("SILIP_ANDROID_TUNNEL_FIXTURE", "ready")
 	r, _ := tunnelRuntime(t)
 	if err := r.control.Close(); err != nil {
 		t.Fatal(err)
@@ -120,19 +120,19 @@ func TestCloseJoinsLocalControlRetirementWithoutFalseError(t *testing.T) {
 
 // Run the real supervised process path without contacting Cloudflare.
 func TestMain(tests *testing.M) {
-	if mode := os.Getenv("PIIK_ANDROID_TUNNEL_FIXTURE"); mode != "" {
+	if mode := os.Getenv("SILIP_ANDROID_TUNNEL_FIXTURE"); mode != "" {
 		index := slices.Index(os.Args, "--config")
 		if index < 0 || index+1 >= len(os.Args) {
 			os.Exit(9)
 		}
-		if record := os.Getenv("PIIK_ANDROID_TUNNEL_STARTED"); record != "" {
+		if record := os.Getenv("SILIP_ANDROID_TUNNEL_STARTED"); record != "" {
 			if err := os.WriteFile(record, []byte(os.Args[index+1]), 0600); err != nil {
 				os.Exit(9)
 			}
 		}
 		if mode == "held" {
 			for {
-				if _, err := os.Stat(os.Getenv("PIIK_ANDROID_TUNNEL_RELEASE")); err == nil {
+				if _, err := os.Stat(os.Getenv("SILIP_ANDROID_TUNNEL_RELEASE")); err == nil {
 					break
 				}
 				time.Sleep(time.Millisecond)
@@ -143,7 +143,7 @@ func TestMain(tests *testing.M) {
 			fmt.Println(`{"message":"Registered tunnel connection"}`)
 		}
 		for {
-			if trigger := os.Getenv("PIIK_ANDROID_TUNNEL_EXIT"); trigger != "" {
+			if trigger := os.Getenv("SILIP_ANDROID_TUNNEL_EXIT"); trigger != "" {
 				if _, err := os.Stat(trigger); err == nil {
 					os.Exit(7)
 				}
@@ -157,9 +157,9 @@ func TestMain(tests *testing.M) {
 func TestStartupAndSiteRevocationCommitOneOriginAuthority(t *testing.T) {
 	dir := t.TempDir()
 	started, release := filepath.Join(dir, "started"), filepath.Join(dir, "release")
-	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "held")
-	t.Setenv("PIIK_ANDROID_TUNNEL_STARTED", started)
-	t.Setenv("PIIK_ANDROID_TUNNEL_RELEASE", release)
+	t.Setenv("SILIP_ANDROID_TUNNEL_FIXTURE", "held")
+	t.Setenv("SILIP_ANDROID_TUNNEL_STARTED", started)
+	t.Setenv("SILIP_ANDROID_TUNNEL_RELEASE", release)
 	if err := appconfig.Save(filepath.Join(dir, "client.json"), appconfig.Config{Version: 1, Sites: []string{"https://revoked.example"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestEssentialServicesRetireTheMobileRuntime(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			r, err := Start(platform, "", `{"platform":"android","provider":"Android MediaCodec","encoders":[]}`, t.TempDir(), t.TempDir(), executable, "piik://media")
+			r, err := Start(platform, "", `{"platform":"android","provider":"Android MediaCodec","encoders":[]}`, t.TempDir(), t.TempDir(), executable, "silip://media")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -286,9 +286,9 @@ func TestEssentialServicesRetireTheMobileRuntime(t *testing.T) {
 				want = failure.NativeControl
 				err = r.control.Close()
 			case "room-and-control":
-				t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+				t.Setenv("SILIP_ANDROID_TUNNEL_FIXTURE", "ready")
 				trigger := filepath.Join(t.TempDir(), "exit")
-				t.Setenv("PIIK_ANDROID_TUNNEL_EXIT", trigger)
+				t.Setenv("SILIP_ANDROID_TUNNEL_EXIT", trigger)
 				if _, err = r.startLocal(launcher.Selection{Mode: launcher.ModeLink}, ""); err != nil {
 					t.Fatal(err)
 				}
@@ -358,7 +358,7 @@ func tunnelRuntime(t *testing.T) (*Runtime, *runtimePlatform) {
 }
 
 func TestLauncherRetriesFailedStartupAndKeepsSuccessfulRoom(t *testing.T) {
-	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+	t.Setenv("SILIP_ANDROID_TUNNEL_FIXTURE", "ready")
 	r, _ := tunnelRuntime(t)
 	if _, err := r.approveSite("https://site.example"); err != nil {
 		t.Fatal(err)
@@ -457,9 +457,9 @@ func TestLauncherRetriesFailedStartupAndKeepsSuccessfulRoom(t *testing.T) {
 }
 
 func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
-	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+	t.Setenv("SILIP_ANDROID_TUNNEL_FIXTURE", "ready")
 	trigger := filepath.Join(t.TempDir(), "exit")
-	t.Setenv("PIIK_ANDROID_TUNNEL_EXIT", trigger)
+	t.Setenv("SILIP_ANDROID_TUNNEL_EXIT", trigger)
 	r, platform := tunnelRuntime(t)
 	if _, err := r.approveSite("https://site.example"); err != nil {
 		t.Fatal(err)
@@ -519,14 +519,14 @@ func TestPublicLinkSharesServerAndRetiresOnDependencyExit(t *testing.T) {
 		response.Body.Close()
 		t.Fatal("terminal runtime retained its room server")
 	}
-	configs, err := filepath.Glob(filepath.Join(r.temporaryDirectory, "piik-cloudflared-*.yml"))
+	configs, err := filepath.Glob(filepath.Join(r.temporaryDirectory, "silip-cloudflared-*.yml"))
 	if err != nil || len(configs) != 0 {
 		t.Fatalf("dependency retained temporary config: %v, %v", configs, err)
 	}
 }
 
 func TestRoomListenerFailureRetiresOnlyRoom(t *testing.T) {
-	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "ready")
+	t.Setenv("SILIP_ANDROID_TUNNEL_FIXTURE", "ready")
 	r, platform := tunnelRuntime(t)
 	if _, err := r.approveSite("https://site.example"); err != nil {
 		t.Fatal(err)
@@ -593,9 +593,9 @@ func TestRoomListenerFailureRetiresOnlyRoom(t *testing.T) {
 }
 
 func TestCloseJoinsUnreadyPublicLinkStartup(t *testing.T) {
-	t.Setenv("PIIK_ANDROID_TUNNEL_FIXTURE", "pending")
+	t.Setenv("SILIP_ANDROID_TUNNEL_FIXTURE", "pending")
 	started := filepath.Join(t.TempDir(), "started")
-	t.Setenv("PIIK_ANDROID_TUNNEL_STARTED", started)
+	t.Setenv("SILIP_ANDROID_TUNNEL_STARTED", started)
 	r, platform := tunnelRuntime(t)
 	r.launchDone = make(chan struct{})
 	result := make(chan error, 1)

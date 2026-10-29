@@ -37,9 +37,9 @@ it("keeps independent room-tool choices across reads without storing private run
   expect(readRoomPreferences().pictureFit).toBe("cover");
   saveRoomPreferences(JSON.parse('{"remoteTouchMode":"unknown"}'));
   expect(readRoomPreferences().remoteTouchMode).toBe("trackpad");
-  values.set("piik:room-preferences:v1", JSON.stringify({ pictureFit: "cover", pictureRotation: 45 }));
+  values.set("silip:room-preferences:v1", JSON.stringify({ pictureFit: "cover", pictureRotation: 45 }));
   expect(readRoomPreferences()).toMatchObject({ pictureFit: "cover", pictureRotation: 0, remoteTouchMode: "direct" });
-  values.set("piik:room-preferences:v1", JSON.stringify({ overlayAppearance: { scale: 1.2, opacity: .7 } }));
+  values.set("silip:room-preferences:v1", JSON.stringify({ overlayAppearance: { scale: 1.2, opacity: .7 } }));
   expect(readRoomPreferences().overlayAppearance).toEqual({ scale: 1.2, opacity: .7, speed: 1, colorBySender: false });
 });
 

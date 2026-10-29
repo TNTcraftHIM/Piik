@@ -1,4 +1,4 @@
-module github.com/TNTcraftHIM/Piik
+module github.com/P4-aaaul/Silip
 
 go 1.27.3
 

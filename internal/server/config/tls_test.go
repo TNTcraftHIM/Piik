@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/tlsconfig"
+	"github.com/P4-aaaul/Silip/internal/tlsconfig"
 )
 
 func TestDirectTLSConfiguration(t *testing.T) {

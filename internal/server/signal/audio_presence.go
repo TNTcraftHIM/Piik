@@ -1,6 +1,6 @@
 package signal
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 func (s *Server) setAudioPresence(sess *session, actor *authenticatedSession, message protocol.SetAudioPresenceMessage) {
 	host, ok := s.store.GetConnectedHost(actor.roomID)

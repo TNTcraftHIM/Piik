@@ -19,16 +19,16 @@ const nonProductPaths = [
   "*.md", ".gitignore", ".env.example", "vitest.config.ts",
   "cmd/**/*.md", "internal/**/*.md", "native/**/*.md", "src/**/*.md",
   ".github/ISSUE_TEMPLATE/**", ".github/pull_request_template.md",
-  ".github/workflows/website.yml", ".github/workflows/gitee-mirror.yml",
+  ".github/workflows/website.yml",
   "scripts/build-website.mjs", "scripts/update-website-hero.mjs", "scripts/build-film-controls.mjs",
   "scripts/update-guide-images.mjs", "scripts/update-guide-diagrams.tsx",
   "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/check-project-state.*", "scripts/install-hooks.*",
   "scripts/required-project-paths.txt", "scripts/tsconfig.json",
-  "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/publish-container.mjs", "scripts/mirror-release.mjs",
+  "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/publish-container.mjs",
   "scripts/*-gate.*", "scripts/*-probe.*", "scripts/browser-*", "scripts/encoded-*",
   "scripts/*-gate-endpoint.ts", "scripts/embedded-sfu-page.ts", "scripts/peer-assisted-benchmark.ts",
   "scripts/network-lab.ts", "scripts/network-lab/**",
-  "cmd/piik-peer-gate/**",
+  "cmd/silip-peer-gate/**",
 ].map((path) => `:(top,glob,exclude)${path}`);
 
 export function hasProductChanges(root, base, head) {
@@ -52,7 +52,7 @@ export function releaseCommits(root, revision, previous) {
 }
 
 // One input for packagers: a planned CI version, an exact public tag, or a dev build.
-export function buildVersion(root, revision, requested = process.env.PIIK_BUILD_VERSION) {
+export function buildVersion(root, revision, requested = process.env.SILIP_BUILD_VERSION) {
   const version = requested || stableTags(root, "--points-at", revision)[0] || "development";
   if (version === "development") return version;
   if (!isReleaseVersion(version)) throw new Error("Build version must be vMAJOR.MINOR.PATCH or development");

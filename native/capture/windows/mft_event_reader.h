@@ -9,7 +9,7 @@
 #include <condition_variable>
 #include <mutex>
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 
 // One serialized reader, one outstanding request. The callback owns its state
 // even when an MFT completes after the encoder's deadline or destruction.
@@ -99,4 +99,4 @@ class MftEventReader final {
   Microsoft::WRL::ComPtr<Completion> completion_;
 };
 
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows

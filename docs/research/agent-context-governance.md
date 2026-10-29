@@ -11,7 +11,7 @@
 
 OpenAI's agent-first repository treats `AGENTS.md` as a map into a structured,
 versioned knowledge base. Its reported failure mode for one large instruction
-file is the same one observed in Piik: scarce context is crowded out, every
+file is the same one observed in Silip: scarce context is crowded out, every
 rule appears equally important, stale guidance accumulates, and ownership is
 hard to verify. The recommended corrective structure is progressive disclosure,
 cross-links, and mechanical freshness/structure checks. Codex concatenates the
@@ -28,7 +28,7 @@ below that value and using nested context for genuinely distinct subtrees. Its
 bounded-memory guidance starts consolidation at 80% rather than treating the
 hard limit as the normal operating target.
 
-Piik therefore warns at 80% of a loader limit, then fails at the loading boundary:
+Silip therefore warns at 80% of a loader limit, then fails at the loading boundary:
 32 KiB for the Codex chain and 20,000 characters for Hermes. The same envelope applies to the
 repo Ponytail skill because `AGENTS.md` requires it for coding work. A failure tells the
 maintainer to use nested/path-scoped context, on-demand skills or linked docs,
@@ -46,7 +46,7 @@ Sources:
 ### Documentation Shape
 
 Diataxis separates tutorial, how-to, reference, and explanation because mixing
-reader goals makes each form harder to use. Piik's internal product modules
+reader goals makes each form harder to use. Silip's internal product modules
 are compact reference; ADRs are explanation of a decision; deployment is a
 how-to/reference boundary; research is evidence and explanation. The framework
 does not require creating all four categories when there is no reader need.
@@ -80,12 +80,12 @@ own scripts, reference tree or elaborate procedure to be useful.
 Codex loads an instruction chain from global scope through the working directory;
 more specific project instructions follow broader ones. Skill descriptions
 select workflows whose bodies load on use. Same-named skills are not merged, so
-Piik links its repo adaptations explicitly. This loading behavior is distinct
+Silip links its repo adaptations explicitly. This loading behavior is distinct
 from project authority: a skill cannot grant a release, change an accepted
 product contract or weaken a user's task boundary.
 
 The community Ponytail and Stop That Shit approaches support reuse and completion
-with less speculative work. Piik keeps those principles but evaluates total
+with less speculative work. Silip keeps those principles but evaluates total
 ownership and the complete experience, rather than line count or the first
 working implementation. Its Ponytail adaptation removes forced persistence,
 fixed response length and per-branch test prescriptions; upstream attribution
@@ -95,14 +95,14 @@ does not imply a separate design document, review agent or approval for each edi
 
 OpenCode's instructions make several of these decisions concrete: validate at
 the owning boundary, extract helpers for real concepts or reuse, test production
-code, and use existing generation and delivery commands. Piik consolidates these
+code, and use existing generation and delivery commands. Silip consolidates these
 in its existing rule owners rather than adding another rule catalog. Its Bun,
 Effect, import and loop preferences remain specific to that repository.
 
 The public X discussion, read through linked mirrors, particularly recommends
 the speculative-complexity rule and its companion about single-use helpers.
 Replies also distinguish retry correctness from speculative hardening and question
-unsupported probability estimates. Piik therefore asks for agreement on extra
+unsupported probability estimates. Silip therefore asks for agreement on extra
 speculative scope, while authorized, reachable defects remain ordinary fixes.
 
 Sources:
@@ -114,7 +114,7 @@ Sources:
 - [Codex instruction discovery](https://learn.chatgpt.com/docs/agent-configuration/agents-md) and [skill loading](https://learn.chatgpt.com/docs/build-skills)
 - [Agent Skills best practices](https://agentskills.io/skill-creation/best-practices) and [specification](https://agentskills.io/specification)
 - [Stop That Shit](https://github.com/lennney/stop-that-shit/blob/0.2.4/skills/stop-that-shit/SKILL.md) and [STSS](https://github.com/lennney/stop-that-shit/blob/0.2.4/skills/stss/SKILL.md): complete the responsibility and omit unnecessary work or self-justifying prose.
-- [Avoid Over-Defensive Programming](https://github.com/aravelo7/codex-agent-skills/blob/main/skills/avoid-overdefensive-programming/SKILL.md): fix the producing owner; Piik does not adopt a per-branch reporting procedure.
+- [Avoid Over-Defensive Programming](https://github.com/aravelo7/codex-agent-skills/blob/main/skills/avoid-overdefensive-programming/SKILL.md): fix the producing owner; Silip does not adopt a per-branch reporting procedure.
 
 The earlier community reports about
 [small-task expansion](https://www.reddit.com/r/codex/comments/1vf5elq/how_do_you_stop_codexclaude_from_overengineering/)
@@ -124,7 +124,7 @@ statistical evidence about a model.
 
 ## Applicability
 
-Piik is small enough that a vector database, memory provider, generated code
+Silip is small enough that a vector database, memory provider, generated code
 map, parallel agent-context format, or separate RFC repository would add more
 ownership than it removes. The useful practices are bounded always-on context,
 one owner per fact, domain-shaped reference, evidence on demand, short ADRs,

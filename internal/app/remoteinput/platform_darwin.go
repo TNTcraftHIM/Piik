@@ -16,14 +16,14 @@ import (
 	"unicode/utf16"
 	"unsafe"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
 )
 
 type macSink struct {
 	source  C.CGEventSourceRef
 	keys    map[uint16]bool
 	buttons map[int]bool
-	clicks  [5]C.PiikInputClick
+	clicks  [5]C.SilipInputClick
 	caps    bool
 }
 
@@ -55,12 +55,12 @@ func (*macSink) Target(target nativecapture.CaptureTarget, _ *nativecapture.Stre
 	if target.Kind == "window" && (creationErr != nil || created == 0 || target.PID == 0) {
 		return bounds{}, false, errors.New("shared window identity is invalid")
 	}
-	var b C.PiikInputBounds
-	result := C.piik_input_target(C.bool(target.Kind == "window"), C.uint32_t(id), C.uint32_t(target.PID), C.uint64_t(created), &b)
-	if result == C.PiikInputTargetInvalid {
+	var b C.SilipInputBounds
+	result := C.silip_input_target(C.bool(target.Kind == "window"), C.uint32_t(id), C.uint32_t(target.PID), C.uint64_t(created), &b)
+	if result == C.SilipInputTargetInvalid {
 		return bounds{}, false, errors.New("shared source is unavailable")
 	}
-	if result != C.PiikInputTargetReady {
+	if result != C.SilipInputTargetReady {
 		return bounds{}, false, nil
 	}
 	return bounds{int32(b.left), int32(b.top), int32(b.width), int32(b.height)}, bool(b.focused), nil
@@ -106,7 +106,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 				break
 			}
 		}
-		ok = bool(C.piik_input_pointer(s.source, C.double(x), C.double(y), -1, false, C.int(drag), C.bool(e.Type == "relative"), s.flags(), nil))
+		ok = bool(C.silip_input_pointer(s.source, C.double(x), C.double(y), -1, false, C.int(drag), C.bool(e.Type == "relative"), s.flags(), nil))
 	case "button":
 		if e.Button < 0 || e.Button > 4 {
 			return errors.New("invalid pointer button")
@@ -115,7 +115,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 		if !e.Down && !s.buttons[button] {
 			return nil
 		}
-		ok = bool(C.piik_input_pointer(s.source, 0, 0, C.int(button), C.bool(e.Down), -1, false, s.flags(), &s.clicks[button]))
+		ok = bool(C.silip_input_pointer(s.source, 0, 0, C.int(button), C.bool(e.Down), -1, false, s.flags(), &s.clicks[button]))
 		if ok {
 			if e.Down {
 				s.buttons[button] = true
@@ -127,7 +127,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 		if e.Delta < -1200 || e.Delta > 1200 {
 			return errors.New("invalid scroll delta")
 		}
-		ok = bool(C.piik_input_scroll(s.source, C.int32_t(e.Delta), s.flags()))
+		ok = bool(C.silip_input_scroll(s.source, C.int32_t(e.Delta), s.flags()))
 	case "key":
 		code, known := macKeyCodes[e.Code]
 		if !known {
@@ -146,7 +146,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 		} else {
 			delete(s.keys, code)
 		}
-		ok = bool(C.piik_input_key(s.source, C.uint16_t(code), C.bool(e.Down), s.flags(), C.bool(held && e.Down)))
+		ok = bool(C.silip_input_key(s.source, C.uint16_t(code), C.bool(e.Down), s.flags(), C.bool(held && e.Down)))
 		if !ok {
 			s.caps = caps
 			if held {
@@ -157,7 +157,7 @@ func (s *macSink) Apply(b bounds, e inputEvent) error {
 		}
 	case "text":
 		text := utf16.Encode([]rune(e.Text))
-		ok = bool(C.piik_input_text(s.source, (*C.uint16_t)(unsafe.Pointer(&text[0])), C.size_t(len(text))))
+		ok = bool(C.silip_input_text(s.source, (*C.uint16_t)(unsafe.Pointer(&text[0])), C.size_t(len(text))))
 	default:
 		return errors.New("unsupported input")
 	}
@@ -171,19 +171,19 @@ func (s *macSink) Reset() error {
 	var result error
 	for code := range s.keys {
 		delete(s.keys, code)
-		if !bool(C.piik_input_key(s.source, C.uint16_t(code), false, s.flags(), false)) {
+		if !bool(C.silip_input_key(s.source, C.uint16_t(code), false, s.flags(), false)) {
 			s.keys[code] = true
 			result = errors.New("macOS could not release held input")
 		}
 	}
 	for button := range s.buttons {
-		if bool(C.piik_input_pointer(s.source, 0, 0, C.int(button), false, -1, false, s.flags(), &s.clicks[button])) {
+		if bool(C.silip_input_pointer(s.source, 0, 0, C.int(button), false, -1, false, s.flags(), &s.clicks[button])) {
 			delete(s.buttons, button)
 		} else {
 			result = errors.New("macOS could not release held input")
 		}
 	}
-	s.clicks = [5]C.PiikInputClick{}
+	s.clicks = [5]C.SilipInputClick{}
 	return result
 }
 
@@ -207,7 +207,7 @@ func watchStopShortcut(ctx context.Context, key int, stop func()) (func(), error
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				pressed := bool(C.piik_input_stop_pressed(C.uint16_t(code)))
+				pressed := bool(C.silip_input_stop_pressed(C.uint16_t(code)))
 				if pressed && !held {
 					stop()
 				}

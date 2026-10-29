@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
@@ -22,8 +22,8 @@ import (
 // with synthetic video payload. Frame arrival is not decoded FPS or picture
 // quality. The link changes in place; reconnecting must not hide recovery loss.
 func TestPublicationConstrainedRecovery(t *testing.T) {
-	if os.Getenv("PIIK_TRANSPORT_RECOVERY") == "" {
-		t.Skip("set PIIK_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
+	if os.Getenv("SILIP_TRANSPORT_RECOVERY") == "" {
+		t.Skip("set SILIP_TRANSPORT_RECOVERY=1 for the bounded virtual-network gate")
 	}
 	for _, scenario := range []string{"healthy", "brief", "periodic", "sustained", "pause-resume", "source-replacement"} {
 		t.Run(scenario, func(t *testing.T) { checkPublicationRecovery(t, scenario) })

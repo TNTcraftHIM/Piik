@@ -60,7 +60,7 @@ export const STRINGS = {
     // vs / fight
     vsNameL: zhChars('阿团'), vsNameR: zhChars('小圆'),
     vsSubL: 'HOST · P1 · 本机', vsSubR: 'VIEWER · P2 · 远程',
-    hudChip: 'PIIK · 观众 3/20',
+    hudChip: 'SILIP · 观众 3/20',
     special: '必杀！',
     ooh: zhChars('哦——！'),
     l_nope: { main: '……刚才不算！', sub: '…THAT DIDN’T COUNT!' },
@@ -72,7 +72,7 @@ export const STRINGS = {
     // facts
     facts: [['免费 · 开源', 'FREE & OPEN SOURCE'], ['点链接，浏览器直接看', 'VIEWERS JUST OPEN A LINK'], ['最多 20 位观众', 'UP TO 20 VIEWERS'], ['低延迟 · 高可用', 'LOW LATENCY · HIGH AVAILABILITY'], ['资源占用低', 'LIGHT ON RESOURCES']],
     // end
-    endCard: { l1: zhChars('来，看点'), l2: zhChars('好康的。'), sign: '—— Piik' },
+    endCard: { l1: zhChars('来，看点'), l2: zhChars('好康的。'), sign: '—— Silip' },
     tagline: ['来，看点好康的。', 'SHARE THE GOOD STUFF.'],
     closingFeatures: ['一起看', '随时聊', '换你玩'],
     footer: '免费开源 · 点击即用 · 支持自部署',
@@ -124,7 +124,7 @@ export const STRINGS = {
     vsNameL: EN.tuan.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase().split(' '),
     vsNameR: [...EN.yuan.toUpperCase()],
     vsSubL: 'HOST · P1 · LOCAL', vsSubR: 'VIEWER · P2 · REMOTE',
-    hudChip: 'PIIK · VIEWERS 3/20',
+    hudChip: 'SILIP · VIEWERS 3/20',
     special: 'SPECIAL!',
     ooh: ['O', 'H', 'H', '!'],
     l_nope: { main: '...That didn\'t count!', sub: '' },
@@ -133,7 +133,7 @@ export const STRINGS = {
     settings: { title: 'Settings', rows: ['Display', 'Sound', 'Network', 'Account'], tip: 'Mom, click here' },
     anything: ['IF IT\'S ON YOUR SCREEN, SHARE IT.', ''],
     facts: [['FREE & OPEN SOURCE', ''], ['FRIENDS JUST OPEN A LINK', ''], ['UP TO 20 VIEWERS', ''], ['LOW LATENCY · HIGH AVAILABILITY', ''], ['LIGHT ON RESOURCES', '']],
-    endCard: { l1: ['SHARE', 'THE'], l2: ['GOOD', 'STUFF', '.'], sign: '— Piik' },
+    endCard: { l1: ['SHARE', 'THE'], l2: ['GOOD', 'STUFF', '.'], sign: '— Silip' },
     tagline: ['Share the good stuff.', ''],
     closingFeatures: ['WATCH TOGETHER', 'TALK IT OUT', 'TAKE A TURN'],
     footer: 'Free &amp; open source · Ready to use · Self-host if you like',

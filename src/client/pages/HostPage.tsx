@@ -649,7 +649,7 @@ export function HostPage({
   const nativeSourceSelectionRef = useRef<Extract<ShareSourceSelection, { kind: "native" }> | null>(null);
   const loadAudioApplications = useCallback(async () => {
     const client = nativeConnection.current;
-    if (!client || !nativeModeRef.current) throw new Error("Piik App is unavailable");
+    if (!client || !nativeModeRef.current) throw new Error("Silip App is unavailable");
     return client.sources();
   }, []);
   const microphoneClient = nativeActive ? nativeConnection.current : null;

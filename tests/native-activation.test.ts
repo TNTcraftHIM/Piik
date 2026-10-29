@@ -12,23 +12,23 @@ describe("Android App foreground actions", () => {
     vi.stubGlobal("window", { location: { assign } });
     activateNativePicker(undefined);
     expect(assign).not.toHaveBeenCalled();
-    activateNativePicker("piik://media");
+    activateNativePicker("silip://media");
     expect(assign).toHaveBeenCalledTimes(isActive ? 1 : 0);
     if (isActive) {
-      expect(assign).toHaveBeenCalledWith("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
+      expect(assign).toHaveBeenCalledWith("intent://media#Intent;scheme=silip;package=io.github.p4aaaul.silip.android;end");
       assign.mockImplementation(() => { throw new DOMException("Blocked", "SecurityError"); });
-      expect(() => activateNativePicker("piik://media")).not.toThrow();
+      expect(() => activateNativePicker("silip://media")).not.toThrow();
     }
   });
-  it("allows only fixed Piik actions in its explicit Android package", () => {
-    expect(androidAppIntent("piik://app", android)).toBe("intent://app#Intent;scheme=piik;package=tv.piik.android;end");
-    expect(androidAppIntent("piik://media", android)).toBe("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
-    for (const action of [undefined, null, "https://piik.tv", "piik://media?approve=true", "piik://media#token=secret",
-      "piik://user@media", "piik://media/start", "intent://media#Intent;package=other;end"]) {
+  it("allows only fixed Silip actions in its explicit Android package", () => {
+    expect(androidAppIntent("silip://app", android)).toBe("intent://app#Intent;scheme=silip;package=io.github.p4aaaul.silip.android;end");
+    expect(androidAppIntent("silip://media", android)).toBe("intent://media#Intent;scheme=silip;package=io.github.p4aaaul.silip.android;end");
+    for (const action of [undefined, null, "https://silip.example", "silip://media?approve=true", "silip://media#token=secret",
+      "silip://user@media", "silip://media/start", "intent://media#Intent;package=other;end"]) {
       expect(androidAppIntent(action, android)).toBeNull();
     }
-    expect(androidAppIntent("piik://app", "Mozilla/5.0 (Windows NT 10.0)")).toBeNull();
-    expect(androidAppIntent("piik://app", "Mozilla/5.0 (iPhone)")).toBeNull();
+    expect(androidAppIntent("silip://app", "Mozilla/5.0 (Windows NT 10.0)")).toBeNull();
+    expect(androidAppIntent("silip://app", "Mozilla/5.0 (iPhone)")).toBeNull();
   });
 
   it("uses the connected App's media action in Android desktop mode", () => {
@@ -36,16 +36,16 @@ describe("Android App foreground actions", () => {
     const assign = vi.fn();
     vi.stubGlobal("navigator", { userAgent: desktop, userActivation: { isActive: true } });
     vi.stubGlobal("window", { location: { assign } });
-    activateNativePicker("piik://media");
-    expect(assign).toHaveBeenCalledWith("intent://media#Intent;scheme=piik;package=tv.piik.android;end");
-    expect(androidAppIntent("piik://app", desktop)).toBeNull();
+    activateNativePicker("silip://media");
+    expect(assign).toHaveBeenCalledWith("intent://media#Intent;scheme=silip;package=io.github.p4aaaul.silip.android;end");
+    expect(androidAppIntent("silip://app", desktop)).toBeNull();
   });
 
   it("keeps activation optional and validates the known health extension", () => {
-    const health = { protocol: NATIVE_CLIENT_PROTOCOL, service: "piik-client", port: NATIVE_CLIENT_PORT_START,
+    const health = { protocol: NATIVE_CLIENT_PROTOCOL, service: "silip-client", port: NATIVE_CLIENT_PORT_START,
       instanceToken: "a".repeat(43), nativeMedia: {} };
     expect(nativeHealthSchema.parse(health).activationURL).toBeUndefined();
-    expect(nativeHealthSchema.parse({ ...health, activationURL: "piik://media" }).activationURL).toBe("piik://media");
-    expect(nativeHealthSchema.safeParse({ ...health, activationURL: "piik://app" }).success).toBe(false);
+    expect(nativeHealthSchema.parse({ ...health, activationURL: "silip://media" }).activationURL).toBe("silip://media");
+    expect(nativeHealthSchema.safeParse({ ...health, activationURL: "silip://app" }).success).toBe(false);
   });
 });

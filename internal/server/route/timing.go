@@ -1,6 +1,6 @@
 package route
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 // recordDemand replaces the peer's timing record wholesale.
 func (c *Controller) recordDemand(childPeerID string, nowMs int64, reason DemandReason) {

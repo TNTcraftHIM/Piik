@@ -15,7 +15,7 @@ import (
 )
 
 // Linux uinput's userspace ABI (include/uapi/linux/{uinput,input}.h).
-// No kernel driver or force-feedback support is supplied by Piik.
+// No kernel driver or force-feedback support is supplied by Silip.
 const (
 	uiDevCreate  = 0x5501
 	uiDevDestroy = 0x5502
@@ -141,7 +141,7 @@ func setupUinputGamepad(fd int) error {
 	var setup [92]byte
 	binary.NativeEndian.PutUint16(setup[0:], 0x06)
 	binary.NativeEndian.PutUint16(setup[6:], 1)
-	copy(setup[8:88], "Piik Remote Gamepad")
+	copy(setup[8:88], "Silip Remote Gamepad")
 	if err := uinputIoctlBytes(fd, uiDevSetup, setup[:]); err != nil {
 		return fmt.Errorf("set uinput device identity: %w", err)
 	}

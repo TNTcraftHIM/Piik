@@ -33,7 +33,7 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `.github/`, `.githooks/`, `.agents/`, `.codex/` | Platform automation and scoped agent/tool integration |
 | `build/`, `node_modules/`, `coverage/` | Ignored local output and dependencies; never current product truth |
 
-`site/` introduces Piik; `src/client/` is Piik's interactive application.
+`site/` introduces Silip; `src/client/` is Silip's interactive application.
 `internal/app/nativecapture` owns the desktop helper process and frame contract;
 `native/capture/` implements its platform APIs. `nativehost` consumes a capture
 stream; the Android App supplies that stream in-process through `mobile/`.
@@ -45,7 +45,7 @@ and checks together; a smaller root alone does not justify another abstraction.
 
 | Owner | Responsibility and dependency boundary |
 | --- | --- |
-| `cmd/piik-server`, `cmd/piik-app` | Thin entry points: defaults, startup and shutdown; compose the same Go room service |
+| `cmd/silip-server`, `cmd/silip-app` | Thin entry points: defaults, startup and shutdown; compose the same Go room service |
 | `internal/server/app` | HTTP, site access, runtime capabilities, static assets and listener lifecycle; room mutations go through `signal` |
 | `internal/server/signal` | Authenticated command/effect owner; serializes room, session and route mutations and executes controller decisions |
 | `internal/server/room` | Room authority, credentials and persistence; caller holds the signaling lock, durable writes precede in-memory changes |
@@ -84,7 +84,7 @@ Keep this check outside room startup, authorization and media lifecycles.
 | App/capture sidecar | `internal/app/nativecapture` and each platform capture adapter; probe/commands and encoded-frame envelope are distinct formats |
 | In-process capture producer | `internal/app/nativehost/capture.go`; the platform supplies frames and retires its own resources, without another control or routing protocol |
 | Configuration and persistence | `internal/server/config`, `internal/app/config`, `internal/server/room/database.go`; operator semantics in [configuration](./configuration.md) |
-| Release and update metadata | Existing packaging scripts, `src/client/lib/release-update.ts`, `cmd/piik-server/release.go`; identity/compatibility in [versioning](./versioning.md), operations in [deployment](../deployment.md) |
+| Release and update metadata | Existing packaging scripts, `src/client/lib/release-update.ts`, `cmd/silip-server/release.go`; identity/compatibility in [versioning](./versioning.md), operations in [deployment](../deployment.md) |
 
 The shared `tests/fixtures/wire-samples.json` is consumed by TypeScript and Go
 fixture tests. It covers room requests and signaling; it is not a universal

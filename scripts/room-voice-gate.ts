@@ -21,8 +21,8 @@ type Sample = { voice: RoomVoiceState | null; peerId: string | null; inviteUrl: 
 
 // Observe the normal browser boundary; no alternate session or control protocol.
 const probe = (name: string) => `(() => {
-  localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
-  localStorage.setItem('piik:display-name:v1',${JSON.stringify(name)});
+  localStorage.setItem('silip:ui-lang','en'); localStorage.setItem('silip:ui-mode','text');
+  localStorage.setItem('silip:display-name:v1',${JSON.stringify(name)});
   const peers=[], sockets=[], captures=[], NativePC=RTCPeerConnection, NativeWS=WebSocket;
   const gate=window.__roomVoiceGate={peers,sockets,captures,voice:null,peerId:null,inviteUrl:null,wire:[],authentications:0};
   const record=(direction,m)=>{
@@ -99,22 +99,22 @@ async function udpPort(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  if (process.env.PIIK_ROOM_VOICE_GATE !== "true") throw new Error("Set PIIK_ROOM_VOICE_GATE=true for this local acceptance gate");
-  const executable = process.env.PIIK_SERVER_EXE || join(OUTPUT, `piik-server${process.platform === "win32" ? ".exe" : ""}`);
+  if (process.env.SILIP_ROOM_VOICE_GATE !== "true") throw new Error("Set SILIP_ROOM_VOICE_GATE=true for this local acceptance gate");
+  const executable = process.env.SILIP_SERVER_EXE || join(OUTPUT, `silip-server${process.platform === "win32" ? ".exe" : ""}`);
   const chromePath = process.env.CHROME_PATH;
   if (!chromePath) throw new Error("CHROME_PATH is required");
   const agentBrowser = process.env.AGENT_BROWSER_PATH || (process.platform === "win32"
     ? join(process.env.APPDATA!, "npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe") : "agent-browser");
-  const sfuOnly = process.env.PIIK_ROOM_VOICE_SFU === "true";
+  const sfuOnly = process.env.SILIP_ROOM_VOICE_SFU === "true";
   const arm = sfuOnly ? "sfu" : "peer";
-  const serverPort = Number(process.env.PIIK_ROOM_VOICE_PORT || (sfuOnly ? 19162 : 19161));
+  const serverPort = Number(process.env.SILIP_ROOM_VOICE_PORT || (sfuOnly ? 19162 : 19161));
   const [vitePort, debugPort, mediaPort] = await Promise.all([reservePort(), reservePort(), udpPort()]);
   const origin = `http://127.0.0.1:${vitePort}`, backend = `http://127.0.0.1:${serverPort}`;
-  const legacyRoot = process.env.PIIK_ROOM_VOICE_LEGACY_WEB;
+  const legacyRoot = process.env.SILIP_ROOM_VOICE_LEGACY_WEB;
   const legacyPort = legacyRoot ? await reservePort() : null;
   const legacyOrigin = legacyPort ? `http://127.0.0.1:${legacyPort}` : null;
   const legacyRevision = legacyRoot ? (await runFile("git", ["-C", legacyRoot, "rev-parse", "HEAD"], { windowsHide: true })).stdout.trim() : null;
-  const profile = await mkdtemp(join(tmpdir(), "piik-client-media-"));
+  const profile = await mkdtemp(join(tmpdir(), "silip-client-media-"));
   await mkdir(OUTPUT, { recursive: true });
   const audio = join(OUTPUT, "microphone.wav");
   await writeFile(audio, audioFixture());
@@ -179,9 +179,9 @@ async function main(): Promise<void> {
   };
   try {
     server = spawn(executable, [], { cwd: ROOT, stdio: "pipe", windowsHide: true,
-      env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, PIIK_ENV: "development",
-        LISTEN_HOST: "127.0.0.1", PORT: String(serverPort), PIIK_LOG_DIR: join(OUTPUT, `${arm}-logs`),
-        ROOM_DATABASE_PATH: join(profile, "rooms.sqlite"), PIIK_DEBUG: "route",
+      env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, SILIP_ENV: "development",
+        LISTEN_HOST: "127.0.0.1", PORT: String(serverPort), SILIP_LOG_DIR: join(OUTPUT, `${arm}-logs`),
+        ROOM_DATABASE_PATH: join(profile, "rooms.sqlite"), SILIP_DEBUG: "route",
         PUBLIC_BASE_URL: origin, ALLOWED_ORIGINS: [origin, legacyOrigin].filter(Boolean).join(","), SFU_LISTEN_HOST: "127.0.0.1",
         SFU_UDP_PORT: String(mediaPort), SFU_PUBLIC_IP: "127.0.0.1", SFU_ONLY: String(sfuOnly),
         ENDPOINT_MEDIA_COPY_CAPACITY: "1" } });
@@ -209,7 +209,7 @@ async function main(): Promise<void> {
       const { browserContextId } = await cdp!.call<{ browserContextId: string }>("Target.createBrowserContext", {}, undefined, Date.now() + 5000);
       const { targetId } = await cdp!.call<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId }, undefined, Date.now() + 5000);
       const { sessionId } = await cdp!.call<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true }, undefined, Date.now() + 5000);
-      const current = { targetId, sessionId, session: `piik-voice-${arm}-${process.pid}-${pages.length}` };
+      const current = { targetId, sessionId, session: `silip-voice-${arm}-${process.pid}-${pages.length}` };
       pages.push(current);
       await cdp!.call("Page.enable", {}, sessionId, Date.now() + 5000);
       await cdp!.call("Page.addScriptToEvaluateOnNewDocument", { source: probe(name) }, sessionId, Date.now() + 5000);
@@ -477,7 +477,7 @@ async function main(): Promise<void> {
     const detached = await sample(viewer);
     await until(viewer, state => state.samples > detached.samples, "detached panel preserves voice");
     const { targetInfos } = await cdp.call<{ targetInfos: { targetId: string; title: string }[] }>("Target.getTargets", {}, undefined, Date.now() + 5000);
-    const popup = targetInfos.find(target => target.title === "Interactions · Piik");
+    const popup = targetInfos.find(target => target.title === "Interactions · Silip");
     if (!popup) throw new Error("Detached interaction window target missing");
     await ui(host, "--pin-tab", "tab", popup.targetId);
     await ui(host, "screenshot", join(OUTPUT, `${arm}-voice-detached.png`));

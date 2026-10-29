@@ -1,5 +1,4 @@
 import { useId, useRef, useState } from "react";
-import { useProjectLink } from "../../lib/use-project-link";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { useCopy, type CopyKey } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
@@ -20,8 +19,7 @@ export function ShareFailureHelp({ status, label, code, checks }: {
   const [copied, setCopied] = useState<"idle" | "done" | "failed">("idle");
   const copyRequest = useRef<object | null>(null);
   const hint = (status.tooltip ?? status.comic)!;
-  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
+  const guide = `https://github.com/P4-aaaul/Silip/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`;
   return <>
     <StatusIndicator status={status} label={label} onActivate={() => {
       copyRequest.current = null;
@@ -54,9 +52,9 @@ export function ShareFailureHelp({ status, label, code, checks }: {
           <BrowserDiagnosticsButton />
           <button type="button" className="lr-btn" aria-label={t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")} onClick={() => {
             // Deliberately excludes URLs, invitation credentials and raw exceptions.
-            const version = import.meta.env.VITE_PIIK_VERSION ?? "development";
+            const version = import.meta.env.VITE_SILIP_VERSION ?? "development";
             const request = copyRequest.current = {};
-            void Promise.resolve().then(() => navigator.clipboard.writeText(`Piik Web ${version}\n${label}\n${code}`)).then(
+            void Promise.resolve().then(() => navigator.clipboard.writeText(`Silip Web ${version}\n${label}\n${code}`)).then(
               () => { if (copyRequest.current === request) setCopied("done"); },
               () => { if (copyRequest.current === request) setCopied("failed"); });
           }}><Glyph name={copied === "done" ? "check" : "copy"} size={16} />{!vis && t(copied === "done" ? "shareHelp.copied" : "shareHelp.copy")}</button>

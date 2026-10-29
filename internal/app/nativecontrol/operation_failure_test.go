@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/remoteinput"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/remoteinput"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -42,7 +42,7 @@ func TestSourceProbesRetireWithTheirControlConnection(t *testing.T) {
 		for _, shutdown := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/shutdown=%v", request.kind, shutdown), func(t *testing.T) {
 				marker := filepath.Join(t.TempDir(), "probe-started")
-				t.Setenv("PIIK_SOURCE_PROBE_FIXTURE", marker)
+				t.Setenv("SILIP_SOURCE_PROBE_FIXTURE", marker)
 				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 				defer cancel()
 				closed := make(chan struct{})
@@ -181,7 +181,7 @@ func TestFailedEdgeAndLateStopDoNotRetireAnotherShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", t.TempDir())
+	t.Setenv("SILIP_QUIET_CAPTURE_FIXTURE", t.TempDir())
 	session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false, nil)
 	defer session.Close()
 	const start = `{"version":10,"id":"request_start","type":"start-share","shareId":"share_123456","source":{"kind":"display","sourceId":"1","title":"Fixture"},"audio":false,"edgeCapacity":1,"codec":"vp8","profile":{"resolution":{"width":1920,"height":1080},"maxFramerate":30,"maxBitrate":5000000,"degradationPreference":"balanced"}}`
@@ -271,7 +271,7 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 	for _, kind := range []string{"start-share", "replace-share-source"} {
 		t.Run(kind, func(t *testing.T) {
 			directory := t.TempDir()
-			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", directory)
+			t.Setenv("SILIP_QUIET_CAPTURE_FIXTURE", directory)
 			executable, err := os.Executable()
 			if err != nil {
 				t.Fatal(err)
@@ -289,7 +289,7 @@ func TestCaptureStartupAndReplacementRemainCancellable(t *testing.T) {
 				}
 				payload = `{"version":10,"id":"request_replace","type":"replace-share-source","shareId":"share_123456","source":{"kind":"display","sourceId":"2","title":"Fixture"},"audio":false}`
 			}
-			t.Setenv("PIIK_PENDING_CAPTURE_FIXTURE", "true")
+			t.Setenv("SILIP_PENDING_CAPTURE_FIXTURE", "true")
 			if value, err := session.Handle(t.Context(), []byte(payload)); value != nil || err != nil {
 				t.Fatalf("capture command blocked instead of deferring: %#v %v", value, err)
 			}

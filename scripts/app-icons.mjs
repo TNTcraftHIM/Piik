@@ -91,19 +91,19 @@ function writeLinuxAssets(packageRoot, entries) {
   mkdirSync(iconDirectory, { recursive: true });
   mkdirSync(applicationDirectory, { recursive: true });
   writeFileSync(
-    join(iconDirectory, "piik-app.png"),
+    join(iconDirectory, "silip-app.png"),
     requireEntry(entries, 256),
   );
   writeFileSync(
-    join(applicationDirectory, "piik-app.desktop"),
+    join(applicationDirectory, "silip-app.desktop"),
     [
       "[Desktop Entry]",
       "Version=1.0",
       "Type=Application",
-      "Name=Piik App",
-      "Exec=piik-app",
-      "TryExec=piik-app",
-      "Icon=piik-app",
+      "Name=Silip App",
+      "Exec=silip-app",
+      "TryExec=silip-app",
+      "Icon=silip-app",
       "Terminal=true",
       "Categories=Network;Utility;",
       "StartupNotify=true",
@@ -115,13 +115,13 @@ function writeLinuxAssets(packageRoot, entries) {
 
 function writeMacAssets(packageRoot, version, revision, entries) {
   const bundleVersion = version === "development" ? "0.0.0" : version.slice(1);
-  const bundleRoot = join(packageRoot, "Piik App.app");
+  const bundleRoot = join(packageRoot, "Silip App.app");
   const contents = join(bundleRoot, "Contents");
   const macos = join(contents, "MacOS");
   const resources = join(contents, "Resources");
   mkdirSync(macos, { recursive: true });
   mkdirSync(resources, { recursive: true });
-  writeIcns(entries, join(resources, "piik.icns"));
+  writeIcns(entries, join(resources, "silip.icns"));
   writeFileSync(
     join(contents, "Info.plist"),
     [
@@ -129,19 +129,19 @@ function writeMacAssets(packageRoot, version, revision, entries) {
       '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
       '<plist version="1.0"><dict>',
       "<key>CFBundleDevelopmentRegion</key><string>en</string>",
-      "<key>CFBundleDisplayName</key><string>Piik App</string>",
-      "<key>CFBundleExecutable</key><string>piik-app</string>",
-      "<key>CFBundleIconFile</key><string>piik.icns</string>",
-      "<key>CFBundleIdentifier</key><string>tv.piik.app</string>",
+      "<key>CFBundleDisplayName</key><string>Silip App</string>",
+      "<key>CFBundleExecutable</key><string>silip-app</string>",
+      "<key>CFBundleIconFile</key><string>silip.icns</string>",
+      "<key>CFBundleIdentifier</key><string>io.github.p4aaaul.silip.app</string>",
       "<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>",
-      "<key>CFBundleName</key><string>Piik App</string>",
+      "<key>CFBundleName</key><string>Silip App</string>",
       "<key>CFBundlePackageType</key><string>APPL</string>",
       `<key>CFBundleShortVersionString</key><string>${bundleVersion}</string>`,
       "<key>NSScreenCaptureUsageDescription</key><string>Share a screen or application selected by you.</string>",
       "<key>NSMicrophoneUsageDescription</key><string>Include your voice while sharing.</string>",
       "<key>NSAudioCaptureUsageDescription</key><string>Share sound from the selected screen or application.</string>",
       `<key>CFBundleVersion</key><string>${bundleVersion}</string>`,
-      `<key>PiikSourceRevision</key><string>${revision}</string>`,
+      `<key>SilipSourceRevision</key><string>${revision}</string>`,
       "</dict></plist>",
       "",
     ].join("\n"),
@@ -160,9 +160,9 @@ export function writeAppPlatformAssets({
   if (target.goos === "linux") writeLinuxAssets(packageRoot, entries);
   if (target.goos === "darwin") writeMacAssets(packageRoot, version, revision, entries);
   return target.goos === "linux"
-    ? "share/applications/piik-app.desktop"
+    ? "share/applications/silip-app.desktop"
     : target.goos === "darwin"
-      ? "Piik App.app"
+      ? "Silip App.app"
       : null;
 }
 

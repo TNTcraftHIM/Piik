@@ -3,7 +3,7 @@
 `scripts/build-android.mjs` builds the official cloudflared source pinned by
 `scripts/app-package-targets.mjs` and `licenses/upstream.json`. Its archive is
 SHA256 checked. Original extracted source remains unchanged in the ignored build
-cache; Go overlays add the Piik MIT-licensed Android adapter and apply the small
+cache; Go overlays add the Silip MIT-licensed Android adapter and apply the small
 supervisor patch. Neither module graph nor Go toolchain is patched.
 
 `android_dns.go` sends stock Go Resolver DNS messages through Android API 29

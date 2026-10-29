@@ -91,21 +91,21 @@ function remoteOptions(): {
   key: string;
   ssh: string;
 } {
-  const host = process.env.PIIK_REMOTE_HOST?.trim();
-  const key = process.env.PIIK_REMOTE_SSH_KEY?.trim();
+  const host = process.env.SILIP_REMOTE_HOST?.trim();
+  const key = process.env.SILIP_REMOTE_SSH_KEY?.trim();
   if (!host || !key) {
-    throw new Error("PIIK_REMOTE_HOST and PIIK_REMOTE_SSH_KEY are required");
+    throw new Error("SILIP_REMOTE_HOST and SILIP_REMOTE_SSH_KEY are required");
   }
   return {
     host,
     key,
-    user: process.env.PIIK_REMOTE_USER?.trim() || "root",
-    ssh: process.env.PIIK_SSH?.trim() || "ssh",
+    user: process.env.SILIP_REMOTE_USER?.trim() || "root",
+    ssh: process.env.SILIP_SSH?.trim() || "ssh",
   };
 }
 
 function transportArgs(key: string): string[] {
-  const bindAddress = process.env.PIIK_REMOTE_BIND_ADDRESS?.trim();
+  const bindAddress = process.env.SILIP_REMOTE_BIND_ADDRESS?.trim();
   return [
     "-o", "BatchMode=yes",
     "-o", "StrictHostKeyChecking=yes",
@@ -194,21 +194,21 @@ async function waitUntilLinkCloses(origin: string): Promise<boolean> {
 }
 
 async function main(): Promise<void> {
-  if (process.env.PIIK_CLIENT_LINK_GATE !== "true") {
-    throw new Error("PIIK_CLIENT_LINK_GATE=true is required");
+  if (process.env.SILIP_CLIENT_LINK_GATE !== "true") {
+    throw new Error("SILIP_CLIENT_LINK_GATE=true is required");
   }
   const remote = remoteOptions();
   const transport = transportArgs(remote.key);
   const destination = `${remote.user}@${remote.host}`;
-  const go = process.env.PIIK_GO?.trim() || "go";
-  const configuredApp = process.env.PIIK_CLIENT_EXE?.trim();
-  const tunnel = process.env.PIIK_CLOUDFLARED?.trim() ||
+  const go = process.env.SILIP_GO?.trim() || "go";
+  const configuredApp = process.env.SILIP_CLIENT_EXE?.trim();
+  const tunnel = process.env.SILIP_CLOUDFLARED?.trim() ||
     join(BUILD_ROOT, process.platform === "win32" ? "cloudflared.exe" : "cloudflared");
-  const profile = await mkdtemp(join(tmpdir(), "piik-client-link-"));
+  const profile = await mkdtemp(join(tmpdir(), "silip-client-link-"));
   const port = await reservePort();
   const appBinary = configuredApp || join(
     BUILD_ROOT,
-    process.platform === "win32" ? "piik-app.exe" : "piik-app",
+    process.platform === "win32" ? "silip-app.exe" : "silip-app",
   );
   let app: ChildProcessWithoutNullStreams | null = null;
   let publicOrigin = "";
@@ -234,7 +234,7 @@ async function main(): Promise<void> {
       } else {
         run("npm", ["run", "build:web"]);
       }
-      run(go, ["build", "-trimpath", "-o", appBinary, "./cmd/piik-app"],
+      run(go, ["build", "-trimpath", "-o", appBinary, "./cmd/silip-app"],
         ROOT);
     }
     result.stage = "app-start";
@@ -245,7 +245,7 @@ async function main(): Promise<void> {
       "--tunnel-process", tunnel,
     ], {
       cwd: ROOT,
-      env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
+      env: { ...process.env, SILIP_CLIENT_GATE_NO_BROWSER: "true" },
       stdio: "pipe",
       windowsHide: true,
     });

@@ -9,7 +9,7 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-const Label = "piik-remote-input-prototype-v1"
+const Label = "silip-remote-input-prototype-v1"
 
 // 2 KiB of text, JSON escaping, authenticated encryption and the relay envelope.
 const MaxPacket = 6144

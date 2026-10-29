@@ -115,7 +115,7 @@ describe("opt-in Browser diagnostics", () => {
     const { withBrowserDebug } = await import("../src/client/lib/debug");
     const { clientLaunchURL, roomRouteForExplicitEntry, readViewerRoute } = await import("../src/client/lib/session");
     const launched = new URL(clientLaunchURL(
-      "https://site.example/?existing=1#client-access=target-capability&piik-client=1",
+      "https://site.example/?existing=1#client-access=target-capability&silip-client=1",
       { lang: "en", vis: false, theme: "light" },
     ));
     expect(launched.origin).toBe("https://site.example");
@@ -146,7 +146,7 @@ describe("opt-in Browser diagnostics", () => {
     debug.debugEvent("capture", "requested", { resolution: "1080p" });
     debug.debugError("capture", "failed", new Error("private detail"));
     expect(console.info).not.toHaveBeenCalled();
-    expect(page.__PIIK_DEBUG__).toBeUndefined();
+    expect(page.__SILIP_DEBUG__).toBeUndefined();
   });
 
   it("retains error causes, stacks and technical context while removing credentials and media", async () => {
@@ -162,9 +162,9 @@ describe("opt-in Browser diagnostics", () => {
       data: "secret-pixels", payload: "secret-audio",
       roomInteraction: { payload: { kind: "chat", text: "private-chat-contents" } },
       viewerGrant: "secret-grant", passwordHash: "secret-hash",
-      transportError: "piik-client-v10.secret-capability Basic secret-basic\nCookie: session=secret-session; refresh=secret-refresh",
+      transportError: "silip-client-v10.secret-capability Basic secret-basic\nCookie: session=secret-session; refresh=secret-refresh",
     });
-    const report = await page.__PIIK_DEBUG__!.export();
+    const report = await page.__SILIP_DEBUG__!.export();
     for (const secret of ["secret-password", "secret-auth", "secret-query", "secret-fragment", "secret-bearer",
       "secret-host", "secret-ice", "secret-cookie", "secret-sdp", "secret-remote-sdp", "secret-pixels", "secret-audio", "private-grant",
       "secret-grant", "secret-hash", "secret-capability", "secret-basic", "secret-session", "secret-refresh", "private-chat-contents"])
@@ -179,10 +179,10 @@ describe("opt-in Browser diagnostics", () => {
     const debug = await import("../src/client/lib/debug");
     debug.installBrowserDebug();
     for (let revision = 0; revision < 8_300; revision++) debug.debugEvent("signal", "route", { revision });
-    const saved = page.__PIIK_DEBUG__!.events();
+    const saved = page.__SILIP_DEBUG__!.events();
     expect(saved).toHaveLength(8_192);
     saved[0]!.details.revision = -1;
-    expect(page.__PIIK_DEBUG__!.events()[0]!.details.revision).toBe(108);
+    expect(page.__SILIP_DEBUG__!.events()[0]!.details.revision).toBe(108);
     // Exercise the byte limit separately from the event-count limit.
     for (let index = 0; index < 1_100; index++) debug.debugEvent("capture", "state", { message: "界".repeat(9_000) });
     debug.debugError("webrtc", "collector-failed", new Error("stats unavailable"), { collector: "getStats", connectionId: "edge" });
@@ -238,7 +238,7 @@ describe("opt-in Browser diagnostics", () => {
     await vi.advanceTimersByTimeAsync(5_000);
     expect(connection.getStats).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
-    const history = page.__PIIK_DEBUG__!.events();
+    const history = page.__SILIP_DEBUG__!.events();
     expect(history.filter((event) => event.scope === "webrtc").every((event) => event.details.connectionId === "local-edge")).toBe(true);
     expect(history).toContainEqual(expect.objectContaining({ event: "dtls-state", details: expect.objectContaining({ state: "connected" }) }));
     const report = await debug.exportBrowserDebug();
@@ -282,7 +282,7 @@ describe("opt-in Browser diagnostics", () => {
     const token = "x".repeat(43);
     class Socket extends EventTarget {
       static OPEN = 1; static CLOSING = 2;
-      readyState = 1; protocol = `piik-client-v10.${token}`;
+      readyState = 1; protocol = `silip-client-v10.${token}`;
       constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = 3; }
       send(raw: string) {
@@ -296,7 +296,7 @@ describe("opt-in Browser diagnostics", () => {
     }
     vi.stubGlobal("WebSocket", Socket);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      protocol: 10, service: "piik-client", port: 39721, instanceToken: token,
+      protocol: 10, service: "silip-client", port: 39721, instanceToken: token,
       nativeMedia: { video: true, processAudio: false, systemAudio: true, hardwareH264: true, softwareVP8: true },
     }), { status: 200 })));
     const debug = await import("../src/client/lib/debug");
@@ -307,7 +307,7 @@ describe("opt-in Browser diagnostics", () => {
     expect(client).not.toBeNull();
     try { await client!.updateShare("share_123456", DEFAULT_QUALITY_SETTINGS); }
     finally { client!.close(); }
-    const history = page.__PIIK_DEBUG__!.events().filter((event) => event.details.type === "update-share");
+    const history = page.__SILIP_DEBUG__!.events().filter((event) => event.details.type === "update-share");
     expect(history.map((event) => event.event)).toEqual(["request", "response"]);
     expect(history[1]!.details.requestId).toBe(history[0]!.details.requestId);
     expect(history[1]!.details.durationMs).toBeGreaterThanOrEqual(0);
@@ -319,13 +319,13 @@ describe("opt-in Browser diagnostics", () => {
     const page = browser();
     const token = "x".repeat(43);
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      protocol: 8, service: "piik-client", port: 39721, instanceToken: token,
+      protocol: 8, service: "silip-client", port: 39721, instanceToken: token,
     }))));
     const debug = await import("../src/client/lib/debug");
     debug.installBrowserDebug();
     const { NativeClient } = await import("../src/client/native/client");
     await expect(NativeClient.connect()).rejects.toMatchObject({ name: "NativeCompatibilityError" });
-    expect(page.__PIIK_DEBUG__!.events()).toContainEqual(expect.objectContaining({
+    expect(page.__SILIP_DEBUG__!.events()).toContainEqual(expect.objectContaining({
       scope: "native", event: "incompatible", details: { actualProtocol: 8, expectedProtocol: 10 },
     }));
     expect(await debug.exportBrowserDebug()).not.toContain(token);

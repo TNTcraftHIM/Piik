@@ -12,7 +12,7 @@ import (
 	// The pure-Go driver supports builds with CGO_ENABLED=0.
 	_ "modernc.org/sqlite"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // Database identity and the single current schema are checked before adopting

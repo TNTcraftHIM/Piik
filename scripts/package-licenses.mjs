@@ -42,7 +42,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile, packages = WE
   const visited = new Set();
   const entries = new Map();
   for (const [name, parent] of queue) {
-    const paths = createRequire(parent).resolve.paths("piik-license-lookup");
+    const paths = createRequire(parent).resolve.paths("silip-license-lookup");
     const directory = paths.map((path) => join(path, name))
       .find((path) => existsSync(join(path, "package.json")));
     if (!directory) throw new Error(`Missing installed runtime dependency ${name}`);
@@ -64,7 +64,7 @@ export function writeWebLicenseNotices(repositoryRoot, outputFile, packages = WE
   }
   mkdirSync(dirname(outputFile), { recursive: true });
   writeFileSync(outputFile, "Third-party software notices\n" +
-    "Piik's MIT license does not replace the following component licenses.\n" +
+    "Silip's MIT license does not replace the following component licenses.\n" +
     [...entries].sort(([a], [b]) => a.localeCompare(b)).map(([, body]) => body).join(""));
 }
 
@@ -109,10 +109,10 @@ function moduleSections(modules) {
 }
 
 // writeServerLicenseNotices produces the Server release notice file,
-// which ships beside the single piik-server binary.
+// which ships beside the single silip-server binary.
 export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand, target) {
-  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-server");
-  writeFileSync(outputFile, "Piik Server third-party software notices\n" +
+  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/silip-server");
+  writeFileSync(outputFile, "Silip Server third-party software notices\n" +
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
 }
 
@@ -129,15 +129,15 @@ export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand
   if (!files.size) throw new Error("Missing Go mobile runtime license");
   notices.modules.set(`${runtime.Path}@${runtime.Version}`, files);
   mkdirSync(dirname(outputFile), { recursive: true });
-  writeFileSync(outputFile, "Piik Android third-party software notices\n" +
-    section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
+  writeFileSync(outputFile, "Silip Android third-party software notices\n" +
+    section("Silip (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules) +
     section("WebRTC FrameDropper (BSD-3-Clause)",
       ["LICENSE", "PATENTS"].map(file => readFileSync(join(repositoryRoot,
         "native", "third_party", "webrtc-frame-dropper", file), "utf8")).join("\n")) +
     section("Android NDK libc++ (Apache-2.0 WITH LLVM-exception)", pinnedNotice("libc++@ndk-30.0.16248370")) +
     section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)) +
-    section("Piik Android cloudflared changes (MIT)",
+    section("Silip Android cloudflared changes (MIT)",
       "Android system DNS adapter and exhausted-QUIC-dial fallback. Source and provenance: mobile/cloudflared/."));
 }
 
@@ -147,8 +147,8 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, goCommand, t
     writeFileSync(join(packageRoot, "runtime", "tunnel", "THIRD-PARTY-NOTICES.txt"),
       pinnedNotice(`cloudflared@${tunnelVersion}`));
   }
-  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/piik-app");
-  let text = "Piik App third-party software notices\n" +
+  const notices = goNotices(repositoryRoot, goCommand, target, "./cmd/silip-app");
+  let text = "Silip App third-party software notices\n" +
     WEB_NOTICE_LINE +
     (tunnelVersion ? "Cloudflared: runtime/tunnel/THIRD-PARTY-NOTICES.txt\n" : "") +
     notices.toolchain;

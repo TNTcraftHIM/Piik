@@ -2,7 +2,7 @@
 
 Last updated: 2026-10-26
 
-Piik is private, low-latency screen sharing for one Host and up to 20
+Silip is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
 Browser relay; desktop and mobile Browsers are Viewer targets, and camera-capable
 mobile Browsers can also host. It is not a
@@ -65,7 +65,7 @@ locate implementation owners and their module, interface and lifecycle boundarie
   when available, and anonymous provenance distinguishes ordinary from predicted
   selected paths. The configuration default remains stock ICE. The only
   application fallback is one bounded embedded SFU/UDP
-  publication; Piik configures no TURN or TCP media route. Hosted operators may
+  publication; Silip configures no TURN or TCP media route. Hosted operators may
   require SFU-only media through the same controller. On P2P-first sites, a
   pre-share peer-only policy can exclude that SFU suffix for one share generation.
 - Ordinary endpoints share one steady outbound-copy cap, default `2` and limited to

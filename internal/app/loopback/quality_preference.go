@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	appconfig "github.com/P4-aaaul/Silip/internal/app/config"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 func (server *Server) handleQualityPreference(response http.ResponseWriter, request *http.Request) {
@@ -18,7 +18,7 @@ func (server *Server) handleQualityPreference(response http.ResponseWriter, requ
 	response.Header().Set("Cache-Control", "no-store")
 	if request.Method == http.MethodOptions {
 		response.Header().Set("Access-Control-Allow-Methods", "GET, PUT")
-		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Piik-Instance")
+		response.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Silip-Instance")
 		allowPrivateNetwork(response, request)
 		response.WriteHeader(http.StatusNoContent)
 		return
@@ -29,7 +29,7 @@ func (server *Server) handleQualityPreference(response http.ResponseWriter, requ
 		return
 	}
 	// Origin/Host are checked by ServeHTTP. Bind reads and writes to this App run.
-	if request.Header.Get("X-Piik-Instance") != server.endpoint.InstanceToken {
+	if request.Header.Get("X-Silip-Instance") != server.endpoint.InstanceToken {
 		http.Error(response, "invalid App instance", http.StatusForbidden)
 		return
 	}
@@ -45,7 +45,7 @@ func (server *Server) handleQualityPreference(response http.ResponseWriter, requ
 		return
 	}
 	if err := server.qualityPreference.Save(quality); err != nil {
-		slog.Debug("piik-client", "event", "quality-preference-save-failed", "error", err)
+		slog.Debug("silip-client", "event", "quality-preference-save-failed", "error", err)
 		http.Error(response, "sharing preference could not be saved", http.StatusInternalServerError)
 		return
 	}

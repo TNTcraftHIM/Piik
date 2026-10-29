@@ -1,7 +1,7 @@
 // Synthetic capture is the only media substitution. PeerConnection, signaling,
 // candidate selection and readiness remain the production implementation.
 export const pageProbe = String.raw`(() => {
-  localStorage.setItem('piik:ui-lang','en'); localStorage.setItem('piik:ui-mode','text');
+  localStorage.setItem('silip:ui-lang','en'); localStorage.setItem('silip:ui-mode','text');
   const peers=[], sockets=[], events=[], errors=[], controls=[];
   let route=null,upstream=null,natPrediction=null,voice=null,freezeCapture=()=>{},resumeCapture=()=>{},peerSignalDelay=0,peerSignalReleaseAt=0;
   let observedVideo=null,frameCallback=0,renderedFrames=0,lastFrameAt=0,maxFrameGapMs=0;

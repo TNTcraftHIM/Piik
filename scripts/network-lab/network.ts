@@ -17,7 +17,7 @@ export function command(program: string, args: string[], input?: string): string
 // Owns only namespaces and veth pairs created by this run. All routing,
 // firewall and sysctl changes happen inside those namespaces.
 export class LabNetwork {
-  readonly prefix = `piiklab-${randomBytes(4).toString("hex")}`;
+  readonly prefix = `siliplab-${randomBytes(4).toString("hex")}`;
   readonly namespaces: string[] = [];
   private readonly pendingLinks = new Set<string>();
   private readonly shaped = new Set<string>();

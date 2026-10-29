@@ -1,4 +1,5 @@
-.lr-brand-eye-open,
+/* Silip mark gesture: the two stems draw, the eyes pop up, the pupils peek
+   to the side and back, the eyes blink, then two mango sparks. */
 .lr-brand-sparkles { opacity: 0; }
 .lr-brand-sparkles > * { opacity: 0; }
 
@@ -10,29 +11,29 @@
 .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-shell :where([pathLength]) {
   stroke-dasharray: 1;
   stroke-dashoffset: 1;
-  animation: lr-brand-draw cubic-bezier(.45, .05, .35, 1) forwards;
+  animation: lr-brand-draw 260ms cubic-bezier(.45, .05, .35, 1) forwards;
 }
-.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-frame { animation-duration: 380ms; }
-.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-antenna {
-  animation-duration: 260ms;
-  animation-delay: 260ms;
-}
-.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-feet {
-  animation-duration: 220ms;
-  animation-delay: 360ms;
-}
+.lr-brand-mark:is(.is-animated, .is-once) .lr-brand-stem + .lr-brand-stem { animation-delay: 140ms; }
 .lr-brand-mark:not(.is-drawing):is(.is-animated, .is-once) .lr-brand-face {
   transform-box: fill-box;
-  transform-origin: center;
-  animation: lr-brand-face-in 180ms ease-out 0ms both;
+  transform-origin: 50% 100%;
+  animation: lr-brand-face-in 220ms cubic-bezier(.3, 1.45, .45, 1) 0ms both;
 }
-.lr-brand-mark:not(.is-drawing).is-animated.is-loop-active .lr-brand-eye-open {
+.lr-brand-mark .lr-brand-eye {
   transform-box: fill-box;
   transform-origin: center;
-  animation: lr-brand-eye-open-loop 3.6s ease-in-out infinite;
 }
-.lr-brand-mark:not(.is-drawing).is-animated.is-loop-active .lr-brand-eye-wink {
-  animation: lr-brand-eye-wink-loop 3.6s ease-in-out infinite;
+.lr-brand-mark:not(.is-drawing):is(.is-animated.is-loop-intro, .is-once) .lr-brand-pupils {
+  animation: lr-brand-peek 1.6s ease-in-out 0ms 1 both;
+}
+.lr-brand-mark:not(.is-drawing):is(.is-animated.is-loop-intro, .is-once) .lr-brand-eye {
+  animation: lr-brand-blink 1.6s ease-in-out 0ms 1 both;
+}
+.lr-brand-mark:not(.is-drawing).is-animated.is-loop-active .lr-brand-pupils {
+  animation: lr-brand-peek-loop 3.6s ease-in-out infinite;
+}
+.lr-brand-mark:not(.is-drawing).is-animated.is-loop-active .lr-brand-eye {
+  animation: lr-brand-blink-loop 3.6s ease-in-out infinite;
 }
 .lr-brand-mark:not(.is-drawing).is-animated.is-loop-active .lr-brand-sparkles { opacity: 1; }
 .lr-brand-mark:not(.is-drawing).is-animated.is-loop-active .lr-brand-sparkles > * {
@@ -43,14 +44,6 @@
 .lr-brand-mark:not(.is-drawing).is-animated.is-loop-active .lr-brand-sparkles > :nth-child(2) {
   animation-name: lr-brand-sparkle-alt-loop;
   animation-delay: 90ms;
-}
-.lr-brand-mark:not(.is-drawing):is(.is-animated.is-loop-intro, .is-once) .lr-brand-eye-open {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: lr-brand-eye-open 1.6s ease-in-out 0ms 1 both;
-}
-.lr-brand-mark:not(.is-drawing):is(.is-animated.is-loop-intro, .is-once) .lr-brand-eye-wink {
-  animation: lr-brand-eye-wink 1.6s ease-in-out 0ms 1 both;
 }
 .lr-brand-mark:not(.is-drawing):is(.is-animated.is-loop-intro, .is-once) .lr-brand-sparkles { opacity: 1; }
 .lr-brand-mark:not(.is-drawing):is(.is-animated.is-loop-intro, .is-once) .lr-brand-sparkles > * {
@@ -63,39 +56,29 @@
   animation-delay: 45ms;
 }
 /* Drawing paints on the main thread. Release composited gestures only after
-   its last stroke ends, so a busy page cannot wink on an unfinished shell. */
+   its last stroke ends, so a busy page cannot peek from unfinished stems. */
 :where(html:not([data-reduced-motion])) .lr-brand-mark:is(.is-animated, .is-once).is-drawing :is(.lr-brand-face, .lr-brand-sparkles) { visibility: hidden; }
-.lr-brand-mark .lr-brand-antenna-motion { transform-origin: 16px 8px; }
-.lr-brand-mark:is(.is-animated.is-loop-intro, .is-once):not(.is-drawing) .lr-brand-antenna-motion { animation: lr-brand-antenna-wiggle 1.6s ease-in-out both; }
-.lr-brand-mark.is-animated.is-loop-active .lr-brand-antenna-motion { animation: lr-brand-antenna-wiggle 3.6s ease-in-out infinite; }
 @keyframes lr-brand-draw { to { stroke-dashoffset: 0; } }
-@keyframes lr-brand-antenna-wiggle {
-  0%, 8%, 30%, 100% { transform: rotate(0); }
-  13%, 23% { transform: rotate(-10deg); }
-  18% { transform: rotate(8deg); }
-}
 @keyframes lr-brand-face-in {
-  from { opacity: 0; transform: scale(.35); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; transform: translateY(3px) scale(.35); }
+  to { opacity: 1; transform: none; }
 }
-@keyframes lr-brand-eye-open {
-  0%, 34% { opacity: 1; transform: scale(1); }
-  38%, 100% { opacity: 0; transform: scaleY(.15); }
+@keyframes lr-brand-peek {
+  0%, 14% { transform: none; }
+  24%, 40% { transform: translateX(-2.6px); }
+  50%, 100% { transform: none; }
 }
-@keyframes lr-brand-eye-wink {
-  0%, 34% { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; }
-  38% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 1; }
-  44%, 100% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 0; }
+@keyframes lr-brand-blink {
+  0%, 58%, 68%, 100% { transform: none; }
+  63% { transform: scaleY(.12); }
 }
-@keyframes lr-brand-eye-open-loop {
-  0%, 34%, 84%, 100% { opacity: 1; transform: scale(1); }
-  38%, 76% { opacity: 0; transform: scaleY(.15); }
+@keyframes lr-brand-peek-loop {
+  0%, 14%, 50%, 100% { transform: none; }
+  24%, 40% { transform: translateX(-2.6px); }
 }
-@keyframes lr-brand-eye-wink-loop {
-  0%, 34% { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; }
-  38% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 1; }
-  44%, 76% { opacity: 1; stroke-dasharray: 1; stroke-dashoffset: 0; }
-  84%, 100% { opacity: 0; stroke-dasharray: 1; stroke-dashoffset: 1; }
+@keyframes lr-brand-blink-loop {
+  0%, 58%, 68%, 100% { transform: none; }
+  63% { transform: scaleY(.12); }
 }
 @keyframes lr-brand-sparkle {
   0%, 42% { opacity: 0; transform: translate(-1px, 2px) scale(.12) rotate(-20deg); }
@@ -125,32 +108,24 @@
   74% { opacity: .3; transform: translate(8px, 8px) scale(.5) rotate(-30deg); }
   82%, 100% { opacity: 0; transform: translate(11px, 11px) scale(.18) rotate(-42deg); }
 }
-.lr-brand-sparkles { stroke: #d08a22; }
-html[data-theme="dark"] .lr-brand-sparkles { stroke: #f4c14d; }
+/* Silip mango: deeper on light surfaces so the sparks keep their edge. */
+.lr-brand-sparkles { stroke: #d89a00; }
+html[data-theme="dark"] .lr-brand-sparkles { stroke: #f5b417; }
 
 /* The catalogue/website motion preference shares the system's static shell. */
 html[data-reduced-motion] .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-shell :where([pathLength]) { stroke-dashoffset: 0; }
 
 @media (prefers-reduced-motion: reduce) {
-  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-antenna-motion,
   .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-shell :where([pathLength]) {
     animation: none !important;
     stroke-dashoffset: 0 !important;
   }
-  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-face {
+  .lr-brand-mark:is(.is-animated, .is-once) :is(.lr-brand-face, .lr-brand-eye, .lr-brand-pupils) {
     animation: none !important;
     opacity: 1 !important;
     transform: none !important;
     visibility: visible !important;
   }
-  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-eye-left,
-  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-eye-wink {
-    animation: none !important;
-    opacity: 1 !important;
-    transform: none !important;
-    stroke-dashoffset: 0 !important;
-  }
-  .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-eye-open,
   .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-sparkles,
   .lr-brand-mark:is(.is-animated, .is-once) .lr-brand-sparkles > * {
     animation: none !important;

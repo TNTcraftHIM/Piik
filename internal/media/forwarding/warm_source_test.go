@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/interceptor"
 	"github.com/pion/webrtc/v4"

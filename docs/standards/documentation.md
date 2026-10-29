@@ -76,9 +76,9 @@ Remove repaired, sufficiently verified work from TODO and compact snapshots.
 An unmatched historical report alone does not create a permanent retest task;
 keep its discussion in the issue and reopen work when new evidence warrants it.
 
-Published copy describes Piik's behavior and design directly. Remove discarded
+Published copy describes Silip's behavior and design directly. Remove discarded
 design labels, private operational details and conversational comparisons to
-other products. Describe visual choices in Piik's own design vocabulary.
+other products. Describe visual choices in Silip's own design vocabulary.
 Retain relevant public technical references beside the claims they support,
 using accurate names and direct links without implying affiliation or endorsement.
 Local research inventories do not belong in product copy; keep source provenance

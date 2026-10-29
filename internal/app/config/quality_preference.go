@@ -7,7 +7,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 const MaxQualityPreferenceBytes = 1024

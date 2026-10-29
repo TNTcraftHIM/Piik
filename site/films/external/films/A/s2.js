@@ -1,4 +1,4 @@
-// Film A · Act 2 — the three-step Piik flow: pick a source → copy the invite (calling card) → friends open it in a browser.
+// Film A · Act 2 — the three-step Silip flow: pick a source → copy the invite (calling card) → friends open it in a browser.
 import { h, s, T, ST, O, kf, tw, prog, E, clamp, lerp, rng, noise, shake, show, pulse } from '../../engine/core.js';
 import { C, CAST, mascot, person, icon, burst, focusLines, streaks, halftone, stripes } from '../../engine/art.js';
 import { ransom, ransomPop } from '../../engine/type.js';

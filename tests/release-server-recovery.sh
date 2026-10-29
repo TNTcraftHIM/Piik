@@ -26,8 +26,8 @@ eval "$(extract_function validate_artifact_names)"
   uname() { printf '%s\n' "$architecture"; }
   for architecture in x86_64 aarch64 arm64; do
     for suffix in '' '-linux-arm64'; do
-      artifact_name="piik-${release_id}${suffix}-runtime.tar.gz"
-      manifest_name="piik-${release_id}${suffix}.manifest.tsv"
+      artifact_name="silip-${release_id}${suffix}-runtime.tar.gz"
+      manifest_name="silip-${release_id}${suffix}.manifest.tsv"
       if { [ "$architecture" = x86_64 ] && [ -z "$suffix" ]; } ||
           { [ "$architecture" != x86_64 ] && [ -n "$suffix" ]; }; then
         validate_artifact_names

@@ -338,7 +338,7 @@ export function failSubscription(): string {
 }
 
 export async function audioEnergy(): Promise<number> {
-  const probe = (window as unknown as { __piikGateAudioEnergy: () => Promise<number> }).__piikGateAudioEnergy;
+  const probe = (window as unknown as { __silipGateAudioEnergy: () => Promise<number> }).__silipGateAudioEnergy;
   return await probe();
 }
 

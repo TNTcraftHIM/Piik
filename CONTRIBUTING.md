@@ -9,9 +9,9 @@ English and Chinese are both welcome in issues and PRs.
 | Contribution / 参与方式 | Start here / 从这里开始 |
 | --- | --- |
 | Translate or improve wording / 翻译、校对文案 | [Translation guide](./docs/guide/translating.md) · [中文翻译教程](./docs/guide/translating.zh-CN.md) |
-| Report a bug / 反馈问题 | [Issue templates](https://github.com/TNTcraftHIM/Piik/issues/new/choose); include version, environment, steps and actual result / 附版本、环境、步骤与实际结果 |
+| Report a bug / 反馈问题 | [Issue templates](https://github.com/P4-aaaul/Silip/issues/new/choose); include version, environment, steps and actual result / 附版本、环境、步骤与实际结果 |
 | Improve a guide / 改进教程 | [Documentation map](./docs/README.md); identify the confusing step and explain the expected result / 指出不清楚的步骤及预期结果 |
-| Suggest a feature / 功能建议 | Search [existing issues](https://github.com/TNTcraftHIM/Piik/issues) first, then describe the use case / 先搜索已有讨论，再说明使用场景 |
+| Suggest a feature / 功能建议 | Search [existing issues](https://github.com/P4-aaaul/Silip/issues) first, then describe the use case / 先搜索已有讨论，再说明使用场景 |
 | Contribute code / 参与开发 | [Run from source](./docs/README.md#run-from-source), then follow the workflow below / 从源码启动，按下文流程修改 |
 
 Keep feedback specific and respectful. Explain a wording or design disagreement
@@ -99,7 +99,7 @@ require a wire bump.
 Clean up worktrees and branches only after semantic review and integration are complete and the normal merged-head, open-reference, clean-tree, and non-following link checks pass. Never merge an old branch wholesale after a newer truth checkpoint.
 
 For owner-managed manual deletion, collect permitted retired artifacts in
-`Desktop/Piik-cleanup` with their original paths. Keep worktrees under Git's cleanup
+`Desktop/Silip-cleanup` with their original paths. Keep worktrees under Git's cleanup
 workflow. Targets of a policy-rejected cleanup stay in place and go in that path
 index; do not substitute a move for the rejected deletion.
 
@@ -116,7 +116,7 @@ protocol identifiers; use normal language-specific identifier conventions.
 - Use current community issues and operational reports to identify real compatibility failures, but label anecdotal evidence as such.
 - Include a date and direct URLs. Separate verified facts, measurements, assumptions, and recommendations.
 - Review licenses before copying implementation code. A useful reference is not automatically a compatible dependency.
-- Piik-owned code is [MIT-licensed](./LICENSE); third-party components retain
+- Silip-owned code is [MIT-licensed](./LICENSE); third-party components retain
   their own licenses and notices. GPL/AGPL implementation sources remain
   study-only unless a separate distribution decision accepts their obligations.
 
@@ -153,11 +153,11 @@ does not establish coverage.
 - `gate:*` commands are explicit physical or network acceptance. They must use
   isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
   result. A manual diagnostic may locate a failure, but is not retained as pass
-  evidence. Existing `PIIK_CLIENT_*` gate environment names retain their current
+  evidence. Existing `SILIP_CLIENT_*` gate environment names retain their current
   contract; renaming the tools does not change those overrides.
 - `gate:room-voice` exercises normal Host/Viewer pages against a local production
-  server with real fake-device capture. Set `PIIK_ROOM_VOICE_GATE=true`,
-  `CHROME_PATH` and `PIIK_SERVER_EXE`; repeat with `PIIK_ROOM_VOICE_SFU=true`
+  server with real fake-device capture. Set `SILIP_ROOM_VOICE_GATE=true`,
+  `CHROME_PATH` and `SILIP_SERVER_EXE`; repeat with `SILIP_ROOM_VOICE_SFU=true`
   for embedded SFU. Requires `agent-browser` (or `AGENT_BROWSER_PATH`). Reports
   and screenshots stay under ignored `build/voice-integration`.
 - `gate:network-lab` runs the opt-in [controlled network laboratory](./docs/research/network-lab.md).

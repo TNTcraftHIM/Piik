@@ -8,15 +8,15 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="96x96" href="/favicon.png" />
     <link rel="icon" type="image/svg+xml" sizes="any" href="/favicon.svg" />
-    <title>Piik</title>
+    <title>Silip</title>
     <script>
       var systemTheme = matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
       var theme;
-      try { theme = localStorage.getItem("piik:ui-theme"); } catch (e) {}
+      try { theme = localStorage.getItem("silip:ui-theme"); } catch (e) {}
       var launch = new URLSearchParams(location.hash.slice(1));
-      var launchTheme = launch.get("piik-theme");
-      var explicitTheme = (new URLSearchParams(location.search).get("piik-preferences") || "").split(",").includes("theme");
-      if (launch.get("piik-client") === "1" &&
+      var launchTheme = launch.get("silip-theme");
+      var explicitTheme = (new URLSearchParams(location.search).get("silip-preferences") || "").split(",").includes("theme");
+      if (launch.get("silip-client") === "1" &&
           (launchTheme === "light" || launchTheme === "dark" || launchTheme === "system") &&
           (explicitTheme || (theme !== "light" && theme !== "dark"))) {
         theme = launchTheme === "system" ? systemTheme : launchTheme;

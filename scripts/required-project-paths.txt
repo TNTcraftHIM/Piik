@@ -48,13 +48,12 @@ scripts/app-icons.mjs
 scripts/package-app-candidate.mjs
 scripts/check-go.mjs
 scripts/app-native-host-gate.ts
-cmd/piik-server/main.go
-cmd/piik-peer-gate/main.go
-cmd/piik-app/piik.ico
-cmd/piik-app/piik_windows_amd64.syso
+cmd/silip-server/main.go
+cmd/silip-peer-gate/main.go
+cmd/silip-app/silip.ico
+cmd/silip-app/silip_windows_amd64.syso
 internal/server/webassets/dist/.gitkeep
 deploy/release-server.sh
-deploy/check-release.sh
 docs/adr/0001-p2p-first-media-topology.md
 docs/adr/0010-cross-platform-client-runtime.md
 docs/research/agent-context-governance.md

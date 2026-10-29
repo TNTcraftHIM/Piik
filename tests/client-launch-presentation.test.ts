@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 const firstPaint = readFileSync(new URL("../index.html", import.meta.url), "utf8")
   .match(/<script>([\s\S]*?)<\/script>/)![1]!;
-const keys = ["piik:ui-lang", "piik:ui-mode", "piik:ui-theme"];
+const keys = ["silip:ui-lang", "silip:ui-mode", "silip:ui-theme"];
 
 afterEach(() => { vi.unstubAllGlobals(); vi.resetModules(); });
 
@@ -54,7 +54,7 @@ describe("App presentation handoff authority", () => {
     expect(isClientActivated()).toBe(true);
     expect(changed).toHaveBeenCalledOnce();
     expect(env.page.location.href).toBe("https://site.example/");
-    expect(env.values.get("piik:client-launch:v1")).toBe(blocked ? undefined : "1");
+    expect(env.values.get("silip:client-launch:v1")).toBe(blocked ? undefined : "1");
     release();
     activateClient();
     expect(changed).toHaveBeenCalledOnce();
@@ -68,7 +68,7 @@ describe("App presentation handoff authority", () => {
     { name: "both explicit domains replace saved choices", saved: ["zh", "vis", "dark"], fields: "copy,theme", selection: "en:false", theme: "light", result: ["en", "text", "light"] },
   ])("$name", async ({ saved, fields, selection, theme, result }) => {
     const env = browser(saved);
-    env.page.location = new URL(`https://site.example/${fields ? `?piik-preferences=${fields}` : ""}#piik-client=1&piik-lang=en&piik-mode=text&piik-theme=light`);
+    env.page.location = new URL(`https://site.example/${fields ? `?silip-preferences=${fields}` : ""}#silip-client=1&silip-lang=en&silip-mode=text&silip-theme=light`);
     runInNewContext(firstPaint, { ...env.page, document: env.document, URLSearchParams, matchMedia: env.page.matchMedia });
     expect(env.document.documentElement.dataset.theme).toBe(theme);
     const copy = await import("../src/client/ui/copy");
@@ -114,16 +114,16 @@ describe("App presentation handoff authority", () => {
     const env = browser();
     const { clientLaunchURL, takeClientLaunchBootstrap, readViewerRoute } = await import("../src/client/lib/session");
     const grant = `${"a".repeat(21)}A`;
-    const target = new URL(clientLaunchURL(`https://site.example/r/9527?debug=1#piik-client=1&v=${grant}`, {
+    const target = new URL(clientLaunchURL(`https://site.example/r/9527?debug=1#silip-client=1&v=${grant}`, {
       lang: "zh", vis: true, theme: "dark", explicit: ["copy", "theme"],
     }, undefined, 39730));
     const oldFragment = new URLSearchParams(target.hash.slice(1));
-    expect(oldFragment.get("piik-lang")).toBe("zh");
-    expect(oldFragment.get("piik-mode")).toBe("vis");
-    expect(oldFragment.get("piik-theme")).toBe("dark");
-    expect(target.searchParams.get("piik-client-port")).toBe("39730");
+    expect(oldFragment.get("silip-lang")).toBe("zh");
+    expect(oldFragment.get("silip-mode")).toBe("vis");
+    expect(oldFragment.get("silip-theme")).toBe("dark");
+    expect(target.searchParams.get("silip-client-port")).toBe("39730");
     // The released reader removes only these keys before its exact #v= parser.
-    for (const key of ["piik-client", "client-access", "piik-lang", "piik-mode", "piik-theme"]) oldFragment.delete(key);
+    for (const key of ["silip-client", "client-access", "silip-lang", "silip-mode", "silip-theme"]) oldFragment.delete(key);
     expect(oldFragment.toString()).toBe(`v=${grant}`);
     env.page.location = target;
     expect(takeClientLaunchBootstrap().presentation?.explicit).toEqual(["copy", "theme"]);
@@ -133,12 +133,12 @@ describe("App presentation handoff authority", () => {
 
   it.each(["39720", "39731", "NaN", "39721.5"])("ignores out-of-contract runtime ports: %s", async port => {
     const env = browser();
-    env.page.location = new URL(`https://site.example/?piik-client-port=${port}#piik-client=1`);
+    env.page.location = new URL(`https://site.example/?silip-client-port=${port}#silip-client=1`);
     const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
     expect(takeClientLaunchBootstrap().launchedByClient).toBe(true);
     expect(clientRuntimePort()).toBeNull();
     expect(env.page.location.href).toBe("https://site.example/");
-    expect(env.values.get("piik:client-launch:v1")).toBe("1");
+    expect(env.values.get("silip:client-launch:v1")).toBe("1");
   });
 
   it("keeps an inline App selection when browser storage is unavailable", async () => {
@@ -147,7 +147,7 @@ describe("App presentation handoff authority", () => {
       getItem: () => { throw new Error("blocked"); },
       setItem: () => { throw new Error("blocked"); },
     } });
-    env.page.location = new URL("https://site.example/?piik-client-port=39730#piik-client=1");
+    env.page.location = new URL("https://site.example/?silip-client-port=39730#silip-client=1");
     const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/session");
     takeClientLaunchBootstrap();
     expect(clientRuntimePort()).toBe(39730);

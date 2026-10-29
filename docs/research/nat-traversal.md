@@ -31,7 +31,7 @@ deduplication; it does not classify the NAT or prove another direct path.
 Connection recovery needs explicit negotiation ownership, stale-connection and
 old-ICE-generation rejection, and complete signaling delivery. A duplicate
 restart already performed since a reported failure should not create another
-operation. Piik owns these concerns in
+operation. Silip owns these concerns in
 [ordinary recovery](#ordinary-ice-and-media-recovery); increasing retry counts
 or adding another restart controller does not repair those boundaries.
 Endpoint names and packaged class names alone do not establish active relay
@@ -239,7 +239,7 @@ Packet-level loopback regressions cover reassignment, renewal, deletion,
 cancellation and the existing PCPv6 combination. They do not establish physical
 router coverage or a higher field connection-success rate.
 
-Piik bounds a mapping caller's wait to three seconds. Optional PCPv6 operations
+Silip bounds a mapping caller's wait to three seconds. Optional PCPv6 operations
 have a two-second bound in both gateway adapters, leaving time to return a
 successful IPv4 mapping before that caller deadline. Joining the optional work
 at the same deadline could otherwise discard IPv4 success and suppress renewal.
@@ -277,7 +277,7 @@ candidate independently from the self-hosted endpoint, Xiaomi, Bilibili, and
 Cloudflare within a five-second bound. `stun.qq.com:3478` produced none in the
 same ordered run. Candidate events and local candidate stats preserved the exact
 STUN `url`, but that run established no selected-path benefit. The current
-[STUN configuration](../standards/configuration.md#piik-app-configuration)
+[STUN configuration](../standards/configuration.md#silip-app-configuration)
 is independent of this dated reachability probe.
 
 A second real-Chrome loopback rewrote only one remote candidate foundation to
@@ -370,26 +370,26 @@ a new Peer route.
 
 Iroh's [NAT guide](https://docs.iroh.computer/concepts/nat-traversal) estimates
 direct reachability for roughly nine in ten network configurations. It does not
-provide a matched 70%-to-90% before/after measurement against Piik or its ICE
+provide a matched 70%-to-90% before/after measurement against Silip or its ICE
 stack. Tailscale also [reports direct success above 90% in typical conditions](https://tailscale.com/blog/nat-traversal-improvements-pt-1);
 that figure explicitly counts direct connections, not relay-only success.
 Keep direct success separate from the
 [relay fallback](https://docs.iroh.computer/concepts/relays) that carries traffic
 when hole punching fails; neither statistic transfers to our user population.
 
-| Mechanism | Piik comparison |
+| Mechanism | Silip comparison |
 | --- | --- |
 | Exchange endpoints and coordinate outbound probes | Existing room signaling plus Browser/Pion ICE connectivity checks. |
 | Discover and use the same UDP mapping | Each Native connection shares its Pion UDP socket across fresh STUN discovery, prediction and media; Chromium owns Browser sockets. |
 | IPv4/IPv6 and gateway mapping | Native dual-stack candidates and bounded PCP/NAT-PMP/UPnP already exist; actual availability depends on the network. |
-| Switch between direct and relay paths | Iroh manages QUIC paths; Piik hands off WebRTC edges through one room-route operation. These are different contracts. |
-| Relay data over TLS/TCP when direct UDP fails | Iroh and Tailscale provide this. Piik currently has optional SFU/UDP, while App public invitations remain P2P-only. This is a coverage difference, not a missing prediction formula. |
+| Switch between direct and relay paths | Iroh manages QUIC paths; Silip hands off WebRTC edges through one room-route operation. These are different contracts. |
+| Relay data over TLS/TCP when direct UDP fails | Iroh and Tailscale provide this. Silip currently has optional SFU/UDP, while App public invitations remain P2P-only. This is a coverage difference, not a missing prediction formula. |
 
 Reviewing [Tailscale v1.104.1's DISCO messages](https://github.com/tailscale/tailscale/blob/v1.104.1/disco/disco.go)
 and [endpoint handling](https://github.com/tailscale/tailscale/blob/v1.104.1/wgengine/magicsock/endpoint.go)
 gives a more specific ownership comparison:
 
-| DISCO behavior | Piik application |
+| DISCO behavior | Silip application |
 | --- | --- |
 | `CallMeMaybe` sends recently observed endpoints and requests return traffic after outbound probes. | Current-generation room signaling and Trickle ICE already exchange candidates. Optional Native preparation coordinates its bounded sends through that same signaling owner. A second discovery protocol adds no established benefit. |
 | Authenticated Ping/Pong ties responses to transactions and learns actual peer endpoints. | ICE already owns authenticated checks, triggered checks and peer-reflexive discovery. Native preparation additionally requires the current operation's key and actual response before socket adoption. Do not maintain a parallel peer-address database. |
@@ -429,16 +429,16 @@ reuse feasibility and its cost, not a Browser-compatible reachability gain.
 
 The October 19 review and isolated Linux check of
 [frp v0.71.1](https://github.com/fatedier/frp/releases/tag/v0.71.1)
-establish fixed-UDP forwarding feasibility, not an integrated Piik provider:
+establish fixed-UDP forwarding feasibility, not an integrated Silip provider:
 
 - HTTP/WebSocket can use a normal reverse-proxy entry with the correct HTTPS
   public origin. A fixed SFU UDP forward is a deployment candidate when
   `SFU_PUBLIC_IP` advertises the reachable frps address and the external and local
-  ports both match `SFU_UDP_PORT`; Piik does not separately advertise a remote port.
-- Do not expose Piik's STUN listeners through ordinary frp UDP forwarding. Its
+  ports both match `SFU_UDP_PORT`; Silip does not separately advertise a remote port.
+- Do not expose Silip's STUN listeners through ordinary frp UDP forwarding. Its
   [forwarder opens a local socket](https://github.com/fatedier/frp/blob/v0.71.1/pkg/proto/udp/udp.go)
   for each remote endpoint, so the backend observes frpc's address instead of the
-  participant's mapping. Piik's STUN listener does not parse Proxy Protocol.
+  participant's mapping. Silip's STUN listener does not parse Proxy Protocol.
   Keep STUN directly reachable.
 - The [UDP proxy](https://github.com/fatedier/frp/blob/v0.71.1/client/proxy/udp.go)
   frames datagrams into a work connection; choosing QUIC does not turn this into
@@ -447,12 +447,12 @@ establish fixed-UDP forwarding feasibility, not an integrated Piik provider:
   [XTCP requires frpc at both ends](https://gofrp.org/en/docs/examples/xtcp/), so
   it cannot replace ICE for an ordinary Browser invitation.
 
-The direct/frp control used Piik's embedded SFU with one Pion publisher and two
+The direct/frp control used Silip's embedded SFU with one Pion publisher and two
 subscribers. Both paths delivered at least 30 complete, byte-identical VP8 frames
 and 30 Opus packets per subscriber, with an explicit Viewer PLI reaching the
 publisher. The frp arm blocked direct backend-to-client traffic, used the default
 TCP work connection, and preserved a sibling when one subscriber retired.
-The same check against Piik's STUN listener returned the actual client mapping
+The same check against Silip's STUN listener returned the actual client mapping
 directly and frpc's backend socket through frp, confirming the STUN limitation
 above. These loopback controls do not establish Browser decoding, audible audio,
 public-network performance, loss recovery or QUIC behavior.
@@ -462,7 +462,7 @@ It describes a TUN-based private network between clients and visitors, which is
 closer to the virtual-LAN approach than fixed-port forwarding. The official guide
 still marks it Alpha and unsuitable for production. It requires frp setup on
 participating endpoints as well as a reachable frps service; it is not part of
-Piik's tested forwarding recipe or a default campus-network recommendation.
+Silip's tested forwarding recipe or a default campus-network recommendation.
 
 A well-connected participant already can help through the existing Viewer relay.
 The normal integration candidate now exposes an explicit voluntary fanout
@@ -506,11 +506,11 @@ Mature implementations provide a concrete comparison:
 - [frp's strategy table](https://github.com/fatedier/frp/blob/2542d11a6201c0f2bbe3b1d93031fc1e83201056/pkg/nathole/analysis.go)
   separates predictable-port, role/timing and probabilistic strategies. One
   strategy pairs 256 local listeners with 1,000 remote port guesses. Those are
-  upstream operating budgets, not accepted Piik defaults or a success guarantee.
+  upstream operating budgets, not accepted Silip defaults or a success guarantee.
 - [EasyTier's Native implementation](https://github.com/EasyTier/EasyTier/blob/1649ec00135e12103e05bf543e0ed313d7e190f8/easytier-core/src/connectivity/hole_punch/udp/client.rs)
   uses socket arrays and coordinated peer requests, with separate predictable
   and random-port paths. Its implementation is evidence that these are real
-  mechanisms, not evidence that replacing Piik's media stack improves coverage.
+  mechanisms, not evidence that replacing Silip's media stack improves coverage.
 
 An isolated Go prototype compared ordinary ICE, the current eight-candidate
 prediction policy, an ordered first tuple, a coordinated eight-socket pool and
@@ -589,8 +589,8 @@ The Windows Browser-to-App fanout gate also exercises the actual room retry,
 both Native control preparations and ordinary ICE continuation when the mapping
 is ineligible. Two Viewers decode about 30 fps; live quality, pause/resume, source
 audio changes and App-exit fallback remain usable. Run the existing
-`gate:app-browser-fanout` entry with `PIIK_CLIENT_BROWSER_FANOUT_GATE=true`,
-`PIIK_CLIENT_PUNCH_GATE=true` and `CHROME_PATH` set. This arm uses loopback STUN
+`gate:app-browser-fanout` entry with `SILIP_CLIENT_BROWSER_FANOUT_GATE=true`,
+`SILIP_CLIENT_PUNCH_GATE=true` and `CHROME_PATH` set. This arm uses loopback STUN
 listeners on UDP 3478/3479/3480 and injects one candidate rejection; it does not
 contact public STUN services.
 
@@ -613,13 +613,13 @@ against that same endpoint pair and relay policy.
   attempts across more than 85,000 networks, collected in December 2022 through
   January 2023. Its roughly 70% success is conditional
   on relay reservation and address discovery; 97.6% of successful punches occur
-  on the first attempt. These are libp2p results, not a Piik baseline. They justify
+  on the first attempt. These are libp2p results, not a Silip baseline. They justify
   separating preparation failures from hole-punch failures and measuring the
   marginal benefit of retries, not copying a retry count or replacing ICE. Its
   proposed role reversal and probabilistic port probing are future work, not
   measured improvements in that campaign. Standard full ICE already checks in
   both directions; a QUIC initiator-role proposal is not evidence for changing
-  Piik's Host authority or adding another retry owner.
+  Silip's Host authority or adding another retry owner.
 - [QUIC hole punching and migration](https://arxiv.org/abs/2408.01791) reports
   shorter connection/restoration latency than its TCP/re-punching controls.
   It does not demonstrate a drop-in improvement for Browser WebRTC. Current
@@ -628,12 +628,12 @@ against that same endpoint pair and relay policy.
 - [ICE renomination](https://datatracker.ietf.org/doc/draft-thatcher-tsvwg-renomination/)
   proposes changing the selected candidate pair without a full restart. It
   remains an Internet-Draft. The tested Pion WebRTC v4.2.19 already exposed
-  `SetICERenomination`; Piik does not enable it. That ICE v4.4.0 implementation
+  `SetICERenomination`; Silip does not enable it. That ICE v4.4.0 implementation
   references an earlier draft and automatically probes and reselects candidate
   pairs. Verify wire-version agreement, Browser interoperability, probe cost and
   recovery benefit before enabling it. This targets path changes after connection,
   not a demonstrated increase in initial NAT reachability. Keep selection in the
-  framework; do not add a Piik path-selection loop.
+  framework; do not add a Silip path-selection loop.
 - [Direct Sockets](https://developer.chrome.com/docs/iwa/direct-sockets) is
   restricted to explicitly installed Isolated Web Apps. It does not remove the
   installation requirement for an ordinary invitation page.
@@ -667,14 +667,14 @@ ICE v4.4.8 also [corrects Binding-request PRIORITY](https://github.com/pion/ice/
 to use the peer-reflexive preference instead of the source candidate's preference.
 The old value could tie a peer-reflexive pair with a host pair and add an
 unnecessary acceptance wait. The upstream regression fails with the old pin and
-passes with the correction, as do Piik's existing Native, STUN and SFU checks.
+passes with the correction, as do Silip's existing Native, STUN and SFU checks.
 This corrects candidate selection; it does not establish a new reachable NAT
 class or a field success rate.
 
 WebRTC's DTLS v3.1.13 dependency also includes
 [queued-buffer ownership and handshake-retransmission corrections](https://github.com/pion/dtls/compare/v3.1.10...v3.1.13).
 They address loss/reordering during transport establishment and strengthen
-handshake validation; they do not add reachable NAT paths or another Piik retry
+handshake validation; they do not add reachable NAT paths or another Silip retry
 owner.
 
 A controlled Chrome 152 check reproduced the
@@ -696,7 +696,7 @@ UDP path was cut. Shared forwarding, Native edges, SFU and STUN tests passed,
 including Linux race checks and a disposable-namespace interface-replacement
 control. No new automatic renomination, probing loop or retry budget is enabled.
 
-Keep Piik's fresh-interface mux and connection-owned STUN/mapping repairs: the
+Keep Silip's fresh-interface mux and connection-owned STUN/mapping repairs: the
 newer framework still snapshots its default interface view and caches successful
 universal-mux observations. An upstream release-note match is not sufficient to
 remove these protections. [Verification status](../verification-status.md#interpretation)
@@ -719,7 +719,7 @@ sent the older nomination attribute. Thus receiving new frames alone cannot
 establish compatible path migration. In these fixtures, steady Binding requests
 also rose from 3 to 27-75 per five seconds, depending on interface enumeration.
 These are local transport controls, not physical-network success measurements or
-a defect in Piik's currently disabled feature. Reopen only for negotiated Browser
+a defect in Silip's currently disabled feature. Reopen only for negotiated Browser
 support and bounded probe/recovery behavior; do not add UA exceptions, a second
 recovery loop or a Browser fork to enable this option.
 
@@ -727,7 +727,7 @@ recovery loop or a Browser fork to enable this option.
 
 **Magicsock integration is not planned.** The tested composition required
 Native App transport at both ends and established no additional reachable NAT
-class worth its integration cost. Piik retains WebRTC with its existing
+class worth its integration cost. Silip retains WebRTC with its existing
 NAT preparation and virtual-LAN support.
 
 The experiment has been removed. The dated controls below record the decision's
@@ -742,7 +742,7 @@ pairs, with relay disabled, produced the same results with four- and
 twenty-second direct observation windows. In both stacks, cone/cone,
 restricted/restricted and cone/hard in either direction connected;
 restricted/hard in either direction and hard/hard did not. These are
-stock-stack mechanism controls, not Piik's complete gateway
+stock-stack mechanism controls, not Silip's complete gateway
 mapping/prediction composition or physical success-rate measurements.
 
 Warmed Magicsock carried ICE/DTLS and audio/video SRTP, including two observed
@@ -808,8 +808,8 @@ The experimental composition exposed these integration costs:
 - **Authorization:** the pinned Tailcat/WireGuard composition could retain a
   revoked inbound peer or install it from a late authorization result. Scoped
   experimental corrections passed revocation, unrelated-peer, sibling-media
-  and race controls. Piik's production transport does not use these dependencies;
-  the result is an adoption requirement, not a published Piik defect.
+  and race controls. Silip's production transport does not use these dependencies;
+  the result is an adoption requirement, not a published Silip defect.
 - **Flow ownership:** unrelated listener changes could discard an existing
   inbound filter entry. Duplicate client identities could collide at DERP;
   close-before-initialization was not terminal. Isolated repairs preserved
@@ -982,7 +982,7 @@ another mechanism is proposed.
 Pion ICE `v4.4.0` caches a shared socket's STUN mapping by destination for 25
 seconds. The former Native Host/Viewer Engine socket outlived its media edges;
 edge replacement and ICE restart did not invalidate that cache. Browser-only ICE
-does not use it. Piik's default route-operation deadline is 20 seconds, while
+does not use it. Silip's default route-operation deadline is 20 seconds, while
 committed-edge recovery has three-second steps. These are distinct lifetimes:
 a new connection or new ICE credentials do not promise a new public port.
 
@@ -1109,7 +1109,7 @@ proxy used an already firewall-permitted executable; that initial control alone
 did not establish direct packaged-App reachability.
 
 A same-day follow-up used the packaged App's ordinary Local invitation directly.
-The remote Browser initially timed out before reaching Piik. The host listened
+The remote Browser initially timed out before reaching Silip. The host listened
 on the selected virtual address, but Windows classified the adapter as Public,
 blocked inbound traffic by default and had no rule for the new executable path;
 new-app notifications were disabled. With the owner's approval, inbound rules

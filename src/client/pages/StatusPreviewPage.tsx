@@ -92,7 +92,7 @@ export function StatusPreviewPage() {
           </div>
         </section>
         <header className="sp-heading">
-          <div><p className="sp-kicker">Piik · 状态语义</p><h1>同一事实，各有分寸。</h1>
+          <div><p className="sp-kicker">Silip · 状态语义</p><h1>同一事实，各有分寸。</h1>
             <p>标题说正在做什么，顶部说明信令，电视下沿图标说明画面；悬停查看图示与文字说明。</p></div>
           <label className="sp-motion"><input type="checkbox" checked={reducedMotion}
             onChange={(event) => setReducedMotion(event.target.checked)} />减少动态效果</label>

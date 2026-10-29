@@ -3,7 +3,7 @@ package route
 import (
 	"errors"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // A confirmed departure ends media authority even while acquisition is paused

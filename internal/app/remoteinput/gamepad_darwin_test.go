@@ -11,8 +11,8 @@ import (
 // This exercises native ownership; game/framework recognition needs a separate
 // consumer on the Mac and cannot be established by a successful input write.
 func TestMacGamepadNativeLifecycle(t *testing.T) {
-	if os.Getenv("PIIK_GAMEPAD_GATE") != "1" {
-		t.Skip("set PIIK_GAMEPAD_GATE=1 in an Apple-authorized Mac build")
+	if os.Getenv("SILIP_GAMEPAD_GATE") != "1" {
+		t.Skip("set SILIP_GAMEPAD_GATE=1 in an Apple-authorized Mac build")
 	}
 	b, err := openGamepadBackend()
 	if err != nil {

@@ -2,15 +2,13 @@ import { mountBrands } from './assets/brand.js';
 import { initialLanguage, rememberLanguage } from './assets/language.js';
 import { createTextCycle } from '../src/client/ui/text-rotation.ts';
 import { applyTheme, currentTheme, currentThemePreference, initTheme, subscribeTheme } from '../src/client/ui/theme.ts';
-import { DEFAULT_RELEASE_API_URL, parseReleaseMetadata } from '../src/client/lib/release-update.ts';
-import { splitReleaseHeadline } from '../scripts/release-headline.mjs';
 mountBrands();
 const architecturePickers = document.querySelectorAll('.download-architecture');
 function syncDownloadLinks(picker) {
   const selected = picker.querySelector('input:checked');
   for (const link of picker.closest('.download-card').querySelectorAll('a')) {
     const target = new URL(link.href);
-    target.pathname = target.pathname.replace(/piik-app-[a-z0-9]+-[a-z0-9]+(\.zip|\.apk)$/, `piik-app-${selected.value}$1`);
+    target.pathname = target.pathname.replace(/silip-app-[a-z0-9]+-[a-z0-9]+(\.zip|\.apk)$/, `silip-app-${selected.value}$1`);
     link.href = target.href;
   }
 }
@@ -19,42 +17,12 @@ for (const picker of architecturePickers) {
   syncDownloadLinks(picker);
   picker.addEventListener('change', () => syncDownloadLinks(picker));
 }
-// Content and download links remain usable without scripts or release metadata.
-const releaseLabel = document.getElementById('download-release');
-if (releaseLabel) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
-  void fetch(DEFAULT_RELEASE_API_URL, {
-    credentials: 'omit', referrerPolicy: 'no-referrer', redirect: 'error',
-    signal: controller.signal, headers: { Accept: 'application/vnd.github+json' },
-  }).then(response => response.ok ? response.json() : null)
-    .then(metadata => {
-      const release = parseReleaseMetadata(metadata);
-      if (!release?.publishedAt) return;
-      releaseLabel.querySelector('b').textContent = release.version;
-      const date = releaseLabel.querySelector('time');
-      date.dateTime = release.publishedAt;
-      date.textContent = release.publishedAt.slice(0, 10);
-      releaseLabel.hidden = false;
-      const { headline } = splitReleaseHeadline(metadata.body);
-      if (headline) {
-        const label = document.getElementById('download-headline');
-        for (const text of label.querySelectorAll('[lang]')) {
-          text.querySelector('strong').textContent = headline[text.lang].title;
-          const description = text.querySelector('span');
-          description.textContent = headline[text.lang].description;
-          description.hidden = !headline[text.lang].description;
-        }
-        label.hidden = false;
-      }
-    }).catch(() => {}).finally(() => clearTimeout(timeout));
-}
 const root = document.documentElement;
 const language = document.getElementById('language');
 const theme = document.getElementById('theme');
 const motion = matchMedia('(prefers-reduced-motion: reduce)');
 const motionControl = document.getElementById('reduce-motion');
-const motionStorageKey = 'piik:site-reduced-motion';
+const motionStorageKey = 'silip:site-reduced-motion';
 let preferStill = false;
 try {
   preferStill = localStorage.getItem(motionStorageKey) === 'true';
@@ -84,7 +52,7 @@ function syncFilmPreferences() {
   const preference = currentThemePreference() ?? 'system';
   target.searchParams.set('theme', preference);
   filmLink.href = target.href;
-  if (film.open) filmFrame.contentWindow?.postMessage({type:'piik-film-preferences',lang:root.lang,theme:preference}, location.origin);
+  if (film.open) filmFrame.contentWindow?.postMessage({type:'silip-film-preferences',lang:root.lang,theme:preference}, location.origin);
 }
 const copy = {
   en: {
@@ -93,8 +61,8 @@ const copy = {
     image: roomIllustration.alt,
   },
   'zh-CN': {
-    title: 'Piik — 免费开源的屏幕共享',
-    description: 'Piik 是免费开源的私密屏幕共享工具，适合游戏直播、一起看电影、展示绘画和照片。支持自部署站点，邀请最多 20 位朋友通过浏览器观看。',
+    title: 'Silip — 免费开源的屏幕共享',
+    description: 'Silip 是免费开源的私密屏幕共享工具，适合游戏直播、一起看电影、展示绘画和照片。支持自部署站点，邀请最多 20 位朋友通过浏览器观看。',
     image: '戴着小金冠的房主分享 RPG 游戏、绘画、旅行照片和动画电影，三位朋友坐在沙发上观看。',
   },
 };
@@ -116,7 +84,7 @@ function setLanguage(lang) {
   for (const link of document.querySelectorAll('[data-doc-page]')) {
     link.href = `./docs/${chinese ? 'zh/' : ''}${link.dataset.docPage}${chinese ? '' : '?lang=en'}`;
   }
-  filmFrame.title = chinese ? 'Piik 宣传片' : 'Piik introduction';
+  filmFrame.title = chinese ? 'Silip 宣传片' : 'Silip introduction';
   syncThemeControl();
   syncWelcome();
   syncFilmPreferences();

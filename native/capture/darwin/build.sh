@@ -27,4 +27,4 @@ xcrun swiftc \
   -framework VideoToolbox \
   -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker "$(dirname "$0")/Info.plist" \
   "$(dirname "$0")/main.swift" \
-  -o "$output/piik-capture"
+  -o "$output/silip-capture"

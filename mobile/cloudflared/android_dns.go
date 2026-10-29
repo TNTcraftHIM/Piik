@@ -1,6 +1,6 @@
-//go:build android && piik_cloudflared
+//go:build android && silip_cloudflared
 
-// Piik's Android adapter for the pinned cloudflared executable. See README.md.
+// Silip's Android adapter for the pinned cloudflared executable. See README.md.
 package main
 
 /*
@@ -10,7 +10,7 @@ package main
 #include <poll.h>
 #include <stdint.h>
 
-static int piik_dns_wait(int query, int cancel) {
+static int silip_dns_wait(int query, int cancel) {
     struct pollfd fds[2] = {{query, POLLIN, 0}, {cancel, POLLIN, 0}};
     int result;
     do { result = poll(fds, 2, -1); } while (result < 0 && errno == EINTR);
@@ -145,7 +145,7 @@ func readAndroidDNS(ctx context.Context, fd C.int) ([]byte, error) {
 	defer w.Close()
 	stop := context.AfterFunc(ctx, func() { _, _ = w.Write([]byte{1}) })
 	defer stop()
-	ready := C.piik_dns_wait(fd, C.int(r.Fd()))
+	ready := C.silip_dns_wait(fd, C.int(r.Fd()))
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

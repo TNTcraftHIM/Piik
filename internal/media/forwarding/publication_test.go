@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
-	"github.com/TNTcraftHIM/Piik/internal/thirdparty/livekit/sendsidebwe"
+	"github.com/P4-aaaul/Silip/internal/media/encoded"
+	"github.com/P4-aaaul/Silip/internal/thirdparty/livekit/sendsidebwe"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/ccutils"

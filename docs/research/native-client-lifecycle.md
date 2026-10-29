@@ -238,7 +238,7 @@ extension forcibly disabled **Broadcast IP for Best WebRTC Performance**;
 correcting the setting/extension restored Native sharing. The confirmed cause
 is that extension's WebRTC policy, not unsupported Windows capture. VPN
 extensions may reapply the override; the
-[Chromium WebRTC FAQ](../../cmd/piik-app/README.md#chromium-webrtc-connections)
+[Chromium WebRTC FAQ](../../cmd/silip-app/README.md#chromium-webrtc-connections)
 owns the user steps. This does not authorize a Browser-specific transport fallback.
 
 An isolated Chrome 152.0.7977.82 data-channel A/B verifies the policy
@@ -329,7 +329,7 @@ or other hardware acceptance.
 
 ## Windows Capture Borders
 
-The accepted scope keeps WGC for Windows capture and previews. Piik does not
+The accepted scope keeps WGC for Windows capture and previews. Silip does not
 add DXGI or inject into system processes to hide the border. The reader-facing
 [troubleshooting guide](../guide/troubleshooting.md#yellow-capture-border-on-windows)
 owns the optional external-mod procedure; the evidence below records its limits
@@ -394,7 +394,7 @@ An unofficial WGC-preserving option exists:
 documents disabling the border on Windows 10 21H2. Source inspection confirms
 injection into `dwm.exe` and hooks of private `uDWM.dll`
 `CProjectionBorderVisual` drawing methods. Its disable flag has no per-app
-filter. This is a desktop-compositor modification, not a missing Piik session
+filter. This is a desktop-compositor modification, not a missing Silip session
 option; compatibility with private Windows methods is outside WGC's contract.
 It has not been locally verified on Windows 10 and is not a bundled dependency
 or automatic workaround. The official
@@ -408,13 +408,13 @@ capture: cropping the desktop can expose overlapping windows. Do not silently
 substitute it for a selected window. [OBS's display capture implementation](https://github.com/obsproject/obs-studio/blob/master/plugins/win-capture/duplicator-monitor-capture.c)
 also retains distinct DXGI/WGC paths and selects WGC for some multi-adapter
 laptops; a mature implementation does not establish universal DXGI availability.
-OBS is a design reference, not source to copy into Piik's MIT implementation.
+OBS is a design reference, not source to copy into Silip's MIT implementation.
 
 The pinned WebRTC SDK already contains `ScreenCapturerWinDirectx` and
 `DesktopAndCursorComposer`. A bounded standalone probe on Windows 11 build 26200
 on 2026-09-16 linked that existing SDK and returned six 2560x1440 frames with
 cursor composition, then exited. These frames expose CPU data and no GPU
-texture. Piik's current capture/encoder boundary consumes D3D11 textures, so
+texture. Silip's current capture/encoder boundary consumes D3D11 textures, so
 this reuse would add a readback/upload path; the probe establishes neither
 encoding throughput nor Windows 10 support. SDK build defines must match:
 `RTC_ENABLE_WIN_WGC` changes `DesktopCaptureOptions` layout even when selecting

@@ -1,4 +1,4 @@
-// Package httpassets supplies shared HTTP delivery for Piik's Web assets.
+// Package httpassets supplies shared HTTP delivery for Silip's Web assets.
 package httpassets
 
 import (

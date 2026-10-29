@@ -9,12 +9,12 @@
 
 #include <cassert>
 
-using namespace piik::capture::windows;
+using namespace silip::capture::windows;
 
-class DelayedKeyframeEncoder final : public piik::capture::windows::VideoEncoder {
+class DelayedKeyframeEncoder final : public silip::capture::windows::VideoEncoder {
  public:
   explicit DelayedKeyframeEncoder(std::vector<bool>& requests)
-      : VideoEncoder(piik::capture::OutputKind::h264, "fixture", "fixture"), requests_(requests) {}
+      : VideoEncoder(silip::capture::OutputKind::h264, "fixture", "fixture"), requests_(requests) {}
   EncodedAccessUnit Encode(ID3D11Texture2D*, UINT64 timestamp, bool key,
       EncoderClock::time_point) override {
     requests_.push_back(key);

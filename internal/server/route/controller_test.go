@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // TS 359: keeps one diagnostic label until a departed relay is finally pruned

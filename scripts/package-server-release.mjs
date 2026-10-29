@@ -29,7 +29,7 @@ import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
 // binary name, the manifest allowlist and the archive allowlist all follow the
 // selected target instead of a single constant.
 function serverBinaryName(target) {
-  return target.goos === "windows" ? "piik-server.exe" : "piik-server";
+  return target.goos === "windows" ? "silip-server.exe" : "silip-server";
 }
 
 // Everything the archive may contain. deploy/release-server.sh enforces the same
@@ -194,8 +194,8 @@ if (existsSync(outputRoot)) fail("Output directory must not already exist");
 
 const revision = assertCleanRevision(repositoryRoot);
 const version = buildVersion(repositoryRoot, revision);
-process.env.VITE_PIIK_VERSION = version;
-process.env.VITE_PIIK_REVISION = revision;
+process.env.VITE_SILIP_VERSION = version;
+process.env.VITE_SILIP_REVISION = revision;
 
 if (!existsSync(join(repositoryRoot, "LICENSE"))) fail("Missing release input: LICENSE");
 buildWebAssets(repositoryRoot);
@@ -211,7 +211,7 @@ let outputOwned = false;
 try {
   mkdirSync(runtimeRoot, { recursive: true });
   copyFileSync(join(repositoryRoot, "LICENSE"), join(runtimeRoot, "LICENSE"));
-  const goCommand = process.env.PIIK_GO?.trim() || "go";
+  const goCommand = process.env.SILIP_GO?.trim() || "go";
   const binaryName = serverBinaryName(target);
   const serverPath = join(runtimeRoot, binaryName);
   run(goCommand, [
@@ -221,7 +221,7 @@ try {
     `-s -w -X main.BuildRevision=${revision} -X main.BuildVersion=${version}`,
     "-o",
     serverPath,
-    "./cmd/piik-server",
+    "./cmd/silip-server",
   ], repositoryRoot, {
     ...process.env,
     GOOS: target.goos,
@@ -240,7 +240,7 @@ try {
 
   const paths = runtimePaths(target);
   const records = recordsFor(runtimeRoot, paths);
-  const stem = `piik-${releaseId}${target.suffix}`;
+  const stem = `silip-${releaseId}${target.suffix}`;
   const manifestName = `${stem}.manifest.tsv`;
   const archiveKind = target.goos === "windows" ? "zip" : "tar.gz";
   const artifactName = `${stem}-runtime.${archiveKind}`;
@@ -287,9 +287,9 @@ try {
     run("docker", [
       "build", "--platform", `${target.goos}/${target.goarch}`,
       "--file", join(repositoryRoot, "deploy", "container", "Dockerfile"),
-      "--build-arg", `PIIK_VERSION=${version}`,
-      "--build-arg", `PIIK_REVISION=${revision}`,
-      "--build-arg", `PIIK_SERVER_SHA256=${descriptor.artifactSha256}`,
+      "--build-arg", `SILIP_VERSION=${version}`,
+      "--build-arg", `SILIP_REVISION=${revision}`,
+      "--build-arg", `SILIP_SERVER_SHA256=${descriptor.artifactSha256}`,
       "--tag", containerImage, verifyRoot,
     ], repositoryRoot);
   }

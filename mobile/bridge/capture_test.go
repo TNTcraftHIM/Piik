@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/loopback"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativecontrol"
-	"github.com/TNTcraftHIM/Piik/internal/app/nativehost"
+	"github.com/P4-aaaul/Silip/internal/app/loopback"
+	"github.com/P4-aaaul/Silip/internal/app/nativeaudio"
+	"github.com/P4-aaaul/Silip/internal/app/nativecapture"
+	"github.com/P4-aaaul/Silip/internal/app/nativecontrol"
+	"github.com/P4-aaaul/Silip/internal/app/nativehost"
 	"github.com/livekit/livekit-server/pkg/sfu"
 )
 

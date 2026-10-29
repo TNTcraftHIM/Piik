@@ -14,7 +14,7 @@ const browser = process.env.AGENT_BROWSER_PATH || (process.platform === 'win32'
   ? join(process.env.APPDATA, 'npm/node_modules/agent-browser/bin/agent-browser-win32-x64.exe')
   : 'agent-browser');
 const execute = promisify(execFile);
-const session = `piik-guide-images-${process.pid}`;
+const session = `silip-guide-images-${process.pid}`;
 await execute(process.execPath, [fileURLToPath(import.meta.resolve('tsx/cli')), '--tsconfig',
   fileURLToPath(new URL('./tsconfig.json', import.meta.url)),
   fileURLToPath(new URL('./update-guide-diagrams.tsx', import.meta.url))]);
@@ -28,7 +28,7 @@ async function openSection(section, lang, theme, path = '/__tooltip-preview') {
   await run('open', new URL(path, preview).href);
   await run('wait', `#${section}`);
   await run('click', `.lr-top button[aria-label="${lang === 'en' ? 'English' : '简体中文'}"]`);
-  await evaluate(`localStorage.setItem('piik:ui-theme', ${JSON.stringify(theme)})`);
+  await evaluate(`localStorage.setItem('silip:ui-theme', ${JSON.stringify(theme)})`);
   await run('reload');
   await run('wait', `#${section}`);
   await evaluate(`(async () => {

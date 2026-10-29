@@ -60,10 +60,10 @@ func TestUinputGamepadReport(t *testing.T) {
 
 // Run explicitly on an isolated Linux desktop/runner with the stock uinput
 // module and permission to open uinput and the resulting evdev nodes:
-// PIIK_TEST_UINPUT=1 go test ./internal/app/remoteinput -run TestUinputKernel -v
+// SILIP_TEST_UINPUT=1 go test ./internal/app/remoteinput -run TestUinputKernel -v
 func TestUinputKernel(t *testing.T) {
-	if os.Getenv("PIIK_TEST_UINPUT") != "1" {
-		t.Skip("set PIIK_TEST_UINPUT=1 on a Linux runner with uinput/evdev permissions")
+	if os.Getenv("SILIP_TEST_UINPUT") != "1" {
+		t.Skip("set SILIP_TEST_UINPUT=1 on a Linux runner with uinput/evdev permissions")
 	}
 	backend, err := openGamepadBackend()
 	if err != nil {

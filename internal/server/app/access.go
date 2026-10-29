@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 const (
@@ -156,9 +156,9 @@ func (a *siteAccessGate) createCookie() string {
 
 func (a *siteAccessGate) cookieName() string {
 	if a.secure {
-		return "__Host-piik-site-access"
+		return "__Host-silip-site-access"
 	}
-	return "piik-site-access"
+	return "silip-site-access"
 }
 
 func (a *siteAccessGate) sign(payload string) string {

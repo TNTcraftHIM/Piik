@@ -60,15 +60,15 @@ vi.mock("../scripts/package-licenses.mjs", () => ({ writeAppLicenseNotices: () =
 
 describe.each(["linux-amd64", "linux-arm64"])("App package source identity (%s)", (target) => {
   it.each(["clean", "nested", "dirty", "revision", "copy", "existing", "output-created", "wrong-architecture"])("exports only complete owned output from unchanged source (%s)", async (finalState) => {
-    const root = mkdtempSync(join(tmpdir(), "piik-app-assembly-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-app-assembly-"));
     const output = join(root, ...(finalState === "nested" ? ["new-parent"] : []), "app");
     const descriptor = join(root, "server.release.json");
     const artifact = Buffer.from("fixture server archive");
     const previousArguments = process.argv;
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    vi.stubEnv("PIIK_GO", "piik-fixture-go");
-    vi.stubEnv("VITE_PIIK_VERSION", "development");
-    vi.stubEnv("VITE_PIIK_REVISION", "");
+    vi.stubEnv("SILIP_GO", "silip-fixture-go");
+    vi.stubEnv("VITE_SILIP_VERSION", "development");
+    vi.stubEnv("VITE_SILIP_REVISION", "");
     source.built = false;
     source.finalState = finalState;
     source.output = output;
@@ -89,11 +89,11 @@ describe.each(["linux-amd64", "linux-arm64"])("App package source identity (%s)"
       if (finalState === "clean" || finalState === "nested") {
         await assembly;
         expect(readFileSync(join(output, "REVISION"), "ascii")).toBe(`${source.revision}\n`);
-        expect(existsSync(join(output, "piik-app"))).toBe(true);
+        expect(existsSync(join(output, "silip-app"))).toBe(true);
       } else if (finalState === "existing" || finalState === "output-created") {
         await expect(assembly).rejects.toThrow(finalState === "existing" ? "must not already exist" : "EEXIST");
         expect(readFileSync(join(output, "user.txt"), "utf8")).toBe("keep");
-        expect(existsSync(join(output, "piik-app"))).toBe(false);
+        expect(existsSync(join(output, "silip-app"))).toBe(false);
       } else if (finalState === "copy") {
         await expect(assembly).rejects.toThrow("copy interrupted");
         expect(existsSync(output)).toBe(false);
@@ -115,7 +115,7 @@ describe.each(["linux-amd64", "linux-arm64"])("App package source identity (%s)"
 });
 
 it("assembles a macOS bundle that retains its executable and helpers when moved alone", async () => {
-  const root = mkdtempSync(join(tmpdir(), "piik-mac-bundle-"));
+  const root = mkdtempSync(join(tmpdir(), "silip-mac-bundle-"));
   const output = join(root, "archive");
   const descriptor = join(root, "server.release.json");
   const artifact = Buffer.from("fixture server archive");
@@ -142,18 +142,18 @@ it("assembles a macOS bundle that retains its executable and helpers when moved 
       "--capture", join(root, "helper"), "--tunnel", join(root, "helper")];
     vi.resetModules();
     await import("../scripts/assemble-app.mjs");
-    const relocated = join(root, "Moved Piik.app");
-    renameSync(join(output, "Piik App.app"), relocated);
+    const relocated = join(root, "Moved Silip.app");
+    renameSync(join(output, "Silip App.app"), relocated);
     const contents = join(relocated, "Contents");
     const plist = readFileSync(join(contents, "Info.plist"), "utf8");
     const entry = plist.match(/<key>CFBundleExecutable<\/key><string>([^<]+)<\/string>/)![1]!;
     const executable = join(contents, "MacOS", entry);
     expect(readFileSync(executable).subarray(0, 4)).toEqual(helper.subarray(0, 4));
-    for (const path of ["runtime/native/piik-capture", "runtime/tunnel/cloudflared"]) {
+    for (const path of ["runtime/native/silip-capture", "runtime/tunnel/cloudflared"]) {
       expect(readFileSync(join(contents, "MacOS", path))).toEqual(helper);
     }
     expect(readFileSync(join(contents, "MacOS", "REVISION"), "ascii").trim()).toBe(source.revision);
-    expect(existsSync(join(output, "piik-app"))).toBe(false);
+    expect(existsSync(join(output, "silip-app"))).toBe(false);
   } finally {
     Object.defineProperty(process, "platform", platform);
     process.argv = previousArguments;

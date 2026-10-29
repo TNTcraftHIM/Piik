@@ -25,11 +25,11 @@ on the original network, investigate that network's shared gateway or firewall.
 
 For regular use, choose an option that fits your group:
 
-- **You have a Piik site:** ask its operator to [enable server media forwarding (SFU)](../operations/self-hosting.md#optional-media-fallback). The Host turns off **Privacy mode** so forwarding can be tried if direct connections fail. For App capture, [approve the new site](./getting-started.md#use-app-with-an-existing-site), then send its invitation.
+- **You have a Silip site:** ask its operator to [enable server media forwarding (SFU)](../operations/self-hosting.md#optional-media-fallback). The Host turns off **Privacy mode** so forwarding can be tried if direct connections fail. For App capture, [approve the new site](./getting-started.md#use-app-with-an-existing-site), then send its invitation.
 - **Everyone can install a networking tool:** use the [virtual LAN steps](#optional-a-virtual-lan) below with the App's **Local room**.
 - **The required connections are blocked:** use an available network or ask its administrator to review access.
 
-> **Media requires UDP.** `demo.piik.tv` and App **Public invite** use P2P-only media.
+> **Media requires UDP.** App **Local room** and **Public invite** use P2P-only media.
 > SFU forwarding requires a site with that feature enabled and a reachable UDP endpoint.
 
 ## Browser WebRTC restrictions
@@ -39,7 +39,7 @@ including the browser-to-App connection on the same computer.
 
 1. Open the same invitation in a browser profile with default settings and no relevant privacy extensions.
 2. If it works, check **WebRTC** or **IP-leak protection** in the original browser and restore a policy that allows WebRTC UDP.
-3. Reload Piik and retry sharing or viewing. School/company-managed settings need an administrator's review.
+3. Reload Silip and retry sharing or viewing. School/company-managed settings need an administrator's review.
 
 <details>
 <summary>Chrome / Vivaldi settings</summary>
@@ -66,7 +66,7 @@ Only change the parts you manage.
 
 STUN discovers the addresses devices can use to connect. App Public invite tries
 several services; if discovery fails, replace the built-in addresses with
-[`PIIK_STUN_URLS`](../standards/configuration.md#piik-app-configuration) before
+[`SILIP_STUN_URLS`](../standards/configuration.md#silip-app-configuration) before
 starting Public invite. Site operators should check that `STUN_URLS` points to
 reachable UDP services; an HTTP reverse proxy does not forward STUN.
 
@@ -79,7 +79,7 @@ explains discovery.
 <details>
 <summary>Check IPv6 connectivity</summary>
 
-When the provider, router and both devices have usable IPv6, Piik can try it
+When the provider, router and both devices have usable IPv6, Silip can try it
 alongside IPv4. Keep IPv4 enabled too; IPv6 still obeys firewall rules.
 Router menus vary; consult your manufacturer's
 [IPv6 guidance](https://support.google.com/googlehome/answer/6361450).
@@ -103,20 +103,20 @@ and [double NAT](https://www.tp-link.com/us/support/faq/3113/).
 ## Optional: a virtual LAN
 
 A virtual LAN connects devices in different places, so you can share through
-Piik App's **Local room**. The tool must provide reachable virtual IPv4 addresses
+Silip App's **Local room**. The tool must provide reachable virtual IPv4 addresses
 and carry both web traffic and WebRTC UDP; acceleration limited to one game does
 not suffice. Choose a tool available to everyone in your group:
 
-- **[Tailscale](https://tailscale.com/docs/how-to/quickstart):** install it on each device and invite friends to the same private network (*tailnet*). In Piik, select the Host's Tailscale IPv4 address (`100.x.y.z`).
-- **[ZeroTier](https://docs.zerotier.com/quickstart/):** join the same network ID on each device, then authorize those devices in its management console. In Piik, select the Host's assigned virtual IPv4 address.
-- **[UU (Chinese guide)](https://uu.163.com/blog/lan-multiplayer-guide-net.html):** use the general-purpose LAN option and join the same room. In Piik, select the Host's UU virtual IPv4 address.
+- **[Tailscale](https://tailscale.com/docs/how-to/quickstart):** install it on each device and invite friends to the same private network (*tailnet*). In Silip, select the Host's Tailscale IPv4 address (`100.x.y.z`).
+- **[ZeroTier](https://docs.zerotier.com/quickstart/):** join the same network ID on each device, then authorize those devices in its management console. In Silip, select the Host's assigned virtual IPv4 address.
+- **[UU (Chinese guide)](https://uu.163.com/blog/lan-multiplayer-guide-net.html):** use the general-purpose LAN option and join the same room. In Silip, select the Host's UU virtual IPv4 address.
 
 ![Virtual LAN in three steps: join the same virtual network, choose its address in Local room, then send the complete invitation and confirm the certificate.](../assets/guide/virtual-lan.en.svg)
 
 1. **Join the same network.** The Host and friends run the tool and join the same virtual LAN.
-2. **Host selects its address.** In the updated Piik App, choose **Local room**, expand **Local invitation address**, select the tool's virtual IP, then enter the room and share.
+2. **Host selects its address.** In the updated Silip App, choose **Local room**, expand **Local invitation address**, select the tool's virtual IP, then enter the room and share.
 3. **Send the complete invitation.** Friends open the HTTPS invitation on that virtual IP. On first access, [confirm the local certificate](./troubleshooting.md#local-https-certificate-warning) with the Host before entering. Do not send `localhost` or only a room code.
-4. **Check picture and sound.** Everyone keeps the networking tool running; the Host also keeps Piik App running. If the virtual IP changes, the Host selects the new address and sends a new invitation.
+4. **Check picture and sound.** Everyone keeps the networking tool running; the Host also keeps Silip App running. If the virtual IP changes, the Host selects the new address and sends a new invitation.
 
 If something fails, start with the first failing step:
 

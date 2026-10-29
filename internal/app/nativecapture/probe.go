@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 )
 
 const (
@@ -113,7 +113,7 @@ func Discover(parent context.Context, executable string) (Capabilities, error) {
 	command.Stderr = stderr
 	hideWindow(command)
 	if err := command.Run(); err != nil {
-		slog.DebugContext(ctx, "piik-client", "event", "capture-probe-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
+		slog.DebugContext(ctx, "silip-client", "event", "capture-probe-failed", diagnostics.Error(err), "canceled", ctx.Err() != nil)
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return Capabilities{}, errors.New("native capture probe timed out")
 		}
@@ -137,11 +137,11 @@ func PackagedExecutable() string {
 	name := ""
 	switch runtime.GOOS {
 	case "windows":
-		name = "piik-capture.exe"
+		name = "silip-capture.exe"
 	case "darwin":
-		name = "piik-capture"
+		name = "silip-capture"
 	case "linux":
-		name = "piik-capture"
+		name = "silip-capture"
 	default:
 		return ""
 	}

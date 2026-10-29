@@ -29,7 +29,7 @@ func SelfSigned(host string) (*tls.Config, error) {
 	now := time.Now()
 	certificate := &x509.Certificate{
 		SerialNumber:          serial,
-		Subject:               pkix.Name{CommonName: "Piik Local"},
+		Subject:               pkix.Name{CommonName: "Silip Local"},
 		NotBefore:             now.Add(-5 * time.Minute),
 		NotAfter:              now.AddDate(1, 0, 0),
 		KeyUsage:              x509.KeyUsageDigitalSignature,

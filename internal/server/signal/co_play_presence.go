@@ -1,6 +1,6 @@
 package signal
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 // This is a share-scoped presentation projection. Only the Host App owns input
 // grants; neither subscribing nor publishing this list can grant control.

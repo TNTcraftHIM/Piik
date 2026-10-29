@@ -49,22 +49,22 @@ const LOCAL_PAGE_STATE = `fetch('/api/site-access')
   .then((response) => response.json())
   .catch(() => null)
   .then((access) => ({
-  bootstrapPresent: ['client-access', 'piik-client']
+  bootstrapPresent: ['client-access', 'silip-client']
     .some((key) => new URLSearchParams(location.hash.slice(1)).has(key)),
   access,
   hostReady: Boolean(document.querySelector('.lr-host-personal-controls')),
 }))`;
 
 async function main(): Promise<void> {
-  if (process.env.PIIK_CLIENT_LOCAL_GATE !== "true") {
+  if (process.env.SILIP_CLIENT_LOCAL_GATE !== "true") {
     throw new Error("Local App gate was not explicitly enabled");
   }
   const browserPath = process.env.CHROME_PATH?.trim();
-  const appPath = process.env.PIIK_CLIENT_EXE?.trim();
-  const lanAddress = process.env.PIIK_CLIENT_GATE_LAN_ADDRESS?.trim();
+  const appPath = process.env.SILIP_CLIENT_EXE?.trim();
+  const lanAddress = process.env.SILIP_CLIENT_GATE_LAN_ADDRESS?.trim();
   if (!browserPath || !appPath || !lanAddress) {
     throw new Error(
-      "CHROME_PATH, PIIK_CLIENT_EXE, and PIIK_CLIENT_GATE_LAN_ADDRESS are required",
+      "CHROME_PATH, SILIP_CLIENT_EXE, and SILIP_CLIENT_GATE_LAN_ADDRESS are required",
     );
   }
 
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   };
   const appPort = await reservePort();
   const debugPort = await reservePort();
-  const profile = await mkdtemp(join(tmpdir(), "piik-client-loopback-"));
+  const profile = await mkdtemp(join(tmpdir(), "silip-client-loopback-"));
   const configPath = join(profile, "client.json");
   let app: ChildProcessWithoutNullStreams | null = null;
   let browser: ChildProcessWithoutNullStreams | null = null;
@@ -105,7 +105,7 @@ async function main(): Promise<void> {
     ], {
       stdio: "pipe",
       windowsHide: true,
-      env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
+      env: { ...process.env, SILIP_CLIENT_GATE_NO_BROWSER: "true" },
     });
     app.stderr.resume();
     const endpoint = await readAppEndpoint(app);
@@ -129,12 +129,12 @@ async function main(): Promise<void> {
     const localAccessPassword = config.localAccessPassword;
     const bootstrap = new URLSearchParams({
       ...(localAccessPassword ? { "client-access": localAccessPassword } : {}),
-      "piik-client": "1",
+      "silip-client": "1",
     }).toString();
 
     browser = await launchChrome(browserPath, debugPort, profile, [
       "--headless=new",
-      ...(process.env.PIIK_CLIENT_GATE_NO_SANDBOX === "true"
+      ...(process.env.SILIP_CLIENT_GATE_NO_SANDBOX === "true"
         ? ["--no-sandbox"]
         : []),
       "--no-first-run",
@@ -203,10 +203,10 @@ async function main(): Promise<void> {
         stream.getTracks().forEach(track=>track.stop());
         const key=await crypto.subtle.generateKey({name:'AES-GCM',length:128},false,['encrypt','decrypt']);
         const iv=crypto.getRandomValues(new Uint8Array(12));
-        const text=new TextEncoder().encode('Piik LAN input');
+        const text=new TextEncoder().encode('Silip LAN input');
         const ciphertext=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,text);
         const plaintext=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ciphertext);
-        return {secure:isSecureContext,microphone,encryption:new TextDecoder().decode(plaintext)==='Piik LAN input'};
+        return {secure:isSecureContext,microphone,encryption:new TextDecoder().decode(plaintext)==='Silip LAN input'};
       })()`, Date.now() + 5_000);
     report.lanSecureContext = capabilities.secure;
     report.lanMicrophone = capabilities.microphone;

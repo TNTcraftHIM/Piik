@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Modified by Piik: retain each packet's feedback state independently of time.
+// Modified by Silip: retain each packet's feedback state independently of time.
 package sendsidebwe
 
 import (

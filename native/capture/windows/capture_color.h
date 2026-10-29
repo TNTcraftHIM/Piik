@@ -6,7 +6,7 @@
 #include <mfapi.h>
 #include <mfobjects.h>
 
-namespace piik::capture::windows {
+namespace silip::capture::windows {
 
 // Untagged WebRTC SDR uses BT.601. Keep the converter's pixels and the H264
 // encoder's range/matrix declaration in agreement; VP8 has no equivalent VUI.
@@ -31,4 +31,4 @@ inline DXGI_COLOR_SPACE_TYPE DecodedVideoColor(IMFAttributes* type) {
   return full ? DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P601 : kSdrVideoColor;
 }
 
-}  // namespace piik::capture::windows
+}  // namespace silip::capture::windows

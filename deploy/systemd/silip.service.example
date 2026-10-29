@@ -1,0 +1,45 @@
+[Unit]
+Description=Silip web, signaling, STUN and SFU application
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=silip
+Group=silip
+WorkingDirectory=/opt/silip/current
+Environment=SILIP_ENV=production
+Environment=ROOM_DATABASE_PATH=/var/lib/silip/rooms.sqlite
+EnvironmentFile=/etc/silip/silip.env
+ExecStart=/opt/silip/current/silip-server
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=20s
+UMask=0077
+StateDirectory=silip
+StateDirectoryMode=0700
+LogsDirectory=silip
+LogsDirectoryMode=0700
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+# Pion uses Go's net.Interfaces, which queries Linux through NETLINK_ROUTE.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

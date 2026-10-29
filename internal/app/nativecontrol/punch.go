@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"errors"
 
-	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/app/mediaedge"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 type preparePunchRequest struct {

@@ -49,7 +49,7 @@ vi.mock("../scripts/archive-tool.mjs", () => ({
 
 it.each(["archive-failure", "existing", "output-created", "dirty"] as const)(
   "cleans only this App candidate's incomplete output (%s)", async (scenario) => {
-    const root = mkdtempSync(join(tmpdir(), "piik-app-candidate-"));
+    const root = mkdtempSync(join(tmpdir(), "silip-app-candidate-"));
     const server = join(root, "server");
     const output = join(root, "output");
     const previousArguments = process.argv;

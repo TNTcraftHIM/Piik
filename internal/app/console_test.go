@@ -15,9 +15,9 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
-	"github.com/TNTcraftHIM/Piik/internal/app/failure"
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/app/buildinfo"
+	"github.com/P4-aaaul/Silip/internal/app/failure"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -225,10 +225,10 @@ func TestBrowserOpenFeedbackBelongsToTheCurrentEntry(t *testing.T) {
 func TestConsoleEntryKeepsAppActivationWithoutExposingCredentials(t *testing.T) {
 	model := consoleModel{width: 80, language: "en", view: consoleView{
 		mode: "link", state: "ready",
-		entry:  "http://user:private-secret@localhost:8787/?token=private-secret&piik-client-port=39730#client-access=private-secret&piik-client=1",
+		entry:  "http://user:private-secret@localhost:8787/?token=private-secret&silip-client-port=39730#client-access=private-secret&silip-client=1",
 		invite: "https://room.example/?token=private-secret#v=private-secret",
 	}}
-	want := []string{"http://localhost:8787/?piik-client-port=39730#piik-client=1", "https://room.example/"}
+	want := []string{"http://localhost:8787/?silip-client-port=39730#silip-client=1", "https://room.example/"}
 	for _, styled := range []bool{false, true} {
 		content := model.content(styled)
 		var addresses []string
@@ -449,11 +449,11 @@ func TestConsoleDiagnosticsFitCompactTerminal(t *testing.T) {
 	model := consoleModel{
 		view:  consoleView{mode: "local", state: "ready", entry: "http://localhost:8787/"},
 		width: 30, height: 18, colors: true,
-		debug: consoleDebug{logPath: "C:/Piik/logs/client.log", export: func() (string, error) { return "", nil }},
+		debug: consoleDebug{logPath: "C:/Silip/logs/client.log", export: func() (string, error) { return "", nil }},
 	}
 	for _, language := range []string{"en", "zh", "vis"} {
 		model.language = language
-		for _, path := range []string{"", "C:/Piik/logs/client-20260908T120000Z.zip", "C:/Users/Example/Documents/Workspaces/Piik-embedded-media/build/client-check/logs/client-diagnostics-20260908T120000Z-123456789.zip"} {
+		for _, path := range []string{"", "C:/Silip/logs/client-20260908T120000Z.zip", "C:/Users/Example/Documents/Workspaces/Silip-embedded-media/build/client-check/logs/client-diagnostics-20260908T120000Z-123456789.zip"} {
 			model.exportPath = path
 			content := model.content(true)
 			if lipgloss.Width(content) > model.width || lipgloss.Height(content) > model.height {

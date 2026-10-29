@@ -60,7 +60,7 @@ static void fixture_encoder_class_init(FixtureEncoderClass *klass) {
   static const GEnumValue modes[] = {{0, "Default", "default"}, {1, "CBR", "cbr"}, {0, NULL, NULL}};
   g_object_class_install_property(object_class, 4,
       g_param_spec_enum("rc-mode", "RC mode", "Rate control mode",
-          g_enum_register_static("PiikFixtureRateControl", modes), 0, G_PARAM_READWRITE));
+          g_enum_register_static("SilipFixtureRateControl", modes), 0, G_PARAM_READWRITE));
 }
 
 static void check_encoder_admission_and_control(void) {
@@ -125,7 +125,7 @@ static void check_bus_error_retains_primary_cause(void) {
   GstMessage *message = gst_message_new_error(GST_OBJECT(run.outputs[0].encoder), error,
                                              "fixture encoder write");
   char *frame_path = NULL;
-  int frames = g_file_open_tmp("piik-native-test-XXXXXX", &frame_path, NULL);
+  int frames = g_file_open_tmp("silip-native-test-XXXXXX", &frame_path, NULL);
   g_assert_cmpint(frames, >=, 0);
   int original_stdout = dup(STDOUT_FILENO);
   g_assert_cmpint(original_stdout, >=, 0);
@@ -157,7 +157,7 @@ static void check_bus_error_retains_primary_cause(void) {
 
 static void check_startup_error_retains_primary_cause(void) {
   char *missing = NULL;
-  int file = g_file_open_tmp("piik-missing-source-XXXXXX", &missing, NULL);
+  int file = g_file_open_tmp("silip-missing-source-XXXXXX", &missing, NULL);
   g_assert_cmpint(file, >=, 0);
   close(file);
   g_assert_cmpint(unlink(missing), ==, 0);
@@ -319,7 +319,7 @@ static void check_encoder_timestamp_segment(GstClockTime offset) {
   segment.base = 2 * GST_SECOND;
   GstSample *sample = gst_sample_new(buffer, caps, &segment, NULL);
   char *frame_path = NULL;
-  int frames = g_file_open_tmp("piik-timestamp-test-XXXXXX", &frame_path, NULL);
+  int frames = g_file_open_tmp("silip-timestamp-test-XXXXXX", &frame_path, NULL);
   int original_stdout = dup(STDOUT_FILENO);
   g_assert_cmpint(frames, >=, 0);
   g_assert_cmpint(original_stdout, >=, 0);
@@ -638,7 +638,7 @@ static void check_output_failure_isolation(gboolean post_error, const char *erro
   guint watch = gst_bus_add_watch(bus, bus_message, run);
   gst_object_unref(bus);
   char *frame_path = NULL;
-  int frames = g_file_open_tmp("piik-output-test-XXXXXX", &frame_path, NULL);
+  int frames = g_file_open_tmp("silip-output-test-XXXXXX", &frame_path, NULL);
   int original_stdout = dup(STDOUT_FILENO);
   g_assert_cmpint(frames, >=, 0);
   g_assert_cmpint(original_stdout, >=, 0);
@@ -684,7 +684,7 @@ static void check_output_failure_isolation(gboolean post_error, const char *erro
 }
 
 static void check_pipewire_target_identity(void) {
-  PiikPortalCapture portal = {.node_id = 42};
+  SilipPortalCapture portal = {.node_id = 42};
   char *target = pipewire_target(&portal);
   g_assert_cmpstr(target, ==, "path=42");
   g_free(target);

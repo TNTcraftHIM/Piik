@@ -6,7 +6,7 @@
 @import "./components/living/segmented-control.css";
 @import "./ui/glyph.css";
 
-/* Piik living-room UI — the production design system.
+/* Silip living-room UI — the production design system.
    The stage is a TV on the wall, viewers are pawns on the couch, connection
    state is what the TV shows and what the LEDs say. Control copy lives in tooltips
    and aria in visual mode; text modes add visible captions.
@@ -1473,11 +1473,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 }
 .lr-client-launch-heading { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; margin-bottom: 8px; width: min(380px, 100%); text-align: center; }
 .lr-client-launch-brand { display: flex; align-items: baseline; justify-content: center; gap: 14px; }
-/* The mascot's feet sit at y=29 in its 32-unit canvas; align them to the wordmark baseline. */
-.lr-client-launch-brand > svg { translate: 0 9.375%; }
 .lr-client-launch-title { font-size: 36px; line-height: 1.1; letter-spacing: -.04em; }
 .lr-client-launch-title small { margin-left: 6px; color: var(--muted); font-size: 15px; letter-spacing: 0; font-weight: 650; }
-.lr-client-brand-dot { color: #e77d38; }
+/* The wordmark's x-height ends at y=196 of its 220-unit box; sit that line on the text baseline. */
+.lr-client-wordmark { height: 1.8em; width: auto; vertical-align: -.442em; overflow: visible; }
 .lr-client-standby { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; width: 100%; padding: 12px 20px 16px; border: 1px solid var(--line); border-radius: 22px; background: var(--surface-glaze) var(--paper); box-shadow: var(--control-shadow); }
 .lr-client-standby-state { display: inline-flex; align-items: center; gap: 9px; }
 .lr-client-standby-heading { display: flex; align-items: start; gap: 12px; min-width: 0; }

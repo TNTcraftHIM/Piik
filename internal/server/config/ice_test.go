@@ -5,7 +5,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
+	"github.com/P4-aaaul/Silip/internal/server/protocol"
 )
 
 // Ported from tests/ice.test.ts.

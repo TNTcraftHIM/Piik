@@ -48,7 +48,7 @@ static void session_created(GObject *source, GAsyncResult *result,
   xdp_session_start(request->session, NULL, NULL, session_started, request);
 }
 
-gboolean piik_portal_available(void) {
+gboolean silip_portal_available(void) {
   GError *error = NULL;
   GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
   if (bus == NULL) {
@@ -71,7 +71,7 @@ gboolean piik_portal_available(void) {
   return available;
 }
 
-gboolean piik_portal_input_available(void) {
+gboolean silip_portal_input_available(void) {
   if (xdp_portal_create_remote_desktop_session_full == NULL) return FALSE;
   GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
   if (bus == NULL) return FALSE;
@@ -91,11 +91,11 @@ gboolean piik_portal_input_available(void) {
   return available;
 }
 
-gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_input,
-                                      PiikPortalCapture *capture,
+gboolean silip_portal_capture_open(const char *restore_token, gboolean remote_input,
+                                      SilipPortalCapture *capture,
                                       GError **error) {
   g_return_val_if_fail(capture != NULL, FALSE);
-  *capture = (PiikPortalCapture){.pipewire_fd = -1};
+  *capture = (SilipPortalCapture){.pipewire_fd = -1};
 
   capture->portal = xdp_portal_initable_new(error);
   if (capture->portal == NULL) return FALSE;
@@ -107,10 +107,10 @@ gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_inp
   };
   const char *token = restore_token != NULL && restore_token[0] != '\0' ? restore_token : NULL;
   if (remote_input) {
-    if (!piik_portal_input_available()) {
+    if (!silip_portal_input_available()) {
       g_main_loop_unref(request.loop);
       g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "desktop remote input is unavailable");
-      piik_portal_capture_close(capture);
+      silip_portal_capture_close(capture);
       return FALSE;
     }
     xdp_portal_create_remote_desktop_session_full(
@@ -128,13 +128,13 @@ gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_inp
   capture->session = request.session;
   if (request.error != NULL) {
     g_propagate_error(error, request.error);
-    piik_portal_capture_close(capture);
+    silip_portal_capture_close(capture);
     return FALSE;
   }
   capture->remote_input = remote_input;
   if (remote_input && (xdp_session_get_devices(capture->session) & 3) != 3) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED, "keyboard and pointer permission was not granted");
-    piik_portal_capture_close(capture);
+    silip_portal_capture_close(capture);
     return FALSE;
   }
 
@@ -142,7 +142,7 @@ gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_inp
   if (streams == NULL) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                         "portal returned no screen-cast streams");
-    piik_portal_capture_close(capture);
+    silip_portal_capture_close(capture);
     return FALSE;
   }
   GVariantIter iterator;
@@ -166,7 +166,7 @@ gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_inp
   if (!found || capture->node_id == 0 || (remote_input && (capture->input_width <= 0 || capture->input_height <= 0))) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                         "portal returned an invalid PipeWire stream");
-    piik_portal_capture_close(capture);
+    silip_portal_capture_close(capture);
     return FALSE;
   }
 
@@ -174,16 +174,16 @@ gboolean piik_portal_capture_open(const char *restore_token, gboolean remote_inp
   if (capture->pipewire_fd < 0) {
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                         "portal could not open its PipeWire remote");
-    piik_portal_capture_close(capture);
+    silip_portal_capture_close(capture);
     return FALSE;
   }
   capture->restore_token = xdp_session_get_restore_token(capture->session);
   return TRUE;
 }
 
-void piik_portal_capture_close(PiikPortalCapture *capture) {
+void silip_portal_capture_close(SilipPortalCapture *capture) {
   if (capture == NULL) return;
-  piik_portal_input_reset(capture);
+  silip_portal_input_reset(capture);
   if (capture->pipewire_fd >= 0) close(capture->pipewire_fd);
   capture->pipewire_fd = -1;
   g_clear_pointer(&capture->restore_token, g_free);

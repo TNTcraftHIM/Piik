@@ -10,8 +10,8 @@ import (
 
 const (
 	ProtocolVersion        = 10
-	ServiceName            = "piik-client"
-	ControlSubprotocol     = "piik-client-v10"
+	ServiceName            = "silip-client"
+	ControlSubprotocol     = "silip-client-v10"
 	MaxControlMessageBytes = 256 << 10
 	DefaultPortStart       = 39721
 	DefaultPortEnd         = 39730

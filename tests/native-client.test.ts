@@ -38,7 +38,7 @@ describe("native App private wire", () => {
   });
   const health = {
     protocol: NATIVE_CLIENT_PROTOCOL,
-    service: "piik-client",
+    service: "silip-client",
     port: NATIVE_CLIENT_PORT_START,
     instanceToken: "a".repeat(43),
     nativeMedia: { video: true, hardwareH264: true },
@@ -78,7 +78,7 @@ describe("native App private wire", () => {
   });
 
   it("retains the address-space hint for hosted discovery and presentation without a no-hint fallback", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue({ state: "granted" }) } });
     const fetcher = vi.fn(async (url: string, _init: RequestInit) => new Response(JSON.stringify(
       url.endsWith("quality-preference") ? DEFAULT_QUALITY_SETTINGS : { ...health, qualityPreference: true })));
@@ -105,7 +105,7 @@ describe("native App private wire", () => {
   });
 
   it.each(["prompt", "denied"])("background App preferences do not request local access when permission is %s", async (state) => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("navigator", { permissions: { query: vi.fn().mockResolvedValue({ state }) } });
     const fetcher = vi.fn(async () => new Response(JSON.stringify(health)));
     vi.stubGlobal("fetch", fetcher);
@@ -116,14 +116,14 @@ describe("native App private wire", () => {
   });
 
   it("discovers only a local approval page without opening native control", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/r/9527") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/r/9527") });
     const socket = vi.fn();
     vi.stubGlobal("WebSocket", socket);
     const fetcher = vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/connect-discovery`
       ? new Response(JSON.stringify({ ...health, connectURL: "http://127.0.0.1:54321/client" }))
       : new Response(null, { status: 404 }));
     vi.stubGlobal("fetch", fetcher);
-    await expect(discoverNativeConnect()).resolves.toBe("http://127.0.0.1:54321/client?site=https%3A%2F%2Fpiik.example");
+    await expect(discoverNativeConnect()).resolves.toBe("http://127.0.0.1:54321/client?site=https%3A%2F%2Fsilip.example");
     expect(fetcher.mock.calls.every(([url]) => url.endsWith("/connect-discovery"))).toBe(true);
     expect(socket).not.toHaveBeenCalled();
   });
@@ -132,7 +132,7 @@ describe("native App private wire", () => {
     "https://untrusted.example/client", "http://localhost:54321/client", "http://127.0.0.1:54321/other",
     "http://user@127.0.0.1:54321/client", "http://127.0.0.1:54321/client?site=https://other.example",
   ])("rejects an unsafe App approval address: %s", async (connectURL) => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => url === `http://127.0.0.1:${health.port}/connect-discovery`
       ? new Response(JSON.stringify({ ...health, connectURL })) : new Response(null, { status: 404 })));
     await expect(discoverNativeConnect()).resolves.toBeNull();
@@ -140,7 +140,7 @@ describe("native App private wire", () => {
 
   it("cancels the whole approval scan with its caller", async () => {
     vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn((_url: string, init: RequestInit) => new Promise((_resolve, reject) => {
       const signal = init.signal!;
@@ -176,14 +176,14 @@ describe("native App private wire", () => {
 
   it.each(["opening", "hello", "close"])("retires App acquisition during %s without waiting for its timeout", async stage => {
     vi.useFakeTimers();
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
     const sockets: Socket[] = [];
     class Socket extends EventTarget {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = 0;
-      protocol = `piik-client-v10.${health.instanceToken}`;
+      protocol = `silip-client-v10.${health.instanceToken}`;
       close = vi.fn(() => { this.readyState = Socket.CLOSING; });
       send = vi.fn();
       constructor() { super(); sockets.push(this); }
@@ -222,7 +222,7 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v10.${health.instanceToken}`;
+      protocol = `silip-client-v10.${health.instanceToken}`;
       constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = Socket.CLOSING; }
       send(payload: string) {
@@ -238,7 +238,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
     const controller = new AbortController();
     const client = (await NativeClient.connect({ signal: controller.signal }))!;
@@ -260,7 +260,7 @@ describe("native App private wire", () => {
   });
 
   it.each(["prompt", "denied"] as const)("does not hold Viewer reception for %s permission and observes a later grant", async (state) => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "silip.example" } });
     const query = vi.fn().mockResolvedValue({ state });
     vi.stubGlobal("navigator", { permissions: { query } });
     const fetcher = vi.fn(async () => new Response(JSON.stringify(health)));
@@ -276,7 +276,7 @@ describe("native App private wire", () => {
   });
 
   it("still lets explicit source discovery ask for local permission", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "silip.example" } });
     const query = vi.fn().mockResolvedValue({ state: "prompt" });
     vi.stubGlobal("navigator", { permissions: { query } });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
@@ -294,7 +294,7 @@ describe("native App private wire", () => {
   });
 
   it("uses the older combined permission when split permission is unsupported", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "silip.example" } });
     const query = vi.fn().mockRejectedValueOnce(new TypeError("Unsupported permission"))
       .mockResolvedValue({ state: "prompt" });
     vi.stubGlobal("navigator", { permissions: { query } });
@@ -308,7 +308,7 @@ describe("native App private wire", () => {
   it.each([undefined, { query: vi.fn().mockRejectedValue(new TypeError("Unsupported permission")) }])(
     "retains ordinary discovery when local permissions cannot be queried",
     async (permissions) => {
-      vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "piik.example" } });
+      vi.stubGlobal("window", { setTimeout, clearTimeout, location: { hostname: "silip.example" } });
       vi.stubGlobal("navigator", { permissions });
       vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(health))));
       await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
@@ -316,7 +316,7 @@ describe("native App private wire", () => {
   );
 
   it.each([NATIVE_CLIENT_PROTOCOL - 1, NATIVE_CLIENT_PROTOCOL + 1])(
-    "reports observed Piik App protocol %s without opening control or presentation",
+    "reports observed Silip App protocol %s without opening control or presentation",
     async (protocol) => {
       vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1/") });
       const socket = vi.fn();
@@ -337,7 +337,7 @@ describe("native App private wire", () => {
   );
 
   it("prefers a compatible App on a later port after observing an incompatible App", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     const fetcher = vi.fn(async (url: string) => {
       const port = Number(new URL(url).port);
       return new Response(JSON.stringify({ ...health, port,
@@ -353,7 +353,7 @@ describe("native App private wire", () => {
 
   it("keeps discovery alive while local access takes longer than 400 ms", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
       if (new URL(url).port !== String(health.port)) throw new TypeError("No listener");
       await new Promise<void>((resolve, reject) => {
@@ -372,7 +372,7 @@ describe("native App private wire", () => {
   });
 
   it("finds a later App without waiting for a silent port and aborts the unused probe", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     let silentSignal: AbortSignal | undefined;
     vi.stubGlobal("fetch", vi.fn(async (url: string, options: RequestInit) => {
       const port = Number(new URL(url).port);
@@ -392,7 +392,7 @@ describe("native App private wire", () => {
   it("bounds all silent discovery ports with one deadline", async () => {
     vi.useFakeTimers();
     vi.spyOn(AbortSignal, "any").mockImplementation(() => { throw new TypeError("AbortSignal.any is not a function"); });
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     const signals: AbortSignal[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_url: string, options: RequestInit) => {
       signals.push(options.signal!);
@@ -409,7 +409,7 @@ describe("native App private wire", () => {
   });
 
   it("identifies an incompatible App even when that protocol uses different token or media metadata", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, protocol: NATIVE_CLIENT_PROTOCOL + 1,
       instanceToken: { format: "different-protocol" }, nativeMedia: "different-protocol",
@@ -420,7 +420,7 @@ describe("native App private wire", () => {
   });
 
   it("treats denied, absent and malformed endpoints as ordinary Browser-only operation", async () => {
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     const malformed = [
       { ...health, service: "another-service" },
       { ...health, protocol: "8" },
@@ -446,7 +446,7 @@ describe("native App private wire", () => {
     });
     const fetcher = vi.fn(async (url: string) => url.endsWith("/health")
       ? new Response(JSON.stringify({
-          protocol: 10, service: "piik-client", port: 39_721,
+          protocol: 10, service: "silip-client", port: 39_721,
           instanceToken: "a".repeat(43),
           nativeMedia: {video: true, processAudio: false, systemAudio: true, hardwareH264: true, softwareVP8: true},
         }), {status: 200})
@@ -474,7 +474,7 @@ describe("native App private wire", () => {
       static readonly CLOSING = 2;
       static readonly CLOSED = 3;
       readyState = FakeWebSocket.OPEN;
-      protocol = `piik-client-v10.${token}`;
+      protocol = `silip-client-v10.${token}`;
       readonly close = vi.fn(() => {
         this.readyState = FakeWebSocket.CLOSING;
       });
@@ -511,12 +511,12 @@ describe("native App private wire", () => {
     vi.stubGlobal("window", {
       setTimeout: globalThis.setTimeout,
       clearTimeout: globalThis.clearTimeout,
-      location: new URL("https://piik.example/"),
+      location: new URL("https://silip.example/"),
     });
     vi.stubGlobal("fetch", vi.fn(async () =>
       new Response(JSON.stringify({
         protocol: 10,
-        service: "piik-client",
+        service: "silip-client",
         port: 39_721,
         instanceToken: token,
         nativeMedia: {
@@ -572,7 +572,7 @@ describe("native App private wire", () => {
     expect(
       nativeHealthSchema.parse({
         protocol: 10,
-        service: "piik-client",
+        service: "silip-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
         nativeMedia: {
@@ -587,7 +587,7 @@ describe("native App private wire", () => {
     expect(
       nativeHealthSchema.safeParse({
         protocol: NATIVE_CLIENT_PROTOCOL,
-        service: "piik-client",
+        service: "silip-client",
         port: 39_721,
         instanceToken: "a".repeat(43),
         nativeMedia: {
@@ -623,7 +623,7 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = CaptureSocket.OPEN;
-      protocol = `piik-client-v10.${health.instanceToken}`;
+      protocol = `silip-client-v10.${health.instanceToken}`;
       constructor() {
         super();
         queueMicrotask(() => this.dispatchEvent(new Event("open")));
@@ -645,7 +645,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", CaptureSocket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported, sourceCancellation: supported },
     }))));
@@ -693,7 +693,7 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v10.${health.instanceToken}`;
+      protocol = `silip-client-v10.${health.instanceToken}`;
       constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = Socket.CLOSING; }
       send(payload: string) {
@@ -709,7 +709,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...health,
       nativeMedia: { ...health.nativeMedia, microphone: true, ...(supported ? { processAudioExclusion: true } : {}) },
     }))));
@@ -747,7 +747,7 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v10.${health.instanceToken}`;
+      protocol = `silip-client-v10.${health.instanceToken}`;
       constructor() { super(); socket = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = Socket.CLOSING; }
       ack(request: Record<string, unknown>, type: string, fields = {}) {
@@ -767,7 +767,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, nativeMedia: { ...health.nativeMedia, microphone, shareVolume },
     }))));
@@ -831,7 +831,7 @@ describe("native App private wire", () => {
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v10.${health.instanceToken}`;
+      protocol = `silip-client-v10.${health.instanceToken}`;
       constructor() { super(); queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       close() { this.readyState = Socket.CLOSING; }
       send(payload: string) {
@@ -846,7 +846,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
       ...health, nativeMedia: { ...health.nativeMedia, ...(supported ? { receiverReuse: true } : {}) },
     }))));
@@ -1041,7 +1041,7 @@ describe("native App private wire", () => {
       static readonly CLOSING = 2;
       static latest: Socket;
       readyState = Socket.OPEN;
-      protocol = `piik-client-v10.${health.instanceToken}`;
+      protocol = `silip-client-v10.${health.instanceToken}`;
       close = vi.fn(() => { this.readyState = Socket.CLOSING; this.dispatchEvent(new Event("close")); });
       constructor() { super(); Socket.latest = this; queueMicrotask(() => this.dispatchEvent(new Event("open"))); }
       emit(value: unknown) { this.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(value) })); }
@@ -1051,7 +1051,7 @@ describe("native App private wire", () => {
       }
     }
     vi.stubGlobal("WebSocket", Socket);
-    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://silip.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => Response.json(health)));
     const client = (await NativeClient.connect())!;
     const received = vi.fn();

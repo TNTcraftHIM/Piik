@@ -136,7 +136,7 @@ and verification status, rather than this retired checklist:
    and
 8. project, dependency, H.264 patent, and distribution license decisions.
 
-No native experiment may preserve an obsolete Piik wire, create another
+No native experiment may preserve an obsolete Silip wire, create another
 room/topology model, loosen endpoint capacity, or become production merely to
 make a diagnostic gate pass.
 

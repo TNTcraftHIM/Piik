@@ -177,7 +177,7 @@ export function build(film, K) {
     const mc = h('div', { class: 'abs' }, root);
     const m = mascot({ stroke: C.cream, fill: C.ink2, size: 560 });
     mc.appendChild(m.el);
-    const lab = h('div', { class: 'abs hud nowrap', html: 'PIIK<br>FACT SHEET' }, root);
+    const lab = h('div', { class: 'abs hud nowrap', html: 'SILIP<br>FACT SHEET' }, root);
     Object.assign(lab.style, { left: '120px', top: '820px', font: '800 44px/1.1 "Barlow Condensed"', letterSpacing: '.2em', color: C.yellow });
     const rows = facts.map((f, i) => {
       const el = h('div', { class: 'abs' }, root);
@@ -246,7 +246,7 @@ export function build(film, K) {
     m.parts.sparkles.children[0].setAttribute('d', 'm25 11.5 .8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8.8-1.9Z');
     m.parts.sparkles.children[1].setAttribute('d', 'm25 17.2 .45 1.1 1.1.45-1.1.45-.45 1.1-.45-1.1-1.1-.45 1.1-.45.45-1.1Z');
     lm.appendChild(m.el);
-    const wm = h('div', { class: 'nowrap', html: 'Piik<span class="identity-dot">.</span>' }, brand);
+    const wm = h('div', { class: 'nowrap', html: 'Silip<span class="identity-dot">.</span>' }, brand);
     Object.assign(wm.style, { font: WORDMARK(300), letterSpacing: '-14px', color: C.cream });
     const tag = h('div', { class: 'abs nowrap' }, lock);
     Object.assign(tag.style, { left: '0', width: '1920px', textAlign: 'center', top: '535px', color: C.cream });

@@ -30,13 +30,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TNTcraftHIM/Piik/internal/diagnostics"
-	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
-	"github.com/TNTcraftHIM/Piik/internal/server/config"
-	"github.com/TNTcraftHIM/Piik/internal/server/room"
-	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
-	"github.com/TNTcraftHIM/Piik/internal/server/signal"
-	"github.com/TNTcraftHIM/Piik/internal/server/stun"
+	"github.com/P4-aaaul/Silip/internal/diagnostics"
+	"github.com/P4-aaaul/Silip/internal/media/forwarding"
+	"github.com/P4-aaaul/Silip/internal/server/config"
+	"github.com/P4-aaaul/Silip/internal/server/room"
+	"github.com/P4-aaaul/Silip/internal/server/sfu"
+	"github.com/P4-aaaul/Silip/internal/server/signal"
+	"github.com/P4-aaaul/Silip/internal/server/stun"
 	"github.com/pion/ice/v4"
 	"github.com/pion/webrtc/v4"
 )
@@ -216,11 +216,11 @@ func (s *Server) Listen(ctx context.Context) (int, error) {
 	s.mu.Lock()
 	if s.startupRequested {
 		s.mu.Unlock()
-		return 0, errors.New("Piik server startup was already requested")
+		return 0, errors.New("Silip server startup was already requested")
 	}
 	if s.closing {
 		s.mu.Unlock()
-		return 0, errors.New("Piik server is closing")
+		return 0, errors.New("Silip server is closing")
 	}
 	s.startupRequested = true
 	s.mu.Unlock()
@@ -261,14 +261,14 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			for _, listener := range s.listeners {
 				_ = listener.Close()
 			}
-			return 0, fmt.Errorf("Piik STUN listener failed: %w", err)
+			return 0, fmt.Errorf("Silip STUN listener failed: %w", err)
 		}
 	}
 	if configuration := s.config.SFU; configuration != nil {
 		connection, listenErr := net.ListenPacket("udp4", net.JoinHostPort(configuration.ListenHost, strconv.Itoa(configuration.Port)))
 		if listenErr != nil {
 			_ = s.stopServing(ctx)
-			return 0, fmt.Errorf("Piik SFU listener failed: %w", listenErr)
+			return 0, fmt.Errorf("Silip SFU listener failed: %w", listenErr)
 		}
 		factory := diagnostics.PionLoggerFactory()
 		s.mediaMux = forwarding.NewUDPMux(ice.UDPMuxParams{UDPConn: connection, Logger: factory.NewLogger("sfu-udp")})
@@ -295,12 +295,12 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			if err := s.httpServer.Serve(listener); !errors.Is(err, http.ErrServerClosed) {
 				s.mu.Lock()
 				if !s.closing && s.serveErr == nil {
-					s.serveErr = fmt.Errorf("Piik HTTP listener stopped unexpectedly: %w", err)
+					s.serveErr = fmt.Errorf("Silip HTTP listener stopped unexpectedly: %w", err)
 					s.acceptingTraffic.Store(false)
 					s.done <- s.serveErr
 				}
 				s.mu.Unlock()
-				s.logger.Error("Piik HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
+				s.logger.Error("Silip HTTP server stopped unexpectedly", "errorType", fmt.Sprintf("%T", err))
 				s.logger.Debug("http-listener-failed", diagnostics.Error(err))
 			}
 		}()
@@ -317,7 +317,7 @@ func (s *Server) start(ctx context.Context) (int, error) {
 			cleanup = append(cleanup, closeErr)
 		}
 		if len(cleanup) > 0 {
-			return 0, fmt.Errorf("Piik startup reconciliation failed: %w",
+			return 0, fmt.Errorf("Silip startup reconciliation failed: %w",
 				errors.Join(append([]error{err}, cleanup...)...))
 		}
 		return 0, err
@@ -422,7 +422,7 @@ func (s *Server) runShutdown(ctx context.Context, endRooms bool) error {
 		failures = append(failures, s.store.Close())
 	}
 	if joined := errors.Join(failures...); joined != nil {
-		return fmt.Errorf("Piik server shutdown failed: %w", joined)
+		return fmt.Errorf("Silip server shutdown failed: %w", joined)
 	}
 	return nil
 }

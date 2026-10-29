@@ -1,6 +1,6 @@
 package signal
 
-import "github.com/TNTcraftHIM/Piik/internal/server/protocol"
+import "github.com/P4-aaaul/Silip/internal/server/protocol"
 
 func (s *Server) setRelayVolunteer(sess *session, auth *authenticatedSession, message protocol.SetRelayVolunteerMessage) {
 	if auth.role != protocol.RoleViewer {
