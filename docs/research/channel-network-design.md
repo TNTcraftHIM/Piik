@@ -376,6 +376,8 @@ the local domain's lifetime; Browser and Native participants receive the same
 discovery configuration. Public invitations and approved external sites retain
 their domain's configured ICE servers. An individual rejected ICE candidate
 does not retire the connection or its other candidate paths.
+Native gathers IPv4 and IPv6 through the same RTC transport owner; an unavailable
+address family does not disable the other.
 
 Prepare a replacement, prove it usable, commit, then release old work. A base
 edge requires an open DataChannel and an installed control path, not merely a
