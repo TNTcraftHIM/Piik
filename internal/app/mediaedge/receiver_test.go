@@ -289,6 +289,7 @@ func TestReceiverNegotiatesForwardableH264(t *testing.T) {
 		{"baseline", []string{"42001f"}, ""},
 		{"missing-profile", []string{""}, ""},
 		{"equivalent-baseline", []string{"42c01f"}, "42c01f"},
+		{"equivalent-baseline-with-vp8", []string{"42c01f", "vp8"}, "42c01f"},
 		{"small-browser-output", []string{"42e00b"}, "42e00b"},
 		{"level-5.1", []string{"42e033"}, "42e033"},
 		{"level-ceiling", []string{"42e034"}, "42e034"},
