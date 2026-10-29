@@ -231,6 +231,14 @@ fn os_failure_keeps_permission_and_only_failed_releases_are_retried() {
     s.set_mode(Mode::Ask).unwrap();
     let mut c = Client::new(&s);
     let grant = c.approve(&s, &mut replies);
+    c.send(&s, json!({"type":"gamepad","gamepad":{"buttons":1,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0},"grant":grant}));
+    let state = c.state(&mut replies);
+    assert_eq!(state["grant"], grant);
+    assert_eq!(state["reason"], "gamepad");
+    assert!(!state["capabilities"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("gamepad")));
     r.lock().unwrap().fail_press = true;
     c.send(
         &s,
@@ -257,6 +265,180 @@ fn os_failure_keeps_permission_and_only_failed_releases_are_retried() {
     assert!(r.lock().unwrap().events[2..]
         .iter()
         .all(|e| *e == Action::Held(Held::Key(0x1e), false)));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn gamepads_follow_grants_without_blocking_or_revoking_keyboard_input() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    enum PadEvent {
+        Report(usize, u32),
+        Reset(usize),
+        Closed(usize),
+    }
+    struct Device {
+        id: usize,
+        events: Arc<Mutex<Vec<PadEvent>>>,
+        fail_first: Arc<AtomicBool>,
+    }
+    impl gamepad::Device for Device {
+        fn update(&mut self, report: gamepad::Report) -> Result<()> {
+            ensure!(
+                !(self.id == 1 && self.fail_first.load(Ordering::SeqCst)),
+                "fixture_device_failed"
+            );
+            self.events
+                .lock()
+                .unwrap()
+                .push(PadEvent::Report(self.id, report.buttons));
+            Ok(())
+        }
+        fn reset(&mut self) -> Result<()> {
+            self.events.lock().unwrap().push(PadEvent::Reset(self.id));
+            Ok(())
+        }
+    }
+    impl Drop for Device {
+        fn drop(&mut self) {
+            self.events.lock().unwrap().push(PadEvent::Closed(self.id));
+        }
+    }
+    let events = Arc::new(Mutex::new(vec![]));
+    let created = Arc::new(AtomicUsize::new(0));
+    let fail_first = Arc::new(AtomicBool::new(false));
+    let backend = gamepad::Backend::with_open(Arc::new({
+        let (events, created, fail_first) = (events.clone(), created.clone(), fail_first.clone());
+        move || {
+            Ok(Box::new(Device {
+                id: created.fetch_add(1, Ordering::SeqCst) + 1,
+                events: events.clone(),
+                fail_first: fail_first.clone(),
+            }))
+        }
+    }));
+    let recording = Arc::new(Mutex::new(Recording::default()));
+    let d = Desktop::with_backend(Box::new(Recorder(recording.clone())), Some(backend));
+    let (s, mut replies, view) = source(&d);
+    assert_eq!(view.borrow().gamepad, Some(true));
+    s.set_mode(Mode::Ask).unwrap();
+    s.set_simultaneous(true).unwrap();
+    let mut a = Client::new(&s);
+    let ga = a.approve(&s, &mut replies);
+    let mut b = Client::new(&s);
+    let gb = b.approve(&s, &mut replies);
+    let report = |grant: &str, buttons: u32| json!({"type":"gamepad","grant":grant,"gamepad":{"buttons":buttons,"leftTrigger":0,"rightTrigger":0,"leftX":0,"leftY":0,"rightX":0,"rightY":0}});
+    a.send(&s, report(&ga, 1 << 17));
+    assert_eq!(
+        created.load(Ordering::SeqCst),
+        0,
+        "invalid reports cannot allocate or fail a Pad"
+    );
+    s.run(|_, state| {
+        assert!(!state.controllers[&a.id].pad_failed);
+        Ok(())
+    })
+    .unwrap();
+    async fn until(mut check: impl FnMut() -> bool) {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            while !check() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    until(|| {
+        a.send(&s, report(&ga, 1));
+        events.lock().unwrap().contains(&PadEvent::Report(1, 1))
+    })
+    .await;
+    until(|| {
+        b.send(&s, report(&gb, 2));
+        events.lock().unwrap().contains(&PadEvent::Report(2, 2))
+    })
+    .await;
+    a.send(&s, json!({"type":"gamepad-reset","grant":ga}));
+    until(|| events.lock().unwrap().contains(&PadEvent::Reset(1))).await;
+    assert!(!events.lock().unwrap().contains(&PadEvent::Closed(1)));
+    recording.lock().unwrap().suspended = true;
+    d.tick();
+    until(|| {
+        let events = events.lock().unwrap();
+        events
+            .iter()
+            .filter(|event| **event == PadEvent::Reset(1))
+            .count()
+            >= 2
+            && events.contains(&PadEvent::Reset(2))
+    })
+    .await;
+    assert!(!events
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|event| matches!(event, PadEvent::Closed(_))));
+    recording.lock().unwrap().suspended = false;
+    d.tick();
+    assert_eq!(created.load(Ordering::SeqCst), 2);
+    a.send(&s, json!({"type":"sync"}));
+    assert_eq!(a.state(&mut replies)["grant"], ga);
+    fail_first.store(true, Ordering::SeqCst);
+    a.send(&s, report(&ga, 4));
+    until(|| {
+        d.tick();
+        let executor = d.0.lock().unwrap();
+        executor.sources[&s.video()].controllers[&a.id].pad_failed
+    })
+    .await;
+    a.send(&s, json!({"type":"sync"}));
+    let state = a.state(&mut replies);
+    assert_eq!(state["grant"], ga);
+    assert_eq!(state["reason"], "gamepad");
+    assert!(!state["capabilities"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("gamepad")));
+    a.send(
+        &s,
+        json!({"type":"key","code":"KeyA","down":true,"grant":ga}),
+    );
+    assert_eq!(
+        recording.lock().unwrap().events.last(),
+        Some(&Action::Held(Held::Key(0x1e), true))
+    );
+    until(|| {
+        b.send(&s, report(&gb, 8));
+        events.lock().unwrap().contains(&PadEvent::Report(2, 8))
+    })
+    .await;
+    b.send(&s, json!({"type":"sync"}));
+    assert!(b.state(&mut replies)["capabilities"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("gamepad")));
+    b.send(&s, json!({"type":"gamepad-stop","grant":gb}));
+    until(|| events.lock().unwrap().contains(&PadEvent::Closed(2))).await;
+    until(|| {
+        b.send(&s, report(&gb, 16));
+        events.lock().unwrap().contains(&PadEvent::Report(3, 16))
+    })
+    .await;
+    s.retire(b.id, b.flow).unwrap();
+    until(|| events.lock().unwrap().contains(&PadEvent::Closed(3))).await;
+    let mut last = Client::new(&s);
+    let grant = last.approve(&s, &mut replies);
+    until(|| {
+        last.send(&s, report(&grant, 32));
+        events.lock().unwrap().contains(&PadEvent::Report(4, 32))
+    })
+    .await;
+    d.close();
+    assert!(events.lock().unwrap().contains(&PadEvent::Closed(4)));
+    assert!(recording
+        .lock()
+        .unwrap()
+        .events
+        .contains(&Action::Held(Held::Key(0x1e), false)));
 }
 
 #[test]

@@ -33,6 +33,7 @@ subtle = "=2.6.1"
 rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }
 
 [target.'cfg(windows)'.dependencies]
+vigem-rust = { version = "=0.2.0", default-features = false, features = ["x360"] }
 wasapi = "=0.26.0"
 rusty-opus = "=1.0.2"
 windows-capture = "=2.0.1"

@@ -41,8 +41,9 @@ The shared source picker connects Windows hardware H264 capture to the same
 Native endpoint and routing model, preserving its original presentation clock.
 Optional source sound uses WASAPI and a Rust Opus encoder, retaining independent
 stereo channels. The selecting page owns both captures independently of App room hosting.
-Windows input now uses the same selected screen route and shared control UI,
-with one App desktop executor, page-owned consent and a process-only stop hotkey.
+Windows keyboard, mouse and optional gamepad input use the selected screen route
+and shared control UI, with one App desktop executor, page-owned consent and a
+process-only stop hotkey.
 [TODO](./todo.md) owns remaining Native media/input and platform work.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.

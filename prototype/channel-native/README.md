@@ -48,8 +48,12 @@ input returns over the selected screen route on the same peer connections.
 Capture leases own consent and held-key cleanup, independently of room hosting.
 Global stop uses a process-only Windows hotkey selected by the Browser preference.
 The [activity model](../../docs/research/channel-network-design.md#activity-and-lifecycle)
-owns authorization and retirement; optional gamepads and other input platforms
-remain in the Native work item in TODO.
+owns authorization and retirement. Optional Windows gamepads use an already
+installed ViGEmBus through `vigem-rust`; Piik bundles or installs neither a
+driver nor a client DLL. Up to four approved controllers have independent
+device workers. Focus/reset keeps the neutral device, while grant retirement
+stops it; gamepad failures leave keyboard and mouse permission intact. Other
+input platforms remain in TODO.
 
 The App entry point keeps the Windows MTA alive outside its async runtime.
 Cached WinRT factories span successive captures and source-list refreshes; their

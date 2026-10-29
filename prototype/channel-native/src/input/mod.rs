@@ -1,6 +1,7 @@
 //! Source consent and physical input share one process-owned desktop executor.
 //! Room admission and selected-route validation happen before registration here.
 mod cipher;
+mod gamepad;
 mod keyboard;
 #[cfg(test)]
 mod tests;
@@ -95,23 +96,31 @@ impl Drop for SourceHandle {
 
 impl Desktop {
     pub fn new() -> Result<Self> {
+        // Opening the optional bus must never hold the input executor lock.
+        let gamepad = gamepad::Backend::connect().ok();
         #[cfg(target_os = "windows")]
         {
-            Ok(Self::with_sink(Box::new(windows::System)))
+            Ok(Self::with_backend(Box::new(windows::System), gamepad))
         }
         #[cfg(not(target_os = "windows"))]
         {
-            Ok(Self::with_sink(Box::new(Unsupported)))
+            Ok(Self::with_backend(Box::new(Unsupported), gamepad))
         }
     }
 
+    #[cfg(test)]
     fn with_sink(sink: Box<dyn Sink>) -> Self {
+        Self::with_backend(sink, None)
+    }
+
+    fn with_backend(sink: Box<dyn Sink>, gamepad: Option<gamepad::Backend>) -> Self {
         Self(
             Arc::new(Mutex::new(Executor {
                 sink,
                 sources: BTreeMap::new(),
                 owner: None,
                 releases: BTreeSet::new(),
+                gamepad,
             })),
             #[cfg(target_os = "windows")]
             Arc::new(Mutex::new(None)),
@@ -165,7 +174,7 @@ impl Desktop {
             platform: platform(),
             requests: vec![],
             co_play: true,
-            gamepad: None,
+            gamepad: Some(executor.gamepad.is_some()),
             simultaneous: false,
             stop_shortcut: shortcut_view,
         });
@@ -201,6 +210,11 @@ impl Desktop {
         executor.retry_releases();
         if let Some(video) = executor.owner {
             let _ = executor.with_source(video, |e, source| {
+                for c in source.controllers.values_mut() {
+                    if c.pad.as_mut().is_some_and(|pad| pad.error().is_some()) {
+                        c.fail_pad();
+                    }
+                }
                 e.observe(source);
                 Ok(())
             });
@@ -218,7 +232,11 @@ impl Desktop {
             executor.close(id);
         }
         executor.retry_releases();
+        let gamepad = executor.gamepad.take();
         drop(executor);
+        if let Some(gamepad) = gamepad {
+            gamepad.shutdown();
+        }
         #[cfg(target_os = "windows")]
         self.1.lock().unwrap().take();
     }
@@ -305,6 +323,8 @@ impl Source {
                     failed: false,
                     reason: None,
                     last: None,
+                    pad: None,
+                    pad_failed: false,
                 },
             );
             Ok(())
@@ -450,6 +470,7 @@ struct Executor {
     owner: Option<Uuid>,
     /// Only failed releases survive their grant; never replay presses or motion.
     releases: BTreeSet<Held>,
+    gamepad: Option<gamepad::Backend>,
 }
 struct SourceState {
     publication: Uuid,
@@ -474,6 +495,22 @@ struct Controller {
     failed: bool,
     reason: Option<&'static str>,
     last: Option<RemoteState>,
+    pad: Option<gamepad::Pad>,
+    pad_failed: bool,
+}
+
+impl Controller {
+    fn fail_pad(&mut self) {
+        self.pad.take();
+        self.pad_failed = true;
+        self.reason = Some("gamepad");
+    }
+
+    fn reset_pad(&mut self) {
+        if self.pad.as_ref().is_some_and(|pad| pad.reset().is_err()) {
+            self.fail_pad();
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Serialize)]
@@ -562,6 +599,8 @@ impl Executor {
     }
     fn release(&mut self, source: &SourceState, c: &mut Controller) {
         self.release_holds(source, c);
+        c.pad.take();
+        c.pad_failed = false;
         c.intent = None;
         c.grant = None;
         c.suspended = false;
@@ -591,6 +630,9 @@ impl Executor {
                     let mut c = source.controllers.remove(&id).unwrap();
                     if c.grant.is_some() {
                         self.release_holds(source, &mut c);
+                        if !c.suspended {
+                            c.reset_pad();
+                        }
                         c.suspended = true;
                     }
                     source.controllers.insert(id, c);
@@ -689,8 +731,21 @@ impl Executor {
                     return Ok(());
                 }
                 self.retry_releases();
+                match &event {
+                    InputEvent::Gamepad { gamepad } if !gamepad.valid() => return Ok(()),
+                    InputEvent::GamepadStop => {
+                        c.pad.take();
+                        return Ok(());
+                    }
+                    InputEvent::GamepadReset => {
+                        c.reset_pad();
+                        return Ok(());
+                    }
+                    _ => {}
+                }
                 if matches!(event, InputEvent::Reset) {
                     self.release_holds(source, c);
+                    c.reset_pad();
                     return Ok(());
                 }
                 let bounds = match self.sink.observe(&source.target) {
@@ -700,6 +755,9 @@ impl Executor {
                     }
                     TargetState::Suspended => {
                         self.release_holds(source, c);
+                        if !c.suspended {
+                            c.reset_pad();
+                        }
                         c.suspended = true;
                         return Ok(());
                     }
@@ -710,6 +768,25 @@ impl Executor {
                         return Ok(());
                     }
                 };
+                if let InputEvent::Gamepad { gamepad } = event {
+                    if c.pad_failed {
+                        return Ok(());
+                    }
+                    let result = (|| {
+                        if c.pad.is_none() {
+                            let backend = self
+                                .gamepad
+                                .as_ref()
+                                .ok_or_else(|| anyhow!("gamepad_unavailable"))?;
+                            c.pad = Some(backend.open()?);
+                        }
+                        c.pad.as_ref().unwrap().update(gamepad)
+                    })();
+                    if result.is_err() {
+                        c.fail_pad();
+                    }
+                    return Ok(());
+                }
                 let Some(action) = event.action() else {
                     return Ok(());
                 };
@@ -782,6 +859,13 @@ impl Executor {
         let ids: Vec<_> = source.controllers.keys().copied().collect();
         for id in ids {
             let mut c = source.controllers.remove(&id).unwrap();
+            let mut capabilities = vec!["inputFeedback"];
+            if count <= 1 {
+                capabilities.push("text");
+            }
+            if self.gamepad.is_some() && !c.pad_failed {
+                capabilities.push("gamepad");
+            }
             let state = RemoteState {
                 state: if !source.available || source.mode == Mode::Off {
                     "unavailable"
@@ -802,11 +886,7 @@ impl Executor {
                 grant: c.grant.clone(),
                 reason: c.reason,
                 co_play: true,
-                capabilities: if count <= 1 {
-                    vec!["inputFeedback", "text"]
-                } else {
-                    vec!["inputFeedback"]
-                },
+                capabilities,
                 input_failed: c.failed,
             };
             if c.last.as_ref() != Some(&state) {
@@ -839,7 +919,7 @@ impl Executor {
             mode: source.mode,
             platform: platform(),
             co_play: true,
-            gamepad: None,
+            gamepad: Some(self.gamepad.is_some()),
             simultaneous: source.simultaneous,
             stop_shortcut: source.view.borrow().stop_shortcut,
             requests: source
@@ -898,13 +978,36 @@ enum Command {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum InputEvent {
-    Move { x: f64, y: f64 },
-    Relative { dx: i32, dy: i32 },
-    Key { code: String, down: bool },
-    Button { button: u8, down: bool },
-    Wheel { delta: i32 },
-    Text { text: String },
+    Move {
+        x: f64,
+        y: f64,
+    },
+    Relative {
+        dx: i32,
+        dy: i32,
+    },
+    Key {
+        code: String,
+        down: bool,
+    },
+    Button {
+        button: u8,
+        down: bool,
+    },
+    Wheel {
+        delta: i32,
+    },
+    Text {
+        text: String,
+    },
     Reset,
+    Gamepad {
+        gamepad: gamepad::Report,
+    },
+    #[serde(rename = "gamepad-reset")]
+    GamepadReset,
+    #[serde(rename = "gamepad-stop")]
+    GamepadStop,
 }
 impl InputEvent {
     fn action(self) -> Option<Action> {
