@@ -1,7 +1,11 @@
 //! Adapter-bound asynchronous hardware MFT. No capture/RTP policy lives here.
 use super::{
-    cadence::Cadence, converter::Converter, output::Shared, windows::RawFrame, CaptureClock,
-    EncodedFrame, Settings,
+    cadence::{AdmissionRate, Cadence},
+    converter::Converter,
+    frame_dropper::FrameDropper,
+    output::Shared,
+    windows::RawFrame,
+    CaptureClock, EncodedFrame, Settings,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{mem::ManuallyDrop, ptr, sync::Arc};
@@ -278,6 +282,10 @@ impl Encoder {
         let mut last_pts = -1;
         let duration = 10_000_000 / settings.fps as i64;
         let mut cadence = Cadence::new(settings.fps);
+        let mut dropper = FrameDropper::new();
+        let mut admission_rate = AdmissionRate::default();
+        let mut target_kbps = settings.bitrate as f32 / 1000.0;
+        dropper.set_rates(target_kbps, 0.0);
         enum Work {
             Stop,
             Event(windows::core::Result<u32>),
@@ -318,6 +326,8 @@ impl Encoder {
                         .api
                         .SetValue(&CODECAPI_AVEncCommonMeanBitRate, &VARIANT::from(bitrate))
                         .context("hardware H264 live bitrate")?;
+                    target_kbps = bitrate as f32 / 1000.0;
+                    dropper.set_rates(target_kbps, admission_rate.fps.unwrap_or(0.0));
                 },
                 Work::Event(event) => {
                     let kind = event?;
@@ -330,6 +340,7 @@ impl Encoder {
                             need_input += 1;
                         } else if kind == METransformHaveOutput.0 as u32 {
                             let (bytes, pts, keyframe) = encoder.output()?;
+                            dropper.fill(bytes.len(), !keyframe);
                             let presentation_time = clock.instant(origin.unwrap() + pts);
                             if !shared.output(EncodedFrame {
                                 bytes,
@@ -354,6 +365,18 @@ impl Encoder {
                     // may precede its presentation time; raw frames are replaceable.
                     if pts <= last_pts {
                         continue;
+                    }
+                    // Cadence has already admitted this raw frame. A skipped
+                    // candidate still counts as input, never as encoded output.
+                    if !repeated {
+                        if let Some(fps) = admission_rate.observe(frame.qpc) {
+                            dropper.set_rates(target_kbps, fps);
+                            dropper.leak(fps.round() as u32);
+                            let dropped = dropper.drop_frame() && !force;
+                            if dropped {
+                                continue;
+                            }
+                        }
                     }
                     let texture = converter.convert(&frame.texture)?;
                     encoder.input(&texture, pts, duration, force)?;

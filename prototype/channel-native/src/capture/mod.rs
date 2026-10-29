@@ -5,6 +5,8 @@ mod audio;
 mod cadence;
 #[cfg(target_os = "windows")]
 mod converter;
+#[cfg(any(target_os = "windows", test))]
+mod frame_dropper;
 #[cfg(target_os = "windows")]
 mod mf;
 #[cfg(target_os = "windows")]

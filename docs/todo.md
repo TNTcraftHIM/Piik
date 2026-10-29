@@ -12,8 +12,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   Rust owners. Complete Native low-bandwidth adaptation, input
   and platform packaging over the shared UI and Native participant.
   Integrate the verified transport probing/feedback candidate with aggregate
-  application demand. Handle encoder output that exceeds its budget after
-  quantization saturates, and optional opaque RTP that competes with selected media.
+  application demand. Complete admission for optional opaque RTP that competes
+  with selected media, and encoding retirement based on actual consumers.
   Native relay demand must also account for weaker downstream branches without
   lowering healthy ones.
   Resolve the observed NVIDIA MFT shutdown access violation before Native acceptance;

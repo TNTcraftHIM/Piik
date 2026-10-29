@@ -572,8 +572,13 @@ With real ICE/DTLS/SRTP/TWCC over a controlled UDP link, a 300 kbps target reach
 8 Mbps in 42.77 seconds with stock GCC and 0.47 seconds with the candidate.
 Probing starts on first media, also after 30 seconds of silence; static media can
 learn capacity before motion resumes. Two Chrome receivers complete probing,
-decode and switch encodings with stable track/SSRC/SDP. Encoder allocation is the
-next integration step for that transport candidate.
+decode and switch encodings with stable track/SSRC/SDP. In an isolated App build,
+the candidate now drives the actual Native allocator and hardware encoders from
+its 300 kbps initial target. Each connection supplies its aggregate configured
+media demand, independently of actual usage and current allocation. Two Chrome
+viewers return to one shared baseline encoder after capacity is learned; leaving
+one viewer preserves the other. Closing the capture page releases video, audio
+and encoder workers while the App-hosted room continues.
 
 For a 20-second 600 kbps FIFO bottleneck, peak network backlog falls from 18,654
 to 325 packets, but target recovery to 8 Mbps still takes 36.6 seconds. Payload
@@ -608,11 +613,15 @@ retires its encoder only after a newer baseline keyframe is adopted. The existin
 driver loop consumes latest targets without queuing intermediate values.
 Opaque forwarding still needs its own demand/admission treatment; counting its
 traffic does not make it independently adjustable.
-Actual MFT/Chrome trials keep the healthy output near 2.16 Mbps while another
-output changes from 804 to 273 to 690 kbps for targets of 1.5 Mbps, 200 kbps and
-1.5 Mbps. The low target reaches QP 50; a random-noise source reaches QP 50/51
-and stays near 5.2 Mbps. Fixed dimensions and frame rate therefore cannot make
-every requested bitrate attainable. Encoder adaptation must handle that boundary.
+A hardware encoder can exceed its target when quantization saturates: the
+standard-motion 200 kbps trial produced 273 kbps at QP 50; random noise reached
+QP 50/51 at 5.2 Mbps. Each encoding therefore reuses WebRTC's
+[FrameDropper](../../native/third_party/webrtc-frame-dropper/README.md) before
+submission, driven by actual encoded bytes and its incoming raw-frame rate.
+Dropped raw frames retain the source clock; encoded reference frames stay intact.
+The same standard-motion trial now produces 199 kbps at about 11.4 fps and
+recovers to 16.2 fps when its budget rises. The healthy sibling remains near
+2.16 Mbps, with its audio and output identity unchanged.
 App sharing uses that existing Native endpoint. The selecting page owns a
 non-cloneable capture lease whose drop stops the producer directly, even while
 signaling is reconnecting; the Native driver owns worker completion. Room

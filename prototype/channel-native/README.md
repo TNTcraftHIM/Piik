@@ -21,6 +21,9 @@ clock. Each encoding owns its D3D11 conversion, hardware H264 encoder, bitrate,
 keyframe requests and ordered output. Stopping one encoding leaves its siblings
 running; stopping capture ends all its encodings. Frame-rate selection retains
 the original timestamps and accumulates its sampling interval across frames.
+Each encoder feeds its actual output size into the existing WebRTC FrameDropper
+algorithm; raw-frame admission adjusts when hardware rate control overshoots,
+without discarding encoded reference frames or changing the source clock.
 The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
 Each local output packetizes complete access units on its own stable RTP clock;
