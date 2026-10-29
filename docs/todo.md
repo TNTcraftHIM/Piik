@@ -21,10 +21,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
-- [ ] **2.x equivalent H.264 negotiation.** Pion drops a supported Constrained
-  Baseline offer such as `42c01f` when VP8 also matches. The minimal RFC 6184
-  repair passes actual receiver and forwarding checks on the maintenance line;
-  its upstream submission and fixed dependency await owner approval.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -57,6 +53,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#298](https://github.com/webrtc-rs/rtc/pull/298). Native and Server use
   the same fixed 0.21.1 fork; [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the repair and removal criteria.
+- [ ] **Return Pion to an upstream pin.** Follow
+  [upstream #3668](https://github.com/pion/webrtc/pull/3668). Once upstream
+  includes equivalent H.264 profile matching, verify the receiver and forwarding
+  controls and remove the temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#pion-h264-profile-matching)
+  owns the patch and removal boundary.
 
 ## Next
 

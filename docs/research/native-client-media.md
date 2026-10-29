@@ -623,6 +623,14 @@ a source. Capture and receive admission share the RFC profile predicate. This
 repairs the encoded-source contract without changing routing or adding encoding
 paths; it is not evidence for the reported D3D device loss.
 
+An October 29 mixed-codec control exposed the remaining equivalent-profile
+case: `42c01f` plus VP8 still selected VP8 against the local `42e0` registration.
+The fixed Pion dependency now compares RFC-equivalent subprofiles at the matcher,
+preserving H.264 preference without rewriting remote SDP. Actual receiver
+negotiation, retained-receiver renegotiation and encoded forwarding pass with
+the repair. [Dependency provenance](../../internal/thirdparty/README.md#pion-h264-profile-matching)
+owns its upstream submission and removal boundary.
+
 Firefox-generated SDP also reproduced audio omission for a valid `bundle-only`
 section with port zero. The receiver had treated every zero port as rejection;
 it now follows [RFC 9143](https://www.rfc-editor.org/rfc/rfc9143.html#section-6),

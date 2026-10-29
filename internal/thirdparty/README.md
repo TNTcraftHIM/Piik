@@ -99,6 +99,23 @@ capacity. Once an upstream revision supports this input and passes those
 checks, remove the replacement directive and its replacement checksums. The
 separate local send-side estimator corrections retain their own removal gate.
 
+## Pion H.264 Profile Matching
+
+Until [upstream #3668](https://github.com/pion/webrtc/pull/3668) is available,
+the root module replaces Pion with the immutable
+[6ed9e55c revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/6ed9e55c5935edf3b55d0528fdfb5cc85110a013),
+based on official v4.2.26. It matches equivalent H.264 subprofiles according to
+[RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1).
+Without this repair, an offer containing Constrained Baseline `42c01f` and VP8
+can select VP8 even though the receiver prefers and supports that H.264 profile.
+The patch changes only profile matching and its regressions; level and
+packetization handling stay upstream-owned. Piik adds no SDP aliases or local
+Pion source. The package notice collector reads the replacement's MIT license.
+
+Once an upstream revision passes the actual receiver negotiation and encoded
+forwarding controls, remove this replacement and its checksums. Keep the mixed
+H.264/VP8 regression in the existing media-edge receiver test table.
+
 ## Pion Repaired-Packet Identity
 
 The shared [RTP receive adapter](../media/forwarding/codecs.go) uses the negotiated
@@ -109,4 +126,4 @@ an earlier RTX packet can therefore be queued with payload type zero.
 Ordinary packet validation remains unchanged. A real simulcast/NACK regression
 fences that ordering without sleeps and fails when the correction is removed.
 Remove the adapter when a maintained upstream version passes that same control
-without it; no Pion source fork or second retransmission handler is retained.
+without it; this repair adds no second retransmission handler.
