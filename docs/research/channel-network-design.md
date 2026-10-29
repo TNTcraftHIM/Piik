@@ -567,6 +567,12 @@ Pacer and RTX owner, retaining the async adapter's sockets and candidate gatheri
 Its small executor follows [WebRTC's BitrateProber](https://webrtc.googlesource.com/src/+/main/modules/pacing/bitrate_prober.cc).
 Probe padding reuses real cached RTX media; internal controller messages finish
 inside the interceptor chain without depending on an application event.
+The isolated candidate also carries upstream fixes for
+[authenticated DTLS completion retries](https://github.com/webrtc-rs/rtc/pull/289),
+[SCTP ERROR handling](https://github.com/webrtc-rs/rtc/pull/277),
+[DCEP reliability](https://github.com/webrtc-rs/rtc/pull/280) and
+[ForwardTSN parameters](https://github.com/webrtc-rs/rtc/pull/276), which the
+pinned 0.21.1 baseline lacks.
 
 With real ICE/DTLS/SRTP/TWCC over a controlled UDP link, a 300 kbps target reaches
 8 Mbps in 42.77 seconds with stock GCC and 0.47 seconds with the candidate.
@@ -607,10 +613,15 @@ units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
 The Native driver allocates each connection's target to confirmed local video
 after accounting for other RTP, prioritizing selected video over optional video.
-The producer reuses its baseline at full demand and one independently controlled
-encoding per constrained output. Zero allocation pauses that output; restoration
-retires its encoder only after a newer baseline keyframe is adopted. The existing
-driver loop consumes latest targets without queuing intermediate values.
+One producer reconciles demand with the encodings actually used by its outputs.
+It reuses a warm baseline at full demand and one independently controlled encoding
+per constrained output. Zero allocation pauses that output; restoration retires
+its encoder only after a newer baseline keyframe is adopted. An unused baseline
+stops consuming access units and rests on the existing bounded queue.
+Each physical encoder has its own feed identity. Failure is applied atomically
+against an output's current or required pending feed; a failed optional upgrade
+preserves the incumbent. The existing driver loop consumes latest targets
+without queuing intermediate values.
 Opaque forwarding still needs its own demand/admission treatment; counting its
 traffic does not make it independently adjustable.
 A hardware encoder can exceed its target when quantization saturates: the

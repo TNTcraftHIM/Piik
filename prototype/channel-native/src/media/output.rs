@@ -283,6 +283,13 @@ impl Output {
             Input::Rtp(_) => None,
         }
     }
+    #[cfg(target_os = "windows")]
+    pub fn encoding_failed(&self, video: &video::Video) -> bool {
+        match &self.input {
+            Input::Video(input) => input.failed(video),
+            Input::Rtp(_) => false,
+        }
+    }
     pub fn confirm(&self, codecs: &[RTCRtpCodecParameters]) {
         self.negotiated.send_replace(
             codecs

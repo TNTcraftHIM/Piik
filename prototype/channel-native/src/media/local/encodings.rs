@@ -1,8 +1,9 @@
-//! The capture's baseline encoder and the independent encoders actually leased by Outputs.
+//! One producer selects and retires the actual encoders used by its Outputs.
 use super::*;
-use crate::capture::Encoding;
-use std::collections::HashMap;
-use std::sync::Arc;
+use crate::capture::{Encoding, EncodingControl};
+use futures_util::{stream::FuturesUnordered, StreamExt};
+use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
+use tokio::sync::Notify;
 
 async fn stop(encoding: Encoding) -> Result<()> {
     encoding.control().stop();
@@ -12,146 +13,107 @@ async fn stop(encoding: Encoding) -> Result<()> {
 async fn report_failure(
     events: &mpsc::Sender<Event>,
     capture: &VideoControl,
-    event: Event,
+    publication_id: Uuid,
+    source: Uuid,
+    video: Video,
 ) -> Result<()> {
     tokio::select! {
         biased;
         _ = capture.stopped() => Ok(()),
-        sent = events.send(event) => sent.map_err(Into::into),
+        sent = events.send(Event::EncodingFailed { publication_id, source, video }) => sent.map_err(Into::into),
     }
 }
 
-async fn baseline(
+type Pump = Pin<Box<dyn Future<Output = (Video, Result<()>)> + Send>>;
+
+struct Entry {
+    video: Video,
+    control: EncodingControl,
+    bitrate: u32,
+}
+impl Entry {
+    fn new(
+        encoding: Encoding,
+        video: Video,
+        bitrate: u32,
+        capture: VideoControl,
+        requests: watch::Receiver<u64>,
+        pumps: &mut FuturesUnordered<Pump>,
+    ) -> Self {
+        let control = encoding.control();
+        pumps.push(pump(encoding, video.clone(), capture, requests));
+        Self {
+            video,
+            control,
+            bitrate,
+        }
+    }
+    fn retire(self) {
+        self.control.stop();
+        // An idle pump is waiting on requests, not consuming encoded frames.
+        self.video.request_keyframe();
+    }
+}
+
+fn pump(
     mut encoding: Encoding,
-    frames: Video,
+    video: Video,
     capture: VideoControl,
     mut requests: watch::Receiver<u64>,
-) -> Result<()> {
-    let control = encoding.control();
-    let mut sps = H264Sps::default();
-    let result = async {
-        loop {
-            tokio::select! {
-                _ = capture.stopped() => break,
-                frame = encoding.recv() => match frame {
-                    Some(frame) => {
-                        let frame = frame?;
-                        sps.access_unit(&frame.bytes)?;
-                        frames.write(frame);
+) -> Pump {
+    Box::pin(async move {
+        let control = encoding.control();
+        let mut sps = H264Sps::default();
+        let result = async {
+            while !control.is_stopped() {
+                tokio::select! {
+                    _ = capture.stopped() => break,
+                    // Keep the baseline warm without encoding unused frames.
+                    // Its existing two-AU queue supplies bounded backpressure.
+                    frame = encoding.recv(), if video.needed() => match frame {
+                        Some(frame) => {
+                            let frame = frame?;
+                            sps.access_unit(&frame.bytes)?;
+                            video.write(frame);
+                        }
+                        None => break,
+                    },
+                    changed = requests.changed() => {
+                        changed?;
+                        if video.needed() && !control.is_stopped() {
+                            control.force_keyframe()?;
+                        }
                     }
-                    None => break,
-                },
-                changed = requests.changed() => {
-                    changed?;
-                    control.force_keyframe()?;
                 }
             }
+            Ok(())
         }
-        Ok(())
-    }
-    .await;
-    result.and(stop(encoding).await)
+        .await;
+        let result = result.and(stop(encoding).await);
+        (video, result)
+    })
 }
 
-struct Limited {
-    encoding: Encoding,
-    frames: Video,
-    requests: watch::Receiver<u64>,
+fn select(demand: &VideoDemand, video: &Video, required: bool) -> bool {
+    let Some(input) = demand.input.upgrade() else {
+        return false;
+    };
+    if input.select(video, required).is_err() {
+        return false;
+    }
+    input.set_active(true);
+    true
 }
-async fn output(
-    id: Uuid,
-    capture: Arc<Capture>,
-    settings: Settings,
-    baseline: Video,
-    mut demands: watch::Receiver<Vec<VideoDemand>>,
-) -> Result<()> {
-    let control = capture.control();
-    let mut limited: Option<Limited> = None;
-    let mut adopted = None;
-    let mut applied = None;
-    let mut sps = H264Sps::default();
-    let result = async {
-        loop {
-            let demand = demands
-                .borrow_and_update()
-                .iter()
-                .find(|d| d.output == id)
-                .cloned();
-            let Some(demand) = demand else { break };
-            if applied.as_ref() != Some(&demand) {
-                let Some(input) = demand.input.upgrade() else {
-                    break;
-                };
-                adopted = None;
-                if demand.bitrate == 0 {
-                    input.set_active(false);
-                    drop(input);
-                    if let Some(old) = limited.take() {
-                        if let Err(error) = stop(old.encoding).await {
-                            eprintln!("Native retired output encoding failed: {error:#}");
-                        }
-                    }
-                } else if demand.bitrate >= settings.bitrate {
-                    adopted = Some(input.select(&baseline)?);
-                    input.set_active(true);
-                } else {
-                    if let Some(current) = &limited {
-                        current.encoding.control().set_bitrate(demand.bitrate)?;
-                    } else {
-                        let encoding = capture.encode(Settings {
-                            bitrate: demand.bitrate,
-                            ..settings
-                        })?;
-                        let frames = Video::new(baseline.time());
-                        limited = Some(Limited {
-                            encoding,
-                            requests: frames.requests(),
-                            frames,
-                        });
-                    }
-                    let _ = input.select(&limited.as_ref().unwrap().frames)?;
-                    input.set_active(true);
-                }
-                applied = Some(demand);
-            }
-            let has_limited = limited.is_some();
-            let (encoding, keyframes) = match limited.as_mut() {
-                Some(current) => (Some(&mut current.encoding), Some(&mut current.requests)),
-                None => (None, None),
-            };
-            tokio::select! {
-                _ = control.stopped() => break,
-                changed = demands.changed() => { if changed.is_err() { break; } },
-                result = async { adopted.as_mut().unwrap().await }, if adopted.is_some() => {
-                    adopted = None;
-                    if result.is_ok() {
-                        if let Some(old) = limited.take() {
-                            if let Err(error) = stop(old.encoding).await {
-                                eprintln!("Native retired output encoding failed: {error:#}");
-                            }
-                        }
-                    }
-                },
-                frame = async { encoding.unwrap().recv().await }, if has_limited => {
-                    let frame = frame.ok_or_else(|| anyhow!("encoding ended"))??;
-                    sps.access_unit(&frame.bytes)?;
-                    limited.as_ref().unwrap().frames.write(frame);
-                },
-                changed = async { keyframes.unwrap().changed().await }, if has_limited => {
-                    changed?;
-                    limited.as_ref().unwrap().encoding.control().force_keyframe()?;
-                }
-            }
-        }
-        Ok(())
+
+fn retire_unused(limited: &mut HashMap<Uuid, Entry>) {
+    let retired: Vec<_> = limited
+        .iter()
+        .filter(|(_, entry)| !entry.video.needed())
+        .map(|(id, _)| *id)
+        .collect();
+    for id in retired {
+        limited.remove(&id).unwrap().retire();
     }
-    .await;
-    if let Some(old) = limited {
-        if let Err(error) = stop(old.encoding).await {
-            eprintln!("Native retired output encoding failed: {error:#}");
-        }
-    }
-    result
 }
 
 pub(super) async fn run(
@@ -169,12 +131,16 @@ pub(super) async fn run(
     mut cancelled: watch::Receiver<bool>,
     mut demands: watch::Receiver<Vec<VideoDemand>>,
 ) -> Option<String> {
-    let frames = Video::new(time);
-    let initial_requests = frames.requests();
-    let capture = Arc::new(capture);
+    let changed = Arc::new(Notify::new());
+    let frames = Video::new(time, changed.clone());
+    let requests = frames.requests();
     let mut initial = Some(encoding);
-    let mut baseline_task = None;
-    let mut outputs: HashMap<Uuid, JoinHandle<()>> = HashMap::new();
+    let mut baseline: Option<Entry> = None;
+    let mut limited = HashMap::<Uuid, Entry>::new();
+    let mut pumps = FuturesUnordered::<Pump>::new();
+    // Only handles are retained here, so a removed transport demand is paused
+    // even if its Output has not finished closing yet.
+    let mut inputs = HashMap::<Uuid, Weak<Input>>::new();
     let mut ready = Some(ready);
     let result = async {
         let frame = tokio::select! {
@@ -197,80 +163,111 @@ pub(super) async fn run(
             sent = ready_sources.send(SourceReady { source, media: InitialMedia::Video(frame) }) => sent?,
         }
         let _ = ready.take().unwrap().send(Ok(()));
-        baseline_task = Some(tokio::spawn(baseline(initial.take().unwrap(), frames.clone(), control.video.clone(), initial_requests)));
+        baseline = Some(Entry::new(initial.take().unwrap(), frames, settings.bitrate,
+            control.video.clone(), requests, &mut pumps));
         loop {
             tokio::select! {
                 _ = control.video.stopped() => break,
                 _ = cancelled.changed() => break,
-                changed = demands.changed() => {
-                    if changed.is_err() { break; }
+                update = demands.changed() => {
+                    if update.is_err() { break; }
                     let next = demands.borrow_and_update().clone();
-                    let retired: Vec<_> = outputs.keys().filter(|id| !next.iter().any(|d| d.output == **id)).copied().collect();
-                    for id in retired {
-                        let _ = outputs.remove(&id).unwrap().await;
-                    }
-                    if baseline_task.is_none() && next.iter().any(|d| d.bitrate >= settings.bitrate) {
-                        match capture.encode(settings) {
-                            Ok(encoding) => baseline_task = Some(tokio::spawn(baseline(encoding, frames.clone(), control.video.clone(), frames.requests()))),
-                            Err(error) => {
-                                eprintln!("Native baseline encoding failed: {error:#}");
-                                for demand in next.iter().filter(|d| d.bitrate >= settings.bitrate) {
-                                    report_failure(&events, &control.video, Event::EncodingFailed { publication_id, source: source_id, output: demand.output }).await?;
+                    inputs.retain(|id, input| {
+                        let keep = next.iter().any(|d| d.output == *id && d.input.ptr_eq(input));
+                        if !keep { if let Some(input) = input.upgrade() { input.set_active(false); } }
+                        keep
+                    });
+                    for demand in &next { inputs.insert(demand.output, demand.input.clone()); }
+                    let mut failed = Vec::new();
+                    let full: Vec<_> = next.iter().filter(|d| d.bitrate >= settings.bitrate).collect();
+                    if !full.is_empty() {
+                        let video = baseline.as_ref().map(|entry| entry.video.clone())
+                            .unwrap_or_else(|| Video::new(time, changed.clone()));
+                        let requests = video.requests();
+                        for demand in full { select(demand, &video, false); }
+                        if baseline.is_none() && video.needed() {
+                            match capture.encode(settings) {
+                                Ok(encoding) => baseline = Some(Entry::new(encoding, video, settings.bitrate,
+                                    control.video.clone(), requests, &mut pumps)),
+                                Err(error) => {
+                                    eprintln!("Native baseline encoding failed: {error:#}");
+                                    failed.push(video);
                                 }
                             }
                         }
                     }
-                    for demand in next {
-                        if outputs.contains_key(&demand.output) { continue; }
-                        let id = demand.output;
-                        let capture = capture.clone();
-                        let frames = frames.clone();
-                        let demands = demands.clone();
-                        let events = events.clone();
-                        outputs.insert(id, tokio::spawn(async move {
-                            let control = capture.control();
-                            if let Err(error) = output(id, capture, settings, frames, demands).await {
-                                if !control.is_stopped() {
+                    for demand in next.iter().filter(|d| d.bitrate < settings.bitrate) {
+                        if demand.bitrate == 0 {
+                            if let Some(input) = demand.input.upgrade() { input.set_active(false); }
+                            continue;
+                        }
+                        if let Some(entry) = limited.get_mut(&demand.output) {
+                            if select(demand, &entry.video, true) && entry.bitrate != demand.bitrate {
+                                if let Err(error) = entry.control.set_bitrate(demand.bitrate) {
                                     eprintln!("Native output encoding failed: {error:#}");
-                                    let _ = report_failure(&events, &control, Event::EncodingFailed { publication_id, source: source_id, output: id }).await;
+                                    let entry = limited.remove(&demand.output).unwrap();
+                                    failed.push(entry.video.clone());
+                                    entry.retire();
+                                } else {
+                                    entry.bitrate = demand.bitrate;
                                 }
                             }
-                        }));
+                        } else {
+                            let video = Video::new(time, changed.clone());
+                            let requests = video.requests();
+                            if !select(demand, &video, true) { continue; }
+                            match capture.encode(Settings { bitrate: demand.bitrate, ..settings }) {
+                                Ok(encoding) => { limited.insert(demand.output, Entry::new(encoding, video,
+                                    demand.bitrate, control.video.clone(), requests, &mut pumps)); }
+                                Err(error) => {
+                                    eprintln!("Native output encoding failed: {error:#}");
+                                    failed.push(video);
+                                }
+                            }
+                        }
+                    }
+                    for video in failed {
+                        report_failure(&events, &control.video, publication_id, source_id, video).await?;
                     }
                 },
-                result = async { baseline_task.as_mut().unwrap().await }, if baseline_task.is_some() => {
-                    baseline_task = None;
-                    if !control.video.is_stopped() {
-                        let error = result.map_err(anyhow::Error::from).and_then(|r| r).err();
-                        eprintln!("Native baseline encoding ended: {error:?}");
-                        let failed: Vec<_> = demands.borrow().iter().filter(|d| d.bitrate >= settings.bitrate).map(|d| d.output).collect();
-                        for output in failed {
-                            report_failure(&events, &control.video, Event::EncodingFailed { publication_id, source: source_id, output }).await?;
-                        }
+                _ = changed.notified() => {},
+                Some((video, result)) = pumps.next(), if !pumps.is_empty() => {
+                    let owned = if baseline.as_ref().is_some_and(|entry| entry.video.same(&video)) {
+                        baseline.take();
+                        true
+                    } else {
+                        let id = limited.iter().find(|(_, entry)| entry.video.same(&video)).map(|(id, _)| *id);
+                        id.is_some_and(|id| limited.remove(&id).is_some())
+                    };
+                    if owned && !control.video.is_stopped() {
+                        eprintln!("Native encoding ended: {:?}", result.err());
+                        report_failure(&events, &control.video, publication_id, source_id, video).await?;
+                    } else if let Err(error) = result {
+                        eprintln!("Native retired encoding failed: {error:#}");
                     }
                 }
             }
+            // Adoption/closure can retire an encoder, but never retries a failed
+            // allocation. Only a real change to demands starts another attempt.
+            retire_unused(&mut limited);
         }
         Ok::<_, anyhow::Error>(())
     }.await;
     control.stop();
-    for (_, task) in outputs {
-        let _ = task.await;
+    if let Some(entry) = baseline {
+        entry.retire();
     }
-    if let Some(task) = baseline_task {
-        let _ = task.await;
+    for (_, entry) in limited {
+        entry.retire();
     }
+    while pumps.next().await.is_some() {}
     if let Some(encoding) = initial {
         let _ = stop(encoding).await;
     }
-    let joined = tokio::task::spawn_blocking(move || {
-        Arc::try_unwrap(capture)
-            .map_err(|_| anyhow!("capture still has an encoder owner"))?
-            .stop()
-    })
-    .await
-    .map_err(anyhow::Error::from)
-    .and_then(|result| result);
+    let joined = tokio::task::spawn_blocking(move || capture.stop())
+        .await
+        .map_err(anyhow::Error::from)
+        .and_then(|result| result);
     if let Some(audio) = audio {
         if let Err(error) = audio.await {
             eprintln!("Native audio task failed: {error}");

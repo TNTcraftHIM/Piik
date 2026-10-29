@@ -197,8 +197,9 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
         epoch,
         clock: SystemInstant::now(epoch),
     };
-    let high = Video::new(time);
-    let low = Video::new(time);
+    let changed = Arc::new(Notify::new());
+    let high = Video::new(time, changed.clone());
+    let low = Video::new(time, changed);
     let mut high_requests = high.requests();
     let mut low_requests = low.requests();
     let source = Source {
@@ -290,12 +291,12 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
     let first = packet(&*track).await?;
     assert_eq!(first.payload[1], 5); // No dependent P frame survived the overflow.
 
-    let adopted = d.pairs[&pair].outputs[&key]
+    d.pairs[&pair].outputs[&key]
         .video_input()
         .unwrap()
         .upgrade()
         .unwrap()
-        .select(&low)?;
+        .select(&low, true)?;
     let requested = *low_requests.borrow_and_update();
     low.write(frame(6, false, 120));
     // A restarted encoder's old static IDR must request a fresh IDR, not wrap RTP time.
@@ -305,7 +306,6 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
     let incumbent = packet(&*track).await?;
     assert_eq!(incumbent.payload[1], 8);
     low.write(frame(9, true, 200));
-    adopted.await?;
     let switched = packet(&*track).await?;
     assert_eq!(switched.payload[1], 9);
     assert_eq!(switched.header.ssrc, first.header.ssrc);

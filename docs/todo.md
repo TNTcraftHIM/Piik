@@ -11,9 +11,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete Native low-bandwidth adaptation, input
   and platform packaging over the shared UI and Native participant.
-  Integrate the verified transport probing/feedback candidate with aggregate
-  application demand. Complete admission for optional opaque RTP that competes
-  with selected media, and encoding retirement based on actual consumers.
+  Integrate the verified transport probing/feedback candidate and upstream
+  DTLS/SCTP fixes with aggregate application demand. Complete admission for
+  optional opaque RTP that competes with selected media.
   Native relay demand must also account for weaker downstream branches without
   lowering healthy ones.
   Resolve the observed NVIDIA MFT shutdown access violation before Native acceptance;

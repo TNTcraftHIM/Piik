@@ -161,7 +161,7 @@ pub(crate) enum Event {
     EncodingFailed {
         publication_id: Uuid,
         source: Uuid,
-        output: Uuid,
+        video: crate::media::video::Video,
     },
     DataWriteFailed {
         pair: Uuid,
@@ -1556,20 +1556,24 @@ impl Driver {
             Event::EncodingFailed {
                 publication_id,
                 source,
-                output,
+                video,
             } => {
                 if self
                     .captures
                     .get(&publication_id)
                     .is_some_and(|producer| producer.video == source)
                 {
-                    let binding = self.pairs.iter().find_map(|(pair, p)| {
-                        p.outputs
-                            .iter()
-                            .find(|(_, current)| current.id == output)
-                            .map(|(key, _)| (*pair, *key))
-                    });
-                    if let Some((pair, key)) = binding {
+                    let failed: Vec<_> = self
+                        .pairs
+                        .iter()
+                        .flat_map(|(pair, p)| {
+                            p.outputs.iter().filter_map(|(key, current)| {
+                                (current.source == source && current.encoding_failed(&video))
+                                    .then_some((*pair, *key, current.id))
+                            })
+                        })
+                        .collect();
+                    for (pair, key, output) in failed {
                         self.output_failed(pair, key, source, output).await;
                     }
                 }
