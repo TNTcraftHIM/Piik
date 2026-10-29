@@ -644,6 +644,14 @@ preserves the incumbent. The existing driver loop consumes latest targets
 without queuing intermediate values.
 Opaque forwarding still needs its own demand/admission treatment; counting its
 traffic does not make it independently adjustable.
+The isolated incoming-H264 candidate shares complete source access units between
+original forwarding and one demand-driven Windows GPU decoder. Decoded frames
+reuse the local capture's encoding and retirement owners. Its stable outputs
+adopt a newer keyframe before retiring their previous encoding; closing a weak
+output releases its derivation without stopping healthy siblings. Source RTP/SR
+mapping preserves the sender's clock through decoding and re-encoding. Real
+two-Browser handoff, rebuild and failure isolation passed; integration waits for
+the SDK complete-sample dependency and combined allocation acceptance.
 A hardware encoder can exceed its target when quantization saturates: the
 standard-motion 200 kbps trial produced 273 kbps at QP 50; random noise reached
 QP 50/51 at 5.2 Mbps. Each encoding therefore reuses WebRTC's

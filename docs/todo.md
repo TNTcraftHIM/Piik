@@ -11,11 +11,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete Native low-bandwidth adaptation, input
   and platform packaging over the shared UI and Native participant.
-  Integrate the verified transport probing/feedback candidate and upstream
-  DTLS/SCTP fixes with aggregate application demand. Complete admission for
-  optional opaque RTP that competes with selected media.
-  Native relay demand must also account for weaker downstream branches without
-  lowering healthy ones.
+  Integrate the verified transport probing/feedback and incoming-H264 derivation
+  candidates with aggregate application demand and upstream DTLS/SCTP fixes.
+  Complete admission for optional opaque RTP that competes with selected media.
   Carry forward the [2.x Native reachability behavior](./standards/routing-transport.md):
   Gateway mapping and coordinated UDP preparation belong to
   the existing connection owner, rather than another routing layer.
@@ -70,9 +68,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **RTC DTLS fix submission.** The local SDK repair preserves the established
-  transport role when the SDP offerer changes. Submit it upstream and update the
-  fixed dependency after approval; Native capture acceptance uses this repair.
+- [ ] **RTC upstream submissions.** The prepared DTLS-role, transport/GoogCc,
+  H264 parser and complete-sample changes await external-publication approval.
+  Submit the approved scope and verify the combined Native adapter before
+  updating its fixed dependency. Local implementation and verification continue.
 - [ ] **Maintenance publication.** Held on 2026-10-27. Completed fixes stay on
   the maintenance branch; publish only on the owner's next instruction.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
