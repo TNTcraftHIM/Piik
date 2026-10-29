@@ -417,6 +417,15 @@ The source owner and controlled device authorize remote input for a publication,
 source generation and controller session. Domain/room administration alone grants
 no desktop control. Changing the focused picture never retargets an input grant.
 
+Input follows the committed screen flow back to its source, using a separate
+encrypted logical DataChannel on the same peer connection. Room conversation
+and file readiness keep their base-path scope; input failure does not retire
+those consumers. A failed route trial preserves current grants, while replacing
+the selected flow retires the affected grants and held input. Native input uses
+the existing capture-source identity and page-owned capture lifetime. One App
+process owns the physical desktop executor across its approved sites; hosting a
+room does not extend a closed page's permission to control that desktop.
+
 | Event | Outcome |
 | --- | --- |
 | Room owner changes views, minimizes the window or closes an in-page panel | Keep the hosting session and its room running. Visibility is not authority. |
