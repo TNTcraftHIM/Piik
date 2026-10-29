@@ -864,6 +864,14 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
 async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() {
     use piik_channel_core::conversation::SessionSigner;
     use piik_channel_prototype::{app, web};
+    use rtc::stun::{
+        fingerprint::FINGERPRINT,
+        message::{
+            Getter, Message as StunMessage, TransactionId, BINDING_REQUEST, BINDING_SUCCESS,
+        },
+        xoraddr::XorMappedAddress,
+    };
+    use tokio::net::UdpSocket;
     use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
 
     let folder = std::env::temp_dir().join(format!("piik-app-launch-{}", Uuid::new_v4()));
@@ -879,7 +887,7 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         assets: assets.clone(),
         open_browser: false,
         cloudflared: folder.join("missing-cloudflared"),
-        ice_servers: vec![],
+        ice_servers: vec![json!({"urls": ["stun:public-discovery.invalid:3478"]})],
     };
     let saved_identity = || -> Value {
         let db = rusqlite::Connection::open(folder.join("app.sqlite")).unwrap();
@@ -895,6 +903,7 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
     let lan = web::lan_addresses().unwrap().into_iter().next();
     let mut first = None;
     let mut retired_listeners = Vec::new();
+    let mut retired_stun = Vec::new();
     for attempt in 0..2 {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -1050,6 +1059,55 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         let welcome: Value = serde_json::from_str(&text).unwrap();
         assert_eq!(welcome["type"], "welcome");
         assert_eq!(welcome["invitationOrigin"], invitation);
+        let stun_url = welcome["state"]["iceServers"][0]["urls"][0]
+            .as_str()
+            .unwrap();
+        let stun_address: std::net::SocketAddr =
+            stun_url.strip_prefix("stun:").unwrap().parse().unwrap();
+        assert_eq!(stun_address.ip(), lan_address.ip());
+        assert_ne!(stun_address.port(), 0);
+        assert_eq!(
+            welcome["state"]["iceServers"],
+            json!([{"urls": [stun_url]}]),
+            "the Domain supplies only selected-LAN discovery to its participants"
+        );
+        let client = UdpSocket::bind((lan_address.ip(), 0)).await.unwrap();
+        client.send_to(&[0; 4096], stun_address).await.unwrap();
+        let mut ignored = StunMessage::new();
+        ignored
+            .build(&[Box::new(TransactionId::new()), Box::new(BINDING_SUCCESS)])
+            .unwrap();
+        client.send_to(&ignored.raw, stun_address).await.unwrap();
+        let mut request = StunMessage::new();
+        request
+            .build(&[
+                Box::new(TransactionId::new()),
+                Box::new(BINDING_REQUEST),
+                Box::new(FINGERPRINT),
+            ])
+            .unwrap();
+        client.send_to(&request.raw, stun_address).await.unwrap();
+        let mut bytes = [0; 2048];
+        let (length, source) =
+            tokio::time::timeout(Duration::from_secs(5), client.recv_from(&mut bytes))
+                .await
+                .unwrap()
+                .unwrap();
+        assert_eq!(source, stun_address);
+        let mut response = StunMessage::new();
+        response.unmarshal_binary(&bytes[..length]).unwrap();
+        assert_eq!(response.typ, BINDING_SUCCESS);
+        assert_eq!(response.transaction_id, request.transaction_id);
+        FINGERPRINT.check(&response).unwrap();
+        let mut mapped = XorMappedAddress::default();
+        mapped.get_from(&response).unwrap();
+        assert_eq!(
+            (mapped.ip, mapped.port),
+            (
+                client.local_addr().unwrap().ip(),
+                client.local_addr().unwrap().port()
+            )
+        );
         let domain = welcome["state"]["channel"]["id"].clone();
         if let Some((old_port, old_domain, old_identity)) = &first {
             assert_ne!(
@@ -1083,7 +1141,9 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         retired_listeners.push(TcpListener::bind(domain_address).await.unwrap());
         retired_listeners.push(TcpListener::bind(lan_address).await.unwrap());
         retired_listeners.push(TcpListener::bind(address).await.unwrap());
+        retired_stun.push(UdpSocket::bind(stun_address).await.unwrap());
     }
     drop(retired_listeners);
+    drop(retired_stun);
     std::fs::remove_dir_all(folder).unwrap();
 }

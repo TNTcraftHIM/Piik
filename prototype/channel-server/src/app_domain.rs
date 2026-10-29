@@ -1,11 +1,18 @@
 //! One App-owned domain, independent of launcher pages and approved remote sites.
+#[path = "app_stun.rs"]
+mod stun;
+
 use super::{stop_hosts, tunnel, ApiResult, App, Permission};
 use crate::{domain::Domain, web};
 use axum::{extract::State, http::StatusCode, Json};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{future::pending, net::Ipv4Addr, sync::Arc};
-use tokio::{net::TcpListener, sync::watch, task::JoinHandle};
+use tokio::{
+    net::{TcpListener, UdpSocket},
+    sync::watch,
+    task::JoinHandle,
+};
 
 #[derive(Clone)]
 struct Failure {
@@ -150,6 +157,26 @@ async fn run(
     } else {
         None
     };
+    let stun = match &https {
+        Some(https) => Some(
+            UdpSocket::bind((
+                https
+                    .listener
+                    .local_addr()
+                    .map_err(|error| Failure::new("local-network", error))?
+                    .ip(),
+                0,
+            ))
+            .await
+            .map_err(|error| Failure::new("local-network", error))?,
+        ),
+        None => None,
+    };
+    let ice_servers = match &stun {
+        Some(socket) => vec![json!({"urls": [format!("stun:{}", socket.local_addr()
+            .map_err(|error| Failure::new("local-network", error))?)]})],
+        None => app.config.ice_servers.clone(),
+    };
     let mut tunnel = if matches!(request.mode, Mode::Link) {
         Some(
             tunnel::start(&app.config.cloudflared, &origin, async {
@@ -172,7 +199,7 @@ async fn run(
         &identity.invite,
         origin.clone(),
         Some(invitation.to_owned()),
-        app.config.ice_servers.clone(),
+        ice_servers,
     );
     let domain = match domain {
         Ok(domain) if !*app.closing.borrow() && !*stopped.borrow() => domain,
@@ -206,6 +233,13 @@ async fn run(
     let (result, finished_service) = tokio::select! {
         _ = stopped.changed() => (Ok(()), None),
         result = &mut service => (Err(Failure::new("local-server", "The local service stopped")), Some(result)),
+        result = async {
+            match &stun {
+                Some(socket) => stun::serve(socket).await,
+                None => pending().await,
+            }
+        } => (Err(Failure::new("local-network", result.err().map(|error| error.to_string())
+            .unwrap_or_else(|| "Local discovery stopped".into()))), None),
         result = async {
             match tunnel.as_mut() {
                 Some(tunnel) => tunnel.wait().await,

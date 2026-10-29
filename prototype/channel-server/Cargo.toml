@@ -17,6 +17,7 @@ path = "src/bin/app.rs"
 [dependencies]
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 piik-channel-native = { path = "../channel-native" }
+rtc = "=0.21.1"
 anyhow = "1"
 futures-util = "0.3"
 axum = { version = "0.8", features = ["ws"] }

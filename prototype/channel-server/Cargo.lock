@@ -1651,6 +1651,7 @@ dependencies = [
  "piik-channel-native",
  "rcgen",
  "ring",
+ "rtc",
  "rusqlite",
  "rustls",
  "serde",
