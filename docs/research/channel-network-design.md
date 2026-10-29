@@ -589,9 +589,16 @@ allocate before passing demand to encoders. Independently constrained branches
 need actual independently rate-controlled outputs; copying the same encoded
 packets or applying a minimum/maximum to one shared encoder cannot provide that.
 The pinned SDK's stock GCC and pacer lack active probing and application-limited
-recovery. An isolated candidate connects the community
-[Rust port of GoogCc](https://github.com/kixelated/goog_cc) to the existing history,
-Pacer and RTX owner, retaining the async adapter's sockets and candidate gathering.
+recovery. An isolated candidate keeps the community
+[Rust port of GoogCc](https://github.com/kixelated/goog_cc) adapter in Piik and uses
+algorithm-independent transport commands. The existing SDK history, Pacer and
+RTX owner retain packet accounting and mechanical probe execution; the async
+adapter retains sockets and candidate gathering. The public estimator interface
+alone lacks departure, queue, flight and probe control, so generic transport
+extensions are still required. This separation removes the SDK's concrete
+controller dependency without duplicating its transport owners; the controlled
+RTP/TWCC packet traces remain identical. Feedback retention is selected through
+the existing builder by the Piik adapter, not by changing the SDK-wide default.
 Its small executor follows [WebRTC's BitrateProber](https://webrtc.googlesource.com/src/+/main/modules/pacing/bitrate_prober.cc).
 Probe padding reuses real cached RTX media; internal controller messages finish
 inside the interceptor chain without depending on an application event.
