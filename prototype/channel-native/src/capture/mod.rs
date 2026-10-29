@@ -8,17 +8,25 @@ mod converter;
 #[cfg(any(target_os = "windows", test))]
 mod frame_dropper;
 #[cfg(target_os = "windows")]
+mod job;
+#[cfg(target_os = "windows")]
 mod mf;
 #[cfg(target_os = "windows")]
 mod output;
 #[cfg(target_os = "windows")]
+mod process;
+#[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "windows")]
+mod worker;
 #[cfg(target_os = "windows")]
 pub use audio::{audio_capabilities, AudioCapture, AudioControl};
 #[cfg(target_os = "windows")]
-pub use output::{Encoding, EncodingControl};
+pub use process::{Capture, Control, Encoding, EncodingControl};
 #[cfg(target_os = "windows")]
-pub use windows::{targets, Capture, Control};
+pub use windows::targets;
+#[cfg(target_os = "windows")]
+pub use worker::worker_entry;
 
 /// Keep this guard at the process entry point, outside the async runtime.
 /// WinRT caches agile factories across captures; their MTA must outlive every
@@ -99,6 +107,14 @@ impl CaptureClock {
             self.instant - duration
         }
     }
+    // Invert this exact capture anchor, not an encoding/IPC delivery timestamp.
+    fn presentation_qpc(&self, time: std::time::Instant) -> i64 {
+        if time >= self.instant {
+            self.qpc + (time.duration_since(self.instant).as_nanos() / 100) as i64
+        } else {
+            self.qpc - (self.instant.duration_since(time).as_nanos() / 100) as i64
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
@@ -124,7 +140,7 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Settings {
     pub width: u32,
     pub height: u32,

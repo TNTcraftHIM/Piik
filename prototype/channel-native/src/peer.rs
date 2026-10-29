@@ -430,6 +430,14 @@ impl NativePeers {
                     _=tick.tick()=>Turn::Tick,
                 };
                 let work = async {
+                    #[cfg(target_os = "windows")]
+                    for (publication, producer) in &d.captures {
+                        // Input authority ends with capture, before its workers
+                        // finish joining and before this turn can execute input.
+                        if producer.control.is_stopped() {
+                            d.inputs.end_source(*publication);
+                        }
+                    }
                     match turn {
                         Turn::Reply(video, reply) => {
                             if let Some(outgoing) = d.inputs.reply(video, reply) {

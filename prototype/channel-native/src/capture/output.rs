@@ -70,9 +70,6 @@ impl Shared {
 #[derive(Clone)]
 pub struct EncodingControl(Arc<Shared>);
 impl EncodingControl {
-    pub fn is_stopped(&self) -> bool {
-        self.0.state.lock().unwrap().stop
-    }
     /// Request cancellation; the Encoding owner joins the worker with stop().
     pub fn stop(&self) {
         self.0.stop(None);

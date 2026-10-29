@@ -15,12 +15,17 @@ The default Server embeds one participant for its three rooms and owns its
 service lifetime. The [App composition](../channel-server/README.md#local-app-link) owns its Native hosting endpoint, separately
 from the Browser's personal activities. The App reuses the product's site approval
 and saved-site interface, and starts its own domain through the shared
-Local/public-invitation launcher. Windows capture now has a separate Rust producer:
-WGC captures each source once and shares its owned GPU textures and presentation
-clock. Each encoding owns its D3D11 conversion, hardware H264 encoder, bitrate,
+Local/public-invitation launcher. Windows capture now has a separate Rust producer
+in one child process per source. WGC captures each source once and shares its
+owned GPU textures and presentation clock. Each encoding owns its D3D11
+conversion, hardware H264 encoder, bitrate,
 keyframe requests and ordered output. Stopping one encoding leaves its siblings
 running; stopping capture ends all its encodings. Frame-rate selection retains
 the original timestamps and accumulates its sampling interval across frames.
+The parent owns the child through Stop/Drop and process exit. Capture failure
+retires that source and its input authority while App-hosted rooms continue.
+The [network design](../../docs/research/channel-network-design.md) owns the
+remaining per-encoder isolation boundary.
 Each encoder feeds its actual output size into the existing WebRTC FrameDropper
 algorithm; raw-frame admission adjusts when hardware rate control overshoots,
 without discarding encoded reference frames or changing the source clock.

@@ -2,8 +2,16 @@ use anyhow::{bail, Context, Result};
 use piik_channel_native::session::{run, Config, RoomFile};
 use std::{env, path::PathBuf};
 
+fn main() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    if piik_channel_native::capture::worker_entry()? {
+        return Ok(());
+    }
+    let _capture_runtime = piik_channel_native::capture::Runtime::new()?;
+    run_native()
+}
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn run_native() -> Result<()> {
     let mut args = env::args().skip(1);
     let mut rooms = Vec::new();
     while let Some(flag) = args.next() {

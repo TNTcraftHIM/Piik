@@ -4,6 +4,10 @@ use std::{env, path::PathBuf};
 use tokio::net::TcpListener;
 
 fn main() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    if piik_channel_native::capture::worker_entry()? {
+        return Ok(());
+    }
     let _capture_runtime = piik_channel_native::capture::Runtime::new()?;
     run()
 }

@@ -1,5 +1,9 @@
 //! One WGC capture publishes owned BGRA textures to independent encoding workers.
-use super::{cadence::Cadence, output, CaptureClock, Encoding, Settings, Target, TargetKind};
+use super::{
+    cadence::Cadence,
+    output::{self, Encoding},
+    CaptureClock, Settings, Target, TargetKind,
+};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{
     sync::{Arc, Condvar, Mutex, Weak},
@@ -98,7 +102,7 @@ impl Control {
 }
 pub struct Capture {
     shared: Arc<Shared>,
-    clock: CaptureClock,
+    pub(super) clock: CaptureClock,
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {

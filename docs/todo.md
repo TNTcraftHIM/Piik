@@ -16,8 +16,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   Complete coordinated UDP preparation from the
   [2.x Native reachability behavior](./standards/routing-transport.md), under
   the existing connection owner alongside gateway mapping.
-  Resolve the observed NVIDIA MFT shutdown access violation before Native acceptance;
-  its matched dump and symbols are retained with the local capture evidence.
+  Complete per-encoder fault isolation for the reproduced NVIDIA MFT shutdown
+  failure: source-process isolation protects the App, while encoder retirement
+  can still terminate other encodings of that source. Keep one capture owner;
+  integrate the validated GPU texture handoff to replace the process boundary.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.

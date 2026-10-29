@@ -661,6 +661,22 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
+Capture and its encoders now run in one same-executable child per source. The
+parent retains room, transport, input and audio ownership. Pull-based IPC carries
+complete access units and original QPC timestamps; cancelling a read preserves
+its pending result, and an unread encoding does not block another. The source
+supervisor joins the child on Stop/Drop; a Windows Job also closes it when the
+App exits. Input authority ends when capture stops, before worker cleanup.
+
+A controlled single-MFT shutdown reproduced an NVIDIA callback using an already
+destroyed transform after `ShutdownObject` returned. Source isolation contains
+that failure to one share. Retiring one encoder can still terminate its source's
+other encodings; protecting those outputs requires an encoder process boundary.
+An isolated NT shared-handle handoff preserves QPC and produces the expected
+decoded picture through the existing converter and encoder. It currently adds
+two GPU copies. Integrate that boundary with one capture owner and independent
+encoding children, replacing the source-process boundary. Do not
+retain idle encoders or add shutdown delays to hide the driver lifetime failure.
 The Native driver allocates each connection's target to confirmed local video
 after accounting for other RTP, prioritizing selected video over optional video.
 One producer reconciles demand with the encodings actually used by its outputs.
@@ -674,7 +690,10 @@ preserves the incumbent. The existing driver loop consumes latest targets
 without queuing intermediate values.
 The same connection budget admits optional flows only after selected demand.
 Opaque RTP is measured once at its source before fanout, including sources with
-no current outputs. A trial's picture and sound are admitted together; unknown
+no current outputs. Its ingress removes repeated primary sequence numbers after
+RTX repair, preserving the first late repair and out-of-order packets; each
+downstream transport owns its own retransmissions. A trial's picture and sound
+are admitted together; unknown
 cost waits through the existing driver tick without failing its lease. A trial
 that no longer fits retires its outputs through the existing flow-failure owner,
 preserving selected media and the connection. Pending selected video reserves
