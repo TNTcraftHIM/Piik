@@ -270,6 +270,9 @@ func New(options Options) *Controller {
 	if options.SfuOnly && !options.SfuEnabled {
 		panic(errors.New("SFU-only routing requires SFU availability"))
 	}
+	if options.Revisions == nil {
+		options.Revisions = &RevisionSequence{}
+	}
 	c := &Controller{
 		hostPeerID:                      options.HostPeerID,
 		debugRoomID:                     options.DebugRoomID,
@@ -280,6 +283,7 @@ func New(options Options) *Controller {
 		sfuOnly:                         options.SfuOnly,
 		qualityConvergenceEnabled:       options.QualityConvergenceEnabled && !options.SfuOnly,
 		natPredictionEnabled:            options.NatPredictionEnabled && !options.SfuOnly,
+		revisions:                       options.Revisions,
 		routeTimings:                    make(map[string]*routeTimingRecord),
 		qualityObservations:             make(map[string]*routeQualityObservation),
 		senderQualityObservations:       make(map[string]*senderQualityObservation),
@@ -894,7 +898,7 @@ func (c *Controller) Dispose() []*Resource {
 	c.sfuBootstrapIntent = nil
 	c.consumedSfuBootstrapOpportunities.Clear()
 	c.rootConvergenceRootPeerID = ""
-	// nextJoinOrder, revision, latestRevision and factVersion survive.
+	// nextJoinOrder, revision, the room's revision sequence and factVersion survive.
 	c.paused = true
 	return resources.resources()
 }
@@ -950,11 +954,11 @@ func (c *Controller) touchFacts() { c.factVersion++ }
 
 // allocateRevision bounds revisions by MAX_SAFE_INTEGER.
 func (c *Controller) allocateRevision() int64 {
-	if c.latestRevision >= protocol.MaxMediaRouteRevision {
+	if c.revisions.latest >= protocol.MaxMediaRouteRevision {
 		panic(errors.New("Media route revision space exhausted"))
 	}
-	c.latestRevision++
-	return c.latestRevision
+	c.revisions.latest++
+	return c.revisions.latest
 }
 
 // isSafeInteger keeps values exactly representable by the Browser's number type.
