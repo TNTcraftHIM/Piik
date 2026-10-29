@@ -1,7 +1,7 @@
 //! One capture owns its encoders and source clocks, independently of its Outputs.
 use super::{
     packetizer::{CaptureTime, Packetizer},
-    video::Video,
+    video::{Input, Video},
     H264Sps, Relay, Source, SourceFeed, SourceOrigin,
 };
 use crate::{
@@ -14,12 +14,30 @@ use rtc::{
     rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
     shared::time::SystemInstant,
 };
-use std::time::Instant;
+use std::{sync::Weak, time::Instant};
 use tokio::{
     sync::{mpsc, oneshot, watch},
     task::JoinHandle,
 };
 use uuid::Uuid;
+
+mod encodings;
+
+pub(crate) const AUDIO_BITRATE: u32 = 128_000;
+
+#[derive(Clone)]
+pub(crate) struct VideoDemand {
+    pub output: Uuid,
+    pub input: Weak<Input>,
+    pub bitrate: u32,
+}
+impl PartialEq for VideoDemand {
+    fn eq(&self, other: &Self) -> bool {
+        self.output == other.output
+            && self.input.ptr_eq(&other.input)
+            && self.bitrate == other.bitrate
+    }
+}
 
 /// The page's one lease stops both workers without waiting for the signaling actor.
 #[derive(Clone)]
@@ -44,8 +62,19 @@ pub(crate) struct Producer {
     pub audio: Option<Uuid>,
     pub control: Control,
     pub task: JoinHandle<Option<String>>,
+    pub settings: Settings,
+    demands: watch::Sender<Vec<VideoDemand>>,
 }
 impl Producer {
+    pub fn set_demands(&self, next: Vec<VideoDemand>) {
+        self.demands.send_if_modified(|current| {
+            if *current == next {
+                return false;
+            }
+            *current = next;
+            true
+        });
+    }
     pub fn start(
         publication_id: Uuid,
         target: Target,
@@ -54,7 +83,7 @@ impl Producer {
         ready_sources: mpsc::Sender<SourceReady>,
         events: mpsc::Sender<Event>,
         relay: Relay,
-        mut cancelled: watch::Receiver<bool>,
+        cancelled: watch::Receiver<bool>,
     ) -> Result<(
         Self,
         oneshot::Receiver<Result<()>>,
@@ -64,9 +93,8 @@ impl Producer {
         let now = Instant::now();
         let clock = SystemInstant::now(now);
         let capture = Capture::start(target.clone(), settings.fps)?;
-        let mut encoding = capture.encode(settings)?;
+        let encoding = capture.encode(settings)?;
         let video_control = capture.control();
-        let encoder_control = encoding.control();
         let (audio_error, warning) = if audio {
             let (error, warning) = oneshot::channel();
             (Some(error), Some(warning))
@@ -108,87 +136,32 @@ impl Producer {
             video: video_control,
             audio: audio.as_ref().map(|(_, control, _)| control.clone()),
         };
-        let worker_control = control.clone();
         let video = Uuid::new_v4();
         let (ready, started) = oneshot::channel();
-        let task = tokio::spawn(async move {
-            let mut ready = Some(ready);
-            let frames = Video::new(CaptureTime { epoch: now, clock });
-            let mut requests = frames.requests();
-            let mut source = Source {
-                id: video,
-                publication_id,
-                origin: SourceOrigin::Local,
-                kind: RtpCodecKind::Video,
-                codec: RTCRtpCodec {
-                    mime_type: "video/H264".into(),
-                    clock_rate: 90_000,
-                    ..Default::default()
-                },
-                feed: SourceFeed::Video(frames.clone()),
-            };
-            let mut sps = H264Sps::default();
-            let mut first = true;
-            let result = async {
-                loop {
-                    let frame = tokio::select! {
-                        frame = encoding.recv() => match frame { Some(frame) => frame?, None => break },
-                        changed = requests.changed() => {
-                            if changed.is_err() || encoder_control.force_keyframe().is_err() { break; }
-                            continue;
-                        }
-                        _ = cancelled.changed() => break,
-                    };
-                    sps.access_unit(&frame.bytes)?;
-                    if first {
-                        let profile = sps.last.ok_or_else(|| anyhow!("capture first access unit has no SPS"))?;
-                        source.codec.sdp_fmtp_line = format!("packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}", profile[0], profile[1], profile[2]);
-                        tokio::select! {
-                            result = ready_sources.send(SourceReady { source: source.clone(), media: InitialMedia::Video(frame) }) => { result?; }
-                            _ = cancelled.changed() => break,
-                        }
-                        first = false;
-                        if let Some(ready) = ready.take() { let _ = ready.send(Ok(())); }
-                    } else {
-                        frames.write(frame);
-                    }
-                }
-                Ok::<_, anyhow::Error>(())
-            }.await;
-            worker_control.stop();
-            let joined = tokio::task::spawn_blocking(move || {
-                let encoded = encoding.stop();
-                let captured = capture.stop();
-                encoded.and(captured)
-            })
-            .await
-            .map_err(anyhow::Error::from)
-            .and_then(|result| result);
-            if let Some((_, _, audio)) = audio {
-                if let Err(error) = audio.await {
-                    eprintln!("Native audio task failed: {error}");
-                }
-            }
-            let error = result.and(joined).err().map(|error| format!("{error:#}"));
-            if let Some(ready) = ready {
-                let _ = ready.send(Err(anyhow!(error
-                    .clone()
-                    .unwrap_or_else(|| "capture ended before its first frame".into()))));
-            }
-            if !*cancelled.borrow() {
-                tokio::select! {
-                    _ = events.send(Event::CaptureEnded { publication_id, source: video }) => {},
-                    _ = cancelled.changed() => {},
-                }
-            }
-            error
-        });
+        let (demands, requests) = watch::channel(Vec::new());
+        let task = tokio::spawn(encodings::run(
+            capture,
+            encoding,
+            settings,
+            publication_id,
+            video,
+            CaptureTime { epoch: now, clock },
+            control.clone(),
+            audio.map(|(_, _, task)| task),
+            ready,
+            ready_sources,
+            events,
+            cancelled,
+            requests,
+        ));
         Ok((
             Self {
                 video,
                 audio: audio_id,
                 control,
                 task,
+                settings,
+                demands,
             },
             started,
             warning,
@@ -212,7 +185,7 @@ async fn audio_source(
     let result = async {
         capture.ready().await?;
         let mut encoder = rusty_opus::OpusEncoder::new(48_000, 2, rusty_opus::Application::Audio)?;
-        encoder.bitrate_bps = 128_000;
+        encoder.bitrate_bps = AUDIO_BITRATE as i32;
         encoder.complexity = 10;
         encoder.use_cbr = true;
         let mut encoded = [0u8; 1500];

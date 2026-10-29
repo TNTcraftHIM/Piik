@@ -23,7 +23,7 @@ use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{mpsc, watch, Notify};
 use uuid::Uuid;
 
 pub(crate) const VIDEO_PACKETS: usize = 256;
@@ -239,6 +239,15 @@ impl H264Sps {
 pub(crate) struct MediaFeedback {
     read: VecDeque<TaggedPacket>,
     write: VecDeque<TaggedPacket>,
+    target: Option<(watch::Sender<f64>, Arc<Notify>)>,
+}
+impl MediaFeedback {
+    pub fn observe_target(target: watch::Sender<f64>, changed: Arc<Notify>) -> Self {
+        Self {
+            target: Some((target, changed)),
+            ..Self::default()
+        }
+    }
 }
 impl Protocol<TaggedPacket, TaggedPacket, ()> for MediaFeedback {
     type Rout = TaggedPacket;
@@ -247,6 +256,14 @@ impl Protocol<TaggedPacket, TaggedPacket, ()> for MediaFeedback {
     type Error = rtc::shared::error::Error;
     type Time = std::time::Instant;
     fn handle_read(&mut self, mut msg: TaggedPacket) -> std::result::Result<(), Self::Error> {
+        if let Some((target, changed)) = &self.target {
+            for attribute in &msg.message.attributes {
+                if let Attribute::TargetBitrateChanged { bits_per_second } = attribute {
+                    target.send_replace(*bits_per_second);
+                    changed.notify_one();
+                }
+            }
+        }
         if let Packet::Rtcp(packets) = &mut msg.message.packet {
             packets.retain(|packet| {
                 packet.as_any().is::<SenderReport>()
@@ -370,10 +387,12 @@ mod tests {
         let target = Attribute::TargetBitrateChanged {
             bits_per_second: 750_000.0,
         };
-        let mut feedback = MediaFeedback::default();
+        let (target_tx, mut target_rx) = watch::channel(300_000.0);
+        let mut feedback = MediaFeedback::observe_target(target_tx, Arc::new(Notify::new()));
         let mut report = packet(vec![Box::new(ReceiverReport::default())]);
         report.message.add(target.clone());
         feedback.handle_read(report)?;
+        assert_eq!(*target_rx.borrow_and_update(), 750_000.0);
         let carrier = feedback
             .poll_read()
             .expect("SDK target must survive filtering");

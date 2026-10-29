@@ -20,6 +20,7 @@ fn driver() -> (
             cancel,
             events,
             ready_sources,
+            bandwidth_changed: Arc::new(Notify::new()),
             pairs: HashMap::new(),
             publications: HashMap::new(),
             sources: HashMap::new(),
@@ -239,7 +240,7 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
 
     let remote_id = Uuid::new_v4();
     let remote: Arc<dyn PeerConnection> = Arc::new(
-        builder(true, SenderReports::default())?
+        builder(true, SenderReports::default(), MediaFeedback::default())?
             .with_handler(Arc::new(Handler {
                 pair: remote_id,
                 events: d.events.clone(),
@@ -251,6 +252,12 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
             .await?,
     );
     negotiate(&mut d, pair, &*remote).await?;
+    d.pairs[&pair].outputs[&key]
+        .video_input()
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .set_active(true);
     tokio::time::timeout(Duration::from_secs(10), async {
         while !d.pairs[&pair].connected() {
             if let Some(Event::Candidate(id, candidate)) = events.recv().await {
@@ -268,7 +275,7 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
     })
     .await??;
     tokio::time::timeout(Duration::from_secs(5), high_requests.changed()).await??;
-    assert_eq!(*high_requests.borrow_and_update(), requested + 1);
+    assert!(*high_requests.borrow_and_update() > requested);
     high.write(frame(5, true, 100));
     let track = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -283,7 +290,12 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
     let first = packet(&*track).await?;
     assert_eq!(first.payload[1], 5); // No dependent P frame survived the overflow.
 
-    d.pairs[&pair].outputs[&key].select_video(&low)?;
+    let adopted = d.pairs[&pair].outputs[&key]
+        .video_input()
+        .unwrap()
+        .upgrade()
+        .unwrap()
+        .select(&low)?;
     let requested = *low_requests.borrow_and_update();
     low.write(frame(6, false, 120));
     // A restarted encoder's old static IDR must request a fresh IDR, not wrap RTP time.
@@ -293,6 +305,7 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
     let incumbent = packet(&*track).await?;
     assert_eq!(incumbent.payload[1], 8);
     low.write(frame(9, true, 200));
+    adopted.await?;
     let switched = packet(&*track).await?;
     assert_eq!(switched.payload[1], 9);
     assert_eq!(switched.header.ssrc, first.header.ssrc);
@@ -384,7 +397,7 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
     .await?;
     let remote_id = Uuid::new_v4();
     let remote: Arc<dyn PeerConnection> = Arc::new(
-        builder(true, SenderReports::default())?
+        builder(true, SenderReports::default(), MediaFeedback::default())?
             .with_handler(Arc::new(Handler {
                 pair: remote_id,
                 events: d.events.clone(),
@@ -431,7 +444,7 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         Ok::<_, anyhow::Error>(())
     })
     .await??;
-    let other_remote = builder(true, SenderReports::default())?
+    let other_remote = builder(true, SenderReports::default(), MediaFeedback::default())?
         .with_handler(Arc::new(Handler {
             pair: Uuid::new_v4(),
             events: d.events.clone(),

@@ -9,13 +9,15 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 - [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Complete Native encoder-demand adaptation, input
+  Rust owners. Complete Native low-bandwidth adaptation, input
   and platform packaging over the shared UI and Native participant.
-  Connect transport demand and each physical connection's budget to its active
-  media and independently controlled encoding outputs. Integrate the verified
-  transport probing candidate and finish its feedback-retention boundary.
+  Integrate the verified transport probing/feedback candidate with aggregate
+  application demand. Handle encoder output that exceeds its budget after
+  quantization saturates, and optional opaque RTP that competes with selected media.
   Native relay demand must also account for weaker downstream branches without
   lowering healthy ones.
+  Resolve the observed NVIDIA MFT shutdown access violation before Native acceptance;
+  its matched dump and symbols are retained with the local capture evidence.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.

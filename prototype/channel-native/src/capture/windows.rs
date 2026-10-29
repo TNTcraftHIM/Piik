@@ -5,6 +5,7 @@ use std::{
     sync::{Arc, Condvar, Mutex, Weak},
     thread,
 };
+use tokio::sync::Notify;
 use windows::{
     core::Interface,
     Win32::{
@@ -42,6 +43,7 @@ struct State {
 struct Shared {
     state: Mutex<State>,
     changed: Condvar,
+    stopped: Notify,
 }
 impl Shared {
     fn stop(&self, failure: Option<String>) {
@@ -57,6 +59,7 @@ impl Shared {
         }
         drop(state);
         self.changed.notify_all();
+        self.stopped.notify_waiters();
     }
     fn publish(&self, frame: RawFrame) {
         let mut state = self.state.lock().unwrap();
@@ -80,6 +83,17 @@ impl Control {
     /// Their respective Capture/Encoding owners still join the workers.
     pub fn stop(&self) {
         self.0.stop(None);
+    }
+    pub async fn stopped(&self) {
+        loop {
+            let stopped = self.0.stopped.notified();
+            tokio::pin!(stopped);
+            stopped.as_mut().enable();
+            if self.is_stopped() {
+                return;
+            }
+            stopped.await;
+        }
     }
 }
 pub struct Capture {

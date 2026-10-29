@@ -546,14 +546,6 @@ inside every module. The [versioning standard](../standards/versioning.md) still
 separates build identity, wire compatibility, stored schema and live generations.
 A published cutover needs its own handshake and data-upgrade decision.
 
-After the data-model discussion, verify the smallest complete slice: A operates
-a domain, B operates a room, and C/D join, chat, speak and transfer a file over connected
-room links. Then add simultaneous screen publications and selective viewing.
-Include a sender/receiver pair with no direct ICE path but a working intermediate
-hop, relay departure, room-host restart and domain-authority loss. Compare shared
-voice and independent screens under the same workload; measure startup, recovery,
-frame/voice delay and bytes at the actual forwarding endpoints.
-
 The isolated Native participant uses webrtc-rs/rtc 0.21.1.
 Its [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc389547450e245877310c9cbed/src/peer_connection/mod.rs)
 owns sockets, candidate gathering and protocol deadlines. Its
@@ -581,7 +573,7 @@ With real ICE/DTLS/SRTP/TWCC over a controlled UDP link, a 300 kbps target reach
 Probing starts on first media, also after 30 seconds of silence; static media can
 learn capacity before motion resumes. Two Chrome receivers complete probing,
 decode and switch encodings with stable track/SSRC/SDP. Encoder allocation is the
-next integration step.
+next integration step for that transport candidate.
 
 For a 20-second 600 kbps FIFO bottleneck, peak network backlog falls from 18,654
 to 325 packets, but target recovery to 8 Mbps still takes 36.6 seconds. Payload
@@ -608,6 +600,19 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
+The Native driver allocates each connection's target to confirmed local video
+after accounting for other RTP, prioritizing selected video over optional video.
+The producer reuses its baseline at full demand and one independently controlled
+encoding per constrained output. Zero allocation pauses that output; restoration
+retires its encoder only after a newer baseline keyframe is adopted. The existing
+driver loop consumes latest targets without queuing intermediate values.
+Opaque forwarding still needs its own demand/admission treatment; counting its
+traffic does not make it independently adjustable.
+Actual MFT/Chrome trials keep the healthy output near 2.16 Mbps while another
+output changes from 804 to 273 to 690 kbps for targets of 1.5 Mbps, 200 kbps and
+1.5 Mbps. The low target reaches QP 50; a random-noise source reaches QP 50/51
+and stays near 5.2 Mbps. Fixed dimensions and frame rate therefore cannot make
+every requested bitrate attainable. Encoder adaptation must handle that boundary.
 App sharing uses that existing Native endpoint. The selecting page owns a
 non-cloneable capture lease whose drop stops the producer directly, even while
 signaling is reconnecting; the Native driver owns worker completion. Room
@@ -630,8 +635,8 @@ SDP negotiation and measured decoding retain their separate meanings. Keep the
 existing decoded-frame route proof; metadata alone must not retire a working
 connection or permanently reject its flow.
 Removing the last incoming demand releases its reader even if the publication
-remains in the room directory. Native encoder-demand adaptation
-and SFU integration remain later stages. This isolated dependency does
+remains in the room directory. Further Native media work is tracked in
+[TODO](../todo.md). This isolated dependency does
 not replace the current 2.x Native media core.
 
 ## Design References

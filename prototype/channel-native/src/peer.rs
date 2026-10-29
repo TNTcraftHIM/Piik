@@ -43,7 +43,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    sync::{mpsc, oneshot, watch},
+    sync::{mpsc, oneshot, watch, Notify},
     task::JoinHandle,
 };
 use uuid::Uuid;
@@ -157,6 +157,12 @@ pub(crate) enum Event {
         publication_id: Uuid,
         source: Uuid,
     },
+    #[cfg(target_os = "windows")]
+    EncodingFailed {
+        publication_id: Uuid,
+        source: Uuid,
+        output: Uuid,
+    },
     DataWriteFailed {
         pair: Uuid,
         lane: Lane,
@@ -230,6 +236,7 @@ struct Pair {
     outputs: HashMap<TrackKey, Output>,
     rejected_outputs: HashMap<TrackKey, Uuid>,
     reports: SenderReports,
+    bandwidth: watch::Receiver<f64>,
     tasks: HashMap<Uuid, Reader>,
     dc: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
     bulk: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
@@ -341,6 +348,7 @@ struct Driver {
     cancel: watch::Receiver<bool>,
     events: mpsc::Sender<Event>,
     ready_sources: mpsc::Sender<SourceReady>,
+    bandwidth_changed: Arc<Notify>,
     pairs: HashMap<Uuid, Pair>,
     publications: HashMap<Uuid, PublicationInfo>,
     sources: HashMap<Uuid, Source>,
@@ -363,6 +371,7 @@ impl NativePeers {
         let (ready_sources, mut ready_rx) = mpsc::channel(256);
         let links = Arc::new(Mutex::new(HashMap::new()));
         let driver_links = links.clone();
+        let bandwidth_changed = Arc::new(Notify::new());
         let task = tokio::spawn(async move {
             let mut d = Driver {
                 session: session_id,
@@ -372,6 +381,7 @@ impl NativePeers {
                 cancel: cancelled.clone(),
                 events,
                 ready_sources,
+                bandwidth_changed: bandwidth_changed.clone(),
                 pairs: HashMap::new(),
                 publications: HashMap::new(),
                 sources: HashMap::new(),
@@ -385,6 +395,7 @@ impl NativePeers {
                 Input(Input),
                 Event(Event),
                 SourceReady(SourceReady),
+                Bandwidth,
                 Tick,
             }
             loop {
@@ -393,6 +404,7 @@ impl NativePeers {
                     request=inputs.recv()=>match request {Some(request)=>Turn::Input(request),None=>break},
                     Some(event)=event_rx.recv()=>Turn::Event(event),
                     Some(source)=ready_rx.recv()=>Turn::SourceReady(source),
+                    _=bandwidth_changed.notified()=>Turn::Bandwidth,
                     _=tick.tick()=>Turn::Tick,
                 };
                 let work = async {
@@ -438,9 +450,9 @@ impl NativePeers {
                         Turn::Event(event) => {
                             let id = match &event {
                                 #[cfg(target_os = "windows")]
-                                Event::CaptureEnded { .. } | Event::CaptureAudioEnded { .. } => {
-                                    None
-                                }
+                                Event::CaptureEnded { .. }
+                                | Event::CaptureAudioEnded { .. }
+                                | Event::EncodingFailed { .. } => None,
                                 Event::OutputFailed { pair, .. } => Some(*pair),
                                 Event::SourceEnded { pair, .. } => Some(*pair),
                                 Event::DataWriteFailed { pair, .. } => Some(*pair),
@@ -465,7 +477,10 @@ impl NativePeers {
                             }
                         }
                         Turn::Tick => d.deadlines().await,
+                        Turn::Bandwidth => {}
                     }
+                    #[cfg(target_os = "windows")]
+                    d.reconcile_encodings();
                 };
                 tokio::select! {_=cancelled.changed()=>break,_=work=>{}}
             }
@@ -614,7 +629,11 @@ pub(crate) fn codec() -> RTCRtpCodec {
         rtcp_feedback: vec![],
     }
 }
-fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder<String>> {
+fn builder(
+    polite: bool,
+    reports: SenderReports,
+    feedback: MediaFeedback,
+) -> Result<PeerConnectionBuilder<String>> {
     let mut media = MediaEngine::default();
     media.register_codec(
         RTCRtpCodecParameters {
@@ -673,7 +692,7 @@ fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder
             .with_queue_limit(VIDEO_PACKETS)
             .build(),
     )
-    .with(Slot::Custom(20_000), MediaFeedback::default())
+    .with(Slot::Custom(20_000), feedback)
     .with(Slot::Custom(500), ReportProjection::new(reports));
     Ok(PeerConnectionBuilder::new()
         .with_media_engine(media)
@@ -694,6 +713,42 @@ fn builder(polite: bool, reports: SenderReports) -> Result<PeerConnectionBuilder
         ))
 }
 impl Driver {
+    async fn output_failed(&mut self, pair: Uuid, key: TrackKey, source: Uuid, output: Uuid) {
+        let Some(p) = self.pairs.get_mut(&pair) else {
+            return;
+        };
+        if !p
+            .outputs
+            .get(&key)
+            .is_some_and(|current| current.source == source && current.id == output)
+        {
+            return;
+        }
+        let binding = p
+            .plan
+            .outgoing
+            .iter()
+            .find(|flow| flow.id == key.0)
+            .copied();
+        p.rejected_outputs.insert(key, source);
+        p.outputs.remove(&key).unwrap().close(&*p.pc).await;
+        if binding.is_some_and(|flow| {
+            !flow.selected
+                || key.1 == RtpCodecKind::Video
+                || self
+                    .publications
+                    .get(&flow.publication_id)
+                    .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
+        }) {
+            self.send(Command::FlowState {
+                flow_id: key.0,
+                pair_id: pair,
+                state: FlowState::Failed,
+            })
+            .await;
+        }
+    }
+
     #[cfg(target_os = "windows")]
     fn start_capture(
         &mut self,
@@ -837,8 +892,13 @@ impl Driver {
                     let overflow = Arc::new(AtomicBool::new(false));
                     let state = Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8));
                     let reports = SenderReports::default();
+                    let (target, bandwidth) = watch::channel(300_000.0);
                     let pc: Arc<dyn PeerConnection> = Arc::new(
-                        builder(self.session > plan.peer_id, reports.clone())?
+                        builder(
+                            self.session > plan.peer_id,
+                            reports.clone(),
+                            MediaFeedback::observe_target(target, self.bandwidth_changed.clone()),
+                        )?
                             .with_handler(Arc::new(Handler {
                                 pair: plan.id,
                                 events: self.events.clone(),
@@ -878,6 +938,7 @@ impl Driver {
                             outputs: HashMap::new(),
                             rejected_outputs: HashMap::new(),
                             reports,
+                            bandwidth,
                             tasks: HashMap::new(),
                             dc: None,
                             bulk: None,
@@ -1491,43 +1552,34 @@ impl Driver {
                 publication_id,
                 source,
             } => self.capture_audio_ended(publication_id, source).await?,
+            #[cfg(target_os = "windows")]
+            Event::EncodingFailed {
+                publication_id,
+                source,
+                output,
+            } => {
+                if self
+                    .captures
+                    .get(&publication_id)
+                    .is_some_and(|producer| producer.video == source)
+                {
+                    let binding = self.pairs.iter().find_map(|(pair, p)| {
+                        p.outputs
+                            .iter()
+                            .find(|(_, current)| current.id == output)
+                            .map(|(key, _)| (*pair, *key))
+                    });
+                    if let Some((pair, key)) = binding {
+                        self.output_failed(pair, key, source, output).await;
+                    }
+                }
+            }
             Event::OutputFailed {
                 pair,
                 key,
                 source,
                 output,
-            } => {
-                if let Some(p) = self.pairs.get_mut(&pair) {
-                    if p.outputs
-                        .get(&key)
-                        .is_some_and(|current| current.source == source && current.id == output)
-                    {
-                        let binding = p
-                            .plan
-                            .outgoing
-                            .iter()
-                            .find(|flow| flow.id == key.0)
-                            .copied();
-                        p.rejected_outputs.insert(key, source);
-                        p.outputs.remove(&key).unwrap().close(&*p.pc).await;
-                        if binding.is_some_and(|flow| {
-                            !flow.selected
-                                || key.1 == RtpCodecKind::Video
-                                || self
-                                    .publications
-                                    .get(&flow.publication_id)
-                                    .is_some_and(|p| p.kind == piik_channel_core::wire::Kind::Voice)
-                        }) {
-                            self.send(Command::FlowState {
-                                flow_id: key.0,
-                                pair_id: pair,
-                                state: FlowState::Failed,
-                            })
-                            .await;
-                        }
-                    }
-                }
-            }
+            } => self.output_failed(pair, key, source, output).await,
             Event::Negotiate(id) => {
                 if self.pairs.contains_key(&id) {
                     self.offer(id).await?;
@@ -2012,6 +2064,9 @@ async fn close_pair(mut pair: Pair) {
         output.close(&*pair.pc).await;
     }
 }
+
+#[cfg(any(target_os = "windows", test))]
+mod bandwidth;
 
 #[cfg(test)]
 mod tests;

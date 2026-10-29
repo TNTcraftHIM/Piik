@@ -32,8 +32,12 @@ errors before that point return to the page. Optional WASAPI source audio uses
 process loopback for a selected window and render-device loopback for a screen.
 The Rust Opus encoder shares the picture's capture clock and routes. Silence does
 not delay picture startup; an audio failure warns the page while picture sharing
-continues. Encoder-demand adaptation, input and platform packaging remain
-subsequent stages.
+continues. Each physical connection's target now allocates its confirmed local
+video outputs. Constrained outputs control their own encoding; zero demand pauses
+only that output, and restoration waits for a newer baseline keyframe before
+retiring its encoder. The [network design](../../docs/research/channel-network-design.md)
+owns measured behavior and the fixed-resolution encoding boundary;
+[TODO](../../docs/todo.md) owns remaining adaptation, input and platform work.
 
 The App entry point keeps the Windows MTA alive outside its async runtime.
 Cached WinRT factories span successive captures and source-list refreshes; their
