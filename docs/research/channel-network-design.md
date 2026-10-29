@@ -581,8 +581,11 @@ Local capture and received tracks feed that same encoded-output owner. A local
 source has no incoming route lease; its admitted publication supplies the outgoing
 flows. Capture presentation time owns both RTP and Sender Report clocks, so encoding
 or delivery delay cannot shift one of them independently. The Windows producer
-keeps raw frames on the GPU through conversion and hardware encoding, replaces
-only unencoded work and applies backpressure to complete encoded access units.
+shares one capture's owned GPU textures and presentation clock across independent
+encodings. Each encoding owns its conversion, bitrate, keyframe requests and
+stop, replaces only unencoded work and applies backpressure to complete access
+units. A blocked or stopped encoding does not stall its siblings; stopping the
+capture ends them all.
 App sharing uses that existing Native endpoint. The selecting page owns a
 non-cloneable capture lease whose drop stops the producer directly, even while
 signaling is reconnecting; the Native driver owns worker completion. Room

@@ -16,9 +16,11 @@ service lifetime. The [App composition](../channel-server/README.md#local-app-li
 from the Browser's personal activities. The App reuses the product's site approval
 and saved-site interface, and starts its own domain through the shared
 Local/public-invitation launcher. Windows capture now has a separate Rust producer:
-WGC supplies GPU textures, D3D11 scales them, and Media Foundation encodes H264 on
-the same adapter. Its complete access units retain capture presentation time;
-one capture owner handles keyframe requests, bitrate changes and final stop.
+WGC captures each source once and shares its owned GPU textures and presentation
+clock. Each encoding owns its D3D11 conversion, hardware H264 encoder, bitrate,
+keyframe requests and ordered output. Stopping one encoding leaves its siblings
+running; stopping capture ends all its encodings. Frame-rate selection retains
+the original timestamps and accumulates its sampling interval across frames.
 The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
 The selecting page holds the capture lease: closing it stops its captures while

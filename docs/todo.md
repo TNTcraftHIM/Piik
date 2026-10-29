@@ -11,8 +11,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete Native encoder-demand adaptation, input
   and platform packaging over the shared UI and Native participant.
-  Begin adaptation with one capture feeding independently controlled encoding
-  outputs, then allocate each physical connection's budget across its active media.
+  Connect the independently controlled encoding outputs to each outgoing flow's
+  source selection and allocate each physical connection's budget across its active media.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
@@ -28,10 +28,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
-- [ ] **macOS window capture with sound (#500).** Follow
-  [#500](https://github.com/TNTcraftHIM/Piik/issues/500). Compare the same window
-  with source sound on and off in the App that waits for video `active`
-  before starting source audio. Obtain the App diagnostic if the window stays black.
+- [ ] **macOS source-picker previews (#500).** The reporter confirmed that sharing
+  works in [#500](https://github.com/TNTcraftHIM/Piik/issues/500); the remaining
+  report concerns missing source thumbnails. The maintenance branch implements
+  the macOS helper's missing preview entry. Verify its build and thumbnails on macOS.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
   host with the maintenance line's input-recovery candidate. Its v2.5.0 report

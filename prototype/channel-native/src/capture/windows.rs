@@ -1,17 +1,14 @@
-//! WGC owns capture callbacks; one worker owns MF and its ordered AU output.
-use super::{mf::Encoder, EncodedFrame, Settings, Target, TargetKind};
+//! One WGC capture publishes owned BGRA textures to independent encoding workers.
+use super::{cadence::Cadence, output, CaptureClock, Encoding, Settings, Target, TargetKind};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{
-    collections::VecDeque,
-    mem::ManuallyDrop,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Condvar, Mutex, Weak},
     thread,
 };
-use tokio::sync::Notify;
 use windows::{
     core::Interface,
     Win32::{
-        Foundation::{CloseHandle, FILETIME, HWND, RECT},
+        Foundation::{CloseHandle, FILETIME, HWND},
         Graphics::{Direct3D11::*, Dxgi::Common::*},
         System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
         UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow},
@@ -29,69 +26,48 @@ use windows_capture::{
     window::Window,
 };
 
+#[derive(Clone)]
 pub(super) struct RawFrame {
     pub texture: ID3D11Texture2D,
     pub qpc: i64,
 }
-impl Clone for RawFrame {
-    fn clone(&self) -> Self {
-        Self {
-            texture: self.texture.clone(),
-            qpc: self.qpc,
-        }
-    }
+#[derive(Default)]
+struct State {
+    stop: bool,
+    failure: Option<String>,
+    latest: Option<RawFrame>,
+    encodings: Vec<Weak<output::Shared>>,
 }
 #[derive(Default)]
-pub(super) struct State {
-    pub stop: bool,
-    pub done: bool,
-    pub failure: Option<String>,
-    pub latest: Option<RawFrame>,
-    pub device: Option<ID3D11Device>,
-    pub event: Option<windows::core::Result<u32>>,
-    pub force_keyframe: bool,
-    pub bitrate: Option<u32>,
-    output: VecDeque<EncodedFrame>,
-}
-#[derive(Default)]
-pub(super) struct Shared {
-    pub state: Mutex<State>,
-    pub changed: Condvar,
-    available: Notify,
+struct Shared {
+    state: Mutex<State>,
+    changed: Condvar,
 }
 impl Shared {
-    pub fn wake(&self) {
+    fn stop(&self, failure: Option<String>) {
+        let mut state = self.state.lock().unwrap();
+        if failure.is_some() {
+            state.failure = failure;
+        }
+        state.stop = true;
+        state.latest = None;
+        let failure = state.failure.clone();
+        for encoding in state.encodings.drain(..).filter_map(|weak| weak.upgrade()) {
+            encoding.stop(failure.as_deref());
+        }
+        drop(state);
         self.changed.notify_all();
     }
-    fn stop(&self) {
+    fn publish(&self, frame: RawFrame) {
         let mut state = self.state.lock().unwrap();
-        state.stop = true;
-        state.output.clear();
-        drop(state);
-        self.wake();
-        self.available.notify_one();
-    }
-    fn failure(&self, error: &anyhow::Error) {
-        let mut state = self.state.lock().unwrap();
-        state.failure = Some(format!("{error:#}"));
-        state.stop = true;
-        drop(state);
-        self.wake();
-    }
-    pub fn output(&self, frame: EncodedFrame) -> bool {
-        let mut state = self.state.lock().unwrap();
-        // AU backpressure preserves the encoded dependency chain. Only raw
-        // capture's latest slot is replaceable, never an already encoded P frame.
-        while state.output.len() == 2 && !state.stop {
-            state = self.changed.wait(state).unwrap();
-        }
         if state.stop {
-            return false;
+            return;
         }
-        state.output.push_back(frame);
-        drop(state);
-        self.available.notify_one();
-        true
+        state.latest = Some(frame.clone());
+        state.encodings.retain(|weak| {
+            weak.upgrade()
+                .is_some_and(|encoding| encoding.input(frame.clone()))
+        });
     }
 }
 #[derive(Clone)]
@@ -100,84 +76,56 @@ impl Control {
     pub fn is_stopped(&self) -> bool {
         self.0.state.lock().unwrap().stop
     }
-    /// Request cancellation, including an encoder blocked on AU backpressure.
-    /// The Capture owner still joins the worker with Capture::stop.
+    /// Stop WGC and wake every encoding, including workers blocked on AU output.
+    /// Their respective Capture/Encoding owners still join the workers.
     pub fn stop(&self) {
-        self.0.stop();
-    }
-    pub fn force_keyframe(&self) -> Result<()> {
-        let mut state = self.0.state.lock().unwrap();
-        ensure!(!state.stop, "capture stopped");
-        state.force_keyframe = true;
-        drop(state);
-        self.0.wake();
-        Ok(())
-    }
-    pub fn set_bitrate(&self, bitrate: u32) -> Result<()> {
-        ensure!(bitrate > 0, "bitrate must be positive");
-        let mut state = self.0.state.lock().unwrap();
-        ensure!(!state.stop, "capture stopped");
-        state.bitrate = Some(bitrate);
-        drop(state);
-        self.0.wake();
-        Ok(())
+        self.0.stop(None);
     }
 }
 pub struct Capture {
     shared: Arc<Shared>,
+    clock: CaptureClock,
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {
-    pub fn start(target: Target, settings: Settings) -> Result<Self> {
-        settings.validate()?;
+    pub fn start(target: Target, fps: u32) -> Result<Self> {
+        ensure!(fps > 0, "capture fps must be positive");
+        let clock = CaptureClock::new()?;
         let shared = Arc::new(Shared::default());
         let worker = shared.clone();
         let thread = thread::Builder::new()
             .name("piik-capture".into())
             .spawn(move || {
-                let result = run(target, settings, worker.clone());
-                let mut state = worker.state.lock().unwrap();
-                if let Err(error) = &result {
-                    state.failure = Some(format!("{error:#}"));
-                }
-                state.stop = true;
-                state.done = true;
-                state.latest = None;
-                state.device = None;
-                state.event = None;
-                drop(state);
-                worker.wake();
-                worker.available.notify_one();
+                let result = run(target, fps, worker.clone());
+                worker.stop(result.as_ref().err().map(|error| format!("{error:#}")));
                 result
             })?;
         Ok(Self {
             shared,
+            clock,
             thread: Some(thread),
         })
+    }
+    /// Allocate one independent encoder. Initialization failures arrive through recv().
+    pub fn encode(&self, settings: Settings) -> Result<Encoding> {
+        settings.validate()?;
+        let mut state = self.shared.state.lock().unwrap();
+        ensure!(!state.stop, "capture stopped");
+        state.encodings.retain(|weak| {
+            weak.upgrade()
+                .is_some_and(|encoding| !encoding.state.lock().unwrap().stop)
+        });
+        let encoding = Encoding::start(settings, self.clock, state.latest.clone())?;
+        state.encodings.push(Arc::downgrade(&encoding.shared));
+        Ok(encoding)
     }
     pub fn control(&self) -> Control {
         Control(self.shared.clone())
     }
-    pub async fn recv(&mut self) -> Option<Result<EncodedFrame>> {
-        loop {
-            let notified = self.shared.available.notified();
-            {
-                let mut state = self.shared.state.lock().unwrap();
-                if let Some(frame) = state.output.pop_front() {
-                    self.shared.wake();
-                    return Some(Ok(frame));
-                }
-                if state.done {
-                    return state.failure.take().map(|error| Err(anyhow!(error)));
-                }
-            }
-            notified.await;
-        }
-    }
-    /// Call from a blocking owner. Drop requests stop; this additionally joins
-    /// the worker, which joins WGC and shuts down the hardware MFT.
+    /// Call from a blocking owner. Stop all outputs and join WGC; each Encoding
+    /// remains responsible for joining its own converter/MFT worker.
     pub fn stop(mut self) -> Result<()> {
-        self.shared.stop();
+        self.shared.stop(None);
         self.thread
             .take()
             .unwrap()
@@ -187,7 +135,7 @@ impl Capture {
 }
 impl Drop for Capture {
     fn drop(&mut self) {
-        self.shared.stop();
+        self.shared.stop(None);
     }
 }
 
@@ -283,7 +231,7 @@ impl TryInto<windows_capture::settings::GraphicsCaptureItemType> for Target {
         }
     }
 }
-fn run(target: Target, settings: Settings, shared: Arc<Shared>) -> Result<()> {
+fn run(target: Target, fps: u32, shared: Arc<Shared>) -> Result<()> {
     let capture = Wgc::start_free_threaded(WgcSettings::new(
         target,
         CursorCaptureSettings::Default,
@@ -292,29 +240,29 @@ fn run(target: Target, settings: Settings, shared: Arc<Shared>) -> Result<()> {
         MinimumUpdateIntervalSettings::Default,
         DirtyRegionSettings::Default,
         ColorFormat::Bgra8,
-        (shared.clone(), settings),
+        (shared.clone(), fps),
     ))?;
-    let result = Encoder::run(&shared, settings);
-    shared.state.lock().unwrap().stop = true;
-    shared.wake();
+    let failure = {
+        let mut state = shared.state.lock().unwrap();
+        while !state.stop {
+            state = shared.changed.wait(state).unwrap();
+        }
+        state.failure.clone()
+    };
     let stopped = capture.stop().map_err(|error| anyhow!("stop WGC: {error}"));
-    result.and(stopped)
+    if let Some(failure) = failure {
+        return Err(anyhow!(failure));
+    }
+    stopped
 }
 struct Wgc {
     shared: Arc<Shared>,
-    settings: Settings,
+    cadence: Cadence,
     device: ID3D11Device,
     context: ID3D11DeviceContext,
-    converter: Option<Converter>,
-}
-struct Converter {
-    input_width: u32,
-    input_height: u32,
-    enumerator: ID3D11VideoProcessorEnumerator,
-    processor: ID3D11VideoProcessor,
 }
 impl GraphicsCaptureApiHandler for Wgc {
-    type Flags = (Arc<Shared>, Settings);
+    type Flags = (Arc<Shared>, u32);
     type Error = anyhow::Error;
     fn new(ctx: Context<Self::Flags>) -> Result<Self> {
         unsafe {
@@ -323,13 +271,11 @@ impl GraphicsCaptureApiHandler for Wgc {
                 .cast::<ID3D11Multithread>()?
                 .SetMultithreadProtected(true);
         }
-        ctx.flags.0.state.lock().unwrap().device = Some(ctx.device.clone());
         Ok(Self {
             shared: ctx.flags.0,
-            settings: ctx.flags.1,
+            cadence: Cadence::new(ctx.flags.1),
             device: ctx.device,
             context: ctx.device_context,
-            converter: None,
         })
     }
     fn on_frame_arrived(
@@ -337,180 +283,72 @@ impl GraphicsCaptureApiHandler for Wgc {
         frame: &mut Frame,
         control: InternalCaptureControl,
     ) -> Result<()> {
+        let qpc = frame.timestamp()?.Duration;
         {
             let state = self.shared.state.lock().unwrap();
             if state.stop {
                 control.stop();
                 return Ok(());
             }
-            let qpc = frame.timestamp()?.Duration;
-            if state
-                .latest
-                .as_ref()
-                .is_some_and(|latest| qpc - latest.qpc < 10_000_000 / self.settings.fps as i64)
-            {
-                return Ok(());
-            }
         }
-        match self.convert(frame) {
-            Ok(frame) => {
-                self.shared.state.lock().unwrap().latest = Some(frame);
-                self.shared.wake();
-            }
+        if !self.cadence.accept(qpc) {
+            return Ok(());
+        }
+        match self.copy(frame, qpc) {
+            Ok(frame) => self.shared.publish(frame),
             Err(error) => {
-                self.shared.failure(&error);
+                self.shared.stop(Some(format!("{error:#}")));
                 control.stop();
             }
         }
         Ok(())
     }
     fn on_closed(&mut self) -> Result<()> {
-        self.shared.state.lock().unwrap().stop = true;
-        self.shared.wake();
+        self.shared.stop(None);
         Ok(())
     }
 }
 impl Wgc {
-    fn convert(&mut self, frame: &mut Frame) -> Result<RawFrame> {
+    fn copy(&self, frame: &Frame, qpc: i64) -> Result<RawFrame> {
         unsafe {
-            let (width, height) = (self.settings.width, self.settings.height);
-            let video = self.device.cast::<ID3D11VideoDevice>()?;
-            let context = self.context.cast::<ID3D11VideoContext1>()?;
-            if self
-                .converter
-                .as_ref()
-                .is_none_or(|c| c.input_width != frame.width() || c.input_height != frame.height())
-            {
-                let enumerator =
-                    video.CreateVideoProcessorEnumerator(&D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
-                        InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
-                        InputFrameRate: DXGI_RATIONAL {
-                            Numerator: self.settings.fps,
-                            Denominator: 1,
-                        },
-                        InputWidth: frame.width(),
-                        InputHeight: frame.height(),
-                        OutputFrameRate: DXGI_RATIONAL {
-                            Numerator: self.settings.fps,
-                            Denominator: 1,
-                        },
-                        OutputWidth: width,
-                        OutputHeight: height,
-                        Usage: D3D11_VIDEO_USAGE_PLAYBACK_NORMAL,
-                    })?;
-                let processor = video.CreateVideoProcessor(&enumerator, 0)?;
-                context.VideoProcessorSetStreamColorSpace1(
-                    &processor,
-                    0,
-                    DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
-                );
-                context.VideoProcessorSetOutputColorSpace1(
-                    &processor,
-                    DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709,
-                );
-                let source = RECT {
-                    left: 0,
-                    top: 0,
-                    right: frame.width() as i32,
-                    bottom: frame.height() as i32,
-                };
-                // Fit the selected source, preserving its aspect ratio across resize.
-                let scale = (width as f64 / frame.width() as f64)
-                    .min(height as f64 / frame.height() as f64);
-                let (w, h) = (
-                    (frame.width() as f64 * scale).round() as i32,
-                    (frame.height() as f64 * scale).round() as i32,
-                );
-                let (x, y) = ((width as i32 - w) / 2, (height as i32 - h) / 2);
-                let dest = RECT {
-                    left: x,
-                    top: y,
-                    right: x + w,
-                    bottom: y + h,
-                };
-                let output = RECT {
-                    left: 0,
-                    top: 0,
-                    right: width as i32,
-                    bottom: height as i32,
-                };
-                context.VideoProcessorSetStreamSourceRect(&processor, 0, true, Some(&source));
-                context.VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&dest));
-                context.VideoProcessorSetOutputTargetRect(&processor, true, Some(&output));
-                let mut black = D3D11_VIDEO_COLOR::default();
-                black.Anonymous.RGBA.A = 1.0;
-                context.VideoProcessorSetOutputBackgroundColor(&processor, false, &black);
-                context.VideoProcessorSetStreamFrameFormat(
-                    &processor,
-                    0,
-                    D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
-                );
-                context.VideoProcessorSetStreamAutoProcessingMode(&processor, 0, false);
-                self.converter = Some(Converter {
-                    input_width: frame.width(),
-                    input_height: frame.height(),
-                    enumerator,
-                    processor,
-                });
-            }
-            let converter = self.converter.as_ref().unwrap();
+            // WGC reuses its frame-pool surfaces. Copy once before returning the
+            // callback; every encoder may then retain this immutable GPU texture.
             let mut texture = None;
             self.device.CreateTexture2D(
                 &D3D11_TEXTURE2D_DESC {
-                    Width: width,
-                    Height: height,
+                    Width: frame.width(),
+                    Height: frame.height(),
                     MipLevels: 1,
                     ArraySize: 1,
-                    Format: DXGI_FORMAT_NV12,
+                    Format: DXGI_FORMAT_B8G8R8A8_UNORM,
                     SampleDesc: DXGI_SAMPLE_DESC {
                         Count: 1,
                         Quality: 0,
                     },
                     Usage: D3D11_USAGE_DEFAULT,
-                    BindFlags: D3D11_BIND_RENDER_TARGET.0 as u32,
+                    BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
                     ..Default::default()
                 },
                 None,
                 Some(&mut texture),
             )?;
             let texture = texture.unwrap();
-            let mut input = None;
-            video.CreateVideoProcessorInputView(
-                frame.as_raw_texture(),
-                &converter.enumerator,
-                &D3D11_VIDEO_PROCESSOR_INPUT_VIEW_DESC {
-                    ViewDimension: D3D11_VPIV_DIMENSION_TEXTURE2D,
-                    ..Default::default()
-                },
-                Some(&mut input),
-            )?;
-            let mut output = None;
-            video.CreateVideoProcessorOutputView(
+            self.context.CopySubresourceRegion(
                 &texture,
-                &converter.enumerator,
-                &D3D11_VIDEO_PROCESSOR_OUTPUT_VIEW_DESC {
-                    ViewDimension: D3D11_VPOV_DIMENSION_TEXTURE2D,
-                    ..Default::default()
-                },
-                Some(&mut output),
-            )?;
-            let mut stream = D3D11_VIDEO_PROCESSOR_STREAM {
-                Enable: true.into(),
-                pInputSurface: ManuallyDrop::new(input),
-                ..Default::default()
-            };
-            let result = context.VideoProcessorBlt(
-                &converter.processor,
-                output.as_ref().unwrap(),
                 0,
-                std::slice::from_ref(&stream),
+                0,
+                0,
+                0,
+                frame.as_raw_texture(),
+                0,
+                Some(&D3D11_BOX {
+                    right: frame.width(),
+                    bottom: frame.height(),
+                    back: 1,
+                    ..Default::default()
+                }),
             );
-            drop(ManuallyDrop::take(&mut stream.pInputSurface));
-            result?;
-            Ok(RawFrame {
-                texture,
-                qpc: frame.timestamp()?.Duration,
-            })
+            Ok(RawFrame { texture, qpc })
         }
     }
 }

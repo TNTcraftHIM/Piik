@@ -1,12 +1,20 @@
 //! Native capture producers, independent of rooms and RTP.
 #[cfg(target_os = "windows")]
 mod audio;
+#[cfg(any(target_os = "windows", test))]
+mod cadence;
+#[cfg(target_os = "windows")]
+mod converter;
 #[cfg(target_os = "windows")]
 mod mf;
+#[cfg(target_os = "windows")]
+mod output;
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
 pub use audio::{audio_capabilities, AudioCapture, AudioControl};
+#[cfg(target_os = "windows")]
+pub use output::{Encoding, EncodingControl};
 #[cfg(target_os = "windows")]
 pub use windows::{targets, Capture, Control};
 
@@ -54,6 +62,7 @@ pub struct AudioFrame {
 
 /// WGC and WASAPI both timestamp capture in QPC units of 100 ns.
 #[cfg(target_os = "windows")]
+#[derive(Clone, Copy)]
 struct CaptureClock {
     frequency: i64,
     qpc: i64,

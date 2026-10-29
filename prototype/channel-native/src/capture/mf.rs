@@ -1,7 +1,7 @@
 //! Adapter-bound asynchronous hardware MFT. No capture/RTP policy lives here.
 use super::{
-    windows::{RawFrame, Shared},
-    CaptureClock, EncodedFrame, Settings,
+    cadence::Cadence, converter::Converter, output::Shared, windows::RawFrame, CaptureClock,
+    EncodedFrame, Settings,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{mem::ManuallyDrop, ptr, sync::Arc};
@@ -200,7 +200,7 @@ impl Encoder {
             }
         }
     }
-    fn input(&self, frame: &RawFrame, pts: i64, duration: i64, force: bool) -> Result<()> {
+    fn input(&self, texture: &ID3D11Texture2D, pts: i64, duration: i64, force: bool) -> Result<()> {
         unsafe {
             if force {
                 self.api
@@ -209,7 +209,7 @@ impl Encoder {
             let sample = MFCreateSample()?;
             sample.AddBuffer(&MFCreateDXGISurfaceBuffer(
                 &ID3D11Texture2D::IID,
-                &frame.texture,
+                texture,
                 0,
                 false,
             )?)?;
@@ -257,20 +257,27 @@ impl Encoder {
             Ok((bytes, pts, keyframe))
         }
     }
-    pub fn run(shared: &Arc<Shared>, settings: Settings) -> Result<()> {
-        let device = shared
-            .state
-            .lock()
-            .unwrap()
-            .device
-            .clone()
-            .ok_or_else(|| anyhow!("WGC did not initialize capture device"))?;
+    pub fn run(shared: &Arc<Shared>, settings: Settings, clock: CaptureClock) -> Result<()> {
+        let device = {
+            let mut state = shared.state.lock().unwrap();
+            loop {
+                if state.stop {
+                    return Ok(());
+                }
+                if let Some(frame) = &state.latest {
+                    break unsafe { frame.texture.GetDevice()? };
+                }
+                state = shared.changed.wait(state).unwrap();
+            }
+        };
         let encoder = Self::new(&device, settings, shared.clone())?;
+        let mut converter = Converter::new(&device, settings)?;
         let mut need_input = 0;
         let mut last_capture = None;
         let mut origin: Option<i64> = None;
         let mut last_pts = -1;
-        let clock = CaptureClock::new()?;
+        let duration = 10_000_000 / settings.fps as i64;
+        let mut cadence = Cadence::new(settings.fps);
         enum Work {
             Stop,
             Event(windows::core::Result<u32>),
@@ -292,7 +299,9 @@ impl Encoder {
                     }
                     if need_input > 0 {
                         if let Some(raw) = &state.latest {
-                            if last_capture != Some(raw.qpc) || state.force_keyframe {
+                            if state.force_keyframe
+                                || (last_capture != Some(raw.qpc) && cadence.accept(raw.qpc))
+                            {
                                 let frame = raw.clone();
                                 let force = std::mem::take(&mut state.force_keyframe);
                                 break Work::Frame(frame, force);
@@ -346,7 +355,8 @@ impl Encoder {
                     if pts <= last_pts {
                         continue;
                     }
-                    encoder.input(&frame, pts, 10_000_000 / settings.fps as i64, force)?;
+                    let texture = converter.convert(&frame.texture)?;
+                    encoder.input(&texture, pts, duration, force)?;
                     need_input -= 1;
                     last_pts = pts;
                 }

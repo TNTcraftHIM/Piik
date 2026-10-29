@@ -64,8 +64,10 @@ impl Producer {
         // Both source reports project original capture PTS through this one pair.
         let now = Instant::now();
         let clock = SystemInstant::now(now);
-        let mut capture = Capture::start(target.clone(), settings)?;
+        let capture = Capture::start(target.clone(), settings.fps)?;
+        let mut encoding = capture.encode(settings)?;
         let video_control = capture.control();
+        let encoder_control = encoding.control();
         let (audio_error, warning) = if audio {
             let (error, warning) = oneshot::channel();
             (Some(error), Some(warning))
@@ -132,9 +134,9 @@ impl Producer {
             let result = async {
                 loop {
                     let frame = tokio::select! {
-                        frame = capture.recv() => match frame { Some(frame) => frame?, None => break },
+                        frame = encoding.recv() => match frame { Some(frame) => frame?, None => break },
                         changed = requests.changed() => {
-                            if changed.is_err() || worker_control.video.force_keyframe().is_err() { break; }
+                            if changed.is_err() || encoder_control.force_keyframe().is_err() { break; }
                             continue;
                         }
                         _ = cancelled.changed() => break,
@@ -157,10 +159,14 @@ impl Producer {
                 Ok::<_, anyhow::Error>(())
             }.await;
             worker_control.stop();
-            let joined = tokio::task::spawn_blocking(move || capture.stop())
-                .await
-                .map_err(anyhow::Error::from)
-                .and_then(|result| result);
+            let joined = tokio::task::spawn_blocking(move || {
+                let encoded = encoding.stop();
+                let captured = capture.stop();
+                encoded.and(captured)
+            })
+            .await
+            .map_err(anyhow::Error::from)
+            .and_then(|result| result);
             if let Some((_, _, audio)) = audio {
                 if let Err(error) = audio.await {
                     eprintln!("Native audio task failed: {error}");
