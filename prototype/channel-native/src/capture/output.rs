@@ -17,13 +17,14 @@ pub(super) struct State {
     pub event: Option<windows::core::Result<u32>>,
     pub force_keyframe: bool,
     pub bitrate: Option<u32>,
+    raw_requested: bool,
     output: VecDeque<EncodedFrame>,
 }
-#[derive(Default)]
 pub(super) struct Shared {
     pub state: Mutex<State>,
     pub changed: Condvar,
     available: Notify,
+    requests: tokio::sync::mpsc::Sender<Option<i64>>,
 }
 impl Shared {
     pub fn wake(&self) {
@@ -35,9 +36,18 @@ impl Shared {
             return false;
         }
         state.latest = Some(frame);
+        state.raw_requested = false;
         drop(state);
         self.wake();
         true
+    }
+    pub fn request_frame(&self, state: &mut State) {
+        if !state.raw_requested {
+            let after = state.latest.as_ref().map(|raw| raw.qpc);
+            if self.requests.try_send(after).is_ok() {
+                state.raw_requested = true;
+            }
+        }
     }
     pub fn stop(&self, failure: Option<&str>) {
         let mut state = self.state.lock().unwrap();
@@ -101,10 +111,14 @@ impl Encoding {
     pub(super) fn start(
         settings: Settings,
         clock: CaptureClock,
-        latest: Option<RawFrame>,
+        requests: tokio::sync::mpsc::Sender<Option<i64>>,
     ) -> Result<Self> {
-        let shared = Arc::new(Shared::default());
-        shared.state.lock().unwrap().latest = latest;
+        let shared = Arc::new(Shared {
+            requests,
+            state: Mutex::new(State::default()),
+            changed: Condvar::new(),
+            available: Notify::new(),
+        });
         let worker = shared.clone();
         let thread = thread::Builder::new()
             .name("piik-encoder".into())

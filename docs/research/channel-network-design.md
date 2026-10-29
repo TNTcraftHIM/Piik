@@ -661,22 +661,24 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
-Capture and its encoders now run in one same-executable child per source. The
-parent retains room, transport, input and audio ownership. Pull-based IPC carries
-complete access units and original QPC timestamps; cancelling a read preserves
-its pending result, and an unread encoding does not block another. The source
-supervisor joins the child on Stop/Drop; a Windows Job also closes it when the
-App exits. Input authority ends when capture stops, before worker cleanup.
+WGC remains in the parent; each encoding owns one same-executable child. A single
+raw-frame credit requests a newer capture only when the encoder needs it.
+Same-adapter NT shared handles carry GPU textures through two copies; the child
+releases the shared lock before encoding its private copy. Pull-based IPC returns
+complete access units and original QPC timestamps. Cancelling a read preserves
+its pending result; an unread encoding stops requesting GPU transfers when its
+existing two-AU queue fills. Static keyframe requests reuse its private image.
+Each Encoding joins its child on Stop/Drop; a Windows Job also closes it when
+the App exits. Source stop ends input authority and signals every encoding;
+the Capture owner joins WGC.
 
 A controlled single-MFT shutdown reproduced an NVIDIA callback using an already
-destroyed transform after `ShutdownObject` returned. Source isolation contains
-that failure to one share. Retiring one encoder can still terminate its source's
-other encodings; protecting those outputs requires an encoder process boundary.
-An isolated NT shared-handle handoff preserves QPC and produces the expected
-decoded picture through the existing converter and encoder. It currently adds
-two GPU copies. Integrate that boundary with one capture owner and independent
-encoding children, replacing the source-process boundary. Do not
-retain idle encoders or add shutdown delays to hide the driver lifetime failure.
+destroyed transform after `ShutdownObject` returned. The encoding process boundary
+contains that failure to consumers of that encoder, including viewers sharing
+one baseline. Other encodings, WGC and App-hosted rooms continue. The real App
+Browser check retires and rebuilds one constrained output while its sibling
+keeps decoding on the same track and SSRC; normal Stop reaps every child.
+No idle-encoder retention or shutdown delay is used to hide the driver failure.
 The Native driver allocates each connection's target to confirmed local video
 after accounting for other RTP, prioritizing selected video over optional video.
 One producer reconciles demand with the encodings actually used by its outputs.

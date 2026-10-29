@@ -1,14 +1,14 @@
-//! A source owns one child. Per-encoding pull slots preserve cancellation and
-//! backpressure without making one slow consumer hold the shared IPC reader.
+//! One Encoding owns one child and its AU slot. WGC remains in the parent.
 use super::{
+    gpu,
+    windows::RawFrame,
     worker::{self, Command, Reply},
-    CaptureClock, EncodedFrame, Settings, Target,
+    CaptureClock, EncodedFrame, Settings,
 };
 use anyhow::{anyhow, ensure, Context, Result};
 use std::{
-    collections::{HashMap, VecDeque},
     process::Stdio,
-    sync::{Arc, Condvar, Mutex, Weak},
+    sync::{Arc, Mutex},
     thread,
     time::Duration,
 };
@@ -16,168 +16,158 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{watch, Notify},
 };
-use uuid::Uuid;
-
-struct Shared {
-    commands: Mutex<VecDeque<Command>>,
+#[derive(Default)]
+struct State {
+    done: bool,
+    latest: Option<RawFrame>,
+    credit: Option<Option<i64>>,
+    read: bool,
+    read_sent: bool,
+    frame: Option<EncodedFrame>,
+    bitrate: Option<u32>,
+    keyframe: bool,
+}
+pub(super) struct Shared {
+    state: Mutex<State>,
     changed: Notify,
-    // One typed source termination fact; errors can refine an intentional stop.
+    available: Notify,
     stop: watch::Sender<Option<Result<(), String>>>,
-    encodings: Mutex<HashMap<Uuid, Weak<Slot>>>,
 }
 impl Shared {
-    fn stopped(&self) -> bool {
-        self.stop.borrow().is_some()
+    pub fn input(&self, frame: RawFrame) -> bool {
+        let mut s = self.state.lock().unwrap();
+        if self.stopped() {
+            return false;
+        }
+        s.latest = Some(frame);
+        drop(s);
+        self.changed.notify_one();
+        true
     }
-    fn stop(&self, error: Option<String>) {
-        let result = error.map_or(Ok(()), Err);
-        self.stop.send_if_modified(|stopped| {
-            if stopped.is_none() || matches!((&stopped, &result), (Some(Ok(())), Err(_))) {
-                *stopped = Some(result);
+    pub fn stop(&self, error: Option<&str>) {
+        let mut s = self.state.lock().unwrap();
+        self.stop.send_if_modified(|terminal| {
+            if terminal.is_none() || (matches!(terminal, Some(Ok(()))) && error.is_some()) {
+                *terminal = Some(error.map_or(Ok(()), |e| Err(e.to_owned())));
                 true
             } else {
                 false
             }
         });
-    }
-    fn send(&self, command: Command) -> Result<()> {
-        ensure!(!self.stopped(), "capture process stopped");
-        let mut commands = self.commands.lock().unwrap();
-        // These are latest control values, matching the existing encoder owner,
-        // not an unbounded sequence of bitrate/keyframe operations. Reads and
-        // Add/Remove remain one operation per actual encoding resource.
-        match &command {
-            Command::Bitrate { id, bitrate } => {
-                for pending in commands.iter_mut() {
-                    if let Command::Bitrate {
-                        id: other,
-                        bitrate: value,
-                    } = pending
-                    {
-                        if other == id {
-                            *value = *bitrate;
-                            return Ok(());
-                        }
-                    }
-                }
-            }
-            Command::Keyframe { id }
-                if commands.iter().any(
-                    |pending| matches!(pending, Command::Keyframe { id: other } if other == id),
-                ) =>
-            {
-                return Ok(())
-            }
-            _ => {}
-        }
-        commands.push_back(command);
-        drop(commands);
+        s.latest = None;
+        s.frame = None;
+        drop(s);
         self.changed.notify_one();
-        Ok(())
+        self.available.notify_waiters();
     }
-    fn slot(&self, id: Uuid) -> Option<Arc<Slot>> {
-        self.encodings
-            .lock()
-            .unwrap()
-            .get(&id)
-            .and_then(Weak::upgrade)
+    fn finish(&self, result: &Result<()>) {
+        self.stop(result.as_ref().err().map(|e| format!("{e:#}")).as_deref());
+        self.state.lock().unwrap().done = true;
+        self.available.notify_waiters();
     }
-    fn finished(&self, error: Option<String>) {
-        self.stop(error.clone());
-        self.commands.lock().unwrap().clear();
-        for slot in self
-            .encodings
-            .lock()
-            .unwrap()
-            .values()
-            .filter_map(Weak::upgrade)
-        {
-            slot.finish(error.clone());
-        }
+    pub(super) fn stopped(&self) -> bool {
+        self.stop.borrow().is_some()
     }
 }
 #[derive(Clone)]
-pub struct Control(Arc<Shared>);
-impl Control {
+pub struct EncodingControl(Arc<Shared>);
+impl EncodingControl {
     pub fn is_stopped(&self) -> bool {
         self.0.stopped()
     }
     pub fn stop(&self) {
-        self.0.stop(None);
+        self.0.stop(None)
     }
-    pub async fn stopped(&self) {
-        let mut stopped = self.0.stop.subscribe();
-        while stopped.borrow().is_none() {
-            if stopped.changed().await.is_err() {
-                break;
-            }
-        }
+    pub fn force_keyframe(&self) -> Result<()> {
+        let mut s = self.0.state.lock().unwrap();
+        ensure!(!self.0.stopped(), "encoding stopped");
+        s.keyframe = true;
+        drop(s);
+        self.0.changed.notify_one();
+        Ok(())
+    }
+    pub fn set_bitrate(&self, bitrate: u32) -> Result<()> {
+        ensure!(bitrate > 0, "bitrate must be positive");
+        let mut s = self.0.state.lock().unwrap();
+        ensure!(!self.0.stopped(), "encoding stopped");
+        s.bitrate = Some(bitrate);
+        drop(s);
+        self.0.changed.notify_one();
+        Ok(())
     }
 }
-pub struct Capture {
-    shared: Arc<Shared>,
+pub struct Encoding {
+    pub(super) shared: Arc<Shared>,
     thread: Option<thread::JoinHandle<Result<()>>>,
+    error_reported: bool,
 }
-impl Capture {
-    pub fn start(target: Target, fps: u32) -> Result<Self> {
-        ensure!(fps > 0, "capture fps must be positive");
-        let clock = CaptureClock::new()?;
+impl Encoding {
+    pub(super) fn start(
+        settings: Settings,
+        clock: CaptureClock,
+        latest: Option<RawFrame>,
+    ) -> Result<Self> {
         let (stop, stopped) = watch::channel(None);
         let shared = Arc::new(Shared {
-            commands: Mutex::new(VecDeque::new()),
+            state: Mutex::new(State {
+                latest,
+                ..State::default()
+            }),
             changed: Notify::new(),
+            available: Notify::new(),
             stop,
-            encodings: Mutex::new(HashMap::new()),
         });
-        let source = shared.clone();
-        let (ready, started) = std::sync::mpsc::sync_channel(1);
+        let worker = shared.clone();
         let thread = thread::Builder::new()
-            .name("piik-capture-process".into())
+            .name("piik-encoding-process".into())
             .spawn(move || {
-                let runtime = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()?;
-                let result = runtime.block_on(supervise(source.clone(), stopped, clock, ready));
-                source.finished(result.as_ref().err().map(|error| format!("{error:#}")));
+                let result = (|| {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()?;
+                    rt.block_on(supervise(worker.clone(), stopped, clock, settings))
+                })();
+                worker.finish(&result);
                 result
             })?;
-        match started.recv() {
-            Ok(Ok(())) => {}
-            result => {
-                let _ = thread.join();
-                return Err(anyhow!("capture child startup failed: {result:?}"));
-            }
-        }
-        let capture = Self {
+        Ok(Self {
             shared,
             thread: Some(thread),
-        };
-        capture.shared.send(Command::Start { target, fps })?;
-        Ok(capture)
-    }
-    pub fn encode(&self, settings: Settings) -> Result<Encoding> {
-        settings.validate()?;
-        let id = Uuid::new_v4();
-        let slot = Arc::new(Slot {
-            id,
-            state: Mutex::new(SlotState::default()),
-            available: Notify::new(),
-            joined: Condvar::new(),
-            source: Arc::downgrade(&self.shared),
-        });
-        self.shared
-            .encodings
-            .lock()
-            .unwrap()
-            .insert(id, Arc::downgrade(&slot));
-        self.shared.send(Command::Add { id, settings })?;
-        Ok(Encoding {
-            slot,
             error_reported: false,
         })
     }
-    pub fn control(&self) -> Control {
-        Control(self.shared.clone())
+    pub fn control(&self) -> EncodingControl {
+        EncodingControl(self.shared.clone())
+    }
+    pub async fn recv(&mut self) -> Option<Result<EncodedFrame>> {
+        loop {
+            let notify = self.shared.available.notified();
+            tokio::pin!(notify);
+            notify.as_mut().enable();
+            {
+                let mut s = self.shared.state.lock().unwrap();
+                if let Some(frame) = s.frame.take() {
+                    s.read = false;
+                    s.read_sent = false;
+                    return Some(Ok(frame));
+                }
+                if s.done {
+                    if self.error_reported {
+                        return None;
+                    }
+                    self.error_reported = true;
+                    return match &*self.shared.stop.borrow() {
+                        Some(Err(e)) => Some(Err(anyhow!(e.clone()))),
+                        _ => None,
+                    };
+                }
+                if !self.shared.stopped() && !s.read {
+                    s.read = true;
+                    self.shared.changed.notify_one();
+                }
+            }
+            notify.await;
+        }
     }
     pub fn stop(mut self) -> Result<()> {
         self.shared.stop(None);
@@ -185,293 +175,160 @@ impl Capture {
             .take()
             .unwrap()
             .join()
-            .map_err(|_| anyhow!("capture process supervisor panicked"))?
-    }
-}
-impl Drop for Capture {
-    fn drop(&mut self) {
-        self.shared.stop(None);
-        // The same owner joins on every path. There is no detached JoinHandle;
-        // cooperative close gets one second, then supervisor kills and reaps.
-        if let Some(thread) = self.thread.take() {
-            match thread.join() {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => eprintln!("Native capture process cleanup failed: {error:#}"),
-                Err(_) => eprintln!("Native capture process supervisor panicked"),
-            }
-        }
-    }
-}
-
-#[derive(Default)]
-struct SlotState {
-    stopping: bool,
-    done: bool,
-    read: bool,
-    frame: Option<EncodedFrame>,
-    error: Option<String>,
-}
-struct Slot {
-    id: Uuid,
-    state: Mutex<SlotState>,
-    available: Notify,
-    joined: Condvar,
-    source: Weak<Shared>,
-}
-impl Slot {
-    fn finish(&self, error: Option<String>) {
-        let mut state = self.state.lock().unwrap();
-        if state.done {
-            return;
-        }
-        state.error = error;
-        state.done = true;
-        state.frame = None;
-        state.read = false;
-        drop(state);
-        self.available.notify_waiters();
-        self.joined.notify_all();
-    }
-    fn stop(&self) {
-        let mut state = self.state.lock().unwrap();
-        if state.stopping || state.done {
-            return;
-        }
-        state.stopping = true;
-        state.frame = None;
-        drop(state);
-        if let Some(source) = self.source.upgrade() {
-            // Source stop already owns all joins; do not enqueue after its stop.
-            if !source.stopped() {
-                let _ = source.send(Command::Remove { id: self.id });
-            }
-        } else {
-            self.finish(None);
-        }
-    }
-}
-#[derive(Clone)]
-pub struct EncodingControl(Arc<Slot>);
-impl EncodingControl {
-    pub fn is_stopped(&self) -> bool {
-        let state = self.0.state.lock().unwrap();
-        state.stopping
-            || state.done
-            || self
-                .0
-                .source
-                .upgrade()
-                .is_none_or(|source| source.stopped())
-    }
-    pub fn stop(&self) {
-        self.0.stop();
-    }
-    pub fn force_keyframe(&self) -> Result<()> {
-        ensure!(!self.is_stopped(), "encoding stopped");
-        self.0
-            .source
-            .upgrade()
-            .context("capture stopped")?
-            .send(Command::Keyframe { id: self.0.id })
-    }
-    pub fn set_bitrate(&self, bitrate: u32) -> Result<()> {
-        ensure!(bitrate > 0, "bitrate must be positive");
-        ensure!(!self.is_stopped(), "encoding stopped");
-        self.0
-            .source
-            .upgrade()
-            .context("capture stopped")?
-            .send(Command::Bitrate {
-                id: self.0.id,
-                bitrate,
-            })
-    }
-}
-pub struct Encoding {
-    slot: Arc<Slot>,
-    error_reported: bool,
-}
-impl Encoding {
-    pub fn control(&self) -> EncodingControl {
-        EncodingControl(self.slot.clone())
-    }
-    pub async fn recv(&mut self) -> Option<Result<EncodedFrame>> {
-        loop {
-            let available = self.slot.available.notified();
-            tokio::pin!(available);
-            available.as_mut().enable();
-            {
-                let mut state = self.slot.state.lock().unwrap();
-                if let Some(frame) = state.frame.take() {
-                    state.read = false;
-                    return Some(Ok(frame));
-                }
-                if state.done {
-                    if self.error_reported {
-                        return None;
-                    }
-                    self.error_reported = true;
-                    return state
-                        .error
-                        .as_ref()
-                        .map(|error| Err(anyhow!(error.clone())));
-                }
-                if !state.read && !state.stopping {
-                    let Some(source) = self.slot.source.upgrade() else {
-                        return None;
-                    };
-                    if let Err(error) = source.send(Command::Read { id: self.slot.id }) {
-                        return Some(Err(error));
-                    }
-                    state.read = true;
-                }
-            }
-            // Canceling this future retains the exact outstanding Read and any
-            // arriving AU in Slot; only consuming it permits the next Read.
-            available.await;
-        }
-    }
-    pub fn stop(self) -> Result<()> {
-        self.slot.stop();
-        let state = self.slot.state.lock().unwrap();
-        let state = self
-            .slot
-            .joined
-            .wait_while(state, |state| !state.done)
-            .unwrap();
-        if let Some(error) = &state.error {
-            return Err(anyhow!(error.clone()));
-        }
-        Ok(())
+            .map_err(|_| anyhow!("encoding supervisor panicked"))?
     }
 }
 impl Drop for Encoding {
     fn drop(&mut self) {
-        self.slot.stop();
-        if let Some(source) = self.slot.source.upgrade() {
-            source.encodings.lock().unwrap().remove(&self.slot.id);
+        self.shared.stop(None);
+        if let Some(thread) = self.thread.take() {
+            match thread.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(e)) => eprintln!("Native encoding cleanup failed: {e:#}"),
+                Err(_) => eprintln!("Native encoding supervisor panicked"),
+            }
         }
     }
 }
-
+enum Work {
+    Stop,
+    Command(Command),
+    Frame(RawFrame),
+    Wait,
+}
 async fn supervise(
     shared: Arc<Shared>,
     mut stopped: watch::Receiver<Option<Result<(), String>>>,
     clock: CaptureClock,
-    ready: std::sync::mpsc::SyncSender<Result<(), String>>,
+    settings: Settings,
 ) -> Result<()> {
     let job = super::job::Job::new()?;
-    let mut command = tokio::process::Command::new(std::env::current_exe()?);
-    command
+    let mut child = tokio::process::Command::new(std::env::current_exe()?)
         .arg(worker::ARG)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
-        .kill_on_drop(true);
-    command.creation_flags(0x0800_0000); // Hidden worker, never a second App UI.
-    let mut child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) => {
-            let _ = ready.send(Err(error.to_string()));
-            return Err(error.into());
-        }
-    };
-    // Child cannot initialize capture before parent sends Start, which happens
-    // only after this assignment and startup acknowledgement.
+        .creation_flags(0x08000000)
+        .kill_on_drop(true)
+        .spawn()?;
     if let Err(error) = job.assign(
         child
             .raw_handle()
-            .context("missing capture process handle")?,
+            .context("missing encoding process handle")?,
     ) {
         child.start_kill()?;
         child.wait().await?;
-        let _ = ready.send(Err(error.to_string()));
         return Err(error);
     }
-    let _ = ready.send(Ok(()));
+    let process = child.raw_handle().unwrap() as usize;
     let mut input = child.stdin.take().unwrap();
     let mut output = child.stdout.take().unwrap();
-    let writer_source = shared.clone();
-    let mut writer_stop = stopped.clone();
+    let writer_shared = shared.clone();
     let writer = tokio::spawn(async move {
         let result = async {
+            worker::write_json(&mut input, &Command::Start { settings }).await?;
             loop {
-                let changed = writer_source.changed.notified();
+                let changed = writer_shared.changed.notified();
                 tokio::pin!(changed);
                 changed.as_mut().enable();
-                if writer_source.stopped() {
-                    worker::write_json(&mut input, &Command::Stop).await?;
-                    input.shutdown().await?;
-                    break;
+                let work = {
+                    let mut s = writer_shared.state.lock().unwrap();
+                    if writer_shared.stopped() {
+                        Work::Stop
+                    } else if let Some(bitrate) = s.bitrate.take() {
+                        Work::Command(Command::Bitrate { bitrate })
+                    } else if std::mem::take(&mut s.keyframe) {
+                        Work::Command(Command::Keyframe)
+                    } else if s.read && !s.read_sent {
+                        s.read_sent = true;
+                        Work::Command(Command::Read)
+                    } else if let Some(after) = s.credit {
+                        if let Some(raw) = s
+                            .latest
+                            .as_ref()
+                            .filter(|raw| after.is_none_or(|after| raw.qpc > after))
+                            .cloned()
+                        {
+                            s.credit = None;
+                            Work::Frame(raw)
+                        } else {
+                            Work::Wait
+                        }
+                    } else {
+                        Work::Wait
+                    }
+                };
+                match work {
+                    Work::Stop => {
+                        worker::write_json(&mut input, &Command::Stop).await?;
+                        input.shutdown().await?;
+                        break;
+                    }
+                    Work::Command(command) => worker::write_json(&mut input, &command).await?,
+                    Work::Frame(raw) => {
+                        let frame = gpu::send(raw, process as _)?;
+                        worker::write_json(&mut input, &Command::Frame { frame }).await?;
+                    }
+                    Work::Wait => {
+                        changed.await;
+                        continue;
+                    }
                 }
-                let command = writer_source.commands.lock().unwrap().pop_front();
-                if let Some(command) = command {
-                    worker::write_json(&mut input, &command).await?;
-                    input.flush().await?;
-                    continue;
-                }
-                tokio::select! {
-                    biased;
-                    _ = writer_stop.changed() => {},
-                    _ = changed => {},
-                }
+                input.flush().await?;
             }
             Ok::<_, anyhow::Error>(())
         }
         .await;
-        if let Err(error) = &result {
-            if !writer_source.stopped() {
-                writer_source.stop(Some(format!("capture process write failed: {error:#}")));
-            }
+        if let Err(e) = &result {
+            writer_shared.stop(Some(&format!("encoding write: {e:#}")));
         }
         result
     });
-    let reader_source = shared.clone();
+    let reader_shared = shared.clone();
     let reader = tokio::spawn(async move {
         let result = async {
             loop {
                 match worker::read_json(&mut output).await? {
+                    Reply::NeedFrame { after } => {
+                        let mut s = reader_shared.state.lock().unwrap();
+                        ensure!(s.credit.is_none(), "duplicate raw credit");
+                        s.credit = Some(after);
+                        drop(s);
+                        reader_shared.changed.notify_one();
+                    }
                     Reply::Au {
-                        id,
                         qpc,
                         keyframe,
                         length,
                     } => {
-                        ensure!(length <= worker::MAX_AU, "capture IPC AU too large");
+                        ensure!(length <= worker::MAX_AU, "encoding IPC AU too large");
                         let mut bytes = vec![0; length];
                         output.read_exact(&mut bytes).await?;
-                        if let Some(slot) = reader_source.slot(id) {
-                            let mut state = slot.state.lock().unwrap();
-                            if !state.stopping && !state.done {
-                                ensure!(
-                                    state.read && state.frame.is_none(),
-                                    "unsolicited capture AU"
-                                );
-                                state.frame = Some(EncodedFrame {
-                                    bytes,
-                                    presentation_time: clock.instant(qpc),
-                                    keyframe,
-                                });
-                                drop(state);
-                                slot.available.notify_one();
-                            }
+                        let mut s = reader_shared.state.lock().unwrap();
+                        if !reader_shared.stopped() {
+                            ensure!(
+                                s.read && s.read_sent && s.frame.is_none(),
+                                "unsolicited encoding AU"
+                            );
+                            s.frame = Some(EncodedFrame {
+                                bytes,
+                                presentation_time: clock.instant(qpc),
+                                keyframe,
+                            });
+                            drop(s);
+                            reader_shared.available.notify_one();
                         }
                     }
-                    Reply::EncodingEnded { id, error } => {
-                        if let Some(slot) = reader_source.slot(id) {
-                            slot.finish(error);
-                        }
-                    }
-                    Reply::CaptureEnded { error } => {
-                        reader_source.stop(error.clone());
-                        return error.map_or(Ok(()), |error| Err(anyhow!(error)));
+                    Reply::EncodingEnded { error } => {
+                        reader_shared.stop(error.as_deref());
+                        return error.map_or(Ok(()), |e| Err(anyhow!(e)));
                     }
                 }
             }
         }
         .await;
-        if let Err(error) = &result {
-            reader_source.stop(Some(format!("capture process read failed: {error:#}")));
+        if let Err(e) = &result {
+            reader_shared.stop(Some(&format!("encoding read: {e:#}")));
         }
         result
     });
@@ -480,19 +337,19 @@ async fn supervise(
         _ = stopped.changed() => {
             match tokio::time::timeout(Duration::from_secs(1), child.wait()).await {
                 Ok(status) => status,
-                Err(_) => { child.start_kill()?; child.wait().await }
+                Err(_) => {
+                    child.start_kill()?;
+                    child.wait().await
+                }
             }
         }
     }?;
-    // Reaped child implies stdout will reach EOF. Drain its final result before
-    // deciding success; child.wait can win while CaptureEnded is still buffered.
     writer.abort();
     let _ = writer.await;
-    let read = reader.await.context("capture process reader panicked")?;
-    shared.stop(None);
-    ensure!(status.success(), "capture process exited {status}");
-    read?;
-    if let Some(Err(error)) = stopped.borrow().as_ref() {
+    let read = reader.await.context("encoding reader panicked")?;
+    read.with_context(|| format!("encoding process exited {status}"))?;
+    ensure!(status.success(), "encoding process exited {status}");
+    if let Some(Err(error)) = &*shared.stop.borrow() {
         return Err(anyhow!(error.clone()));
     }
     Ok(())
@@ -502,52 +359,46 @@ async fn supervise(
 mod tests {
     use super::*;
     use std::task::Poll;
+    fn proxy() -> Encoding {
+        let (stop, _) = watch::channel(None);
+        Encoding {
+            shared: Arc::new(Shared {
+                state: Mutex::new(State::default()),
+                changed: Notify::new(),
+                available: Notify::new(),
+                stop,
+            }),
+            thread: None,
+            error_reported: false,
+        }
+    }
     #[tokio::test]
     async fn cancelled_recv_retains_the_same_reply_and_one_read() {
-        let (stop, _) = watch::channel(None);
-        let source = Arc::new(Shared {
-            commands: Mutex::new(VecDeque::new()),
-            changed: Notify::new(),
-            stop,
-            encodings: Mutex::new(HashMap::new()),
-        });
-        let id = Uuid::new_v4();
-        let slot = Arc::new(Slot {
-            id,
-            state: Mutex::new(SlotState::default()),
-            available: Notify::new(),
-            joined: Condvar::new(),
-            source: Arc::downgrade(&source),
-        });
-        let mut encoding = Encoding {
-            slot: slot.clone(),
-            error_reported: false,
-        };
-        let mut waiting = Box::pin(encoding.recv());
-        assert!(matches!(futures_util::poll!(&mut waiting), Poll::Pending));
-        assert!(
-            matches!(source.commands.lock().unwrap().pop_front(), Some(Command::Read { id: sent }) if sent == id)
-        );
-        drop(waiting);
-        let mut resumed = Box::pin(encoding.recv());
-        assert!(matches!(futures_util::poll!(&mut resumed), Poll::Pending));
-        assert!(
-            source.commands.lock().unwrap().is_empty(),
-            "cancelled recv must not send another Read"
-        );
+        let mut encoding = proxy();
+        let shared = encoding.shared.clone();
+        let mut pending = Box::pin(encoding.recv());
+        assert!(matches!(futures_util::poll!(&mut pending), Poll::Pending));
+        drop(pending);
+        {
+            let mut state = shared.state.lock().unwrap();
+            assert!(state.read);
+            assert!(!state.read_sent);
+            state.read_sent = true;
+        }
+        let mut pending = Box::pin(encoding.recv());
+        assert!(matches!(futures_util::poll!(&mut pending), Poll::Pending));
+        assert!(shared.state.lock().unwrap().read_sent);
         let pts = std::time::Instant::now();
-        // Substitute only the external IPC arrival; recv/cancellation remains
-        // the actual proxy implementation and its original per-encoding slot.
-        slot.state.lock().unwrap().frame = Some(EncodedFrame {
+        shared.state.lock().unwrap().frame = Some(EncodedFrame {
             bytes: vec![1, 2, 3],
             presentation_time: pts,
             keyframe: true,
         });
-        slot.available.notify_one();
-        let frame = resumed.await.unwrap().unwrap();
-        assert_eq!(frame.presentation_time, pts);
+        shared.available.notify_one();
+        let frame = pending.await.unwrap().unwrap();
         assert_eq!(frame.bytes, [1, 2, 3]);
-        assert!(source.commands.lock().unwrap().is_empty());
+        assert_eq!(frame.presentation_time, pts);
+        assert!(!shared.state.lock().unwrap().read);
     }
     #[test]
     fn clock_roundtrip_retains_raw_qpc_to_100ns() {
@@ -559,55 +410,27 @@ mod tests {
     }
     #[test]
     fn final_child_error_refines_requested_stop() {
-        let (stop, _) = watch::channel(None);
-        let source = Shared {
-            commands: Mutex::new(VecDeque::new()),
-            changed: Notify::new(),
-            stop,
-            encodings: Mutex::new(HashMap::new()),
-        };
-        source.stop(None);
-        source.stop(Some("child shutdown failed".into()));
-        source.stop(None);
+        let encoding = proxy();
+        encoding.shared.stop(None);
+        encoding.shared.stop(Some("child failed"));
+        encoding.shared.stop(Some("generic later failure"));
+        encoding.shared.stop(None);
         assert_eq!(
-            *source.stop.borrow(),
-            Some(Err("child shutdown failed".into()))
+            *encoding.shared.stop.borrow(),
+            Some(Err("child failed".into()))
         );
     }
     #[tokio::test]
-    async fn encoding_stop_retains_real_failure_after_one_recv_error() {
-        let (stop, _) = watch::channel(None);
-        let source = Arc::new(Shared {
-            commands: Mutex::new(VecDeque::new()),
-            changed: Notify::new(),
-            stop,
-            encodings: Mutex::new(HashMap::new()),
-        });
-        let slot = Arc::new(Slot {
-            id: Uuid::new_v4(),
-            state: Mutex::new(SlotState::default()),
-            available: Notify::new(),
-            joined: Condvar::new(),
-            source: Arc::downgrade(&source),
-        });
-        let mut encoding = Encoding {
-            slot: slot.clone(),
-            error_reported: false,
-        };
+    async fn encoding_stop_retains_failure_after_one_recv_error() {
+        let mut encoding = proxy();
         encoding.control().stop();
-        slot.finish(Some("worker join failed".into()));
+        encoding.shared.finish(&Err(anyhow!("worker failed")));
         assert_eq!(
             encoding.recv().await.unwrap().unwrap_err().to_string(),
-            "worker join failed"
+            "worker failed"
         );
         assert!(encoding.recv().await.is_none());
-        assert_eq!(
-            encoding.stop().unwrap_err().to_string(),
-            "worker join failed"
-        );
-        assert!(
-            !source.stopped(),
-            "one encoding failure does not retire its source"
-        );
+        encoding.thread = Some(thread::spawn(|| Err(anyhow!("worker failed"))));
+        assert_eq!(encoding.stop().unwrap_err().to_string(), "worker failed");
     }
 }

@@ -1,4 +1,4 @@
-//! One non-inheritable Windows Job belongs to the parent source supervisor.
+//! One non-inheritable Windows Job belongs to the parent encoding supervisor.
 use anyhow::Result;
 use windows::Win32::{
     Foundation::{CloseHandle, HANDLE},

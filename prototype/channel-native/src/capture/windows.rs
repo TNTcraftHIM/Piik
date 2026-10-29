@@ -1,7 +1,7 @@
 //! One WGC capture publishes owned BGRA textures to independent encoding workers.
 use super::{
     cadence::Cadence,
-    output::{self, Encoding},
+    process::{self, Encoding},
     CaptureClock, Settings, Target, TargetKind,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
@@ -41,7 +41,7 @@ struct State {
     stop: bool,
     failure: Option<String>,
     latest: Option<RawFrame>,
-    encodings: Vec<Weak<output::Shared>>,
+    encodings: Vec<Weak<process::Shared>>,
 }
 #[derive(Default)]
 struct Shared {
@@ -129,10 +129,9 @@ impl Capture {
         settings.validate()?;
         let mut state = self.shared.state.lock().unwrap();
         ensure!(!state.stop, "capture stopped");
-        state.encodings.retain(|weak| {
-            weak.upgrade()
-                .is_some_and(|encoding| !encoding.state.lock().unwrap().stop)
-        });
+        state
+            .encodings
+            .retain(|weak| weak.upgrade().is_some_and(|encoding| !encoding.stopped()));
         let encoding = Encoding::start(settings, self.clock, state.latest.clone())?;
         state.encodings.push(Arc::downgrade(&encoding.shared));
         Ok(encoding)
@@ -154,6 +153,13 @@ impl Capture {
 impl Drop for Capture {
     fn drop(&mut self) {
         self.shared.stop(None);
+        if let Some(thread) = self.thread.take() {
+            match thread.join() {
+                Ok(Ok(())) => {}
+                Ok(Err(error)) => eprintln!("Native WGC cleanup failed: {error:#}"),
+                Err(_) => eprintln!("Native WGC worker panicked"),
+            }
+        }
     }
 }
 

@@ -270,6 +270,7 @@ impl Encoder {
                 if let Some(frame) = &state.latest {
                     break unsafe { frame.texture.GetDevice()? };
                 }
+                shared.request_frame(&mut state);
                 state = shared.changed.wait(state).unwrap();
             }
         };
@@ -314,6 +315,7 @@ impl Encoder {
                                 break Work::Frame(frame, force);
                             }
                         }
+                        shared.request_frame(&mut state);
                     }
                     state = shared.changed.wait(state).unwrap();
                 }

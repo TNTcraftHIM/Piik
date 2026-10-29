@@ -8,6 +8,8 @@ mod converter;
 #[cfg(any(target_os = "windows", test))]
 mod frame_dropper;
 #[cfg(target_os = "windows")]
+mod gpu;
+#[cfg(target_os = "windows")]
 mod job;
 #[cfg(target_os = "windows")]
 mod mf;
@@ -22,9 +24,11 @@ mod worker;
 #[cfg(target_os = "windows")]
 pub use audio::{audio_capabilities, AudioCapture, AudioControl};
 #[cfg(target_os = "windows")]
-pub use process::{Capture, Control, Encoding, EncodingControl};
+pub use process::{Encoding, EncodingControl};
 #[cfg(target_os = "windows")]
 pub use windows::targets;
+#[cfg(target_os = "windows")]
+pub use windows::{Capture, Control};
 #[cfg(target_os = "windows")]
 pub use worker::worker_entry;
 
