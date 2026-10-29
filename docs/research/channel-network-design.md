@@ -565,6 +565,13 @@ the pacer's finite queue and rate-dependent release timing. Piik owns encoder
 demand, bounded queued work and the source's RTP timeline, rather than
 reimplementing those network algorithms.
 
+The SDK's GCC target is one physical connection's budget, not an allocation for
+each outbound track. Consume it once for that connection's active media. As in
+[libwebrtc's allocator](https://webrtc.googlesource.com/src/+/refs/heads/main/call/bitrate_allocator.cc),
+allocate before passing demand to encoders. Independently constrained branches
+need actual independently rate-controlled outputs; copying the same encoded
+packets or applying a minimum/maximum to one shared encoder cannot provide that.
+
 Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each
 output uses its sender's negotiated codec mapping and keeps the source RTP clock

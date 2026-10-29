@@ -11,6 +11,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete Native encoder-demand adaptation, input
   and platform packaging over the shared UI and Native participant.
+  Begin adaptation with one capture feeding independently controlled encoding
+  outputs, then allocate each physical connection's budget across its active media.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
