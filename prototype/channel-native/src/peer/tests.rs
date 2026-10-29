@@ -59,10 +59,11 @@ async fn output(
                 ..Default::default()
             }
         },
-        ssrc: 100,
         kind,
-        keyframes: watch::channel(0).0,
-        report: Arc::new(Mutex::new(None)),
+        feed: SourceFeed::Rtp {
+            keyframes: watch::channel(0).0,
+            report: Arc::new(Mutex::new(None)),
+        },
     };
     let p = d.pairs.get_mut(&pair).unwrap();
     let input = if let Some(binding) = p.plan.outgoing.iter().find(|binding| binding.id == flow) {
@@ -136,6 +137,223 @@ async fn negotiate(d: &mut Driver, pair: Uuid, remote: &dyn PeerConnection) -> R
         },
     )
     .await
+}
+
+#[tokio::test]
+async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding() -> Result<()> {
+    use crate::{
+        capture::EncodedFrame,
+        media::{packetizer::CaptureTime, video::Video},
+    };
+    use rtc::shared::time::SystemInstant;
+
+    async fn packet(track: &dyn TrackRemote) -> Result<rtp::Packet> {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                if let Some(TrackRemoteEvent::OnRtpPacket(packet)) = track.poll().await {
+                    return packet;
+                }
+            }
+        })
+        .await
+        .map_err(Into::into)
+    }
+
+    let (mut d, mut events, _commands, _stop) = driver();
+    let pair = Uuid::new_v4();
+    let flow = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    d.update(
+        vec![PairInfo {
+            id: pair,
+            peer_id: Uuid::new_v4(),
+            rooms: vec![],
+            incoming: vec![],
+            outgoing: vec![FlowBinding {
+                id: flow,
+                publication_id: publication,
+                input_flow_id: None,
+                selected: true,
+            }],
+        }],
+        vec![],
+        vec![],
+    )
+    .await?;
+    d.publications.insert(
+        publication,
+        PublicationInfo {
+            id: publication,
+            kind: Kind::Screen,
+            room_id: "room".into(),
+            session_id: d.session,
+            user_id: d.session,
+            muted: false,
+        },
+    );
+    let epoch = Instant::now() - Duration::from_secs(1);
+    let time = CaptureTime {
+        epoch,
+        clock: SystemInstant::now(epoch),
+    };
+    let high = Video::new(time);
+    let low = Video::new(time);
+    let mut high_requests = high.requests();
+    let mut low_requests = low.requests();
+    let source = Source {
+        id: Uuid::new_v4(),
+        publication_id: publication,
+        origin: SourceOrigin::Local,
+        kind: RtpCodecKind::Video,
+        codec: RTCRtpCodec {
+            mime_type: "video/H264".into(),
+            clock_rate: 90_000,
+            sdp_fmtp_line: "packetization-mode=1;profile-level-id=42c01f".into(),
+            ..Default::default()
+        },
+        feed: SourceFeed::Video(high.clone()),
+    };
+    let source_id = source.id;
+    d.sources.insert(source.id, source);
+    d.refresh_outputs().await?;
+    let key = (flow, RtpCodecKind::Video);
+    let output_id = d.pairs[&pair].outputs[&key].id;
+    let sender_id = d.pairs[&pair].outputs[&key].sender.id();
+    let stream = d.pairs[&pair].outputs[&key].stream.clone();
+    let frame = |tag, keyframe, ms| EncodedFrame {
+        // Complete NAL units exercise the real SDK packetizer/PC. Hardware AU
+        // decoding is covered by the capture-to-browser acceptance fixture.
+        bytes: vec![0, 0, 0, 1, if keyframe { 0x65 } else { 0x41 }, tag, 0x80],
+        presentation_time: time.epoch + Duration::from_millis(ms),
+        keyframe,
+    };
+
+    // Until SDP is confirmed the real writer cannot drain its AU mailbox.
+    let requested = *high_requests.borrow_and_update();
+    high.write(frame(1, true, 0));
+    high.write(frame(2, false, 20));
+    high.write(frame(3, false, 40));
+    assert_eq!(*high_requests.borrow_and_update(), requested);
+    high.write(frame(4, false, 60));
+    assert!(!high_requests.has_changed()?);
+
+    let remote_id = Uuid::new_v4();
+    let remote: Arc<dyn PeerConnection> = Arc::new(
+        builder(true, SenderReports::default())?
+            .with_handler(Arc::new(Handler {
+                pair: remote_id,
+                events: d.events.clone(),
+                overflow: Arc::new(AtomicBool::new(false)),
+                state: Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8)),
+            }))
+            .with_udp_addrs(vec!["0.0.0.0:0".into()])
+            .build()
+            .await?,
+    );
+    negotiate(&mut d, pair, &*remote).await?;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !d.pairs[&pair].connected() {
+            if let Some(Event::Candidate(id, candidate)) = events.recv().await {
+                if id == pair {
+                    remote.add_ice_candidate(ice_candidate(candidate)).await?;
+                } else {
+                    d.pairs[&pair]
+                        .pc
+                        .add_ice_candidate(ice_candidate(candidate))
+                        .await?;
+                }
+            }
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    tokio::time::timeout(Duration::from_secs(5), high_requests.changed()).await??;
+    assert_eq!(*high_requests.borrow_and_update(), requested + 1);
+    high.write(frame(5, true, 100));
+    let track = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(Event::Track(id, track)) = events.recv().await {
+                if id == remote_id {
+                    return track;
+                }
+            }
+        }
+    })
+    .await?;
+    let first = packet(&*track).await?;
+    assert_eq!(first.payload[1], 5); // No dependent P frame survived the overflow.
+
+    d.pairs[&pair].outputs[&key].select_video(&low)?;
+    let requested = *low_requests.borrow_and_update();
+    low.write(frame(6, false, 120));
+    // A restarted encoder's old static IDR must request a fresh IDR, not wrap RTP time.
+    low.write(frame(7, true, 50));
+    assert_eq!(*low_requests.borrow_and_update(), requested + 1);
+    high.write(frame(8, false, 140));
+    let incumbent = packet(&*track).await?;
+    assert_eq!(incumbent.payload[1], 8);
+    low.write(frame(9, true, 200));
+    let switched = packet(&*track).await?;
+    assert_eq!(switched.payload[1], 9);
+    assert_eq!(switched.header.ssrc, first.header.ssrc);
+    assert_eq!(
+        switched
+            .header
+            .timestamp
+            .wrapping_sub(first.header.timestamp),
+        9_000
+    );
+    assert_eq!(
+        switched.header.sequence_number,
+        incumbent.header.sequence_number.wrapping_add(1)
+    );
+    high.write(frame(10, false, 220));
+    low.write(frame(11, false, 260));
+    assert_eq!(packet(&*track).await?.payload[1], 11);
+
+    high_requests.borrow_and_update();
+    low_requests.borrow_and_update();
+    track
+        .write_rtcp(vec![Box::new(PictureLossIndication {
+            sender_ssrc: 1,
+            media_ssrc: first.header.ssrc,
+        })])
+        .await?;
+    tokio::time::timeout(Duration::from_secs(5), low_requests.changed()).await??;
+    assert!(!high_requests.has_changed()?);
+
+    let report = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Some(TrackRemoteEvent::OnRtcpPacket(packets)) = track.poll().await {
+                for packet in packets {
+                    if let Some(report) = packet.as_any().downcast_ref::<SenderReport>() {
+                        return report.clone();
+                    }
+                }
+            }
+        }
+    })
+    .await?;
+    assert_eq!(report.ssrc, first.header.ssrc);
+    let elapsed = report
+        .ntp_time
+        .wrapping_sub(time.clock.ntp(time.epoch + Duration::from_millis(100)));
+    let expected = ((elapsed as u128 * 90_000) >> 32) as u32;
+    assert!(
+        report
+            .rtp_time
+            .wrapping_sub(first.header.timestamp)
+            .abs_diff(expected)
+            <= 2
+    );
+    let output = &d.pairs[&pair].outputs[&key];
+    assert_eq!(output.id, output_id);
+    assert_eq!(output.source, source_id);
+    assert_eq!(output.sender.id(), sender_id);
+    assert_eq!(output.stream, stream);
+    close_pair(d.pairs.remove(&pair).unwrap()).await;
+    remote.close().await?;
+    Ok(())
 }
 
 #[tokio::test]
@@ -250,7 +468,7 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         .outputs
         .values()
         .filter(|out| !stable.contains(&out.id))
-        .map(|out| (out.sender.id(), out.sink()))
+        .map(|out| (out.sender.id(), out.rtp_sink().unwrap()))
         .collect();
     let attempted = d.pairs[&pair].output_ids();
     // A sender added after this attempt's snapshot belongs to later work.
@@ -288,7 +506,8 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
     base.send_text("base survives").await?;
     for sequence_number in 47..50 {
         d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)]
-            .sink()
+            .rtp_sink()
+            .unwrap()
             .send(rtp::Packet {
                 header: rtp::header::Header {
                     version: 2,
@@ -351,7 +570,9 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
     assert!(!d.pairs[&pair]
         .outputs
         .contains_key(&(screen_flow, RtpCodecKind::Audio)));
-    let released = d.pairs[&other_pair].outputs[&(other_flow, RtpCodecKind::Audio)].sink();
+    let released = d.pairs[&other_pair].outputs[&(other_flow, RtpCodecKind::Audio)]
+        .rtp_sink()
+        .unwrap();
     d.pairs
         .get_mut(&other_pair)
         .unwrap()
@@ -389,10 +610,12 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         .outputs
         .remove(&(voice_flow, RtpCodecKind::Audio))
         .unwrap();
-    let retired = old.sink();
+    let retired = old.rtp_sink().unwrap();
     old.close(&*d.pairs[&pair].pc).await;
     let replacement = output(&mut d, pair, voice_flow, voice, RtpCodecKind::Audio).await?;
-    let rejected = d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)].sink();
+    let rejected = d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)]
+        .rtp_sink()
+        .unwrap();
     let attempted = d.pairs[&pair].output_ids();
     d.finish_offer(pair, true, attempted, Err(anyhow!("replacement rejected")))
         .await?;
@@ -428,7 +651,7 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
         .any(|sender| sender.id() == readmitted.sender.id()));
     negotiate(&mut d, pair, &*remote).await?;
     let failed = &d.pairs[&pair].outputs[&(voice_flow, RtpCodecKind::Audio)];
-    let (source, output, writer) = (failed.source, failed.id, failed.sink());
+    let (source, output, writer) = (failed.source, failed.id, failed.rtp_sink().unwrap());
     d.event(Event::OutputFailed {
         pair,
         key: (voice_flow, RtpCodecKind::Audio),

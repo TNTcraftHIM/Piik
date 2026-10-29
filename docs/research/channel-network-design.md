@@ -571,11 +571,22 @@ each outbound track. Consume it once for that connection's active media. As in
 allocate before passing demand to encoders. Independently constrained branches
 need actual independently rate-controlled outputs; copying the same encoded
 packets or applying a minimum/maximum to one shared encoder cannot provide that.
+The pinned SDK's stock GCC and pacer do not provide active bandwidth probing or
+application-limited recovery. Feeding the actual estimator deterministic feedback,
+its default 300 kbps target took 42.7 seconds to reach 8 Mbps in an uncongested
+model; restoring capacity after a simulated delay-queue bottleneck took 106.7
+seconds. Complete this transport-level recovery using mature components before
+enforcing its target as the encoder limit; do not compensate with Piik-specific
+quality scores or bitrate overrides.
 
 Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each
-output uses its sender's negotiated codec mapping and keeps the source RTP clock
-and Sender Report correlation; replacing a source creates a new sender/SSRC.
+output uses its sender's negotiated codec mapping and preserves the source-time
+correlation in RTP and Sender Reports. Replacing an incoming source creates a
+new sender/SSRC. Switching a local encoding keeps the capture's logical identity
+and that output's sender, SSRC and packetizer; it commits on a newer keyframe.
+Each local output queues complete access units. Overflow discards unsent units
+and resumes at a keyframe without blocking healthy outputs.
 
 Local capture and received tracks feed that same encoded-output owner. A local
 source has no incoming route lease; its admitted publication supplies the outgoing

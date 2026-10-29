@@ -4,7 +4,7 @@ use crate::{
     file::Files,
     media::{
         supported, H264Sps, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source,
-        SourceOrigin, TrackKey, H264_RELAY_PROFILE, VIDEO_PACKETS,
+        SourceFeed, SourceOrigin, TrackKey, H264_RELAY_PROFILE, VIDEO_PACKETS,
     },
 };
 use anyhow::{anyhow, Context, Result};
@@ -166,7 +166,11 @@ pub(crate) enum Event {
 }
 pub(crate) struct SourceReady {
     pub source: Source,
-    pub packets: Vec<rtp::Packet>,
+    pub media: InitialMedia,
+}
+pub(crate) enum InitialMedia {
+    Rtp(Vec<rtp::Packet>),
+    Video(crate::capture::EncodedFrame),
 }
 struct Handler {
     pair: Uuid,
@@ -1640,6 +1644,7 @@ impl Driver {
         }
         let key = (flow_id, kind);
         let (keyframes, mut requests) = watch::channel(0u64);
+        let report: crate::media::SourceReport = Default::default();
         let source = Source {
             id: Uuid::new_v4(),
             publication_id: publication,
@@ -1649,10 +1654,11 @@ impl Driver {
                 stream,
             },
             codec,
-            ssrc,
             kind,
-            keyframes,
-            report: Default::default(),
+            feed: SourceFeed::Rtp {
+                keyframes,
+                report: report.clone(),
+            },
         };
         if let Some(previous) = p.latest.insert(key, source.id) {
             if !self.sources.contains_key(&previous) {
@@ -1687,14 +1693,14 @@ impl Driver {
                         }
                         let _ = track.write_rtcp(vec![Box::new(PictureLossIndication {
                             sender_ssrc: 0,
-                            media_ssrc: source.ssrc,
+                            media_ssrc: ssrc,
                         })]).await;
                         continue;
                     }
                 };
                 match event {
                     TrackRemoteEvent::OnRtpPacket(packet)
-                        if packet.header.ssrc == source.ssrc && !packet.payload.is_empty() =>
+                        if packet.header.ssrc == ssrc && !packet.payload.is_empty() =>
                     {
                         if let Some(h264) = &mut h264 {
                             if let Err(error) = h264.observe(&packet) {
@@ -1707,7 +1713,7 @@ impl Driver {
                             if ready_sources
                                 .send(SourceReady {
                                     source: source.clone(),
-                                    packets: vec![packet],
+                                    media: InitialMedia::Rtp(vec![packet]),
                                 })
                                 .await
                                 .is_err()
@@ -1721,10 +1727,10 @@ impl Driver {
                     TrackRemoteEvent::OnEnded => break,
                     TrackRemoteEvent::OnRtcpPacket(packets) => {
                         for packet in packets {
-                            if let Some(report) = packet.as_any().downcast_ref::<SenderReport>() {
-                                if report.ssrc == source.ssrc {
-                                    *source.report.lock().unwrap() =
-                                        Some((report.clone(), Instant::now()));
+                            if let Some(received) = packet.as_any().downcast_ref::<SenderReport>() {
+                                if received.ssrc == ssrc {
+                                    *report.lock().unwrap() =
+                                        Some((received.clone(), Instant::now()));
                                 }
                             }
                         }
@@ -1751,7 +1757,7 @@ impl Driver {
         Ok(())
     }
     async fn source_ready(&mut self, ready: SourceReady) -> Result<()> {
-        let SourceReady { source, packets } = ready;
+        let SourceReady { source, media } = ready;
         let publication = source.publication_id;
         if !self.publications.contains_key(&publication) {
             return Ok(());
@@ -1803,8 +1809,17 @@ impl Driver {
         };
         self.sources.insert(source.id, source.clone());
         self.refresh_media(false).await?;
-        for packet in packets {
-            self.relay.write(source.id, packet);
+        match media {
+            InitialMedia::Rtp(packets) => {
+                for packet in packets {
+                    self.relay.write(source.id, packet);
+                }
+            }
+            InitialMedia::Video(frame) => {
+                if let SourceFeed::Video(video) = &source.feed {
+                    video.write(frame);
+                }
+            }
         }
         // A screen's audio alone does not establish its picture transport.
         if let Some((pair_id, flow_id)) = incoming {
@@ -1951,9 +1966,11 @@ impl Driver {
                             }
                         };
                         p.outputs.insert(output_key, next);
-                        source.request_keyframe();
+                        if matches!(source.feed, SourceFeed::Rtp { .. }) {
+                            source.request_keyframe();
+                        }
                     }
-                    targets.push(p.outputs[&output_key].sink());
+                    targets.extend(p.outputs[&output_key].rtp_sink());
                 }
             }
             self.relay.set(source.id, targets);

@@ -23,6 +23,9 @@ running; stopping capture ends all its encodings. Frame-rate selection retains
 the original timestamps and accumulates its sampling interval across frames.
 The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
+Each local output packetizes complete access units on its own stable RTP clock;
+selecting another encoding of the same capture keeps its sender and SSRC and
+switches at a newer keyframe. A slow output recovers independently of its siblings.
 The selecting page holds the capture lease: closing it stops its captures while
 App-hosted rooms continue. Startup completes after the first encoded access unit;
 errors before that point return to the page. Optional WASAPI source audio uses

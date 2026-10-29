@@ -1,17 +1,16 @@
 //! One capture owns its encoders and source clocks, independently of its Outputs.
-use super::{H264Sps, Relay, Source, SourceOrigin};
+use super::{
+    packetizer::{CaptureTime, Packetizer},
+    video::Video,
+    H264Sps, Relay, Source, SourceFeed, SourceOrigin,
+};
 use crate::{
     capture::{AudioCapture, AudioControl, Capture, Control as VideoControl, Settings, Target},
-    peer::{Event, SourceReady},
+    peer::{Event, InitialMedia, SourceReady},
 };
 use anyhow::{anyhow, Result};
 use rtc::{
-    rtcp::sender_report::SenderReport,
-    rtp::{
-        codec::{h264::H264Payloader, opus::OpusPayloader},
-        packetizer::{new_packetizer, Packetizer, Payloader},
-        sequence::new_random_sequencer,
-    },
+    rtp::{codec::opus::OpusPayloader, packetizer::Payloader},
     rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
     shared::time::SystemInstant,
 };
@@ -114,21 +113,20 @@ impl Producer {
         let (ready, started) = oneshot::channel();
         let task = tokio::spawn(async move {
             let mut ready = Some(ready);
-            let mut source = RtpSource::new(
-                video,
+            let frames = Video::new(CaptureTime { epoch: now, clock });
+            let mut requests = frames.requests();
+            let mut source = Source {
+                id: video,
                 publication_id,
-                RtpCodecKind::Video,
-                RTCRtpCodec {
+                origin: SourceOrigin::Local,
+                kind: RtpCodecKind::Video,
+                codec: RTCRtpCodec {
                     mime_type: "video/H264".into(),
                     clock_rate: 90_000,
                     ..Default::default()
                 },
-                Box::<H264Payloader>::default(),
-                102,
-                now,
-                clock,
-            );
-            let mut requests = source.source.keyframes.subscribe();
+                feed: SourceFeed::Video(frames.clone()),
+            };
             let mut sps = H264Sps::default();
             let mut first = true;
             let result = async {
@@ -141,19 +139,18 @@ impl Producer {
                         }
                         _ = cancelled.changed() => break,
                     };
-                    let packets = source.packetize(frame.bytes, frame.presentation_time)?;
-                    for packet in &packets { sps.observe(packet)?; }
+                    sps.access_unit(&frame.bytes)?;
                     if first {
                         let profile = sps.last.ok_or_else(|| anyhow!("capture first access unit has no SPS"))?;
-                        source.source.codec.sdp_fmtp_line = format!("packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}", profile[0], profile[1], profile[2]);
+                        source.codec.sdp_fmtp_line = format!("packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}", profile[0], profile[1], profile[2]);
                         tokio::select! {
-                            result = ready_sources.send(SourceReady { source: source.source.clone(), packets }) => { result?; }
+                            result = ready_sources.send(SourceReady { source: source.clone(), media: InitialMedia::Video(frame) }) => { result?; }
                             _ = cancelled.changed() => break,
                         }
                         first = false;
                         if let Some(ready) = ready.take() { let _ = ready.send(Ok(())); }
                     } else {
-                        for packet in packets { relay.write(video, packet); }
+                        frames.write(frame);
                     }
                 }
                 Ok::<_, anyhow::Error>(())
@@ -236,7 +233,7 @@ async fn audio_source(
             let packets = source.packetize(encoded[..length].to_vec(), frame.presentation_time)?;
             if first {
                 tokio::select! {
-                    result = ready_sources.send(SourceReady { source: source.source.clone(), packets }) => { result?; }
+                    result = ready_sources.send(SourceReady { source: source.source.clone(), media: InitialMedia::Rtp(packets) }) => { result?; }
                     _ = cancelled.changed() => break,
                 }
                 first = false;
@@ -268,10 +265,7 @@ async fn audio_source(
 /// Packet timestamps and reports share capture time, never encode/arrival time.
 struct RtpSource {
     source: Source,
-    packetizer: Box<dyn Packetizer>,
-    epoch: Instant,
-    clock: SystemInstant,
-    previous_ticks: u32,
+    packetizer: Packetizer,
 }
 impl RtpSource {
     fn new(
@@ -285,14 +279,14 @@ impl RtpSource {
         clock: SystemInstant,
     ) -> Self {
         let ssrc = u32::from_be_bytes(id.as_bytes()[..4].try_into().unwrap());
-        let packetizer = new_packetizer(
-            epoch,
-            1200,
+        let report: super::SourceReport = Default::default();
+        let packetizer = Packetizer::new(
+            &codec,
+            payloader,
             payload_type,
             ssrc,
-            payloader,
-            Box::new(new_random_sequencer()),
-            codec.clock_rate,
+            CaptureTime { epoch, clock },
+            report.clone(),
         );
         Self {
             source: Source {
@@ -300,15 +294,13 @@ impl RtpSource {
                 publication_id,
                 origin: SourceOrigin::Local,
                 codec,
-                ssrc,
                 kind,
-                keyframes: watch::channel(0).0,
-                report: Default::default(),
+                feed: SourceFeed::Rtp {
+                    keyframes: watch::channel(0).0,
+                    report,
+                },
             },
-            packetizer: Box::new(packetizer),
-            epoch,
-            clock,
-            previous_ticks: 0,
+            packetizer,
         }
     }
     fn packetize(
@@ -316,38 +308,14 @@ impl RtpSource {
         bytes: Vec<u8>,
         presentation_time: Instant,
     ) -> Result<Vec<rtc::rtp::Packet>> {
-        let ticks = (presentation_time
-            .saturating_duration_since(self.epoch)
-            .as_nanos()
-            * self.source.codec.clock_rate as u128
-            / 1_000_000_000) as u32;
-        self.packetizer
-            .skip_samples(ticks.wrapping_sub(self.previous_ticks));
-        self.previous_ticks = ticks;
-        let packets = self
-            .packetizer
-            .packetize(Instant::now(), &bytes.into(), 0)?;
-        let timestamp = packets
-            .first()
-            .ok_or_else(|| anyhow!("capture produced an empty access unit"))?
-            .header
-            .timestamp;
-        *self.source.report.lock().unwrap() = Some((
-            SenderReport {
-                ssrc: self.source.ssrc,
-                ntp_time: self.clock.ntp(presentation_time),
-                rtp_time: timestamp,
-                ..Default::default()
-            },
-            presentation_time,
-        ));
-        Ok(packets)
+        self.packetizer.packetize(bytes, presentation_time)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rtc::rtp::codec::h264::H264Payloader;
     use std::time::Duration;
 
     #[test]
@@ -417,8 +385,22 @@ mod tests {
                 .wrapping_sub(first_video[0].header.timestamp),
             7200
         );
-        let audio_report = audio.source.report.lock().unwrap().clone().unwrap();
-        let video_report = video.source.report.lock().unwrap().clone().unwrap();
+        let SourceFeed::Rtp {
+            report: audio_report,
+            ..
+        } = &audio.source.feed
+        else {
+            unreachable!()
+        };
+        let SourceFeed::Rtp {
+            report: video_report,
+            ..
+        } = &video.source.feed
+        else {
+            unreachable!()
+        };
+        let audio_report = audio_report.lock().unwrap().clone().unwrap();
+        let video_report = video_report.lock().unwrap().clone().unwrap();
         assert_eq!(audio_report.0.ntp_time, video_report.0.ntp_time);
         assert_eq!(audio_report.1, at(180));
         assert_eq!(audio_report.0.rtp_time, after_gap[0].header.timestamp);
