@@ -1228,7 +1228,8 @@ impl Driver {
             )?;
             p.pc.set_remote_description(desc).await?;
             for c in p.candidates.drain(..) {
-                p.pc.add_ice_candidate(ice_candidate(c)).await?;
+                // Each candidate is an independent attempt; transport state owns failure.
+                let _ = p.pc.add_ice_candidate(ice_candidate(c)).await;
             }
             if offer {
                 p.pc.set_local_description(p.pc.create_answer(None).await?)
@@ -1250,11 +1251,9 @@ impl Driver {
         } else if let Some(c) = signal.candidate {
             if !p.ignore_offer {
                 if p.pc.remote_description().await.is_some() {
-                    p.pc.add_ice_candidate(ice_candidate(c)).await?;
+                    let _ = p.pc.add_ice_candidate(ice_candidate(c)).await;
                 } else if p.candidates.len() < 128 {
                     p.candidates.push(c);
-                } else {
-                    return Err(anyhow!("too many early ICE candidates"));
                 }
             }
         }

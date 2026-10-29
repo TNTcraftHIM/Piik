@@ -141,6 +141,115 @@ async fn negotiate(d: &mut Driver, pair: Uuid, remote: &dyn PeerConnection) -> R
 }
 
 #[tokio::test]
+async fn rejected_ice_candidates_preserve_connectivity_and_the_open_channel() -> Result<()> {
+    let (mut d, mut events, _commands, _stop) = driver();
+    let pair = Uuid::new_v4();
+    d.update(
+        vec![PairInfo {
+            id: pair,
+            peer_id: Uuid::new_v4(),
+            rooms: vec!["room".into()],
+            incoming: vec![],
+            outgoing: vec![],
+        }],
+        vec![],
+        vec![],
+    )
+    .await?;
+    let remote_id = Uuid::new_v4();
+    let remote = builder(true, SenderReports::default(), MediaFeedback::default())?
+        .with_handler(Arc::new(Handler {
+            pair: remote_id,
+            events: d.events.clone(),
+            overflow: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8)),
+        }))
+        .with_udp_addrs(vec!["0.0.0.0:0".to_string()])
+        .build()
+        .await?;
+    let bad = Candidate {
+        candidate: Some("candidate:invalid".into()),
+        sdp_mid: Some("0".into()),
+        sdp_m_line_index: Some(0),
+        username_fragment: None,
+    };
+    let signal = |candidate| Signal {
+        candidate: Some(candidate),
+        description: None,
+        tracks: None,
+        exchange_id: None,
+        resync: None,
+    };
+    // Overflow is disposable input too; it must not prevent the pending SDP
+    // and later real candidates from establishing this same physical pair.
+    for _ in 0..129 {
+        d.signal(pair, signal(bad.clone())).await?;
+    }
+    assert_eq!(d.pairs[&pair].candidates.len(), 128);
+    negotiate(&mut d, pair, &remote).await?;
+    let channel = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut channel = None;
+        loop {
+            if d.pairs[&pair].connected() && channel.is_some() {
+                return Ok::<_, anyhow::Error>(channel.unwrap());
+            }
+            match events.recv().await.unwrap() {
+                Event::Candidate(id, candidate) if id == pair => {
+                    remote.add_ice_candidate(ice_candidate(candidate)).await?;
+                }
+                Event::Candidate(_, candidate) => {
+                    d.signal(pair, signal(candidate)).await?;
+                }
+                Event::Channel(id, current) if id == remote_id => {
+                    if current.label().await? == "piik-room" {
+                        channel = Some(current);
+                    }
+                }
+                _ => {}
+            }
+        }
+    })
+    .await??;
+    let base = d.pairs[&pair].dc.as_ref().unwrap().1.clone();
+    for rejected in [false, true] {
+        if rejected {
+            assert!(
+                d.pairs[&pair]
+                    .pc
+                    .add_ice_candidate(ice_candidate(bad.clone()))
+                    .await
+                    .is_err(),
+                "the actual SDK rejects this candidate"
+            );
+            d.signal(pair, signal(bad.clone())).await?;
+        }
+        let text = if rejected {
+            "after rejection"
+        } else {
+            "before rejection"
+        };
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while base.ready_state().await? != rtc::data_channel::RTCDataChannelState::Open {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+            base.send_text(text).await?;
+            while let Some(event) = channel.poll().await {
+                if let webrtc::data_channel::DataChannelEvent::OnMessage(message) = event {
+                    assert_eq!(message.data.as_ref(), text.as_bytes());
+                    return Ok::<_, anyhow::Error>(());
+                }
+            }
+            Err(anyhow!("channel closed after a rejected candidate"))
+        })
+        .await??;
+    }
+    assert!(d.pairs[&pair].connected());
+    close_pair(d.pairs.remove(&pair).unwrap()).await;
+    remote.close().await?;
+    Ok(())
+}
+
+#[tokio::test]
 async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding() -> Result<()> {
     use crate::{
         capture::EncodedFrame,
