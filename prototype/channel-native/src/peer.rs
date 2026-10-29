@@ -52,7 +52,7 @@ use webrtc::{
     media_stream::track_remote::{TrackRemote, TrackRemoteEvent},
     peer_connection::{
         PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler, RTCConfigurationBuilder,
-        RTCIceServer, RTCPeerConnectionIceEvent, RTCPeerConnectionState,
+        RTCIceCandidate, RTCIceServer, RTCPeerConnectionIceEvent, RTCPeerConnectionState,
     },
 };
 
@@ -130,7 +130,7 @@ enum Input {
 }
 pub(crate) enum Event {
     Negotiate(Uuid),
-    Candidate(Uuid, Candidate),
+    Candidate(Uuid, RTCIceCandidate),
     State(Uuid, RTCPeerConnectionState),
     Track(Uuid, Arc<dyn TrackRemote>),
     Channel(Uuid, Arc<dyn DataChannel>),
@@ -197,17 +197,7 @@ impl PeerConnectionEventHandler for Handler {
         self.emit(Event::Negotiate(self.pair));
     }
     async fn on_ice_candidate(&self, event: RTCPeerConnectionIceEvent) {
-        if let Ok(c) = event.candidate.to_json() {
-            self.emit(Event::Candidate(
-                self.pair,
-                Candidate {
-                    candidate: Some(c.candidate),
-                    sdp_mid: c.sdp_mid,
-                    sdp_m_line_index: c.sdp_mline_index,
-                    username_fragment: c.username_fragment,
-                },
-            ));
-        }
+        self.emit(Event::Candidate(self.pair, event.candidate));
     }
     async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
         self.state.store(state as u8, Ordering::Release);
@@ -223,6 +213,7 @@ impl PeerConnectionEventHandler for Handler {
 struct Pair {
     plan: PairInfo,
     pc: Arc<dyn PeerConnection>,
+    mapping: Option<mapping::Mapping>,
     polite: bool,
     pending_offer: Option<PendingOffer>,
     stable_outputs: Option<HashSet<Uuid>>,
@@ -952,6 +943,7 @@ impl Driver {
                             polite: self.session > plan.peer_id,
                             plan: plan.clone(),
                             pc,
+                            mapping: None,
                             pending_offer: None,
                             stable_outputs: None,
                             failed_offer: None,
@@ -1610,7 +1602,13 @@ impl Driver {
                 }
             }
             Event::Candidate(id, candidate) => {
-                if self.pairs.contains_key(&id) {
+                if let Some(p) = self.pairs.get_mut(&id) {
+                    if p.mapping.is_none() {
+                        p.mapping = mapping::Mapping::start(id, &candidate, self.events.clone());
+                    }
+                    let Ok(candidate) = signal_candidate(candidate) else {
+                        return Ok(());
+                    };
                     self.send(Command::Signal {
                         pair_id: id,
                         payload: Signal {
@@ -2073,6 +2071,15 @@ impl Driver {
         Ok(released)
     }
 }
+fn signal_candidate(c: RTCIceCandidate) -> Result<Candidate> {
+    let c = c.to_json()?;
+    Ok(Candidate {
+        candidate: Some(c.candidate),
+        sdp_mid: c.sdp_mid,
+        sdp_m_line_index: c.sdp_mline_index,
+        username_fragment: c.username_fragment,
+    })
+}
 fn ice_candidate(c: Candidate) -> rtc::peer_connection::transport::RTCIceCandidateInit {
     rtc::peer_connection::transport::RTCIceCandidateInit {
         candidate: c.candidate.unwrap_or_default(),
@@ -2085,6 +2092,9 @@ fn ice_candidate(c: Candidate) -> rtc::peer_connection::transport::RTCIceCandida
 async fn close_pair(mut pair: Pair) {
     pair.state
         .store(RTCPeerConnectionState::Closed as u8, Ordering::Release);
+    if let Some(mapping) = pair.mapping.as_mut() {
+        mapping.close().await;
+    }
     let _ = pair.pc.close().await;
     for (_, _, task) in [pair.dc.take(), pair.bulk.take()].into_iter().flatten() {
         task.abort();
@@ -2101,6 +2111,7 @@ async fn close_pair(mut pair: Pair) {
 }
 
 mod bandwidth;
+mod mapping;
 
 #[cfg(test)]
 mod tests;

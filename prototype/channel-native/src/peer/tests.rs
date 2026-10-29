@@ -195,10 +195,10 @@ async fn rejected_ice_candidates_preserve_connectivity_and_the_open_channel() ->
             }
             match events.recv().await.unwrap() {
                 Event::Candidate(id, candidate) if id == pair => {
-                    remote.add_ice_candidate(ice_candidate(candidate)).await?;
+                    remote.add_ice_candidate(candidate.to_json()?).await?;
                 }
                 Event::Candidate(_, candidate) => {
-                    d.signal(pair, signal(candidate)).await?;
+                    d.signal(pair, signal(signal_candidate(candidate)?)).await?;
                 }
                 Event::Channel(id, current) if id == remote_id => {
                     if current.label().await? == "piik-room" {
@@ -332,10 +332,10 @@ async fn optional_opaque_admission_preserves_selected_rtp_and_the_open_channel()
             }
             match events.recv().await.unwrap() {
                 Event::Candidate(id, candidate) if id == pair => {
-                    remote.add_ice_candidate(ice_candidate(candidate)).await?;
+                    remote.add_ice_candidate(candidate.to_json()?).await?;
                 }
                 Event::Candidate(_, candidate) => {
-                    pc.add_ice_candidate(ice_candidate(candidate)).await?;
+                    pc.add_ice_candidate(candidate.to_json()?).await?;
                 }
                 Event::Channel(id, current) if id == remote_id => {
                     if current.label().await? == "piik-room" {
@@ -616,6 +616,7 @@ async fn ipv6_candidates_connect_and_release_their_udp_ports() -> Result<()> {
             }
             match events.recv().await.unwrap() {
                 Event::Candidate(id, candidate) => {
+                    let candidate = signal_candidate(candidate)?;
                     let fields: Vec<_> = candidate
                         .candidate
                         .as_deref()
@@ -802,6 +803,7 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
     tokio::time::timeout(Duration::from_secs(10), async {
         while !d.pairs[&pair].connected() {
             if let Some(Event::Candidate(id, candidate)) = events.recv().await {
+                let candidate = signal_candidate(candidate)?;
                 if id == pair {
                     remote.add_ice_candidate(ice_candidate(candidate)).await?;
                 } else {
@@ -971,6 +973,7 @@ async fn local_offer_failure_releases_only_its_new_outputs_on_a_live_pair() -> R
     tokio::time::timeout(Duration::from_secs(10), async {
         while !d.pairs[&pair].connected() {
             if let Some(Event::Candidate(id, candidate)) = events.recv().await {
+                let candidate = signal_candidate(candidate)?;
                 if id == pair {
                     remote.add_ice_candidate(ice_candidate(candidate)).await?;
                 } else {

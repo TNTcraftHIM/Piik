@@ -379,6 +379,13 @@ does not retire the connection or its other candidate paths.
 Native gathers IPv4 and IPv6 through the same RTC transport owner; an unavailable
 address family does not disable the other.
 
+Each Native pair may map its actual default-gateway IPv4 socket using the
+released [portmapper](https://docs.rs/portmapper/0.20.0/portmapper/) client. Its
+background probe, protocol selection and renewal stay with that library;
+mapping does not delay ICE or replace IPv6 and STUN candidates. Mapped addresses
+use the existing candidate signaling. Pair retirement joins the address watcher
+and requests best-effort deactivation through the library's existing lifecycle.
+
 Prepare a replacement, prove it usable, commit, then release old work. A base
 edge requires an open DataChannel and an installed control path, not merely a
 connected PeerConnection. Silent voice readiness uses transport and forwarding

@@ -13,9 +13,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   and platform packaging over the shared UI and Native participant.
   Integrate the verified transport probing/feedback and incoming-H264 derivation
   candidates with aggregate application demand and upstream DTLS/SCTP fixes.
-  Carry forward the [2.x Native reachability behavior](./standards/routing-transport.md):
-  Gateway mapping and coordinated UDP preparation belong to
-  the existing connection owner, rather than another routing layer.
+  Complete coordinated UDP preparation from the
+  [2.x Native reachability behavior](./standards/routing-transport.md), under
+  the existing connection owner alongside gateway mapping.
   Resolve the observed NVIDIA MFT shutdown access violation before Native acceptance;
   its matched dump and symbols are retained with the local capture evidence.
   Reuse mature components and the shared

@@ -12,6 +12,8 @@ default-run = "piik-channel-native"
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 webrtc = "=0.21.1"
 rtc = "=0.21.1"
+portmapper = { version = "=0.20.0", default-features = false }
+netwatch = "=0.20.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
