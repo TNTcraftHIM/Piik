@@ -137,13 +137,19 @@ impl Input {
             }
             return Ok(());
         }
-        if let Some(pending) = state
+        if state
             .pending
-            .as_mut()
-            .filter(|pending| pending.video.same(video))
+            .as_ref()
+            .is_some_and(|pending| pending.video.same(video) && pending.required == required)
         {
-            pending.required = required;
             return Ok(());
+        }
+        if required {
+            // The incumbent cannot serve this allocation. Keep the last sent
+            // PTS fixed so a delayed replacement IDR can catch up without retiming.
+            state.current = None;
+            state.queue.clear();
+            state.waiting_keyframe = true;
         }
         state.pending = Some(Pending {
             video: video.clone(),
@@ -411,6 +417,68 @@ mod tests {
         input.close();
         assert!(!high.needed() && !low.needed());
         assert!(input.recv().await.is_none());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn required_handoff_keeps_its_last_output_boundary_and_optional_upgrade_keeps_playing(
+    ) -> Result<()> {
+        let epoch = Instant::now();
+        let time = CaptureTime {
+            epoch,
+            clock: SystemInstant::now(epoch),
+        };
+        let changed = Arc::new(Notify::new());
+        let original = Video::new(time, changed.clone());
+        let limited = Video::new(time, changed);
+        let input = original.subscribe();
+        let healthy = original.subscribe();
+        let frame = |n, keyframe| EncodedFrame {
+            bytes: vec![n],
+            presentation_time: epoch + Duration::from_millis(u64::from(n)),
+            keyframe,
+        };
+        original.write(frame(10, true));
+        input.recv().await.unwrap();
+        healthy.recv().await.unwrap();
+        original.write(frame(20, false));
+        input.select(&limited, true)?;
+        assert!(!input.needs(&original));
+        assert!(
+            original.needed(),
+            "the healthy consumer still owns its original feed"
+        );
+        original.write(frame(50, false));
+        limited.write(frame(30, true));
+        let adopted = input.recv().await.unwrap();
+        assert_eq!(adopted.bytes, [30]);
+        assert_eq!(adopted.presentation_time, epoch + Duration::from_millis(30));
+        assert_eq!(healthy.recv().await.unwrap().bytes, [20]);
+        assert_eq!(healthy.recv().await.unwrap().bytes, [50]);
+
+        input.select(&original, false)?;
+        original.write(frame(20, true));
+        limited.write(frame(40, false));
+        assert_eq!(input.recv().await.unwrap().bytes, [40]);
+        original.write(frame(60, true));
+        assert_eq!(input.recv().await.unwrap().bytes, [60]);
+        assert!(!limited.needed());
+
+        input.select(&limited, true)?;
+        input.select(&original, false)?;
+        original.write(frame(70, false));
+        {
+            let recv = input.recv();
+            tokio::pin!(recv);
+            assert!(
+                futures_util::poll!(recv).is_pending(),
+                "cancelled handoff needs a new IDR"
+            );
+        }
+        original.write(frame(80, true));
+        assert_eq!(input.recv().await.unwrap().bytes, [80]);
+        input.close();
+        healthy.close();
         Ok(())
     }
 

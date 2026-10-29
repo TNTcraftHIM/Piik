@@ -686,6 +686,10 @@ It reuses a warm baseline at full demand and one independently controlled encodi
 per constrained output. Zero allocation pauses that output; restoration retires
 its encoder only after a newer baseline keyframe is adopted. An unused baseline
 stops consuming access units and rests on the existing bounded queue.
+A required lower-rate replacement releases that output's incumbent and queued
+frames immediately, retaining its last emitted source time. A delayed replacement
+IDR can then cross a fixed boundary instead of chasing the still-playing original.
+Optional restoration keeps playing its incumbent until the new IDR arrives.
 Each physical encoder has its own feed identity. Failure is applied atomically
 against an output's current or required pending feed; a failed optional upgrade
 preserves the incumbent. The existing driver loop consumes latest targets

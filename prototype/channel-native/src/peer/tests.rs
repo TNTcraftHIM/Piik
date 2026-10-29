@@ -834,12 +834,13 @@ async fn local_video_output_keeps_its_sender_clock_and_recovers_current_encoding
     let first = packet(&*track).await?;
     assert_eq!(first.payload[1], 5); // No dependent P frame survived the overflow.
 
+    // An optional switch keeps the incumbent until the candidate supplies IDR.
     d.pairs[&pair].outputs[&key]
         .video_input()
         .unwrap()
         .upgrade()
         .unwrap()
-        .select(&low, true)?;
+        .select(&low, false)?;
     let requested = *low_requests.borrow_and_update();
     low.write(frame(6, false, 120));
     // A restarted encoder's old static IDR must request a fresh IDR, not wrap RTP time.
