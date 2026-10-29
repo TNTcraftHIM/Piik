@@ -131,8 +131,13 @@ protocol identifiers; use normal language-specific identifier conventions.
 
 Distinguish an upstream defect from a missing capability or a Piik integration
 error. Reproduce defects through the dependency's public API without Piik;
-keep application policy in Piik. Evaluate larger feature additions as dependency
-choices, rather than treating them as small fixes.
+requiring a new API demonstrates a capability gap, not a broken existing contract.
+For capability additions, prefer a Piik adapter through existing public extension
+points. Where those are insufficient, expose a narrow reusable hook and keep
+application policy outside the dependency. Compare total ownership: moving or
+duplicating private internals into an adapter does not remove maintenance cost.
+Evaluate larger feature additions as dependency choices, rather than treating
+them as small fixes.
 
 The [Go provenance](./internal/thirdparty/README.md) and
 [Native provenance](./prototype/channel-native/README.md#rtc-dependency) own
