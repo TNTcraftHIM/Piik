@@ -146,8 +146,9 @@ Its current-source patch, frozen dependencies and Windows/Linux evidence are
 indexed by `build/native-current-assembly/receipt.json`; the adjacent README
 describes the local acceptance candidate. Whole-App acceptance and promotion
 remain in [TODO](../../docs/todo.md), alongside the dependency-publication hold.
-That index also owns the separately frozen Linux incoming-H264 extension, which
-reuses the same derived producer, source clock and independent encoding owners.
+That index also owns the separately frozen Linux and macOS incoming-H264
+extensions, which reuse the same derived producer, source clock and independent
+encoding owners. Each candidate's receipt records its platform checks.
 
 ## Run
 
