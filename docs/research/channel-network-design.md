@@ -625,27 +625,16 @@ The isolated candidate also carries upstream fixes for
 [ForwardTSN parameters](https://github.com/webrtc-rs/rtc/pull/276), which the
 pinned 0.21.1 baseline lacks.
 
-With real ICE/DTLS/SRTP/TWCC over a controlled UDP link, a 300 kbps target reaches
-8 Mbps in 42.77 seconds with stock GCC and 0.47 seconds with the candidate.
-Probing starts on first media, also after 30 seconds of silence; static media can
-learn capacity before motion resumes. Two Chrome receivers complete probing,
-decode and switch encodings with stable track/SSRC/SDP. In an isolated App build,
-the candidate now drives the actual Native allocator and hardware encoders from
-its 300 kbps initial target. Each connection aggregates known local media
-configuration ceilings, independently of actual usage and current allocation.
+The candidate drives the Native allocator and hardware encoders from actual
+transport estimates. Probing begins with the first media departure rather than
+PeerConnection construction. Each connection aggregates known local media
+configuration ceilings independently of actual usage and current allocation.
 Received sources without a known ceiling retain unbounded demand; their measured
-source cost informs allocation, not a fabricated configuration limit. Two Chrome
-viewers return to one shared baseline encoder after capacity is learned; leaving
-one viewer preserves the other. Closing the capture page releases video, audio
-and encoder workers while the App-hosted room continues.
-With that real App and two Chrome receivers, limiting one encrypted UDP egress
-from 8 Mbps to 600 kbps for 20 seconds reduces its actual network output to
-577 kbps. Its video produces 407 kbps while the healthy sibling stays at
-2.14 Mbps. The queue peaks at 134 KB and drains during the limited phase.
-Restoring capacity returns the constrained output to its configured 4 Mbps
-video budget after 16.1–16.6 seconds, preserving both tracks, SSRCs and audio.
-The estimator, allocation and hardware encoder drive this trial automatically;
-it covers a direct publisher connection, not downstream relay adaptation.
+source cost informs allocation, not a fabricated configuration limit.
+The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
+owns the exact source and controlled results. Publisher and relay recovery are
+separate checks; the current whole-App relay candidate still fails its
+20-second Original-restoration criterion.
 
 Feedback history and active flight have separate lifetimes. The existing History
 owner retains late reports for 60 seconds while releasing bytes already passed
@@ -785,14 +774,16 @@ preserving selected media and the connection. Pending selected video reserves
 trial capacity before its sender is ready. An otherwise empty connection still
 starts ordinary forwarding: the SDK's initial estimate is not measured capacity.
 No new retry timer, route protocol or adjustable-opaque representation is added.
-The isolated incoming-H264 candidate shares complete source access units between
-original forwarding and one demand-driven Windows GPU decoder. Decoded frames
-reuse the local capture's encoding and retirement owners. Its stable outputs
+The isolated incoming-H264 candidates share complete source access units between
+original forwarding and one demand-driven decoder. Windows GPU, Linux GStreamer
+and macOS VideoToolbox adapters feed the same derived-producer boundary.
+Decoded frames reuse local capture's encoding and retirement owners. Stable outputs
 adopt a newer keyframe before retiring their previous encoding; closing a weak
 output releases its derivation without stopping healthy siblings. Source RTP/SR
-mapping preserves the sender's clock through decoding and re-encoding. Real
-two-Browser handoff, rebuild and failure isolation passed; integration waits for
-the SDK complete-sample dependency and combined allocation acceptance.
+mapping preserves the sender's clock through decoding and re-encoding.
+The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
+separates each platform's source and checks; integration still requires the held
+SDK dependency and whole-App recovery acceptance.
 Completeness belongs to the assembler across reception, expiry and delivery:
 expired fragments must never become decoder inputs. Codec metadata may legitimately
 produce no RTP; that leaves the existing sender and its last clock correlation alive.
