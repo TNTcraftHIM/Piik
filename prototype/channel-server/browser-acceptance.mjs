@@ -121,6 +121,12 @@ function captureProbe(name) {
     window.RTCPeerConnection = class extends NativePC {
       constructor(...args) { super(...args); peers.push(this); this.addEventListener('datachannel', event => recordChannel(this, event.channel)); }
       createDataChannel(...args) { return recordChannel(this, super.createDataChannel(...args)); }
+      addTransceiver(track, options) {
+        const transceiver = super.addTransceiver(track, options);
+        senders.push({ pc: this, sender: transceiver.sender, id: crypto.randomUUID(),
+          streams: (options?.streams ?? []).map(stream => stream.id) });
+        return transceiver;
+      }
       addTrack(track, ...streams) {
         const sender = super.addTrack(track, ...streams);
         senders.push({ pc: this, sender, id: crypto.randomUUID(), streams: streams.map(stream => stream.id) });
