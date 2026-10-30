@@ -727,6 +727,11 @@ calls Mutter `Stop`, whose
 [`!started` branch](https://gitlab.gnome.org/GNOME/mutter/-/blob/50.2/src/backends/meta-remote-desktop-session.c#L691)
 returns without closing the object. This is an upstream cleanup defect; Piik
 must not start an unapproved session to work around it.
+Removing that eight-line early return passes an isolated Mutter build and
+runtime comparison: the owner can close an unstarted session, another caller
+is rejected, and cancelling the normal Portal dialog releases its object while
+an existing share continues. The repair remains local; no system compositor
+was replaced. Publication is tracked in [TODO](../todo.md#held-by-owner).
 
 Requested dimensions are ceilings: each encoder fits the source's natural pixel
 size without enlarging small sources. A Windows size change drains old access

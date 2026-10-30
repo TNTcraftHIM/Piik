@@ -66,6 +66,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
+- [ ] **GNOME cancellation cleanup submission.** The prepared Mutter repair
+  awaits approval for an upstream issue and patch. The
+  [network design](./research/channel-network-design.md#implementation-boundary)
+  owns its cause and isolated validation; Piik does not bundle a compositor fork.
 - [ ] **RTC and GoogCc upstream submissions.** The prepared DTLS-role,
   transport/GoogCc accounting, async teardown, H264 parser and complete-sample
   changes await external-publication approval.
