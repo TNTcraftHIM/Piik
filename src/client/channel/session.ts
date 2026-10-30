@@ -170,6 +170,9 @@ export class ChannelSession {
         }
         for (const member of event.state.voice) {
           if (member.sessionId === event.sessionId && !this.voiceCaptures.has(member.roomId)) this.write({ type: "voice", roomId: member.roomId, joined: false, muted: true, deafened: false });
+          else if (member.sessionId === event.sessionId && this.voiceCaptures.get(member.roomId) === null && !member.muted) {
+            this.write({ type: "voice", roomId: member.roomId, joined: true, muted: true, deafened: member.deafened });
+          }
         }
         for (const id of event.state.subscriptions) {
           if (event.state.publications.some(publication => publication.id === id && publication.kind === "screen") && !this.watching.has(id)) {
@@ -262,17 +265,7 @@ export class ChannelSession {
         void this.app.stopCapture(publication.id).catch(() => {});
       }
     }
-    // Server assignments own transports. Local stop intent owns what this page
-    // presents and plays, including while the authority is temporarily unreachable.
-    const visible: ChannelSnapshot = {
-      ...state,
-      publications: state.publications.filter(publication => publication.sessionId !== sessionId || this.local.has(publication.id)),
-      voice: state.voice.filter(member => member.sessionId !== sessionId || this.voiceCaptures.has(member.roomId)),
-      subscriptions: state.subscriptions.filter(id => {
-        const publication = state.publications.find(value => value.id === id);
-        return publication?.kind === "voice" ? this.voiceCaptures.has(publication.roomId) : this.watching.has(id);
-      }),
-    };
+    const visible = this.projectActivity(state);
     const sameChannel = this.historyChannel === state.channel.id;
     this.historyChannel = state.channel.id;
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
@@ -290,6 +283,16 @@ export class ChannelSession {
     });
     if (this.reading && !state.channel.rooms.some(room => room.id === this.reading!.roomId && room.authorized && room.available)) this.reading = null;
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
+      if (room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)
+        && this.voiceCaptures.get(room.id) === null && !this.view.pending.has(`voice:${room.id}`)) {
+        for (const publication of state.publications) {
+          if (publication.sessionId === sessionId && publication.roomId === room.id && publication.kind === "voice" && !this.local.has(publication.id)) {
+            this.write({ type: "unpublish", publicationId: publication.id });
+          }
+        }
+        const member = state.voice.find(member => member.sessionId === sessionId && member.roomId === room.id);
+        if (member && !member.muted) this.write({ type: "voice", roomId: room.id, joined: true, muted: true, deafened: member.deafened });
+      }
       if (room.id !== this.roomId && room.reading && room.authorized && room.available
         && previousRooms?.some(previous => previous.id === room.id && !previous.available)) {
         this.write({ type: "browse", roomId: room.id, active: false });
@@ -639,8 +642,21 @@ export class ChannelSession {
     this.media.setLocal(id, stream);
     try {
       await this.request({ type: "publish", publication: { id, roomId, kind, muted: false } });
+      const primary = kind === "screen" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
+      if (primary?.readyState === "ended") {
+        this.send({ type: "unpublish", publicationId: id });
+        throw new Error(kind === "screen" ? "capture_unavailable" : "microphone_unavailable");
+      }
       this.admittedPublications.add(id);
-      if (kind === "screen") stream.getVideoTracks()[0]?.addEventListener("ended", () => { void this.stopScreen(id).catch(() => {}); }, { once: true });
+      if (kind === "screen") primary?.addEventListener("ended", () => { void this.stopScreen(id).catch(() => {}); }, { once: true });
+      else primary?.addEventListener("ended", () => {
+        if (this.local.get(id)?.stream !== stream) return;
+        const voice = this.view.state?.voice.find(member => member.sessionId === this.view.sessionId && member.roomId === roomId);
+        this.retireCapture(id);
+        this.refreshActivity();
+        this.send({ type: "unpublish", publicationId: id });
+        if (voice) this.send({ type: "voice", roomId, joined: true, muted: true, deafened: voice.deafened });
+      }, { once: true });
       return id;
     } catch (error) {
       this.local.delete(id);
@@ -792,7 +808,27 @@ export class ChannelSession {
   }
 
   private refreshActivity(): void {
-    if (this.view.state) this.applyState(this.view.state);
+    if (this.view.state) this.patch({ state: this.projectActivity(this.view.state) });
+    this.input.update();
+    this.releaseUnusedMicrophone();
+  }
+
+  private projectActivity(state: ChannelSnapshot): ChannelSnapshot {
+    const sessionId = this.view.sessionId;
+    // Only authority updates retire leases and assign transports. Local stop
+    // intent changes what this page presents, even while the host is unreachable.
+    return {
+      ...state,
+      publications: state.publications.filter(publication => publication.sessionId !== sessionId || this.local.has(publication.id)),
+      voice: state.voice.filter(member => member.sessionId !== sessionId || this.voiceCaptures.has(member.roomId)).map(member =>
+        member.sessionId === sessionId && this.voiceCaptures.get(member.roomId) === null
+          && ![...this.local.values()].some(capture => capture.kind === "voice" && capture.roomId === member.roomId)
+          ? { ...member, muted: true } : member),
+      subscriptions: state.subscriptions.filter(id => {
+        const publication = state.publications.find(value => value.id === id);
+        return publication?.kind === "voice" ? this.voiceCaptures.has(publication.roomId) : this.watching.has(id);
+      }),
+    };
   }
 
   private beginRecovery(): void {

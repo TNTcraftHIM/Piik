@@ -176,6 +176,110 @@ test("App hosting uses its own participant while Browser rooms retain their page
   } finally { session.close(); }
 });
 
+test("ending a Browser microphone retires its publication while room listening remains joined", async () => {
+  const { session, socket } = await setup();
+  const microphone = remoteTrack("audio"), stream = remoteStream("microphone", [microphone]);
+  const baseTrack = remoteTrack("audio"), base = Object.assign(remoteStream("microphone-source", [baseTrack]), { active: true, clone: () => stream });
+  const getUserMedia = vi.fn(async () => base);
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  try {
+    const joining = session.joinVoice("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("voice"));
+    const join = socket.sent.at(-1)!;
+    expect(join).toMatchObject({ type: "voice", joined: true, muted: false });
+    const state = { ...session.getSnapshot().state!, voice: [{ sessionId: "endpoint", roomId: "first", muted: false, deafened: true }] };
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "done" } });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publish = socket.sent.at(-1)!, publication = publish.publication as { id: string; roomId: string; kind: "voice"; muted: boolean };
+    state.publications = [{ ...publication, sessionId: "endpoint", userId: "self" }];
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: publish.requestId, result: { type: "done" } });
+    await joining;
+
+    state.channel.rooms[0].available = false;
+    socket.receive({ type: "state", state });
+    Object.defineProperty(microphone, "readyState", { value: "ended" });
+    microphone.dispatchEvent(new Event("ended"));
+    await vi.waitFor(() => expect(socket.sent.some(command => command.type === "unpublish" && command.publicationId === publication.id)).toBe(true));
+    expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
+    socket.receive({ type: "error", code: "room_host_offline" });
+    expect(baseTrack.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().state?.voice).toEqual([{ sessionId: "endpoint", roomId: "first", muted: true, deafened: true }]);
+    const beforeRecovery = socket.sent.length;
+    state.channel.rooms[0].available = true;
+    socket.receive({ type: "state", state });
+    expect(socket.sent.slice(beforeRecovery)).toContainEqual({ type: "unpublish", publicationId: publication.id });
+    expect(socket.sent.slice(beforeRecovery)).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
+    state.publications = [];
+    state.voice[0].muted = true;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().state?.voice).toEqual([{ sessionId: "endpoint", roomId: "first", muted: true, deafened: true }]);
+    expect(session.getSnapshot().state?.channel.rooms.find(room => room.id === "first")?.available).toBe(true);
+    expect(socket.sent.some(command => command.type === "leave" || command.type === "host_stop")).toBe(false);
+
+    const nextTrack = remoteTrack("audio"), next = remoteStream("next-microphone", [nextTrack]);
+    const sourceTrack = remoteTrack("audio"), source = Object.assign(remoteStream("microphone-source", [sourceTrack]), { active: true, clone: () => next });
+    getUserMedia.mockResolvedValue(source);
+    const unmuting = session.setMuted("first", false);
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    const nextPublish = socket.sent.at(-1)!, nextPublication = nextPublish.publication as typeof publication;
+    expect(nextPublication.id).not.toBe(publication.id);
+    state.publications = [{ ...nextPublication, sessionId: "endpoint", userId: "self" }];
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: nextPublish.requestId, result: { type: "done" } });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", muted: false, deafened: true }));
+    state.voice[0].muted = false;
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId, result: { type: "done" } });
+    await unmuting;
+    expect(session.getSnapshot().state?.voice[0].muted).toBe(false);
+
+    socket.close();
+    Object.defineProperty(nextTrack, "readyState", { value: "ended" });
+    nextTrack.dispatchEvent(new Event("ended"));
+    expect(sourceTrack.stop).toHaveBeenCalledOnce();
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    expect(resumed.sent).toContainEqual({ type: "unpublish", publicationId: nextPublication.id });
+    expect(resumed.sent).toContainEqual({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
+    expect(resumed.sent.some(command => command.type === "voice" && command.joined === false)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("local stop does not retire another capture acknowledged before its authority projection", async () => {
+  const { session, socket } = await setup();
+  const first = remoteTrack("video"), second = remoteTrack("video");
+  try {
+    const publishingFirst = session.publish("screen", "first", remoteStream("first-capture", [first]));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    const firstId = await publishingFirst;
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications = [{ id: firstId, roomId: "first", kind: "screen", muted: false, sessionId: "endpoint", userId: "self" }];
+    socket.receive({ type: "state", state });
+
+    const publishingSecond = session.publish("screen", "second", remoteStream("second-capture", [second]));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    const secondId = await publishingSecond;
+    const stopping = session.stopScreen(firstId);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await stopping;
+    expect(first.stop).toHaveBeenCalledOnce();
+    expect(second.stop).not.toHaveBeenCalled();
+
+    state.publications = [{ id: secondId, roomId: "second", kind: "screen", muted: false, sessionId: "endpoint", userId: "self" }];
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().ownedScreens.has(secondId)).toBe(true);
+    expect(session.getSnapshot().state?.publications.map(publication => publication.id)).toEqual([secondId]);
+    state.publications = [];
+    socket.receive({ type: "state", state });
+    expect(second.stop).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
