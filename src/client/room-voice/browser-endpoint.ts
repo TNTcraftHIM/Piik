@@ -354,8 +354,10 @@ export class BrowserVoiceEndpoint {
 
   async reconcile(): Promise<void> {
     const generation = this.generation;
-    for (const config of this.state?.connections ?? []) {
+    for (const planned of this.state?.connections ?? []) {
       if (generation !== this.generation) return;
+      const config = this.state?.connections.find(current => current.connectionId === planned.connectionId);
+      if (!config) continue;
       const connection = this.connections.get(config.connectionId) ?? this.create(config);
       try {
         await this.syncSenders(connection);

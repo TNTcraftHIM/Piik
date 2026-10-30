@@ -216,3 +216,45 @@ it.each(["local", "remote"])("retains and flushes the first 64 %s voice candidat
     expect(messages).toHaveLength(count);
   } finally { endpoint.close(); }
 });
+
+it("does not recreate a retired voice connection from an in-flight reconciliation", async () => {
+  let started!: () => void;
+  const preparing = new Promise<void>(resolve => { started = resolve; });
+  type Offer = { type: "offer"; sdp: string };
+  let finish!: (offer: Offer) => void;
+  const offer = new Promise<Offer>(resolve => { finish = resolve; });
+  vi.stubGlobal("RTCPeerConnection", class extends Peer {
+    createOffer = async () => {
+      if (this === Peer.instances[0]) { started(); return offer; }
+      return { type: "offer" as const, sdp: "offer" };
+    };
+  });
+  const messages: ClientMessage[] = [];
+  const endpoint = new BrowserVoiceEndpoint({ iceServers: [] }, message => { messages.push(message); return true; }, () => {});
+  const connection = (connectionId: string) => ({ connectionId, transport: "peer" as const,
+    parentPeerId: "self", childPeerId: connectionId, revision: 1, pending: false, send: [], receive: [] });
+  const retained = connection("retained"), retired = connection("retired"), replacement = connection("replacement");
+  const state: RoomVoiceState = { type: "room-voice-state", revision: 1, enabled: true, hostPeerId: "self",
+    members: [{ peerId: "self", connected: true, joined: true, upstream: { kind: "none" } }],
+    publications: [], unavailable: [], connections: [retained, retired] };
+  try {
+    endpoint.setAuthority(state, "self");
+    const pending = endpoint.reconcile();
+    await preparing;
+    const pc = Peer.instances[0]!;
+    // RoomVoiceSession applies this authority synchronously, even while SDP
+    // is awaiting the Browser. Its normal queue schedules the next reconcile.
+    endpoint.setAuthority({ ...state, revision: 2, connections: [retained, replacement] }, "self");
+    finish({ type: "offer", sdp: "offer" });
+    await pending;
+    expect(Peer.instances).toHaveLength(1);
+    expect(messages.some(message => "connectionId" in message && message.connectionId === retired.connectionId)).toBe(false);
+    await endpoint.reconcile();
+    expect(Peer.instances).toHaveLength(2);
+    expect(endpoint.connected).toBe(true);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(messages).toContainEqual(expect.objectContaining({ type: "room-voice-signal", connectionId: replacement.connectionId }));
+    endpoint.close();
+    expect(Peer.instances.every(peer => peer.close.mock.calls.length === 1)).toBe(true);
+  } finally { endpoint.close(); }
+});
