@@ -104,12 +104,12 @@ current hosting runtime. Existing Browser rooms remain in their pages and are
 not migrated; a remembered App preference cannot prevent Browser hosting when
 the App is absent.
 
-On Windows, **Share screen** reuses the source picker for App windows/displays
-and Browser capture. App capture publishes through that same Native participant;
+**Share screen** reuses the product source picker for Browser capture and the
+App's available sources. App capture publishes through that same Native participant;
 the selecting page previews it as an ordinary subscriber. Stopping the share or
 closing its page stops only its captures, not its hosted rooms. This prototype
 uses 1080p/30 fps/4 Mbps H264 for native video, with optional source audio.
-The [Native participant](../channel-native/README.md) owns shared encoding and
+The [Native participant](../channel-native/README.md) owns platform capture, shared encoding and
 adaptation; [TODO](../../docs/todo.md) tracks its remaining integration.
 Browser capture retains its existing behavior.
 
@@ -258,8 +258,8 @@ watching while continuing to serve downstream viewers; its transit ends when tha
 demand ends. A failed DataChannel repairs its room paths without closing healthy
 media on the same connection. Stopping one share keeps unrelated received and
 forwarded media alive. Browser relays can decode and re-encode. The Native
-participant forwards encoded Opus, VP8 and H264; Native capture and SFU fallback
-remain later work. WebRTC owns ICE and congestion control.
+participant forwards encoded Opus, VP8 and H264, and publishes App capture through
+those same plans. SFU fallback remains later work. WebRTC owns ICE and congestion control.
 App and Server use the existing public STUN choices by default. Optional
 `PIIK_CHANNEL_ICE_SERVERS` replaces them with an ICE-server JSON array; `[]` disables
 STUN for isolated loopback checks. The local checks do not establish a public-NAT

@@ -88,8 +88,8 @@ Browser-selected stop chord observed by the existing App tick. Only the source
 page enabling control can request Accessibility permission. Window identity,
 focused-window geometry and permission are checked separately; macOS does not
 advertise gamepad support. macOS packaging and real-device capture/input
-acceptance remain open; Linux input must share
-the eventual capture owner's Portal RemoteDesktop session.
+acceptance remain open; Linux input must use
+the capture owner's Portal RemoteDesktop session.
 
 The App entry point keeps the Windows MTA alive outside its async runtime.
 Cached WinRT factories span successive captures and source-list refreshes; their

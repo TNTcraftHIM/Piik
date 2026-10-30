@@ -71,7 +71,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
         <header className="cd-channel-heading c3-editable">
           <div className="cd-channel-heading-text"><small>{copy("一个属于朋友的频道", "A place for your people")}</small><h2>{channelTitle}</h2></div>
           <span className="c3-edit-action"><ChannelAction icon="pencil" label={copy("频道外观", "Channel appearance")} iconOnly quiet hint="hint-rename" onClick={() => setEditingChannel(true)} /></span>
-          <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} quiet iconOnly onClick={() => setMobilePane("room")} /></span>
+          <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} hint="hint-collapse" quiet iconOnly onClick={() => setMobilePane("room")} /></span>
         </header>
         <div className="cd-room-nav">
           <div className="cd-section-label"><span>{copy("房间", "Rooms")}</span>
@@ -104,7 +104,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
       <main className="cd-room">
         <header className="cd-room-heading">
           <div className="cd-room-title">
-            <span className="cd-mobile-rooms"><ChannelAction icon="arrowLeft" label={copy("房间列表", "Rooms")} quiet iconOnly onClick={() => setMobilePane("rooms")} /></span>
+            <span className="cd-mobile-rooms"><ChannelAction icon="arrowLeft" label={copy("房间列表", "Rooms")} hint="hint-collapse" quiet iconOnly onClick={() => setMobilePane("rooms")} /></span>
             <span className="cd-room-heading-icon"><DesignIdentityMark value={room} size={23} /></span>
             <div className="cd-room-heading-text"><div className="cd-room-heading-name c3-editable"><h2>{roomName}</h2>
               <span className="c3-edit-action"><ChannelAction icon="pencil" label={copy("房间设置", "Room settings")} hint="hint-rename" iconOnly quiet onClick={() => setEditingRoom(true)} /></span>
@@ -118,7 +118,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
                 setSharingRoom(sharing ? null : roomId); setScreensHidden(false);
                 setFocused(sharing ? 0 : 3);
               }} /></span>
-            <span className="cd-mobile-members"><ChannelAction icon="users" label={copy("成员", "Members")} quiet iconOnly onClick={() => setMobilePane("members")} /></span>
+            <span className="cd-mobile-members"><ChannelAction icon="users" label={copy("成员", "Members")} hint="hint-details" quiet iconOnly onClick={() => setMobilePane("members")} /></span>
           </div>
         </header>
 
@@ -151,7 +151,7 @@ export function DesignWorkspace({ copy, scene, peopleCount, onScene }: {
 
       <aside className="cd-members" aria-label={copy("频道成员", "Channel members")}>
         <header><h2>{copy("成员", "Members")} <span>{here.length + elsewhere.length}</span></h2>
-          <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} quiet iconOnly onClick={() => setMobilePane("room")} /></span></header>
+          <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} hint="hint-collapse" quiet iconOnly onClick={() => setMobilePane("room")} /></span></header>
         <div className="cd-member-list">
           <div className="cd-member-group"><h3>{copy("这个房间", "In this room")}<span>{here.length}</span></h3>
             {here.map(index => <div className="cd-member" key={index}>
