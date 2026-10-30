@@ -29,7 +29,7 @@ use tokio::{
     time::{self, Instant},
 };
 use tokio_tungstenite::{
-    connect_async_with_config,
+    connect_async_tls_with_config,
     tungstenite::{client::IntoClientRequest, protocol::WebSocketConfig, Message},
     MaybeTlsStream, WebSocketStream,
 };
@@ -362,9 +362,24 @@ impl Session {
             let limits = WebSocketConfig::default()
                 .max_message_size(Some(2 * 1024 * 1024))
                 .max_frame_size(Some(2 * 1024 * 1024));
+            #[cfg(target_os = "android")]
+            let connector = {
+                use rustls_platform_verifier::BuilderVerifierExt;
+                let config = rustls::ClientConfig::builder_with_provider(std::sync::Arc::new(
+                    rustls::crypto::ring::default_provider(),
+                ))
+                .with_safe_default_protocol_versions()?
+                .with_platform_verifier()?
+                .with_no_client_auth();
+                Some(tokio_tungstenite::Connector::Rustls(std::sync::Arc::new(
+                    config,
+                )))
+            };
+            #[cfg(not(target_os = "android"))]
+            let connector = None;
             let connecting = time::timeout(
                 Duration::from_secs(5),
-                connect_async_with_config(request, Some(limits), false),
+                connect_async_tls_with_config(request, Some(limits), false, connector),
             );
             tokio::pin!(connecting);
             let connection = loop {

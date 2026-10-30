@@ -1,19 +1,13 @@
 <resources>
- <string name="app_name">Piik</string>
+ <string name="app_name">Piik Rust test</string>
  <string name="runtime_channel">Piik companion</string>
  <string name="runtime_title">Piik is ready</string>
- <string name="runtime_body">Local rooms and native sharing are available. Stop Piik when finished.</string>
+ <string name="runtime_body">Local rooms are available. Stop Piik when finished.</string>
  <string name="runtime_failed">Piik stopped</string>
  <string name="runtime_restart">Open Piik to retry.</string>
  <string name="runtime_open">Open</string>
  <string name="runtime_stop">Stop Piik</string>
- <string name="media_waiting">Complete the screen or audio request from your browser. Press Back to return.</string>
- <string name="no_pending_confirmation">No screen or audio confirmation is pending.</string>
- <string name="return_browser">Return to browser</string>
  <string name="no_browser">Install or enable a browser to open Piik.</string>
- <string name="preparing">Preparing local screen sharing…</string>
- <string name="notification_channel">Screen sharing</string>
- <string name="notification_title">Piik — sharing screen</string>
- <string name="notification_body">Tap to return and stop sharing.</string>
+ <string name="preparing">Preparing Piik…</string>
  <string name="restart_piik">Restart Piik</string>
 </resources>

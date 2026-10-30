@@ -1,7 +1,6 @@
 use anyhow::{Context, Result};
-use piik_channel_prototype::app::{serve, Config};
+use piik_channel_prototype::app::{listen, serve, Config};
 use std::{env, path::PathBuf};
-use tokio::net::TcpListener;
 
 fn main() -> Result<()> {
     #[cfg(target_os = "windows")]
@@ -44,21 +43,10 @@ async fn run() -> Result<()> {
         "App frontend is missing: {}",
         config.assets.join("index.html").display()
     );
-    let listener = if let Ok(port) = env::var("PIIK_CHANNEL_APP_PORT") {
-        TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port.parse::<u16>()?)).await?
-    } else {
-        let mut available = None;
-        for port in 39721..=39730 {
-            match TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
-                Ok(listener) => {
-                    available = Some(listener);
-                    break;
-                }
-                Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {}
-                Err(error) => return Err(error.into()),
-            }
-        }
-        available.context("Piik App discovery ports are occupied")?
-    };
-    serve(listener, config, stop).await
+    let port = env::var("PIIK_CHANNEL_APP_PORT")
+        .ok()
+        .map(|port| port.parse())
+        .transpose()?;
+    let listener = listen(port).await?;
+    serve(listener, config, stop, None).await
 }

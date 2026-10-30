@@ -241,27 +241,55 @@ async fn stop_hosts(hosts: Vec<Host>) {
     }
 }
 
-/// Local approval and persistent room hosting share one process, not page lifetime.
-pub async fn serve(
-    listener: TcpListener,
-    config: Config,
-    stop: impl Future<Output = ()> + Send + 'static,
-) -> Result<()> {
-    let address = listener.local_addr()?;
-    if !address.ip().is_loopback() {
-        bail!("App service requires a loopback listener");
+/// Choose the same bounded discovery ports for each native App shell.
+pub async fn listen(port: Option<u16>) -> Result<TcpListener> {
+    if let Some(port) = port {
+        return Ok(TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await?);
     }
-    std::fs::create_dir_all(&config.data_root)?;
-    // Approval and hosting have one process owner for this local data directory.
+    for port in 39721..=39730 {
+        match TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port)).await {
+            Ok(listener) => return Ok(listener),
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    bail!("Piik App discovery ports are occupied")
+}
+
+// The file is the guard: closing it releases the process's directory ownership.
+fn lock_directory(directory: &std::path::Path) -> Result<std::fs::File> {
+    std::fs::create_dir_all(directory)?;
     let owner = std::fs::File::options()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(config.data_root.join("app.lock"))?;
-    owner
-        .try_lock()
-        .map_err(|_| anyhow!("This App data directory is already in use"))?;
+        .open(directory.join("app.lock"))?;
+    // std's Unix implementation omits Android on the pinned Rust toolchain.
+    #[cfg(unix)]
+    let locked = rustix::fs::flock(&owner, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+        .map_err(std::io::Error::from);
+    #[cfg(not(unix))]
+    let locked = owner.try_lock().map_err(std::io::Error::from);
+    locked.map_err(|error| match error.kind() {
+        std::io::ErrorKind::WouldBlock => anyhow!("This App data directory is already in use"),
+        _ => anyhow!("Cannot lock App data directory: {error}"),
+    })?;
+    Ok(owner)
+}
+
+/// Local approval and persistent room hosting share one process, not page lifetime.
+pub async fn serve(
+    listener: TcpListener,
+    config: Config,
+    stop: impl Future<Output = ()> + Send + 'static,
+    ready: Option<oneshot::Sender<String>>,
+) -> Result<()> {
+    let address = listener.local_addr()?;
+    if !address.ip().is_loopback() {
+        bail!("App service requires a loopback listener");
+    }
+    let owner = lock_directory(&config.data_root)?;
     let sites = sites::Sites::open(&config.data_root)?;
     let entry = entry_url(&sites.startup()?, address.port())?;
     let open_browser = config.open_browser;
@@ -300,6 +328,9 @@ pub async fn serve(
         .with_state(app.clone());
     eprintln!("App room socket listening on {address}");
     eprintln!("Open Piik App: {entry}");
+    if let Some(ready) = ready {
+        let _ = ready.send(entry.clone());
+    }
     if open_browser {
         tokio::task::spawn_blocking(move || {
             if let Err(error) = webbrowser::open(&entry) {

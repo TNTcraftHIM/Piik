@@ -51,6 +51,9 @@ preserves the producer and media clock, while cancelling leaves the share runnin
 Windows keyboard, mouse and optional gamepad input use the selected screen route
 and shared control UI, with one App desktop executor, page-owned consent and a
 process-only stop hotkey.
+The isolated Android shell starts the same Rust App through JNI and opens the
+system Browser, using Android certificate trust for site connections. Native
+Android capture and release packaging remain part of the platform work.
 [TODO](./todo.md) owns remaining Native media/input and platform work.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.

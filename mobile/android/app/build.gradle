@@ -3,10 +3,10 @@ android {
  namespace 'tv.piik.android'
  compileSdk 35
  defaultConfig {
-  applicationId 'tv.piik.android'; minSdk 29; targetSdk 35
+  applicationId 'tv.piik.android.channel3'; minSdk 29; targetSdk 35
   versionCode providers.gradleProperty('piikVersionCode').getOrElse('1').toInteger()
   versionName providers.gradleProperty('piikVersion').getOrElse('development')
-  ndk { abiFilters 'arm64-v8a', 'x86_64' }
+  ndk { abiFilters 'arm64-v8a' }
  }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
  packaging { jniLibs { useLegacyPackaging = true } }
@@ -23,4 +23,11 @@ android {
  }
  buildTypes { release { signingConfig signingConfigs.release } }
 }
-dependencies { implementation files('libs/piik.aar') }
+// The official Android artifact version is locked by the Rust dependency.
+def cargoLock = file('../../../prototype/channel-android/Cargo.lock').text
+def verifierVersion = (cargoLock =~ /(?s)name = "rustls-platform-verifier-android"\s+version = "([^"]+)"/)[0][1]
+dependencies {
+ implementation "org.rustls:rustls-platform-verifier:$verifierVersion"
+ // The verifier AAR's POM omits this dependency; Java shells do not apply Kotlin's plugin.
+ implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.2.10'
+}

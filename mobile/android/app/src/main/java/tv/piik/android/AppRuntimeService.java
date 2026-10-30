@@ -1,55 +1,20 @@
 package tv.piik.android;
 
-import android.Manifest;
 import android.app.*;
 import android.content.*;
-import android.content.pm.PackageManager;
 import android.content.pm.ServiceInfo;
-import android.media.projection.MediaProjectionConfig;
-import android.media.projection.MediaProjectionManager;
-import android.net.*;
 import android.os.*;
-import java.net.Inet4Address;
-import java.util.ArrayDeque;
 import java.util.concurrent.*;
-import tv.piik.bridge.Bridge;
-import tv.piik.bridge.Runtime;
 
-// One user-started native companion owns the Go core and pending OS consent.
+// One user-started Service owns the Rust App until stop and join complete.
 public final class AppRuntimeService extends Service {
   static volatile AppRuntimeService instance;
   static final Handler main = new Handler(Looper.getMainLooper());
-  static final int PROJECTION = 10, AUDIO_PERMISSION = 12;
-  final ExecutorService work = Executors.newSingleThreadExecutor();
-  final ArrayDeque<MediaRequest> requests = new ArrayDeque<>();
-  Runtime runtime;
-  CompletableFuture<Runtime> startup;
+  // One queue also orders the old Service's join before a replacement's start.
+  static final ExecutorService work = Executors.newSingleThreadExecutor();
+  NativeRuntime runtime;
+  CompletableFuture<NativeRuntime> startup;
   Throwable failure;
-  MediaRequest active;
-  // Go prepares selected source audio after the first admitted video frame.
-  MediaRequest preparing;
-
-  static final class MediaRequest {
-    final Runtime owner;
-    final long id;
-    final String kind, configuration;
-    boolean awaitingResult;
-
-    MediaRequest(Runtime owner, long id, String kind, String configuration) {
-      this.owner = owner;
-      this.id = id;
-      this.kind = kind;
-      this.configuration = configuration;
-    }
-
-    boolean current() {
-      return owner == AppRuntimeService.runtime() && owner.captureCurrent(id);
-    }
-  }
-
-  static Runtime runtime() {
-    return instance == null ? null : instance.runtime;
-  }
 
   @Override
   public void onCreate() {
@@ -126,235 +91,43 @@ public final class AppRuntimeService extends Service {
   }
 
   void startRuntime() {
-    CompletableFuture<Runtime> starting =
-        CompletableFuture.supplyAsync(
-            () -> {
-              try {
-                ConnectivityManager manager = getSystemService(ConnectivityManager.class);
-                LinkProperties links = manager.getLinkProperties(manager.getActiveNetwork());
-                String address = "";
-                if (links != null)
-                  for (LinkAddress link : links.getLinkAddresses())
-                    if (link.getAddress() instanceof Inet4Address
-                        && !link.getAddress().isLoopbackAddress()) {
-                      address = link.getAddress().getHostAddress();
-                      break;
-                    }
-                CapturePlatform platform = new CapturePlatform(getApplicationContext());
-                Runtime started =
-                    Bridge.start(
-                        platform,
-                        address,
-                        EncoderCatalog.capabilities(),
-                        getFilesDir().getAbsolutePath(),
-                        getCacheDir().getAbsolutePath(),
-                        new java.io.File(getApplicationInfo().nativeLibraryDir, "libcloudflared.so")
-                            .getAbsolutePath(),
-                        "piik://media");
-                platform.owner = new java.lang.ref.WeakReference<>(started);
-                return started;
-              } catch (Exception error) {
-                throw new CompletionException(error);
-              }
-            },
-            work);
+    CompletableFuture<NativeRuntime> starting = CompletableFuture.supplyAsync(() -> {
+      try { return NativeRuntime.start(getApplicationContext()); }
+      catch (Exception error) { throw new CompletionException(error); }
+    }, work);
     startup = starting;
-    starting.whenComplete(
-        (started, error) ->
-            main.post(
-                () -> {
-                  if (instance != this || startup != starting) {
-                    return;
-                  }
-                  startup = null;
-                  runtime = started;
-                  failure = error;
-                  refreshNotification();
-                  notifyActivity();
-                }));
+    starting.whenComplete((started, error) -> main.post(() -> {
+      if (instance != this || startup != starting) return;
+      startup = null;
+      runtime = started;
+      failure = error;
+      if (error != null) android.util.Log.e("PiikRuntime", "runtime startup failed", error);
+      else android.util.Log.i("PiikRuntime", "runtime ready: " + started.entryURL());
+      if (started != null) started.stopped.thenAccept(reason -> main.post(() -> {
+        if (instance != this || runtime != started) return;
+        runtime = null;
+        failure = new IllegalStateException(reason.isEmpty() ? "App runtime stopped" : reason);
+        android.util.Log.e("PiikRuntime", "runtime stopped", failure);
+        work.execute(() -> closeRuntime(started));
+        refreshNotification();
+        notifyActivity();
+      }));
+      refreshNotification();
+      notifyActivity();
+    }));
+  }
+
+  static void closeRuntime(NativeRuntime runtime) {
+    try {
+      runtime.close();
+      android.util.Log.i("PiikRuntime", "runtime stopped and joined");
+    }
+    catch (RuntimeException error) { android.util.Log.w("PiikRuntime", "runtime shutdown failed", error); }
   }
 
   void notifyActivity() {
     MainActivity activity = MainActivity.current;
     if (activity != null && activity.visible) activity.runtimeAvailable(this);
-  }
-
-  static void enqueue(Runtime owner, long id, String kind, String configuration) {
-    AppRuntimeService service = instance;
-    if (service == null || owner == null || owner != service.runtime || !owner.captureCurrent(id))
-      return;
-    if (kind.equals("video") && CaptureService.replaceVideo(owner, id, configuration)) return;
-    if (kind.equals("audio")
-        && service.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-            == PackageManager.PERMISSION_GRANTED) {
-      CaptureService.startAudio(owner, id);
-      return;
-    }
-    service.requests.add(new MediaRequest(owner, id, kind, configuration));
-    service.processRequests();
-  }
-
-  void processRequests() {
-    if (active != null) return;
-    requests.removeIf(request -> !request.current());
-    MainActivity activity = MainActivity.current;
-    if (activity == null
-        || !activity.visible
-        || activity.notificationRequest
-        || !activity.canConfirmMedia()) return;
-    MediaRequest next = requests.poll();
-    if (next == null) {
-      if (preparing == null) activity.mediaFinished();
-      return;
-    }
-    active = next;
-    activity.mediaStarted();
-    activity.permissionOwner = this;
-    activity.permissionRequest = next;
-    if (next.kind.equals("video")) {
-      preparing = next;
-      try {
-        MediaProjectionManager manager = activity.getSystemService(MediaProjectionManager.class);
-        Intent consent =
-            Build.VERSION.SDK_INT >= 34
-                ? manager.createScreenCaptureIntent(
-                    MediaProjectionConfig.createConfigForDefaultDisplay())
-                : manager.createScreenCaptureIntent();
-        next.awaitingResult = true;
-        activity.startActivityForResult(consent, PROJECTION);
-      } catch (RuntimeException error) {
-        android.util.Log.w("PiikRuntime", "projection consent failed", error);
-        complete(next, false);
-      }
-    } else if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-        != PackageManager.PERMISSION_GRANTED) {
-      next.awaitingResult = true;
-      activity.requestPermissions(
-          new String[] {Manifest.permission.RECORD_AUDIO}, AUDIO_PERMISSION);
-    } else audioPermissionResult(next);
-  }
-
-  void projectionResult(MainActivity activity, MediaRequest request, int result, Intent data) {
-    if (instance != this || request == null || active != request || !request.kind.equals("video"))
-      return;
-    request.awaitingResult = false;
-    if (result == Activity.RESULT_CANCELED && request.current())
-      request.owner.captureCanceled(request.id);
-    if (result != Activity.RESULT_OK || data == null || !request.current()) {
-      complete(request, false);
-      return;
-    }
-    Intent capture =
-        new Intent(this, CaptureService.class)
-            .putExtra("result", result)
-            .putExtra("data", data)
-            .putExtra("id", request.id)
-            .putExtra("config", request.configuration);
-    Bundle ownership = new Bundle();
-    ownership.putBinder("owner", new CaptureService.ProjectionOwner(request.owner));
-    capture.putExtras(ownership);
-    try {
-      activity.startForegroundService(capture);
-    } catch (RuntimeException error) {
-      complete(request, false);
-    }
-    // Return only after the physical service has admitted or failed this request.
-  }
-
-  void audioPermissionResult(MediaRequest request) {
-    if (instance != this || request == null || active != request || request.kind.equals("video"))
-      return;
-    request.awaitingResult = false;
-    if (!request.current()
-        || checkSelfPermission(Manifest.permission.RECORD_AUDIO)
-            != PackageManager.PERMISSION_GRANTED) {
-      complete(request, false);
-    } else if (request.kind.equals("microphone")) {
-      CaptureService.startMicrophone(request.owner, request.id, request.configuration);
-    } else CaptureService.startAudio(request.owner, request.id);
-  }
-
-  static void prepared(Runtime owner, long id) {
-    main.post(
-        () -> {
-          AppRuntimeService service = instance;
-          if (service != null
-              && service.active != null
-              && service.active.owner == owner
-              && service.active.id == id) service.complete(service.active, true);
-        });
-  }
-
-  static void preparationDone(Runtime owner, long id) {
-    AppRuntimeService service = instance;
-    if (service == null
-        || service.preparing == null
-        || service.preparing.owner != owner
-        || service.preparing.id != id) return;
-    service.preparing = null;
-    service.processRequests();
-  }
-
-  static void failed(Runtime owner, long id) {
-    main.post(
-        () -> {
-          AppRuntimeService service = instance;
-          if (service != null
-              && service.active != null
-              && service.active.owner == owner
-              && service.active.id == id
-              && !service.active.awaitingResult) service.complete(service.active, false);
-        });
-  }
-
-  static void retire(Runtime owner, long id) {
-    AppRuntimeService service = instance;
-    if (service == null || owner != service.runtime) return;
-    service.requests.removeIf(request -> request.owner == owner && request.id == id);
-    if (service.preparing != null && service.preparing.owner == owner && service.preparing.id == id)
-      service.preparing = null;
-    if (service.active != null
-        && service.active.owner == owner
-        && service.active.id == id
-        && !service.active.awaitingResult) service.complete(service.active, false);
-    else service.processRequests();
-    // Keep an in-flight OS result bound to its original request until it returns.
-  }
-
-  void cancelPending() {
-    for (MediaRequest request : requests) request.owner.captureEnded(request.id);
-    requests.clear();
-    if (preparing != null) {
-      preparing.owner.captureEnded(preparing.id);
-      preparing = null;
-    }
-    if (active != null && !active.awaitingResult) complete(active, false);
-  }
-
-  void complete(MediaRequest request, boolean admitted) {
-    if (active != request) return;
-    active = null;
-    if (!admitted && preparing == request) preparing = null;
-    MainActivity activity = MainActivity.current;
-    if (activity != null && activity.permissionRequest == request) {
-      activity.permissionOwner = null;
-      activity.permissionRequest = null;
-    }
-    if (!admitted) request.owner.captureEnded(request.id);
-    processRequests();
-  }
-
-  static void runtimeStopped(Runtime owner, String reason) {
-    AppRuntimeService service = instance;
-    if (service == null || service.runtime != owner) return;
-    service.failure = new IllegalStateException(reason);
-    service.runtime = null;
-    service.requests.clear();
-    service.active = null;
-    service.preparing = null;
-    service.refreshNotification();
-    CaptureService.shutdown();
-    service.notifyActivity();
   }
 
   static void stop() {
@@ -365,33 +138,22 @@ public final class AppRuntimeService extends Service {
   public void onDestroy() {
     if (instance == this) {
       instance = null;
-      CaptureService.shutdown();
     }
-    CompletableFuture<Runtime> pending = startup;
+    CompletableFuture<NativeRuntime> pending = startup;
     startup = null;
-    Runtime retired = runtime;
+    NativeRuntime retired = runtime;
     runtime = null;
-    requests.clear();
-    active = null;
-    preparing = null;
     work.execute(
         () -> {
-          Runtime closing = retired;
+          NativeRuntime closing = retired;
           if (pending != null) {
             try {
               closing = pending.join();
             } catch (CompletionException ignored) {
             }
           }
-          if (closing != null) {
-            try {
-              closing.close();
-            } catch (Exception error) {
-              android.util.Log.w("PiikRuntime", "runtime shutdown failed", error);
-            }
-          }
+          if (closing != null) closeRuntime(closing);
         });
-    work.shutdown();
     stopForeground(STOP_FOREGROUND_REMOVE);
     super.onDestroy();
   }

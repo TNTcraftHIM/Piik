@@ -1,0 +1,23 @@
+[package]
+name = "piik-channel-android"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+anyhow = "1"
+jni = "0.22"
+ndk-context = "0.1"
+rustls-platform-verifier = "=0.7.1"
+piik-channel-prototype = { path = "../channel-server" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "net"] }
+
+# Workspace-root patch; match channel-native and channel-server.
+[patch.crates-io]
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }

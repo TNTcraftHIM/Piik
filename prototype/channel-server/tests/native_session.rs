@@ -420,9 +420,14 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = app_listener.local_addr().unwrap();
     let (stop, stopped) = oneshot::channel();
-    let service = tokio::spawn(app::serve(app_listener, config(), async {
-        let _ = stopped.await;
-    }));
+    let service = tokio::spawn(app::serve(
+        app_listener,
+        config(),
+        async {
+            let _ = stopped.await;
+        },
+        None,
+    ));
     let local_origin = format!("http://{address}");
     let (status, discovery) = app_http(address, "GET", "/connect-discovery", None, None).await;
     assert_eq!(status, 200);
@@ -557,7 +562,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert!(
         tokio::time::timeout(
             Duration::from_secs(5),
-            app::serve(duplicate, config(), std::future::pending())
+            app::serve(duplicate, config(), std::future::pending(), None)
         )
         .await
         .unwrap()
@@ -749,9 +754,14 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let app_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = app_listener.local_addr().unwrap();
     let (stop, stopped) = oneshot::channel();
-    let service = tokio::spawn(app::serve(app_listener, config(), async {
-        let _ = stopped.await;
-    }));
+    let service = tokio::spawn(app::serve(
+        app_listener,
+        config(),
+        async {
+            let _ = stopped.await;
+        },
+        None,
+    ));
     let (status, health) = app_http(address, "GET", "/health", Some(&origin), None).await;
     assert_eq!(
         status, 200,
@@ -854,9 +864,14 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         let address = listener.local_addr().unwrap();
         let local = format!("http://{address}");
         let (stop, stopped) = oneshot::channel();
-        let service = tokio::spawn(app::serve(listener, config(), async {
-            let _ = stopped.await;
-        }));
+        let service = tokio::spawn(app::serve(
+            listener,
+            config(),
+            async {
+                let _ = stopped.await;
+            },
+            None,
+        ));
         if attempt == 0 {
             let (status, failure) = app_http(
                 address,
