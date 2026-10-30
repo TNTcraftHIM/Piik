@@ -68,7 +68,7 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
   return <DesignNames.Provider value={name}>
     <div className="cd-workspace" data-pane={mobilePane}>
       <ChannelBookmarks className="cd-channel-rail" currentName={channelTitle} currentIcon={<DesignIdentityMark value={channelIdentity} size={28} />}
-        onCurrent={() => { setRoomId("games"); setMobilePane("rooms"); }} />
+        onCurrent={() => setMobilePane("rooms")} />
 
       <aside className="cd-rooms" aria-label={copy("房间", "Rooms")}>
         <header className="cd-channel-heading c3-editable">
