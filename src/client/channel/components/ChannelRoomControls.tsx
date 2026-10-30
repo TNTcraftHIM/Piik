@@ -8,8 +8,8 @@ import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelMedia";
 import "./channel-room-controls.css";
 
-function RoomForm({ room, appHosted, busy, onSave }: {
-  room?: ChannelRoom; appHosted: boolean; busy: boolean; onSave: (settings: RoomSettings) => Promise<unknown>;
+function RoomForm({ room, appHosted, disabled, busy, onSave }: {
+  room?: ChannelRoom; appHosted: boolean; disabled: boolean; busy: boolean; onSave: (settings: RoomSettings) => Promise<unknown>;
 }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
@@ -20,7 +20,7 @@ function RoomForm({ room, appHosted, busy, onSave }: {
   const [removePassword, setRemovePassword] = useState(false);
   return <form className="c3-room-form" onSubmit={event => {
     event.preventDefault();
-    if (!name.trim() || busy) return;
+    if (!name.trim() || disabled) return;
     void onSave({ name: name.trim(), access, hidden: access === "private" && hidden,
       ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) }).catch(() => {});
   }}>
@@ -28,8 +28,8 @@ function RoomForm({ room, appHosted, busy, onSave }: {
       ? (zh ? "由 App 托管，关闭网页后房间继续运行。" : "Hosted by App. The room keeps running when this page closes.")
       : (zh ? "由此网页托管，关闭网页后房间暂停。" : "Hosted by this page. The room pauses when this page closes.")}</p>}
     <label><span>{zh ? "房间名称" : "Room name"}</span><input className="c3-input" required maxLength={64}
-      value={name} disabled={busy} onChange={event => setName(event.target.value)} autoComplete="off" /></label>
-    <fieldset className="lr-toggle c3-room-access" disabled={busy}>
+      value={name} disabled={disabled} onChange={event => setName(event.target.value)} autoComplete="off" /></label>
+    <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
       <legend className="visually-hidden">{zh ? "谁可以进入" : "Who can enter"}</legend>
       {(["public", "private"] as const).map(value => <label key={value}>
         <input type="radio" name="access" value={value} checked={access === value} onChange={() => setAccess(value)} />
@@ -41,16 +41,16 @@ function RoomForm({ room, appHosted, busy, onSave }: {
       : (zh ? "凭房间邀请或密码进入。" : "Enter with a room invitation or password.")}</p>
     {access === "private" && <div className="c3-private-options">
       <label><span>{zh ? "密码（可选）" : "Password (optional)"}</span><input className="c3-input" type="password"
-        maxLength={128} autoComplete="new-password" value={password} disabled={busy || removePassword}
+        maxLength={128} autoComplete="new-password" value={password} disabled={disabled || removePassword}
         placeholder={room?.hasPassword ? (zh ? "留空保留现有密码" : "Leave blank to keep the password") : undefined}
         onChange={event => setPassword(event.target.value)} /></label>
-      {room?.hasPassword && <label className="c3-check"><input type="checkbox" checked={removePassword} disabled={busy}
+      {room?.hasPassword && <label className="c3-check"><input type="checkbox" checked={removePassword} disabled={disabled}
         onChange={event => { setRemovePassword(event.target.checked); setPassword(""); }} />{zh ? "移除密码" : "Remove password"}</label>}
-      <label className="c3-check"><input type="checkbox" checked={hidden} disabled={busy} onChange={event => setHidden(event.target.checked)} />
+      <label className="c3-check"><input type="checkbox" checked={hidden} disabled={disabled} onChange={event => setHidden(event.target.checked)} />
         {zh ? "对未获准的用户隐藏房间" : "Hide from users without access"}</label>
     </div>}
     <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : (zh ? "创建房间" : "Create room")}
-      primary type="submit" disabled={!name.trim()} busy={busy} />
+      primary type="submit" disabled={disabled || !name.trim()} busy={busy} />
   </form>;
 }
 
@@ -70,7 +70,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
   useEffect(() => { setInvite(""); setCopied(false); panel.current?.hidePopover(); }, [room?.id, room?.access]);
   const available = channel.connection === "connected" && (!room || room.available);
-  const busy = !available || channel.pending.has(room ? `room:${room.id}` : "create-room");
+  const busy = channel.pending.has(room ? `room:${room.id}` : "create-room");
   const members = room?.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const run = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return <>
@@ -83,7 +83,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => setOpen(event.newState === "open")}>
-      {open && <><h3>{title}</h3><RoomForm key={room?.id ?? "create"} room={room} appHosted={channel.appConnected} busy={busy} onSave={async settings => {
+      {open && <><h3>{title}</h3><RoomForm key={room?.id ?? "create"} room={room} appHosted={channel.appConnected} disabled={!available || busy} busy={busy} onSave={async settings => {
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
         panel.current?.hidePopover();
