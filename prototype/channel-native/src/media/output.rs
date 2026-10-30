@@ -1,22 +1,24 @@
 //! One admitted output keeps its sender and RTP clock across local encodings.
-use super::{
-    compatible, packetizer::Packetizer, video, SenderReports, Source, SourceFeed, TrackKey,
-    VIDEO_PACKETS,
-};
+use super::{compatible, SenderReports, Source, SourceFeed, TrackKey, VIDEO_PACKETS};
+#[cfg(any(feature = "capture", test))]
+use super::{packetizer::Packetizer, video};
 use anyhow::Result;
+#[cfg(any(feature = "capture", test))]
+use rtc::rtp::codec::h264::H264Payloader;
 use rtc::{
     media_stream::MediaStreamTrack,
     rtcp::payload_feedbacks::{
         full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
     },
     rtp,
-    rtp::codec::h264::H264Payloader,
     rtp_transceiver::rtp_sender::{
         RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters, RTCRtpEncodingParameters,
         RTCRtpRtxParameters, RtpCodecKind,
     },
 };
-use std::sync::{Arc, Weak};
+use std::sync::Arc;
+#[cfg(any(feature = "capture", test))]
+use std::sync::Weak;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
@@ -31,16 +33,19 @@ use webrtc::{
 #[derive(Clone)]
 enum Input {
     Rtp(mpsc::Sender<rtp::Packet>),
+    #[cfg(any(feature = "capture", test))]
     Video(Arc<video::Input>),
 }
 enum Reader {
     Rtp(mpsc::Receiver<rtp::Packet>),
+    #[cfg(any(feature = "capture", test))]
     Video(Arc<video::Input>, Packetizer),
 }
 impl Reader {
     async fn recv(&mut self) -> Option<Result<Vec<rtp::Packet>>> {
         match self {
             Self::Rtp(rx) => rx.recv().await.map(|packet| Ok(vec![packet])),
+            #[cfg(any(feature = "capture", test))]
             Self::Video(input, packetizer) => input
                 .recv()
                 .await
@@ -138,6 +143,7 @@ impl Output {
                 });
                 (Input::Rtp(packets), Reader::Rtp(rx), report.clone())
             }
+            #[cfg(any(feature = "capture", test))]
             SourceFeed::Video(video) => {
                 let report: super::SourceReport = Default::default();
                 let packetizer = Packetizer::new(
@@ -176,6 +182,7 @@ impl Output {
                 }) {
                     match &feedback_input {
                         Input::Rtp(_) => upstream.request_keyframe(),
+                        #[cfg(any(feature = "capture", test))]
                         Input::Video(input) => input.request_keyframe(),
                     }
                 }
@@ -248,16 +255,18 @@ impl Output {
     pub fn rtp_sink(&self) -> Option<mpsc::Sender<rtp::Packet>> {
         match &self.input {
             Input::Rtp(packets) => Some(packets.clone()),
+            #[cfg(any(feature = "capture", test))]
             Input::Video(_) => None,
         }
     }
+    #[cfg(any(feature = "capture", test))]
     pub fn video_input(&self) -> Option<Weak<video::Input>> {
         match &self.input {
             Input::Video(input) => Some(Arc::downgrade(input)),
             Input::Rtp(_) => None,
         }
     }
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[cfg(feature = "capture")]
     pub fn encoding_failed(&self, video: &video::Video) -> bool {
         match &self.input {
             Input::Video(input) => input.failed(video),
@@ -273,6 +282,7 @@ impl Output {
         );
     }
     pub async fn close(self, pc: &dyn PeerConnection) {
+        #[cfg(any(feature = "capture", test))]
         if let Input::Video(input) = &self.input {
             input.close();
         }

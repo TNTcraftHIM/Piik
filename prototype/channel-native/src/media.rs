@@ -1,9 +1,11 @@
 //! Received RTP keeps its upstream clock. Local video access units feed stable
 //! output clocks, independently of the encoding selected for each output.
-#[cfg(any(target_os = "windows", target_os = "macos"))]
+#[cfg(feature = "capture")]
 pub(crate) mod local;
 mod output;
+#[cfg(any(feature = "capture", test))]
 pub(crate) mod packetizer;
+#[cfg(any(feature = "capture", test))]
 pub(crate) mod video;
 pub(crate) use output::Output;
 
@@ -156,6 +158,7 @@ pub(crate) struct H264Sps {
     fragment: Option<(u32, u16, Vec<u8>)>,
 }
 impl H264Sps {
+    #[cfg(feature = "capture")]
     pub fn access_unit(&mut self, bytes: &[u8]) -> Result<()> {
         // Annex B escapes start codes inside NAL payloads. Both three- and
         // four-byte delimiters contain this suffix; only the SPS prefix is needed.
@@ -336,6 +339,7 @@ pub(crate) enum SourceOrigin {
         flow_id: Uuid,
         stream: String,
     },
+    #[cfg(any(feature = "capture", test))]
     Local,
 }
 #[derive(Clone)]
@@ -344,6 +348,7 @@ pub(crate) enum SourceFeed {
         keyframes: watch::Sender<u64>,
         report: SourceReport,
     },
+    #[cfg(any(feature = "capture", test))]
     Video(video::Video),
 }
 #[derive(Clone)]
@@ -363,6 +368,7 @@ impl Source {
             && self.kind == kind
             && match &self.origin {
                 SourceOrigin::Incoming { flow_id, .. } => flow.input_flow_id == Some(*flow_id),
+                #[cfg(any(feature = "capture", test))]
                 SourceOrigin::Local => flow.input_flow_id.is_none(),
             }
     }
@@ -372,6 +378,7 @@ impl Source {
                 SourceFeed::Rtp { keyframes, .. } => {
                     keyframes.send_modify(|n| *n = n.wrapping_add(1));
                 }
+                #[cfg(any(feature = "capture", test))]
                 SourceFeed::Video(video) => video.request_keyframe(),
             }
         }

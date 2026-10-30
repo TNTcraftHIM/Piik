@@ -152,6 +152,7 @@ async fn select(target: &Target) -> Result<Selected> {
     let content = checked(sc::ShareableContent::current().await)?;
     let id: u32 = target.source_id.parse()?;
     match target.kind {
+        TargetKind::Picker => Err(anyhow!("system picker target unavailable")),
         TargetKind::Display => {
             let displays = content.displays();
             let display = displays

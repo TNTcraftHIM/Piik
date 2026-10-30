@@ -3,7 +3,7 @@ use piik_channel_native::session::{run, Config, RoomFile};
 use std::{env, path::PathBuf};
 
 fn main() -> Result<()> {
-    #[cfg(target_os = "windows")]
+    #[cfg(all(feature = "capture", target_os = "windows"))]
     if piik_channel_native::capture::worker_entry()? {
         return Ok(());
     }

@@ -221,6 +221,7 @@ impl TryInto<windows_capture::settings::GraphicsCaptureItemType> for Target {
             .context("invalid capture sourceId")?;
         ensure!(id > 0, "invalid capture sourceId");
         match target.kind {
+            TargetKind::Picker => Err(anyhow!("system picker target unavailable")),
             TargetKind::Window => {
                 unsafe {
                     ensure!(

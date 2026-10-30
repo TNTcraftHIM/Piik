@@ -8,6 +8,10 @@ default-run = "piik-channel-native"
 
 [workspace]
 
+[features]
+default = ["capture"]
+capture = ["dep:ashpd", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus"]
+
 [dependencies]
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 webrtc = "=0.21.1"
@@ -16,7 +20,7 @@ portmapper = { version = "=0.20.0", default-features = false }
 netwatch = "=0.20.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time", "process", "io-util", "io-std"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
-futures-util = "0.3"
+futures-util = { version = "0.3", features = ["sink"] }
 anyhow = "1"
 async-trait = "0.1"
 serde_json = "1"
@@ -29,15 +33,21 @@ sha2 = "=0.10.9"
 subtle = "=2.6.1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-cidre = { version = "=0.29.0", default-features = false, features = ["sc", "vt", "async", "io_surface", "macos_13_0"] }
+cidre = { version = "=0.29.0", optional = true, default-features = false, features = ["sc", "vt", "async", "io_surface", "macos_13_0"] }
 libc = "0.2"
 objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString", "CFCGTypes"] }
 objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "CGEvent", "CGEventTypes", "CGEventSource", "CGRemoteOperation", "CGDisplayConfiguration", "CGDirectDisplay", "CGWindow", "CGGeometry", "libc"] }
 objc2-application-services = { version = "=0.3.2", default-features = false, features = ["std", "HIServices", "AXUIElement", "AXError", "AXValue", "libc"] }
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSEvent"] }
 
-[target.'cfg(any(target_os = "windows", target_os = "macos"))'.dependencies]
-rusty-opus = "=1.0.2"
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "=0.13.13", optional = true, default-features = false, features = ["tokio", "screencast"] }
+gst = { package = "gstreamer", version = "=0.24.5", optional = true, features = ["v1_20"] }
+gst-app = { package = "gstreamer-app", version = "=0.24.5", optional = true, features = ["v1_20"] }
+gst-video = { package = "gstreamer-video", version = "=0.24.5", optional = true, features = ["v1_20"] }
+
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+rusty-opus = { version = "=1.0.2", optional = true }
 
 # Remove after upstream webrtc-rs/rtc#296 and #298 are released; see README.md.
 [patch.crates-io]
@@ -45,7 +55,7 @@ rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3
 
 [target.'cfg(windows)'.dependencies]
 vigem-rust = { version = "=0.2.0", default-features = false, features = ["x360"] }
-wasapi = "=0.26.0"
-windows-capture = "=2.0.1"
+wasapi = { version = "=0.26.0", optional = true }
+windows-capture = { version = "=2.0.1", optional = true }
 windows-core = "=0.62.2"
 windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_Performance", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation", "Win32_Media_Audio", "Win32_Security"] }

@@ -862,7 +862,7 @@ async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Valu
 }
 
 async fn capture_targets() -> Result<Value> {
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[cfg(feature = "capture")]
     {
         tokio::task::spawn_blocking(|| {
             let sources = piik_channel_native::capture::targets()?;
@@ -870,7 +870,7 @@ async fn capture_targets() -> Result<Value> {
             Ok(json!({"sources": sources, "processAudio": audio.process_audio, "systemAudio": audio.system_audio}))
         }).await?
     }
-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    #[cfg(not(feature = "capture"))]
     {
         Ok(json!({"sources": [], "processAudio": false, "systemAudio": false}))
     }
@@ -883,7 +883,7 @@ async fn start_capture(
     target: Target,
     audio: bool,
 ) -> Result<CaptureLease> {
-    if !cfg!(any(target_os = "windows", target_os = "macos")) {
+    if !cfg!(feature = "capture") {
         bail!("capture_unavailable");
     }
     let (result, response) = oneshot::channel();

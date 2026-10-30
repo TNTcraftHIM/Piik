@@ -49,6 +49,7 @@ impl Sink for System {
         let mut rect = RECT::default();
         unsafe {
             match target.kind {
+                TargetKind::Picker => return TargetState::Lost,
                 TargetKind::Display => {
                     let mut info = MONITORINFO {
                         cbSize: size_of::<MONITORINFO>() as u32,

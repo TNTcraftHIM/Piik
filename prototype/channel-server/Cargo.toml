@@ -13,10 +13,14 @@ path = "src/main.rs"
 [[bin]]
 name = "piik-channel-app"
 path = "src/bin/app.rs"
+required-features = ["capture"]
+
+[features]
+capture = ["piik-channel-native/capture"]
 
 [dependencies]
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
-piik-channel-native = { path = "../channel-native" }
+piik-channel-native = { path = "../channel-native", default-features = false }
 rtc = "=0.21.1"
 anyhow = "1"
 futures-util = "0.3"

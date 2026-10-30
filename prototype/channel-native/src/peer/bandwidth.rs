@@ -54,7 +54,7 @@ impl Driver {
                                 });
                             } else {
                                 let rate = rates[&source.id];
-                                #[cfg(any(target_os = "windows", target_os = "macos"))]
+                                #[cfg(feature = "capture")]
                                 let rate =
                                     if self.captures.values().any(|p| p.audio == Some(source.id)) {
                                         Some(
@@ -85,20 +85,20 @@ impl Driver {
     }
 
     fn video_cap(&self, source: &Source) -> Option<u32> {
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
+        #[cfg(feature = "capture")]
         return self
             .captures
             .get(&source.publication_id)
             .filter(|producer| producer.video == source.id)
             .map(|producer| producer.settings.bitrate);
-        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+        #[cfg(not(feature = "capture"))]
         {
             let _ = source;
             None
         }
     }
 
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[cfg(feature = "capture")]
     pub(super) fn reconcile_encodings(&mut self) {
         use crate::media::local;
         let plans = self.bandwidth_plans(Instant::now());

@@ -1,60 +1,67 @@
 //! Native capture producers, independent of rooms and RTP.
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod audio;
-#[cfg(any(target_os = "windows", target_os = "macos", test))]
+#[cfg(any(feature = "capture", test))]
 mod cadence;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod converter;
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(all(feature = "capture", target_os = "windows"), test))]
 mod frame_dropper;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod gpu;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod job;
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "capture", target_os = "linux"))]
+mod linux;
+#[cfg(all(feature = "capture", target_os = "macos"))]
 mod macos;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod mf;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod output;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod process;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod windows;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod worker;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 pub use audio::{audio_capabilities, AudioCapture, AudioControl};
-#[cfg(target_os = "macos")]
+#[cfg(all(feature = "capture", target_os = "linux"))]
+pub use linux::{
+    audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
+    EncodingControl,
+};
+#[cfg(all(feature = "capture", target_os = "macos"))]
 pub use macos::{
     audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
     EncodingControl,
 };
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 pub use process::{Encoding, EncodingControl};
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 pub use windows::targets;
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 pub use windows::{Capture, Control};
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 pub use worker::worker_entry;
 
 /// Keep this guard at the process entry point, outside the async runtime.
 /// WinRT caches agile factories across captures; their MTA must outlive every
 /// worker, including the idle gaps between captures and capability probes.
 pub struct Runtime {
-    #[cfg(target_os = "windows")]
+    #[cfg(all(feature = "capture", target_os = "windows"))]
     mta: ::windows::Win32::System::Com::CO_MTA_USAGE_COOKIE,
 }
 impl Runtime {
     pub fn new() -> anyhow::Result<Self> {
         Ok(Self {
-            #[cfg(target_os = "windows")]
+            #[cfg(all(feature = "capture", target_os = "windows"))]
             mta: unsafe { ::windows::Win32::System::Com::CoIncrementMTAUsage()? },
         })
     }
 }
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 impl Drop for Runtime {
     fn drop(&mut self) {
         let _ = unsafe { ::windows::Win32::System::Com::CoDecrementMTAUsage(self.mta) };
@@ -68,7 +75,7 @@ pub struct AudioCapabilities {
     pub system_audio: bool,
 }
 
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+#[cfg(not(feature = "capture"))]
 pub fn audio_capabilities() -> AudioCapabilities {
     AudioCapabilities::default()
 }
@@ -82,14 +89,14 @@ pub struct AudioFrame {
 }
 
 /// WGC and WASAPI both timestamp capture in QPC units of 100 ns.
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 #[derive(Clone, Copy)]
 struct CaptureClock {
     frequency: i64,
     qpc: i64,
     instant: std::time::Instant,
 }
-#[cfg(target_os = "windows")]
+#[cfg(all(feature = "capture", target_os = "windows"))]
 impl CaptureClock {
     fn new() -> anyhow::Result<Self> {
         let mut frequency = 0;
@@ -133,6 +140,7 @@ impl CaptureClock {
 pub enum TargetKind {
     Window,
     Display,
+    Picker,
 }
 
 /// The existing picker identity. Window handles are fenced by process creation.
@@ -171,6 +179,7 @@ impl Settings {
         }
     }
 
+    #[cfg(feature = "capture")]
     fn validate(self) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.width > 0

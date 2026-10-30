@@ -80,7 +80,7 @@ saved-site controls as the shared Web interface. Build the frontend and start it
 
 ```powershell
 node node_modules/vite/bin/vite.js build --config prototype/channel-browser/web.vite.config.ts
-cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --bin piik-channel-app
+cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
 ```
 
 The App opens its local page in the system Browser, or the saved starred site.
@@ -350,7 +350,8 @@ cargo +1.91.0 build --manifest-path prototype/channel-native/Cargo.toml
 cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml
 cargo test --manifest-path prototype/channel-core/Cargo.toml
 cargo test --manifest-path prototype/channel-core/Cargo.toml --features sqlite
-cargo +1.91.0 build --manifest-path prototype/channel-server/Cargo.toml
+cargo +1.91.0 build --manifest-path prototype/channel-server/Cargo.toml --bin piik-channel-prototype
+cargo +1.91.0 build --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
 node prototype/channel-browser/build.mjs
 npm run typecheck
 node prototype/channel-server/run-browser-check.mjs --protocol
@@ -367,8 +368,11 @@ in this crate, including App approval, storage ownership and startup/retry. They
 Native executable for process-lock checks, so build it first. With a custom Cargo
 target directory, set `CHANNEL_NATIVE_EXECUTABLE` to that executable. Use
 `cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml --test native_session`
-to run those tests alone. `cargo build` above builds both Server and App binaries;
-`CHANNEL_APP_EXECUTABLE` can select a separately built App for `--app`.
+to run those tests alone. Build Server and App separately as above: App enables
+the Native `capture` feature, while Server needs only forwarding. Building both
+with `--features capture --bins` would also link desktop capture dependencies
+into that Server artifact. `CHANNEL_APP_EXECUTABLE` can select a separately built
+App for `--app`.
 
 The [Native participant checks](../channel-native/README.md#checks) add
 `--native` for concurrent Browser-to-Native picture, voice and file forwarding,

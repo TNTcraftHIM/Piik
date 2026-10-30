@@ -48,6 +48,7 @@ impl Sink for System {
             return TargetState::Lost;
         };
         let rect = match target.kind {
+            TargetKind::Picker => return TargetState::Lost,
             TargetKind::Display => {
                 if !CGDisplayIsActive(id) {
                     return TargetState::Suspended;

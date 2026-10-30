@@ -691,6 +691,20 @@ display selection or video dimensions. It uses the same App capture lease,
 producer, input registration and encoding allocation as Windows. The capture
 module is type-checked; Apple SDK builds, packaging and runtime acceptance remain
 in [TODO](../todo.md).
+
+The Linux adapter uses the same producer boundary. A typed
+[ScreenCast Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
+owns selection, its authorized PipeWire connection and revocation. The source
+copies each latest image out of PipeWire's pool once; independent GStreamer
+encoders consume that immutable image with their own raw-input backpressure and
+complete-access-unit queues. Each pipeline uses the same system-time domain;
+segment running time removes codec offsets before projecting presentation time
+into the shared media clock. Portal closure ends the source and its encodings;
+one encoder failure ends only its outputs. System-output sound uses a separate
+PulseAudio monitor pipeline. App enables
+this capture feature; Server forwarding has no desktop capture dependency.
+Platform acceptance is tracked in [verification status](../verification-status.md#device-evidence-boundary).
+
 Requested dimensions are ceilings: each encoder fits the source's natural pixel
 size without enlarging small sources. A Windows size change drains old access
 units through the existing MFT event loop, reconfigures that same encoder and

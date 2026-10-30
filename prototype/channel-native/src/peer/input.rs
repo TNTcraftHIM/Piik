@@ -1,16 +1,22 @@
 //! Opaque input follows the core's selected lineage on the existing pair.
 use super::*;
-use crate::input::{Desktop, Registration, Reply, Source as InputSource, SourceView};
-use futures_util::{
-    stream::{self, SelectAll},
-    Stream,
-};
+#[cfg(all(
+    any(feature = "capture", test),
+    any(target_os = "windows", target_os = "macos")
+))]
+use crate::input::SourceView;
+use crate::input::{Desktop, Registration, Reply, Source as InputSource};
+use futures_util::{stream::SelectAll, Stream};
 use piik_channel_core::input::{self, InputBinding, InputFrame, InputRegistration};
 use serde::Deserialize;
 
 pub(super) struct Inputs {
     local: Uuid,
     snapshot: watch::Receiver<Option<Snapshot>>,
+    #[cfg(all(
+        any(feature = "capture", test),
+        any(target_os = "windows", target_os = "macos")
+    ))]
     desktop: Option<Desktop>,
     bindings: HashMap<(Uuid, Uuid), InputBinding>,
     registrations: Vec<InputRegistration>,
@@ -30,9 +36,18 @@ impl Inputs {
         snapshot: watch::Receiver<Option<Snapshot>>,
         desktop: Option<Desktop>,
     ) -> Self {
+        #[cfg(not(all(
+            any(feature = "capture", test),
+            any(target_os = "windows", target_os = "macos")
+        )))]
+        let _ = desktop;
         Self {
             local,
             snapshot,
+            #[cfg(all(
+                any(feature = "capture", test),
+                any(target_os = "windows", target_os = "macos")
+            ))]
             desktop,
             bindings: HashMap::new(),
             registrations: vec![],
@@ -41,7 +56,10 @@ impl Inputs {
         }
     }
 
-    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    #[cfg(all(
+        any(feature = "capture", test),
+        any(target_os = "windows", target_os = "macos")
+    ))]
     pub fn source(
         &mut self,
         publication: Uuid,
@@ -63,7 +81,7 @@ impl Inputs {
                 secret: registration.secret,
             })?;
         }
-        self.replies.push(Box::pin(stream::unfold(
+        self.replies.push(Box::pin(futures_util::stream::unfold(
             replies,
             move |mut replies| async move {
                 replies.recv().await.map(|reply| ((video, reply), replies))
@@ -194,6 +212,7 @@ impl Inputs {
         }
     }
 
+    #[cfg(any(feature = "capture", test))]
     pub fn end_source(&mut self, publication: Uuid) {
         if let Some(source) = self.sources.remove(&publication) {
             source.close();

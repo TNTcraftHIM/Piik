@@ -36,6 +36,23 @@ encoding demand and page lease; it does not use the Windows worker process.
 Its source, source sound and encoding owners are defined in the
 [network design](../../docs/research/channel-network-design.md). The capture
 module passes Apple-target type checking; Apple SDK builds and native acceptance remain open.
+
+Linux uses the system Portal picker through `ashpd` and one PipeWire capture.
+Each hardware H264 encoding has its own GStreamer pipeline; system-output audio
+uses the PulseAudio monitor, including PipeWire's PulseAudio compatibility service.
+The App enables the Native `capture`
+Cargo feature; Server disables it so forwarding does not require desktop media
+libraries. Linux App builds need GStreamer 1.20+ development libraries and
+`pkg-config`; runtime capture needs the PipeWire, conversion, H264 parser and
+hardware encoder plugins, plus a working desktop Portal backend. Linux input
+remains separate work under the same Portal session. Hardware selection uses
+the VA/VA-API, NVENC, MSDK and QSV plugins only when the installed encoder exposes
+live bitrate control. Selection opens the actual device and skips unavailable encoders.
+The [network design](../../docs/research/channel-network-design.md) owns source,
+clock and encoder lifetimes; [verification status](../../docs/verification-status.md#device-evidence-boundary)
+owns platform acceptance. `ashpd` uses MIT licensing; the GStreamer Rust bindings
+use MIT/Apache-2.0. GStreamer and system-installed plugins retain their own licenses.
+
 The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
 Each local output packetizes complete access units on its own stable RTP clock;
