@@ -1052,7 +1052,6 @@ impl Driver {
                         .lock()
                         .unwrap()
                         .insert(plan.peer_id, (plan.id, data.senders()));
-                    self.files.attach(plan.peer_id, data.senders()).await;
                     self.pairs.insert(
                         plan.id,
                         Pair {
@@ -1086,6 +1085,9 @@ impl Driver {
                             overflow,
                         },
                     );
+                    self.files
+                        .attach(plan.peer_id, self.pairs[&plan.id].data.senders())
+                        .await;
                 }
                 let id = plan.id;
                 let p = self.pairs.get_mut(&id).unwrap();
