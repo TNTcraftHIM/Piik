@@ -631,8 +631,10 @@ Probing starts on first media, also after 30 seconds of silence; static media ca
 learn capacity before motion resumes. Two Chrome receivers complete probing,
 decode and switch encodings with stable track/SSRC/SDP. In an isolated App build,
 the candidate now drives the actual Native allocator and hardware encoders from
-its 300 kbps initial target. Each connection supplies its aggregate configured
-media demand, independently of actual usage and current allocation. Two Chrome
+its 300 kbps initial target. Each connection aggregates known local media
+configuration ceilings, independently of actual usage and current allocation.
+Received sources without a known ceiling retain unbounded demand; their measured
+source cost informs allocation, not a fabricated configuration limit. Two Chrome
 viewers return to one shared baseline encoder after capacity is learned; leaving
 one viewer preserves the other. Closing the capture page releases video, audio
 and encoder workers while the App-hosted room continues.
