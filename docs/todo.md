@@ -12,10 +12,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   Rust owners. Complete Native low-bandwidth adaptation, capture/input on the
   remaining platforms and packaging over the shared UI and Native participant.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Resolve the remaining whole-App weak-network recovery acceptance of the
+  Resolve the Native-to-Native layered-video transport stall and remaining
+  whole-App weak-network recovery acceptance of the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),
-  including existing per-child H264 derivation for layered Native inputs, and
-  complete independent weak-downlink adaptation for the default forwarding-only
+  and complete independent weak-downlink adaptation for the default forwarding-only
   Server, including VP8.
   Preserve lightweight Server deployment and healthy siblings, then promote
   the candidate after the held dependency decision. It includes transport
