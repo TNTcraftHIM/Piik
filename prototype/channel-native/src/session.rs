@@ -37,6 +37,9 @@ use uuid::Uuid;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
+#[cfg(all(test, target_os = "windows"))]
+mod tests;
+
 fn new_signer() -> Result<SessionSigner> {
     let mut seed = [0; 32];
     getrandom::fill(&mut seed)
@@ -229,7 +232,7 @@ struct Session {
     signer: Arc<SessionSigner>,
     hosting: Option<Hosting>,
     opening: BTreeMap<String, Vec<oneshot::Sender<Result<RoomSummary, String>>>>,
-    pending_captures: BTreeMap<String, StartCapture>,
+    pending_captures: BTreeMap<String, PendingCapture>,
 }
 
 pub struct OpenRoom {
@@ -244,6 +247,21 @@ pub struct StartCapture {
     pub settings: Settings,
     pub audio: bool,
     pub result: oneshot::Sender<Result<CaptureLease, String>>,
+}
+
+struct PendingCapture {
+    binding_id: Uuid,
+    request: StartCapture,
+}
+
+fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
+    state
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == room_id && room.authorized && room.available)
+        .and_then(|room| room.delivery.as_ref())
+        .map(|delivery| delivery.binding_id)
 }
 
 pub enum HostCommand {
@@ -321,7 +339,7 @@ pub async fn run_host(
 impl Session {
     fn fail_captures(&mut self, code: &str) {
         for request in std::mem::take(&mut self.pending_captures).into_values() {
-            let _ = request.result.send(Err(code.into()));
+            let _ = request.request.result.send(Err(code.into()));
         }
     }
 
@@ -601,33 +619,6 @@ impl Session {
                     });
                 }
                 self.recovery = None;
-                // A disconnected pending Publish may have completed without its
-                // reply reaching us. Only real local producer ownership survives.
-                let live = self.live.as_mut().unwrap();
-                let captures = await_peer(
-                    live.peers.capture_publications(),
-                    &mut live.commands,
-                    &live.pairs,
-                    &mut live.room,
-                    &live.peers,
-                    socket,
-                )
-                .await?;
-                for publication in &state.publications {
-                    if publication.session_id == live.session
-                        && matches!(publication.kind, Kind::Screen)
-                        && !captures.contains(&publication.id)
-                    {
-                        write(
-                            socket,
-                            &Command::Unpublish {
-                                publication_id: publication.id,
-                            },
-                            None,
-                        )
-                        .await?;
-                    }
-                }
                 self.state(state, socket).await?;
                 if resumed {
                     let live = self.live.as_mut().unwrap();
@@ -728,9 +719,9 @@ impl Session {
                 if self
                     .pending_captures
                     .get(&id)
-                    .is_some_and(|request| request.room_id == room_id)
+                    .is_some_and(|pending| pending.request.room_id == room_id)
                 {
-                    let request = self.pending_captures.remove(&id).unwrap();
+                    let request = self.pending_captures.remove(&id).unwrap().request;
                     match result {
                         RoomResult::Done => self.finish_capture(request, socket).await?,
                         RoomResult::Error { code } => {
@@ -751,6 +742,7 @@ impl Session {
                     .as_ref()
                     .and_then(|id| self.pending_captures.remove(id))
                 {
+                    let request = request.request;
                     let publication_id = request.publication_id;
                     let _ = request.result.send(Err(code));
                     self.unpublish_capture(publication_id, socket).await?;
@@ -790,6 +782,17 @@ impl Session {
             let _ = request.result.send(Err("capture_unavailable".into()));
             return Ok(());
         }
+        let binding_id = self.live.as_ref().and_then(|live| {
+            live.room
+                .snapshot
+                .borrow()
+                .as_ref()
+                .and_then(|state| capture_binding(state, &request.room_id))
+        });
+        let Some(binding_id) = binding_id else {
+            let _ = request.result.send(Err("room_unavailable".into()));
+            return Ok(());
+        };
         let publication = PublicationInput {
             id: request.publication_id,
             room_id: request.room_id.clone(),
@@ -797,7 +800,13 @@ impl Session {
             muted: false,
         };
         let id = Uuid::new_v4().to_string();
-        self.pending_captures.insert(id.clone(), request);
+        self.pending_captures.insert(
+            id.clone(),
+            PendingCapture {
+                binding_id,
+                request,
+            },
+        );
         write(socket, &Command::Publish { publication }, Some(&id)).await
     }
 
@@ -943,6 +952,18 @@ impl Session {
     }
 
     async fn state(&mut self, state: Snapshot, socket: &mut Socket) -> Result<()> {
+        let retired: Vec<_> = self
+            .pending_captures
+            .iter()
+            .filter_map(|(id, pending)| {
+                (capture_binding(&state, &pending.request.room_id) != Some(pending.binding_id))
+                    .then_some(id.clone())
+            })
+            .collect();
+        for id in retired {
+            let request = self.pending_captures.remove(&id).unwrap().request;
+            let _ = request.result.send(Err("room_unavailable".into()));
+        }
         if let Some(live) = &mut self.live {
             if let Some(user) = state
                 .sessions
@@ -954,6 +975,36 @@ impl Session {
             }
             live.room.snapshot.send_replace(Some(state.clone()));
             live.pairs = state.pairs.iter().map(|pair| pair.id).collect();
+            let captures = await_peer(
+                live.peers.capture_publications(),
+                &mut live.commands,
+                &live.pairs,
+                &mut live.room,
+                &live.peers,
+                socket,
+            )
+            .await?;
+            // A room can recover a committed Publish after its caller has retired.
+            // Only a real producer or its current startup request owns that activity.
+            for publication in &state.publications {
+                if publication.session_id == live.session
+                    && matches!(publication.kind, Kind::Screen)
+                    && !captures.contains(&publication.id)
+                    && !self
+                        .pending_captures
+                        .values()
+                        .any(|pending| pending.request.publication_id == publication.id)
+                {
+                    write(
+                        socket,
+                        &Command::Unpublish {
+                            publication_id: publication.id,
+                        },
+                        None,
+                    )
+                    .await?;
+                }
+            }
             await_peer(
                 live.peers
                     .update(state.pairs, state.publications, state.files),
