@@ -8,6 +8,11 @@ on:
       - main
   workflow_dispatch:
     inputs:
+      channel_native:
+        description: Build the experimental Rust Native and App against the macOS SDK only
+        required: false
+        default: false
+        type: boolean
       app_checks:
         description: Build and verify App and Server candidates
         required: false
@@ -48,6 +53,37 @@ concurrency:
   queue: max
 
 jobs:
+  channel-native:
+    if: github.event_name == 'workflow_dispatch' && inputs.channel_native == true
+    runs-on: xcode-27
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash --noprofile --norc -e -o pipefail {0}
+    env:
+      CARGO_TARGET_DIR: ${{ runner.temp }}/channel-native-target
+      MACOSX_DEPLOYMENT_TARGET: '13.0'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Install Rust 1.91.0
+        run: rustup toolchain install 1.91.0 --profile minimal
+      - name: Build Rust Server and App with capture
+        run: |
+          mkdir -p "$RUNNER_TEMP/channel-native-logs"
+          cargo +1.91.0 build --locked --manifest-path prototype/channel-server/Cargo.toml --features capture --bins 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/server-app.log"
+      - name: Compile Native tests without running them
+        run: cargo +1.91.0 test --locked --manifest-path prototype/channel-native/Cargo.toml --features capture --tests --no-run 2>&1 | tee "$RUNNER_TEMP/channel-native-logs/native-tests.log"
+      - name: Save macOS SDK build logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: channel-native-macos-${{ github.sha }}
+          path: ${{ runner.temp }}/channel-native-logs/
+          if-no-files-found: warn
+          retention-days: 7
+
   release-notes:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
@@ -66,7 +102,7 @@ jobs:
         run: node scripts/release-notes.mjs --pull-request
 
   validate:
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.channel_native == true)
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.version }}
