@@ -16,7 +16,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),
   and complete independent weak-downlink adaptation for the default forwarding-only
   Server, including VP8. Capture-enabled H264 derivation does not supply that
-  path. Preserve lightweight Server deployment and healthy siblings, then promote
+  path. Before adding upstream source-demand control, settle the tradeoff between
+  a branch's shared low-layer quality and its additional encoder/control cost.
+  Preserve lightweight Server deployment and healthy siblings, then promote
   the candidate after the held dependency decision. It includes transport
   probing/feedback, incoming-H264 derivation and coordinated UDP preparation
   under the existing connection owner alongside gateway mapping.
