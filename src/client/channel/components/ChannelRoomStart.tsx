@@ -19,6 +19,6 @@ export function ChannelRoomStart({ roomName, entry, empty = true }: {
     : copy("还没有消息。打个招呼吧。", "No messages yet. Say hello.");
   return <div className={`c3-room-start${empty ? " is-empty" : ""}${entry ? " is-entry" : ""}`}>
     <span className="c3-room-start-mark"><Glyph name="couch" size={38} /></span>
-    {!vis && <div><h3>{title}</h3>{empty && <p>{note}</p>}</div>}
+    <div className={vis ? "visually-hidden" : undefined}><h3>{title}</h3>{empty && <p>{note}</p>}</div>
   </div>;
 }
