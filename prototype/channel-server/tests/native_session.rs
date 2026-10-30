@@ -577,7 +577,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let stopped: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
     assert_eq!(stopped, json!({"id":"stopped-capture","result":null}));
-    #[cfg(target_os = "windows")]
+    #[cfg(all(feature = "capture", target_os = "windows"))]
     {
         use piik_channel_core::host::{HostAction, RoomResult};
         let target = json!({"kind":"window","sourceId":"0","title":"Unopened test target","pid":0});

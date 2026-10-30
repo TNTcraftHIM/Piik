@@ -14,6 +14,7 @@ fn main() -> Result<()> {
 
 #[tokio::main]
 async fn run() -> Result<()> {
+    let stop = piik_channel_native::shutdown_signal()?;
     let executable = env::current_exe().context("Locate the App executable")?;
     let resources = executable.parent().context("Locate the App directory")?;
     let config = Config {
@@ -59,8 +60,5 @@ async fn run() -> Result<()> {
         }
         available.context("Piik App discovery ports are occupied")?
     };
-    serve(listener, config, async {
-        let _ = tokio::signal::ctrl_c().await;
-    })
-    .await
+    serve(listener, config, stop).await
 }

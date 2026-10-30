@@ -8,3 +8,6 @@ pub mod input;
 mod media;
 pub mod peer;
 pub mod session;
+mod shutdown;
+
+pub use shutdown::shutdown_signal;

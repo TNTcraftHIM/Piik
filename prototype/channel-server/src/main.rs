@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let stop = piik_channel_native::shutdown_signal()?;
     let port = std::env::var("PIIK_CHANNEL_PORT")
         .unwrap_or_else(|_| "8791".into())
         .parse::<u16>()
@@ -35,8 +36,5 @@ async fn main() -> anyhow::Result<()> {
     println!(
         "Web interface: {origin}/__channel-preview (use your configured owner or invitation key)"
     );
-    serve_server(listener, state, directory, owner, routes, async {
-        let _ = tokio::signal::ctrl_c().await;
-    })
-    .await
+    serve_server(listener, state, directory, owner, routes, stop).await
 }

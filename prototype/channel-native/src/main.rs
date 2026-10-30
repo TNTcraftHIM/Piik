@@ -12,6 +12,7 @@ fn main() -> Result<()> {
 }
 #[tokio::main]
 async fn run_native() -> Result<()> {
+    let stop = piik_channel_native::shutdown_signal()?;
     let mut args = env::args().skip(1);
     let mut rooms = Vec::new();
     while let Some(flag) = args.next() {
@@ -34,8 +35,5 @@ async fn run_native() -> Result<()> {
         key: env::var("PIIK_CHANNEL_NATIVE_KEY").ok(),
         credential: env::var("PIIK_CHANNEL_NATIVE_CREDENTIAL").ok(),
     };
-    run(config, rooms, async {
-        let _ = tokio::signal::ctrl_c().await;
-    })
-    .await
+    run(config, rooms, stop).await
 }
