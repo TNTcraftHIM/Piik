@@ -758,6 +758,9 @@ A required lower-rate replacement releases that output's incumbent and queued
 frames immediately, retaining its last emitted source time. A delayed replacement
 IDR can then cross a fixed boundary instead of chasing the still-playing original.
 Optional restoration keeps playing its incumbent until the new IDR arrives.
+Small source-time skew between encodings is handled by the outgoing RTP timeline,
+following [LiveKit's source-switch mapping](https://github.com/livekit/livekit/blob/master/pkg/sfu/forwarder.go).
+Original capture timestamps and their NTP correlation remain unchanged.
 Each physical encoder has its own feed identity. Failure is applied atomically
 against an output's current or required pending feed; a failed optional upgrade
 preserves the incumbent. The existing driver loop consumes latest targets
@@ -790,7 +793,7 @@ The isolated incoming-H264 candidates share complete source access units between
 original forwarding and one demand-driven decoder. Windows GPU, Linux GStreamer
 and macOS VideoToolbox adapters feed the same derived-producer boundary.
 Decoded frames reuse local capture's encoding and retirement owners. Stable outputs
-adopt a newer keyframe before retiring their previous encoding; closing a weak
+adopt the replacement's keyframe before retiring their previous encoding; closing a weak
 output releases its derivation without stopping healthy siblings. Source RTP/SR
 mapping preserves the sender's clock through decoding and re-encoding.
 The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
