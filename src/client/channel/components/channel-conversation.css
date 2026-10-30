@@ -5,6 +5,7 @@
 .c3-chat-heading { display: flex; align-items: center; gap: 7px; font-size: 12px; }
 .c3-chat-heading > span { color: var(--muted); margin-inline-start: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-message-log { flex: 1; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: 2px 3px; scrollbar-width: thin; }
+.c3-conversation-loading { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
 .c3-room-start { display: flex; align-items: center; gap: 15px; margin: 24px 0 36px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
 .c3-room-start-mark { display: grid; place-items: center; flex: none; width: 62px; height: 62px; border: 1px solid var(--line); border-radius: 20px; background: var(--wall); color: var(--couch-dark); }
 .c3-room-start h3 { margin: 0; font-size: 21px; line-height: 1.4; font-weight: 650; letter-spacing: -.025em; overflow-wrap: anywhere; text-wrap: balance; }

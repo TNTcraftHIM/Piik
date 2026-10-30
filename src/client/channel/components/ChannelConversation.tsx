@@ -111,7 +111,11 @@ export function ChannelConversation({ roomId, roomName, entry, messages, users, 
           void onHistory(roomId).catch(() => { readingAnchor.current = null; });
         }} /></div>}
       {!history?.hasMore && <ChannelRoomStart roomName={roomName}
-        entry={!roomId ? entry ?? { kind: "entry" } : undefined} empty={!messages.length} />}
+        entry={!roomId ? entry ?? { kind: "entry" } : undefined}
+        empty={!messages.length && (!roomId || (!!history && !loadingHistory))} />}
+      {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
+        <Glyph name="loader" className="lr-spin" size={18} /><span>{zh ? "正在加载消息…" : "Loading messages…"}</span>
+      </div>}
       {messages.map((message, index) => {
         const previous = messages[index - 1];
         const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
