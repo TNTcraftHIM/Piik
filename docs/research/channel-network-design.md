@@ -774,6 +774,16 @@ preserving selected media and the connection. Pending selected video reserves
 trial capacity before its sender is ready. An otherwise empty connection still
 starts ordinary forwarding: the SDK's initial estimate is not measured capacity.
 No new retry timer, route protocol or adjustable-opaque representation is added.
+Default Server adaptation follows the source-supplied, forwarding-only model in
+[ADR-0013](../adr/0013-embedded-node-local-media.md). Standard
+[simulcast](https://www.rfc-editor.org/rfc/rfc8853) encodings remain representations
+of one admitted source and flow, not separate publications or route operations.
+Receiving capability belongs to the endpoint session and is projected only to
+its assigned peers. Each RID retains its own RTP/Sender Report mapping into one
+source timeline. Outputs reuse complete-frame packetization and keyframe handoff;
+the source supplies the encoding work, so the default Server needs no decoder or
+encoder runtime. Layered Native forwarding must preserve downstream supply rather
+than collapse it into a single low encoding. [TODO](../todo.md) owns completion.
 The isolated incoming-H264 candidates share complete source access units between
 original forwarding and one demand-driven decoder. Windows GPU, Linux GStreamer
 and macOS VideoToolbox adapters feed the same derived-producer boundary.
