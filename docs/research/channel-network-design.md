@@ -672,6 +672,13 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
+Requested dimensions are ceilings: each encoder fits the source's natural pixel
+size without enlarging small sources. A Windows size change drains old access
+units through the existing MFT event loop, reconfigures that same encoder and
+resumes at a keyframe. The current bitrate, source clock and output identity
+survive the change. This follows the
+[asynchronous MFT drain contract](https://learn.microsoft.com/en-us/windows/win32/medfound/mft-message-command-drain)
+and [Chromium's encoder reconfiguration](https://chromium.googlesource.com/chromium/src/media/+/cf1aa0045e1e041b5da6d932ae89e2374db4c4e8/gpu/windows/media_foundation_video_encode_accelerator_win.cc#1307).
 WGC remains in the parent; each encoding owns one same-executable child. A single
 raw-frame credit requests a newer capture only when the encoder needs it.
 Same-adapter NT shared handles carry GPU textures through two copies; the child

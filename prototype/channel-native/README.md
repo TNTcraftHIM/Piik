@@ -45,7 +45,7 @@ continues. Each physical connection's target now allocates its confirmed local
 video outputs. Constrained outputs control their own encoding; zero demand pauses
 only that output, and restoration waits for a newer baseline keyframe before
 retiring its encoder. The [network design](../../docs/research/channel-network-design.md)
-owns measured behavior and the fixed-resolution encoding boundary;
+owns measured behavior and the source-sized encoding boundary;
 [TODO](../../docs/todo.md) owns remaining adaptation, input and platform work.
 
 Windows keyboard, mouse and text input share one App-owned desktop executor.

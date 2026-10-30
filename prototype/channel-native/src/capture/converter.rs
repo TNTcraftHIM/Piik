@@ -78,20 +78,6 @@ impl Converter {
                     right: input_width as i32,
                     bottom: input_height as i32,
                 };
-                // Fit the selected source, preserving its aspect ratio across resize.
-                let scale =
-                    (width as f64 / input_width as f64).min(height as f64 / input_height as f64);
-                let (w, h) = (
-                    (input_width as f64 * scale).round() as i32,
-                    (input_height as f64 * scale).round() as i32,
-                );
-                let (x, y) = ((width as i32 - w) / 2, (height as i32 - h) / 2);
-                let dest = RECT {
-                    left: x,
-                    top: y,
-                    right: x + w,
-                    bottom: y + h,
-                };
                 let output = RECT {
                     left: 0,
                     top: 0,
@@ -101,13 +87,9 @@ impl Converter {
                 self.context
                     .VideoProcessorSetStreamSourceRect(&processor, 0, true, Some(&source));
                 self.context
-                    .VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&dest));
+                    .VideoProcessorSetStreamDestRect(&processor, 0, true, Some(&output));
                 self.context
                     .VideoProcessorSetOutputTargetRect(&processor, true, Some(&output));
-                let mut black = D3D11_VIDEO_COLOR::default();
-                black.Anonymous.RGBA.A = 1.0;
-                self.context
-                    .VideoProcessorSetOutputBackgroundColor(&processor, false, &black);
                 self.context.VideoProcessorSetStreamFrameFormat(
                     &processor,
                     0,

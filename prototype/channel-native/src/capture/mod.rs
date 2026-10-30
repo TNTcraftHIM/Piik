@@ -152,6 +152,18 @@ pub struct Settings {
     pub bitrate: u32,
 }
 impl Settings {
+    /// Fit within the source's natural pixel size and this encoding's ceiling.
+    pub fn fitted(self, width: f64, height: f64) -> Self {
+        let scale = (self.width as f64 / width)
+            .min(self.height as f64 / height)
+            .min(1.0);
+        Self {
+            width: ((width * scale) as u32 & !1).max(2),
+            height: ((height * scale) as u32 & !1).max(2),
+            ..self
+        }
+    }
+
     fn validate(self) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.width > 0
@@ -167,6 +179,33 @@ impl Settings {
             "capture fps and bitrate must be positive"
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Settings;
+
+    #[test]
+    fn encoding_ceiling_fits_the_source_without_enlarging_it() {
+        let ceiling = Settings {
+            width: 1920,
+            height: 1080,
+            fps: 30,
+            bitrate: 600_000,
+        };
+        for (source, expected) in [
+            ((640.0, 360.0), (640, 360)),
+            ((360.0, 640.0), (360, 640)),
+            ((3840.0, 2160.0), (1920, 1080)),
+            ((1080.0, 1920.0), (606, 1080)),
+            ((641.0, 481.0), (640, 480)),
+            ((200.5, 300.5), (200, 300)),
+        ] {
+            let fitted = ceiling.fitted(source.0, source.1);
+            assert_eq!((fitted.width, fitted.height), expected);
+            assert_eq!((fitted.fps, fitted.bitrate), (ceiling.fps, ceiling.bitrate));
+        }
     }
 }
 

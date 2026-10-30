@@ -14,7 +14,7 @@ use windows::{
     Win32::{
         Foundation::E_NOTIMPL,
         Graphics::{
-            Direct3D11::{ID3D11Device, ID3D11Texture2D},
+            Direct3D11::{ID3D11Device, ID3D11Texture2D, D3D11_TEXTURE2D_DESC},
             Dxgi::IDXGIDevice,
         },
         Media::MediaFoundation::*,
@@ -102,6 +102,24 @@ fn media_type(subtype: &windows::core::GUID, settings: Settings) -> Result<IMFMe
         Ok(media)
     }
 }
+
+fn set_format(transform: &IMFTransform, settings: Settings) -> Result<MFT_OUTPUT_STREAM_INFO> {
+    unsafe {
+        let output = media_type(&MFVideoFormat_H264, settings)?;
+        output.SetUINT32(&MF_MT_AVG_BITRATE, settings.bitrate)?;
+        output.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base.0 as u32)?;
+        transform.SetOutputType(0, &output, 0)?;
+        transform.SetInputType(0, &media_type(&MFVideoFormat_NV12, settings)?, 0)?;
+        Ok(transform.GetOutputStreamInfo(0)?)
+    }
+}
+
+fn fitted(settings: Settings, frame: &RawFrame) -> Settings {
+    let mut desc = D3D11_TEXTURE2D_DESC::default();
+    unsafe { frame.texture.GetDesc(&mut desc) };
+    settings.fitted(desc.Width as f64, desc.Height as f64)
+}
+
 impl Encoder {
     fn new(device: &ID3D11Device, settings: Settings, shared: Arc<Shared>) -> Result<Self> {
         unsafe {
@@ -168,12 +186,7 @@ impl Encoder {
                     &CODECAPI_AVEncCommonMeanBitRate,
                     &VARIANT::from(settings.bitrate),
                 )?;
-                let output = media_type(&MFVideoFormat_H264, settings)?;
-                output.SetUINT32(&MF_MT_AVG_BITRATE, settings.bitrate)?;
-                output.SetUINT32(&MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base.0 as u32)?;
-                transform.SetOutputType(0, &output, 0)?;
-                transform.SetInputType(0, &media_type(&MFVideoFormat_NV12, settings)?, 0)?;
-                let info = transform.GetOutputStreamInfo(0)?;
+                let info = set_format(&transform, settings)?;
                 let events = transform.cast::<IMFMediaEventGenerator>()?;
                 let callback: IMFAsyncCallback = Events {
                     generator: events.clone(),
@@ -203,7 +216,36 @@ impl Encoder {
             }
         }
     }
-    fn input(&self, texture: &ID3D11Texture2D, pts: i64, duration: i64, force: bool) -> Result<()> {
+    /// Called only after DrainComplete has delivered every old-format output.
+    fn resize(&mut self, settings: Settings) -> Result<()> {
+        unsafe {
+            self.transform
+                .ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM, 0)?;
+            self.transform
+                .ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING, 0)?;
+            self.transform.SetInputType(0, None::<&IMFMediaType>, 0)?;
+            self.transform.SetOutputType(0, None::<&IMFMediaType>, 0)?;
+            self.info = set_format(&self.transform, settings)?;
+            self.api.SetValue(
+                &CODECAPI_AVEncCommonMeanBitRate,
+                &VARIANT::from(settings.bitrate),
+            )?;
+            self.transform
+                .ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0)?;
+            self.transform
+                .ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0)?;
+        }
+        Ok(())
+    }
+
+    fn input(
+        &self,
+        texture: &ID3D11Texture2D,
+        pts: i64,
+        duration: i64,
+        force: bool,
+        discontinuity: bool,
+    ) -> Result<()> {
         unsafe {
             if force {
                 self.api
@@ -218,6 +260,9 @@ impl Encoder {
             )?)?;
             sample.SetSampleTime(pts)?;
             sample.SetSampleDuration(duration)?;
+            if discontinuity {
+                sample.SetUINT32(&MFSampleExtension_Discontinuity, 1)?;
+            }
             self.transform
                 .ProcessInput(0, &sample, 0)
                 .context("hardware H264 ProcessInput")?;
@@ -261,22 +306,27 @@ impl Encoder {
         }
     }
     pub fn run(shared: &Arc<Shared>, settings: Settings, clock: CaptureClock) -> Result<()> {
-        let device = {
+        let (device, mut current) = {
             let mut state = shared.state.lock().unwrap();
             loop {
                 if state.stop {
                     return Ok(());
                 }
                 if let Some(frame) = &state.latest {
-                    break unsafe { frame.texture.GetDevice()? };
+                    break (
+                        unsafe { frame.texture.GetDevice()? },
+                        fitted(settings, frame),
+                    );
                 }
                 shared.request_frame(&mut state);
                 state = shared.changed.wait(state).unwrap();
             }
         };
-        let encoder = Self::new(&device, settings, shared.clone())?;
-        let mut converter = Converter::new(&device, settings)?;
+        let mut encoder = Self::new(&device, current, shared.clone())?;
+        let mut converter = Converter::new(&device, current)?;
         let mut need_input = 0;
+        let mut resizing = false;
+        let mut discontinuity = false;
         let mut last_capture = None;
         let mut origin: Option<i64> = None;
         let mut last_pts = -1;
@@ -305,7 +355,7 @@ impl Encoder {
                     if let Some(bitrate) = state.bitrate.take() {
                         break Work::Bitrate(bitrate);
                     }
-                    if need_input > 0 {
+                    if !resizing && need_input > 0 {
                         if let Some(raw) = &state.latest {
                             if state.force_keyframe
                                 || (last_capture != Some(raw.qpc) && cadence.accept(raw.qpc))
@@ -328,6 +378,7 @@ impl Encoder {
                         .SetValue(&CODECAPI_AVEncCommonMeanBitRate, &VARIANT::from(bitrate))
                         .context("hardware H264 live bitrate")?;
                     target_kbps = bitrate as f32 / 1000.0;
+                    current.bitrate = bitrate;
                     dropper.set_rates(target_kbps, admission_rate.fps.unwrap_or(0.0));
                 },
                 Work::Event(event) => {
@@ -338,7 +389,9 @@ impl Encoder {
                             .events
                             .BeginGetEvent(&encoder.callback, None::<&IUnknown>)?;
                         if kind == METransformNeedInput.0 as u32 {
-                            need_input += 1;
+                            if !resizing {
+                                need_input += 1;
+                            }
                         } else if kind == METransformHaveOutput.0 as u32 {
                             let (bytes, pts, keyframe) = encoder.output()?;
                             dropper.fill(bytes.len(), !keyframe);
@@ -350,10 +403,37 @@ impl Encoder {
                             }) {
                                 break;
                             }
+                        } else if kind == METransformDrainComplete.0 as u32 && resizing {
+                            let next = {
+                                let mut state = shared.state.lock().unwrap();
+                                let Some(frame) = &state.latest else { break };
+                                let next = fitted(settings, frame);
+                                state.force_keyframe = true;
+                                next
+                            };
+                            current.width = next.width;
+                            current.height = next.height;
+                            encoder.resize(current).context("hardware H264 resize")?;
+                            converter = Converter::new(&device, current)?;
+                            resizing = false;
+                            discontinuity = true;
                         }
                     }
                 }
                 Work::Frame(frame, force) => {
+                    let next = fitted(settings, &frame);
+                    if (next.width, next.height) != (current.width, current.height) {
+                        // The raw slot retains the latest source during the drain;
+                        // old access units keep their order and the same clock.
+                        resizing = true;
+                        need_input = 0;
+                        unsafe {
+                            encoder
+                                .transform
+                                .ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN, 0)?
+                        };
+                        continue;
+                    }
                     let repeated = last_capture == Some(frame.qpc);
                     last_capture = Some(frame.qpc);
                     let mut qpc = frame.qpc;
@@ -380,7 +460,8 @@ impl Encoder {
                         }
                     }
                     let texture = converter.convert(&frame.texture)?;
-                    encoder.input(&texture, pts, duration, force)?;
+                    encoder.input(&texture, pts, duration, force, discontinuity)?;
+                    discontinuity = false;
                     need_input -= 1;
                     last_pts = pts;
                 }
