@@ -779,7 +779,9 @@ Default Server adaptation follows the source-supplied, forwarding-only model in
 [simulcast](https://www.rfc-editor.org/rfc/rfc8853) encodings remain representations
 of one admitted source and flow, not separate publications or route operations.
 Receiving capability belongs to the endpoint session and is projected only to
-its assigned peers. Each RID retains its own RTP/Sender Report mapping into one
+its assigned peers. Piik producers declare encodings from lower to higher quality;
+observed bitrate determines whether a layer fits, not its quality order.
+Each RID retains its own RTP/Sender Report mapping into one
 source timeline. Outputs reuse complete-frame packetization and keyframe handoff;
 the source supplies the encoding work, so the default Server needs no decoder or
 encoder runtime. Layered Native forwarding must preserve downstream supply rather
