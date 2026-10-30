@@ -1470,8 +1470,204 @@ fn internal_screen_source_uses_three_existing_base_directions_and_shared_nonview
 }
 
 #[test]
+fn publication_completion_waits_for_installed_projection_and_keeps_request_ownership() {
+    use piik_channel_core::{host::RoomResult, wire::Request, RoomState};
+    for outcome in [
+        "pending",
+        "already-applied",
+        "member-revoked",
+        "disconnected",
+        "new-binding",
+        "error",
+    ] {
+        let mut network = RoomNetwork::new();
+        let host = Uuid::new_v4();
+        let publisher = Uuid::new_v4();
+        network.command(host, json!({"type":"join","name":"Host","key":"owner"}));
+        let (publisher_session, _) = join(&mut network, publisher, None);
+        let room = network.create(host, RoomAccess::Public, false);
+        browse(&mut network, publisher, &room, true);
+        let pair_id = network
+            .state(publisher)
+            .pairs
+            .iter()
+            .find(|pair| pair.rooms.contains(&room))
+            .unwrap()
+            .id;
+        let publication = Uuid::new_v4();
+        let effects = network.authority.handle(publisher, Request::parse(&json!({
+            "type":"publish","requestId":"publication-order",
+            "publication":{"id":publication,"roomId":room,"kind":if outcome == "error" { "voice" } else { "screen" },"muted":false}
+        }).to_string()).unwrap(), 100);
+        let input = effects
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .unwrap();
+        let output = network.host_turn(&room, input);
+        let mut invalid = output.clone();
+        invalid.projection.summary.id = "wrong-room".into();
+        let rejected = network.command(
+            host,
+            json!({"type":"host_output","roomId":room,"output":invalid}),
+        );
+        assert!(rejected.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "invalid_room_projection")));
+        // Rejecting a bad projection must not consume its valid request owner.
+        // Another endpoint's real failure arrives while the committed result is in flight.
+        let failure = network.authority.handle(
+            publisher,
+            Request::parse(
+                &json!({
+                    "type":"link_state","pairId":pair_id,"state":"failed"
+                })
+                .to_string(),
+            )
+            .unwrap(),
+            101,
+        );
+        let repair_input = failure
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .unwrap();
+        let repair = network.host_turn(&room, repair_input);
+        if outcome == "already-applied" {
+            network.command(
+                host,
+                json!({"type":"host_output","roomId":room,"output":repair.clone()}),
+            );
+        }
+        let completed = network.command(
+            host,
+            json!({"type":"host_output","roomId":room,"output":output}),
+        );
+        let completion = |effects: &piik_channel_core::Effects| {
+            effects
+                .events
+                .iter()
+                .find_map(|(recipient, event)| match event {
+                    Event::RoomReply {
+                        request_id: Some(id),
+                        result,
+                        ..
+                    } if *recipient == publisher && id == "publication-order" => {
+                        Some(result.clone())
+                    }
+                    _ => None,
+                })
+        };
+        if outcome == "already-applied" {
+            assert!(
+                matches!(completion(&completed), Some(RoomResult::Done)),
+                "an installed newer projection covers a late result"
+            );
+            continue;
+        }
+        if outcome == "error" {
+            assert!(
+                matches!(completion(&completed), Some(RoomResult::Error { .. })),
+                "an explicit failure does not wait for projection"
+            );
+            continue;
+        }
+        assert!(
+            completion(&completed).is_none(),
+            "{outcome}: success cannot precede installed authority"
+        );
+        let unrelated = network.command(host, json!({"type":"set_name","name":"Renamed"}));
+        assert!(completion(&unrelated).is_none());
+        assert!(!network
+            .state(publisher)
+            .publications
+            .iter()
+            .any(|entry| entry.id == publication));
+        match outcome {
+            "pending" => {
+                let delivered = network.command(
+                    host,
+                    json!({"type":"host_output","roomId":room,"output":repair}),
+                );
+                let state = delivered.events.iter().position(|(recipient, event)| *recipient == publisher && matches!(event, Event::State { state } if state.publications.iter().any(|entry| entry.id == publication))).unwrap();
+                let reply = delivered.events.iter().position(|(recipient, event)| *recipient == publisher && matches!(event, Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "publication-order")).unwrap();
+                assert!(
+                    state < reply,
+                    "installed State must precede successful completion"
+                );
+                let again = network.command(host, json!({"type":"set_name","name":"Still here"}));
+                assert!(completion(&again).is_none(), "completion is consumed once");
+            }
+            "member-revoked" => {
+                let user = network
+                    .state(publisher)
+                    .sessions
+                    .iter()
+                    .find(|session| session.id == publisher_session)
+                    .unwrap()
+                    .user_id;
+                let delivered =
+                    network.command(host, json!({"type":"set_roles","userId":user,"roles":[]}));
+                assert!(
+                    matches!(completion(&delivered), Some(RoomResult::Error { code }) if code == "room_context_changed")
+                );
+            }
+            "disconnected" => {
+                let effects = network.authority.disconnect(publisher, 102);
+                let delivered = network.deliver(effects);
+                assert!(
+                    completion(&delivered).is_none(),
+                    "a disconnected physical requester cannot receive a result"
+                );
+                let late = network.command(
+                    host,
+                    json!({"type":"host_output","roomId":room,"output":repair}),
+                );
+                assert!(completion(&late).is_none());
+            }
+            "new-binding" => {
+                network.command(
+                    host,
+                    json!({"type":"host_stop","roomId":room,"bindingId":repair.binding_id}),
+                );
+                let creator = repair.projection.summary.creator_id;
+                network.restore_room(
+                    host,
+                    RoomState::new(
+                        room.clone(),
+                        "Restored".into(),
+                        creator,
+                        RoomAccess::Public,
+                        false,
+                        None,
+                    )
+                    .unwrap(),
+                );
+                let late = network.command(
+                    host,
+                    json!({"type":"host_output","roomId":room,"output":repair}),
+                );
+                assert!(
+                    completion(&late).is_none(),
+                    "a replacement binding cannot replay old completion"
+                );
+                assert!(late.events.iter().any(|(_, event)| matches!(event, Event::Error { code, .. } if code == "stale_room_host")));
+            }
+            _ => unreachable!(),
+        }
+    }
+}
+
+#[test]
 fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
-    use piik_channel_core::{host::HostAction, wire::Request};
+    use piik_channel_core::{
+        host::{HostAction, RoomResult},
+        wire::Request,
+    };
     let mut network = RoomNetwork::new();
     let source = Uuid::new_v4();
     let a = Uuid::new_v4();
@@ -1596,12 +1792,15 @@ fn hosted_media_deadline_wakes_room_without_fencing_an_earlier_request() {
         json!({"type":"host_output","roomId":room,"output":earlier}),
     );
     assert!(
-        late.events.iter().any(|(target, event)| *target == a
+        !late.events.iter().any(|(target, event)| *target == a
             && matches!(event,Event::RoomReply{request_id:Some(id),..}if id=="earlier")),
-        "wake does not invalidate an earlier ordinary reply"
+        "success waits until the wake's covering projection is installed"
     );
     assert!(!network.authority.expire(deadline+1).events.iter().any(|(_,event)|matches!(event,Event::HostInput{input,..}if matches!(input.action,HostAction::RouteWake))),"old projection cannot reinsert a consumed wake deadline");
-    network.deliver(effects);
+    let completed = network.deliver(effects);
+    assert!(completed.events.iter().any(|(target, event)| *target == a
+        && matches!(event, Event::RoomReply { request_id: Some(id), result: RoomResult::Done, .. } if id == "earlier")),
+        "wake preserves and completes the earlier request after applying its projection");
     let repaired_pairs = serde_json::to_value(&network.state(b).pairs).unwrap();
     assert!(network
         .state(b)

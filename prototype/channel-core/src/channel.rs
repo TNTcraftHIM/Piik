@@ -1,6 +1,6 @@
 use crate::{
     history::HISTORY_WINDOW,
-    host::{HostAction, HostOutput, RequestContext, RoomSummary},
+    host::{HostAction, HostOutput, RequestContext, RoomReply, RoomResult, RoomSummary},
     identity::{Admission, Admitted, Identity, StoredUser},
     remote::{Binding, RemoteRoom, ReplyOwner},
     transport::{Flow, TransportBook},
@@ -26,7 +26,8 @@ pub struct Channel {
 
 pub(crate) struct HostAcceptance {
     pub projection_applied: bool,
-    pub reply_current: bool,
+    pub invitation_current: bool,
+    pub replies: Vec<RoomReply>,
 }
 
 pub struct Outcome {
@@ -499,6 +500,7 @@ impl Channel {
                 connection,
                 revision: 0,
                 projection_floor: 0,
+                applied_revision: 0,
                 replies: BTreeMap::new(),
             });
             remote.projection = None;
@@ -715,16 +717,19 @@ impl Channel {
         if output.revision > binding.revision {
             return Err("invalid_room_revision");
         }
-        let (reply_valid, reply_current) = match binding.replies.get(&output.revision) {
-            Some(ReplyOwner::Request { context, member }) => (
+        let (reply_valid, invitation_current) = match binding.replies.get(&output.revision) {
+            Some(ReplyOwner::Request {
+                context,
+                completion,
+                ..
+            }) => (
                 output
                     .reply
                     .as_ref()
                     .is_some_and(|reply| &reply.context == context)
+                    && completion.is_none()
                     && output.invitation.is_none(),
-                self.identity.session_for_connection(context.connection)
-                    == Some(context.session_id)
-                    && self.identity.member(member.user_id).ok().as_ref() == Some(member),
+                true,
             ),
             Some(ReplyOwner::Invitation { ticket, member }) => (
                 output
@@ -743,20 +748,9 @@ impl Channel {
             return Err("invalid_room_reply");
         }
         let projection_applied = output.revision >= binding.projection_floor;
-        self.remote
-            .get_mut(id)
-            .unwrap()
-            .binding
-            .as_mut()
-            .unwrap()
-            .replies
-            .remove(&output.revision);
         let room = &self.remote[id];
         if !projection_applied {
-            return Ok(HostAcceptance {
-                projection_applied,
-                reply_current,
-            });
+            return Ok(self.finish_host_output(id, output, false, invitation_current));
         }
         let projection = &output.projection;
         if projection.summary.id != id || projection.summary.creator_id != room.summary.creator_id {
@@ -952,6 +946,7 @@ impl Channel {
         }
         let room = self.remote.get_mut(id).unwrap();
         room.binding.as_mut().unwrap().projection_floor = output.revision;
+        room.binding.as_mut().unwrap().applied_revision = output.revision;
         room.summary = projection.summary.clone();
         let mut projection = projection.clone();
         for view in projection.views.values_mut() {
@@ -959,10 +954,73 @@ impl Channel {
         }
         room.projection = Some(projection);
         self.reconcile();
-        Ok(HostAcceptance {
+        Ok(self.finish_host_output(id, output, true, invitation_current))
+    }
+
+    fn finish_host_output(
+        &mut self,
+        id: &str,
+        output: &HostOutput,
+        projection_applied: bool,
+        invitation_current: bool,
+    ) -> HostAcceptance {
+        let binding = self.remote.get_mut(id).unwrap().binding.as_mut().unwrap();
+        if let Some(ReplyOwner::Request { completion, .. }) =
+            binding.replies.get_mut(&output.revision)
+        {
+            *completion = Some(output.reply.as_ref().unwrap().result.clone());
+        } else {
+            binding.replies.remove(&output.revision);
+        }
+        let ready: Vec<_> = binding
+            .replies
+            .iter()
+            .filter_map(|(revision, owner)| {
+                let ReplyOwner::Request {
+                    context,
+                    member,
+                    completion: Some(result),
+                } = owner
+                else {
+                    return None;
+                };
+                let current = self.identity.session_for_connection(context.connection)
+                    == Some(context.session_id)
+                    && self.identity.member(member.user_id).ok().as_ref() == Some(member);
+                (*revision <= binding.applied_revision
+                    || !current
+                    || matches!(result, RoomResult::Error { .. }))
+                .then_some((*revision, current))
+            })
+            .collect();
+        let replies = ready
+            .into_iter()
+            .map(|(revision, current)| {
+                let ReplyOwner::Request {
+                    context,
+                    completion,
+                    ..
+                } = binding.replies.remove(&revision).unwrap()
+                else {
+                    unreachable!()
+                };
+                RoomReply {
+                    context,
+                    result: if current {
+                        completion.unwrap()
+                    } else {
+                        RoomResult::Error {
+                            code: "room_context_changed".into(),
+                        }
+                    },
+                }
+            })
+            .collect();
+        HostAcceptance {
             projection_applied,
-            reply_current,
-        })
+            invitation_current,
+            replies,
+        }
     }
 
     fn host_online(identity: &Identity, room: &RemoteRoom) -> bool {

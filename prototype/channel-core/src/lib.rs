@@ -35,7 +35,7 @@ pub use room::{RoomRuntime, RoomSnapshot};
 pub use stored_room::StoredRoomHost;
 
 use channel::Channel;
-use host::{HostAction, HostOutput, RequestContext, RoomResult};
+use host::{HostAction, HostOutput, RequestContext, RoomReply, RoomResult};
 use identity::Admission;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -469,7 +469,7 @@ impl Authority {
         room_id: &str,
         session: Uuid,
         connection: Uuid,
-        mut output: HostOutput,
+        output: HostOutput,
         now: u64,
         effects: &mut Effects,
     ) -> Result<(), &'static str> {
@@ -478,16 +478,6 @@ impl Authority {
             .accept_host(room_id, session, connection, &output)?;
         if accepted.projection_applied {
             self.broadcast(None, effects);
-        }
-        if !accepted.reply_current {
-            if let Some(reply) = &mut output.reply {
-                reply.result = RoomResult::Error {
-                    code: "room_context_changed".into(),
-                };
-            }
-            if let Some(invitation) = &mut output.invitation {
-                invitation.accepted = false;
-            }
         }
         if let Some(invitation) = output.invitation {
             let target = self.pending_joins.iter().find_map(|(connection, pending)| {
@@ -498,7 +488,7 @@ impl Authority {
                 .then_some(*connection)
             });
             if let Some(target) = target {
-                if !invitation.accepted {
+                if !invitation.accepted || !accepted.invitation_current {
                     let pending = self.pending_joins.remove(&target).unwrap();
                     Self::error(target, pending.request_id, "invitation_required", effects);
                     effects.close.push(target);
@@ -559,80 +549,88 @@ impl Authority {
                 }
             }
         }
-        if let Some(reply) = output.reply {
-            let context = reply.context;
-            if self
-                .channel
-                .identity
-                .session_for_connection(context.connection)
-                != Some(context.session_id)
-            {
-                return Ok(());
-            }
-            if let RoomResult::Invited = reply.result {
-                if let Some(pending) =
-                    self.pending_joins
-                        .remove(&context.connection)
-                        .filter(|pending| {
-                            pending.room_id == room_id && pending.binding_id == output.binding_id
-                        })
-                {
-                    if let Some(admitted) = pending.admitted {
-                        effects.events.push((
-                            context.connection,
-                            Event::Welcome {
-                                credential: admitted.credential,
-                                session_id: admitted.session_id,
-                                state: self.channel.snapshot(admitted.session_id),
-                                invite_key: None,
-                                invitation_origin: None,
-                            },
-                        ));
-                        if let Some(request_id) = pending.request_id {
-                            effects
-                                .events
-                                .push((context.connection, Event::Ack { request_id }));
-                        }
-                        self.broadcast(Some(admitted.session_id), effects);
-                    }
-                }
-                return Ok(());
-            }
-            if self.pending_joins.contains_key(&context.connection) {
-                let pending = self.pending_joins.remove(&context.connection).unwrap();
-                self.retire_pending(&pending);
-                let code = if let RoomResult::Error { code } = reply.result {
-                    code
-                } else {
-                    "room_storage_failed".into()
-                };
-                Self::error(context.connection, pending.request_id, &code, effects);
-                effects.close.push(context.connection);
-                return Ok(());
-            }
-            let mut completion = RoomResult::Done;
-            match reply.result {
-                RoomResult::Invite { key } => effects.events.push((
-                    context.connection,
-                    Event::RoomInvite {
-                        room_id: room_id.into(),
-                        key,
-                        request_id: context.request_id.clone(),
-                    },
-                )),
-                RoomResult::Error { code } => completion = RoomResult::Error { code },
-                _ => {}
-            }
-            effects.events.push((
-                context.connection,
-                Event::RoomReply {
-                    room_id: room_id.into(),
-                    request_id: context.request_id,
-                    result: completion,
-                },
-            ));
+        for reply in accepted.replies {
+            self.room_reply(room_id, output.binding_id, reply, effects);
         }
         Ok(())
+    }
+
+    fn room_reply(
+        &mut self,
+        room_id: &str,
+        binding_id: Uuid,
+        reply: RoomReply,
+        effects: &mut Effects,
+    ) {
+        let context = reply.context;
+        if self
+            .channel
+            .identity
+            .session_for_connection(context.connection)
+            != Some(context.session_id)
+        {
+            return;
+        }
+        if let RoomResult::Invited = reply.result {
+            if let Some(pending) = self
+                .pending_joins
+                .remove(&context.connection)
+                .filter(|pending| pending.room_id == room_id && pending.binding_id == binding_id)
+            {
+                if let Some(admitted) = pending.admitted {
+                    effects.events.push((
+                        context.connection,
+                        Event::Welcome {
+                            credential: admitted.credential,
+                            session_id: admitted.session_id,
+                            state: self.channel.snapshot(admitted.session_id),
+                            invite_key: None,
+                            invitation_origin: None,
+                        },
+                    ));
+                    if let Some(request_id) = pending.request_id {
+                        effects
+                            .events
+                            .push((context.connection, Event::Ack { request_id }));
+                    }
+                    self.broadcast(Some(admitted.session_id), effects);
+                }
+            }
+            return;
+        }
+        if self.pending_joins.contains_key(&context.connection) {
+            let pending = self.pending_joins.remove(&context.connection).unwrap();
+            self.retire_pending(&pending);
+            let code = if let RoomResult::Error { code } = reply.result {
+                code
+            } else {
+                "room_storage_failed".into()
+            };
+            Self::error(context.connection, pending.request_id, &code, effects);
+            effects.close.push(context.connection);
+            return;
+        }
+        let mut completion = RoomResult::Done;
+        match reply.result {
+            RoomResult::Invite { key } => effects.events.push((
+                context.connection,
+                Event::RoomInvite {
+                    room_id: room_id.into(),
+                    key,
+                    request_id: context.request_id.clone(),
+                },
+            )),
+            RoomResult::Error { code } => completion = RoomResult::Error { code },
+            _ => {}
+        }
+        effects.events.push((
+            context.connection,
+            Event::RoomReply {
+                room_id: room_id.into(),
+                request_id: context.request_id,
+                result: completion,
+            },
+        ));
     }
 
     fn broadcast(&mut self, except: Option<Uuid>, effects: &mut Effects) {

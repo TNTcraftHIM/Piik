@@ -14,7 +14,9 @@ pub(crate) struct Binding {
     pub session: Uuid,
     pub connection: Uuid,
     pub revision: u64,
+    // Invalidations can advance the floor before the host's covering output arrives.
     pub projection_floor: u64,
+    pub applied_revision: u64,
     pub replies: BTreeMap<u64, ReplyOwner>,
 }
 
@@ -23,6 +25,7 @@ pub(crate) enum ReplyOwner {
     Request {
         context: RequestContext,
         member: Member,
+        completion: Option<RoomResult>,
     },
     Invitation {
         ticket: Uuid,
@@ -78,6 +81,7 @@ impl RemoteRoom {
             | HostAction::GrantInvited { context } => Some(ReplyOwner::Request {
                 context: context.clone(),
                 member: endpoints[&context.session_id].member,
+                completion: None,
             }),
             HostAction::RouteWake => Some(ReplyOwner::RouteWake),
             HostAction::VerifyInvite { ticket, member, .. } => Some(ReplyOwner::Invitation {

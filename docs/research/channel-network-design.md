@@ -111,6 +111,9 @@ changing its routing state or becoming domain-issued turns. Their confirmations
 return to the request; domain revisions retain their authority/reply-fencing purpose.
 Projection order and request authority remain separate: an older room snapshot
 cannot replace newer routes, but an earlier authorized action can still complete.
+Successful room actions are acknowledged after the domain has installed a
+projection covering that turn. Until then, the existing pending request retains
+its result; explicit failures do not wait for a projection.
 Confirmation follows the requester's current session and permission facts;
 another participant leaving or changing roles cannot invalidate it. Invitation
 verification follows the invited user's known permissions, not an online-session
