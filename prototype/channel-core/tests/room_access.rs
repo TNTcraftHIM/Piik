@@ -105,6 +105,13 @@ fn hosted_room_catalogs_keep_the_per_room_source_limit_without_a_domain_total() 
                 );
             }
         }
+        let duplicate = command(
+            &mut core,
+            peers[0],
+            json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","muted":false}}),
+        );
+        assert!(duplicate.events.iter().any(|(_, event)| matches!(event,
+            Event::RoomReply { result: RoomResult::Error { code }, .. } if code == "source_already_published")));
         assert_eq!(
             core.state(peers[0])
                 .publications

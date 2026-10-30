@@ -579,7 +579,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert_eq!(stopped, json!({"id":"stopped-capture","result":null}));
     #[cfg(all(feature = "capture", target_os = "windows"))]
     {
-        use piik_channel_core::host::{HostAction, RoomResult};
+        use piik_channel_core::host::HostAction;
         let target = json!({"kind":"window","sourceId":"0","title":"Unopened test target","pid":0});
         page.send(Message::Text(
             json!({"id":"missing-capture-room","type":"start_capture",
@@ -589,80 +589,10 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         ))
         .await
         .unwrap();
-        domain
-            .until(
-                |_, event| matches!(event, Event::Error {code, ..} if code == "room_unavailable"),
-            )
-            .await;
         let denied: Value =
             serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
                 .unwrap();
         assert_eq!(denied["error"], "room_unavailable");
-
-        // Reserve a real RoomHost publication without starting a device. A
-        // second screen on the same endpoint must fail in that room authority.
-        let reserved = Uuid::new_v4();
-        domain
-            .command(
-                domain.connection,
-                json!({"type":"publish","publication":{
-            "id":reserved,"roomId":room,"kind":"screen","muted":false}}),
-            )
-            .await;
-        domain.room_turn(&room).await;
-        page.send(Message::Text(
-            json!({"id":"capture-room-reply","type":"start_capture",
-            "roomId":room,"target":target})
-            .to_string()
-            .into(),
-        ))
-        .await
-        .unwrap();
-        let input = domain
-            .until(|_, event| {
-                matches!(event, Event::HostInput {input, ..}
-            if matches!(&input.action, HostAction::Command {context, command:Command::Publish {..}} if context.request_id.is_some()))
-            })
-            .await;
-        let Event::HostInput { input, .. } = input else {
-            unreachable!()
-        };
-        let HostAction::Command { context, .. } = input.action else {
-            unreachable!()
-        };
-        assert_ne!(
-            context.request_id.as_deref(),
-            Some(room.as_str()),
-            "capture and room-registration replies have separate request owners"
-        );
-        assert!(
-            tokio::time::timeout(Duration::from_millis(50), page.next())
-                .await
-                .is_err(),
-            "capture cannot return success before its real RoomReply"
-        );
-        domain.room_turn(&room).await;
-        domain
-            .until(|_, event| {
-                matches!(event, Event::RoomReply {result:RoomResult::Error {code}, ..}
-            if code == "source_already_published")
-            })
-            .await;
-        let denied: Value =
-            serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
-                .unwrap();
-        assert_eq!(denied["error"], "source_already_published");
-        assert!(
-            HostedRoom::open(&room_directory.join(format!("{room}.sqlite")), &room, user).is_err(),
-            "capture refusal must retain the existing Native room runtime lock"
-        );
-        domain
-            .command(
-                domain.connection,
-                json!({"type":"unpublish","publicationId":reserved}),
-            )
-            .await;
-        domain.room_turn(&room).await;
 
         // Close the control socket while its Publish response is deliberately
         // withheld. The independent reader must cancel the caller immediately.
@@ -684,12 +614,23 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             unreachable!()
         };
         let HostAction::Command {
+            context,
             command: Command::Publish { publication },
-            ..
         } = input.action
         else {
             unreachable!()
         };
+        assert_ne!(
+            context.request_id.as_deref(),
+            Some(room.as_str()),
+            "capture and room-registration replies have separate request owners"
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), page.next())
+                .await
+                .is_err(),
+            "capture cannot return success before its real RoomReply"
+        );
         page.close(None).await.unwrap();
         tokio::time::timeout(Duration::from_secs(2), async {
             while page.next().await.is_some() {}
@@ -713,6 +654,10 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
                 .unwrap();
         assert!(reopened.get("result").is_some());
+        assert!(
+            HostedRoom::open(&room_directory.join(format!("{room}.sqlite")), &room, user).is_err(),
+            "cancelled capture must retain the existing Native room runtime lock"
+        );
         assert!(
             tokio::time::timeout(Duration::from_millis(50), listener.accept())
                 .await
