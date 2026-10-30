@@ -289,14 +289,12 @@ func (run *relayRun) write(stream *nativecapture.Stream) error {
 				if frame.Width == 0 || frame.Height == 0 {
 					continue
 				}
-				waitingRecovery = false
-				stamp := clock.Update(timestamp)
-				if stamp.IsUnhandled || stamp.ExtendedVal < clock.GetExtendedStart() {
+				var accepted bool
+				frame.Timestamp, frame.Duration, accepted = relayFrameTiming(clock, timestamp)
+				if !accepted {
 					continue
 				}
-				ticks := stamp.ExtendedVal - clock.GetExtendedStart()
-				frame.Timestamp = time.Duration(ticks/videoClockRate)*time.Second + time.Duration(ticks%videoClockRate)*time.Second/videoClockRate
-				frame.Duration = sample.Duration
+				waitingRecovery = false
 				if frame.Duration <= 0 {
 					frame.Duration = time.Second / time.Duration(run.plan.profile.Framerate)
 				}
@@ -310,6 +308,21 @@ func (run *relayRun) write(stream *nativecapture.Stream) error {
 			}
 		}
 	}
+}
+
+// The received RTP clock owns both decoder presentation and frame intervals.
+func relayFrameTiming(clock *utils.WrapAround[uint32, uint64], timestamp uint32) (time.Duration, time.Duration, bool) {
+	stamp := clock.Update(timestamp)
+	if stamp.IsUnhandled || stamp.ExtendedVal < clock.GetExtendedStart() {
+		return 0, 0, false
+	}
+	ticks := stamp.ExtendedVal - clock.GetExtendedStart()
+	pts := time.Duration(ticks/videoClockRate)*time.Second + time.Duration(ticks%videoClockRate)*time.Second/videoClockRate
+	var duration time.Duration
+	if stamp.PreExtendedHighest != clock.GetExtendedStart() && stamp.ExtendedVal > stamp.PreExtendedHighest {
+		duration = time.Duration(stamp.ExtendedVal-stamp.PreExtendedHighest) * time.Second / videoClockRate
+	}
+	return pts, duration, true
 }
 
 func (run *relayRun) read(stream *nativecapture.Stream) {
