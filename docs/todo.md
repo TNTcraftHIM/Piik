@@ -12,11 +12,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   Rust owners. Complete Native low-bandwidth adaptation, capture/input on the
   remaining platforms and packaging over the shared UI and Native participant.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Integrate the verified transport probing/feedback and incoming-H264 derivation
-  candidates with aggregate application demand and upstream DTLS/SCTP fixes.
-  Complete coordinated UDP preparation from the
-  [2.x Native reachability behavior](./standards/routing-transport.md), under
-  the existing connection owner alongside gateway mapping.
+  Finish whole-App network/GPU acceptance of the
+  [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),
+  then promote it after the held dependency decision. It includes transport
+  probing/feedback, incoming-H264 derivation and coordinated UDP preparation
+  under the existing connection owner alongside gateway mapping.
   Reuse mature components and the shared
   frontend; preserve useful behavior rather than translating
   functions. Keep the first version's accepted scope and the prototype isolated.
