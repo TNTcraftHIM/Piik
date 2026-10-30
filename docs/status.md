@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-29
+Last updated: 2026-10-30
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -41,6 +41,8 @@ The shared source picker connects Windows hardware H264 capture to the same
 Native endpoint and routing model, preserving its original presentation clock.
 Optional source sound uses WASAPI and a Rust Opus encoder, retaining independent
 stereo channels. The selecting page owns both captures independently of App room hosting.
+The macOS ScreenCaptureKit/VideoToolbox adapter now uses that same producer and
+App path; its Rust capture types are checked, with Apple SDK and native acceptance pending.
 Windows keyboard, mouse and optional gamepad input use the selected screen route
 and shared control UI, with one App desktop executor, page-owned consent and a
 process-only stop hotkey.

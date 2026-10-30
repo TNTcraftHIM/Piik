@@ -82,7 +82,7 @@ pub struct CaptureLease {
     pub audio_error: Option<oneshot::Receiver<String>>,
     pub remote: Option<crate::input::Source>,
     pub input_state: Option<watch::Receiver<crate::input::SourceView>>,
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     control: crate::media::local::Control,
 }
 impl CaptureLease {
@@ -93,11 +93,11 @@ impl CaptureLease {
             .context("capture stopped before its first frame")?
     }
     pub fn is_stopped(&self) -> bool {
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             self.control.is_stopped()
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             true
         }
@@ -106,7 +106,7 @@ impl CaptureLease {
         if let Some(source) = &self.remote {
             source.close();
         }
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         self.control.stop();
     }
 }
@@ -126,7 +126,7 @@ enum Input {
     Signal(Uuid, Signal, oneshot::Sender<Result<()>>),
     Resync(oneshot::Sender<Result<()>>),
     Captures(oneshot::Sender<Vec<Uuid>>),
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     StartCapture(
         Uuid,
         crate::capture::Target,
@@ -156,17 +156,17 @@ pub(crate) enum Event {
         key: TrackKey,
         source: Uuid,
     },
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     CaptureEnded {
         publication_id: Uuid,
         source: Uuid,
     },
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     CaptureAudioEnded {
         publication_id: Uuid,
         source: Uuid,
     },
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     EncodingFailed {
         publication_id: Uuid,
         source: Uuid,
@@ -355,7 +355,7 @@ struct Driver {
     pairs: HashMap<Uuid, Pair>,
     publications: HashMap<Uuid, PublicationInfo>,
     sources: HashMap<Uuid, Source>,
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     captures: HashMap<Uuid, crate::media::local::Producer>,
     relay: Relay,
     files: Files,
@@ -404,7 +404,7 @@ impl NativePeers {
                 pairs: HashMap::new(),
                 publications: HashMap::new(),
                 sources: HashMap::new(),
-                #[cfg(target_os = "windows")]
+                #[cfg(any(target_os = "windows", target_os = "macos"))]
                 captures: HashMap::new(),
                 relay: Relay::default(),
                 files: Files::new(session_id),
@@ -430,7 +430,7 @@ impl NativePeers {
                     _=tick.tick()=>Turn::Tick,
                 };
                 let work = async {
-                    #[cfg(target_os = "windows")]
+                    #[cfg(any(target_os = "windows", target_os = "macos"))]
                     for (publication, producer) in &d.captures {
                         // Input authority ends with capture, before its workers
                         // finish joining and before this turn can execute input.
@@ -458,18 +458,18 @@ impl NativePeers {
                             let _ = done.send(Ok(()));
                         }
                         Turn::Input(Input::Captures(done)) => {
-                            #[cfg(target_os = "windows")]
+                            #[cfg(any(target_os = "windows", target_os = "macos"))]
                             let publications = d
                                 .captures
                                 .iter()
                                 .filter(|(_, p)| !p.control.is_stopped())
                                 .map(|(publication, _)| *publication)
                                 .collect();
-                            #[cfg(not(target_os = "windows"))]
+                            #[cfg(not(any(target_os = "windows", target_os = "macos")))]
                             let publications = vec![];
                             let _ = done.send(publications);
                         }
-                        #[cfg(target_os = "windows")]
+                        #[cfg(any(target_os = "windows", target_os = "macos"))]
                         Turn::Input(Input::StartCapture(
                             publication,
                             target,
@@ -494,7 +494,7 @@ impl NativePeers {
                                 | Event::DataWriteFailed {
                                     lane: Lane::Input, ..
                                 } => None,
-                                #[cfg(target_os = "windows")]
+                                #[cfg(any(target_os = "windows", target_os = "macos"))]
                                 Event::CaptureEnded { .. }
                                 | Event::CaptureAudioEnded { .. }
                                 | Event::EncodingFailed { .. } => None,
@@ -528,13 +528,13 @@ impl NativePeers {
                             }
                         }
                     }
-                    #[cfg(target_os = "windows")]
+                    #[cfg(any(target_os = "windows", target_os = "macos"))]
                     d.reconcile_encodings();
                 };
                 tokio::select! {_=cancelled.changed()=>break,_=work=>{}}
             }
             d.inputs.close();
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             {
                 for producer in d.captures.values() {
                     producer.control.stop();
@@ -646,7 +646,7 @@ impl NativePeers {
         settings: crate::capture::Settings,
         audio: bool,
     ) -> Result<CaptureLease> {
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             let (tx, rx) = oneshot::channel();
             self.input
@@ -660,7 +660,7 @@ impl NativePeers {
                 .await?;
             rx.await?
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             let _ = (publication_id, target, settings, audio);
             anyhow::bail!("capture_unavailable")
@@ -872,7 +872,7 @@ impl Driver {
         .await;
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     fn start_capture(
         &mut self,
         publication: Uuid,
@@ -923,7 +923,7 @@ impl Driver {
         Ok(lease)
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     async fn capture_ended(&mut self, publication: Uuid, source_id: Uuid) -> Result<()> {
         if !self
             .captures
@@ -954,7 +954,7 @@ impl Driver {
         Ok(())
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     async fn capture_audio_ended(&mut self, publication: Uuid, source: Uuid) -> Result<()> {
         if let Some(producer) = self.captures.get_mut(&publication) {
             if producer.audio == Some(source) {
@@ -996,7 +996,7 @@ impl Driver {
                     }
                 }
         });
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         for (publication, producer) in &self.captures {
             if !self
                 .publications
@@ -1742,17 +1742,17 @@ impl Driver {
                 }
             }
             Event::SourceEnded { pair, key, source } => self.source_ended(pair, key, source).await,
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Event::CaptureEnded {
                 publication_id,
                 source,
             } => self.capture_ended(publication_id, source).await?,
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Event::CaptureAudioEnded {
                 publication_id,
                 source,
             } => self.capture_audio_ended(publication_id, source).await?,
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Event::EncodingFailed {
                 publication_id,
                 source,
@@ -2065,11 +2065,11 @@ impl Driver {
                 Some((*pair, *flow_id))
             }
             SourceOrigin::Local => {
-                #[cfg(target_os = "windows")]
+                #[cfg(any(target_os = "windows", target_os = "macos"))]
                 let active = self.captures.get(&publication).is_some_and(|p| {
                     !p.control.is_stopped() && (p.video == source.id || p.audio == Some(source.id))
                 });
-                #[cfg(not(target_os = "windows"))]
+                #[cfg(not(any(target_os = "windows", target_os = "macos")))]
                 let active = false;
                 if !active || self.publications[&publication].session_id != self.session {
                     return Ok(());

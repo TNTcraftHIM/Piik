@@ -27,9 +27,15 @@ all its encodings and input authority while App-hosted rooms continue.
 Frame-rate selection retains the original timestamps and accumulates its sampling
 interval across frames. The [network design](../../docs/research/channel-network-design.md)
 owns the process and output boundaries.
-Each encoder feeds its actual output size into the existing WebRTC FrameDropper
+Windows encoders feed their actual output size into the existing WebRTC FrameDropper
 algorithm; raw-frame admission adjusts when hardware rate control overshoots,
 without discarding encoded reference frames or changing the source clock.
+The macOS 13+ adapter uses ScreenCaptureKit and VideoToolbox through the published
+MIT-licensed `cidre` bindings. It plugs into the same producer, source picker,
+encoding demand and page lease; it does not use the Windows worker process.
+Its source, source sound and encoding owners are defined in the
+[network design](../../docs/research/channel-network-design.md). The capture
+module passes Apple-target type checking; Apple SDK builds and native acceptance remain open.
 The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
 Each local output packetizes complete access units on its own stable RTP clock;
@@ -64,7 +70,7 @@ executor, including physical keys, Unicode text, pointer/drag/scroll and the
 Browser-selected stop chord observed by the existing App tick. Only the source
 page enabling control can request Accessibility permission. Window identity,
 focused-window geometry and permission are checked separately; macOS does not
-advertise gamepad support. macOS capture, packaging and real-device input
+advertise gamepad support. macOS packaging and real-device capture/input
 acceptance remain open; Linux input must share
 the eventual capture owner's Portal RemoteDesktop session.
 

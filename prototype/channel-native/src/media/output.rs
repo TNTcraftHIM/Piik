@@ -257,7 +257,7 @@ impl Output {
             Input::Rtp(_) => None,
         }
     }
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub fn encoding_failed(&self, video: &video::Video) -> bool {
         match &self.input {
             Input::Video(input) => input.failed(video),

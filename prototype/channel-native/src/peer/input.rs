@@ -41,7 +41,7 @@ impl Inputs {
         }
     }
 
-    #[cfg(target_os = "windows")]
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
     pub fn source(
         &mut self,
         publication: Uuid,

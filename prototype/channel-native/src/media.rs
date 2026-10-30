@@ -1,6 +1,6 @@
 //! Received RTP keeps its upstream clock. Local video access units feed stable
 //! output clocks, independently of the encoding selected for each output.
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 pub(crate) mod local;
 mod output;
 pub(crate) mod packetizer;

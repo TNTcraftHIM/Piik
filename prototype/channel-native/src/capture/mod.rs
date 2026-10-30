@@ -1,7 +1,7 @@
 //! Native capture producers, independent of rooms and RTP.
 #[cfg(target_os = "windows")]
 mod audio;
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "windows", target_os = "macos", test))]
 mod cadence;
 #[cfg(target_os = "windows")]
 mod converter;
@@ -11,6 +11,8 @@ mod frame_dropper;
 mod gpu;
 #[cfg(target_os = "windows")]
 mod job;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(target_os = "windows")]
 mod mf;
 #[cfg(target_os = "windows")]
@@ -23,6 +25,11 @@ mod windows;
 mod worker;
 #[cfg(target_os = "windows")]
 pub use audio::{audio_capabilities, AudioCapture, AudioControl};
+#[cfg(target_os = "macos")]
+pub use macos::{
+    audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
+    EncodingControl,
+};
 #[cfg(target_os = "windows")]
 pub use process::{Encoding, EncodingControl};
 #[cfg(target_os = "windows")]
@@ -61,7 +68,7 @@ pub struct AudioCapabilities {
     pub system_audio: bool,
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 pub fn audio_capabilities() -> AudioCapabilities {
     AudioCapabilities::default()
 }

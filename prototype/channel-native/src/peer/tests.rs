@@ -24,7 +24,7 @@ fn driver() -> (
             pairs: HashMap::new(),
             publications: HashMap::new(),
             sources: HashMap::new(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             captures: HashMap::new(),
             relay: Relay::default(),
             files: Files::new(Uuid::nil()),

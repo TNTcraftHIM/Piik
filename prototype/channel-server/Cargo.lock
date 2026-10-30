@@ -458,6 +458,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "cidre"
+version = "0.29.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8fde4542e9dfd21498f5366a5ad60963879fd1885743a18980f6dbb27f525895"
+dependencies = [
+ "cc",
+ "cidre-macros",
+ "parking_lot",
+]
+
+[[package]]
+name = "cidre-macros"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a85776177a885b3cd2cda74d634cabe7fa05fecfde8ded8779c0b34110a44dcb"
+
+[[package]]
 name = "cipher"
 version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2218,6 +2235,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
+ "cidre",
  "futures-util",
  "getrandom 0.3.4",
  "libc",

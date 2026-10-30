@@ -37,7 +37,7 @@ use uuid::Uuid;
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
-#[cfg(all(test, target_os = "windows"))]
+#[cfg(all(test, any(target_os = "windows", target_os = "macos")))]
 mod tests;
 
 fn new_signer() -> Result<SessionSigner> {
@@ -778,7 +778,7 @@ impl Session {
         if request.result.is_closed() {
             return Ok(());
         }
-        if !cfg!(target_os = "windows") {
+        if !cfg!(any(target_os = "windows", target_os = "macos")) {
             let _ = request.result.send(Err("capture_unavailable".into()));
             return Ok(());
         }

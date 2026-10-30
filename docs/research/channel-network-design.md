@@ -674,15 +674,23 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
-The isolated macOS source keeps the same `Capture(Target, fps)` boundary through
+The isolated macOS adapter keeps the same `Capture(Target, fps)` boundary through
 ScreenCaptureKit and typed Rust bindings. Source dimensions follow actual backing
 pixels and frame metadata, independently of encoder settings. Its original sample
 time is converted from the [stream's synchronization clock](https://developer.apple.com/documentation/screencapturekit/scstream/synchronizationclock)
 to the shared host-time domain. One completed image copy leaves ScreenCaptureKit's
 finite pool; encoders share only that immutable copy. The source owner applies
 configuration changes and stops the stream before draining its callback queue and
-releasing conversion resources. This API slice is type-checked; native capture,
-codec integration and runtime acceptance remain in [TODO](../todo.md).
+releasing conversion resources. Each VideoToolbox encoding owns its fitted size,
+bitrate and bounded access-unit queue. Inputs come from the codec's native pixel
+buffer pool: an output callback does not authorize overwriting retained input.
+Source sound has a separate stream and stop lifetime. Both streams use the same
+selected-source filter; Apple's [window filter](https://developer.apple.com/videos/play/wwdc2022/10155/)
+already selects its owning application's audio, without requiring a second
+display selection or video dimensions. It uses the same App capture lease,
+producer, input registration and encoding allocation as Windows. The capture
+module is type-checked; Apple SDK builds, packaging and runtime acceptance remain
+in [TODO](../todo.md).
 Requested dimensions are ceilings: each encoder fits the source's natural pixel
 size without enlarging small sources. A Windows size change drains old access
 units through the existing MFT event loop, reconfigures that same encoder and
