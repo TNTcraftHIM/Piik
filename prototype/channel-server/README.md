@@ -389,6 +389,15 @@ The [Native participant checks](../channel-native/README.md#checks) add
 room storage and restart. `--app` exercises independent App hosting and Browser
 participation, including page closure, App loss and saved-room restoration.
 
+The existing CI workflow can compile Native and App against the macOS SDK:
+
+```sh
+gh workflow run repository-hygiene.yml --ref feat/channel-prototype -f channel_native=true
+```
+
+This opt-in job builds and links test programs without running them. It skips
+the maintenance build and publication jobs; ordinary branch pushes stay quiet.
+
 Browser checks require `agent-browser` and its installed Chromium. The runner
 chooses free loopback ports and temporary test keys, starts its own Rust/Vite
 services, runs acceptance, and stops them on exit. It does not leave a preview

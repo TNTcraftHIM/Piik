@@ -34,8 +34,9 @@ The macOS 13+ adapter uses ScreenCaptureKit and VideoToolbox through the publish
 MIT-licensed `cidre` bindings. It plugs into the same producer, source picker,
 encoding demand and page lease; it does not use the Windows worker process.
 Its source, source sound and encoding owners are defined in the
-[network design](../../docs/research/channel-network-design.md). The capture
-module passes Apple-target type checking; Apple SDK builds and native acceptance remain open.
+[network design](../../docs/research/channel-network-design.md).
+[Platform verification](../../docs/verification-status.md#device-evidence-boundary)
+owns SDK builds and native acceptance.
 
 Linux uses the system Portal picker through `ashpd` and one PipeWire capture.
 Each hardware H264 encoding has its own GStreamer pipeline; system-output audio

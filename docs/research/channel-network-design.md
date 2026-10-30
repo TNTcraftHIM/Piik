@@ -688,9 +688,9 @@ Source sound has a separate stream and stop lifetime. Both streams use the same
 selected-source filter; Apple's [window filter](https://developer.apple.com/videos/play/wwdc2022/10155/)
 already selects its owning application's audio, without requiring a second
 display selection or video dimensions. It uses the same App capture lease,
-producer, input registration and encoding allocation as Windows. The capture
-module is type-checked; Apple SDK builds, packaging and runtime acceptance remain
-in [TODO](../todo.md).
+producer, input registration and encoding allocation as Windows.
+[Platform verification](../verification-status.md#device-evidence-boundary)
+owns SDK and runtime evidence.
 
 The Linux adapter uses the same producer boundary. A typed
 [ScreenCast Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.ScreenCast.html)
