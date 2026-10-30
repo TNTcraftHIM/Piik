@@ -12,8 +12,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   Rust owners. Complete Native low-bandwidth adaptation, capture/input on the
   remaining platforms and packaging over the shared UI and Native participant.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Resolve the Native-to-Native layered-video transport stall and remaining
-  whole-App weak-network recovery acceptance of the
+  Resolve remaining whole-App weak-network recovery acceptance of the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),
   and complete independent weak-downlink adaptation for the default forwarding-only
   Server, including VP8.
