@@ -14,6 +14,8 @@ fn main() -> Result<()> {
 
 #[tokio::main]
 async fn run() -> Result<()> {
+    let executable = env::current_exe().context("Locate the App executable")?;
+    let resources = executable.parent().context("Locate the App directory")?;
     let config = Config {
         data_root: match env::var_os("PIIK_CHANNEL_APP_DATA_DIR") {
             Some(directory) => PathBuf::from(directory),
@@ -22,18 +24,24 @@ async fn run() -> Result<()> {
                 .join("Piik")
                 .join("channel-app"),
         },
-        assets: PathBuf::from(
-            env::var_os("PIIK_CHANNEL_APP_WEB_DIR").unwrap_or_else(|| "build/channel-web".into()),
-        ),
+        assets: env::var_os("PIIK_CHANNEL_APP_WEB_DIR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| resources.join("web")),
         open_browser: env::var_os("PIIK_CHANNEL_APP_NO_BROWSER").is_none(),
-        cloudflared: PathBuf::from(
-            env::var_os("PIIK_CHANNEL_CLOUDFLARED").unwrap_or_else(|| "cloudflared".into()),
-        ),
+        cloudflared: env::var_os("PIIK_CHANNEL_CLOUDFLARED")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                resources
+                    .join("runtime")
+                    .join("tunnel")
+                    .join(format!("cloudflared{}", env::consts::EXE_SUFFIX))
+            }),
         ice_servers: piik_channel_prototype::ice_servers_from_environment()?,
     };
     anyhow::ensure!(
         config.assets.join("index.html").is_file(),
-        "Build the shared channel Web interface first"
+        "App frontend is missing: {}",
+        config.assets.join("index.html").display()
     );
     let listener = if let Ok(port) = env::var("PIIK_CHANNEL_APP_PORT") {
         TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port.parse::<u16>()?)).await?

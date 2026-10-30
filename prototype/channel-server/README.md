@@ -80,6 +80,8 @@ saved-site controls as the shared Web interface. Build the frontend and start it
 
 ```powershell
 node node_modules/vite/bin/vite.js build --config prototype/channel-browser/web.vite.config.ts
+$env:PIIK_CHANNEL_APP_WEB_DIR = (Resolve-Path build/channel-web).Path
+$env:PIIK_CHANNEL_CLOUDFLARED = "cloudflared"
 cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
 ```
 
@@ -89,8 +91,16 @@ temporary certificate on the selected IPv4 address, including a virtual-LAN
 adapter; its fingerprint is printed locally. Follow the existing
 [LAN HTTPS instructions](../../docs/guide/troubleshooting.md#local-https-certificate-warning) before
 accepting that certificate on another device. Public invite uses Cloudflare Quick
-Tunnel. Set `PIIK_CHANNEL_CLOUDFLARED` to the installed `cloudflared` executable
-when it is not on PATH; bundling it belongs to the later platform packaging step.
+Tunnel. The development command explicitly selects `cloudflared` from PATH;
+`PIIK_CHANNEL_CLOUDFLARED` can instead name an installed executable.
+
+Portable App resources have one root: the directory containing the executable,
+independent of the working directory. Copy the built `build/channel-web/` contents
+to `web/` beside it, and place the matching platform's `cloudflared` executable in
+`runtime/tunnel/` (`cloudflared.exe` on Windows). These are the defaults when the
+two overrides above are unset. On macOS, keep this same layout inside the bundle's
+`Contents/MacOS/` directory. Platform bundles, notices and distribution packaging
+remain separate work; the existing Go App packaging scripts build the 2.x App.
 
 Both modes start one domain with a local owner entry and a separate advertised
 invitation entry. Only the loopback launcher receives the owner bootstrap; neither
