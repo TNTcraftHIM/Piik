@@ -26,8 +26,10 @@ phases, including NAT and Auto codec behavior.
 - The isolated 3.0 Linux adapter passes Native/App/Server compilation and real
   GStreamer encoding checks in a Linux VM. Synthetic frames cover independent
   encoders, backpressure, resizing, source timestamps, keyframes and teardown;
-  synthetic PCM covers queue-loss gaps. Desktop Portal consent, hardware encoding
-  and physical sound remain platform acceptance work.
+  synthetic PCM covers queue-loss gaps. A real GNOME Portal session supplies
+  PipeWire frames with the source clock; cancelling a second selection preserves
+  the first capture, and stopping capture releases its session and stream.
+  Hardware encoding and physical sound remain platform acceptance work.
 - Android's system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source
   replacement, cancellation and background return preserve the share. Local/public

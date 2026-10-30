@@ -152,3 +152,60 @@ async fn run(frames: &Frames, fps: u32) -> Result<()> {
     let closed = session.close().await.map_err(anyhow::Error::from);
     result.and(closed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "requires a running desktop Portal and attended source selection"]
+    async fn portal_capture_and_pending_selection_have_separate_lifetimes() -> Result<()> {
+        let target = tokio::task::spawn_blocking(targets)
+            .await??
+            .into_iter()
+            .next()
+            .context("no system picker")?;
+        let capture = Capture::start(target.clone(), 30)?;
+        eprintln!("Portal check: select a source for the first capture");
+        let frame = tokio::time::timeout(Duration::from_secs(90), capture.frames.recv_after(None))
+            .await??
+            .context("capture ended before its first image")?;
+        ensure!(
+            frame.info.width() > 0 && frame.info.height() > 0,
+            "empty source geometry"
+        );
+        ensure!(
+            frame.buffer.size() >= frame.info.size(),
+            "incomplete source image"
+        );
+        ensure!(
+            Instant::now().saturating_duration_since(frame.time) < Duration::from_secs(5),
+            "source PTS left the system-time domain"
+        );
+        eprintln!(
+            "Portal check: received {}x{}; the second picker will be cancelled",
+            frame.info.width(),
+            frame.info.height()
+        );
+
+        let pending = Capture::start(target, 30)?;
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || pending.stop()),
+        )
+        .await???;
+        ensure!(
+            !capture.control().is_stopped(),
+            "cancelling another picker ended the existing capture"
+        );
+        eprintln!("Portal check: second picker cancelled; stopping the first capture");
+        tokio::time::timeout(
+            Duration::from_secs(5),
+            tokio::task::spawn_blocking(move || capture.stop()),
+        )
+        .await???;
+        Ok(())
+    }
+}
