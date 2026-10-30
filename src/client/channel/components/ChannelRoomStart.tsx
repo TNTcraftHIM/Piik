@@ -4,8 +4,8 @@ import { useCopy } from "../../ui/copy";
 export type ChannelEntry = { kind: "entry" } | { kind: "domain"; canCreate: boolean };
 
 /** A room's quiet beginning; navigation and creation remain with their existing owners. */
-export function ChannelRoomStart({ roomName, entry, empty = true }: {
-  roomName: string; entry?: ChannelEntry; empty?: boolean;
+export function ChannelRoomStart({ roomName, entry, empty = true, canSend }: {
+  roomName: string; entry?: ChannelEntry; empty?: boolean; canSend: boolean;
 }) {
   const { lang, vis } = useCopy();
   const copy = (cn: string, en: string) => lang === "zh" ? cn : en;
@@ -16,7 +16,8 @@ export function ChannelRoomStart({ roomName, entry, empty = true }: {
     : entry ? entry.canCreate
       ? copy("从房间列表创建第一间房间。", "Create your first room from the room list.")
       : copy("可进入的房间会显示在房间列表中。", "Rooms you can enter will appear in the room list.")
-    : copy("还没有消息。打个招呼吧。", "No messages yet. Say hello.");
+    : canSend ? copy("还没有消息。打个招呼吧。", "No messages yet. Say hello.")
+      : copy("还没有消息。", "No messages yet.");
   return <div className={`c3-room-start${empty ? " is-empty" : ""}${entry ? " is-entry" : ""}`}>
     <span className="c3-room-start-mark"><Glyph name="couch" size={38} /></span>
     <div className={vis ? "visually-hidden" : undefined}><h3>{title}</h3>{empty && <p>{note}</p>}</div>

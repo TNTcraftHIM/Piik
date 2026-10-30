@@ -110,7 +110,7 @@ export function ChannelConversation({ roomId, roomName, entry, messages, users, 
           follow.current = false;
           void onHistory(roomId).catch(() => { readingAnchor.current = null; });
         }} /></div>}
-      {!history?.hasMore && <ChannelRoomStart roomName={roomName}
+      {!history?.hasMore && <ChannelRoomStart roomName={roomName} canSend={canSend}
         entry={!roomId ? entry ?? { kind: "entry" } : undefined}
         empty={!messages.length && (!roomId || (!!history && !loadingHistory))} />}
       {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">
