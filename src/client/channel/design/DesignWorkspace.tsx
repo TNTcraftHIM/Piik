@@ -48,7 +48,7 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
   const conversation = useDesignConversation();
   const reactions = useDesignReactions(roomId, name(3));
   const voice = { joined, muted, deafened, inputVolume, listeningVolume, setInputVolume, setListeningVolume,
-    toggleJoined: () => { setJoined(!joined); if (joined) setMuted(true); },
+    toggleJoined: () => { setJoined(!joined); setMuted(joined); setDeafened(false); },
     toggleMuted: () => setMuted(!muted), toggleDeafened: () => setDeafened(!deafened) };
   const room = rooms.find(item => item.id === roomId);
   const roomName = room?.name ?? copy("尚未选择房间", "No room selected");
