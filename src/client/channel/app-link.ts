@@ -83,7 +83,8 @@ export class ChannelApp {
         const request = this.requests.get(reply.id);
         if (!request) return;
         this.requests.delete(reply.id);
-        if (reply.error) request.reject(new Error(reply.error));
+        if (reply.error) request.reject(reply.error === "input_authorization_cancelled"
+          ? new DOMException("Input authorization cancelled", "AbortError") : new Error(reply.error));
         else request.resolve(reply.result);
       } catch { lost(); }
     };

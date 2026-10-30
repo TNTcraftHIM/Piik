@@ -1,4 +1,5 @@
 // Physical KeyboardEvent.code to the platform key number; text is separate.
+// Basic PC keys share Windows Set 1 and Linux evdev numbers.
 #[cfg(not(target_os = "macos"))]
 pub(super) fn scan(code: &str) -> Option<u16> {
     Some(match code {
@@ -88,6 +89,13 @@ pub(super) fn scan(code: &str) -> Option<u16> {
         "IntlBackslash" => 0x56,
         "F11" => 0x57,
         "F12" => 0x58,
+        _ => return extended(code),
+    })
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn extended(code: &str) -> Option<u16> {
+    Some(match code {
         "F13" => 0x64,
         "F14" => 0x65,
         "F15" => 0x66,
@@ -118,6 +126,45 @@ pub(super) fn scan(code: &str) -> Option<u16> {
         "MetaLeft" => 0xe05b,
         "MetaRight" => 0xe05c,
         "ContextMenu" => 0xe05d,
+        _ => return None,
+    })
+}
+
+#[cfg(target_os = "linux")]
+fn extended(code: &str) -> Option<u16> {
+    // Linux UAPI input-event-codes.h; these are evdev codes, without XKB's +8.
+    // https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h
+    Some(match code {
+        "F13" => 183,
+        "F14" => 184,
+        "F15" => 185,
+        "F16" => 186,
+        "F17" => 187,
+        "F18" => 188,
+        "F19" => 189,
+        "F20" => 190,
+        "F21" => 191,
+        "F22" => 192,
+        "F23" => 193,
+        "F24" => 194,
+        "NumpadEnter" => 96,
+        "ControlRight" => 97,
+        "NumpadDivide" => 98,
+        "PrintScreen" => 99,
+        "AltRight" => 100,
+        "Home" => 102,
+        "ArrowUp" => 103,
+        "PageUp" => 104,
+        "ArrowLeft" => 105,
+        "ArrowRight" => 106,
+        "End" => 107,
+        "ArrowDown" => 108,
+        "PageDown" => 109,
+        "Insert" => 110,
+        "Delete" => 111,
+        "MetaLeft" => 125,
+        "MetaRight" => 126,
+        "ContextMenu" => 127,
         _ => return None,
     })
 }

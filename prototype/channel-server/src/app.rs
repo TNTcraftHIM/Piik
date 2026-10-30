@@ -632,6 +632,7 @@ async fn connection(
             let mut captures: BTreeMap<Uuid, CaptureLease> = BTreeMap::new();
             let mut audio_errors = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
+            let mut input_policies = FuturesUnordered::new();
             loop {
                 let mut initial_input = None;
                 let message = tokio::select! {
@@ -654,6 +655,11 @@ async fn connection(
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                             input_states.push(next_input_state(publication_id, changed));
                         }
+                        continue;
+                    }
+                    Some(response) = input_policies.next(), if !input_policies.is_empty() => {
+                        let response: Value = response;
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
                 };
@@ -745,29 +751,27 @@ async fn connection(
                                 mode,
                                 password,
                                 simultaneous,
-                            } => (|| -> Result<Value> {
-                                let lease = captures
+                            } => {
+                                let policy = captures
                                     .get(&publication_id)
                                     .filter(|lease| !lease.is_stopped())
-                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
-                                let source = lease
-                                    .remote
-                                    .as_ref()
-                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
-                                if let Some(password) = password {
-                                    source.set_policy(mode, &password)?;
-                                } else if lease
-                                    .input_state
-                                    .as_ref()
-                                    .is_none_or(|state| state.borrow().mode != mode)
-                                {
-                                    source.set_mode(mode)?;
+                                    .ok_or_else(|| anyhow!("input_source_unavailable"))
+                                    .and_then(|lease| {
+                                        lease.set_input_policy(mode, password, simultaneous)
+                                    });
+                                match policy {
+                                    Ok(policy) => {
+                                        input_policies.push(async move {
+                                            match policy.await {
+                                                Ok(()) => json!({"id":request.id,"result":null}),
+                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                            }
+                                        });
+                                        continue;
+                                    }
+                                    Err(error) => Err(error),
                                 }
-                                if let Some(enabled) = simultaneous {
-                                    source.set_simultaneous(enabled)?;
-                                }
-                                Ok(Value::Null)
-                            })(),
+                            }
                             Operation::InputDecide {
                                 publication_id,
                                 controller_session_id,

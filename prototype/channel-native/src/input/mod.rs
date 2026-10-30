@@ -3,6 +3,8 @@
 mod cipher;
 mod gamepad;
 mod keyboard;
+#[cfg(all(feature = "capture", target_os = "linux"))]
+pub(crate) mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(test)]
@@ -13,6 +15,7 @@ mod windows;
 use crate::capture::Target;
 use anyhow::{anyhow, bail, ensure, Result};
 use cipher::Cipher;
+use futures_util::future::{AbortHandle, Abortable};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
@@ -129,7 +132,7 @@ impl Desktop {
                 sink,
                 sources: BTreeMap::new(),
                 owner: None,
-                releases: BTreeSet::new(),
+                releases: BTreeMap::new(),
                 gamepad,
             })),
             #[cfg(any(target_os = "windows", target_os = "macos"))]
@@ -196,6 +199,8 @@ impl Desktop {
             SourceState {
                 publication,
                 target,
+                endpoint: Endpoint::default(),
+                permission: None,
                 mode: Mode::Off,
                 password: [0; 32],
                 password_retry: None,
@@ -291,31 +296,100 @@ impl Source {
         self.set_policy(mode, "")
     }
     pub fn set_policy(&self, mode: Mode, password: &str) -> Result<()> {
-        ensure!(
-            password.len() <= 512 && (mode == Mode::Password) == !password.is_empty(),
-            "invalid_input_policy"
-        );
+        let password = policy_password(mode, password)?;
         self.run(|e, source| {
-            ensure!(
-                source.available || mode == Mode::Off,
-                "input_source_unavailable"
-            );
-            if mode != Mode::Off {
-                e.sink.authorize()?;
+            source.cancel_permission();
+            e.set_policy(source, mode, password)
+        })
+    }
+
+    /// Begin in request order; an OS dialog never holds the desktop executor lock.
+    pub(crate) fn configure<F: std::future::Future<Output = Result<()>> + Send + 'static>(
+        &self,
+        mode: Mode,
+        password: Option<String>,
+        simultaneous: Option<bool>,
+        authorize: impl FnOnce(AbortHandle) -> F + Send + 'static,
+    ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
+        let (request, registration) = AbortHandle::new_pair();
+        let mut changed_password = None;
+        self.run(|_, source| {
+            if password.is_some() || source.mode != mode {
+                changed_password = Some(policy_password(mode, password.as_deref().unwrap_or(""))?);
             }
+            source.cancel_permission();
+            source.permission = Some(request.clone());
+            Ok(())
+        })?;
+        let source = self.clone();
+        Ok(async move {
+            let permit = request.clone();
+            let result = Abortable::new(
+                async move {
+                    if mode != Mode::Off {
+                        authorize(permit).await?;
+                    }
+                    Ok(())
+                },
+                registration,
+            )
+            .await
+            .unwrap_or_else(|_| Err(anyhow!("input_authorization_cancelled")));
+            source
+                .run(|e, source| {
+                    ensure!(!request.is_aborted(), "input_authorization_cancelled");
+                    source.permission.take();
+                    result?;
+                    if let Some(password) = changed_password {
+                        e.set_policy(source, mode, password)?;
+                    }
+                    if let Some(enabled) = simultaneous {
+                        e.set_simultaneous(source, enabled);
+                    }
+                    Ok(())
+                })
+                .map_err(|error| {
+                    if request.is_aborted() {
+                        anyhow!("input_authorization_cancelled")
+                    } else {
+                        error
+                    }
+                })
+        })
+    }
+
+    #[cfg(all(feature = "capture", target_os = "linux"))]
+    pub(crate) fn has_endpoint(&self) -> bool {
+        self.0
+            .desktop
+            .0
+            .lock()
+            .unwrap()
+            .sources
+            .get(&self.0.video)
+            .is_some_and(|source| matches!(source.endpoint, Endpoint::Portal(_)))
+    }
+
+    /// The capture owner commits the selected Portal and its input authority together.
+    #[cfg(all(feature = "capture", target_os = "linux"))]
+    pub(crate) fn bind_endpoint(
+        &self,
+        endpoint: linux::Endpoint,
+        request: &AbortHandle,
+    ) -> Result<()> {
+        self.run(|e, source| {
+            ensure!(!request.is_aborted(), "input_authorization_cancelled");
+            ensure!(source.available, "input_source_unavailable");
             e.revoke_all(source);
-            source.mode = mode;
-            source.password = Sha256::digest(password.as_bytes()).into();
+            source.endpoint = Endpoint::Portal(endpoint);
             Ok(())
         })
     }
 
     pub fn set_simultaneous(&self, enabled: bool) -> Result<()> {
         self.run(|e, source| {
-            if source.simultaneous != enabled {
-                e.revoke_all(source);
-                source.simultaneous = enabled;
-            }
+            source.cancel_permission();
+            e.set_simultaneous(source, enabled);
             Ok(())
         })
     }
@@ -482,10 +556,54 @@ trait Sink: Send {
     fn observe(&mut self, target: &Target) -> TargetState;
     fn apply(&mut self, bounds: Bounds, action: &Action) -> Result<()>;
 }
+
+#[derive(Clone, Default)]
+enum Endpoint {
+    #[default]
+    System,
+    #[cfg(all(feature = "capture", target_os = "linux"))]
+    Portal(linux::Endpoint),
+}
+impl Endpoint {
+    fn authorize(&self, sink: &mut dyn Sink) -> Result<()> {
+        match self {
+            Self::System => sink.authorize(),
+            #[cfg(all(feature = "capture", target_os = "linux"))]
+            Self::Portal(endpoint) => match endpoint.observe() {
+                TargetState::Ready(_) => Ok(()),
+                _ => bail!("input_source_unavailable"),
+            },
+        }
+    }
+    fn observe(&self, sink: &mut dyn Sink, target: &Target) -> TargetState {
+        match self {
+            Self::System => sink.observe(target),
+            #[cfg(all(feature = "capture", target_os = "linux"))]
+            Self::Portal(endpoint) => endpoint.observe(),
+        }
+    }
+    fn apply(&self, sink: &mut dyn Sink, bounds: Bounds, action: &Action) -> Result<()> {
+        match self {
+            Self::System => sink.apply(bounds, action),
+            #[cfg(all(feature = "capture", target_os = "linux"))]
+            Self::Portal(endpoint) => endpoint.apply(bounds, action),
+        }
+    }
+    fn has_text(&self) -> bool {
+        match self {
+            Self::System => cfg!(any(target_os = "windows", target_os = "macos")),
+            #[cfg(all(feature = "capture", target_os = "linux"))]
+            Self::Portal(endpoint) => endpoint.has_text(),
+        }
+    }
+}
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 struct Unsupported;
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
 impl Sink for Unsupported {
+    fn authorize(&mut self) -> Result<()> {
+        bail!("input_permission_required")
+    }
     fn observe(&mut self, _: &Target) -> TargetState {
         TargetState::Lost
     }
@@ -499,12 +617,14 @@ struct Executor {
     sources: BTreeMap<Uuid, SourceState>,
     owner: Option<Uuid>,
     /// Only failed releases survive their grant; never replay presses or motion.
-    releases: BTreeSet<Held>,
+    releases: BTreeMap<Held, Endpoint>,
     gamepad: Option<gamepad::Backend>,
 }
 struct SourceState {
     publication: Uuid,
     target: Target,
+    endpoint: Endpoint,
+    permission: Option<AbortHandle>,
     mode: Mode,
     password: [u8; 32],
     password_retry: Option<Instant>,
@@ -513,6 +633,21 @@ struct SourceState {
     controllers: BTreeMap<Uuid, Controller>,
     replies: mpsc::Sender<Reply>,
     view: watch::Sender<SourceView>,
+}
+impl SourceState {
+    fn cancel_permission(&mut self) {
+        if let Some(request) = self.permission.take() {
+            request.abort();
+        }
+    }
+}
+
+fn policy_password(mode: Mode, password: &str) -> Result<[u8; 32]> {
+    ensure!(
+        password.len() <= 512 && (mode == Mode::Password) == !password.is_empty(),
+        "invalid_input_policy"
+    );
+    Ok(Sha256::digest(password.as_bytes()).into())
 }
 struct Controller {
     flow: Uuid,
@@ -561,10 +696,37 @@ struct RemoteState {
 }
 
 impl Executor {
+    fn set_policy(
+        &mut self,
+        source: &mut SourceState,
+        mode: Mode,
+        password: [u8; 32],
+    ) -> Result<()> {
+        ensure!(
+            source.available || mode == Mode::Off,
+            "input_source_unavailable"
+        );
+        if mode != Mode::Off {
+            source.endpoint.authorize(self.sink.as_mut())?;
+        }
+        self.revoke_all(source);
+        source.mode = mode;
+        source.password = password;
+        Ok(())
+    }
+
+    fn set_simultaneous(&mut self, source: &mut SourceState, enabled: bool) {
+        if source.simultaneous != enabled {
+            self.revoke_all(source);
+            source.simultaneous = enabled;
+        }
+    }
+
     fn revoke(&mut self) {
         let ids: Vec<_> = self.sources.keys().copied().collect();
         for id in ids {
             let _ = self.with_source(id, |e, source| {
+                source.cancel_permission();
                 e.revoke_all(source);
                 // Local stop requires fresh consent, including automatic modes.
                 if source.mode != Mode::Off {
@@ -595,6 +757,7 @@ impl Executor {
 
     fn close(&mut self, video: Uuid) {
         if let Some(mut source) = self.sources.remove(&video) {
+            source.cancel_permission();
             source.available = false;
             self.revoke_all(&mut source);
             self.emit(&mut source);
@@ -605,9 +768,10 @@ impl Executor {
     }
 
     fn retry_releases(&mut self) {
-        self.releases.retain(|held| {
-            self.sink
-                .apply(Bounds::default(), &Action::Held(*held, false))
+        let sink = self.sink.as_mut();
+        self.releases.retain(|held, endpoint| {
+            endpoint
+                .apply(sink, Bounds::default(), &Action::Held(*held, false))
                 .is_err()
         });
     }
@@ -618,12 +782,16 @@ impl Executor {
                 .controllers
                 .values()
                 .any(|other| other.held.contains(&held))
-                && self
-                    .sink
-                    .apply(Bounds::default(), &Action::Held(held, false))
+                && source
+                    .endpoint
+                    .apply(
+                        self.sink.as_mut(),
+                        Bounds::default(),
+                        &Action::Held(held, false),
+                    )
                     .is_err()
             {
-                self.releases.insert(held);
+                self.releases.insert(held, source.endpoint.clone());
             }
         }
     }
@@ -647,7 +815,7 @@ impl Executor {
     }
 
     fn observe(&mut self, source: &mut SourceState) -> Option<Bounds> {
-        match self.sink.observe(&source.target) {
+        match source.endpoint.observe(self.sink.as_mut(), &source.target) {
             TargetState::Ready(bounds) => {
                 for c in source.controllers.values_mut() {
                     c.suspended = false;
@@ -698,7 +866,7 @@ impl Executor {
         c.grant = Some(token.iter().map(|byte| format!("{byte:02x}")).collect());
         c.reason = None;
         self.owner = Some(video);
-        match self.sink.observe(&source.target) {
+        match source.endpoint.observe(self.sink.as_mut(), &source.target) {
             TargetState::Ready(_) => c.suspended = false,
             TargetState::Suspended => c.suspended = true,
             TargetState::Lost => {
@@ -778,7 +946,7 @@ impl Executor {
                     c.reset_pad();
                     return Ok(());
                 }
-                let bounds = match self.sink.observe(&source.target) {
+                let bounds = match source.endpoint.observe(self.sink.as_mut(), &source.target) {
                     TargetState::Ready(bounds) => {
                         c.suspended = false;
                         bounds
@@ -833,7 +1001,7 @@ impl Executor {
                                 .values()
                                 .any(|other| other.held.contains(held));
                             let result = if c.held.contains(held) || !shared {
-                                self.sink.apply(bounds, &action)
+                                source.endpoint.apply(self.sink.as_mut(), bounds, &action)
                             } else {
                                 Ok(())
                             };
@@ -847,9 +1015,9 @@ impl Executor {
                                 .values()
                                 .any(|other| other.held.contains(held))
                         {
-                            let result = self.sink.apply(bounds, &action);
+                            let result = source.endpoint.apply(self.sink.as_mut(), bounds, &action);
                             if result.is_err() {
-                                self.releases.insert(*held);
+                                self.releases.insert(*held, source.endpoint.clone());
                             }
                             result
                         } else {
@@ -866,12 +1034,12 @@ impl Executor {
                         }
                         self.release_holds(source, c);
                         if self.releases.is_empty() {
-                            self.sink.apply(bounds, &action)
+                            source.endpoint.apply(self.sink.as_mut(), bounds, &action)
                         } else {
                             Err(anyhow!("input_cleanup_pending"))
                         }
                     }
-                    _ => self.sink.apply(bounds, &action),
+                    _ => source.endpoint.apply(self.sink.as_mut(), bounds, &action),
                 };
                 // A rejected operation is not permission revocation and is never replayed.
                 c.failed = result.is_err();
@@ -890,7 +1058,7 @@ impl Executor {
         for id in ids {
             let mut c = source.controllers.remove(&id).unwrap();
             let mut capabilities = vec!["inputFeedback"];
-            if count <= 1 {
+            if count <= 1 && source.endpoint.has_text() {
                 capabilities.push("text");
             }
             if self.gamepad.is_some() && !c.pad_failed {

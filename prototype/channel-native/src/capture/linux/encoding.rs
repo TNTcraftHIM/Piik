@@ -541,7 +541,8 @@ async fn run(
                 None => return Ok(()),
             },
         };
-        let force = shared.state.lock().unwrap().force;
+        let force = shared.state.lock().unwrap().force
+            || raw.buffer.flags().contains(gst::BufferFlags::DISCONT);
         previous = Some(raw.time);
         let time = if force && presentation.is_some_and(|last| raw.time <= last) {
             clock.now()?
@@ -555,7 +556,7 @@ async fn run(
         if !force && !admitted {
             continue;
         }
-        let force = std::mem::take(&mut shared.state.lock().unwrap().force);
+        let force = std::mem::take(&mut shared.state.lock().unwrap().force) || force;
         let sample = codec.sample(raw, time, settings, &clock, force)?;
         loop {
             let changed = shared.changed.notified();

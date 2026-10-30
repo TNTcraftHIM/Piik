@@ -46,6 +46,15 @@ pub(crate) struct Control {
     audio: Option<AudioControl>,
 }
 impl Control {
+    #[cfg(target_os = "linux")]
+    pub(crate) async fn authorize(
+        &self,
+        source: crate::input::Source,
+        request: futures_util::future::AbortHandle,
+    ) -> Result<()> {
+        self.video.authorize(source, request).await
+    }
+
     pub fn stop(&self) {
         self.video.stop();
         if let Some(audio) = &self.audio {

@@ -68,6 +68,62 @@ fn source(d: &Desktop) -> (Source, mpsc::Receiver<Reply>, watch::Receiver<Source
     )
     .unwrap()
 }
+
+#[tokio::test]
+async fn pending_os_permission_obeys_current_source_consent() {
+    let (desktop, _) = desktop();
+    let (source, _, state) = source(&desktop);
+    let (permit, granted) = tokio::sync::oneshot::channel();
+    let pending = source
+        .configure(Mode::Room, None, Some(true), |_| async move {
+            granted.await?;
+            Ok(())
+        })
+        .unwrap();
+    tokio::pin!(pending);
+    assert!(futures_util::poll!(&mut pending).is_pending());
+    desktop.revoke();
+    permit.send(()).unwrap();
+    assert!(pending.await.is_err());
+    assert_eq!(state.borrow().mode, Mode::Off);
+    assert!(!state.borrow().simultaneous);
+
+    // A newer request takes ownership even before the old future is polled.
+    let older = source
+        .configure(Mode::Room, None, None, |_| async { Ok(()) })
+        .unwrap();
+    source
+        .configure(Mode::Off, None, None, |_| async { Ok(()) })
+        .unwrap()
+        .await
+        .unwrap();
+    assert!(older.await.is_err());
+    assert_eq!(state.borrow().mode, Mode::Off);
+
+    source
+        .configure(
+            Mode::Password,
+            Some("friends".into()),
+            Some(true),
+            |_| async { Ok(()) },
+        )
+        .unwrap()
+        .await
+        .unwrap();
+    source
+        .configure(Mode::Password, None, Some(false), |_| async { Ok(()) })
+        .unwrap()
+        .await
+        .unwrap();
+    assert_eq!(state.borrow().mode, Mode::Password);
+    assert!(!state.borrow().simultaneous);
+    let pending = source
+        .configure(Mode::Room, None, None, |_| async { Ok(()) })
+        .unwrap();
+    source.close();
+    assert!(pending.await.is_err());
+}
+
 struct Client {
     id: Uuid,
     flow: Uuid,
@@ -616,8 +672,10 @@ fn input_event_parse_and_bounds_reject_unrecognized_or_unbounded_input() {
     }
     .action()
     .is_none());
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     assert_eq!(keyboard::scan("ControlRight"), Some(0xe01d));
+    #[cfg(target_os = "linux")]
+    assert_eq!(keyboard::scan("ControlRight"), Some(97));
     #[cfg(target_os = "macos")]
     assert_eq!(keyboard::scan("ControlRight"), Some(62));
     assert_eq!(keyboard::scan("invented"), None);
@@ -744,4 +802,63 @@ async fn windows_hotkey_revokes_and_unregisters_on_process_close() {
     let (other, _) = desktop();
     other.set_shortcut(key).unwrap();
     other.close();
+}
+
+#[cfg(all(feature = "capture", target_os = "linux"))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated desktop's owned input window and attended Portal consent"]
+async fn linux_portal_grant_delivers_encrypted_input_to_owned_window() -> Result<()> {
+    let events = std::env::var("PIIK_LINUX_INPUT_EVENTS")?;
+    let before = std::fs::read_to_string(&events)?;
+    ensure!(
+        before.contains("piik-linux-input"),
+        "owned input fixture is not ready"
+    );
+    let target = tokio::task::spawn_blocking(crate::capture::targets)
+        .await??
+        .into_iter()
+        .next()
+        .ok_or_else(|| anyhow!("no system picker"))?;
+    let capture = crate::capture::Capture::start(target.clone(), 30)?;
+    let desktop = Desktop::new()?;
+    let (source, mut replies, _) = desktop.source(Uuid::new_v4(), Uuid::new_v4(), target)?;
+    let control = capture.control();
+    let authorized = source.clone();
+    eprintln!("Input check: approve the owned screen, then its Remote Desktop permission");
+    let result: Result<()> = async {
+        tokio::time::timeout(Duration::from_secs(90), source.configure(Mode::Room, None, None,
+            move |request| async move { control.authorize(authorized, request).await })?).await??;
+        ensure!(source.has_endpoint(), "Portal input endpoint was not installed");
+        let mut client = Client::new(&source);
+        client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
+        let state = client.state(&mut replies);
+        ensure!(state["state"] == "active", "controller is not active: {state}");
+        let grant = state["grant"].as_str().ok_or_else(|| anyhow!("missing grant"))?;
+        client.send(&source, json!({"type":"move","x":0.5,"y":0.5,"grant":grant}));
+        for down in [true, false] {
+            client.send(&source, json!({"type":"button","button":0,"down":down,"grant":grant}));
+        }
+        for code in ["KeyP", "KeyI", "KeyI", "KeyK", "Enter"] {
+            for down in [true, false] {
+                client.send(&source, json!({"type":"key","code":code,"down":down,"grant":grant}));
+            }
+        }
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let actual = std::fs::read_to_string(&events)?;
+                let actual = &actual[before.len()..];
+                if actual.contains("\"text\": \"piik\"") && actual.contains("\"key\": \"Return\"")
+                    && actual.contains("\"event\": \"button-press\"") && actual.contains("\"event\": \"motion\"") {
+                    eprintln!("Input check: the owned GTK window received piik, Enter, mouse motion and click");
+                    return Ok::<_, anyhow::Error>(());
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        }).await??;
+        Ok(())
+    }.await;
+    source.close();
+    desktop.close();
+    let stopped = tokio::task::spawn_blocking(move || capture.stop()).await?;
+    result.and(stopped)
 }

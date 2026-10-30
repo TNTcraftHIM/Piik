@@ -2,7 +2,7 @@
 use super::*;
 #[cfg(all(
     any(feature = "capture", test),
-    any(target_os = "windows", target_os = "macos")
+    any(target_os = "windows", target_os = "macos", target_os = "linux")
 ))]
 use crate::input::SourceView;
 use crate::input::{Desktop, Registration, Reply, Source as InputSource};
@@ -15,7 +15,7 @@ pub(super) struct Inputs {
     snapshot: watch::Receiver<Option<Snapshot>>,
     #[cfg(all(
         any(feature = "capture", test),
-        any(target_os = "windows", target_os = "macos")
+        any(target_os = "windows", target_os = "macos", target_os = "linux")
     ))]
     desktop: Option<Desktop>,
     bindings: HashMap<(Uuid, Uuid), InputBinding>,
@@ -38,7 +38,7 @@ impl Inputs {
     ) -> Self {
         #[cfg(not(all(
             any(feature = "capture", test),
-            any(target_os = "windows", target_os = "macos")
+            any(target_os = "windows", target_os = "macos", target_os = "linux")
         )))]
         let _ = desktop;
         Self {
@@ -46,7 +46,7 @@ impl Inputs {
             snapshot,
             #[cfg(all(
                 any(feature = "capture", test),
-                any(target_os = "windows", target_os = "macos")
+                any(target_os = "windows", target_os = "macos", target_os = "linux")
             ))]
             desktop,
             bindings: HashMap::new(),
@@ -58,7 +58,7 @@ impl Inputs {
 
     #[cfg(all(
         any(feature = "capture", test),
-        any(target_os = "windows", target_os = "macos")
+        any(target_os = "windows", target_os = "macos", target_os = "linux")
     ))]
     pub fn source(
         &mut self,

@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-29
+Last reviewed: 2026-10-30
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -11,6 +11,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete Native low-bandwidth adaptation, capture/input on the
   remaining platforms and packaging over the shared UI and Native participant.
+  Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
   Integrate the verified transport probing/feedback and incoming-H264 derivation
   candidates with aggregate application demand and upstream DTLS/SCTP fixes.
   Complete coordinated UDP preparation from the

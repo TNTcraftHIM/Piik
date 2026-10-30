@@ -27,8 +27,11 @@ phases, including NAT and Auto codec behavior.
   GStreamer encoding checks in a Linux VM. Synthetic frames cover independent
   encoders, backpressure, resizing, source timestamps, keyframes and teardown;
   synthetic PCM covers queue-loss gaps. A real GNOME Portal session supplies
-  PipeWire frames with the source clock; cancelling a second selection preserves
-  the first capture, and stopping capture releases its session and stream.
+  PipeWire frames with the source clock. Cancelling pending control permission
+  preserves that stream and the Portal service; accepting it delivers encrypted
+  keyboard and pointer input to a desktop window. Stopping capture releases
+  its Portal sessions and stream. The GNOME cancellation cleanup defect is
+  recorded in the [network design](./research/channel-network-design.md#implementation-boundary).
   Hardware encoding and physical sound remain platform acceptance work.
 - Android's system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source

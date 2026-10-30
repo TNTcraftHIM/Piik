@@ -86,6 +86,26 @@ pub struct CaptureLease {
     control: crate::media::local::Control,
 }
 impl CaptureLease {
+    pub fn set_input_policy(
+        &self,
+        mode: crate::input::Mode,
+        password: Option<String>,
+        simultaneous: Option<bool>,
+    ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
+        let source = self.remote.as_ref().context("input_source_unavailable")?;
+        #[cfg(all(feature = "capture", target_os = "linux"))]
+        let (control, selected) = (self.control.clone(), source.clone());
+        source.configure(mode, password, simultaneous, move |request| async move {
+            #[cfg(all(feature = "capture", target_os = "linux"))]
+            return control.authorize(selected, request).await;
+            #[cfg(not(all(feature = "capture", target_os = "linux")))]
+            {
+                let _ = request;
+                Ok(())
+            }
+        })
+    }
+
     /// First encoded access unit, independent of any viewer's connection.
     pub async fn ready(&mut self) -> Result<()> {
         (&mut self.ready)
@@ -902,7 +922,6 @@ impl Driver {
             self.relay.clone(),
             self.cancel.clone(),
         )?;
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
         let remote = self
             .inputs
             .source(publication, producer.video, target)
@@ -910,13 +929,10 @@ impl Driver {
                 eprintln!("Native input unavailable: {error}");
                 None
             });
-        #[cfg(any(target_os = "windows", target_os = "macos"))]
         let (remote, input_state) = match remote {
             Some((remote, state)) => (Some(remote), Some(state)),
             None => (None, None),
         };
-        #[cfg(target_os = "linux")]
-        let (remote, input_state) = (None, None);
         let lease = CaptureLease {
             ready,
             audio_error,

@@ -2,12 +2,13 @@
 mod audio;
 mod encoding;
 mod frames;
+mod portal;
 mod source;
 
 pub use audio::{audio_capabilities, AudioCapture, AudioControl};
 pub use encoding::{Encoding, EncodingControl};
-pub use frames::{Clock, Control, Frames, RawFrame};
-pub use source::{targets, Capture};
+pub use frames::{Clock, Frames, RawFrame};
+pub use source::{targets, Capture, Control};
 
 use gst::prelude::*;
 

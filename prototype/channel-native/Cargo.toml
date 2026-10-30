@@ -10,7 +10,7 @@ default-run = "piik-channel-native"
 
 [features]
 default = ["capture"]
-capture = ["dep:ashpd", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus"]
+capture = ["dep:ashpd", "dep:reis", "dep:rustix", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus"]
 
 [dependencies]
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
@@ -41,7 +41,9 @@ objc2-application-services = { version = "=0.3.2", default-features = false, fea
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSEvent"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ashpd = { version = "=0.13.13", optional = true, default-features = false, features = ["tokio", "screencast"] }
+ashpd = { version = "=0.13.13", optional = true, default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
+reis = { version = "=0.7.1", optional = true }
+rustix = { version = "1", optional = true, features = ["time", "net"] }
 gst = { package = "gstreamer", version = "=0.24.5", optional = true, features = ["v1_20"] }
 gst-app = { package = "gstreamer-app", version = "=0.24.5", optional = true, features = ["v1_20"] }
 gst-video = { package = "gstreamer-video", version = "=0.24.5", optional = true, features = ["v1_20"] }

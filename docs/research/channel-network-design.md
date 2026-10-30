@@ -705,6 +705,29 @@ PulseAudio monitor pipeline. App enables
 this capture feature; Server forwarding has no desktop capture dependency.
 Platform acceptance is tracked in [verification status](../verification-status.md#device-evidence-boundary).
 
+Enabling Linux input requests a
+[RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
+beside the current capture. It commits only after its selected monitor, EIS
+devices and first raw image are ready; cancellation closes that candidate and
+keeps the current share. Pending interaction explicitly closes its
+[Portal Request](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.Request.html#methods)
+before session cleanup. The existing source-consent owner cancels superseded
+permission requests, including before the capture commit. One local presentation
+at handoff requests a keyframe without replacing the producer, encoders or clock;
+subsequent frames retain their source timestamps. The EIS region mapping pairs
+input with the selected monitor. Paused/removed devices follow the
+[EI neutral-state contract](https://libinput.pages.freedesktop.org/libei/interfaces/ei_device/index.html#ei_devicepaused),
+so their completed releases do not block another source. Text input follows the
+actual device capability.
+
+GNOME Portal 50.0 with Mutter 50.2 leaves an unstarted Mutter session after a
+cancelled permission dialog, including cancellation through the system UI.
+Piik's Portal requests, sessions and PipeWire streams are released. The backend
+calls Mutter `Stop`, whose
+[`!started` branch](https://gitlab.gnome.org/GNOME/mutter/-/blob/50.2/src/backends/meta-remote-desktop-session.c#L691)
+returns without closing the object. This is an upstream cleanup defect; Piik
+must not start an unapproved session to work around it.
+
 Requested dimensions are ceilings: each encoder fits the source's natural pixel
 size without enlarging small sources. A Windows size change drains old access
 units through the existing MFT event loop, reconfigures that same encoder and

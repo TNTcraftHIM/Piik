@@ -45,7 +45,9 @@ The macOS ScreenCaptureKit/VideoToolbox adapter now uses that same producer and
 App path; its Rust capture types are checked, with Apple SDK and native acceptance pending.
 Linux uses that same App path through a Portal-owned PipeWire source, independent
 GStreamer hardware encoders and optional system-output sound. Server forwarding
-builds without the desktop capture dependencies.
+builds without the desktop capture dependencies. Linux RemoteDesktop/EIS input
+uses that source's Portal permission and the shared input executor; enabling it
+preserves the producer and media clock, while cancelling leaves the share running.
 Windows keyboard, mouse and optional gamepad input use the selected screen route
 and shared control UI, with one App desktop executor, page-owned consent and a
 process-only stop hotkey.

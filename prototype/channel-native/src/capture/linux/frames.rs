@@ -81,7 +81,7 @@ enum State {
     Stopped(Option<String>),
 }
 #[derive(Clone)]
-pub struct Control(watch::Sender<State>);
+pub(super) struct Control(watch::Sender<State>);
 impl Control {
     pub fn stop(&self) {
         self.finish(None);
@@ -119,13 +119,17 @@ impl Frames {
     pub fn clock(&self) -> Clock {
         self.clock.clone()
     }
-    pub fn control(&self) -> Control {
+    pub(super) fn control(&self) -> Control {
         self.control.clone()
     }
     pub fn finish(&self, error: Option<String>) {
         self.control.finish(error);
     }
     pub fn publish(&self, sample: &gst::Sample) -> Result<()> {
+        self.publish_frame(self.frame(sample)?);
+        Ok(())
+    }
+    pub(super) fn frame(&self, sample: &gst::Sample) -> Result<RawFrame> {
         let info = gst_video::VideoInfo::from_caps(sample.caps().context("missing source caps")?)?;
         let time = self.clock.sample_time(sample)?;
         // A slow encoder must not retain one of the compositor's finite buffers.
@@ -134,14 +138,22 @@ impl Frames {
             .buffer()
             .context("missing source image")?
             .copy_deep()?;
+        Ok(RawFrame { buffer, info, time })
+    }
+    pub(super) fn publish_frame(&self, raw: RawFrame) {
         self.control.0.send_if_modified(|state| {
             let State::Live(latest) = state else {
                 return false;
             };
-            *latest = Some(RawFrame { buffer, info, time });
+            *latest = Some(raw);
             true
         });
-        Ok(())
+    }
+    pub(super) fn present_now(&self, mut raw: RawFrame) -> Result<RawFrame> {
+        // A user-selected local source is presented once at the handoff time.
+        raw.time = self.clock.now()?;
+        raw.buffer.make_mut().set_flags(gst::BufferFlags::DISCONT);
+        Ok(raw)
     }
     pub async fn recv_after(&self, previous: Option<Instant>) -> Result<Option<RawFrame>> {
         let mut state = self.control.0.subscribe();
@@ -157,5 +169,74 @@ impl Frames {
             }
             state.changed().await?;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::capture::{linux::Encoding, Settings};
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn static_source_handoff_reuses_encoding_and_presents_once() -> Result<()> {
+        gst::init()?;
+        let frames = Frames::new();
+        let info = gst_video::VideoInfo::builder(gst_video::VideoFormat::Bgra, 64, 48).build()?;
+        let sample = |time: Instant, color: u8| -> Result<gst::Sample> {
+            let mut buffer = gst::Buffer::from_mut_slice(vec![color; info.size()]);
+            buffer.make_mut().set_pts(frames.clock().timestamp(time)?);
+            Ok(gst::Sample::builder()
+                .buffer(&buffer)
+                .caps(&info.to_caps()?)
+                .segment(&gst::FormattedSegment::<gst::ClockTime>::new())
+                .build())
+        };
+        let encoder = gst::ElementFactory::make("x264enc")
+            .property_from_str("tune", "zerolatency")
+            .property_from_str("speed-preset", "ultrafast")
+            .build()?;
+        let mut encoding = Encoding::start_with_encoder(
+            frames.clone(),
+            Settings {
+                width: 64,
+                height: 48,
+                fps: 1,
+                bitrate: 200_000,
+            },
+            encoder,
+        )?;
+        let first_time = frames.clock().now()?;
+        frames.publish(&sample(first_time, 32)?)?;
+        let first = tokio::time::timeout(Duration::from_secs(3), encoding.recv())
+            .await
+            .context("initial frame deadline")?
+            .context("missing initial AU")??;
+        assert_eq!(first.presentation_time, first_time);
+
+        // The next source is static, and its one cached sample predates the
+        // incumbent's latest picture. No subsequent raw frame will rescue it.
+        let cached = frames.frame(&sample(first_time - Duration::from_secs(1), 200)?)?;
+        let presented = frames.present_now(cached)?;
+        let presented_time = presented.time;
+        anyhow::ensure!(
+            presented_time.duration_since(first_time) < Duration::from_secs(1),
+            "fixture missed the one-FPS cadence window"
+        );
+        frames.publish_frame(presented);
+        let next = tokio::time::timeout(Duration::from_secs(3), encoding.recv())
+            .await
+            .context("static source handoff deadline")?
+            .context("static source handoff produced no AU")??;
+        assert_eq!(next.presentation_time, presented_time);
+        assert!(next.keyframe && next.presentation_time > first.presentation_time);
+        assert_ne!(next.bytes, first.bytes);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(100), encoding.recv())
+                .await
+                .is_err()
+        );
+        frames.finish(None);
+        tokio::task::spawn_blocking(move || encoding.stop()).await??;
+        Ok(())
     }
 }

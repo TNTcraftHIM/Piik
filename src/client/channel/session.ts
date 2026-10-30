@@ -517,7 +517,7 @@ export class ChannelSession {
     try { return await work(); }
     catch (error) {
       const code = error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed";
-      this.patch({ error: code });
+      if (code !== "AbortError") this.patch({ error: code });
       throw error;
     } finally {
       const pending = new Set(this.view.pending);

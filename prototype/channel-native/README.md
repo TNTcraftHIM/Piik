@@ -44,14 +44,14 @@ The App enables the Native `capture`
 Cargo feature; Server disables it so forwarding does not require desktop media
 libraries. Linux App builds need GStreamer 1.20+ development libraries and
 `pkg-config`; runtime capture needs the PipeWire, conversion, H264 parser and
-hardware encoder plugins, plus a working desktop Portal backend. Linux input
-remains separate work under the same Portal session. Hardware selection uses
-the VA/VA-API, NVENC, MSDK and QSV plugins only when the installed encoder exposes
+hardware encoder plugins, plus a working desktop Portal backend. Hardware
+selection uses the VA/VA-API, NVENC, MSDK and QSV plugins only when the installed encoder exposes
 live bitrate control. Selection opens the actual device and skips unavailable encoders.
 The [network design](../../docs/research/channel-network-design.md) owns source,
 clock and encoder lifetimes; [verification status](../../docs/verification-status.md#device-evidence-boundary)
-owns platform acceptance. `ashpd` uses MIT licensing; the GStreamer Rust bindings
-use MIT/Apache-2.0. GStreamer and system-installed plugins retain their own licenses.
+owns platform acceptance. `ashpd` and the `reis` input bindings use MIT licensing;
+the GStreamer Rust bindings use MIT/Apache-2.0. GStreamer and system-installed
+plugins retain their own licenses.
 
 The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
@@ -88,8 +88,15 @@ Browser-selected stop chord observed by the existing App tick. Only the source
 page enabling control can request Accessibility permission. Window identity,
 focused-window geometry and permission are checked separately; macOS does not
 advertise gamepad support. macOS packaging and real-device capture/input
-acceptance remain open; Linux input must use
-the capture owner's Portal RemoteDesktop session.
+acceptance remain open.
+Linux control requests the system RemoteDesktop permission when the source page
+enables it. The selected monitor and its EIS input connection belong to that one
+Portal session. Approval preserves the existing producer, encoders and media
+clock; cancelling keeps the current sharing session. The same source consent
+owner cancels pending permission on replacement, local stop or capture closure.
+The backend must provide RemoteDesktop and ConnectToEIS; text entry is advertised
+only when the granted device provides it. Linux global stop shortcuts and
+gamepads remain platform work.
 
 The App entry point keeps the Windows MTA alive outside its async runtime.
 Cached WinRT factories span successive captures and source-list refreshes; their
