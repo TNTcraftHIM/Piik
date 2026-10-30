@@ -251,6 +251,207 @@ async fn rejected_ice_candidates_preserve_connectivity_and_the_open_channel() ->
 }
 
 #[tokio::test]
+async fn physical_pair_failure_retires_resources_without_revoking_base_leases() -> Result<()> {
+    let (mut d, mut events, mut commands, _stop) = driver();
+    let live = Uuid::new_v4();
+    let failed = Uuid::new_v4();
+    let publication = Uuid::new_v4();
+    d.update(
+        [live, failed]
+            .into_iter()
+            .map(|id| PairInfo {
+                id,
+                peer_id: Uuid::new_v4(),
+                rooms: vec!["room".into()],
+                incoming: vec![],
+                outgoing: vec![],
+            })
+            .collect(),
+        vec![PublicationInfo {
+            id: publication,
+            kind: Kind::Voice,
+            room_id: "room".into(),
+            session_id: d.session,
+            user_id: d.session,
+            muted: false,
+        }],
+        vec![],
+    )
+    .await?;
+    let flow = Uuid::new_v4();
+    output(&mut d, live, flow, publication, RtpCodecKind::Audio).await?;
+    let source = d.pairs[&live].outputs[&(flow, RtpCodecKind::Audio)].source;
+    if let SourceOrigin::Incoming { pair, .. } = &mut d.sources.get_mut(&source).unwrap().origin {
+        *pair = failed;
+    }
+    // Local and other physical pairs' sources survive this retirement.
+    let mut local = d.sources[&source].clone();
+    local.id = Uuid::new_v4();
+    local.origin = SourceOrigin::Local;
+    let local_id = local.id;
+    d.sources.insert(local.id, local);
+    let mut other = d.sources[&source].clone();
+    other.id = Uuid::new_v4();
+    other.origin = SourceOrigin::Incoming {
+        pair: Uuid::new_v4(),
+        flow_id: Uuid::new_v4(),
+        stream: "other".into(),
+    };
+    let other_id = other.id;
+    d.sources.insert(other.id, other);
+    let downstream = d.pairs[&live].outputs[&(flow, RtpCodecKind::Audio)]
+        .rtp_sink()
+        .unwrap();
+    d.relay.set(source, vec![downstream.clone()]);
+    let failed_flow = Uuid::new_v4();
+    output(
+        &mut d,
+        failed,
+        failed_flow,
+        publication,
+        RtpCodecKind::Audio,
+    )
+    .await?;
+    let retired_writer = d.pairs[&failed].outputs[&(failed_flow, RtpCodecKind::Audio)]
+        .rtp_sink()
+        .unwrap();
+    let failed_peer = d.pairs[&failed].plan.peer_id;
+    let failed_token = d.pairs[&failed].dc.as_ref().unwrap().0;
+    let failed_state = d.pairs[&failed].state.clone();
+    let senders = d.pairs[&failed].data.senders();
+    let remote_id = Uuid::new_v4();
+    let remote = builder(true, SenderReports::default(), MediaFeedback::default())?
+        .with_handler(Arc::new(Handler {
+            pair: remote_id,
+            events: d.events.clone(),
+            overflow: Arc::new(AtomicBool::new(false)),
+            state: Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8)),
+        }))
+        .with_udp_addrs(vec!["0.0.0.0:0".into()])
+        .build()
+        .await?;
+    negotiate(&mut d, live, &remote).await?;
+    let channel = tokio::time::timeout(Duration::from_secs(10), async {
+        let mut channel = None;
+        loop {
+            if d.pairs[&live].connected() && channel.is_some() {
+                return Ok::<_, anyhow::Error>(channel.unwrap());
+            }
+            match events.recv().await.unwrap() {
+                Event::Candidate(id, candidate) if id == live => {
+                    remote.add_ice_candidate(candidate.to_json()?).await?;
+                }
+                Event::Candidate(id, candidate) if id == remote_id => {
+                    d.pairs[&live]
+                        .pc
+                        .add_ice_candidate(candidate.to_json()?)
+                        .await?;
+                }
+                Event::Channel(id, current) if id == remote_id => {
+                    if current.label().await? == "piik-room" {
+                        channel = Some(current);
+                    }
+                }
+                _ => {}
+            }
+        }
+    })
+    .await
+    .context("physical retirement fixture transport readiness")??;
+    let base = d.pairs[&live].dc.as_ref().unwrap().1.clone();
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while base.ready_state().await? != rtc::data_channel::RTCDataChannelState::Open {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    while commands.try_recv().is_ok() {}
+    // The atomic PC failure can precede its State event and arrive as DC close.
+    failed_state.store(RTCPeerConnectionState::Failed as u8, Ordering::Release);
+    d.event(Event::Dc(failed, failed_token, false)).await?;
+    assert!(!d.pairs.contains_key(&failed));
+    assert!(!d.links.lock().unwrap().contains_key(&failed_peer));
+    assert!(!d.sources.contains_key(&source));
+    assert!(d.sources.contains_key(&local_id) && d.sources.contains_key(&other_id));
+    assert!(downstream.is_closed() && retired_writer.is_closed());
+    assert!(senders.control.is_closed() && senders.bulk.is_closed() && senders.input.is_closed());
+    assert_eq!(
+        failed_state.load(Ordering::Acquire),
+        RTCPeerConnectionState::Closed as u8
+    );
+    let mut transitions = vec![];
+    while let Ok(event) = commands.try_recv() {
+        match event {
+            NativeEvent::Command(Command::LinkState {
+                pair_id,
+                state: LinkState::Failed,
+            }) => transitions.push(pair_id),
+            NativeEvent::Command(Command::BaseState { ready: false, .. }) => {
+                panic!("physical failure revoked logical base")
+            }
+            NativeEvent::Command(Command::FlowState {
+                state: FlowState::Failed,
+                ..
+            }) => panic!("source retirement rejected another flow"),
+            _ => {}
+        }
+    }
+    assert_eq!(transitions, vec![failed]);
+    for event in [
+        Event::Dc(failed, failed_token, false),
+        Event::State(failed, RTCPeerConnectionState::Failed),
+        Event::DataWriteFailed {
+            pair: failed,
+            lane: Lane::Control,
+            token: failed_token,
+            temporary: true,
+        },
+    ] {
+        d.event(event).await?;
+    }
+    assert!(
+        commands.try_recv().is_err(),
+        "old callbacks cannot fail the retired pair again"
+    );
+    assert!(d.pairs[&live].connected());
+    base.send_text("sibling survives physical retirement")
+        .await?;
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(event) = channel.poll().await {
+            if let DataChannelEvent::OnMessage(message) = event {
+                assert_eq!(
+                    message.data.as_ref(),
+                    b"sibling survives physical retirement"
+                );
+                return Ok::<_, anyhow::Error>(());
+            }
+        }
+        Err(anyhow!("sibling channel closed"))
+    })
+    .await??;
+    // An independently closed control channel on a still-connected PC retains
+    // that transport and reports only the logical base failure.
+    let live_token = d.pairs[&live].dc.as_ref().unwrap().0;
+    d.event(Event::Dc(live, live_token, false)).await?;
+    assert!(d.pairs[&live].connected());
+    assert!(d.pairs[&live].base_failed);
+    assert!(
+        matches!(commands.try_recv()?, NativeEvent::Command(Command::BaseState { pair_id, ready: false, .. }) if pair_id == live)
+    );
+    assert!(commands.try_recv().is_err());
+    d.pairs[&live]
+        .state
+        .store(RTCPeerConnectionState::Closed as u8, Ordering::Release);
+    d.event(Event::State(live, RTCPeerConnectionState::Closed))
+        .await?;
+    assert!(!d.pairs.contains_key(&live));
+    remote.close().await?;
+    d.files.close().await;
+    Ok(())
+}
+
+#[tokio::test]
 async fn optional_opaque_admission_preserves_selected_rtp_and_the_open_channel() -> Result<()> {
     async fn message(channel: &dyn DataChannel, expected: &str) -> Result<()> {
         tokio::time::timeout(Duration::from_secs(5), async {

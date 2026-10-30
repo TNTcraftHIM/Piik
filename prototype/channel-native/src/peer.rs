@@ -511,7 +511,7 @@ impl NativePeers {
                             };
                             if let Err(error) = d.event(event).await {
                                 eprintln!("Native pair event failed: {error}");
-                                if let Some(id) = id {
+                                if let Some(id) = id.filter(|id| d.pairs.contains_key(id)) {
                                     d.fail(id).await;
                                 }
                             }
@@ -1016,15 +1016,7 @@ impl Driver {
             .collect();
         let mut released = false;
         for id in removed {
-            for message in self.inputs.disconnected(id) {
-                self.send_input(message).await;
-            }
-            if let Some(pair) = self.pairs.remove(&id) {
-                released |= !pair.outputs.is_empty();
-                self.links.lock().unwrap().remove(&pair.plan.peer_id);
-                self.files.detach(pair.plan.peer_id).await;
-                close_pair(pair).await;
-            }
+            released |= self.retire_pair(id).await;
         }
         for plan in plans {
             let id = plan.id;
@@ -1586,11 +1578,28 @@ impl Driver {
             .await;
         }
     }
-    async fn fail(&mut self, id: Uuid) {
+    async fn retire_pair(&mut self, id: Uuid) -> bool {
+        let Some(pair) = self.pairs.remove(&id) else {
+            return false;
+        };
         for message in self.inputs.disconnected(id) {
             self.send_input(message).await;
         }
-        self.fail_base(id).await;
+        self.sources.retain(
+            |_, source| !matches!(source.origin, SourceOrigin::Incoming { pair, .. } if pair == id),
+        );
+        self.relay.retain(&self.sources.keys().copied().collect());
+        let released = !pair.outputs.is_empty();
+        self.links.lock().unwrap().remove(&pair.plan.peer_id);
+        self.files.detach(pair.plan.peer_id).await;
+        close_pair(pair).await;
+        released
+    }
+    async fn fail(&mut self, id: Uuid) {
+        self.retire_pair(id).await;
+        if let Err(error) = self.refresh_outputs().await {
+            eprintln!("Native media retirement failed: {error}");
+        }
         self.send(Command::LinkState {
             pair_id: id,
             state: LinkState::Failed,
@@ -1813,7 +1822,10 @@ impl Driver {
                         })
                         .await;
                         self.base_ready(id).await;
-                    } else if state == RTCPeerConnectionState::Failed {
+                    } else if matches!(
+                        state,
+                        RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
+                    ) {
                         self.fail(id).await;
                     }
                 }
@@ -1831,6 +1843,8 @@ impl Driver {
                         p.dc_open = open;
                         if open {
                             self.base_ready(id).await;
+                        } else if data::terminal(&p.state) {
+                            self.fail(id).await;
                         } else {
                             self.fail_base(id).await;
                         }
