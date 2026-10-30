@@ -61,14 +61,15 @@ jobs:
       run:
         shell: bash --noprofile --norc -e -o pipefail {0}
     env:
-      CARGO_TARGET_DIR: ${{ runner.temp }}/channel-native-target
       MACOSX_DEPLOYMENT_TARGET: '13.0'
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
       - name: Install Rust 1.91.0
-        run: rustup toolchain install 1.91.0 --profile minimal
+        run: |
+          rustup toolchain install 1.91.0 --profile minimal
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/channel-native-target" >> "$GITHUB_ENV"
       - name: Build Rust Server and App with capture
         run: |
           mkdir -p "$RUNNER_TEMP/channel-native-logs"
