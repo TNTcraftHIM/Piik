@@ -170,7 +170,7 @@ export function ChannelPreviewPage() {
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
           <div className="c3-room-tools">
-            {room?.canManage && <ChannelRoomControls channel={channel} room={room} />}
+            {room?.canManage && <ChannelRoomControls key={room.id} channel={channel} room={room} />}
             {visibleScreens.length > 0 && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
               iconOnly quiet pressed={chatOpen} hint={chatOpen ? "hint-close" : "hint-chat-open"} onClick={() => setChatOpen(!chatOpen)} />}
             <Tooltip className="c3-pane-navigation" kind="hint-details" disabled={mobilePane === "people"} text={vis ? undefined : copy("域内用户", "Domain users")}><button id="c3-people-trigger" type="button" className="c3-people-trigger"
