@@ -6,6 +6,7 @@ import (
 
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/livekit/livekit-server/pkg/sfu/buffer"
+	"github.com/livekit/livekit-server/pkg/sfu/bwe"
 	"github.com/livekit/livekit-server/pkg/sfu/pacer"
 	"github.com/livekit/protocol/livekit"
 	"github.com/livekit/protocol/logger"
@@ -221,6 +222,25 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if state := sibling.State(); state.Target != 1 {
 		t.Fatalf("measured variation downgraded an already constrained output: %+v", state)
 	}
+	sibling.congestionState = func() bwe.CongestionState { return bwe.CongestionStateCongested }
+	sibling.Reconcile()
+	if state := sibling.State(); state.Target != 0 {
+		t.Errorf("confirmed congestion retained an output above the unchanged budget: %+v", state)
+	}
+	sibling.congestionState = nil
+
+	// A recovered low layer does not authorize an unmeasured high layer.
+	receiver.rates = sfu.Bitrates{{50_000}, {0}, {0}}
+	receiver.available = []int32{0}
+	sibling.SetBudget(60_000)
+	if state := sibling.State(); state.Target != 0 {
+		t.Fatalf("recovery did not select the measured affordable layer: %+v", state)
+	}
+	receiver.available = []int32{0, 1, 2}
+	sibling.Reconcile()
+	if state := sibling.State(); state.Target != 0 {
+		t.Errorf("a resumed unmeasured layer bypassed the connection budget: %+v", state)
+	}
 	receiver.rates[1][0] = 300_000
 	receiver.rates[2][0] = 900_000
 	sibling.SetBudget(1_000_000)
@@ -259,9 +279,26 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if after.Current != -1 || after.Target != before.Target || after.Requested != before.Requested {
 		t.Fatalf("controlled frame fence replaced its allocation: before=%+v after=%+v", before, after)
 	}
+	output.SetBudget(200_000)
 	output.Resync()
 	if state := output.State(); state.Target != -1 || state.Current != -1 {
 		t.Fatalf("source resync retained old output state: %+v", state)
+	}
+	output.Reconcile()
+	if state := output.State(); state.Target != 0 || state.VideoBudget != 200_000 {
+		t.Fatalf("source resync discarded the established connection budget: %+v", state)
+	}
+	receiver.available = []int32{0, 1, 2}
+	receiver.rates = sfu.Bitrates{{100_000}, {300_000}, {900_000}}
+	sibling.SetMaxSpatialLayer(2)
+	if state := sibling.State(); state.Target != 2 {
+		t.Fatalf("high layer did not resume before source resync: %+v", state)
+	}
+	sibling.Resync()
+	receiver.rates = sfu.Bitrates{{100_000}}
+	sibling.Reconcile()
+	if state := sibling.State(); state.Target != 0 {
+		t.Fatalf("source resync reused an unmeasured retired allocation: %+v", state)
 	}
 	output.SetBudget(1_000_000)
 	output.ReceiverRestart(receiver)

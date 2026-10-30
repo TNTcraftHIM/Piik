@@ -92,26 +92,35 @@ func (output *Output) reconcileLocked(budgetReduced bool) {
 	if output.congestionState != nil {
 		congestion = output.congestionState()
 	}
-	stable := !budgetReduced && output.hasAllocation && !output.IsDeficient() && congestion != bwe.CongestionStateCongested
-	if !measured || (output.feedbackObserved != nil && !output.feedbackObserved()) || stable {
+	if (!output.hasAllocation && !measured) || (output.feedbackObserved != nil && !output.feedbackObserved()) {
 		if len(available) > 0 {
 			// Source history is not this new connection's capacity. Bootstrap
 			// through the library until video can establish real feedback;
 			// pausing against the initial estimate would prevent that feedback.
-			// Stable streams also retain the library's optimal allocation, including
-			// while individual layers' bitrate windows are becoming available.
 			output.allocation = output.AllocateOptimal(false, congestion == bwe.CongestionStateEarlyWarning)
 			output.hasAllocation = true
 		}
 		return
 	}
+	if !measured {
+		return
+	}
+	maximum := output.MaxLayer()
+	target := output.allocation.TargetLayer
+	if !budgetReduced && output.hasAllocation && congestion != bwe.CongestionStateCongested && target.IsValid() &&
+		target.Spatial <= maximum.Spatial && target.Temporal <= maximum.Temporal &&
+		slices.Contains(available, target.Spatial) && rates[target.Spatial][target.Temporal] == 0 {
+		// An active layer's missing rate window does not revoke its allocation.
+		// Retain that target rather than optimally allocating a different layer.
+		return
+	}
 	output.ProvisionalAllocatePrepare()
 	remaining := output.budget
 	retained := buffer.InvalidLayer
-	if !budgetReduced && output.hasAllocation {
+	if !budgetReduced && output.hasAllocation && congestion != bwe.CongestionStateCongested {
 		// Match the library's cooperative allocation: changed source measurements
-		// do not imply congestion. Retain a valid target; only a lower connection
-		// budget constrains it again. Larger outputs still need available headroom.
+		// alone retain a valid target. A lower budget or confirmed congestion
+		// constrains it again. Larger outputs still need available headroom.
 		transition := output.ProvisionalAllocateGetCooperativeTransition(false)
 		if transition.From.IsValid() && transition.From == transition.To {
 			retained = transition.To
@@ -120,7 +129,6 @@ func (output *Output) reconcileLocked(budgetReduced bool) {
 			output.ProvisionalAllocateReset()
 		}
 	}
-	maximum := output.MaxLayer()
 	controlled, ok := output.Receiver().(interface{ RateControlled(int32) bool })
 	keepLowest := ok && controlled.RateControlled(0) && slices.Contains(available, int32(0))
 	for spatial := int32(0); spatial <= maximum.Spatial; spatial++ {
