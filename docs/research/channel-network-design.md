@@ -694,6 +694,20 @@ PulseAudio monitor pipeline. App enables
 this capture feature; Server forwarding has no desktop capture dependency.
 Platform acceptance is tracked in [verification status](../verification-status.md#device-evidence-boundary).
 
+Android is planned at this same producer boundary. One user-approved
+[MediaProjection](https://developer.android.com/media/grow/media-projection)
+owns one VirtualDisplay and image source. Independent MediaCodec encodings consume
+owned immutable snapshots, retaining the existing source clock and output owners;
+one blocked encoder must not retain the projection's reusable image or block its
+siblings. Optional [playback sound](https://developer.android.com/media/platform/av-capture)
+is acquired through that capture's authorization, rather than a second projection
+or a global lookup. Java supplies the necessary system consent, foreground
+service and platform callbacks; Rust owns capture and encoding. The page owns
+the capture lease from its initial request, including permission and first-frame
+waits. Those waits must leave the App command processor available, and the same
+stop operation retires pending and active capture. The shared picker, activation
+flow and room/media routes remain the consumers of this platform adapter.
+
 Enabling Linux input requests a
 [RemoteDesktop Portal session](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.RemoteDesktop.html)
 beside the current capture. It commits only after its selected monitor, EIS
