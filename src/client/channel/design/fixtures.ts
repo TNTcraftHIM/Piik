@@ -1,6 +1,7 @@
 import type { GlyphName } from "../../ui/icons";
 
 export type DesignScene = "chat" | "screens" | "focus" | "create";
+export type DesignContent = "full" | "empty" | "few" | "domain";
 export type DesignCopy = (chinese: string, english: string) => string;
 export type DesignRoom = { id: string; name: string; icon: GlyphName; image?: File; private?: boolean; hidden?: boolean; password?: string };
 

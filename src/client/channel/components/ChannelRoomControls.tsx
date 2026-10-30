@@ -78,6 +78,7 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" popoverTarget={id}
         aria-label={title} aria-haspopup="dialog" disabled={!available}>
         <Glyph name={room ? "sliders" : "plus"} size={18} />
+        {!room && !channel.state?.channel.rooms.length && !vis && <span className="lr-cap">{title}</span>}
       </button>
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}

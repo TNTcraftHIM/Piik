@@ -24,6 +24,8 @@
 .c3-room-activity, .c3-room-activity > span { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--muted); }
 .c3-room-activity:empty { display: none; }
 .c3-room-navigation { min-height: 120px; flex: 1; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.c3-room-list-empty { padding: 16px 10px; color: var(--muted); font-size: 12px; line-height: 1.7; }
+.c3-room-navigation.is-empty > .c3-section-label { flex-wrap: wrap; gap: 12px; }
 .c3-pane-back, .c3-pane-navigation, .c3-room-tools > .c3-pane-navigation { display: none; }
 .c3-identity { display: flex; gap: 8px; align-items: center; margin-top: auto; padding: 16px 4px 2px; border-top: 1px solid var(--line); }
 .c3-identity > svg { flex: none; width: 32px; height: 40px; }
@@ -55,52 +57,6 @@
 .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr) 300px; }
 .c3-workspace.has-screens > .c3-monitor { background: var(--wall); border-inline-end: 1px solid var(--line); }
 .c3-workspace.has-screens.chat-collapsed { grid-template-columns: minmax(0, 1fr); }
-.c3-conversation { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; }
-.c3-conversation[hidden] { display: none; }
-.c3-workspace:not(.has-screens) .c3-conversation { width: 100%; max-width: 900px; margin-inline: auto; }
-.c3-workspace:not(.has-screens) .c3-chat-heading { display: none; }
-.c3-chat-heading { display: flex; align-items: center; gap: 7px; font-size: 12px; }
-.c3-chat-heading > span { color: var(--muted); margin-inline-start: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c3-message-log { flex: 1; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: 2px 3px; scrollbar-width: thin; }
-.c3-message-log:has(.c3-welcome) { display: grid; align-items: center; }
-.c3-welcome { margin: auto; max-width: 350px; padding: 20px 8px; text-align: center; }
-.c3-welcome > svg { color: var(--couch-dark); margin-bottom: 18px; }
-.c3-welcome h3 { font-size: 22px; font-weight: 650; line-height: 1.4; letter-spacing: -.025em; text-wrap: balance; }
-.c3-welcome p { margin-top: 9px; color: var(--muted); font-size: 13px; line-height: 1.7; text-wrap: balance; }
-.c3-workspace.has-screens .c3-welcome { padding: 12px 4px; }
-.c3-workspace.has-screens .c3-welcome > svg { width: 36px; height: 36px; margin-bottom: 8px; }
-.c3-workspace.has-screens .c3-welcome h3 { font-size: 15px; }
-.c3-workspace.has-screens .c3-welcome p { display: none; }
-.c3-message { display: flex; align-items: flex-start; gap: 11px; margin: 20px 0; }
-.c3-message:first-child { margin-top: 8px; }
-.c3-message > svg { width: 29px; height: 36px; flex: none; }
-.c3-message-body { flex: 1; min-width: 0; }
-.c3-message-meta { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
-.c3-message-meta strong { font-size: 13px; font-weight: 700; }
-.c3-message-meta time { font-size: 10px; color: var(--muted); }
-.c3-message p { white-space: pre-wrap; font-size: 14px; line-height: 1.65; margin-top: 3px; }
-.c3-message.is-continuation { margin-top: -14px; padding-inline-start: 40px; }
-.c3-composer { display: flex; align-items: flex-end; gap: 10px; border: 1px solid var(--line); background: var(--wall); border-radius: 16px; padding: 10px; flex: none; }
-.c3-composer:focus-within { border-color: var(--action); }
-.c3-history-more { display: flex; justify-content: center; margin-bottom: 14px; }
-.c3-draft-files { display: grid; gap: 6px; max-height: 150px; overflow-y: auto; }
-.c3-draft-files > div { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 8px; background: var(--wall); border-radius: 10px; font-size: 12px; }
-.c3-draft-files > div > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.c3-draft-files > div > svg { flex: none; }
-.c3-draft-files small { color: var(--muted); white-space: nowrap; }
-.c3-draft-files .lr-btn { width: var(--control-compact-size); padding-inline: 0; }
-.c3-file-error { font-size: 12px; line-height: 1.6; color: var(--danger); }
-.c3-file-retry { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
-.c3-attachment { display: grid; gap: 8px; max-width: 440px; border: 1px solid var(--line); border-radius: 12px; background: var(--wall); padding: 10px; margin-top: 8px; }
-.c3-attachment-file { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.c3-attachment-file > svg { flex: none; color: var(--muted); }
-.c3-attachment-file > div { flex: 1; min-width: 0; }
-.c3-attachment-file strong { display: block; font-size: 12px; font-weight: 650; overflow-wrap: anywhere; }
-.c3-attachment small { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
-.c3-attachment > .lr-btn { justify-self: start; }
-.c3-attachment img { display: block; max-width: 100%; max-height: 260px; border-radius: 6px; object-fit: contain; }
-.c3-composer textarea { flex: 1; min-width: 0; width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; font-size: 14px; line-height: 1.6; padding: 7px 4px; min-height: 36px; max-height: 140px; resize: none; field-sizing: content; }
-.c3-composer textarea:focus { outline: 0; }
 .c3-voice-dock { flex: none; display: flex; align-items: center; gap: 12px; padding: 14px 24px; border-top: 1px solid var(--line); }
 .c3-voice-dock > svg { color: var(--live); flex: none; }
 .c3-voice-destination { min-width: 0; flex: 1; }
@@ -138,7 +94,7 @@
 .c3-role-options input { accent-color: var(--action); cursor: pointer; }
 .c3-offline-users { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 12px; }
 .c3-offline-users summary { color: var(--muted); cursor: pointer; font-size: 12px; padding: 6px 10px; }
-.c3-visual .c3-channel-caption, .c3-visual .c3-welcome :is(h3,p) { display: none; }
+.c3-visual .c3-channel-caption { display: none; }
 @media (max-width: 1180px) {
   .c3-shell { grid-template-columns: 54px 194px minmax(0, 1fr) 204px; width: calc(100% - 28px); }
   .c3-room-heading { gap: 10px; padding: 16px 18px; }
@@ -149,7 +105,6 @@
   .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
   .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
   .c3-workspace.has-screens .c3-conversation { min-height: 188px; padding: 12px 18px; gap: 10px; }
-  .c3-workspace.has-screens .c3-welcome > svg { display: none; }
   .c3-workspace.chat-collapsed .c3-monitor { overflow-y: auto; }
 }
 @media (max-width: 980px) {
@@ -184,9 +139,6 @@
   .c3-room-tools { grid-column: 2; grid-row: 1; }
   .c3-avatar-stack > svg + svg { display: none; }
   .c3-people-trigger > svg { display: none; }
-  .c3-conversation { padding: 14px; gap: 12px; }
-  .c3-welcome h3 { font-size: 19px; }
-  .c3-welcome > svg { width: 48px; height: 48px; margin-bottom: 12px; }
   .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 140px; overflow-y: auto; }
   .c3-voice-dock { padding: 10px 14px; gap: 8px; }
   .c3-voice-controls { gap: 2px; }

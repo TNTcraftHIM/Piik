@@ -11,7 +11,13 @@
 .cd-book-intro h1 { margin: 12px 0 10px; font-size: clamp(24px, 3vw, 34px); font-weight: 700; letter-spacing: -.035em; line-height: 1.4; text-wrap: balance; }
 .cd-book-intro > p { color: var(--muted); font-size: 14px; max-width: 76ch; line-height: 1.8; }
 .cd-book-tools { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
-.cd-preview-options { display: flex; align-items: center; gap: 12px; }
+.cd-preview-options { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px; }
+.cd-book-tools { flex-wrap: wrap; }
+.cd-content-picker { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.cd-content-picker select { min-height: 34px; max-width: 160px; padding: 5px 9px; border: 1px solid var(--line); border-radius: 11px; background: var(--wall); color: var(--ink); font: inherit; }
+.cd-room-list-empty { padding: 20px 10px; color: var(--muted); font-size: 12px; }
+.cd-room-content > .c3-conversation { width: 100%; max-width: 760px; margin-inline: auto; }
+.cd-room-content .c3-chat-heading { display: none; }
 .cd-people-picker { --selection-item-size: var(--control-dense-size); box-shadow: none; border-color: var(--line); }
 .cd-people-picker button { padding-inline: 12px; font-size: 12px; white-space: nowrap; }
 .cd-scene-picker { --selection-item-size: var(--control-dense-size); box-shadow: none; border-color: var(--line); }
@@ -23,7 +29,6 @@
 .cd-board.is-phone { max-width: 390px; }
 .cd-workspace { display: grid; grid-template-columns: 66px 224px minmax(0, 1fr) 208px; height: 730px; border: 1px solid var(--line); border-radius: 20px; background: var(--paper); box-shadow: var(--panel-shadow); overflow: clip; font-size: 13px; }
 .cd-workspace h2 { font-size: 15px; }
-.cd-workspace h3 { font-size: 13px; }
 .cd-workspace button { -webkit-tap-highlight-color: transparent; }
 .cd-workspace .lr-comic-tip-wrap { display: inline-flex; min-width: 0; }
 .cd-rooms { display: flex; flex-direction: column; min-width: 0; background: var(--wall); border-right: 1px solid var(--line); }

@@ -7,10 +7,13 @@ import type { ChannelMessage, ChannelUser } from "../protocol";
 import { ChannelAction } from "./ChannelMedia";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
+import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
+import "./channel-conversation.css";
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, messages, users, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest }: {
+export function ChannelConversation({ roomId, roomName, entry, messages, users, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest }: {
   roomId: string; roomName: string; messages: ChannelMessage[]; users: ChannelUser[];
+  entry?: ChannelEntry;
   canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
   attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
@@ -107,12 +110,8 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
           follow.current = false;
           void onHistory(roomId).catch(() => { readingAnchor.current = null; });
         }} /></div>}
-      {!messages.length && <div className="c3-welcome">
-        <Glyph name="couch" size={64} />
-        <h3>{zh ? "朋友来了，就有话聊。" : "Good company starts here."}</h3>
-        <p>{roomId ? (zh ? "打个招呼，或加入语音一起聊。" : "Say hello, or join voice and catch up.")
-          : (zh ? "打开邀请链接，进入朋友的频道。" : "Open an invitation to join your friends.")}</p>
-      </div>}
+      {!history?.hasMore && <ChannelRoomStart roomName={roomName}
+        entry={!roomId ? entry ?? { kind: "entry" } : undefined} empty={!messages.length} />}
       {messages.map((message, index) => {
         const previous = messages[index - 1];
         const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
@@ -138,10 +137,9 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
         onClick={() => { void removeFile(entry); }} />
     </div>)}</div>}
     {fileError && <p className="c3-file-error" role="status">{fileError}</p>}
-    {roomId && !attachmentsAvailable && <p className="c3-file-retry">{zh ? "这间房间的文件传输尚未接入。" : "File transfer is not connected in this room yet."}</p>}
     {limitsFailed && <div className="c3-file-retry"><span>{zh ? "文件处理暂不可用" : "File preparation unavailable"}</span>
       <ChannelAction icon="refresh" quiet label={zh ? "重试" : "Retry"} onClick={() => setLimitsRetry(value => value + 1)} /></div>}
-    <form className="c3-composer" onSubmit={event => { void send(event); }}
+    {roomId && <form className="c3-composer" onSubmit={event => { void send(event); }}
       onDragOver={event => { if (event.dataTransfer.types.includes("Files")) event.preventDefault(); }}
       onDrop={event => { event.preventDefault(); addFiles([...event.dataTransfer.files]); }}>
       {attachmentsAvailable && <><input ref={chooser} type="file" multiple hidden onChange={event => { addFiles([...event.currentTarget.files ?? []]); event.currentTarget.value = ""; }} />
@@ -156,6 +154,6 @@ export function ChannelConversation({ roomId, roomName, messages, users, canSend
         } }} />
       <ChannelAction icon="send" label={zh ? "发送" : "Send"} type="submit" primary iconOnly
         disabled={!canSend || (!draft.trim() && !files.length)} busy={working} hint="hint-chat-send" />
-    </form>
+    </form>}
   </section>;
 }

@@ -4,10 +4,14 @@ import { Glyph } from "../ui/icons";
 import { BrandLockup } from "../components/living/BrandMark";
 import { HeaderControls } from "../components/living/Header";
 import { DesignWorkspace } from "../channel/design/DesignWorkspace";
-import { designScenes, readDesignScene, type DesignScene } from "../channel/design/fixtures";
+import { designScenes, readDesignScene, type DesignContent, type DesignScene } from "../channel/design/fixtures";
 import "../channel/design/channel-design.css";
 
-const PEOPLE_PRESETS = [4, 12, 20];
+const PEOPLE_PRESETS = [1, 2, 4, 12, 20];
+const CONTENT_PRESETS: { id: DesignContent; name: [string, string] }[] = [
+  { id: "full", name: ["日常内容", "Everyday"] }, { id: "empty", name: ["空聊天", "Empty chat"] },
+  { id: "few", name: ["两条消息", "Two messages"] }, { id: "domain", name: ["无房间", "No rooms"] },
+];
 
 /** A visual proposal; no channel, session or media state is changed here. */
 export function ChannelDesignPage() {
@@ -15,6 +19,10 @@ export function ChannelDesignPage() {
   const copy = (chinese: string, english: string) => lang === "zh" ? chinese : english;
   const [scene, setScene] = useState(readDesignScene);
   const [phone, setPhone] = useState(false);
+  const [content, setContent] = useState<DesignContent>(() => {
+    const value = new URLSearchParams(location.search).get("content");
+    return CONTENT_PRESETS.find(item => item.id === value)?.id ?? "full";
+  });
   const [people, setPeople] = useState(() => {
     const count = Number(new URLSearchParams(location.search).get("people"));
     return PEOPLE_PRESETS.includes(count) ? count : 4;
@@ -49,13 +57,20 @@ export function ChannelDesignPage() {
         </button>)}
       </nav>
       <div className="cd-preview-options">
+        <label className="cd-content-picker"><span>{copy("内容", "Content")}</span>
+          <select value={content} onChange={event => {
+            const next = event.target.value as DesignContent;
+            setContent(next);
+            const url = new URL(location.href); url.searchParams.set("content", next); history.replaceState(null, "", url);
+          }}>{CONTENT_PRESETS.map(item => <option key={item.id} value={item.id}>{copy(...item.name)}</option>)}</select>
+        </label>
         <div className="lr-toggle cd-people-picker" role="group" aria-label={copy("房间人数预览", "Room size preview")}
           style={{ "--lr-segments": PEOPLE_PRESETS.length } as CSSProperties}>
           {PEOPLE_PRESETS.map(count => <button type="button" key={count} className={people === count ? "is-selected" : undefined}
             aria-pressed={people === count} onClick={() => {
               setPeople(count);
               const url = new URL(location.href); url.searchParams.set("people", String(count)); history.replaceState(null, "", url);
-            }}>{copy(`${count} 人`, `${count} people`)}</button>)}
+            }}>{copy(`${count} 人`, `${count} ${count === 1 ? "person" : "people"}`)}</button>)}
         </div>
         <div className="lr-toggle cd-size-picker" role="group" aria-label={copy("预览尺寸", "Preview size")}>
           <button type="button" className={!phone ? "is-selected" : undefined} aria-label={copy("桌面", "Desktop")} aria-pressed={!phone} onClick={() => setPhone(false)}><Glyph name="display" size={19} /></button>
@@ -64,7 +79,7 @@ export function ChannelDesignPage() {
       </div>
     </div>
     <div className={"cd-board" + (phone ? " is-phone" : "")}>
-      <DesignWorkspace key={`${boardKey}-${people}`} copy={copy} scene={scene} peopleCount={people} onScene={navigate} />
+      <DesignWorkspace key={`${boardKey}-${people}-${content}`} copy={copy} scene={scene} content={content} peopleCount={people} onScene={navigate} />
     </div>
     <div className="cd-book-notes">
       <article><span>01</span><div><h2>{copy("空间先稳定下来", "A steady sense of place")}</h2><p>{copy("左侧找房间，中央一起聊和看，右侧找朋友。成员列表有自己的位置，不再悬浮在画面上。", "Rooms, conversation and people each have a home. The member list belongs to the layout, not a floating window.")}</p></div></article>

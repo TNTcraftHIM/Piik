@@ -53,8 +53,8 @@ export function useDesignReactions(roomId: string, name: string) {
 export type DesignReactionsModel = ReturnType<typeof useDesignReactions>;
 
 /** Room presence owns the couch; watching or sharing does not remount it. */
-export function DesignCouch({ people, selfVoice, copy, reactions }: {
-  people: number[]; selfVoice: boolean | PawnVoice; copy: DesignCopy; reactions: DesignReactionsModel;
+export function DesignCouch({ people, selfVoice, copy, reactions, voiceEnabled = true }: {
+  people: number[]; selfVoice: boolean | PawnVoice; copy: DesignCopy; reactions: DesignReactionsModel; voiceEnabled?: boolean;
 }) {
   const name = useContext(DesignNames);
   const [container, availableWidth] = useElementWidth();
@@ -90,7 +90,7 @@ export function DesignCouch({ people, selfVoice, copy, reactions }: {
         <button type="button" className={"lr-pawn" + (index === 3 ? " is-you" : "")}
           aria-label={action} aria-expanded={target?.index === index} aria-controls={pickerId}
           onClick={event => setTarget({ index, trigger: event.currentTarget })}>
-          <DesignAvatar index={index} voice={index === 3 ? selfVoice : true} />
+          <DesignAvatar index={index} voice={index === 3 ? selfVoice : voiceEnabled} />
           <span className="lr-pawn-name">{displayName}</span>
         </button>
       </Tooltip>

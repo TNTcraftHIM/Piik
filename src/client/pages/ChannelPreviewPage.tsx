@@ -131,7 +131,7 @@ export function ChannelPreviewPage() {
         {copyError && <label className="c3-copy-fallback">{copy("请手动复制邀请链接", "Copy invitation manually")}
           <input className="c3-input" readOnly value={channel.inviteURL ?? ""} onFocus={event => event.currentTarget.select()} />
         </label>}
-        <div className="c3-room-navigation">
+        <div className={`c3-room-navigation${!rooms.length ? " is-empty" : ""}`}>
           <div className="c3-section-label"><span className="c3-section-caption">{copy("房间", "Rooms")}</span>
             {can("create_room") && <ChannelRoomControls channel={channel} onCreated={selectRoom} />}
           </div>
@@ -152,6 +152,7 @@ export function ChannelPreviewPage() {
               </button>;
             })}
           </nav>
+          {state && !rooms.length && <p className="c3-room-list-empty">{copy("暂无可进入的房间", "No rooms available yet")}</p>}
         </div>
         {self && <div className="c3-identity"><PawnSvg color={participantColor(self.id)} identity={self.id} host={owner} />
           <div><strong>{self.name}</strong><small>{owner ? copy("域主", "Domain owner") : copy("你的名字", "Your name")}</small></div>
@@ -208,7 +209,8 @@ export function ChannelPreviewPage() {
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
           {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} messages={channel.messagesByRoom[roomId] ?? []}
-            users={state?.users ?? []} canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
+            users={state?.users ?? []} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
+            canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
