@@ -108,8 +108,10 @@ On Windows, **Share screen** reuses the source picker for App windows/displays
 and Browser capture. App capture publishes through that same Native participant;
 the selecting page previews it as an ordinary subscriber. Stopping the share or
 closing its page stops only its captures, not its hosted rooms. This prototype
-uses 1080p/30 fps/4 Mbps H264 for native video; source audio and encoder-demand
-adaptation are subsequent work. Browser capture retains its existing behavior.
+uses 1080p/30 fps/4 Mbps H264 for native video, with optional source audio.
+The [Native participant](../channel-native/README.md) owns shared encoding and
+adaptation; [TODO](../../docs/todo.md) tracks its remaining integration.
+Browser capture retains its existing behavior.
 
 Approval covers room hosting and local window/screen capture and belongs to an
 exact site origin. Earlier room-only consent requires approval again, preserving
