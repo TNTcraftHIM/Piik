@@ -675,7 +675,17 @@ fn input_event_parse_and_bounds_reject_unrecognized_or_unbounded_input() {
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     assert_eq!(keyboard::scan("ControlRight"), Some(0xe01d));
     #[cfg(target_os = "linux")]
-    assert_eq!(keyboard::scan("ControlRight"), Some(97));
+    {
+        assert_eq!(keyboard::scan("ControlRight"), Some(97));
+        assert_eq!(
+            InputEvent::Key {
+                code: "Pause".into(),
+                down: true,
+            }
+            .action(),
+            Some(Action::Held(Held::Key(119), true))
+        );
+    }
     #[cfg(target_os = "macos")]
     assert_eq!(keyboard::scan("ControlRight"), Some(62));
     assert_eq!(keyboard::scan("invented"), None);

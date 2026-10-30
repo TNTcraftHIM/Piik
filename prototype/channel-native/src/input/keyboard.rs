@@ -162,6 +162,7 @@ fn extended(code: &str) -> Option<u16> {
         "PageDown" => 109,
         "Insert" => 110,
         "Delete" => 111,
+        "Pause" => 119,
         "MetaLeft" => 125,
         "MetaRight" => 126,
         "ContextMenu" => 127,
