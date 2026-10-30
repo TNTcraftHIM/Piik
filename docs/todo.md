@@ -12,7 +12,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   Rust owners. Complete Native low-bandwidth adaptation, capture/input on the
   remaining platforms and packaging over the shared UI and Native participant.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Finish whole-App network/GPU acceptance of the
+  Resolve the remaining whole-App weak-network recovery acceptance of the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),
   then promote it after the held dependency decision. It includes transport
   probing/feedback, incoming-H264 derivation and coordinated UDP preparation
