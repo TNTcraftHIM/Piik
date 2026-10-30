@@ -37,7 +37,7 @@ function RoomForm({ room, appHosted, busy, onSave }: {
           {value === "public" ? (zh ? "公开" : "Public") : (zh ? "私密" : "Private")}</span>
       </label>)}
     </fieldset>
-    <p>{access === "public" ? (zh ? "频道内的用户都能进入。" : "Anyone in this channel can enter.")
+    <p>{access === "public" ? (zh ? "域内的用户都能进入。" : "Anyone in this domain can enter.")
       : (zh ? "凭房间邀请或密码进入。" : "Enter with a room invitation or password.")}</p>
     {access === "private" && <div className="c3-private-options">
       <label><span>{zh ? "密码（可选）" : "Password (optional)"}</span><input className="c3-input" type="password"

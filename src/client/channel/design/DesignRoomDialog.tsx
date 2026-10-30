@@ -48,7 +48,7 @@ export function DesignRoomDialog({ copy, room, onClose, onSave }: {
             <span><Glyph name="lock" size={18} />{copy("私密", "Private")}</span></label>
         </div>
         <p>{privateRoom ? copy("需要房间邀请或密码，才可以进入。", "Join with a room invitation or password.")
-          : copy("频道里的朋友都可以进来。", "Anyone in the channel can come in.")}</p>
+          : copy("域内的用户都能进入。", "Anyone in this domain can enter.")}</p>
       </fieldset>
       {privateRoom && <section className="cd-private-fields" aria-label={copy("私密房间设置", "Private room settings")}>
         <label className="cd-field"><span>{copy("房间密码", "Room password")}<small>{copy("可选", "Optional")}</small></span>

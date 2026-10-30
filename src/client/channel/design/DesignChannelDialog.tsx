@@ -25,9 +25,9 @@ export function DesignChannelDialog({ copy, name, identity, onClose, onSave }: {
       <header className="cd-create-heading"><span className="cd-room-emblem"><DesignIdentityMark value={draft} size={38} /></span>
         <Btn icon="x" title="common.close" hint="hint-close" size="compact" quiet onClick={() => dialog.current?.close()} />
       </header>
-      <h2 id="cd-channel-edit-title">{copy("频道外观", "Channel appearance")}</h2>
+      <h2 id="cd-channel-edit-title">{copy("域外观", "Domain appearance")}</h2>
       <p className="cd-create-intro">{copy("给朋友们一个一眼就能认出的地方。", "A familiar face for your favourite place.")}</p>
-      <label className="cd-field"><span>{copy("频道名称", "Channel name")}</span><span className="lr-input"><input name="channel-name" value={draftName} onChange={event => setDraftName(event.currentTarget.value)} autoComplete="off" autoFocus required /></span></label>
+      <label className="cd-field"><span>{copy("域名称", "Domain name")}</span><span className="lr-input"><input name="channel-name" value={draftName} onChange={event => setDraftName(event.currentTarget.value)} autoComplete="off" autoFocus required /></span></label>
       <DesignIdentityPicker copy={copy} value={draft} onChange={setDraft} busy={imageBusy} onBusyChange={setImageBusy} />
       <footer><Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet onClick={() => dialog.current?.close()} />
         <ChannelAction type="submit" primary icon="check" disabled={!draftName.trim() || imageBusy} label={copy("保存", "Save")} /></footer>

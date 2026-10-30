@@ -72,8 +72,8 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
 
       <aside className="cd-rooms" aria-label={copy("房间", "Rooms")}>
         <header className="cd-channel-heading c3-editable">
-          <div className="cd-channel-heading-text"><small>{copy("一个属于朋友的频道", "A place for your people")}</small><h2>{channelTitle}</h2></div>
-          <span className="c3-edit-action"><ChannelAction icon="pencil" label={copy("频道外观", "Channel appearance")} iconOnly quiet hint="hint-rename" onClick={() => setEditingChannel(true)} /></span>
+          <div className="cd-channel-heading-text"><small>{copy("一个属于朋友的地方", "A place for your people")}</small><h2>{channelTitle}</h2></div>
+          <span className="c3-edit-action"><ChannelAction icon="pencil" label={copy("域外观", "Domain appearance")} iconOnly quiet hint="hint-rename" onClick={() => setEditingChannel(true)} /></span>
           <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} hint="hint-collapse" quiet iconOnly onClick={() => setMobilePane("room")} /></span>
         </header>
         <div className="cd-room-nav">
@@ -155,7 +155,7 @@ export function DesignWorkspace({ copy, scene, content, peopleCount, onScene }: 
         </div>
       </main>
 
-      <aside className="cd-members" aria-label={copy("频道成员", "Channel members")}>
+      <aside className="cd-members" aria-label={copy("域内用户", "Domain users")}>
         <header><h2>{copy("成员", "Members")} <span>{here.length + elsewhere.length}</span></h2>
           <span className="cd-pane-back"><ChannelAction icon="x" label={copy("返回房间", "Back to room")} hint="hint-collapse" quiet iconOnly onClick={() => setMobilePane("room")} /></span></header>
         <div className="cd-member-list">
