@@ -106,6 +106,10 @@ pub struct Capture {
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {
+    pub fn audio(&self, target: Target) -> Result<super::AudioCapture> {
+        super::AudioCapture::start(target)
+    }
+
     pub fn start(target: Target, fps: u32) -> Result<Self> {
         ensure!(fps > 0, "capture fps must be positive");
         let clock = CaptureClock::new()?;

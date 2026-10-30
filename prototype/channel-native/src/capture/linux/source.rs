@@ -94,6 +94,10 @@ impl Control {
     }
 }
 impl Capture {
+    pub fn audio(&self, target: Target) -> Result<super::AudioCapture> {
+        super::AudioCapture::start(target)
+    }
+
     pub fn start(target: Target, fps: u32) -> Result<Self> {
         ensure!(
             matches!(target.kind, TargetKind::Picker),

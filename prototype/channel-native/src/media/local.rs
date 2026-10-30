@@ -111,7 +111,7 @@ impl Producer {
             (None, None)
         };
         let audio = if let Some(error) = audio_error {
-            match AudioCapture::start(target) {
+            match capture.audio(target) {
                 Ok(capture) => {
                     let id = Uuid::new_v4();
                     let control = capture.control();
