@@ -75,6 +75,7 @@ pub struct SourceView {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub gamepad: Option<bool>,
     pub simultaneous: bool,
+    pub can_set_stop_shortcut: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_shortcut: Option<u8>,
 }
@@ -192,6 +193,7 @@ impl Desktop {
             co_play: true,
             gamepad: cfg!(target_os = "windows").then_some(executor.gamepad.is_some()),
             simultaneous: false,
+            can_set_stop_shortcut: cfg!(any(target_os = "windows", target_os = "macos")),
             stop_shortcut: shortcut_view,
         });
         executor.sources.insert(
@@ -1119,6 +1121,7 @@ impl Executor {
             co_play: true,
             gamepad: cfg!(target_os = "windows").then_some(self.gamepad.is_some()),
             simultaneous: source.simultaneous,
+            can_set_stop_shortcut: source.view.borrow().can_set_stop_shortcut,
             stop_shortcut: source.view.borrow().stop_shortcut,
             requests: source
                 .controllers

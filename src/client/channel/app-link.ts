@@ -11,7 +11,9 @@ const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSche
   processAudio: z.boolean(), systemAudio: z.boolean() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
-const inputControlStateSchema = remoteControlStateSchema.extend({ stopShortcut: remoteShortcutKeySchema.nullable().optional() });
+const inputControlStateSchema = remoteControlStateSchema.extend({
+  canSetStopShortcut: z.boolean(), stopShortcut: remoteShortcutKeySchema.nullable().optional(),
+});
 export type ChannelRemoteControlState = z.infer<typeof inputControlStateSchema>;
 const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema }).strict();
 class AppCompatibilityError extends Error {}
