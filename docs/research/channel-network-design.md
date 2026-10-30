@@ -379,6 +379,12 @@ does not retire the connection or its other candidate paths.
 Native gathers IPv4 and IPv6 through the same RTC transport owner; an unavailable
 address family does not disable the other.
 
+The coordinated UDP candidate keeps preparation inside one authorized physical
+pair attempt. The domain's existing transport book issues its replacement UUID;
+logical room/media leases and operation deadlines stay unchanged. Only currently
+capable Native endpoints participate. The prepared socket transfers to the ordinary
+PC after mutual completion, with no competing reader or separate route graph.
+
 Each Native pair may map its actual default-gateway IPv4 socket using the
 released [portmapper](https://docs.rs/portmapper/0.20.0/portmapper/) client. Its
 background probe, protocol selection and renewal stay with that library;
@@ -714,6 +720,9 @@ output releases its derivation without stopping healthy siblings. Source RTP/SR
 mapping preserves the sender's clock through decoding and re-encoding. Real
 two-Browser handoff, rebuild and failure isolation passed; integration waits for
 the SDK complete-sample dependency and combined allocation acceptance.
+Completeness belongs to the assembler across reception, expiry and delivery:
+expired fragments must never become decoder inputs. Codec metadata may legitimately
+produce no RTP; that leaves the existing sender and its last clock correlation alive.
 A hardware encoder can exceed its target when quantization saturates: the
 standard-motion 200 kbps trial produced 273 kbps at QP 50; random noise reached
 QP 50/51 at 5.2 Mbps. Each encoding therefore reuses WebRTC's
