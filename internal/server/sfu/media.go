@@ -173,7 +173,7 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 		return err
 	}
 	registry := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(engine, registry); err != nil {
+	if err := forwarding.RegisterIngressInterceptors(engine, registry); err != nil {
 		return err
 	}
 	pc, err := webrtc.NewAPI(webrtc.WithMediaEngine(engine), webrtc.WithInterceptorRegistry(registry),
@@ -453,10 +453,11 @@ func (publication *mediaPublication) consumeTrack(track *webrtc.TrackRemote, rec
 				Codec: track.Codec(), Formats: publication.metadata.Formats,
 				HeaderExtensions: receiver.GetParameters().HeaderExtensions,
 				OnRTCP: func(_ int, packets []rtcp.Packet) {
-					// Pion's ingress interceptors already own NACK and receiver reports.
+					// The buffer sees repaired primary sequence numbers and owns NACK;
+					// Pion retains receiver reports and transport-wide feedback.
 					for _, packet := range packets {
 						switch packet.(type) {
-						case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+						case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest, *rtcp.TransportLayerNack:
 							_ = publication.pc.WriteRTCP([]rtcp.Packet{packet})
 						}
 					}

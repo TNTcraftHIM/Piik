@@ -130,6 +130,17 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
 	}
+	// Install before OnTrack can feed the source. Only the received original
+	// requests upstream repair; derived outputs keep their existing recovery.
+	receiver.source.writeNACK = func(nack *rtcp.TransportLayerNack) {
+		receiver.mu.Lock()
+		ssrc, closed := receiver.videoSSRC, receiver.closed
+		receiver.mu.Unlock()
+		if !closed && ssrc != 0 {
+			nack.MediaSSRC = uint32(ssrc)
+			_ = connection.WriteRTCP([]rtcp.Packet{nack})
+		}
+	}
 	if hasAudio {
 		receiver.audioSource, err = engine.NewRelayedAudioSource(options.EdgeCapacity)
 		if err != nil {

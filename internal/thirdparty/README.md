@@ -132,3 +132,13 @@ Ordinary packet validation remains unchanged. A real simulcast/NACK regression
 fences that ordering without sleeps and fails when the correction is removed.
 Remove the adapter when a maintained upstream version passes that same control
 without it; this repair adds no second retransmission handler.
+
+Pion's [wire-level NACK generator](https://github.com/pion/interceptor/blob/v0.1.51/pkg/nack/generator_interceptor.go)
+also does not observe repaired primary sequence numbers. Native receive and SFU
+publication use the public [interceptor options](https://github.com/pion/webrtc/blob/v4.2.26/interceptor.go)
+to leave video NACK generation to their existing LiveKit input buffer, after
+deencapsulation. That buffer retries missing packets and removes repaired holes;
+its existing RTCP callback returns NACKs to the actual upstream SSRC. Pion retains
+audio NACK behavior, receiver reports, TWCC and the retransmission responder.
+The shared real-peer regression holds a hole open, restores its exact primary
+packet through RTX, and verifies that retries stop on both receiving paths.

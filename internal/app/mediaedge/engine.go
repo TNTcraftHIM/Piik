@@ -107,7 +107,7 @@ func NewEngine(options EngineOptions) (*Engine, error) {
 		return nil, err
 	}
 	registry := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(mediaEngine, registry); err != nil {
+	if err := forwarding.RegisterIngressInterceptors(mediaEngine, registry); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -200,9 +200,13 @@ func (engine *Engine) newSource(codec string, capacity, layers int, relay *Relay
 		Formats: make([]forwarding.LayerFormat, layers), MaxPackets: encoded.MaxPacketWindow,
 		OnRTCP: func(layer int, packets []rtcp.Packet) {
 			for _, packet := range packets {
-				switch packet.(type) {
+				switch packet := packet.(type) {
 				case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
 					source.requestLayerKeyFrame(layer)
+				case *rtcp.TransportLayerNack:
+					if layer == layers-1 && source.writeNACK != nil {
+						source.writeNACK(packet)
+					}
 				}
 			}
 		},

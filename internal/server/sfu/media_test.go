@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding/forwardingtest"
 	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	livekitsfu "github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/interceptor"
@@ -21,6 +22,30 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 )
+
+func TestPublicationStopsNACKAfterRTXRepair(t *testing.T) {
+	forwardingtest.IngressRepair(t, func(offer webrtc.SessionDescription, settings webrtc.SettingEngine) (*webrtc.PeerConnection, func() *forwarding.Source) {
+		service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return settings }})
+		t.Cleanup(func() { _ = service.Close() })
+		fence := ResourceFence{RoomID: "1234", ShareGeneration: "share_12345678", PublicationGeneration: "publication_12345678"}
+		metadata := PublicationMedia{Codec: "vp8", RIDs: []string{""}, Formats: []forwarding.LayerFormat{{Width: 8, Height: 8, Bitrate: 1_000_000}}}
+		if err := service.PreparePublication(fence, "publisher_12345678", metadata); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := service.AcceptPublisherOffer(fence, "publisher_12345678", offer); err != nil {
+			t.Fatal(err)
+		}
+		publication, err := service.publication(fence, "publisher_12345678")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return publication.pc, func() *forwarding.Source {
+			publication.mu.Lock()
+			defer publication.mu.Unlock()
+			return publication.source
+		}
+	})
+}
 
 func TestMediaOnePublicationTwoSubscribersAndExactRetirement(t *testing.T) {
 	for _, codec := range []string{"vp8", "h264"} {

@@ -5,9 +5,28 @@ import (
 	"strings"
 
 	"github.com/pion/interceptor"
+	"github.com/pion/interceptor/pkg/nack"
 	"github.com/pion/rtp"
 	"github.com/pion/webrtc/v4"
 )
+
+// RegisterIngressInterceptors leaves video NACK generation to the forwarding
+// buffer, which sees primary sequence numbers after RTX repair. Pion's wire
+// reader cannot observe those repairs; its reports, TWCC and responder remain.
+func RegisterIngressInterceptors(media *webrtc.MediaEngine, registry *interceptor.Registry) error {
+	return webrtc.RegisterDefaultInterceptorsWithOptions(media, registry,
+		webrtc.WithNackGeneratorOptions(nack.GeneratorStreamsFilter(func(info *interceptor.StreamInfo) bool {
+			if strings.HasPrefix(strings.ToLower(info.MimeType), "video/") {
+				return false
+			}
+			for _, feedback := range info.RTCPFeedback {
+				if feedback.Type == "nack" && feedback.Parameter == "" {
+					return true
+				}
+			}
+			return false
+		})))
+}
 
 // Each outgoing connection offers one primary video codec and Opus (111).
 // RTX keeps late repair outside the primary stream's SRTP replay window.

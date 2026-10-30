@@ -41,6 +41,7 @@ type Source struct {
 	outputBitrates   []uint32
 	capacity         int
 	requestKeyFrame  func([]int)
+	writeNACK        func(*rtcp.TransportLayerNack)
 	relayProfile     *nativecapture.VideoProfile
 	relay            *relayDerivation
 	groups           map[int]*outputGroup

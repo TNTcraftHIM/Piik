@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding/forwardingtest"
 	"github.com/livekit/livekit-server/pkg/sfu"
 	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
@@ -17,6 +19,22 @@ import (
 	"github.com/pion/stun/v4"
 	"github.com/pion/webrtc/v4"
 )
+
+func TestReceiverStopsNACKAfterRTXRepair(t *testing.T) {
+	forwardingtest.IngressRepair(t, func(offer webrtc.SessionDescription, _ webrtc.SettingEngine) (*webrtc.PeerConnection, func() *forwarding.Source) {
+		engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = engine.Close() })
+		receiver, _, err := engine.NewReceiver(ReceiverOptions{Offer: offer, EdgeCapacity: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = receiver.Close() })
+		return receiver.connection, func() *forwarding.Source { return receiver.source.media.Source }
+	})
+}
 
 func TestOfferSendsCodecDistinguishesBundledAndRejectedMedia(t *testing.T) {
 	for _, test := range []struct {
