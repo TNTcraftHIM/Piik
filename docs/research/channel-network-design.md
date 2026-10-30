@@ -642,12 +642,14 @@ video budget after 16.1–16.6 seconds, preserving both tracks, SSRCs and audio.
 The estimator, allocation and hardware encoder drive this trial automatically;
 it covers a direct publisher connection, not downstream relay adaptation.
 
-In the separate transport-only 20-second 600 kbps FIFO trial, peak network backlog falls from 18,654
-to 325 packets, but target recovery to 8 Mbps still takes 36.6 seconds. Payload
-demand and encrypted wire capacity have different overhead. Keeping 60 seconds
-of history instead of 2 preserves late feedback but takes 41.3 seconds to recover.
-Retention and extended sequence identity belong to the existing history owner;
-keep feedback correct rather than adding Piik-specific recovery scores.
+Feedback history and active flight have separate lifetimes. The existing History
+owner retains late reports for 60 seconds while releasing bytes already passed
+by the receiver's feedback frontier, following
+[libwebrtc's feedback adapter](https://webrtc.googlesource.com/src/+/b04056a3987cb956322641331b0f6052e02c9ca5/modules/congestion_controller/rtp/transport_feedback_adapter.cc).
+TWCC uses its transport sequence space; RFC 8888 uses the reported stream's
+sequence space, including repeated transmissions. An omitted outcome remains
+unknown until explicitly reported; it must not keep occupying the flight window.
+Payload demand and encrypted wire capacity retain their distinct overhead.
 
 Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each
