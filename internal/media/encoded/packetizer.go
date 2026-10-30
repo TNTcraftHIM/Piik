@@ -57,9 +57,5 @@ func (p *Packetizer) Packetize(data []byte, timestamp, duration time.Duration) (
 		p.hasTimestamp = true
 	}
 	p.lastTimestamp = timestamp
-	packets := p.rtp.Packetize(data, 0)
-	if len(packets) == 0 {
-		return nil, errors.New("encoded video access unit produced no RTP packets")
-	}
-	return packets, nil
+	return p.rtp.Packetize(data, 0), nil
 }
