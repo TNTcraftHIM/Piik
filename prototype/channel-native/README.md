@@ -58,8 +58,15 @@ owns authorization and retirement. Optional Windows gamepads use an already
 installed ViGEmBus through `vigem-rust`; Piik bundles or installs neither a
 driver nor a client DLL. Up to four approved controllers have independent
 device workers. Focus/reset keeps the neutral device, while grant retirement
-stops it; gamepad failures leave keyboard and mouse permission intact. Other
-input platforms remain in TODO.
+stops it; gamepad failures leave keyboard and mouse permission intact.
+The macOS input backend uses public Quartz/Accessibility bindings in the same
+executor, including physical keys, Unicode text, pointer/drag/scroll and the
+Browser-selected stop chord observed by the existing App tick. Only the source
+page enabling control can request Accessibility permission. Window identity,
+focused-window geometry and permission are checked separately; macOS does not
+advertise gamepad support. macOS capture, packaging and real-device input
+acceptance remain open; Linux input must share
+the eventual capture owner's Portal RemoteDesktop session.
 
 The App entry point keeps the Windows MTA alive outside its async runtime.
 Cached WinRT factories span successive captures and source-list refreshes; their

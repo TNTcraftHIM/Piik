@@ -13,9 +13,17 @@ struct Recording {
     lost: bool,
     fail_release: bool,
     fail_press: bool,
+    deny_permission: bool,
+    permission_requests: usize,
 }
 struct Recorder(Arc<Mutex<Recording>>);
 impl Sink for Recorder {
+    fn authorize(&mut self) -> Result<()> {
+        let mut r = self.0.lock().unwrap();
+        r.permission_requests += 1;
+        ensure!(!r.deny_permission, "OS input permission denied");
+        Ok(())
+    }
     fn observe(&mut self, _: &Target) -> TargetState {
         let r = self.0.lock().unwrap();
         if r.lost {
@@ -144,6 +152,31 @@ fn auth(direction: u8, sequence: &[u8], flow: Uuid) -> Vec<u8> {
 }
 
 #[test]
+fn only_page_policy_requests_os_permission_and_denial_keeps_input_off() {
+    let (d, recording) = desktop();
+    recording.lock().unwrap().deny_permission = true;
+    let (s, mut replies, view) = source(&d);
+    let mut c = Client::new(&s);
+    c.send(&s, json!({"type":"sync"}));
+    c.send(
+        &s,
+        json!({"type":"request","intent":Uuid::new_v4().simple().to_string()}),
+    );
+    assert_eq!(recording.lock().unwrap().permission_requests, 0);
+    assert!(s.set_mode(Mode::Ask).is_err());
+    assert_eq!(view.borrow().mode, Mode::Off);
+    assert!(view.borrow().requests.is_empty());
+    s.set_mode(Mode::Off).unwrap();
+    assert_eq!(recording.lock().unwrap().permission_requests, 1);
+    recording.lock().unwrap().deny_permission = false;
+    s.set_mode(Mode::Ask).unwrap();
+    c.approve(&s, &mut replies);
+    assert_eq!(recording.lock().unwrap().permission_requests, 2);
+    assert_eq!(view.borrow().requests[0].state, "active");
+    assert!(recording.lock().unwrap().events.is_empty());
+}
+
+#[test]
 fn ask_requires_matching_intent_and_keeps_holds_until_reset_release_or_route_retirement() {
     let (d, recording) = desktop();
     let (s, mut replies, view) = source(&d);
@@ -174,7 +207,7 @@ fn ask_requires_matching_intent_and_keeps_holds_until_reset_release_or_route_ret
     assert_eq!(
         &recording.lock().unwrap().events[4..],
         &[
-            Action::Held(Held::Key(0x1e), false),
+            Action::Held(Held::Key(keyboard::scan("KeyA").unwrap()), false),
             Action::Held(Held::Button(0), false)
         ]
     );
@@ -188,7 +221,10 @@ fn ask_requires_matching_intent_and_keeps_holds_until_reset_release_or_route_ret
     assert!(view.borrow().requests.is_empty());
     assert_eq!(
         recording.lock().unwrap().events.last(),
-        Some(&Action::Held(Held::Key(0x1e), false))
+        Some(&Action::Held(
+            Held::Key(keyboard::scan("KeyA").unwrap()),
+            false
+        ))
     );
     c.send(
         &s,
@@ -264,7 +300,7 @@ fn os_failure_keeps_permission_and_only_failed_releases_are_retried() {
     assert_eq!(r.lock().unwrap().events.len(), 5);
     assert!(r.lock().unwrap().events[2..]
         .iter()
-        .all(|e| *e == Action::Held(Held::Key(0x1e), false)));
+        .all(|e| *e == Action::Held(Held::Key(keyboard::scan("KeyA").unwrap()), false)));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -319,7 +355,10 @@ async fn gamepads_follow_grants_without_blocking_or_revoking_keyboard_input() {
     let recording = Arc::new(Mutex::new(Recording::default()));
     let d = Desktop::with_backend(Box::new(Recorder(recording.clone())), Some(backend));
     let (s, mut replies, view) = source(&d);
-    assert_eq!(view.borrow().gamepad, Some(true));
+    assert_eq!(
+        view.borrow().gamepad,
+        cfg!(target_os = "windows").then_some(true)
+    );
     s.set_mode(Mode::Ask).unwrap();
     s.set_simultaneous(true).unwrap();
     let mut a = Client::new(&s);
@@ -404,7 +443,10 @@ async fn gamepads_follow_grants_without_blocking_or_revoking_keyboard_input() {
     );
     assert_eq!(
         recording.lock().unwrap().events.last(),
-        Some(&Action::Held(Held::Key(0x1e), true))
+        Some(&Action::Held(
+            Held::Key(keyboard::scan("KeyA").unwrap()),
+            true
+        ))
     );
     until(|| {
         b.send(&s, report(&gb, 8));
@@ -434,11 +476,10 @@ async fn gamepads_follow_grants_without_blocking_or_revoking_keyboard_input() {
     .await;
     d.close();
     assert!(events.lock().unwrap().contains(&PadEvent::Closed(4)));
-    assert!(recording
-        .lock()
-        .unwrap()
-        .events
-        .contains(&Action::Held(Held::Key(0x1e), false)));
+    assert!(recording.lock().unwrap().events.contains(&Action::Held(
+        Held::Key(keyboard::scan("KeyA").unwrap()),
+        false
+    )));
 }
 
 #[test]
@@ -467,7 +508,7 @@ fn simultaneous_holds_are_per_grant_text_is_single_controller_and_drop_cleans_up
     assert_eq!(
         &r.lock().unwrap().events[1..],
         &[
-            Action::Held(Held::Key(0x1e), false),
+            Action::Held(Held::Key(keyboard::scan("KeyA").unwrap()), false),
             Action::Text("Piik 😀".into())
         ]
     );
@@ -575,7 +616,10 @@ fn input_event_parse_and_bounds_reject_unrecognized_or_unbounded_input() {
     }
     .action()
     .is_none());
+    #[cfg(not(target_os = "macos"))]
     assert_eq!(keyboard::scan("ControlRight"), Some(0xe01d));
+    #[cfg(target_os = "macos")]
+    assert_eq!(keyboard::scan("ControlRight"), Some(62));
     assert_eq!(keyboard::scan("invented"), None);
 }
 
@@ -626,7 +670,10 @@ fn local_stop_requires_fresh_consent_and_reply_backpressure_cleans_up_holds() {
     assert!(view.borrow().requests.is_empty());
     assert_eq!(
         r.lock().unwrap().events.last(),
-        Some(&Action::Held(Held::Key(0x1e), false))
+        Some(&Action::Held(
+            Held::Key(keyboard::scan("KeyA").unwrap()),
+            false
+        ))
     );
     while replies.try_recv().is_ok() {}
     c.send(&s, json!({"type":"sync"}));

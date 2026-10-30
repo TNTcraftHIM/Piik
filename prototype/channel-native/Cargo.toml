@@ -28,6 +28,13 @@ base64 = "=0.22.1"
 sha2 = "=0.10.9"
 subtle = "=2.6.1"
 
+[target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+objc2-core-foundation = { version = "=0.3.2", default-features = false, features = ["std", "CFArray", "CFDictionary", "CFNumber", "CFString", "CFCGTypes"] }
+objc2-core-graphics = { version = "=0.3.2", default-features = false, features = ["std", "CGEvent", "CGEventTypes", "CGEventSource", "CGRemoteOperation", "CGDisplayConfiguration", "CGDirectDisplay", "CGWindow", "CGGeometry", "libc"] }
+objc2-application-services = { version = "=0.3.2", default-features = false, features = ["std", "HIServices", "AXUIElement", "AXError", "AXValue", "libc"] }
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSEvent"] }
+
 # Remove after upstream webrtc-rs/rtc#296 and #298 are released; see README.md.
 [patch.crates-io]
 rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }

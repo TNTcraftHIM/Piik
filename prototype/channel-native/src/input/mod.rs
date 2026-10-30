@@ -3,6 +3,8 @@
 mod cipher;
 mod gamepad;
 mod keyboard;
+#[cfg(target_os = "macos")]
+mod macos;
 #[cfg(test)]
 mod tests;
 #[cfg(target_os = "windows")]
@@ -78,6 +80,7 @@ pub struct SourceView {
 pub struct Desktop(
     Arc<Mutex<Executor>>,
     #[cfg(target_os = "windows")] Arc<Mutex<Option<windows::Shortcut>>>,
+    #[cfg(target_os = "macos")] Arc<Mutex<Option<macos::Shortcut>>>,
 );
 
 /// Clones refer to the same capture identity. Explicit close retires every clone.
@@ -102,7 +105,14 @@ impl Desktop {
         {
             Ok(Self::with_backend(Box::new(windows::System), gamepad))
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
+        {
+            Ok(Self::with_backend(
+                Box::new(macos::System::default()),
+                gamepad,
+            ))
+        }
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             Ok(Self::with_backend(Box::new(Unsupported), gamepad))
         }
@@ -122,7 +132,7 @@ impl Desktop {
                 releases: BTreeSet::new(),
                 gamepad,
             })),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             Arc::new(Mutex::new(None)),
         )
     }
@@ -130,13 +140,16 @@ impl Desktop {
     /// Browser preferences own the key; Native holds only this process binding.
     pub fn set_shortcut(&self, key: u8) -> Result<()> {
         ensure!((1..=11).contains(&key), "invalid_input_shortcut");
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         {
             let mut current = self.1.lock().unwrap();
             if current.as_ref().is_some_and(|shortcut| shortcut.key == key) {
                 return Ok(());
             }
+            #[cfg(target_os = "windows")]
             let next = windows::Shortcut::new(key, Arc::downgrade(&self.0))?;
+            #[cfg(target_os = "macos")]
+            let next = macos::Shortcut::new(key)?;
             *current = Some(next);
             for source in self.0.lock().unwrap().sources.values() {
                 source
@@ -145,7 +158,7 @@ impl Desktop {
             }
             Ok(())
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         {
             bail!("input_platform_unavailable")
         }
@@ -157,11 +170,11 @@ impl Desktop {
         video: Uuid,
         target: Target,
     ) -> Result<(Source, mpsc::Receiver<Reply>, watch::Receiver<SourceView>)> {
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         let shortcut = self.1.lock().unwrap();
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         let shortcut_view = shortcut.as_ref().map(|s| s.key);
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         let shortcut_view = None;
         let mut executor = self.0.lock().unwrap();
         ensure!(
@@ -174,7 +187,7 @@ impl Desktop {
             platform: platform(),
             requests: vec![],
             co_play: true,
-            gamepad: Some(executor.gamepad.is_some()),
+            gamepad: cfg!(target_os = "windows").then_some(executor.gamepad.is_some()),
             simultaneous: false,
             stop_shortcut: shortcut_view,
         });
@@ -206,6 +219,16 @@ impl Desktop {
 
     /// The App owns one 100 ms observation/cleanup tick across its sites and sources.
     pub fn tick(&self) {
+        #[cfg(target_os = "macos")]
+        if self
+            .1
+            .lock()
+            .unwrap()
+            .as_mut()
+            .is_some_and(macos::Shortcut::pressed)
+        {
+            self.revoke();
+        }
         let mut executor = self.0.lock().unwrap();
         executor.retry_releases();
         if let Some(video) = executor.owner {
@@ -237,7 +260,7 @@ impl Desktop {
         if let Some(gamepad) = gamepad {
             gamepad.shutdown();
         }
-        #[cfg(target_os = "windows")]
+        #[cfg(any(target_os = "windows", target_os = "macos"))]
         self.1.lock().unwrap().take();
     }
 }
@@ -277,6 +300,9 @@ impl Source {
                 source.available || mode == Mode::Off,
                 "input_source_unavailable"
             );
+            if mode != Mode::Off {
+                e.sink.authorize()?;
+            }
             e.revoke_all(source);
             source.mode = mode;
             source.password = Sha256::digest(password.as_bytes()).into();
@@ -449,12 +475,16 @@ enum Action {
     Text(String),
 }
 trait Sink: Send {
+    /// Called only by the source page enabling control, never by remote requests.
+    fn authorize(&mut self) -> Result<()> {
+        Ok(())
+    }
     fn observe(&mut self, target: &Target) -> TargetState;
     fn apply(&mut self, bounds: Bounds, action: &Action) -> Result<()>;
 }
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 struct Unsupported;
-#[cfg(not(target_os = "windows"))]
+#[cfg(not(any(target_os = "windows", target_os = "macos")))]
 impl Sink for Unsupported {
     fn observe(&mut self, _: &Target) -> TargetState {
         TargetState::Lost
@@ -919,7 +949,7 @@ impl Executor {
             mode: source.mode,
             platform: platform(),
             co_play: true,
-            gamepad: Some(self.gamepad.is_some()),
+            gamepad: cfg!(target_os = "windows").then_some(self.gamepad.is_some()),
             simultaneous: source.simultaneous,
             stop_shortcut: source.view.borrow().stop_shortcut,
             requests: source
