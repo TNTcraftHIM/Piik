@@ -27,7 +27,7 @@ export function ChannelConversation({ roomId, roomName, entry, messages, users, 
   const [limits, setLimits] = useState<AttachmentLimits | null>(null);
   const [limitsFailed, setLimitsFailed] = useState(false);
   const [limitsRetry, setLimitsRetry] = useState(0);
-  const [fileError, setFileError] = useState("");
+  const [fileErrorsByRoom, setFileErrorsByRoom] = useState<Record<string, string>>({});
   const preparing = useRef<AbortController | null>(null);
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
@@ -35,6 +35,8 @@ export function ChannelConversation({ roomId, roomName, entry, messages, users, 
   const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
   const draft = drafts[roomId] ?? "";
   const files = filesByRoom[roomId] ?? [];
+  const fileError = fileErrorsByRoom[roomId] ?? "";
+  const setFileError = (error: string) => setFileErrorsByRoom(previous => ({ ...previous, [roomId]: error }));
   const working = sending;
   useEffect(() => {
     if (!attachmentsAvailable) { setLimits(null); setLimitsFailed(false); return; }
@@ -45,7 +47,7 @@ export function ChannelConversation({ roomId, roomName, entry, messages, users, 
     return () => { request.abort(); };
   }, [attachments, attachmentsAvailable, limitsRetry]);
   useEffect(() => () => { preparing.current?.abort(); }, []);
-  useEffect(() => { setFileError(""); readingAnchor.current = null; }, [roomId]);
+  useEffect(() => { readingAnchor.current = null; }, [roomId]);
   useEffect(() => { follow.current = true; }, [roomId]);
   useEffect(() => { if (history?.atLatest) follow.current = true; }, [history?.atLatest]);
   useEffect(() => {
