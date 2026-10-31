@@ -28,6 +28,8 @@ interface MicrophoneRequest {
   promise?: Promise<MicrophoneInput>;
 }
 
+interface ScreenShare { id: string; selection?: object }
+
 function stored(key: string, value?: string): string | null {
   try {
     if (value !== undefined) localStorage.setItem(key, value);
@@ -89,6 +91,7 @@ export class ChannelSession {
     interaction?: RoomInteractionSession; interactionBinding?: string } | null = null;
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
+  private screenShares = new Map<string, ScreenShare>();
   private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; camera?: boolean }>();
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
@@ -120,6 +123,7 @@ export class ChannelSession {
 
   private patch(patch: Partial<ChannelView>): void {
     const ownedScreens = new Set(this.app?.screens);
+    for (const share of this.screenShares.values()) ownedScreens.add(share.id);
     for (const [id, capture] of this.local) if (capture.kind === "screen") ownedScreens.add(id);
     const remoteControls = new Map([...(patch.remoteControls ?? this.view.remoteControls)].filter(([id]) => ownedScreens.has(id)));
     this.view = { ...this.view, ...patch, appConnected: this.app?.connected ?? false, ownedScreens, remoteControls };
@@ -272,7 +276,11 @@ export class ChannelSession {
     const previousRooms = this.view.state?.channel.rooms;
     const userId = state.sessions.find(session => session.id === sessionId)?.userId;
     for (const id of this.admittedPublications) {
-      if (!state.publications.some(publication => publication.id === id)) this.retireCapture(id);
+      if (!state.publications.some(publication => publication.id === id)) {
+        const roomId = this.local.get(id)?.roomId;
+        if (roomId && this.screenShares.get(roomId)?.id === id) this.screenShares.delete(roomId);
+        this.retireCapture(id);
+      }
     }
     for (const [roomId, publicationId] of this.voiceCaptures) {
       const voice = state.voice.find(member => member.sessionId === sessionId && member.roomId === roomId);
@@ -288,6 +296,7 @@ export class ChannelSession {
     }
     for (const publication of this.view.state?.publications ?? []) {
       if (this.app?.screens.has(publication.id) && !state.publications.some(value => value.id === publication.id)) {
+        if (this.screenShares.get(publication.roomId)?.id === publication.id) this.screenShares.delete(publication.roomId);
         void this.app.stopCapture(publication.id).catch(() => {});
       }
     }
@@ -519,6 +528,7 @@ export class ChannelSession {
         const app = new ChannelApp(health, state.channel.id, self.id, this.credential, self.name, () => {
           if (this.app !== app) return;
           this.app = undefined;
+          for (const [roomId, share] of this.screenShares) if (!this.local.has(share.id)) this.screenShares.delete(roomId);
           this.patch({ remoteControls: new Map() });
         }, () => {
           if (this.app === app) this.patch({ error: "capture_audio_failed" });
@@ -774,8 +784,8 @@ export class ChannelSession {
   });
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, camera }: { microphone?: MicrophoneInput; camera?: boolean } = {}): Promise<string> {
-    const id = crypto.randomUUID();
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, camera, publicationId }: { microphone?: MicrophoneInput; camera?: boolean; publicationId?: string } = {}): Promise<string> {
+    const id = publicationId ?? crypto.randomUUID();
     this.local.set(id, { roomId, kind, stream, microphone, camera });
     this.media.setLocal(id, stream);
     try {
@@ -787,7 +797,7 @@ export class ChannelSession {
         throw new Error(kind === "screen" ? "capture_unavailable" : "microphone_unavailable");
       }
       this.admittedPublications.add(id);
-      if (kind === "screen") primary?.addEventListener("ended", () => { void this.stopScreen(id).catch(() => {}); }, { once: true });
+      if (kind === "screen") this.observeScreen(id, stream);
       else primary?.addEventListener("ended", () => this.voiceCaptureEnded(id, stream), { once: true });
       return id;
     } catch (error) {
@@ -797,13 +807,78 @@ export class ChannelSession {
     }
   }
 
+  private selectScreen(roomId: string): { share: ScreenShare; current(): boolean } {
+    let share = this.screenShares.get(roomId);
+    if (!share) {
+      const local = [...this.local].find(([, capture]) => capture.kind === "screen" && capture.roomId === roomId);
+      share = { id: local?.[0] ?? crypto.randomUUID() };
+      this.screenShares.set(roomId, share);
+    }
+    const selection = share.selection = {};
+    const epoch = this.captureEpoch;
+    const selected = share;
+    return { share, current: () => epoch === this.captureEpoch && this.screenShares.get(roomId) === selected && selected.selection === selection };
+  }
+
+  private finishScreenSelection(roomId: string, share: ScreenShare): void {
+    share.selection = undefined;
+    if (!this.local.has(share.id) && !this.app?.screens.has(share.id) && this.screenShares.get(roomId) === share) this.screenShares.delete(roomId);
+  }
+
+  private observeScreen(id: string, stream: MediaStream): void {
+    stream.getVideoTracks()[0]?.addEventListener("ended", () => {
+      if (this.local.get(id)?.stream === stream) void this.stopScreen(id).catch(() => {});
+    }, { once: true });
+  }
+
+  cancelScreenSelection = async (roomId: string): Promise<void> => {
+    const share = this.screenShares.get(roomId);
+    if (!share?.selection) return;
+    this.finishScreenSelection(roomId, share);
+    await this.app?.cancelCapture(share.id);
+    this.patch({});
+  };
+
   startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = ""): Promise<void> => this.action(`screen:${roomId}`, async () => {
     if (source === "camera" ? !navigator.mediaDevices?.getUserMedia : !navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
-    const epoch = this.captureEpoch;
-    const stream = source === "camera" ? await captureBrowserSource(DEFAULT_QUALITY_SETTINGS, source, deviceId)
-      : await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
-    if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); throw new Error("closed"); }
-    await this.publish("screen", roomId, stream, { camera: source === "camera" });
+    const { share, current } = this.selectScreen(roomId);
+    let candidate: MediaStream | undefined;
+    try {
+      candidate = source === "camera" ? await captureBrowserSource(DEFAULT_QUALITY_SETTINGS, source, deviceId)
+        : await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
+      if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      if (candidate.getVideoTracks()[0]?.readyState !== "live") throw new Error("capture_unavailable");
+      const previous = this.local.get(share.id);
+      const app = this.app;
+      if (previous || app?.screens.has(share.id)) {
+        const sessionId = this.view.sessionId;
+        if (!sessionId) throw new Error("disconnected");
+        if (previous) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: sessionId }, undefined, roomId);
+        else await app!.transferSource(share.id, sessionId);
+        if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+        this.local.set(share.id, { roomId, kind: "screen", stream: candidate, camera: source === "camera" });
+        this.admittedPublications.add(share.id);
+        this.media.setLocal(share.id, candidate);
+        this.observeScreen(share.id, candidate);
+        candidate = undefined;
+        previous?.stream.getTracks().forEach(track => track.stop());
+        if (!previous) {
+          const stopping = app!.stopCapture(share.id);
+          const remoteControls = new Map(this.view.remoteControls);
+          remoteControls.delete(share.id);
+          this.patch({ remoteControls });
+          await stopping;
+          await this.unwatch(share.id);
+        }
+      } else {
+        const stream = candidate;
+        candidate = undefined; // publish owns failure cleanup from this point.
+        await this.publish("screen", roomId, stream, { camera: source === "camera", publicationId: share.id });
+      }
+    } finally {
+      candidate?.getTracks().forEach(track => track.stop());
+      this.finishScreenSelection(roomId, share);
+    }
   });
   cameraPreviews = (signal: AbortSignal, publish: (sources: CameraPreview[]) => void): Promise<void> =>
     loadCameraPreviews(signal, publish, [...this.local.values()].find(capture => capture.camera
@@ -813,34 +888,38 @@ export class ChannelSession {
     this.app?.preview(target, signal) ?? Promise.resolve(null);
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
-    const epoch = this.captureEpoch;
-    const app = await this.connectApp();
-    if (epoch !== this.captureEpoch) throw new Error("closed");
-    const id = crypto.randomUUID();
-    const starting = app.startCapture(id, roomId, target, audio);
-    this.patch({});
-    await starting;
-    this.patch({});
+    const { share, current } = this.selectScreen(roomId);
+    let app: ChannelApp | undefined;
     try {
-      if (epoch !== this.captureEpoch || this.app !== app) throw new Error("closed");
+      app = await this.connectApp();
+      if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      const preparing = app.prepareCapture(share.id, roomId, target, audio);
+      this.patch({});
+      const prepared = await preparing;
+      if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+      if (this.local.has(share.id)) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: prepared.sessionId }, undefined, roomId);
+      if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      await app.commitCapture(share.id, prepared.captureId);
+      if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      this.retireCapture(share.id);
+      this.patch({});
       // Native owns the source; this page previews it through the ordinary route.
-      await this.watch(id, roomId);
+      if (!this.watching.has(share.id)) await this.watch(share.id, roomId);
     } catch (error) {
-      await app.stopCapture(id).catch(() => {});
+      await app?.cancelCapture(share.id).catch(() => {});
       throw error;
-    }
+    } finally { this.finishScreenSelection(roomId, share); }
   });
   stopScreen = (publicationId: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
-    if (this.app?.screens.has(publicationId)) {
-      this.watching.delete(publicationId);
-      await this.app.stopCapture(publicationId);
-      this.refreshActivity();
-      return;
-    }
-    const roomId = this.local.get(publicationId)?.roomId ?? this.commandRoom({ type: "unpublish", publicationId });
-    this.retireCapture(publicationId);
+    for (const [roomId, share] of this.screenShares) if (share.id === publicationId) this.screenShares.delete(roomId);
+    const browser = this.local.get(publicationId);
+    // stop_capture also retires a pending Native candidate for a Browser incumbent.
+    const nativeStop = this.app?.stopCapture(publicationId);
+    if (browser) this.retireCapture(publicationId);
+    this.watching.delete(publicationId);
     this.refreshActivity();
-    if (this.view.connection === "connected") await this.request({ type: "unpublish", publicationId }, undefined, roomId);
+    await Promise.all([nativeStop, browser && this.view.connection === "connected"
+      ? this.request({ type: "unpublish", publicationId }, undefined, browser.roomId) : undefined]);
   });
 
   private voiceCaptureEnded(id: string, stream: MediaStream): void {
@@ -1023,6 +1102,7 @@ export class ChannelSession {
   private releaseMedia(): void {
     this.closeInteractions();
     this.captureEpoch += 1;
+    this.screenShares.clear();
     this.app?.stopCaptures();
     this.input.reset();
     this.attachments.reset();
@@ -1060,7 +1140,8 @@ export class ChannelSession {
     // intent changes what this page presents, even while the host is unreachable.
     return {
       ...state,
-      publications: state.publications.filter(publication => publication.sessionId !== sessionId || this.local.has(publication.id)),
+      publications: state.publications.filter(publication => publication.sessionId !== sessionId || this.local.has(publication.id)
+        || this.screenShares.get(publication.roomId)?.id === publication.id),
       voice: state.voice.filter(member => member.sessionId !== sessionId || this.voiceCaptures.has(member.roomId)).map(member =>
         member.sessionId === sessionId && this.voiceCaptures.get(member.roomId) === null
           && ![...this.local.values()].some(capture => capture.kind === "voice" && capture.roomId === member.roomId)

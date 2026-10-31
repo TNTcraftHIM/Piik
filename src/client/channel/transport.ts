@@ -15,6 +15,15 @@ export interface OutgoingMedia {
   stream: MediaStream | null;
 }
 
+interface OutgoingBinding {
+  kind: ChannelPublication["kind"];
+  stream: MediaStream;
+  senders: RTCRtpSender[];
+  failed: boolean;
+  rejectedTracks?: MediaStreamTrack[];
+  replacement?: MediaStreamTrack[];
+}
+
 interface TransportOptions {
   polite: boolean;
   iceServers: RTCIceServer[];
@@ -34,7 +43,7 @@ interface TransportOptions {
 /** One physical pair. Flows own stream bindings and senders, never source tracks. */
 export class ChannelTransport {
   readonly pc: RTCPeerConnection;
-  private sending = new Map<string, { kind: ChannelPublication["kind"]; stream: MediaStream; senders: RTCRtpSender[]; failed: boolean; rejectedTracks?: MediaStreamTrack[] }>();
+  private sending = new Map<string, OutgoingBinding>();
   private stableSenders: Map<RTCRtpSender, MediaStreamTrack | null> | null = null;
   private remoteIds = new Map<string, string>();
   private frameBaselines = new Map<string, ReadonlyMap<string, number> | null>();
@@ -251,6 +260,51 @@ export class ChannelTransport {
       }
       if (output.failed) continue;
       const tracks = stream?.getTracks() ?? [];
+      if (output.replacement || output.senders.some(sender => sender.track && tracks.some(track =>
+        track.kind === sender.track!.kind && track !== sender.track))) {
+        if (output.replacement?.length === tracks.length && tracks.every(track => output.replacement!.includes(track))) continue;
+        const owner = output;
+        owner.replacement = tracks;
+        this.enqueue(async () => {
+          if (this.sending.get(id) !== owner || owner.replacement !== tracks || owner.failed) return;
+          try {
+            const retained: RTCRtpSender[] = [];
+            for (const track of tracks) {
+              const sender = owner.senders.find(sender => sender.track?.kind === track.kind && !retained.includes(sender));
+              if (sender) {
+                if (sender.track !== track) await sender.replaceTrack(track);
+                if (this.closed || this.sending.get(id) !== owner) return;
+                if (this.stableSenders?.has(sender)) this.stableSenders.set(sender, track);
+                if (this.pendingOffer?.senders.has(sender)) this.pendingOffer.senders.set(sender, track);
+                retained.push(sender);
+              } else {
+                owner.stream.addTrack(track);
+                const added = this.pc.addTrack(track, owner.stream);
+                retained.push(added);
+                owner.senders.push(added);
+                if (track.kind === "audio") {
+                  try { await configureAudioSender(added, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(undefined)); }
+                  catch (error) { console.warn("Channel audio bitrate could not be applied", { flowId: id }, error); }
+                }
+              }
+            }
+            for (const sender of owner.senders) if (!retained.includes(sender)) this.removeSender(sender);
+            owner.senders = retained;
+            for (const previous of owner.stream.getTracks()) if (!tracks.includes(previous)) owner.stream.removeTrack(previous);
+            for (const track of tracks) if (!owner.stream.getTracks().includes(track)) owner.stream.addTrack(track);
+          } catch (error) {
+            if (!this.closed && this.sending.get(id) === owner) {
+              owner.failed = true;
+              for (const sender of owner.senders) this.removeSender(sender);
+              owner.senders = [];
+              for (const track of owner.stream.getTracks()) owner.stream.removeTrack(track);
+              this.options.outgoingFailed?.(id);
+              console.warn("Channel source replacement failed", { flowId: id }, error);
+            }
+          } finally { if (owner.replacement === tracks) owner.replacement = undefined; }
+        });
+        continue;
+      }
       if (output.rejectedTracks?.length === tracks.length && tracks.every(track => output.rejectedTracks!.includes(track))) continue;
       output.rejectedTracks = undefined;
       const previous = [...output.senders];

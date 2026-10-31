@@ -53,6 +53,17 @@ describe("shared App connection entry", () => {
     expect(button.toLowerCase().includes("popovertarget=")).toBe(entry.picker);
     expect(html.match(/<button\b/g)).toHaveLength(1);
   });
+  it("reuses the sharing entry as Switch source only for this page's active room share", () => {
+    vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
+    const channel = { appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined,
+      ownedScreens: new Set(["mine"]), state: { publications: [{ id: "mine", roomId: "room" }] },
+    } as unknown as ChannelController;
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
+    expect(html).toMatch(/aria-label="(?:Switch source|切换来源)"/);
+    expect(html.match(/<button\b/g)).toHaveLength(1);
+    const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", disabled: false }));
+    expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
+  });
 });
 
 // Exercise the button's actual operation and unmount effect without a Browser.

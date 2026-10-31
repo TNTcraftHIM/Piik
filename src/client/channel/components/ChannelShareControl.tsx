@@ -24,7 +24,8 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const captureRequest = channel.nativeCaptureRequest(roomId);
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
-  const label = t("host.start");
+  const sharing = channel.state?.publications.some(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const label = t(sharing ? "host.switchSource" : "host.start");
   useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); }, []);
   const refresh = useCallback(() => {
@@ -53,8 +54,8 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
         <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
           onClick={() => activateNativePicker(captureRequest.activationURL)} />
         <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
-          onClick={() => { void channel.stopScreen(captureRequest.publicationId).catch(() => {}); }} />
-      </> : <Btn icon="cast" title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
+          onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
+      </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
         hint={available ? "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
         disabled={disabled || busy || !available} busy={busy} expanded={pickerAvailable || open ? open : undefined}
         controls={pickerAvailable || open ? id : undefined} popoverTarget={pickerAvailable ? id : undefined}

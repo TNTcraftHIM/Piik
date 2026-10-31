@@ -12,6 +12,8 @@ const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSche
   processAudio: z.boolean(), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
+const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid() }).strict();
+export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
@@ -53,17 +55,18 @@ export class ChannelApp {
   private rejectReady!: (error: Error) => void;
   private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
-  private captures = new Set<string>();
+  private captures = new Map<string, string>();
+  private prepared = new Set<string>();
   private activationURL?: string;
   private previewTail: Promise<unknown> = Promise.resolve();
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
-  get screens(): ReadonlySet<string> { return this.captures; }
+  get screens(): ReadonlySet<string> { return new Set(this.captures.keys()); }
 
   captureRequest(roomId: string): NativeCaptureRequest | undefined {
     if (!this.activationURL) return;
     for (const { command } of this.requests.values()) {
-      if (command.type === "start_capture" && command.roomId === roomId && command.publicationId && this.captures.has(command.publicationId)) {
+      if (command.type === "prepare_capture" && command.roomId === roomId && command.publicationId && this.prepared.has(command.publicationId)) {
         return { publicationId: command.publicationId, activationURL: this.activationURL };
       }
     }
@@ -90,12 +93,12 @@ export class ChannelApp {
         const reply = JSON.parse(String(data)) as { type?: string; id: string; result?: unknown; error?: string };
         if (reply.type === "input_state") {
           const event = inputStateSchema.parse(reply);
-          if (this.captures.has(event.publicationId)) onInputState(event.publicationId, event.state);
+          if (this.captures.has(event.publicationId) || this.prepared.has(event.publicationId)) onInputState(event.publicationId, event.state);
           return;
         }
         if (reply.type === "capture_audio_failed") {
           const { publicationId } = captureAudioFailureSchema.parse(reply);
-          if (this.captures.has(publicationId)) onAudioFailure(publicationId);
+          if (this.captures.has(publicationId) || this.prepared.has(publicationId)) onAudioFailure(publicationId);
           return;
         }
         const request = this.requests.get(reply.id);
@@ -148,22 +151,42 @@ export class ChannelApp {
     return preview;
   }
 
-  async startCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> {
+  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio = false): Promise<PreparedNativeCapture> {
     if (!this.connected) throw new Error("app_disconnected");
-    this.captures.add(publicationId);
+    this.prepared.add(publicationId);
     try {
-      const pending = this.request({ type: "start_capture", publicationId, roomId, target, audio });
+      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio });
       activateNativePicker(this.activationURL);
-      await pending;
-      if (!this.captures.has(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
+      const capture = preparedCaptureSchema.parse(await pending);
+      if (!this.prepared.has(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
+      return capture;
     } catch (error) {
-      await this.stopCapture(publicationId).catch(() => {});
+      await this.cancelCapture(publicationId).catch(() => {});
       throw error;
     }
   }
 
+  async commitCapture(publicationId: string, captureId: string): Promise<void> {
+    await this.request({ type: "commit_capture", publicationId, captureId });
+    if (!this.prepared.delete(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
+    this.captures.set(publicationId, captureId);
+  }
+
+  async transferSource(publicationId: string, toSessionId: string): Promise<void> {
+    const captureId = this.captures.get(publicationId);
+    if (!captureId) throw new Error("capture_unavailable");
+    await this.request({ type: "transfer_source", publicationId, captureId, toSessionId });
+  }
+
+  async cancelCapture(publicationId: string): Promise<void> {
+    if (!this.prepared.delete(publicationId)) return;
+    if (this.connected) await this.request({ type: "cancel_capture", publicationId });
+  }
+
   async stopCapture(publicationId: string): Promise<void> {
-    if (!this.captures.delete(publicationId)) return;
+    const active = this.captures.delete(publicationId);
+    const prepared = this.prepared.delete(publicationId);
+    if (!active && !prepared) return;
     if (this.connected) await this.request({ type: "stop_capture", publicationId });
   }
 
@@ -184,12 +207,13 @@ export class ChannelApp {
   }
 
   stopCaptures(): void {
-    for (const id of this.captures) void this.stopCapture(id).catch(() => {});
+    for (const id of new Set([...this.captures.keys(), ...this.prepared])) void this.stopCapture(id).catch(() => {});
   }
 
   close(): void {
     this.authenticated = false;
     this.captures.clear();
+    this.prepared.clear();
     clearTimeout(this.timer);
     this.socket.onclose = null;
     this.socket.close();

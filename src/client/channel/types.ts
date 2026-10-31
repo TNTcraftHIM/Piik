@@ -64,6 +64,7 @@ export interface ChannelActions {
   nativePreview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean): Promise<void>;
+  cancelScreenSelection(roomId: string): Promise<void>;
   stopScreen(publicationId: string): Promise<void>;
   watch(publicationId: string): Promise<void>;
   unwatch(publicationId: string): Promise<void>;

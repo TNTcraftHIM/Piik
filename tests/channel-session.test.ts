@@ -711,7 +711,7 @@ test("camera permission denial permits retry and closing discards a late camera 
     await expect(session.startScreen("first", "camera")).rejects.toBe(denied);
     expect(session.getSnapshot().pending.size).toBe(0);
     const retrying = session.startScreen("first", "camera");
-    const closed = expect(retrying).rejects.toThrow("closed");
+    const closed = expect(retrying).rejects.toMatchObject({ name: "AbortError" });
     expect(grant).toBeDefined();
     session.close();
     grant(remoteStream("late-camera", [camera]));
@@ -720,6 +720,136 @@ test("camera permission denial permits retry and closing discards a late camera 
     expect(camera.stop).toHaveBeenCalledOnce();
     expect(socket.sent.some(command => command.type === "publish")).toBe(false);
     expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test("Browser source replacement keeps its publication, rejects only the candidate and fences late ended/grant events", async () => {
+  const { session, socket } = await setup();
+  const old = remoteTrack("video"), next = remoteTrack("video"), cancelled = remoteTrack("video"), stopped = remoteTrack("video");
+  const oldStream = remoteStream("old", [old]), nextStream = remoteStream("next", [next]);
+  let grant!: (stream: MediaStream) => void;
+  const getDisplayMedia = vi.fn().mockResolvedValueOnce(oldStream)
+    .mockRejectedValueOnce(new DOMException("Declined", "NotAllowedError"))
+    .mockResolvedValueOnce(nextStream)
+    .mockImplementation(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
+  try {
+    const initial = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await initial;
+    const state = { ...session.getSnapshot().state!, publications: [{ ...publication, sessionId: "endpoint", userId: "self" }] };
+    socket.receive({ type: "state", state });
+    await expect(session.startScreen("first")).rejects.toMatchObject({ name: "NotAllowedError" });
+    expect(old.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(oldStream);
+    const replacing = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    expect(socket.sent.at(-1)).toMatchObject({ publicationId: publication.id, toSessionId: "endpoint" });
+    expect(old.stop).not.toHaveBeenCalled();
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await replacing;
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(nextStream);
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
+    expect(old.stop).toHaveBeenCalledOnce();
+    old.dispatchEvent(new Event("ended"));
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
+    const pendingCancel = session.startScreen("first");
+    const aborted = expect(pendingCancel).rejects.toMatchObject({ name: "AbortError" });
+    await session.cancelScreenSelection("first");
+    grant(remoteStream("cancelled", [cancelled]));
+    await aborted;
+    expect(cancelled.stop).toHaveBeenCalledOnce();
+    expect(next.stop).not.toHaveBeenCalled();
+    const pendingStop = session.startScreen("first");
+    const late = expect(pendingStop).rejects.toMatchObject({ name: "AbortError" });
+    const stopping = session.stopScreen(publication.id);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await stopping;
+    grant(remoteStream("late", [stopped]));
+    await late;
+    expect(stopped.stop).toHaveBeenCalledOnce();
+    expect(next.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test("Browser and Native handoffs keep one publication and use the current Native capture lease", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  const old = remoteTrack("video"), next = remoteTrack("video");
+  const nextStream = remoteStream("browser-next", [next]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
+    .mockResolvedValueOnce(remoteStream("browser-old", [old])).mockResolvedValueOnce(nextStream) } });
+  const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
+  const nativeSessionId = crypto.randomUUID(), firstCaptureId = crypto.randomUUID(), secondCaptureId = crypto.randomUUID();
+  const appReply = (result: unknown = null) => app.receive({ id: app.sent.at(-1)!.id, result });
+  const coreReply = () => socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+  const appCommand = async (type: string) => { await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe(type)); return app.sent.at(-1)!; };
+  try {
+    await app.onopen?.(); appReply();
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const initial = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    coreReply(); await initial;
+    let state = { ...session.getSnapshot().state!, publications: [{ ...publication, sessionId: "endpoint", userId: "self" }] };
+    socket.receive({ type: "state", state });
+    const cancelled = session.startNativeScreen("first", target);
+    const cancelledResult = expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+    const prepare = await appCommand("prepare_capture");
+    const cancel = session.cancelScreenSelection("first");
+    expect(app.sent.at(-1)).toMatchObject({ type: "cancel_capture", publicationId: publication.id });
+    appReply(); await cancel;
+    app.receive({ id: prepare.id, error: "capture_cancelled" }); await cancelledResult;
+    expect(old.stop).not.toHaveBeenCalled();
+    expect(app.sent.some(command => command.type === "stop_capture")).toBe(false);
+
+    const native = session.startNativeScreen("first", target, true);
+    expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id, roomId: "first", target, audio: true });
+    appReply({ captureId: firstCaptureId, sessionId: nativeSessionId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    expect(socket.sent.at(-1)).toMatchObject({ publicationId: publication.id, toSessionId: nativeSessionId });
+    expect(old.stop).not.toHaveBeenCalled();
+    state = { ...state, publications: [{ ...state.publications[0], sessionId: nativeSessionId }] };
+    socket.receive({ type: "state", state }); coreReply();
+    expect(await appCommand("commit_capture")).toMatchObject({ publicationId: publication.id, captureId: firstCaptureId });
+    const remoteControl = { mode: "ask", platform: "windows", canSetStopShortcut: false, requests: [] };
+    app.receive({ type: "input_state", publicationId: publication.id, state: remoteControl });
+    expect(session.getSnapshot().remoteControls.get(publication.id)).toEqual(remoteControl);
+    appReply();
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("subscribe"));
+    state = { ...state, subscriptions: [publication.id] };
+    socket.receive({ type: "state", state }); coreReply(); await native;
+    expect(old.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().ownedScreens).toEqual(new Set([publication.id]));
+
+    const nativeAgain = session.startNativeScreen("first", target);
+    expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id });
+    appReply({ captureId: secondCaptureId, sessionId: nativeSessionId });
+    expect(await appCommand("commit_capture")).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId });
+    appReply(); await nativeAgain;
+    expect(socket.sent.filter(command => command.type === "transfer_source")).toHaveLength(1);
+
+    const browser = session.startScreen("first");
+    expect(await appCommand("transfer_source")).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
+    state = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }] };
+    socket.receive({ type: "state", state }); appReply();
+    expect(await appCommand("stop_capture")).toMatchObject({ publicationId: publication.id });
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(nextStream);
+    appReply();
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: publication.id, enabled: false }));
+    coreReply(); await browser;
+    expect(session.getSnapshot().state?.publications.map(value => value.id)).toEqual([publication.id]);
+    expect(session.getSnapshot().state?.subscriptions).toEqual([]);
+    expect(session.getSnapshot().remoteControls.has(publication.id)).toBe(false);
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
+    expect(next.stop).not.toHaveBeenCalled();
   } finally { session.close(); }
 });
 
@@ -751,10 +881,14 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await Promise.resolve();
     expect(app.sent.filter(command => command.type === "preview")).toHaveLength(1);
     const starting = session.startNativeScreen("first", target, true);
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
-    expect(app.sent.at(-1)).toMatchObject({ type: "start_capture", publicationId, roomId: "first", target, audio: true });
+    expect(app.sent.at(-1)).toMatchObject({ type: "prepare_capture", publicationId, roomId: "first", target, audio: true });
     expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
+    const captureId = crypto.randomUUID(), nativeSessionId = crypto.randomUUID();
+    app.receive({ id: app.sent.at(-1)!.id, result: { captureId, sessionId: nativeSessionId } });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
+    expect(app.sent.at(-1)).toMatchObject({ publicationId, captureId });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("subscribe"));
     expect(session.nativeCaptureRequest("first")).toBeUndefined();
@@ -847,10 +981,10 @@ test("pending Native capture stays page-owned through same-page stop and close",
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await capabilities;
     const activate = vi.spyOn(nativeActivation, "activateNativePicker").mockImplementation(() => {
-      expect(app.sent.at(-1)?.type).toBe("start_capture");
+      expect(app.sent.at(-1)?.type).toBe("prepare_capture");
     });
     const starting = session.startNativeScreen("first", target).catch(error => error);
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     const request = app.sent.at(-1)!;
     const publicationId = request.publicationId as string;
     expect(publicationId).toEqual(expect.any(String));
@@ -874,15 +1008,15 @@ test("pending Native capture stays page-owned through same-page stop and close",
     expect(socket.sent.some(command => command.type === "subscribe")).toBe(false);
 
     const failed = session.startNativeScreen("first", target).catch(error => error);
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     app.receive({ id: app.sent.at(-1)!.id, error: "capture_failed" });
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("stop_capture"));
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("cancel_capture"));
     expect(session.nativeCaptureRequest("first")).toBeUndefined();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     expect((await failed).message).toBe("capture_failed");
 
     const closing = session.startNativeScreen("first", target).catch(error => error);
-    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
     expect(session.getSnapshot().ownedScreens.size).toBe(1);
     session.close();
     expect((await closing).message).toBe("app_disconnected");
@@ -1257,6 +1391,7 @@ class RoomPeerConnection extends EventTarget {
   ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
   channels: RoomDataChannel[] = [];
   senders: Array<{ track: MediaStreamTrack; stream: MediaStream;
+    replaceTrack(track: MediaStreamTrack): Promise<void>;
     getParameters(): RTCRtpSendParameters; setParameters(parameters: RTCRtpSendParameters): Promise<void> }> = [];
   receivers: RTCRtpReceiver[] = [];
   getStats = vi.fn(async (): Promise<RTCStatsReport> => new Map() as RTCStatsReport);
@@ -1268,6 +1403,7 @@ class RoomPeerConnection extends EventTarget {
   addTrack(track: MediaStreamTrack, stream: MediaStream): RoomPeerConnection["senders"][number] {
     let parameters = { encodings: [{}] } as RTCRtpSendParameters;
     const sender = { track, stream, getParameters: () => structuredClone(parameters),
+      replaceTrack: vi.fn(async (next: MediaStreamTrack) => { sender.track = next; }),
       setParameters: async (next: RTCRtpSendParameters) => { parameters = structuredClone(next); } };
     this.senders.push(sender); return sender;
   }
@@ -1812,9 +1948,45 @@ test("a relay updates senders when audio joins and leaves the same remote screen
   } finally { media.reset(); session.close(); }
 });
 
-test.each(["new", "source", "audio", "ended"])("sender rejection rolls back its %s allocation without affecting healthy outputs", async mode => {
+test("source tracks replace serially on the existing physical pair, senders and flow stream binding", async () => {
+  const { session, media, state, sent, pc } = await setupRoomMedia();
+  const oldVideo = remoteTrack("video"), oldAudio = remoteTrack("audio");
+  const nextVideo = remoteTrack("video"), nextAudio = remoteTrack("audio");
+  const finalVideo = remoteTrack("video"), finalAudio = remoteTrack("audio");
+  try {
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false }];
+    media.setLocal("screen", remoteStream("old", [oldVideo, oldAudio]));
+    state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+    media.update("a", state);
+    const [videoSender, audioSender] = pc.senders, binding = videoSender.stream;
+    let finish!: () => void;
+    const paused = new Promise<void>(resolve => { finish = resolve; });
+    const replace = vi.spyOn(videoSender, "replaceTrack").mockImplementationOnce(async track => {
+      await paused; videoSender.track = track;
+    });
+    media.setLocal("screen", remoteStream("next", [nextVideo, nextAudio]));
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    media.setLocal("screen", remoteStream("final", [finalVideo, finalAudio]));
+    expect(videoSender.track).toBe(oldVideo);
+    expect(audioSender.track).toBe(oldAudio);
+    finish();
+    await vi.waitFor(() => expect(pc.senders.map(sender => sender.track)).toEqual([finalVideo, finalAudio]));
+    expect(pc.senders).toEqual([videoSender, audioSender]);
+    expect(videoSender.stream).toBe(binding);
+    expect(binding.getTracks()).toEqual([finalVideo, finalAudio]);
+    media.setLocal("screen", remoteStream("camera-video-only", [finalVideo]));
+    expect(pc.senders).toEqual([videoSender]);
+    expect(binding.getTracks()).toEqual([finalVideo]);
+    expect(RoomPeerConnection.instances).toHaveLength(1);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
+    for (const track of [oldVideo, oldAudio, nextVideo, nextAudio, finalVideo, finalAudio]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
+test.each(["new", "source", "audio", "ended"])("sender rejection retires only its failed %s work without affecting healthy outputs", async mode => {
   const replacing = mode !== "new";
-  const survives = replacing && mode !== "ended";
+  const survives = mode === "audio";
   const { session, media, state, sent, pc } = await setupRoomMedia();
   const oldVideo = remoteTrack("video"), video = mode === "audio" ? oldVideo : remoteTrack("video"), rejectedAudio = remoteTrack("audio");
   const kept = remoteTrack("audio"), following = remoteTrack("audio");
@@ -1846,6 +2018,7 @@ test.each(["new", "source", "audio", "ended"])("sender rejection rolls back its 
     state.pairs[0].outgoing = [{ id: "screen-output", publicationId: "screen", selected: true, inputFlowId: null },
       { id: "kept-output", publicationId: "kept", selected: true, inputFlowId: null }, { id: "following-output", publicationId: "following", selected: true, inputFlowId: null }];
     expect(() => replacing ? media.setLocal("screen", source) : media.update("a", state)).not.toThrow();
+    if (mode === "source" || mode === "ended") await vi.waitFor(() => expect(warning).toHaveBeenCalled());
     expect(pc.senders.map(sender => sender.track)).toEqual(survives ? [oldVideo, kept, following] : [kept, following]);
     expect(pc.senders.find(sender => sender.track === kept)).toBe(keptSender);
     expect(oldBinding?.getTracks() ?? []).toEqual(survives ? [oldVideo] : []);
@@ -1854,7 +2027,8 @@ test.each(["new", "source", "audio", "ended"])("sender rejection rolls back its 
     expect(sent.filter(command => command.type === "flow_state")).toEqual(survives ? [] : [
       { type: "flow_state", flowId: "screen-output", pairId: "pair", state: "failed" },
     ]);
-    expect(warning).toHaveBeenCalledWith("Channel media sender attach failed", { flowId: "screen-output", kind: "audio" }, expect.any(DOMException));
+    if (mode === "source" || mode === "ended") expect(warning).toHaveBeenCalledWith("Channel source replacement failed", { flowId: "screen-output" }, expect.any(DOMException));
+    else expect(warning).toHaveBeenCalledWith("Channel media sender attach failed", { flowId: "screen-output", kind: "audio" }, expect.any(DOMException));
     if (!survives) {
       const attempts = add.mock.calls.length;
       media.update("a", state); media.update("a", state);
