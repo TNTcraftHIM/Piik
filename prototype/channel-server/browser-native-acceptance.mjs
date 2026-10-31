@@ -7,6 +7,7 @@ import { basename, join, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 import { createServer } from "node:net";
+import { nativePreviews } from "./browser-preview-acceptance.mjs";
 
 // App hosting and Browser participation share a user, not an endpoint or lifetime.
 export async function appRoom({ initial, serverRoom, browser, action, view, evaluate, until, sample,
@@ -84,8 +85,14 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await until("linked Browser restores its admitted identity", () => view(1), value => value.connection === "connected"
       && value.self.id === initial[1].self.id);
     await appReady(1);
-    const room = await action(1, "createRoom({name:'App-owned room',icon:'couch',access:'private',hidden:true,password:'app-room-password'})");
+    const room = await action(1, process.argv.includes("--previews")
+      ? "createRoom({name:'Preview room',icon:'couch',access:'public',hidden:false})"
+      : "createRoom({name:'App-owned room',icon:'couch',access:'private',hidden:true,password:'app-room-password'})");
     await action(1, `browse(${JSON.stringify(room)})`);
+    if (process.argv.includes("--previews")) {
+      await nativePreviews({ room, browser, action, view, evaluate, until, playing, progressing, hook, output, directory });
+      return;
+    }
     const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
     assert(!invite.includes(token), "room invitations never carry the local App token");
     await browser(2, "open", invite);

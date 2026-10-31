@@ -809,6 +809,8 @@ export class ChannelSession {
     loadCameraPreviews(signal, publish, [...this.local.values()].find(capture => capture.camera
       && capture.stream.getVideoTracks().some(track => track.readyState === "live"))?.stream);
   nativeSources = async (): Promise<NativeCaptureSources> => (await this.connectApp()).sources();
+  nativePreview = (target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null> =>
+    this.app?.preview(target, signal) ?? Promise.resolve(null);
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const epoch = this.captureEpoch;

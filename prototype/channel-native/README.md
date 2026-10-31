@@ -109,6 +109,13 @@ Cached WinRT factories span successive captures and source-list refreshes; their
 runtime must therefore span the process, while capture workers still stop and
 join with their individual page lease.
 
+The source picker requests one independent still image at a time. Windows uses
+WGC and the system bitmap encoder; macOS 13 uses the existing ScreenCaptureKit
+frames and ImageIO. Each JPEG fits within 320×180 and 64 KiB. A two-second first-frame
+deadline, picker cancellation and connection closure stop and join this capture
+before completing its request. These previews neither publish nor retain images;
+Linux and Android keep their system picker.
+
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs in one flow share a stream while owning separate SSRCs and
 bounded writers; WebRTC handles each hop's retransmission and congestion control.

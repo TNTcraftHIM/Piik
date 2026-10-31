@@ -43,7 +43,7 @@ const identityOnly = process.argv.includes("--identity");
 const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
-const appOnly = process.argv.includes("--app");
+const appOnly = process.argv.includes("--app") || process.argv.includes("--previews");
 const active = identityOnly ? [0, 1] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   // Omitting launch options on later commands selects a different Browser context.

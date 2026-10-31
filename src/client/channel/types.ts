@@ -61,6 +61,7 @@ export interface ChannelActions {
   startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string): Promise<void>;
   cameraPreviews: typeof loadCameraPreviews;
   nativeSources(): Promise<NativeCaptureSources>;
+  nativePreview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean): Promise<void>;
   stopScreen(publicationId: string): Promise<void>;

@@ -740,6 +740,16 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const sources = { sources: [target], processAudio: false, systemAudio: true, activationURL };
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await expect(listing).resolves.toEqual(sources);
+    const abort = new AbortController();
+    const cancelledPreview = session.nativePreview(target, abort.signal);
+    const nextPreview = session.nativePreview(target);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("preview"));
+    const previewId = app.sent.at(-1)!.id;
+    abort.abort();
+    expect(app.sent.at(-1)).toMatchObject({ type: "cancel_preview", requestId: previewId });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await Promise.resolve();
+    expect(app.sent.filter(command => command.type === "preview")).toHaveLength(1);
     const starting = session.startNativeScreen("first", target, true);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
     const publicationId = app.sent.at(-1)!.publicationId as string;
@@ -761,6 +771,15 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     await starting;
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
+
+    // Starting media did not wait for a cancelled thumbnail's stop/join reply.
+    app.receive({ id: previewId, result: null });
+    await expect(cancelledPreview).resolves.toBeNull();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("preview"));
+    const image = "data:image/jpeg;base64,/9j/2Q==";
+    app.receive({ id: app.sent.at(-1)!.id, result: image });
+    await expect(nextPreview).resolves.toBe(image);
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
 
     const controllerSessionId = crypto.randomUUID(), intent = crypto.randomUUID().replaceAll("-", "");
     const remote = { mode: "ask", platform: "windows", canSetStopShortcut: false, requests: [{ id: intent, peerId: controllerSessionId, state: "pending" }] };

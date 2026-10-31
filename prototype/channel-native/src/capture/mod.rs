@@ -1,4 +1,6 @@
 //! Native capture producers, independent of rooms and RTP.
+mod preview;
+pub use preview::{preview, MAX_PREVIEW_BYTES};
 #[cfg(all(feature = "capture", target_os = "android"))]
 mod android;
 #[cfg(all(feature = "capture", target_os = "android"))]

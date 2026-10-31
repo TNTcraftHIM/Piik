@@ -7,8 +7,6 @@ import { activateNativePicker } from "../../native/activation";
 import type { ChannelController } from "../types";
 import "./channel-share-control.css";
 
-const noPreview = async () => null;
-
 export function ChannelShareControl({ channel, roomId, disabled }: {
   channel: ChannelController; roomId: string; disabled: boolean;
 }) {
@@ -70,7 +68,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
         onBrowser={() => start(() => startScreen(roomId))}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
         onNative={(target, audio) => start(() => startNativeScreen(roomId, target, audio))}
-        onPreview={noPreview} onRefresh={refresh} onCancel={() => {
+        onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}
     </div>

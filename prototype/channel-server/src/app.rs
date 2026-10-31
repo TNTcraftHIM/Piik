@@ -616,6 +616,8 @@ enum Operation {
         policy: String,
     },
     Targets,
+    Preview { target: Target },
+    CancelPreview { request_id: String },
     StartCapture {
         publication_id: Uuid,
         room_id: String,
@@ -691,6 +693,8 @@ async fn connection(
             let mut audio_errors = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
             let mut input_policies = FuturesUnordered::new();
+            let mut previews = FuturesUnordered::new();
+            let mut preview: Option<(String, Option<oneshot::Sender<()>>)> = None;
             loop {
                 let message = tokio::select! {
                     message = async {
@@ -716,6 +720,16 @@ async fn connection(
                     }
                     Some(response) = input_policies.next(), if !input_policies.is_empty() => {
                         let response: Value = response;
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        continue;
+                    }
+                    Some((id, result)) = previews.next(), if !previews.is_empty() => {
+                        let result: Result<Option<String>> = result;
+                        preview = None; // The capture has stopped and its worker has joined.
+                        let response = match result {
+                            Ok(image) => json!({"id":id,"result":image}),
+                            Err(error) => json!({"id":id,"error":error.to_string()}),
+                        };
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
                     }
@@ -799,6 +813,26 @@ async fn connection(
                                 Some(_) => capture_targets().await,
                                 None => Err(anyhow!("hello_required")),
                             },
+                            Operation::Preview { target } => {
+                                if host.is_none() { Err(anyhow!("hello_required")) }
+                                else if preview.is_some() { Err(anyhow!("preview_busy")) }
+                                else {
+                                    let (cancel, cancelled) = oneshot::channel();
+                                    preview = Some((request.id.clone(), Some(cancel)));
+                                    previews.push(async move {
+                                        (request.id, piik_channel_native::capture::preview(target, cancelled).await)
+                                    });
+                                    continue;
+                                }
+                            }
+                            Operation::CancelPreview { request_id } => {
+                                if let Some((id, cancel)) = &mut preview {
+                                    if *id == request_id {
+                                        if let Some(cancel) = cancel.take() { let _ = cancel.send(()); }
+                                    }
+                                }
+                                Ok(Value::Null)
+                            }
                             Operation::StartCapture {
                                 publication_id,
                                 room_id,

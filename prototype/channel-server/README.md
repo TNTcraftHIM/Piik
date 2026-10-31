@@ -128,7 +128,8 @@ not migrated; a remembered App preference cannot prevent Browser hosting when
 the App is absent.
 
 **Share screen** reuses the product source picker for Browser capture and the
-App's available sources. App capture publishes through that same Native participant;
+App's available sources, with small Native window/display thumbnails. Closing
+the picker cancels its pending thumbnails. App capture publishes through that same Native participant;
 the selecting page previews it as an ordinary subscriber. Stopping the share or
 closing its page stops only its captures, not its hosted rooms. This prototype
 uses 1080p/30 fps/4 Mbps H264 for native video, with optional source audio.
@@ -392,6 +393,7 @@ node prototype/channel-server/run-browser-check.mjs --protocol
 node prototype/channel-server/run-browser-check.mjs
 node prototype/channel-server/run-browser-check.mjs --rooms
 node prototype/channel-server/run-browser-check.mjs --identity
+node prototype/channel-server/run-browser-check.mjs --previews
 node prototype/channel-server/run-browser-check.mjs --lifecycle
 node prototype/channel-server/run-browser-check.mjs --hosts
 node prototype/channel-server/run-browser-check.mjs --base

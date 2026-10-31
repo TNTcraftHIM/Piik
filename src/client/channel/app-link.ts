@@ -12,6 +12,8 @@ const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSche
   processAudio: z.boolean(), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
+const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
+  .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
 const inputControlStateSchema = remoteControlStateSchema.extend({
   canSetStopShortcut: z.boolean(), stopShortcut: remoteShortcutKeySchema.nullable().optional(),
@@ -53,6 +55,7 @@ export class ChannelApp {
   private authenticated = false;
   private captures = new Set<string>();
   private activationURL?: string;
+  private previewTail: Promise<unknown> = Promise.resolve();
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return this.captures; }
@@ -107,9 +110,8 @@ export class ChannelApp {
     socket.onerror = () => { /* Close retires the connection and its requests. */ };
   }
 
-  private request<T>(command: AppCommand): Promise<T> {
+  private request<T>(command: AppCommand, id: string = crypto.randomUUID()): Promise<T> {
     if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("app_disconnected"));
-    const id = crypto.randomUUID();
     return new Promise((resolve, reject) => {
       this.requests.set(id, { command, resolve: value => resolve(value as T), reject });
       this.socket.send(JSON.stringify({ ...command, id }));
@@ -126,6 +128,24 @@ export class ChannelApp {
     const sources = captureSourcesSchema.parse(await this.request({ type: "targets" }));
     this.activationURL = sources.activationURL;
     return sources;
+  }
+
+  preview(target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null> {
+    const preview = this.previewTail.then(async () => {
+      if (!this.connected || signal?.aborted || target.kind === "picker") return null;
+      const id = crypto.randomUUID();
+      const pending = this.request({ type: "preview", target }, id);
+      const cancel = () => { void this.request({ type: "cancel_preview", requestId: id }).catch(() => {}); };
+      signal?.addEventListener("abort", cancel, { once: true });
+      try {
+        const result = previewSchema.parse(await pending);
+        return signal?.aborted ? null : result;
+      } catch { return null; }
+      finally { signal?.removeEventListener("abort", cancel); }
+    });
+    // Wait for the App's stop/join acknowledgement even after local cancellation.
+    this.previewTail = preview;
+    return preview;
   }
 
   async startCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> {
