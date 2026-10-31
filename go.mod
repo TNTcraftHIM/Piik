@@ -32,12 +32,10 @@ require (
 	github.com/pion/transport/v5 v5.1.4
 	github.com/pion/turn/v5 v5.1.3
 	github.com/pion/webrtc/v4 v4.2.26
-	github.com/stretchr/testify v1.12.1
 	github.com/thesyncim/gopus v0.2.2
 	github.com/wlynxg/anet v0.0.5
 	go.uber.org/zap v1.28.0
 	golang.org/x/crypto v0.58.0
-	golang.org/x/mobile v0.0.0-20261011034528-197770444867
 	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sync v0.24.0

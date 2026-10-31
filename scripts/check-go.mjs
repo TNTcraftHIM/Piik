@@ -18,7 +18,7 @@ const WEB_INDEX = join("internal", "server", "webassets", "dist", "index.html");
 // Local dependency repairs retain upstream tests, including PCPv6 composition.
 // Nested modules need explicit test patterns; remove these with the replacements.
 // Go source lives here; ./... would also scan downloaded SDKs and build probes.
-const GO_TEST_PACKAGES = ["./cmd/...", "./internal/...", "./mobile/bridge", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp"];
+const GO_TEST_PACKAGES = ["./cmd/...", "./internal/...", "github.com/netbirdio/go-nat/...", "github.com/jackpal/go-nat-pmp"];
 
 const root = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const captureRoot = join(root, "native", "capture");
@@ -60,7 +60,7 @@ function checkCore() {
   const goRoot = run(go, ["env", "GOROOT"], { capture: true });
   const gofmt = process.env.PIIK_GOFMT?.trim() ||
     join(goRoot, "bin", process.platform === "win32" ? "gofmt.exe" : "gofmt");
-  const unformatted = run(gofmt, ["-l", "cmd", "internal", "mobile/bridge"], { capture: true });
+  const unformatted = run(gofmt, ["-l", "cmd", "internal"], { capture: true });
   if (unformatted) {
     throw new Error(`Go source is not formatted:\n${unformatted}`);
   }
