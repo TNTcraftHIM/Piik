@@ -90,8 +90,9 @@ The combined 3.0 Native candidate's capture-free embedded Server passes the
 VP8 and H264 dual-downlink restoration and healthy-sibling isolation controls.
 When the connection grant falls below every available source representation,
 forwarding pauses rather than changing another connection's source.
-The H264 source reports startup sequence gaps, with no further loss reports
-during the restriction/restoration profile.
+The H264 startup reproduction traced sequence gaps to a 64 KiB UDP receive
+buffer. The shared socket correction receives the complete burst, and the
+same Browser/Server startup reports zero loss for both supplied layers.
 Its funded H264 encoding handoff survives an ignored first refresh request;
 the old encoding keeps playing until the new keyframe is adopted.
 In the Browser-to-Native H264 recovery control, the constrained encoding follows

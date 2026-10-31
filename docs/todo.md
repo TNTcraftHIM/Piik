@@ -20,9 +20,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
   after the held dependency decision. Keep the first version's accepted scope
   and the prototype isolated.
-- [ ] **Rust Server release checks.** Restore the operator's release check using
-  the existing [release-source policy](./standards/versioning.md#release-sources).
-  App update notices already use the shared Browser checker and packaged identity.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

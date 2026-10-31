@@ -72,6 +72,12 @@ IP address; set `PIIK_CHANNEL_WEB_ORIGIN` to the exact public frontend origin.
 Packaged Server resources default to `web/` beside the executable, independently
 of its working directory.
 
+Run `piik-server --check-release` to check for an update without starting the
+service or supplying room keys. It prints one JSON result and exits with `0`
+(up to date), `10` (an official update or different build is available), or `20`
+(unavailable). `--api-url <endpoint>` checks that endpoint alone. Released builds
+also check once after startup; network access never delays the listener.
+
 For a standalone source deployment, build the
 [same frontend as static assets](../channel-browser/README.md), then set
 `PIIK_CHANNEL_WEB_DIR` to `build/channel-web/` and `PIIK_CHANNEL_WEB_ORIGIN` to

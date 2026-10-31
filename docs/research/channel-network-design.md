@@ -652,6 +652,13 @@ sequence space, including repeated transmissions. An omitted outcome remains
 unknown until explicitly reported; it must not keep occupying the flight window.
 Payload demand and encrypted wire capacity retain their distinct overhead.
 
+The runtime's shared physical-socket wrapper requests a bounded 1 MiB receive
+buffer through its existing Quinn UDP adapter, preserving larger caller values.
+A real startup burst reproduced drops before SRTP with the Windows 64 KiB
+default; the same burst and Browser H264 startup arrive without loss after the
+correction. IPv4, IPv6 and adopted sockets share this owner. Socket-option errors
+leave the connection usable; no media policy or additional receive queue is added.
+
 Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each
 output uses its sender's negotiated codec mapping and preserves the source-time
