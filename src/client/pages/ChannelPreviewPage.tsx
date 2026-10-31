@@ -21,7 +21,7 @@ import { ChannelDomainControls } from "../channel/components/ChannelDomainContro
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
-import { roomPeople } from "../channel/presentation";
+import { listeningVoicePublications, roomPeople } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import "../channel/bootstrap";
@@ -62,8 +62,7 @@ export function ChannelPreviewPage() {
   const onlineUsers = state?.users.filter(user => state.sessions.some(session => session.userId === user.id && session.online)) ?? [];
   const nameOfRoom = (id: string) => rooms.find(value => value.id === id)?.name ?? id;
   const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? copy("用户", "User");
-  const voiceStreams = publications.filter(value => value.kind === "voice" && value.sessionId !== sessionId &&
-    state?.subscriptions.includes(value.id) && streams.has(value.id));
+  const voiceStreams = listeningVoicePublications(state, sessionId, streams);
   const voiceAudioContext = useRef<AudioContext | null>(null);
   const createVoiceAudioContext = useCallback(() => voiceAudioContext.current ??= new AudioContext(), []);
   const closeVoiceAudioContext = useCallback(() => {

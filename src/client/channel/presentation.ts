@@ -1,5 +1,11 @@
 import type { ChannelSnapshot } from "./protocol";
 
+/** Remote voice streams played by this endpoint, independently of the browsed room. */
+export function listeningVoicePublications(state: ChannelSnapshot | null, sessionId: string | null, streams: ReadonlyMap<string, MediaStream>) {
+  return state?.publications.filter(value => value.kind === "voice" && value.sessionId !== sessionId &&
+    state.subscriptions.includes(value.id) && streams.has(value.id)) ?? [];
+}
+
 /** One user's appearance combines their endpoints in the selected voice room. */
 export function voiceAppearance(state: ChannelSnapshot, userId: string, roomId: string) {
   const endpoints = new Set(state.sessions.filter(session => session.userId === userId).map(session => session.id));

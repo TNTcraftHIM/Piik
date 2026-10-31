@@ -3,7 +3,7 @@ import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import type { ChannelUser as User } from "../protocol";
-import { voiceAppearance } from "../presentation";
+import { listeningVoicePublications, voiceAppearance } from "../presentation";
 import { ChannelUser } from "./ChannelUser";
 
 export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelController; roomId: string; onBack(): void }) {
@@ -11,17 +11,17 @@ export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelCon
   const zh = lang === "zh";
   const { state, self, pending, connection } = channel;
   const online = new Set(state?.sessions.filter(session => session.online).map(session => session.userId));
+  const listeningUsers = new Set(listeningVoicePublications(state, channel.sessionId, channel.streams).map(publication => publication.userId));
   const isOwner = self?.id === state?.channel.ownerId;
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const row = (user: User) => {
     const sharing = state?.publications.some(publication => publication.userId === user.id && publication.kind === "screen");
     const voice = state ? voiceAppearance(state, user.id, roomId) : undefined;
-    const listening = state?.voice.some(activity => activity.sessionId === channel.sessionId && activity.roomId === roomId);
     const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} self={user.id === self?.id}
       owner={user.id === state?.channel.ownerId} roles={user.roles} online={online.has(user.id)}
       voice={voice}
-      actions={voice && listening && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
+      actions={listeningUsers.has(user.id) && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
         onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" icon="speaker" heading={user.name}>
         <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"
           pressed={!playback.muted} onClick={() => channel.setVoiceMuted(user.id, !playback.muted)} />
