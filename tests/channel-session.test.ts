@@ -391,7 +391,7 @@ function microphoneMixer(clones: MediaStream[]) {
     gain = { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn() };
     createGain = vi.fn(() => this.gain);
     createAnalyser = () => ({ fftSize: 256, getFloatTimeDomainData: vi.fn() });
-    createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
+    createMediaStreamSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
     createMediaStreamDestination = vi.fn(() => {
       const track = remoteTrack("audio");
       vi.mocked(track.stop).mockImplementation(() => { Object.defineProperty(track, "readyState", { value: "ended" }); });
@@ -418,9 +418,10 @@ test("voice rooms share one microphone gain graph and release it after the last 
   const getUserMedia = vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
   try {
-    expect(session.getSnapshot()).toMatchObject({ inputVolume: .7, listeningVolume: 1.2 });
+    expect(session.getSnapshot()).toMatchObject({ voiceInput: { volume: .7 }, listeningVolume: 1.2 });
     const joining = [session.joinVoice("first"), session.joinVoice("second")];
     expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(getUserMedia).toHaveBeenCalledWith(expect.objectContaining({ audio: expect.objectContaining({ deviceId: { exact: "saved-device" }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }) }));
     expect(contexts).toHaveLength(1);
     expect(contexts[0].resume).toHaveBeenCalledOnce();
     session.setInputVolume(.4);
@@ -438,18 +439,46 @@ test("voice rooms share one microphone gain graph and release it after the last 
     expect(contexts[0].gain.gain.value).toBe(.4);
     session.setInputVolume(1.6); session.setListeningVolume(1.8);
     expect(contexts[0].gain.gain.setTargetAtTime).toHaveBeenLastCalledWith(1.6, 0, .01);
-    expect(session.getSnapshot()).toMatchObject({ inputVolume: 1.6, listeningVolume: 1.8 });
+    expect(session.getSnapshot()).toMatchObject({ voiceInput: { volume: 1.6 }, listeningVolume: 1.8 });
     expect(JSON.parse(preferences.get("piik:room-preferences:v1")!)).toMatchObject({
       voiceInput: { deviceId: "saved-device", volume: 1.6, voiceProcessing: false }, voiceListeningVolume: 1.8,
     });
+    const commands = socket.sent.length;
+    const replacement = remoteTrack("audio");
+    getUserMedia.mockResolvedValueOnce(remoteStream("replacement", [replacement]));
+    await session.configureVoiceInput({ deviceId: "next-device", voiceProcessing: true });
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].createMediaStreamDestination).toHaveBeenCalledOnce();
+    expect(contexts[0].createMediaStreamSource).toHaveBeenCalledTimes(2);
+    expect(contexts[0].createMediaStreamSource.mock.results[0].value.disconnect).toHaveBeenCalledOnce();
+    expect(raw.onended).toBeNull();
+    expect(raw.stop).toHaveBeenCalledOnce();
+    expect(replacement.stop).not.toHaveBeenCalled();
+    expect(socket.sent).toHaveLength(commands); // No replacement publication, join or route command.
+    expect(session.getSnapshot().voiceInput).toEqual({ deviceId: "next-device", volume: 1.6, voiceProcessing: true });
+    expect(JSON.parse(preferences.get("piik:room-preferences:v1")!).voiceInput).toEqual(session.getSnapshot().voiceInput);
+    getUserMedia.mockRejectedValueOnce(new DOMException("Cannot open device", "NotReadableError"));
+    await expect(session.configureVoiceInput({ deviceId: "failed-device" })).rejects.toThrow("Cannot open device");
+    expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");
+    expect(replacement.stop).not.toHaveBeenCalled();
+    expect(contexts[0].close).not.toHaveBeenCalled();
+    let grantReplacement!: (stream: MediaStream) => void;
+    getUserMedia.mockImplementationOnce(() => new Promise<MediaStream>(resolve => { grantReplacement = resolve; }));
+    const lateConfiguration = session.configureVoiceInput({ deviceId: "late-device" });
+    const rejected = expect(lateConfiguration).rejects.toThrow("closed");
     for (const roomId of ["first", "second"]) {
       const leaving = session.leaveVoice(roomId);
       const request = socket.sent.at(-1)!;
       socket.receive({ type: "room_reply", roomId, requestId: request.requestId, result: { type: "done" } });
       await leaving;
       expect(contexts[0].close).toHaveBeenCalledTimes(roomId === "first" ? 0 : 1);
-      expect(raw.stop).toHaveBeenCalledTimes(roomId === "first" ? 0 : 1);
+      expect(replacement.stop).toHaveBeenCalledTimes(roomId === "first" ? 0 : 1);
     }
+    const late = remoteTrack("audio");
+    grantReplacement(remoteStream("late-device", [late]));
+    await rejected;
+    expect(late.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().voiceInput.deviceId).toBe("next-device");
     for (const clone of clones) expect(clone.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
   } finally { session.close(); }
   expect(contexts[0].close).toHaveBeenCalledOnce();

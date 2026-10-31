@@ -9,8 +9,10 @@ import { ChannelApp, discoverChannelAppHealth, type NativeCaptureSources } from 
 import { isClientActivated } from "../lib/session";
 import type { NativeCaptureTarget, RemoteStopShortcut } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
-import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
+import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
+import { audioInputConstraints } from "../media/audio-capture";
+import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession } from "../lib/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
 
@@ -45,7 +47,7 @@ function mergeMessage(previous: ChannelMessage | undefined, message: ChannelMess
 export class ChannelSession {
   private view: ChannelView = {
     interactionsByRoom: new Map(),
-    inputVolume: readRoomPreferences().voiceInput.volume,
+    voiceInput: readRoomPreferences().voiceInput,
     voicePlaybackByUser: new Map(),
     listeningVolume: readRoomPreferences().voiceListeningVolume,
     appConnected: false,
@@ -855,10 +857,10 @@ export class ChannelSession {
     request.promise = (async () => {
       let stream: MediaStream | undefined, input: MicrophoneInput | undefined;
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+        stream = await navigator.mediaDevices.getUserMedia(this.microphoneConstraints(this.view.voiceInput));
         if (epoch !== this.captureEpoch) throw new Error("closed");
         if (stream.getAudioTracks()[0]?.readyState !== "live") throw new Error("microphone_unavailable");
-        const captured = input = new MicrophoneInput(stream, context, this.view.inputVolume, () => {
+        const captured = input = new MicrophoneInput(stream, context, this.view.voiceInput.volume, () => {
           for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream);
           captured.close();
           if (this.microphone === captured) this.microphone = null;
@@ -868,7 +870,7 @@ export class ChannelSession {
         const started = await resumed;
         if (epoch !== this.captureEpoch) throw new Error("closed");
         if (!started || !captured.stream.active) throw new Error("microphone_unavailable");
-        captured.volume(this.view.inputVolume);
+        captured.volume(this.view.voiceInput.volume);
         this.microphone = captured;
         request.input = null;
         return captured;
@@ -887,9 +889,36 @@ export class ChannelSession {
   setInputVolume = (volume: number): void => {
     this.microphone?.volume(volume);
     this.microphoneRequest?.input?.volume(volume);
-    this.patch({ inputVolume: volume });
-    saveRoomPreferences({ voiceInput: { ...readRoomPreferences().voiceInput, volume } });
+    const voiceInput = { ...this.view.voiceInput, volume };
+    this.patch({ voiceInput });
+    saveRoomPreferences({ voiceInput });
   };
+
+  microphones = () => browserCaptureDevices("audioinput");
+
+  private microphoneConstraints(settings: RoomPreferences["voiceInput"]): MediaStreamConstraints {
+    return { audio: { ...audioInputConstraints(settings.voiceProcessing),
+      ...(settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {}) }, video: false };
+  }
+
+  configureVoiceInput = (settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void> => this.action("voice-input", async () => {
+    const epoch = this.captureEpoch;
+    if (this.microphoneRequest) await this.microphoneRequest.promise;
+    if (epoch !== this.captureEpoch) throw new Error("closed");
+    const voiceInput = { ...this.view.voiceInput, ...settings };
+    const input = this.microphone;
+    if (input) {
+      let captured: MediaStream | undefined = await navigator.mediaDevices.getUserMedia(this.microphoneConstraints(voiceInput));
+      try {
+        if (epoch !== this.captureEpoch || this.microphone !== input) throw new Error("closed");
+        input.replace(captured);
+        captured = undefined;
+      } finally { captured?.getTracks().forEach(track => track.stop()); }
+    }
+    const applied = { ...voiceInput, volume: this.view.voiceInput.volume };
+    this.patch({ voiceInput: applied });
+    saveRoomPreferences({ voiceInput: applied });
+  });
 
   setListeningVolume = (volume: number): void => {
     this.patch({ listeningVolume: volume });

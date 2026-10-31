@@ -4,21 +4,34 @@ export class MicrophoneInput {
   readonly stream: MediaStream;
   private readonly gain: GainNode;
   private readonly analyser: AnalyserNode;
+  private source: MediaStreamAudioSourceNode;
   private readonly samples = new Float32Array(256);
   private closed = false;
 
-  constructor(private readonly captured: MediaStream, private readonly context: AudioContext,
-    volume: number, ended: () => void) {
+  constructor(private captured: MediaStream, private readonly context: AudioContext,
+    volume: number, private readonly ended: () => void) {
     this.gain = this.context.createGain();
     this.gain.gain.value = volume;
     this.analyser = this.context.createAnalyser();
     this.analyser.fftSize = this.samples.length;
-    const source = this.context.createMediaStreamSource(captured);
+    this.source = this.context.createMediaStreamSource(captured);
     const destination = this.context.createMediaStreamDestination();
-    source.connect(this.gain); this.gain.connect(destination); this.gain.connect(this.analyser);
+    this.source.connect(this.gain); this.gain.connect(destination); this.gain.connect(this.analyser);
     this.stream = destination.stream;
     this.stream.getAudioTracks()[0]!.contentHint = "speech";
     captured.getAudioTracks()[0]!.onended = ended;
+  }
+
+  replace(captured: MediaStream): void {
+    if (this.closed || captured.getAudioTracks()[0]?.readyState !== "live") throw new DOMException("Microphone input is unavailable", "InvalidStateError");
+    const source = this.context.createMediaStreamSource(captured);
+    source.connect(this.gain);
+    const previous = this.captured;
+    this.source.disconnect();
+    this.source = source;
+    this.captured = captured;
+    captured.getAudioTracks()[0]!.onended = this.ended;
+    previous.getTracks().forEach(track => { track.onended = null; track.stop(); });
   }
 
   volume(value: number): void { this.gain.gain.setTargetAtTime(value, this.context.currentTime, .01); }

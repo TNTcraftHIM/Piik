@@ -8,6 +8,7 @@ import { VoiceListeningButton, VoiceMicrophoneButton } from "../../room-voice/Vo
 import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
 import { voiceAppearance } from "../presentation";
+import { ChannelVoiceSettings } from "./ChannelVoiceSettings";
 
 /** One persistent control surface for this endpoint's independently joined rooms. */
 export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
@@ -46,7 +47,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>
     <div className="c3-voice-controls">
-      <AudioVolumeMenu volume={channel.inputVolume} onVolume={channel.setInputVolume} label="host.microphone.volume" icon="microphone">
+      <AudioVolumeMenu volume={channel.voiceInput.volume} onVolume={channel.setInputVolume} label="host.microphone.volume" icon="microphone">
         <VoiceMicrophoneButton active={!muted} disabled={!available} busy={busy} quiet
           onClick={() => run(channel.setMuted(roomId, !muted))} />
       </AudioVolumeMenu>
@@ -54,6 +55,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         <VoiceListeningButton deafened={deafened} disabled={!available} busy={busy} quiet
           onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       </AudioVolumeMenu>
+      <ChannelVoiceSettings channel={channel} available={available} />
       <span className="c3-control-divider" />
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         busy={busy} disabled={busy} onClick={() => run(channel.leaveVoice(roomId))} />

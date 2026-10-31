@@ -6,6 +6,8 @@ import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import type { RoomInteractionSession } from "../lib/room-interactions";
+import type { RoomPreferences } from "../lib/room-preferences";
+import type { CaptureDevice } from "../media/capture-devices";
 
 export interface ChannelScreenInput {
   flowId: string;
@@ -18,7 +20,7 @@ export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export interface ChannelView {
   interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
-  inputVolume: number;
+  voiceInput: RoomPreferences["voiceInput"];
   voicePlaybackByUser: ReadonlyMap<string, { volume: number; muted: boolean }>;
   listeningVolume: number;
   appConnected: boolean;
@@ -71,6 +73,8 @@ export interface ChannelActions {
   setMuted(roomId: string, muted: boolean): Promise<void>;
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
   setInputVolume(volume: number): void;
+  microphones(): Promise<CaptureDevice[]>;
+  configureVoiceInput(settings: Partial<Pick<RoomPreferences["voiceInput"], "deviceId" | "voiceProcessing">>): Promise<void>;
   setListeningVolume(volume: number): void;
   setVoiceVolume(userId: string, volume: number): void;
   setVoiceMuted(userId: string, muted: boolean): void;
