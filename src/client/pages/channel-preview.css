@@ -37,7 +37,8 @@
 .c3-room-name { grid-area: title; min-width: 0; display: flex; align-items: center; gap: 10px; }
 .c3-room-company { grid-area: company; justify-self: center; }
 .c3-room-name > svg { color: var(--muted); flex: none; }
-.c3-room-name h2 { min-width: 0; font-size: 21px; letter-spacing: -.03em; line-height: 1.3; overflow-wrap: anywhere; }
+.c3-room-name .c3-room-title { flex: 1; min-width: 0; }
+.c3-room-name h2 { min-width: 0; font-size: 21px; letter-spacing: -.03em; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .c3-room-actions, .c3-room-tools { display: flex; align-items: center; gap: 10px; }
 .c3-room-actions { grid-area: actions; }
 .c3-room-tools { grid-area: tools; gap: 6px; }
@@ -142,9 +143,8 @@
   .c3-room-name { min-width: 0; }
   .c3-room-name h2 { font-size: 16px; }
   .c3-room-name > svg { display: none; }
-  .c3-room-actions { grid-column: 1 / -1; grid-row: 2; gap: 8px; flex-wrap: wrap; }
+  .c3-room-actions { gap: 8px; flex-wrap: wrap; }
   .c3-room-actions > :is(.lr-comic-tip-wrap, .c3-share-control) .lr-cap { display: none; }
-  .c3-room-tools { grid-column: 2; grid-row: 1; }
   .c3-avatar-stack > svg + svg { display: none; }
   .c3-people-trigger > svg { display: none; }
   .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 140px; overflow-y: auto; }
