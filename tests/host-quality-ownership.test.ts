@@ -329,6 +329,57 @@ describe("Camera replacement ownership", () => {
     return { ...current, nativeControl, remoteSnapshot, picture, previous, camera, nativeStream, oldBridge, peer, nativePeer, startedPeerStreams, replacePublication };
   }
 
+  it.each(["initial", "replacement"])("rejects Browser capture that ends during %s audio preparation", async entry => {
+    const current = sourceFixture(entry === "replacement");
+    const pending = deferred<void>();
+    const outputAudio = { readyState: "live", stop: vi.fn() };
+    const resume = vi.fn(() => pending.promise), close = vi.fn(async () => {});
+    const resolveStreamVideoCodec = vi.fn(async () => ({ primary: "h264" }));
+    Object.assign(current.context, { resolveStreamVideoCodec, startBrowserNativeIngress: vi.fn(async () => {}) });
+    if (entry === "initial") {
+      current.context.phase = "idle";
+      current.activeGenerationRef.current = null;
+      current.nativeShareGenerationRef.current = null;
+      current.context.streamRef.current = null;
+      current.context.hostAudioRef.current = null;
+    }
+    vi.stubGlobal("AudioContext", class {
+      resume = resume;
+      close = close;
+      createMediaStreamDestination() { return { stream: { getAudioTracks: () => [outputAudio], getTracks: () => [outputAudio] } }; }
+      createGain() { return { gain: { value: 1 }, connect() {}, disconnect() {} }; }
+    });
+    vi.stubGlobal("MediaStream", class {
+      constructor(private tracks: unknown[]) {}
+      getTracks() { return this.tracks; }
+      getVideoTracks() { return this.tracks.filter(track => track === current.camera.video); }
+      getAudioTracks() { return this.tracks.filter(track => track === outputAudio); }
+    });
+    try {
+      const starting = entry === "initial" ? current.startBrowser() : current.context.switchSource("browser");
+      await vi.waitFor(() => expect(resume).toHaveBeenCalledOnce());
+      expect(current.oldBridge.dispose).not.toHaveBeenCalled();
+      current.camera.video.readyState = "ended";
+      current.camera.video.dispatchEvent(new Event("ended"));
+      pending.resolve();
+      await starting;
+      expect(current.context.streamRef.current).toBe(entry === "initial" ? null : current.previous);
+      expect(current.oldBridge.dispose).not.toHaveBeenCalled();
+      expect(current.client.stopShare).not.toHaveBeenCalled();
+      expect(current.previous.video.stop).not.toHaveBeenCalled();
+      expect(current.camera.video.stop).toHaveBeenCalled();
+      expect(outputAudio.stop).toHaveBeenCalledOnce();
+      expect(close).toHaveBeenCalledOnce();
+      expect(resolveStreamVideoCodec).not.toHaveBeenCalled();
+      expect(current.createRoom).not.toHaveBeenCalled();
+      expect(current.replacePublication).not.toHaveBeenCalled();
+      expect(current.sourceSwitchRef.current).toBeNull();
+      expect(current.setNoticeValue).toHaveBeenLastCalledWith(expect.objectContaining({
+        target: entry === "initial" ? "television" : "operation", tone: "bad", key: "host.capture.readFailed",
+      }));
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it.each(["NotAllowedError", "NotReadableError"])("keeps native capture and its room when Camera fails with %s", async name => {
     const current = sourceFixture(true);
     const permission = deferred<never>();
@@ -1563,7 +1614,8 @@ describe("Host quality ownership", () => {
     current.nativeShareGenerationRef.current = null;
     const probe = deferred<{ primary: string }>();
     const ingress = deferred<void>();
-    const captured = { getTracks: () => [current.track] };
+    Object.assign(current.track, { readyState: "live" });
+    const captured = { getTracks: () => [current.track], getVideoTracks: () => [current.track] };
     const resolveStreamVideoCodec = vi.fn(() => probe.promise);
     const startBrowserNativeIngress = vi.fn(() => ingress.promise);
     const setResolvedVideoCodec = vi.fn();
