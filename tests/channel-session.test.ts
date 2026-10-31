@@ -756,8 +756,12 @@ test("Browser source replacement keeps its publication, rejects only the candida
     expect(old.stop).not.toHaveBeenCalled();
     expect(session.getSnapshot().streams.get(publication.id)).toBe(oldStream);
     expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
+    const endedRequestId = socket.sent.at(-1)!.requestId;
     const replacing = session.startScreen("first");
-    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    await vi.waitFor(() => {
+      expect(socket.sent.at(-1)?.type).toBe("transfer_source");
+      expect(socket.sent.at(-1)!.requestId).not.toBe(endedRequestId);
+    });
     expect(socket.sent.at(-1)).toMatchObject({ publicationId: publication.id, toSessionId: "endpoint" });
     expect(old.stop).not.toHaveBeenCalled();
     socket.receive({ type: "state", state });
