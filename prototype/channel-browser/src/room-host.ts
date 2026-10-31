@@ -20,7 +20,8 @@ interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
 type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest;
 interface HostWork { policy: object | null; history: HistoryRequest | null }
-type HistoryOutcome = { Ok: HistoryRequest } | { Err: string };
+type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
+type ConversationResult = { type: "history"; value: HistoryResult } | { type: "immediate"; value: ConversationReply["record"] };
 
 const failure = (error: unknown): Error => error instanceof Error ? error : new Error(String(error));
 function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (error: Error) => void): void {
@@ -183,13 +184,13 @@ export class BrowserRoomHost {
   dispatchPeer(packet: SignedConversationPacket, now: number, signal?: AbortSignal): Promise<ConversationReply[]> {
     return this.enqueue(async () => {
       if (!this.bindingId) throw new Error("stale_room_host");
-      const prepared: { address: ConversationAddress; history: HistoryOutcome } = JSON.parse(this.room.prepare_peer(JSON.stringify(packet), BigInt(now)));
-      let result: { Ok: HistoryResult } | { Err: string };
+      const prepared: { address: ConversationAddress; work: { Ok: ConversationWork } | { Err: string } } = JSON.parse(this.room.prepare_peer(JSON.stringify(packet), BigInt(now)));
+      let result: { Ok: ConversationResult } | { Err: string };
       try {
-        if ("Err" in prepared.history) {
+        if ("Err" in prepared.work || prepared.work.Ok.type === "immediate") {
           await this.roomTransaction(["rooms"], "readonly", () => {}, () => {}, signal);
-          result = prepared.history;
-        } else result = { Ok: await this.executeHistory(prepared.history.Ok, null, signal) };
+          result = "Err" in prepared.work ? prepared.work : { Ok: prepared.work.Ok };
+        } else result = { Ok: { type: "history", value: await this.executeHistory(prepared.work.Ok.value, null, signal) } };
       } catch (error) {
         const cause = failure(error);
         result = { Err: cause.name === "AbortError" ? cause.name : cause.message };

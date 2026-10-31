@@ -1,7 +1,7 @@
 #![cfg(feature = "sqlite")]
 
 use piik_channel_core::{
-    conversation::{ConversationAddress, ConversationCommand, ConversationRequest, SessionSigner},
+    conversation::{ConversationAddress, ConversationCommand, ConversationRequest, ConversationResult, SessionSigner},
     history::HistoryResult,
     host::{HostAction, HostInput, HostOutput, RequestContext, RoomResult},
     wire::{Request, RoomAccess},
@@ -81,7 +81,10 @@ fn peer(
         1,
     )
     .unwrap()
-    .result
+    .result.map(|result| match result {
+        ConversationResult::History(history) => history,
+        _ => panic!("history result expected"),
+    })
 }
 
 fn sent(

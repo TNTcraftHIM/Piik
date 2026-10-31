@@ -865,7 +865,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     );
     assert!(matches!(
         confirmation.result,
-        Ok(piik_channel_core::history::HistoryResult::Sent(_))
+        Ok(piik_channel_core::conversation::ConversationResult::History(piik_channel_core::history::HistoryResult::Sent(_)))
     ));
     command(
         &mut network,
@@ -1113,7 +1113,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     );
     assert!(matches!(
         confirmation.result,
-        Ok(piik_channel_core::history::HistoryResult::Sent(_))
+        Ok(piik_channel_core::conversation::ConversationResult::History(piik_channel_core::history::HistoryResult::Sent(_)))
     ));
     command(
         &mut network,

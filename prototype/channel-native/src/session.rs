@@ -8,7 +8,7 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{
-    conversation::{self, ConversationRecord, ConversationReply, SessionSigner, SignedPacket},
+    conversation::{self, ConversationRecord, ConversationReply, ConversationResult, SessionSigner, SignedPacket},
     history::HistoryResult,
 };
 use piik_channel_core::{
@@ -126,8 +126,18 @@ impl RoomTurns {
             return;
         };
         let broadcast = match &outcome.result {
-            Ok(HistoryResult::Sent(confirmation)) if confirmation.inserted => {
-                Some((confirmation.message.clone(), hosted.current_readers()))
+            Ok(ConversationResult::History(HistoryResult::Sent(confirmation)))
+                if confirmation.inserted =>
+            {
+                Some((
+                    ConversationRecord::LiveMessage {
+                        message: confirmation.message.clone(),
+                    },
+                    hosted.current_readers(),
+                ))
+            }
+            Ok(ConversationResult::Immediate(record @ ConversationRecord::Interaction { .. })) => {
+                Some((record.clone(), hosted.current_readers()))
             }
             _ => None,
         };
@@ -146,7 +156,7 @@ impl RoomTurns {
                 );
             }
         }
-        if let Some((message, readers)) = broadcast {
+        if let Some((record, readers)) = broadcast {
             for reader in readers {
                 if reader == address.recipient || reader == self.local {
                     continue;
@@ -158,9 +168,7 @@ impl RoomTurns {
                             recipient: reader,
                             ..address.clone()
                         },
-                        record: ConversationRecord::LiveMessage {
-                            message: message.clone(),
-                        },
+                        record: record.clone(),
                     },
                 );
             }

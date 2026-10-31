@@ -120,6 +120,191 @@ mod tests {
     use super::*;
 
     #[test]
+    fn signed_interactions_use_read_access_and_the_current_native_binding_without_history() -> Result<()>
+    {
+        use piik_channel_core::{
+            conversation::{
+                ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
+                ConversationRequest, SessionSigner,
+            },
+            host::HostAction,
+            storage::Storage,
+            wire::RoomAccess,
+            Endpoint, Member,
+        };
+        use std::collections::BTreeMap;
+        let folder = std::env::temp_dir().join(format!("piik-native-interaction-{}", Uuid::new_v4()));
+        std::fs::create_dir(&folder)?;
+        let path = folder.join("room.sqlite");
+        let owner = Member {
+            user_id: Uuid::new_v4(),
+            participates: false,
+            domain_owner: false,
+        };
+        let actor = Member {
+            user_id: Uuid::new_v4(),
+            ..owner
+        };
+        let outsider = Member {
+            user_id: Uuid::new_v4(),
+            ..owner
+        };
+        let (local, sender, other, binding) = (
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+            Uuid::new_v4(),
+        );
+        let actor_key = SessionSigner::from_seed([1; 32]);
+        let host_key = SessionSigner::from_seed([2; 32]);
+        let mut policy = RoomState::new(
+            "room".into(),
+            "Room".into(),
+            Default::default(),
+            owner.user_id,
+            RoomAccess::Private,
+            false,
+            None,
+        )
+        .unwrap();
+        policy.grants.insert(actor.user_id);
+        let original = serde_json::to_value(&policy)?;
+        let mut host = HostedRoom::create(&path, policy)?;
+        host.bind(binding)?;
+        let mut endpoints = BTreeMap::from([
+            (
+                local,
+                Endpoint {
+                    member: owner,
+                    connected: true,
+                    signing_key: host_key.signing_key(),
+                },
+            ),
+            (
+                sender,
+                Endpoint {
+                    member: actor,
+                    connected: true,
+                    signing_key: actor_key.signing_key(),
+                },
+            ),
+            (
+                other,
+                Endpoint {
+                    member: outsider,
+                    connected: true,
+                    signing_key: actor_key.signing_key(),
+                },
+            ),
+        ]);
+        let input = |endpoints: &BTreeMap<Uuid, Endpoint>, binding_id| HostInput {
+            now: 0,
+            binding_id,
+            host_session_id: local,
+            revision: 1,
+            endpoints: endpoints.clone(),
+            action: HostAction::Sync,
+        };
+        host.dispatch(input(&endpoints, binding)).unwrap();
+        let packet = |sender, command| {
+            actor_key
+                .sign(
+                    sender,
+                    &ConversationRequest {
+                        address: ConversationAddress {
+                            room_id: "room".into(),
+                            binding_id: binding,
+                            sender,
+                            recipient: local,
+                            request_id: "action".into(),
+                        },
+                        command,
+                    },
+                )
+                .unwrap()
+        };
+        let ready = host
+            .dispatch_peer(&packet(sender, ConversationCommand::InteractionReady), 500)
+            .unwrap()
+            .replies()
+            .unwrap();
+        assert!(
+            matches!(&ready[0].record, ConversationRecord::InteractionReady { server_time: 500, reaction_ids } if reaction_ids.iter().any(|id| id == "wave"))
+        );
+        let action = packet(
+            sender,
+            ConversationCommand::Interaction {
+                reaction: "tomato".into(),
+                target_user_id: Some(owner.user_id),
+            },
+        );
+        let replies = host
+            .dispatch_peer(&action, 1000)
+            .unwrap()
+            .replies()
+            .unwrap();
+        assert_eq!(replies[0].address.request_id, "action");
+        assert_eq!(replies[0].address.sender, local);
+        assert_eq!(replies[0].address.recipient, sender);
+        assert!(
+            matches!(&replies[0].record, ConversationRecord::Interaction { occurred_at: 1000, sender_user_id, reaction, target_user_id: Some(target), .. }
+                if *sender_user_id == actor.user_id && reaction == "tomato" && *target == owner.user_id)
+        );
+        let signed = host_key.sign(local, &replies[0]).unwrap();
+        assert_eq!(
+            ConversationReply::verify(&signed, host_key.signing_key())
+                .unwrap()
+                .address,
+            replies[0].address
+        );
+        assert!(
+            matches!(host.dispatch_peer(&action, 1001).unwrap().replies().unwrap()[0].record,
+                ConversationRecord::Error { ref code } if code == "rate_limited")
+        );
+        let private_target = packet(
+            sender,
+            ConversationCommand::Interaction {
+                reaction: "wave".into(),
+                target_user_id: Some(outsider.user_id),
+            },
+        );
+        assert!(
+            matches!(host.dispatch_peer(&private_target, 1800).unwrap().replies().unwrap()[0].record,
+                ConversationRecord::Error { ref code } if code == "target_unavailable")
+        );
+        endpoints.get_mut(&local).unwrap().connected = false;
+        host.dispatch(input(&endpoints, binding)).unwrap();
+        assert!(
+            matches!(host.dispatch_peer(&action, 2600).unwrap().replies().unwrap()[0].record,
+                ConversationRecord::Error { ref code } if code == "target_unavailable")
+        );
+        assert!(
+            matches!(host.dispatch_peer(&packet(other, ConversationCommand::InteractionReady), 5000).unwrap().replies().unwrap()[0].record,
+                ConversationRecord::Error { ref code } if code == "room_access_required")
+        );
+        let mut store = Storage::open(&path).map_err(|e| anyhow!(e.to_string()))?;
+        assert_eq!(
+            store.load().map_err(|e| anyhow!(e.to_string()))?.unwrap(),
+            original
+        );
+        assert!(
+            matches!(store.history(&piik_channel_core::history::HistoryRequest::Read { room_id: "room".into(), before: None }).unwrap(),
+                piik_channel_core::history::HistoryResult::Page { messages, .. } if messages.is_empty())
+        );
+        let replacement = Uuid::new_v4();
+        host.bind(replacement)?;
+        host.dispatch(input(&endpoints, replacement)).unwrap();
+        assert!(matches!(
+            host.dispatch_peer(&action, 6000),
+            Err("invalid_conversation_scope")
+        ));
+        drop(store);
+        drop(host);
+        std::fs::remove_dir_all(folder)?;
+        Ok(())
+    }
+
+    #[test]
     fn room_lock_is_exclusive_until_its_file_closes() -> Result<()> {
         let directory = std::env::temp_dir().join(format!("piik-room-lock-{}", Uuid::new_v4()));
         std::fs::create_dir(&directory)?;

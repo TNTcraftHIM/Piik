@@ -160,9 +160,10 @@ window.runBrowserRoomCheck = async () => {
           command: { type: "update_room", roomId: previousHost.roomId, name: "Stale policy", icon: "future-room_7", access: "public", hidden: false } },
       }) as Output;
       check(stale.reply?.result.type === "error" && stale.reply.result.code === "stale_room_host", "old owner cannot update policy");
-      for (const command of [{ type: "chat", text: "Stale message", nonce: "stale", attachments: [] }, { type: "history", before: null }]) {
+      for (const command of [{ type: "chat", text: "Stale message", nonce: "stale", attachments: [] }, { type: "history", before: null },
+        { type: "interaction_ready" }, { type: "interaction", reaction: "wave" }]) {
         const replies = await previousHost.dispatchPeer(peerPacket(command, previousBinding), Date.now());
-        check(replies[0]?.record.type === "error" && replies[0].record.code === "stale_room_host", "old owner cannot write or confirm peer history");
+        check(replies[0]?.record.type === "error" && replies[0].record.code === "stale_room_host", "old owner cannot confirm history or an immediate result");
       }
       const saved = (await BrowserRoomHost.storedPolicies(database)).map(value => JSON.parse(value)).find(value => value.id === replacement.roomId);
       check(saved.name === "New binding policy", "stale policy did not overwrite current policy");
@@ -194,6 +195,18 @@ window.runBrowserRoomCheck = async () => {
     check(denied.length === 1 && denied[0].record.type === "error" && denied[0].record.code === "forbidden", "current domain write permission controls signed peer sends");
     const readable = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
     check(readable.at(-1)?.record.type === "history_end", "losing write permission preserves permitted history reads");
+    const ready = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "interaction_ready" }), 1000)));
+    check(ready[0].record.type === "interaction_ready" && ready[0].record.serverTime === 1000 && ready[0].record.reactionIds.includes("wave"), "read-only participant initializes interaction time and reactions");
+    const interactionPacket = peerPacket({ type: "interaction", reaction: "wave", targetUserId: owner.userId });
+    const interaction = JSON.parse(JSON.stringify(await host.dispatchPeer(interactionPacket, 2000)));
+    check(interaction[0].record.type === "interaction" && interaction[0].record.senderUserId === peerMember.userId
+      && interaction[0].record.targetUserId === owner.userId && interaction[0].record.occurredAt === 2000
+      && interaction[0].requestId === JSON.parse(interactionPacket.payload).requestId, "immediate signed result retains authenticated actor, target, time and request identity");
+    check(JSON.parse(verify_reply(signer.sign(session, JSON.stringify(interaction[0])), signer.signing_key())).record.id === interaction[0].record.id, "Host signature covers the immediate result");
+    const limited = await host.dispatchPeer(interactionPacket, 2001);
+    check(limited[0].record.type === "error" && limited[0].record.code === "rate_limited", "Host applies existing 800ms interaction limit");
+    const afterInteraction = await host.dispatchPeer(peerPacket({ type: "history", before: null }), 3000);
+    check(JSON.stringify(afterInteraction.map(reply => reply.record)) === JSON.stringify(page.map(reply => reply.record)), "immediate interaction does not add retained history");
     // Old private checkpoints must fail explicitly, without replacing the saved policy.
     const legacyPolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Old checkpoint", icon: "future-room_7",
       creatorId: owner.userId, access: "public", hidden: false });
@@ -234,7 +247,8 @@ window.runBrowserRoomCheck = async () => {
       reopen: true, abortAfterInsertSuccess: insertSucceeded, abortConfirmed: false, unavailableSourceRejected: true, missingAttachmentRejected: true,
       latest: latest.messages.length, older: older.messages.length, beforeZero: true, versionChangeClearsPending: true,
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true,
-      signedPeerHistory: true, signedPeerPermission: true, missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
+      signedPeerHistory: true, signedPeerPermission: true, immediateReadPermission: true, immediateBindingFence: true, immediateNotHistory: true,
+      missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
   } finally {
     await host.close();
     signer.free(); peerSigner.free();

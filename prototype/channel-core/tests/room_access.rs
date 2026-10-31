@@ -205,7 +205,7 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
         .any(|(_, event)| matches!(event, Event::Error { .. })));
     assert!(
         matches!(core.peer_request(b, &quiet, piik_channel_core::conversation::ConversationCommand::History { before: None }).result,
-        Ok(piik_channel_core::history::HistoryResult::Page { messages, .. }) if messages.is_empty())
+        Ok(piik_channel_core::conversation::ConversationResult::History(piik_channel_core::history::HistoryResult::Page { messages, .. })) if messages.is_empty())
     );
     let after = state(
         command(
@@ -648,7 +648,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
         piik_channel_core::conversation::ConversationCommand::History { before: None },
     );
     assert!(
-        matches!(history.result, Ok(piik_channel_core::history::HistoryResult::Page { messages, .. }) if messages.is_empty())
+        matches!(history.result, Ok(piik_channel_core::conversation::ConversationResult::History(piik_channel_core::history::HistoryResult::Page { messages, .. })) if messages.is_empty())
     );
     let (_, again, _) = admit(
         &mut restored,

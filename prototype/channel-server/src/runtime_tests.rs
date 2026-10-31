@@ -468,7 +468,10 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         };
         host.dispatch_peer(&signer.sign(reader_session, &request).unwrap(), now())
             .unwrap()
-            .result
+            .result.map(|result| match result {
+                piik_channel_core::conversation::ConversationResult::History(history) => history,
+                _ => panic!("history result expected"),
+            })
     };
     let chat = |text: &str| ConversationCommand::Chat {
         text: text.into(),

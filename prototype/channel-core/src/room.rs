@@ -19,6 +19,7 @@ struct Activity {
     reading: bool,
     watching: BTreeSet<Uuid>,
     voice: Option<VoiceInfo>,
+    next_interaction_at: u64,
 }
 
 /// One room owns its policy, activities and logical flows. It neither owns
@@ -166,6 +167,47 @@ impl RoomRuntime {
 
     pub fn grant_invited(&mut self, user: Uuid) {
         self.policy.grants.insert(user);
+    }
+
+    pub(crate) fn interaction(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        reaction: String,
+        target_user_id: Option<Uuid>,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+        now: u64,
+    ) -> Result<crate::conversation::ConversationRecord, &'static str> {
+        use crate::conversation::{
+            ConversationRecord, INTERACTION_INTERVAL_MS, INTERACTION_REACTIONS,
+        };
+        self.authorize(member, RoomPermission::Read)?;
+        if !INTERACTION_REACTIONS.contains(&reaction.as_str())
+            || (matches!(reaction.as_str(), "tomato" | "poop") && target_user_id.is_none())
+        {
+            return Err("invalid_interaction");
+        }
+        let activity = self.activity.entry(session).or_default();
+        if now < activity.next_interaction_at {
+            return Err("rate_limited");
+        }
+        activity.next_interaction_at = now.saturating_add(INTERACTION_INTERVAL_MS);
+        if target_user_id.is_some_and(|user| {
+            !endpoints.values().any(|endpoint| {
+                endpoint.connected
+                    && endpoint.member.user_id == user
+                    && self.policy.reads(user, endpoint.member.domain_owner)
+            })
+        }) {
+            return Err("target_unavailable");
+        }
+        Ok(ConversationRecord::Interaction {
+            id: Uuid::new_v4(),
+            occurred_at: now,
+            sender_user_id: member.user_id,
+            reaction,
+            target_user_id,
+        })
     }
 
     pub fn enter(

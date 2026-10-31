@@ -187,7 +187,7 @@ pub fn decode_control(bytes: &[u8]) -> Result<String, JsValue> {
 #[wasm_bindgen]
 pub fn conversation_replies(address: &str, result: &str) -> Result<String, JsValue> {
     let address = parse::<ConversationAddress>(address)?;
-    let result = match parse::<Result<HistoryResult, String>>(result)? {
+    let result = match parse::<Result<conversation::ConversationResult, String>>(result)? {
         Ok(result) => address.replies(Ok(result)),
         Err(code) => address.replies(Err(&code)),
     };
@@ -217,7 +217,7 @@ impl RoomHost {
     pub fn summary(&self) -> Result<String, JsValue> {
         encode(&self.room.summary())
     }
-    pub fn prepare_peer(&self, packet: &str, now: u64) -> Result<String, JsValue> {
+    pub fn prepare_peer(&mut self, packet: &str, now: u64) -> Result<String, JsValue> {
         encode(
             &self
                 .room

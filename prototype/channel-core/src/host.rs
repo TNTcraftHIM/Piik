@@ -353,12 +353,13 @@ impl RoomHost {
     /// Called inside the adapter's existing serialized room storage turn.
     /// Only the authenticated domain input can replace these authority facts.
     pub fn prepare_peer(
-        &self,
+        &mut self,
         packet: &crate::conversation::SignedPacket,
         now: u64,
     ) -> Result<crate::conversation::PreparedConversation, &'static str> {
         use crate::conversation::{
-            verify, ConversationCommand, ConversationRequest, PreparedConversation,
+            verify, ConversationCommand, ConversationRecord, ConversationRequest, ConversationWork,
+            PreparedConversation, INTERACTION_REACTIONS,
         };
         if self.pending.is_some() {
             return Err("room_operation_pending");
@@ -377,19 +378,49 @@ impl RoomHost {
         {
             return Err("invalid_conversation_scope");
         }
-        let history = match request.command {
+        let work = match request.command {
+            ConversationCommand::InteractionReady => self
+                .room
+                .authorize(endpoint.member, crate::RoomPermission::Read)
+                .map(|()| {
+                    ConversationWork::Immediate(ConversationRecord::InteractionReady {
+                        server_time: now,
+                        reaction_ids: INTERACTION_REACTIONS
+                            .iter()
+                            .map(|id| (*id).into())
+                            .collect(),
+                    })
+                }),
+            ConversationCommand::Interaction {
+                reaction,
+                target_user_id,
+            } => self
+                .room
+                .interaction(
+                    endpoint.member,
+                    packet.sender,
+                    reaction,
+                    target_user_id,
+                    &authority.endpoints,
+                    now,
+                )
+                .map(ConversationWork::Immediate),
             ConversationCommand::Chat {
                 text,
                 nonce,
                 attachments,
             } => self
                 .room
-                .chat(endpoint.member, text, nonce, attachments, now),
-            ConversationCommand::History { before } => self.room.history(endpoint.member, before),
+                .chat(endpoint.member, text, nonce, attachments, now)
+                .map(ConversationWork::History),
+            ConversationCommand::History { before } => self
+                .room
+                .history(endpoint.member, before)
+                .map(ConversationWork::History),
         };
         Ok(PreparedConversation {
             address: request.address,
-            history,
+            work,
         })
     }
 

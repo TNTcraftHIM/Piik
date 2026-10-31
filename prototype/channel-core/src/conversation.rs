@@ -11,6 +11,11 @@ use uuid::Uuid;
 
 pub const CONTROL_FRAME_BYTES: usize = 32768;
 pub const CONVERSATION_HOPS: u8 = 20;
+pub const INTERACTION_INTERVAL_MS: u64 = 800;
+pub const INTERACTION_REACTIONS: &[&str] = &[
+    "thumbsup", "thumbsdown", "laugh", "clown", "eyeroll", "eyes", "wow", "wave", "heart",
+    "clap", "party", "fire", "star", "sleep", "tomato", "poop",
+];
 const SIGNING_PREFIX: &[u8] = b"piik-room-conversation-v1\0";
 
 pub struct SessionSigner(SigningKey);
@@ -187,6 +192,11 @@ impl ConversationAddress {
     deny_unknown_fields
 )]
 pub enum ConversationCommand {
+    InteractionReady,
+    Interaction {
+        reaction: String,
+        target_user_id: Option<Uuid>,
+    },
     Chat {
         text: String,
         nonce: String,
@@ -210,6 +220,18 @@ pub struct ConversationRequest {
     deny_unknown_fields
 )]
 pub enum ConversationRecord {
+    InteractionReady {
+        server_time: u64,
+        reaction_ids: Vec<String>,
+    },
+    Interaction {
+        id: Uuid,
+        occurred_at: u64,
+        sender_user_id: Uuid,
+        reaction: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        target_user_id: Option<Uuid>,
+    },
     Confirmed {
         message: ChatMessage,
         inserted: bool,
@@ -257,12 +279,24 @@ impl ConversationReply {
 #[derive(Serialize)]
 pub struct PreparedConversation {
     pub address: ConversationAddress,
-    pub history: Result<HistoryRequest, &'static str>,
+    pub work: Result<ConversationWork, &'static str>,
+}
+#[derive(Serialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ConversationWork {
+    History(HistoryRequest),
+    Immediate(ConversationRecord),
+}
+#[derive(Deserialize, Serialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ConversationResult {
+    History(HistoryResult),
+    Immediate(ConversationRecord),
 }
 #[derive(Serialize)]
 pub struct ConversationOutcome {
     pub address: ConversationAddress,
-    pub result: Result<HistoryResult, &'static str>,
+    pub result: Result<ConversationResult, &'static str>,
 }
 impl ConversationOutcome {
     pub fn replies(self) -> Result<Vec<ConversationReply>, &'static str> {
@@ -272,20 +306,23 @@ impl ConversationOutcome {
 impl ConversationAddress {
     pub fn replies(
         &self,
-        result: Result<HistoryResult, &str>,
+        result: Result<ConversationResult, &str>,
     ) -> Result<Vec<ConversationReply>, &'static str> {
         let records = match result {
             Err(code) => vec![ConversationRecord::Error { code: code.into() }],
-            Ok(HistoryResult::Sent(confirmation)) => vec![ConversationRecord::Confirmed {
-                message: confirmation.message,
-                inserted: confirmation.inserted,
-            }],
-            Ok(HistoryResult::Page {
+            Ok(ConversationResult::Immediate(record)) => vec![record],
+            Ok(ConversationResult::History(HistoryResult::Sent(confirmation))) => {
+                vec![ConversationRecord::Confirmed {
+                    message: confirmation.message,
+                    inserted: confirmation.inserted,
+                }]
+            }
+            Ok(ConversationResult::History(HistoryResult::Page {
                 messages,
                 has_more,
                 oldest_seq,
                 before,
-            }) => {
+            })) => {
                 let count = messages.len();
                 if count > crate::history::HISTORY_PAGE {
                     return Err("invalid_conversation_result");
@@ -302,7 +339,9 @@ impl ConversationAddress {
                 });
                 records
             }
-            Ok(HistoryResult::Attachment { .. }) => return Err("invalid_conversation_result"),
+            Ok(ConversationResult::History(HistoryResult::Attachment { .. })) => {
+                return Err("invalid_conversation_result")
+            }
         };
         Ok(records
             .into_iter()
@@ -396,12 +435,12 @@ mod tests {
             .collect();
         let replies = request
             .address
-            .replies(Ok(HistoryResult::Page {
+            .replies(Ok(ConversationResult::History(HistoryResult::Page {
                 messages,
                 has_more: true,
                 oldest_seq: Some(1),
                 before: Some(101),
-            }))
+            })))
             .unwrap();
         assert_eq!(replies.len(), 101);
         assert!(matches!(
@@ -515,7 +554,7 @@ mod room_tests {
         };
         let packet = sender_key.sign(sender, &request).unwrap();
         let first = host.dispatch_peer(&packet, 10).unwrap();
-        let HistoryResult::Sent(confirmation) = first.result.as_ref().unwrap() else {
+        let ConversationResult::History(HistoryResult::Sent(confirmation)) = first.result.as_ref().unwrap() else {
             panic!("send expected")
         };
         let original = serde_json::to_value(&confirmation.message).unwrap();
@@ -536,7 +575,7 @@ mod room_tests {
         };
         let packet = sender_key.sign(sender, &request).unwrap();
         let retry = host.dispatch_peer(&packet, 20).unwrap();
-        let HistoryResult::Sent(confirmation) = retry.result.unwrap() else {
+        let ConversationResult::History(HistoryResult::Sent(confirmation)) = retry.result.unwrap() else {
             panic!("retry expected")
         };
         assert!(!confirmation.inserted);

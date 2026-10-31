@@ -18,14 +18,14 @@ async fn pending_capture_ends_with_its_room_and_retires_a_late_publication() {
             let binding = Uuid::new_v4();
             let room = |id| {
                 json!({
-                    "id":id,"name":id,"creatorId":user,"access":"public","hidden":false,
+                    "id":id,"name":id,"icon":"couch","creatorId":user,"access":"public","hidden":false,
                     "hasPassword":false,"authorized":true,"canManage":true,"available":true,
                     "reading":false,"capabilities":{"attachments":false},
                     "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}
                 })
             };
             let mut state: Snapshot = serde_json::from_value(json!({
-            "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","ownerId":user,
+            "channel":{"id":Uuid::new_v4(),"name":"Capture lifecycle","icon":"couch","ownerId":user,
                 "historyWindow":100,"roles":[],"rooms":[room("affected"),room("other")]},
             "users":[{"id":user,"name":"Source","roles":[]}],
             "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]}],

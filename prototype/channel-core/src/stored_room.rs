@@ -42,11 +42,14 @@ impl StoredRoomHost {
         now: u64,
     ) -> Result<crate::conversation::ConversationOutcome, &'static str> {
         let prepared = self.host.prepare_peer(packet, now)?;
-        let result = prepared
-            .history
-            .as_ref()
-            .map_err(|code| *code)
-            .and_then(|request| self.store.history(request));
+        use crate::conversation::{ConversationResult, ConversationWork};
+        let result = prepared.work.and_then(|work| match work {
+            ConversationWork::History(request) => self
+                .store
+                .history(&request)
+                .map(ConversationResult::History),
+            ConversationWork::Immediate(record) => Ok(ConversationResult::Immediate(record)),
+        });
         Ok(crate::conversation::ConversationOutcome {
             address: prepared.address,
             result,
