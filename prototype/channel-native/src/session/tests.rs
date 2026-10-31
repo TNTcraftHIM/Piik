@@ -1,9 +1,8 @@
 use super::*;
-use crate::capture::TargetKind;
 use serde_json::json;
 
 #[tokio::test]
-async fn pending_capture_ends_with_its_room_and_retires_a_late_publication() {
+async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publication() {
     tokio::time::timeout(Duration::from_secs(10), async {
         for change in ["offline", "replaced", "revoked"] {
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -65,41 +64,17 @@ async fn pending_capture_ends_with_its_room_and_retires_a_late_publication() {
             for id in ["affected", "other"] {
                 let publication_id = Uuid::new_v4();
                 let (result, response) = oneshot::channel();
-                session
-                    .start_capture(
-                        StartCapture {
-                            publication_id,
-                            room_id: id.into(),
-                            // No success reply is sent, so this fixture never opens a capture device.
-                            target: Target {
-                                kind: TargetKind::Display,
-                                source_id: "fixture".into(),
-                                title: "fixture".into(),
-                                pid: 0,
-                                creation_time: None,
-                            },
-                            settings: Settings {
-                                width: 1280,
-                                height: 720,
-                                fps: 30,
-                                bitrate: 4_000_000,
-                            },
-                            audio: false,
-                            result,
-                        },
-                        &mut socket,
-                    )
-                    .await
-                    .unwrap();
-                let Message::Text(text) = remote.next().await.unwrap().unwrap() else {
-                    panic!("Publish")
-                };
-                let message: serde_json::Value = serde_json::from_str(&text).unwrap();
-                assert_eq!(message["type"], "publish");
+                let request_id = Uuid::new_v4().to_string();
+                // Preparation owns the platform device; this fixture starts at
+                // the real Session's pending room-authority acknowledgement.
+                session.pending_captures.insert(request_id.clone(), PendingCapture::Commit(CommitCapture {
+                    scope: CaptureScope { publication_id, room_id: id.into(), binding_id: binding },
+                    capture_id: Uuid::new_v4(), replacing: false, result,
+                }));
                 requests.push((
                     publication_id,
                     response,
-                    message["requestId"].as_str().unwrap().to_owned(),
+                    request_id,
                 ));
             }
             session.state(state.clone(), &mut socket).await.unwrap();

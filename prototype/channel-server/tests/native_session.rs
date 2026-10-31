@@ -254,8 +254,13 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     let image: piik_channel_core::wire::IdentityIcon = serde_json::from_value(json!(
         "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
     )).unwrap();
-    domain.command(domain.connection, json!({"type":"update_room", "roomId":"one", "name":"one",
-        "icon":image, "access":"public", "hidden":false})).await;
+    domain
+        .command(
+            domain.connection,
+            json!({"type":"update_room", "roomId":"one", "name":"one",
+        "icon":image, "access":"public", "hidden":false}),
+        )
+        .await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.icon == image))).await;
 
     // A real socket loss resumes the same admitted session and live RoomHost.
@@ -355,7 +360,13 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     assert_ne!(domain.bound("one").await, binding);
     domain.bound("two").await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.available && !room.reading))).await;
-    assert_eq!(StoredRoomHost::open(&folder.join("one.sqlite")).unwrap().policy().icon, image);
+    assert_eq!(
+        StoredRoomHost::open(&folder.join("one.sqlite"))
+            .unwrap()
+            .policy()
+            .icon,
+        image
+    );
     for id in ["one", "two"] {
         assert_eq!(
             StoredRoomHost::open(&folder.join(format!("{id}.sqlite")))
@@ -593,190 +604,79 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert_eq!(stopped, json!({"id":"stopped-capture","result":null}));
     #[cfg(all(feature = "capture", target_os = "windows"))]
     {
-        use piik_channel_core::host::HostAction;
         let target = json!({"kind":"window","sourceId":"0","title":"Unopened test target","pid":0});
         page.send(Message::Text(
-            json!({"id":"missing-capture-room","type":"start_capture","publicationId":Uuid::new_v4(),
-            "roomId":"missing-capture-room","target":target})
-            .to_string()
-            .into(),
-        ))
-        .await
-        .unwrap();
+            json!({"id":"missing-capture-room","type":"prepare_capture","publicationId":Uuid::new_v4(),
+                "roomId":"missing-capture-room","target":target}).to_string().into(),
+        )).await.unwrap();
         let denied: Value =
             serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
                 .unwrap();
         assert_eq!(denied["error"], "room_unavailable");
 
-        // Both explicit stop and socket close must cancel before the RoomReply.
-        for close in [false, true] {
-            let publication_id = Uuid::new_v4();
-            page.send(Message::Text(
-            json!({"id":"cancelled-capture","type":"start_capture","publicationId":publication_id,
-            "roomId":room,"target":target})
+        let publication = Uuid::new_v4();
+        page.send(Message::Text(
+            json!({"id":"failed-prepare","type":"prepare_capture",
+            "publicationId":publication,"roomId":room,"target":target})
             .to_string()
             .into(),
         ))
         .await
         .unwrap();
-            let input = domain
-            .until(|_, event| {
-                matches!(event, Event::HostInput {input, ..}
-            if matches!(&input.action, HostAction::Command {context, command:Command::Publish {..}} if context.request_id.is_some()))
-            })
-            .await;
-            let Event::HostInput { input, .. } = input else {
-                unreachable!()
-            };
-            let HostAction::Command {
-                context,
-                command: Command::Publish { publication },
-            } = input.action
-            else {
-                unreachable!()
-            };
-            assert_eq!(publication.id, publication_id);
-            assert_ne!(
-                context.request_id.as_deref(),
-                Some(room.as_str()),
-                "capture and room-registration replies have separate request owners"
-            );
-            let held_reply = tokio::time::timeout(Duration::from_secs(5), async {
-                loop {
-                    let message = domain.socket.next().await.unwrap().unwrap();
-                    let Message::Text(text) = message else { continue };
-                    let request = Request::parse(&text).unwrap();
-                    domain.commands.push(request.command.clone());
-                    let mut effects = domain.authority.handle(domain.connection, request, domain.now);
-                    let reply = effects.events.iter().position(|(_, event)| {
-                        matches!(event, Event::RoomReply {request_id, ..} if request_id == &context.request_id)
-                    }).map(|index| effects.events.remove(index));
-                    domain.apply(effects).await;
-                    if let Some(reply) = reply { break reply; }
-                }
-            }).await.expect("the real room must commit its publication");
-            assert!(matches!(
-                &held_reply.1,
-                Event::RoomReply {
-                    result: piik_channel_core::host::RoomResult::Done,
-                    ..
-                }
-            ));
-            assert!(domain.events.iter().any(|(_, event)| {
-                matches!(event, Event::State {state} if state.publications.iter().any(|p| p.id == publication_id))
-            }), "the first publication is real while only its caller's reply is withheld");
-            assert!(
-                tokio::time::timeout(Duration::from_millis(50), page.next())
-                    .await
-                    .is_err(),
-                "capture cannot return success before its real RoomReply"
-            );
-            page.send(Message::Text(hello(&credential).to_string().into()))
+        let failed: Value = serde_json::from_str(
+            &tokio::time::timeout(Duration::from_secs(10), page.next())
                 .await
-                .unwrap();
-            let concurrent: Value = serde_json::from_str(
-                &tokio::time::timeout(Duration::from_secs(2), page.next())
-                    .await
-                    .expect("a pending capture must not block other page commands")
-                    .unwrap()
-                    .unwrap()
-                    .into_text()
-                    .unwrap(),
-            )
-            .unwrap();
-            assert_eq!(concurrent["error"], "already_initialized");
-            if !close {
-                // The Native endpoint is shared by pages; another page cannot
-                // republish an ID whose first startup is still owned here.
-                let (mut other, _) = connect_async(upgrade(address, token)).await.unwrap();
-                other
-                    .send(Message::Text(hello(&credential).to_string().into()))
-                    .await
-                    .unwrap();
-                other.next().await.unwrap().unwrap();
-                other
-                    .send(Message::Text(
-                        json!({"id":"duplicate-capture","type":"start_capture","publicationId":publication_id,
-                        "roomId":room,"target":target}).to_string().into(),
-                    ))
-                    .await
-                    .unwrap();
-                let duplicate: Value = serde_json::from_str(
-                    &tokio::time::timeout(Duration::from_secs(2), other.next())
-                        .await
-                        .expect("another page must not replace the pending publication")
-                        .unwrap()
-                        .unwrap()
-                        .into_text()
-                        .unwrap(),
-                )
-                .unwrap();
-                assert_eq!(duplicate["error"], "capture_already_active");
-                other.close(None).await.unwrap();
-            }
-            if close {
-                page.close(None).await.unwrap();
-                tokio::time::timeout(Duration::from_secs(2), async {
-                    while page.next().await.is_some() {}
-                })
-                .await
-                .expect("control close must not wait for the room-host reply");
-            } else {
-                page.send(Message::Text(
-                json!({"id":"stop-pending","type":"stop_capture","publicationId":publication_id})
-                    .to_string().into(),
-            )).await.unwrap();
-                let mut replies = std::collections::BTreeMap::new();
-                for _ in 0..2 {
-                    let reply: Value = serde_json::from_str(
-                        &tokio::time::timeout(Duration::from_secs(2), page.next())
-                            .await
-                            .expect("same-page stop must not wait for capture readiness")
-                            .unwrap()
-                            .unwrap()
-                            .into_text()
-                            .unwrap(),
-                    )
-                    .unwrap();
-                    replies.insert(reply["id"].as_str().unwrap().to_owned(), reply);
-                }
-                assert_eq!(replies["stop-pending"]["result"], Value::Null);
-                assert_eq!(replies["cancelled-capture"]["error"], "capture_cancelled");
-            }
-            domain
-                .apply(Effects {
-                    events: vec![held_reply],
-                    ..Effects::default()
-                })
-                .await;
-            tokio::time::timeout(Duration::from_secs(5), async {
-            while !domain.commands.iter().any(|command|
-                matches!(command, Command::Unpublish {publication_id} if *publication_id == publication.id)) {
+                .expect("invalid capture preparation finishes without publishing")
+                .unwrap()
+                .unwrap()
+                .into_text()
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(failed.get("error").is_some());
+        let _ = tokio::time::timeout(Duration::from_millis(50), async {
+            loop {
                 domain.step().await;
             }
-        }).await.expect("a cancelled, confirmed publication is explicitly retired");
-            domain.room_turn(&room).await;
-            if close {
-                let (next, _) = connect_async(upgrade(address, token)).await.unwrap();
-                page = next;
-                page.send(Message::Text(hello(&credential).to_string().into()))
-                    .await
+        })
+        .await;
+        assert!(
+            !domain.commands.iter().any(|command| matches!(command,
+            Command::Publish { publication: p } if p.id == publication)),
+            "preparation never changes room publications"
+        );
+
+        for (name, command) in [
+            (
+                "cancel-candidate",
+                json!({"type":"cancel_capture","publicationId":publication}),
+            ),
+            (
+                "commit-missing",
+                json!({"type":"commit_capture","publicationId":publication,"captureId":Uuid::new_v4()}),
+            ),
+            (
+                "transfer-foreign",
+                json!({"type":"transfer_source","publicationId":publication,"captureId":Uuid::new_v4(),"toSessionId":Uuid::new_v4()}),
+            ),
+        ] {
+            let mut command = command;
+            command["id"] = json!(name);
+            page.send(Message::Text(command.to_string().into()))
+                .await
+                .unwrap();
+            let reply: Value =
+                serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
                     .unwrap();
-                let reopened: Value =
-                    serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
-                        .unwrap();
-                assert!(reopened.get("result").is_some());
+            if name == "cancel-candidate" {
+                assert_eq!(reply["result"], Value::Null);
+            } else {
+                assert_eq!(reply["error"], "capture_unavailable");
             }
         }
         assert!(
             HostedRoom::open(&room_directory.join(format!("{room}.sqlite")), &room, user).is_err(),
-            "cancelled capture must retain the existing Native room runtime lock"
-        );
-        assert!(
-            tokio::time::timeout(Duration::from_millis(50), listener.accept())
-                .await
-                .is_err(),
-            "a new page reuses the same admitted Native endpoint"
+            "failed or cancelled capture retains the existing Native room runtime lock"
         );
     }
     let mut wrong_policy: Value = serde_json::from_str(&policy).unwrap();

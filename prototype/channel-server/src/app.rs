@@ -20,16 +20,18 @@ use axum::{
     Json, Router,
 };
 use futures_util::{
-    future::{AbortHandle, Abortable, Aborted},
+    future::{AbortHandle, Abortable, Aborted, BoxFuture},
     stream::FuturesUnordered,
-    SinkExt, StreamExt,
+    FutureExt, SinkExt, StreamExt,
 };
 use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target},
     input::{Desktop, Mode, SourceView},
     peer::CaptureLease,
-    session::{self, HostCommand, Hosting, OpenRoom, StartCapture},
+    session::{
+        self, CommitCapture, HostCommand, Hosting, OpenRoom, PrepareCapture, TransferSource,
+    },
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -616,14 +618,30 @@ enum Operation {
         policy: String,
     },
     Targets,
-    Preview { target: Target },
-    CancelPreview { request_id: String },
-    StartCapture {
+    Preview {
+        target: Target,
+    },
+    CancelPreview {
+        request_id: String,
+    },
+    PrepareCapture {
         publication_id: Uuid,
         room_id: String,
         target: Target,
         #[serde(default)]
         audio: bool,
+    },
+    CommitCapture {
+        publication_id: Uuid,
+        capture_id: Uuid,
+    },
+    CancelCapture {
+        publication_id: Uuid,
+    },
+    TransferSource {
+        publication_id: Uuid,
+        capture_id: Uuid,
+        to_session_id: Uuid,
     },
     StopCapture {
         publication_id: Uuid,
@@ -646,23 +664,27 @@ enum Operation {
     },
 }
 
-enum Capture {
-    Pending(AbortHandle),
-    Active(CaptureLease),
+#[derive(Default)]
+struct Capture {
+    active: Option<CaptureLease>,
+    pending: Option<PendingCapture>,
+}
+struct PendingCapture {
+    request: AbortHandle,
+    lease: Option<CaptureLease>,
+}
+enum CaptureResult {
+    Prepared(CaptureLease),
+    Committed(CaptureLease),
 }
 impl Capture {
     fn lease(&self) -> Option<&CaptureLease> {
-        match self {
-            Self::Active(lease) if !lease.is_stopped() => Some(lease),
-            _ => None,
-        }
+        self.active.as_ref().filter(|lease| !lease.is_stopped())
     }
 }
-impl Drop for Capture {
+impl Drop for PendingCapture {
     fn drop(&mut self) {
-        if let Self::Pending(request) = self {
-            request.abort();
-        }
+        self.request.abort();
     }
 }
 
@@ -689,32 +711,36 @@ async fn connection(
         let processing = async {
             let mut host = None;
             let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();
-            let mut capture_starts = FuturesUnordered::new();
+            let mut capture_starts: FuturesUnordered<
+                BoxFuture<'static, (String, Uuid, AbortHandle, Result<CaptureResult>)>,
+            > = FuturesUnordered::new();
             let mut audio_errors = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
             let mut input_policies = FuturesUnordered::new();
             let mut previews = FuturesUnordered::new();
             let mut preview: Option<(String, Option<oneshot::Sender<()>>)> = None;
             loop {
+                captures
+                    .retain(|_, capture| capture.pending.is_some() || capture.lease().is_some());
                 let message = tokio::select! {
                     message = async {
                         if host.is_some() { Ok(queue.recv().await) }
                         else { timeout(IO_TIMEOUT, queue.recv()).await }
                     } => message?,
-                    Some((publication_id, error)) = audio_errors.next(), if !audio_errors.is_empty() => {
+                    Some((publication_id, capture_id, error)) = audio_errors.next(), if !audio_errors.is_empty() => {
                         let error: Option<String> = error;
-                        if error.is_some() && captures.get(&publication_id).and_then(Capture::lease).is_some() {
+                        if error.is_some() && captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.id == capture_id) {
                             let event = json!({"type":"capture_audio_failed","publicationId":publication_id});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
                         continue;
                     }
-                    Some((publication_id, changed, state)) = input_states.next(), if !input_states.is_empty() => {
+                    Some((publication_id, capture_id, changed, state)) = input_states.next(), if !input_states.is_empty() => {
                         let state: Option<SourceView> = state;
-                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(Capture::lease).is_some()) {
+                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.id == capture_id)) {
                             let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                            input_states.push(next_input_state(publication_id, changed));
+                            input_states.push(next_input_state(publication_id, capture_id, changed));
                         }
                         continue;
                     }
@@ -735,7 +761,7 @@ async fn connection(
                     }
                     Some((id, publication_id, request, result)) = capture_starts.next(), if !capture_starts.is_empty() => {
                         let request: AbortHandle = request;
-                        let result: Result<CaptureLease> = result;
+                        let result: Result<CaptureResult> = result;
                         let mut initial_input = None;
                         let result = if request.is_aborted() {
                             // Stop already retired this request, including a completed
@@ -744,24 +770,36 @@ async fn connection(
                             Err(anyhow!("capture_cancelled"))
                         } else {
                             match result {
-                                Ok(mut lease) => {
+                                Ok(CaptureResult::Prepared(lease)) => {
+                                    let value = json!({"captureId":lease.id,"sessionId":lease.session_id});
+                                    if let Some(pending) = captures.get_mut(&publication_id).and_then(|capture| capture.pending.as_mut()) {
+                                        pending.lease = Some(lease);
+                                    }
+                                    Ok(value)
+                                }
+                                Ok(CaptureResult::Committed(mut lease)) => {
+                                    let capture_id = lease.id;
                                     if let Some(error) = lease.audio_error.take() {
-                                        audio_errors.push(async move { (publication_id, error.await.ok()) });
+                                        audio_errors.push(async move { (publication_id, capture_id, error.await.ok()) });
                                     }
                                     if let Some(state) = &lease.input_state {
                                         initial_input = Some(state.borrow().clone());
-                                        input_states.push(next_input_state(publication_id, state.clone()));
+                                        input_states.push(next_input_state(publication_id, capture_id, state.clone()));
                                     }
-                                    captures.insert(publication_id, Capture::Active(lease));
-                                    Ok(())
+                                    let capture = captures.entry(publication_id).or_default();
+                                    capture.pending = None;
+                                    capture.active = Some(lease);
+                                    Ok(Value::Null)
                                 }
                                 Err(error) => Err(error),
                             }
                         };
                         let response = match result {
-                            Ok(()) => json!({"id":id,"result":null}),
+                            Ok(value) => json!({"id":id,"result":value}),
                             Err(error) => {
-                                if !request.is_aborted() { captures.remove(&publication_id); }
+                                if !request.is_aborted() {
+                                    if let Some(capture) = captures.get_mut(&publication_id) { capture.pending = None; }
+                                }
                                 json!({"id":id,"error":error.to_string()})
                             }
                         };
@@ -814,13 +852,21 @@ async fn connection(
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::Preview { target } => {
-                                if host.is_none() { Err(anyhow!("hello_required")) }
-                                else if preview.is_some() { Err(anyhow!("preview_busy")) }
-                                else {
+                                if host.is_none() {
+                                    Err(anyhow!("hello_required"))
+                                } else if preview.is_some() {
+                                    Err(anyhow!("preview_busy"))
+                                } else {
                                     let (cancel, cancelled) = oneshot::channel();
                                     preview = Some((request.id.clone(), Some(cancel)));
                                     previews.push(async move {
-                                        (request.id, piik_channel_native::capture::preview(target, cancelled).await)
+                                        (
+                                            request.id,
+                                            piik_channel_native::capture::preview(
+                                                target, cancelled,
+                                            )
+                                            .await,
+                                        )
                                     });
                                     continue;
                                 }
@@ -828,48 +874,128 @@ async fn connection(
                             Operation::CancelPreview { request_id } => {
                                 if let Some((id, cancel)) = &mut preview {
                                     if *id == request_id {
-                                        if let Some(cancel) = cancel.take() { let _ = cancel.send(()); }
+                                        if let Some(cancel) = cancel.take() {
+                                            let _ = cancel.send(());
+                                        }
                                     }
                                 }
                                 Ok(Value::Null)
                             }
-                            Operation::StartCapture {
+                            Operation::PrepareCapture {
                                 publication_id,
                                 room_id,
                                 target,
                                 audio,
                             } => match &host {
                                 Some(commands) => {
-                                    captures.retain(|_, capture| !matches!(capture, Capture::Active(lease) if lease.is_stopped()));
-                                    if captures.contains_key(&publication_id) {
-                                        Err(anyhow!("capture_already_active"))
+                                    let capture = captures.entry(publication_id).or_default();
+                                    if capture.pending.is_some() {
+                                        Err(anyhow!("capture_pending"))
                                     } else {
+                                        let replaces = capture.lease().map(|lease| lease.id);
                                         let (cancel, registration) = AbortHandle::new_pair();
-                                        captures.insert(
-                                            publication_id,
-                                            Capture::Pending(cancel.clone()),
-                                        );
-                                        let commands = commands.clone();
-                                        capture_starts.push(async move {
-                                            let result = Abortable::new(
-                                                start_capture(
-                                                    &commands,
-                                                    publication_id,
-                                                    room_id,
-                                                    target,
-                                                    audio,
-                                                ),
-                                                registration,
-                                            )
-                                            .await
-                                            .unwrap_or_else(|_| Err(anyhow!("capture_cancelled")));
-                                            (request.id, publication_id, cancel, result)
+                                        capture.pending = Some(PendingCapture {
+                                            request: cancel.clone(),
+                                            lease: None,
                                         });
+                                        let commands = commands.clone();
+                                        capture_starts.push(
+                                            async move {
+                                                let result = Abortable::new(
+                                                    prepare_capture(
+                                                        &commands,
+                                                        publication_id,
+                                                        room_id,
+                                                        target,
+                                                        audio,
+                                                        replaces,
+                                                    ),
+                                                    registration,
+                                                )
+                                                .await
+                                                .unwrap_or_else(|_| {
+                                                    Err(anyhow!("capture_cancelled"))
+                                                })
+                                                .map(CaptureResult::Prepared);
+                                                (request.id, publication_id, cancel, result)
+                                            }
+                                            .boxed(),
+                                        );
                                         continue;
                                     }
                                 }
                                 None => Err(anyhow!("hello_required")),
                             },
+                            Operation::CommitCapture {
+                                publication_id,
+                                capture_id,
+                            } => {
+                                let lease = captures
+                                    .get_mut(&publication_id)
+                                    .and_then(|capture| capture.pending.as_mut())
+                                    .and_then(|pending| pending.lease.as_mut())
+                                    .filter(|lease| lease.id == capture_id && !lease.is_stopped());
+                                if lease.is_none() {
+                                    Err(anyhow!("capture_unavailable"))
+                                } else if let Some(commands) = &host {
+                                    let capture = captures.get_mut(&publication_id).unwrap();
+                                    let lease =
+                                        capture.pending.as_mut().unwrap().lease.take().unwrap();
+                                    let replacing = capture.active.is_some();
+                                    let (cancel, registration) = AbortHandle::new_pair();
+                                    capture.pending = Some(PendingCapture {
+                                        request: cancel.clone(),
+                                        lease: None,
+                                    });
+                                    let commands = commands.clone();
+                                    capture_starts.push(
+                                        async move {
+                                            let result = Abortable::new(
+                                                commit_capture(&commands, lease, replacing),
+                                                registration,
+                                            )
+                                            .await
+                                            .unwrap_or_else(|_| Err(anyhow!("capture_cancelled")))
+                                            .map(CaptureResult::Committed);
+                                            (request.id, publication_id, cancel, result)
+                                        }
+                                        .boxed(),
+                                    );
+                                    continue;
+                                } else {
+                                    Err(anyhow!("hello_required"))
+                                }
+                            }
+                            Operation::CancelCapture { publication_id } => {
+                                if let Some(capture) = captures.get_mut(&publication_id) {
+                                    capture.pending = None;
+                                }
+                                Ok(Value::Null)
+                            }
+                            Operation::TransferSource {
+                                publication_id,
+                                capture_id,
+                                to_session_id,
+                            } => {
+                                let lease = captures
+                                    .get(&publication_id)
+                                    .and_then(Capture::lease)
+                                    .filter(|lease| lease.id == capture_id);
+                                if let (Some(commands), Some(lease)) = (&host, lease) {
+                                    let commands = commands.clone();
+                                    let scope = lease.scope.clone();
+                                    input_policies.push(async move {
+                                        let result = transfer_source(&commands, scope, capture_id, to_session_id).await;
+                                        match result {
+                                            Ok(()) => json!({"id":request.id,"result":null}),
+                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                        }
+                                    }.boxed());
+                                    continue;
+                                } else {
+                                    Err(anyhow!("capture_unavailable"))
+                                }
+                            }
                             Operation::StopCapture { publication_id } => {
                                 drop(captures.remove(&publication_id));
                                 Ok(Value::Null)
@@ -894,7 +1020,7 @@ async fn connection(
                                                 Ok(()) => json!({"id":request.id,"result":null}),
                                                 Err(error) => json!({"id":request.id,"error":error.to_string()}),
                                             }
-                                        });
+                                        }.boxed());
                                         continue;
                                     }
                                     Err(error) => Err(error),
@@ -960,14 +1086,15 @@ async fn connection(
 }
 async fn next_input_state(
     publication: Uuid,
+    capture: Uuid,
     mut changed: watch::Receiver<SourceView>,
-) -> (Uuid, watch::Receiver<SourceView>, Option<SourceView>) {
+) -> (Uuid, Uuid, watch::Receiver<SourceView>, Option<SourceView>) {
     let state = changed
         .changed()
         .await
         .ok()
         .map(|_| changed.borrow_and_update().clone());
-    (publication, changed, state)
+    (publication, capture, changed, state)
 }
 async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Value> {
     let policy: RoomState = serde_json::from_str(policy)?;
@@ -1003,24 +1130,26 @@ async fn capture_targets() -> Result<Value> {
     }
 }
 
-async fn start_capture(
+async fn prepare_capture(
     commands: &mpsc::Sender<HostCommand>,
     publication_id: Uuid,
     room_id: String,
     target: Target,
     audio: bool,
+    replaces: Option<Uuid>,
 ) -> Result<CaptureLease> {
     if !cfg!(feature = "capture") {
         bail!("capture_unavailable");
     }
     let (result, response) = oneshot::channel();
     commands
-        .send(HostCommand::StartCapture(StartCapture {
+        .send(HostCommand::PrepareCapture(PrepareCapture {
             publication_id,
             room_id,
             target,
             settings: CAPTURE_SETTINGS,
             audio,
+            replaces,
             result,
         }))
         .await
@@ -1037,4 +1166,50 @@ async fn start_capture(
         }
     })?;
     Ok(lease)
+}
+
+async fn commit_capture(
+    commands: &mpsc::Sender<HostCommand>,
+    mut lease: CaptureLease,
+    replacing: bool,
+) -> Result<CaptureLease> {
+    let (result, response) = oneshot::channel();
+    commands
+        .send(HostCommand::CommitCapture(CommitCapture {
+            scope: lease.scope.clone(),
+            capture_id: lease.id,
+            replacing,
+            result,
+        }))
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?;
+    let input = response
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?
+        .map_err(anyhow::Error::msg)?;
+    lease.remote = input.remote;
+    lease.input_state = input.state;
+    Ok(lease)
+}
+
+async fn transfer_source(
+    commands: &mpsc::Sender<HostCommand>,
+    scope: piik_channel_native::peer::CaptureScope,
+    capture_id: Uuid,
+    to_session_id: Uuid,
+) -> Result<()> {
+    let (result, response) = oneshot::channel();
+    commands
+        .send(HostCommand::TransferSource(TransferSource {
+            scope,
+            capture_id,
+            to_session_id,
+            result,
+        }))
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?;
+    response
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?
+        .map_err(anyhow::Error::msg)
 }

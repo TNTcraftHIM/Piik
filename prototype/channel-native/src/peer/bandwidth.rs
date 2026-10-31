@@ -55,15 +55,18 @@ impl Driver {
                             } else {
                                 let rate = rates[&source.id];
                                 #[cfg(feature = "capture")]
-                                let rate =
-                                    if self.captures.values().any(|p| p.audio == Some(source.id)) {
-                                        Some(
-                                            rate.unwrap_or(0)
-                                                .max(u64::from(crate::media::local::AUDIO_BITRATE)),
-                                        )
-                                    } else {
-                                        rate
-                                    };
+                                let rate = if self
+                                    .captures
+                                    .values()
+                                    .any(|c| c.producer.audio == Some(source.id))
+                                {
+                                    Some(
+                                        rate.unwrap_or(0)
+                                            .max(u64::from(crate::media::local::AUDIO_BITRATE)),
+                                    )
+                                } else {
+                                    rate
+                                };
                                 opaque_bps += rate.unwrap_or(0);
                                 measured &= rate.is_some();
                             }
@@ -88,9 +91,9 @@ impl Driver {
         #[cfg(feature = "capture")]
         return self
             .captures
-            .get(&source.publication_id)
-            .filter(|producer| producer.video == source.id)
-            .map(|producer| producer.settings.bitrate);
+            .get(&source.id)
+            .filter(|capture| capture.selected)
+            .map(|capture| capture.producer.settings.bitrate);
         #[cfg(not(feature = "capture"))]
         {
             let _ = source;
@@ -111,7 +114,7 @@ impl Driver {
                 if let Some((publication, _)) = self
                     .captures
                     .iter()
-                    .find(|(_, producer)| producer.video == output.source)
+                    .find(|(_, capture)| capture.producer.video == output.source)
                 {
                     if let Some(input) = output.video_input() {
                         demands
@@ -126,10 +129,10 @@ impl Driver {
                 }
             }
         }
-        for (publication, producer) in &self.captures {
+        for (publication, capture) in &self.captures {
             let mut current = demands.remove(publication).unwrap_or_default();
             current.sort_unstable_by_key(|demand| demand.output);
-            producer.set_demands(current);
+            capture.producer.set_demands(current);
         }
     }
 }

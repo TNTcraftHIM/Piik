@@ -28,6 +28,8 @@ fn driver() -> (
             sources: HashMap::new(),
             #[cfg(feature = "capture")]
             captures: HashMap::new(),
+            #[cfg(feature = "capture")]
+            snapshot: watch::channel(None).1,
             relay: Relay::default(),
             files: Files::new(Uuid::nil()),
             inputs: input::Inputs::new(Uuid::nil(), watch::channel(None).1, None),

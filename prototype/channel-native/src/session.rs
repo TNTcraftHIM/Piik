@@ -3,7 +3,7 @@
 use crate::{
     capture::{Settings, Target},
     hosted_room::HostedRoom,
-    peer::{CaptureLease, NativeEvent, NativePeers},
+    peer::{CaptureInput, CaptureLease, CaptureScope, NativeEvent, NativePeers},
 };
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -214,7 +214,20 @@ async fn process_peer(
             if let Some(error) = error {
                 eprintln!("Native capture ended: {error}");
             }
-            write(socket, &Command::Unpublish { publication_id }, None).await?;
+            let owned = room.snapshot.borrow().as_ref().is_some_and(|state| {
+                state
+                    .publications
+                    .iter()
+                    .any(|p| p.id == publication_id && p.session_id == room.local)
+            });
+            if owned
+                && !peers
+                    .capture_publications()
+                    .await?
+                    .contains(&publication_id)
+            {
+                write(socket, &Command::Unpublish { publication_id }, None).await?;
+            }
         }
         _ => {}
     }
@@ -261,18 +274,55 @@ pub struct OpenRoom {
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
 }
 
-pub struct StartCapture {
+pub struct PrepareCapture {
     pub publication_id: Uuid,
     pub room_id: String,
     pub target: Target,
     pub settings: Settings,
     pub audio: bool,
+    pub replaces: Option<Uuid>,
     pub result: oneshot::Sender<Result<CaptureLease, String>>,
 }
 
-struct PendingCapture {
-    binding_id: Uuid,
-    request: StartCapture,
+pub struct CommitCapture {
+    pub scope: CaptureScope,
+    pub capture_id: Uuid,
+    pub replacing: bool,
+    pub result: oneshot::Sender<Result<CaptureInput, String>>,
+}
+pub struct TransferSource {
+    pub scope: CaptureScope,
+    pub capture_id: Uuid,
+    pub to_session_id: Uuid,
+    pub result: oneshot::Sender<Result<(), String>>,
+}
+enum PendingCapture {
+    Commit(CommitCapture),
+    Transfer(TransferSource),
+}
+impl PendingCapture {
+    fn scope(&self) -> &CaptureScope {
+        match self {
+            Self::Commit(r) => &r.scope,
+            Self::Transfer(r) => &r.scope,
+        }
+    }
+    fn closed(&self) -> bool {
+        match self {
+            Self::Commit(r) => r.result.is_closed(),
+            Self::Transfer(r) => r.result.is_closed(),
+        }
+    }
+    fn fail(self, code: String) {
+        match self {
+            Self::Commit(r) => {
+                let _ = r.result.send(Err(code));
+            }
+            Self::Transfer(r) => {
+                let _ = r.result.send(Err(code));
+            }
+        }
+    }
 }
 
 fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
@@ -287,7 +337,9 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
 
 pub enum HostCommand {
     Open(OpenRoom),
-    StartCapture(StartCapture),
+    PrepareCapture(PrepareCapture),
+    CommitCapture(CommitCapture),
+    TransferSource(TransferSource),
 }
 impl HostCommand {
     fn unavailable(self) {
@@ -295,7 +347,13 @@ impl HostCommand {
             Self::Open(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
-            Self::StartCapture(request) => {
+            Self::PrepareCapture(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::CommitCapture(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::TransferSource(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
         }
@@ -360,7 +418,7 @@ pub async fn run_host(
 impl Session {
     fn fail_captures(&mut self, code: &str) {
         for request in std::mem::take(&mut self.pending_captures).into_values() {
-            let _ = request.request.result.send(Err(code.into()));
+            request.fail(code.into());
         }
     }
 
@@ -489,7 +547,9 @@ impl Session {
                             if !admitted { request.unavailable(); }
                             else { match request {
                                 HostCommand::Open(request) => self.open_room(request, socket).await?,
-                                HostCommand::StartCapture(request) => self.start_capture(request, socket).await?,
+                                HostCommand::PrepareCapture(request) => self.prepare_capture(request, socket).await?,
+                                HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
+                                HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
                             } }
                         },
                         command = next_command(&mut self.live), if admitted => {
@@ -756,17 +816,20 @@ impl Session {
                 if self
                     .pending_captures
                     .get(&id)
-                    .is_some_and(|pending| pending.request.room_id == room_id)
+                    .is_some_and(|pending| pending.scope().room_id == room_id)
                 {
-                    let request = self.pending_captures.remove(&id).unwrap().request;
+                    let request = self.pending_captures.remove(&id).unwrap();
                     match result {
-                        RoomResult::Done => self.finish_capture(request, socket).await?,
-                        RoomResult::Error { code } => {
-                            let _ = request.result.send(Err(code));
-                        }
-                        _ => {
-                            let _ = request.result.send(Err("invalid_capture_reply".into()));
-                        }
+                        RoomResult::Done => match request {
+                            PendingCapture::Commit(request) => {
+                                self.finish_capture(request, socket).await?
+                            }
+                            PendingCapture::Transfer(request) => {
+                                let _ = request.result.send(Ok(()));
+                            }
+                        },
+                        RoomResult::Error { code } => request.fail(code),
+                        _ => request.fail("invalid_capture_reply".into()),
                     }
                 }
             }
@@ -775,8 +838,7 @@ impl Session {
                     .as_ref()
                     .and_then(|id| self.pending_captures.remove(id))
                 {
-                    let request = request.request;
-                    let _ = request.result.send(Err(code));
+                    request.fail(code);
                     return Ok(());
                 }
                 if request_id.as_ref().is_some_and(|id| {
@@ -805,28 +867,16 @@ impl Session {
         Ok(())
     }
 
-    async fn start_capture(&mut self, request: StartCapture, socket: &mut Socket) -> Result<()> {
+    async fn prepare_capture(
+        &mut self,
+        request: PrepareCapture,
+        socket: &mut Socket,
+    ) -> Result<()> {
         if request.result.is_closed() {
             return Ok(());
         }
         if !cfg!(feature = "capture") {
             let _ = request.result.send(Err("capture_unavailable".into()));
-            return Ok(());
-        }
-        if self
-            .pending_captures
-            .values()
-            .any(|pending| pending.request.publication_id == request.publication_id)
-            || self.live.as_ref().is_some_and(|live| {
-                live.room.snapshot.borrow().as_ref().is_some_and(|state| {
-                    state
-                        .publications
-                        .iter()
-                        .any(|publication| publication.id == request.publication_id)
-                })
-            })
-        {
-            let _ = request.result.send(Err("capture_already_active".into()));
             return Ok(());
         }
         let binding_id = self.live.as_ref().and_then(|live| {
@@ -840,63 +890,15 @@ impl Session {
             let _ = request.result.send(Err("room_unavailable".into()));
             return Ok(());
         };
-        let publication = PublicationInput {
-            id: request.publication_id,
-            room_id: request.room_id.clone(),
-            kind: Kind::Screen,
-            muted: false,
-        };
-        let id = Uuid::new_v4().to_string();
-        self.pending_captures.insert(
-            id.clone(),
-            PendingCapture {
-                binding_id,
-                request,
-            },
-        );
-        write(socket, &Command::Publish { publication }, Some(&id)).await
-    }
-
-    async fn unpublish_capture(&mut self, publication_id: Uuid, socket: &mut Socket) -> Result<()> {
-        let owned = self.live.as_ref().is_some_and(|live| {
-            live.room.snapshot.borrow().as_ref().is_some_and(|state| {
-                state.publications.iter().any(|publication| {
-                    publication.id == publication_id
-                        && publication.session_id == live.session
-                        && matches!(publication.kind, Kind::Screen)
-                })
-            })
-        });
-        if owned {
-            write(socket, &Command::Unpublish { publication_id }, None).await?;
-        }
-        Ok(())
-    }
-
-    async fn finish_capture(&mut self, request: StartCapture, socket: &mut Socket) -> Result<()> {
-        let publication_id = request.publication_id;
-        let live = self
-            .live
-            .as_mut()
-            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
-        let current = live.room.snapshot.borrow().as_ref().is_some_and(|state| {
-            state.publications.iter().any(|publication| {
-                publication.id == publication_id
-                    && publication.room_id == request.room_id
-                    && publication.session_id == live.session
-                    && matches!(publication.kind, Kind::Screen)
-            })
-        });
-        if !current || request.result.is_closed() {
-            let _ = request.result.send(Err("publication_unavailable".into()));
-            if current {
-                self.unpublish_capture(publication_id, socket).await?;
-            }
-            return Ok(());
-        }
+        let live = self.live.as_mut().unwrap();
         let result = await_peer(
-            live.peers.start_capture(
-                publication_id,
+            live.peers.prepare_capture(
+                CaptureScope {
+                    publication_id: request.publication_id,
+                    room_id: request.room_id,
+                    binding_id,
+                },
+                request.replaces,
                 request.target,
                 request.settings,
                 request.audio,
@@ -907,18 +909,130 @@ impl Session {
             &live.peers,
             socket,
         )
-        .await;
-        match result {
-            Ok(lease) => {
-                if request.result.send(Ok(lease)).is_err() {
-                    self.unpublish_capture(publication_id, socket).await?;
-                }
-            }
-            Err(error) => {
-                let _ = request.result.send(Err(error.to_string()));
-                self.unpublish_capture(publication_id, socket).await?;
-            }
+        .await
+        .map_err(|e| e.to_string());
+        let _ = request.result.send(result);
+        Ok(())
+    }
+
+    async fn commit_capture(&mut self, request: CommitCapture, socket: &mut Socket) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
         }
+        let Some(live) = self.live.as_mut() else {
+            let _ = request.result.send(Err("hosting_unavailable".into()));
+            return Ok(());
+        };
+        if live
+            .room
+            .snapshot
+            .borrow()
+            .as_ref()
+            .and_then(|s| capture_binding(s, &request.scope.room_id))
+            != Some(request.scope.binding_id)
+        {
+            let _ = request.result.send(Err("room_unavailable".into()));
+            return Ok(());
+        }
+        let current = await_peer(
+            live.peers.capture_current(request.capture_id, false),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await?;
+        if !current {
+            let _ = request.result.send(Err("capture_unavailable".into()));
+            return Ok(());
+        }
+        // The room acknowledgement orders the local commit after authority, even
+        // when Browser transfer and App control arrive over different sockets.
+        let command = if request.replacing {
+            Command::TransferSource {
+                publication_id: request.scope.publication_id,
+                to_session_id: live.session,
+            }
+        } else {
+            Command::Publish {
+                publication: PublicationInput {
+                    id: request.scope.publication_id,
+                    room_id: request.scope.room_id.clone(),
+                    kind: Kind::Screen,
+                    muted: false,
+                },
+            }
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures
+            .insert(id.clone(), PendingCapture::Commit(request));
+        write(socket, &command, Some(&id)).await
+    }
+
+    async fn transfer_source(
+        &mut self,
+        request: TransferSource,
+        socket: &mut Socket,
+    ) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
+        }
+        let Some(live) = self.live.as_mut() else {
+            let _ = request.result.send(Err("hosting_unavailable".into()));
+            return Ok(());
+        };
+        let current = await_peer(
+            live.peers.capture_current(request.capture_id, true),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await?;
+        if !current {
+            let _ = request.result.send(Err("capture_unavailable".into()));
+            return Ok(());
+        }
+        let command = Command::TransferSource {
+            publication_id: request.scope.publication_id,
+            to_session_id: request.to_session_id,
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures
+            .insert(id.clone(), PendingCapture::Transfer(request));
+        write(socket, &command, Some(&id)).await
+    }
+
+    async fn finish_capture(&mut self, request: CommitCapture, socket: &mut Socket) -> Result<()> {
+        let publication_id = request.scope.publication_id;
+        let live = self
+            .live
+            .as_mut()
+            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+        let current = live.room.snapshot.borrow().as_ref().is_some_and(|state| {
+            state.publications.iter().any(|publication| {
+                publication.id == publication_id
+                    && publication.room_id == request.scope.room_id
+                    && publication.session_id == live.session
+                    && matches!(publication.kind, Kind::Screen)
+            })
+        });
+        if !current || request.result.is_closed() {
+            let _ = request.result.send(Err("publication_unavailable".into()));
+            return Ok(());
+        }
+        let result = await_peer(
+            live.peers.commit_capture(request.capture_id),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await;
+        let _ = request.result.send(result.map_err(|e| e.to_string()));
         Ok(())
     }
 
@@ -1005,13 +1119,17 @@ impl Session {
             .pending_captures
             .iter()
             .filter_map(|(id, pending)| {
-                (capture_binding(&state, &pending.request.room_id) != Some(pending.binding_id))
-                    .then_some(id.clone())
+                (pending.closed()
+                    || capture_binding(&state, &pending.scope().room_id)
+                        != Some(pending.scope().binding_id))
+                .then_some(id.clone())
             })
             .collect();
         for id in retired {
-            let request = self.pending_captures.remove(&id).unwrap().request;
-            let _ = request.result.send(Err("room_unavailable".into()));
+            self.pending_captures
+                .remove(&id)
+                .unwrap()
+                .fail("room_unavailable".into());
         }
         if let Some(live) = &mut self.live {
             if let Some(user) = state
@@ -1042,7 +1160,7 @@ impl Session {
                     && !self
                         .pending_captures
                         .values()
-                        .any(|pending| pending.request.publication_id == publication.id)
+                        .any(|pending| pending.scope().publication_id == publication.id)
                 {
                     write(
                         socket,

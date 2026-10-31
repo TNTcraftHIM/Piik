@@ -78,12 +78,35 @@ pub enum NativeEvent {
 }
 /// The controlling page owns cancellation; the Driver owns and joins the worker.
 pub struct CaptureLease {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub scope: CaptureScope,
     ready: oneshot::Receiver<Result<()>>,
     pub audio_error: Option<oneshot::Receiver<String>>,
     pub remote: Option<crate::input::Source>,
     pub input_state: Option<watch::Receiver<crate::input::SourceView>>,
     #[cfg(feature = "capture")]
     control: crate::media::local::Control,
+}
+#[derive(Clone)]
+pub struct CaptureScope {
+    pub publication_id: Uuid,
+    pub room_id: String,
+    pub binding_id: Uuid,
+}
+pub struct CaptureInput {
+    pub remote: Option<crate::input::Source>,
+    pub state: Option<watch::Receiver<crate::input::SourceView>>,
+}
+#[cfg(feature = "capture")]
+// Keyed by producer.video: stopped predecessors stay owned until their worker
+// reports completion, without sharing the successor's publication cleanup.
+struct Capture {
+    scope: CaptureScope,
+    target: crate::capture::Target,
+    producer: crate::media::local::Producer,
+    selected: bool,
+    prepared: Vec<SourceReady>,
 }
 impl CaptureLease {
     pub fn set_input_policy(
@@ -147,13 +170,16 @@ enum Input {
     Resync(oneshot::Sender<Result<()>>),
     Captures(oneshot::Sender<Vec<Uuid>>),
     #[cfg(feature = "capture")]
-    StartCapture(
-        Uuid,
+    PrepareCapture(
+        CaptureScope,
+        Option<Uuid>,
         crate::capture::Target,
         crate::capture::Settings,
         bool,
         oneshot::Sender<Result<CaptureLease>>,
     ),
+    CommitCapture(Uuid, oneshot::Sender<Result<CaptureInput>>),
+    CaptureCurrent(Uuid, bool, oneshot::Sender<bool>),
 }
 pub(crate) enum Event {
     InputMessage(Uuid, Uuid, piik_channel_core::input::InputFrame),
@@ -377,7 +403,9 @@ struct Driver {
     publications: HashMap<Uuid, PublicationInfo>,
     sources: HashMap<Uuid, Source>,
     #[cfg(feature = "capture")]
-    captures: HashMap<Uuid, crate::media::local::Producer>,
+    captures: HashMap<Uuid, Capture>,
+    #[cfg(feature = "capture")]
+    snapshot: watch::Receiver<Option<Snapshot>>,
     relay: Relay,
     files: Files,
     inputs: input::Inputs,
@@ -427,6 +455,8 @@ impl NativePeers {
                 sources: HashMap::new(),
                 #[cfg(feature = "capture")]
                 captures: HashMap::new(),
+                #[cfg(feature = "capture")]
+                snapshot: snapshot.clone(),
                 relay: Relay::default(),
                 files: Files::new(session_id),
                 inputs: input::Inputs::new(session_id, snapshot, desktop),
@@ -452,11 +482,11 @@ impl NativePeers {
                 };
                 let work = async {
                     #[cfg(feature = "capture")]
-                    for (publication, producer) in &d.captures {
+                    for capture in d.captures.values() {
                         // Input authority ends with capture, before its workers
                         // finish joining and before this turn can execute input.
-                        if producer.control.is_stopped() {
-                            d.inputs.end_source(*publication);
+                        if capture.selected && capture.producer.control.is_stopped() {
+                            d.inputs.end_source(capture.scope.publication_id);
                         }
                     }
                     match turn {
@@ -483,23 +513,30 @@ impl NativePeers {
                             let publications = d
                                 .captures
                                 .iter()
-                                .filter(|(_, p)| !p.control.is_stopped())
-                                .map(|(publication, _)| *publication)
+                                .filter(|(_, c)| !c.producer.control.is_stopped())
+                                .map(|(_, c)| c.scope.publication_id)
                                 .collect();
                             #[cfg(not(feature = "capture"))]
                             let publications = vec![];
                             let _ = done.send(publications);
                         }
                         #[cfg(feature = "capture")]
-                        Turn::Input(Input::StartCapture(
-                            publication,
+                        Turn::Input(Input::PrepareCapture(
+                            scope,
+                            replaces,
                             target,
                             settings,
                             audio,
                             done,
                         )) => {
-                            let _ =
-                                done.send(d.start_capture(publication, target, settings, audio));
+                            let _ = done
+                                .send(d.prepare_capture(scope, replaces, target, settings, audio));
+                        }
+                        Turn::Input(Input::CommitCapture(id, done)) => {
+                            let _ = done.send(d.commit_capture(id).await);
+                        }
+                        Turn::Input(Input::CaptureCurrent(id, selected, done)) => {
+                            let _ = done.send(d.capture_current(id, selected));
                         }
                         Turn::Input(Input::Signal(id, signal, done)) => {
                             if let Err(error) = d.signal(id, signal).await {
@@ -557,11 +594,11 @@ impl NativePeers {
             d.inputs.close();
             #[cfg(feature = "capture")]
             {
-                for producer in d.captures.values() {
-                    producer.control.stop();
+                for capture in d.captures.values() {
+                    capture.producer.control.stop();
                 }
-                for (_, producer) in d.captures.drain() {
-                    let _ = producer.task.await;
+                for (_, capture) in d.captures.drain() {
+                    let _ = capture.producer.task.await;
                 }
             }
             for (_, pair) in d.pairs.drain() {
@@ -660,9 +697,10 @@ impl NativePeers {
         self.input.send(Input::Resync(tx)).await?;
         rx.await?
     }
-    pub async fn start_capture(
+    pub async fn prepare_capture(
         &self,
-        publication_id: Uuid,
+        scope: CaptureScope,
+        replaces: Option<Uuid>,
         target: crate::capture::Target,
         settings: crate::capture::Settings,
         audio: bool,
@@ -671,21 +709,29 @@ impl NativePeers {
         {
             let (tx, rx) = oneshot::channel();
             self.input
-                .send(Input::StartCapture(
-                    publication_id,
-                    target,
-                    settings,
-                    audio,
-                    tx,
+                .send(Input::PrepareCapture(
+                    scope, replaces, target, settings, audio, tx,
                 ))
                 .await?;
             rx.await?
         }
         #[cfg(not(feature = "capture"))]
         {
-            let _ = (publication_id, target, settings, audio);
+            let _ = (scope, replaces, target, settings, audio);
             anyhow::bail!("capture_unavailable")
         }
+    }
+    pub async fn commit_capture(&self, id: Uuid) -> Result<CaptureInput> {
+        let (tx, rx) = oneshot::channel();
+        self.input.send(Input::CommitCapture(id, tx)).await?;
+        rx.await?
+    }
+    pub async fn capture_current(&self, id: Uuid, selected: bool) -> Result<bool> {
+        let (tx, rx) = oneshot::channel();
+        self.input
+            .send(Input::CaptureCurrent(id, selected, tx))
+            .await?;
+        Ok(rx.await?)
     }
     pub async fn capture_publications(&self) -> Result<Vec<Uuid>> {
         let (tx, rx) = oneshot::channel();
@@ -765,9 +811,7 @@ fn builder(
     )?
     .with(
         Slot::Pacer,
-        PacerBuilder::new()
-            .with_target_bitrate(300_000.0)
-            .build(),
+        PacerBuilder::new().with_target_bitrate(300_000.0).build(),
     )
     .with(Slot::Custom(20_000), feedback)
     .with(Slot::Custom(500), ReportProjection::new(reports));
@@ -893,23 +937,42 @@ impl Driver {
     }
 
     #[cfg(feature = "capture")]
-    fn start_capture(
+    fn prepare_capture(
         &mut self,
-        publication: Uuid,
+        scope: CaptureScope,
+        replaces: Option<Uuid>,
         target: crate::capture::Target,
         settings: crate::capture::Settings,
         audio: bool,
     ) -> Result<CaptureLease> {
+        let publication = scope.publication_id;
         anyhow::ensure!(
-            self.publications
-                .get(&publication)
-                .is_some_and(|p| p.session_id == self.session
-                    && p.kind == piik_channel_core::wire::Kind::Screen),
-            "publication_not_owned"
+            !self
+                .captures
+                .values()
+                .any(|capture| capture.scope.room_id == scope.room_id
+                    && capture.scope.publication_id != publication
+                    && !capture.producer.control.is_stopped()),
+            "source_already_published"
         );
+        let existing = self
+            .captures
+            .iter()
+            .find(|(_, c)| {
+                c.scope.publication_id == publication
+                    && c.selected
+                    && !c.producer.control.is_stopped()
+            })
+            .map(|(id, _)| *id);
+        anyhow::ensure!(existing == replaces, "capture_not_owned");
         anyhow::ensure!(
-            !self.captures.contains_key(&publication),
-            "capture_already_active"
+            !self
+                .captures
+                .values()
+                .any(|c| c.scope.publication_id == publication
+                    && !c.selected
+                    && !c.producer.control.is_stopped()),
+            "capture_pending"
         );
         let (producer, ready, audio_error) = crate::media::local::Producer::start(
             publication,
@@ -921,39 +984,111 @@ impl Driver {
             self.relay.clone(),
             self.cancel.clone(),
         )?;
-        let remote = self
-            .inputs
-            .source(publication, producer.video, target)
-            .unwrap_or_else(|error| {
-                eprintln!("Native input unavailable: {error}");
-                None
-            });
-        let (remote, input_state) = match remote {
-            Some((remote, state)) => (Some(remote), Some(state)),
-            None => (None, None),
-        };
+        let id = producer.video;
         let lease = CaptureLease {
+            id,
+            session_id: self.session,
+            scope: scope.clone(),
             ready,
             audio_error,
-            remote,
-            input_state,
+            remote: None,
+            input_state: None,
             control: producer.control.clone(),
         };
-        self.captures.insert(publication, producer);
+        self.captures.insert(
+            id,
+            Capture {
+                scope,
+                target,
+                producer,
+                selected: false,
+                prepared: Vec::new(),
+            },
+        );
         Ok(lease)
+    }
+
+    fn capture_current(&self, id: Uuid, selected: bool) -> bool {
+        #[cfg(feature = "capture")]
+        return self
+            .captures
+            .get(&id)
+            .is_some_and(|c| c.selected == selected && !c.producer.control.is_stopped());
+        #[cfg(not(feature = "capture"))]
+        {
+            let _ = (id, selected);
+            false
+        }
+    }
+
+    async fn commit_capture(&mut self, id: Uuid) -> Result<CaptureInput> {
+        #[cfg(not(feature = "capture"))]
+        {
+            let _ = id;
+            anyhow::bail!("capture_unavailable");
+        }
+        #[cfg(feature = "capture")]
+        {
+            anyhow::ensure!(self.capture_current(id, false), "capture_unavailable");
+            let capture = &self.captures[&id];
+            let publication = capture.scope.publication_id;
+            anyhow::ensure!(
+                self.publications
+                    .get(&publication)
+                    .is_some_and(|p| p.session_id == self.session),
+                "publication_not_owned"
+            );
+            let target = capture.target.clone();
+            self.inputs.end_source(publication);
+            for (old, capture) in &mut self.captures {
+                if *old != id && capture.scope.publication_id == publication && capture.selected {
+                    capture.selected = false;
+                    capture.producer.control.stop();
+                    self.sources.remove(old);
+                    self.relay.remove(*old);
+                    if let Some(audio) = capture.producer.audio {
+                        self.sources.remove(&audio);
+                        self.relay.remove(audio);
+                    }
+                }
+            }
+            let capture = self.captures.get_mut(&id).unwrap();
+            capture.selected = true;
+            let prepared = std::mem::take(&mut capture.prepared);
+            let input = self
+                .inputs
+                .source(publication, id, target)
+                .unwrap_or_else(|error| {
+                    eprintln!("Native input unavailable: {error}");
+                    None
+                });
+            for source in prepared {
+                if let Err(error) = self.source_ready(source).await {
+                    eprintln!("Native replacement media unavailable: {error}");
+                }
+            }
+            Ok(match input {
+                Some((remote, state)) => CaptureInput {
+                    remote: Some(remote),
+                    state: Some(state),
+                },
+                None => CaptureInput {
+                    remote: None,
+                    state: None,
+                },
+            })
+        }
     }
 
     #[cfg(feature = "capture")]
     async fn capture_ended(&mut self, publication: Uuid, source_id: Uuid) -> Result<()> {
-        if !self
-            .captures
-            .get(&publication)
-            .is_some_and(|p| p.video == source_id)
-        {
+        let Some(capture) = self.captures.remove(&source_id) else {
             return Ok(());
+        };
+        let producer = capture.producer;
+        if capture.selected {
+            self.inputs.end_source(publication);
         }
-        let producer = self.captures.remove(&publication).unwrap();
-        self.inputs.end_source(publication);
         let error = match producer.task.await {
             Ok(error) => error,
             Err(error) => Some(error.to_string()),
@@ -965,6 +1100,15 @@ impl Driver {
             self.relay.remove(audio);
         }
         self.refresh_media(false).await?;
+        // Android can stop the incumbent when a new projection is authorized.
+        // Its prepared replacement still owns the publication until commit/cancel.
+        if self
+            .captures
+            .values()
+            .any(|c| c.scope.publication_id == publication && !c.producer.control.is_stopped())
+        {
+            return Ok(());
+        }
         let event = NativeEvent::CaptureEnded {
             publication_id: publication,
             error,
@@ -976,13 +1120,16 @@ impl Driver {
 
     #[cfg(feature = "capture")]
     async fn capture_audio_ended(&mut self, publication: Uuid, source: Uuid) -> Result<()> {
-        if let Some(producer) = self.captures.get_mut(&publication) {
-            if producer.audio == Some(source) {
-                producer.audio = None;
-                self.sources.remove(&source);
-                self.relay.remove(source);
-                self.refresh_media(false).await?;
-            }
+        if let Some(capture) = self
+            .captures
+            .values_mut()
+            .find(|c| c.scope.publication_id == publication && c.producer.audio == Some(source))
+        {
+            capture.producer.audio = None;
+            capture.prepared.retain(|ready| ready.source.id != source);
+            self.sources.remove(&source);
+            self.relay.remove(source);
+            self.refresh_media(false).await?;
         }
         Ok(())
     }
@@ -1018,13 +1165,27 @@ impl Driver {
                 }
         });
         #[cfg(feature = "capture")]
-        for (publication, producer) in &self.captures {
-            if !self
-                .publications
-                .get(publication)
-                .is_some_and(|p| p.session_id == self.session)
+        for capture in self.captures.values() {
+            let authority = self.snapshot.borrow();
+            let admitted = authority.as_ref().is_some_and(|state| {
+                state.channel.rooms.iter().any(|room| {
+                    room.id == capture.scope.room_id
+                        && room.authorized
+                        && room.available
+                        && room
+                            .delivery
+                            .as_ref()
+                            .is_some_and(|delivery| delivery.binding_id == capture.scope.binding_id)
+                })
+            });
+            if !admitted
+                || (capture.selected
+                    && !self
+                        .publications
+                        .get(&capture.scope.publication_id)
+                        .is_some_and(|p| p.session_id == self.session))
             {
-                producer.control.stop();
+                capture.producer.control.stop();
             }
         }
         self.relay.retain(&self.sources.keys().copied().collect());
@@ -1779,11 +1940,9 @@ impl Driver {
                 source,
                 video,
             } => {
-                if self
-                    .captures
-                    .get(&publication_id)
-                    .is_some_and(|producer| producer.video == source)
-                {
+                if self.captures.get(&source).is_some_and(|capture| {
+                    capture.scope.publication_id == publication_id && capture.selected
+                }) {
                     let failed: Vec<_> = self
                         .pairs
                         .iter()
@@ -2050,6 +2209,21 @@ impl Driver {
         Ok(())
     }
     async fn source_ready(&mut self, ready: SourceReady) -> Result<()> {
+        #[cfg(feature = "capture")]
+        if matches!(ready.source.origin, SourceOrigin::Local) {
+            let Some(capture) = self.captures.values_mut().find(|c| {
+                c.producer.video == ready.source.id || c.producer.audio == Some(ready.source.id)
+            }) else {
+                return Ok(());
+            };
+            if capture.producer.control.is_stopped() {
+                return Ok(());
+            }
+            if !capture.selected {
+                capture.prepared.push(ready);
+                return Ok(());
+            }
+        }
         let SourceReady { source, media } = ready;
         let publication = source.publication_id;
         if !self.publications.contains_key(&publication) {
@@ -2090,8 +2264,10 @@ impl Driver {
             #[cfg(any(feature = "capture", test))]
             SourceOrigin::Local => {
                 #[cfg(feature = "capture")]
-                let active = self.captures.get(&publication).is_some_and(|p| {
-                    !p.control.is_stopped() && (p.video == source.id || p.audio == Some(source.id))
+                let active = self.captures.values().any(|c| {
+                    c.selected
+                        && !c.producer.control.is_stopped()
+                        && (c.producer.video == source.id || c.producer.audio == Some(source.id))
                 });
                 #[cfg(not(feature = "capture"))]
                 let active = false;
