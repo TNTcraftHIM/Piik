@@ -651,6 +651,8 @@ output uses its sender's negotiated codec mapping and preserves the source-time
 correlation in RTP and Sender Reports. Replacing an incoming source creates a
 new sender/SSRC. Switching a local encoding keeps the capture's logical identity
 and that output's sender, SSRC and packetizer; it commits on a newer keyframe.
+An active encoding handoff keeps its refresh demand until a suitable keyframe
+arrives; sending an RTCP request does not complete it.
 Each local output queues complete access units. Overflow discards unsent units
 and resumes at a keyframe without blocking healthy outputs.
 

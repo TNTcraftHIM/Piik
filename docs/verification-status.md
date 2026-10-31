@@ -83,6 +83,9 @@ VP8 dual-downlink restoration and healthy-sibling isolation control. When the
 connection grant falls below every available source representation, forwarding
 pauses rather than changing another connection's source. H264 recovery acceptance
 remains in [TODO](./todo.md).
+Its funded H264 encoding handoff survives an ignored first refresh request;
+the old encoding keeps playing until the new keyframe is adopted. The
+20-second Original-quality restoration checkpoint remains unmet.
 
 ## Interpretation
 
