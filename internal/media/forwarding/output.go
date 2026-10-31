@@ -102,14 +102,15 @@ func (output *Output) reconcileLocked(budgetReduced bool) {
 		}
 		return
 	}
-	if !measured {
-		return
-	}
 	maximum := output.MaxLayer()
 	target := output.allocation.TargetLayer
-	if !budgetReduced && output.hasAllocation && congestion != bwe.CongestionStateCongested && target.IsValid() &&
-		target.Spatial <= maximum.Spatial && target.Temporal <= maximum.Temporal &&
-		slices.Contains(available, target.Spatial) && rates[target.Spatial][target.Temporal] == 0 {
+	targetAllowed := target.IsValid() && target.Spatial <= maximum.Spatial && target.Temporal <= maximum.Temporal &&
+		slices.Contains(available, target.Spatial)
+	if !measured && targetAllowed {
+		return
+	}
+	if !budgetReduced && output.hasAllocation && congestion != bwe.CongestionStateCongested && targetAllowed &&
+		rates[target.Spatial][target.Temporal] == 0 {
 		// An active layer's missing rate window does not revoke its allocation.
 		// Retain that target rather than optimally allocating a different layer.
 		return

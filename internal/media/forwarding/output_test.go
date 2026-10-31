@@ -247,7 +247,31 @@ func TestOutputUsesLibraryAllocationAndExactLifetime(t *testing.T) {
 	if state := sibling.State(); state.Target != 2 {
 		t.Fatalf("increased capacity did not restore the high output: %+v", state)
 	}
+	// Missing rate windows retain a legal target, but cannot override source
+	// availability or subscription limits. The connection budget stays unchanged.
+	receiver.rates = sfu.Bitrates{}
+	sibling.Reconcile()
+	if state := sibling.State(); state.Target != 2 || state.VideoBudget != 1_000_000 {
+		t.Fatalf("missing rate windows changed a legal allocation: %+v", state)
+	}
+	receiver.available = []int32{0}
+	sibling.UpTrackLayersChange()
+	if state := sibling.State(); state.Target > 0 || state.VideoBudget != 1_000_000 {
+		t.Fatalf("missing rate windows retained an unavailable target: %+v", state)
+	}
+	receiver.available = []int32{0, 1, 2}
+	receiver.rates = sfu.Bitrates{{50_000}, {300_000}, {900_000}}
+	sibling.Reconcile()
+	if state := sibling.State(); state.Target != 2 {
+		t.Fatalf("restored source did not resume before subscription change: %+v", state)
+	}
+	receiver.rates = sfu.Bitrates{}
 	sibling.SetMaxSpatialLayer(0)
+	if state := sibling.State(); state.Target > 0 || state.VideoBudget != 1_000_000 {
+		t.Fatalf("missing rate windows retained a target above the subscription: %+v", state)
+	}
+	receiver.rates = sfu.Bitrates{{50_000}, {300_000}, {900_000}}
+	sibling.Reconcile()
 	if state := sibling.State(); state.Target != 0 {
 		t.Fatalf("stable allocation ignored a changed subscription limit: %+v", state)
 	}
