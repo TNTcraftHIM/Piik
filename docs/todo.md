@@ -7,10 +7,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 Native source previews.** Connect bounded Windows/macOS thumbnails
-  through the existing approved App connection and shared source picker. Keep
-  preview capture independent of active publications; system-picker platforms
-  retain their existing selection flow.
 - [ ] **3.0 Native platforms and integration.** Complete capture/input on the
   remaining platforms and packaging over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)
