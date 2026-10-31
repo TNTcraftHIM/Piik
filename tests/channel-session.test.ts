@@ -792,7 +792,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
   } finally { session.close(); }
 });
 
-test.each(["live", "stop-before-reply", "candidate-ended-before-reply"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
+test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -863,6 +863,34 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply"])("Browse
     const browser = session.startScreen("first");
     const transferring = await appCommand("transfer_source");
     expect(transferring).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
+    if (outcome === "app-close-before-state" || outcome === "app-close-after-state" || outcome === "transfer-rejected") {
+      const committed = outcome !== "transfer-rejected";
+      const error = committed ? "app_disconnected" : "source_unavailable";
+      const failed = expect(browser).rejects.toThrow(error);
+      const transferred = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }], subscriptions: [] };
+      if (outcome === "app-close-after-state") socket.receive({ type: "state", state: transferred });
+      if (committed) app.close();
+      else app.receive({ id: transferring.id, error });
+      // This update hides the now-unowned local projection before cleanup replies.
+      if (outcome === "app-close-after-state") socket.receive({ type: "state", state: transferred });
+      await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("unpublish"));
+      const cleanup = socket.sent.at(-1)!;
+      expect(cleanup).toMatchObject({ publicationId: publication.id, requestId: expect.any(String) });
+      if (outcome === "app-close-before-state") socket.receive({ type: "state", state: transferred });
+      socket.receive({ type: "room_reply", roomId: "first", requestId: cleanup.requestId,
+        result: committed ? { type: "done" } : { type: "error", code: "not_publication_owner" } });
+      if (committed) socket.receive({ type: "state", state: { ...transferred, publications: [] } });
+      await failed;
+      expect(next.stop).toHaveBeenCalledOnce();
+      expect(session.getSnapshot().streams.has(publication.id)).toBe(false);
+      expect(session.getSnapshot().ownedScreens.has(publication.id)).toBe(!committed);
+      expect(session.getSnapshot().state?.publications).toEqual(committed ? [] : state.publications);
+      expect(session.getSnapshot().error).toBe(error);
+      expect(socket.readyState).toBe(ChannelSocket.OPEN);
+      expect(app.sent.some(command => command.type === "stop_capture")).toBe(false);
+      expect(socket.sent.filter(command => command.type === "unpublish")).toHaveLength(1);
+      return;
+    }
     if (outcome === "candidate-ended-before-reply") {
       const ended = expect(browser).rejects.toThrow("capture_unavailable");
       Object.defineProperty(next, "readyState", { value: "ended", configurable: true });

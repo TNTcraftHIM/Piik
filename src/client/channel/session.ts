@@ -854,7 +854,14 @@ export class ChannelSession {
         const sessionId = this.view.sessionId;
         if (!sessionId) throw new Error("disconnected");
         if (previous) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: sessionId }, undefined, roomId);
-        else await app!.transferSource(share.id, sessionId);
+        else {
+          try { await app!.transferSource(share.id, sessionId); }
+          catch (error) {
+            // Core may have transferred ownership before the App reply was lost.
+            await this.request({ type: "unpublish", publicationId: share.id }, undefined, roomId).catch(() => {});
+            throw error;
+          }
+        }
         if (!current()) {
           this.send({ type: "unpublish", publicationId: share.id });
           throw new DOMException("Capture cancelled", "AbortError");
