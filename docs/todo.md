@@ -55,8 +55,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **Maintenance publication.** Prepare v2.5.1 after the remaining 3.0 product
-  flows, applicable 2.x backfeeds and feasible issue work converge. Keep completed
+- [ ] **Maintenance publication.** Publish the prepared v2.5.1 candidate after the
+  remaining 3.0 product flows, applicable 2.x backfeeds and feasible issue work converge. Keep completed
   fixes on the maintenance branch and follow the
   [release approval boundary](./standards/versioning.md#automatic-publication).
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
