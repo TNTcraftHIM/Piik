@@ -49,12 +49,14 @@ phases, including NAT and Auto codec behavior.
   recorded in the [network design](./research/channel-network-design.md#implementation-boundary).
   Hardware encoding and physical sound remain platform acceptance work.
 - The isolated 3.0 Android Rust App passes NDK/JNI builds and emulator use through
-  Firefox: App linkage, system screen selection, continuous decoded preview,
+  Firefox: App linkage, system screen selection, decoded H.264 picture and captured
+  source sound. Cancelling the system picker preserves the active share;
   pending-page cancellation and capture stop preserve the running room.
+  Notification Stop joins the runtime and closes its listeners. Opening the App
+  again restores its launcher without resuming capture.
   Its Rust encoder components also pass independent bitrate updates, keyframe
   requests, source-clock preservation and sibling isolation on the emulator's
   software codec.
-  [TODO](./todo.md) owns remaining Android device acceptance.
 - The published 2.x Android system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source
   replacement, cancellation and background return preserve the share. Local/public
