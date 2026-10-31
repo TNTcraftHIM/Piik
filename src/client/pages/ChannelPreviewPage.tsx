@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AppHeader, LedStrip } from "../components/living/Header";
 import { BackButton, Btn } from "../components/living/primitives";
 import { PawnSvg } from "../components/living/Pawn";
@@ -59,6 +59,14 @@ export function ChannelPreviewPage() {
   const nameOfUser = (id: string) => state?.users.find(value => value.id === id)?.name ?? copy("用户", "User");
   const voiceStreams = publications.filter(value => value.kind === "voice" && value.sessionId !== sessionId &&
     state?.subscriptions.includes(value.id) && streams.has(value.id));
+  const voiceAudioContext = useRef<AudioContext | null>(null);
+  const createVoiceAudioContext = useCallback(() => voiceAudioContext.current ??= new AudioContext(), []);
+  const closeVoiceAudioContext = useCallback(() => {
+    void voiceAudioContext.current?.close().catch(() => {});
+    voiceAudioContext.current = null;
+  }, []);
+  useEffect(() => { if (!voiceStreams.length) closeVoiceAudioContext(); }, [voiceStreams.length, closeVoiceAudioContext]);
+  useEffect(() => closeVoiceAudioContext, [closeVoiceAudioContext]);
   const failure = channel.error ? channel.error === "room_runtime_unavailable"
     ? copy("房间运行组件尚未构建。请先构建 Browser room adapter，再刷新原型。", "Room runtime is not built. Build the Browser room adapter, then reload the prototype.")
     : channel.error === "directory_storage_failed"
@@ -223,6 +231,7 @@ export function ChannelPreviewPage() {
         </div>
         <ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />
         {voiceStreams.map(publication => <ChannelAudio key={publication.id} stream={streams.get(publication.id)!}
+          volume={channel.listeningVolume} createContext={createVoiceAudioContext}
           muted={myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true}
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
       </section>

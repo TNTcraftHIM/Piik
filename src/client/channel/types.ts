@@ -16,6 +16,8 @@ export interface ChannelScreenInput {
 export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export interface ChannelView {
+  inputVolume: number;
+  listeningVolume: number;
   appConnected: boolean;
   ownedScreens: ReadonlySet<string>;
   state: ChannelSnapshot | null;
@@ -64,6 +66,8 @@ export interface ChannelActions {
   leaveVoice(roomId: string): Promise<void>;
   setMuted(roomId: string, muted: boolean): Promise<void>;
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
+  setInputVolume(volume: number): void;
+  setListeningVolume(volume: number): void;
   clearError(): void;
   reconnect(): void;
 }

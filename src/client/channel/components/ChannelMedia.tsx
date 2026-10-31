@@ -232,20 +232,26 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   </div>;
 }
 
-export function ChannelAudio({ stream, muted, label }: { stream: MediaStream; muted: boolean; label: string }) {
+export function ChannelAudio({ stream, muted, volume, createContext, label }: {
+  stream: MediaStream; muted: boolean; volume: number; createContext(): AudioContext; label: string;
+}) {
   const ref = useRef<HTMLAudioElement>(null);
+  const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
   const { lang } = useCopy();
   useEffect(() => {
     const element = ref.current;
     if (!element) return;
     element.srcObject = stream;
+    const playback = output.current = new ViewerAudio(element, () => {}, createContext);
+    playback.bind(stream);
     let current = true;
     setBlocked(false);
     void element.play().catch(error => { if (current && error?.name !== "AbortError") setBlocked(true); });
-    return () => { current = false; element.pause(); element.srcObject = null; };
-  }, [stream]);
-  return <><audio ref={ref} muted={muted} aria-label={label} onPlay={() => setBlocked(false)} />
+    return () => { current = false; playback.dispose(); output.current = null; element.pause(); element.srcObject = null; };
+  }, [stream, createContext]);
+  useEffect(() => { output.current?.setLevel(volume); output.current?.setMuted(muted); }, [stream, volume, muted]);
+  return <><audio ref={ref} aria-label={label} onPlay={() => setBlocked(false)} />
     {blocked && <ChannelAction icon="speaker" label={lang === "zh" ? `播放 ${label}` : `Play ${label}`}
       onClick={() => { void ref.current?.play().then(() => setBlocked(false)).catch(() => {}); }} />}</>;
 }

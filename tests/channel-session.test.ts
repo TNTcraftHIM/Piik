@@ -177,9 +177,94 @@ test("App hosting uses its own participant while Browser rooms retain their page
   } finally { session.close(); }
 });
 
+function microphoneMixer(clones: MediaStream[]) {
+  class Context {
+    currentTime = 0;
+    resume = vi.fn(async () => {});
+    close = vi.fn(async () => {});
+    gain = { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn() };
+    createGain = vi.fn(() => this.gain);
+    createAnalyser = () => ({ fftSize: 256, getFloatTimeDomainData: vi.fn() });
+    createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
+    createMediaStreamDestination = vi.fn(() => ({ stream: Object.assign(remoteStream("processed", [remoteTrack("audio")]), {
+      active: true, clone: () => clones.shift()!,
+    }) }));
+  }
+  const contexts: Context[] = [];
+  vi.stubGlobal("AudioContext", class extends Context { constructor() { super(); contexts.push(this); } });
+  return contexts;
+}
+
+test("voice rooms share one microphone gain graph and release it after the last consumer", async () => {
+  const preferences = new Map<string, string>();
+  preferences.set("piik:room-preferences:v1", JSON.stringify({ voiceInput: { deviceId: "saved-device", volume: .7, voiceProcessing: false }, voiceListeningVolume: 1.2 }));
+  vi.stubGlobal("window", { localStorage: { getItem: (key: string) => preferences.get(key) ?? null,
+    setItem: (key: string, value: string) => preferences.set(key, value) } });
+  const { session, socket } = await setup();
+  const clones = [remoteStream("first", [remoteTrack("audio")]), remoteStream("second", [remoteTrack("audio")])];
+  const contexts = microphoneMixer([...clones]);
+  const raw = remoteTrack("audio");
+  let grant!: (stream: MediaStream) => void;
+  const getUserMedia = vi.fn(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  try {
+    expect(session.getSnapshot()).toMatchObject({ inputVolume: .7, listeningVolume: 1.2 });
+    const joining = [session.joinVoice("first"), session.joinVoice("second")];
+    expect(getUserMedia).toHaveBeenCalledOnce();
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].resume).toHaveBeenCalledOnce();
+    session.setInputVolume(.4);
+    grant(remoteStream("source", [raw]));
+    for (const roomId of ["first", "second"]) {
+      await vi.waitFor(() => expect(socket.sent.some(command => command.type === "voice" && command.roomId === roomId)).toBe(true));
+      const join = socket.sent.findLast(command => command.type === "voice" && command.roomId === roomId)!;
+      socket.receive({ type: "room_reply", roomId, requestId: join.requestId, result: { type: "done" } });
+      await vi.waitFor(() => expect(socket.sent.some(command => command.type === "publish" && (command.publication as { roomId: string }).roomId === roomId)).toBe(true));
+      const publish = socket.sent.findLast(command => command.type === "publish" && (command.publication as { roomId: string }).roomId === roomId)!;
+      socket.receive({ type: "room_reply", roomId, requestId: publish.requestId, result: { type: "done" } });
+    }
+    await Promise.all(joining);
+    expect(contexts[0].createMediaStreamSource).toHaveBeenCalledOnce();
+    expect(contexts[0].gain.gain.value).toBe(.4);
+    session.setInputVolume(1.6); session.setListeningVolume(1.8);
+    expect(contexts[0].gain.gain.setTargetAtTime).toHaveBeenLastCalledWith(1.6, 0, .01);
+    expect(session.getSnapshot()).toMatchObject({ inputVolume: 1.6, listeningVolume: 1.8 });
+    expect(JSON.parse(preferences.get("piik:room-preferences:v1")!)).toMatchObject({
+      voiceInput: { deviceId: "saved-device", volume: 1.6, voiceProcessing: false }, voiceListeningVolume: 1.8,
+    });
+    for (const roomId of ["first", "second"]) {
+      const leaving = session.leaveVoice(roomId);
+      const request = socket.sent.at(-1)!;
+      socket.receive({ type: "room_reply", roomId, requestId: request.requestId, result: { type: "done" } });
+      await leaving;
+      expect(contexts[0].close).toHaveBeenCalledTimes(roomId === "first" ? 0 : 1);
+      expect(raw.stop).toHaveBeenCalledTimes(roomId === "first" ? 0 : 1);
+    }
+    for (const clone of clones) expect(clone.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+  expect(contexts[0].close).toHaveBeenCalledOnce();
+});
+
+test("closing during microphone permission releases the pending context and late capture", async () => {
+  const { session } = await setup();
+  const contexts = microphoneMixer([]), raw = remoteTrack("audio");
+  let grant!: (stream: MediaStream) => void;
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
+  const joining = session.joinVoice("first");
+  const rejected = expect(joining).rejects.toThrow("closed");
+  session.close();
+  expect(contexts[0].close).toHaveBeenCalledOnce();
+  grant(remoteStream("late-source", [raw]));
+  await rejected;
+  expect(contexts[0].createMediaStreamSource).not.toHaveBeenCalled();
+  expect(contexts[0].close).toHaveBeenCalledOnce();
+  expect(raw.stop).toHaveBeenCalledOnce();
+});
+
 test("ending a Browser microphone retires its publication while room listening remains joined", async () => {
   const { session, socket } = await setup();
   const microphone = remoteTrack("audio"), stream = remoteStream("microphone", [microphone]);
+  const contexts = microphoneMixer([stream]);
   const baseTrack = remoteTrack("audio"), base = Object.assign(remoteStream("microphone-source", [baseTrack]), { active: true, clone: () => stream });
   const getUserMedia = vi.fn(async () => base);
   vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
@@ -200,12 +285,13 @@ test("ending a Browser microphone retires its publication while room listening r
 
     state.channel.rooms[0].available = false;
     socket.receive({ type: "state", state });
-    Object.defineProperty(microphone, "readyState", { value: "ended" });
-    microphone.dispatchEvent(new Event("ended"));
+    Object.defineProperty(baseTrack, "readyState", { value: "ended" });
+    baseTrack.onended?.call(baseTrack, new Event("ended"));
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "unpublish" && command.publicationId === publication.id)).toBe(true));
     expect(socket.sent.at(-1)).toMatchObject({ type: "voice", roomId: "first", joined: true, muted: true, deafened: true });
     socket.receive({ type: "error", code: "room_host_offline" });
     expect(baseTrack.stop).toHaveBeenCalledOnce();
+    expect(contexts[0].close).toHaveBeenCalledOnce();
     expect(session.getSnapshot().state?.voice).toEqual([{ sessionId: "endpoint", roomId: "first", muted: true, deafened: true }]);
     const beforeRecovery = socket.sent.length;
     state.channel.rooms[0].available = true;
@@ -220,6 +306,7 @@ test("ending a Browser microphone retires its publication while room listening r
     expect(socket.sent.some(command => command.type === "leave" || command.type === "host_stop")).toBe(false);
 
     const nextTrack = remoteTrack("audio"), next = remoteStream("next-microphone", [nextTrack]);
+    microphoneMixer([next]);
     const sourceTrack = remoteTrack("audio"), source = Object.assign(remoteStream("microphone-source", [sourceTrack]), { active: true, clone: () => next });
     getUserMedia.mockResolvedValue(source);
     const unmuting = session.setMuted("first", false);

@@ -5,6 +5,7 @@ import { Btn } from "../../components/living/primitives";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
+import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import type { ChannelController } from "../types";
 import { voiceAppearance } from "../presentation";
 
@@ -45,12 +46,16 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
       {participants.length > 4 && <small>+{participants.length - 4}</small>}
     </div>
     <div className="c3-voice-controls">
-      <VoiceMicrophoneButton active={!muted} disabled={!available} busy={busy} quiet
-        hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"}
-        onClick={() => run(channel.setMuted(roomId, !muted))} />
-      <VoiceListeningButton deafened={deafened} disabled={!available} busy={busy} quiet
-        hint={deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
-        onClick={() => run(channel.setDeafened(roomId, !deafened))} />
+      <AudioVolumeMenu volume={channel.inputVolume} onVolume={channel.setInputVolume} label="host.microphone.volume" icon="microphone" disabled={!available || busy}>
+        <VoiceMicrophoneButton active={!muted} disabled={!available} busy={busy} quiet
+          hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"}
+          onClick={() => run(channel.setMuted(roomId, !muted))} />
+      </AudioVolumeMenu>
+      <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume" icon="headphones" disabled={!available || busy}>
+        <VoiceListeningButton deafened={deafened} disabled={!available} busy={busy} quiet
+          hint={deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
+          onClick={() => run(channel.setDeafened(roomId, !deafened))} />
+      </AudioVolumeMenu>
       <span className="c3-control-divider" />
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         busy={busy} disabled={busy} onClick={() => run(channel.leaveVoice(roomId))} />

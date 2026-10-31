@@ -9,10 +9,17 @@ import { ChannelApp, discoverChannelAppHealth, type NativeCaptureSources } from 
 import { isClientActivated } from "../lib/session";
 import type { NativeCaptureTarget, RemoteStopShortcut } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
-import { readRoomPreferences } from "../lib/room-preferences";
+import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
+import { MicrophoneInput } from "../media/microphone-input";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
+
+interface MicrophoneRequest {
+  context: AudioContext | null;
+  input: MicrophoneInput | null;
+  promise?: Promise<MicrophoneInput>;
+}
 
 function stored(key: string, value?: string): string | null {
   try {
@@ -29,6 +36,8 @@ function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
+    inputVolume: readRoomPreferences().voiceInput.volume,
+    listeningVolume: readRoomPreferences().voiceListeningVolume,
     appConnected: false,
     ownedScreens: new Set(),
     state: null, sessionId: null, self: null, connection: "connecting", messagesByRoom: {}, historyByRoom: {},
@@ -54,8 +63,8 @@ export class ChannelSession {
   private app: ChannelApp | undefined;
   private hostCleanup: Promise<void> = Promise.resolve();
   private signals: Extract<ChannelCommand, { type: "signal" }>[] = [];
-  private microphone: MediaStream | null = null;
-  private microphoneRequest: Promise<MediaStream> | null = null;
+  private microphone: MicrophoneInput | null = null;
+  private microphoneRequest: MicrophoneRequest | null = null;
   private voiceCaptures = new Map<string, string | null>();
   private watching = new Set<string>();
   private admittedPublications = new Set<string>();
@@ -63,7 +72,7 @@ export class ChannelSession {
   private reading: { roomId: string; socket: WebSocket | null; ready: Promise<void> } | null = null;
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
-  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream }>();
+  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput }>();
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hostedRooms.get(roomId)?.host,
@@ -637,9 +646,9 @@ export class ChannelSession {
   });
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream): Promise<string> {
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, microphone?: MicrophoneInput): Promise<string> {
     const id = crypto.randomUUID();
-    this.local.set(id, { roomId, kind, stream });
+    this.local.set(id, { roomId, kind, stream, microphone });
     this.media.setLocal(id, stream);
     try {
       await this.request({ type: "publish", publication: { id, roomId, kind, muted: false } });
@@ -650,14 +659,7 @@ export class ChannelSession {
       }
       this.admittedPublications.add(id);
       if (kind === "screen") primary?.addEventListener("ended", () => { void this.stopScreen(id).catch(() => {}); }, { once: true });
-      else primary?.addEventListener("ended", () => {
-        if (this.local.get(id)?.stream !== stream) return;
-        const voice = this.view.state?.voice.find(member => member.sessionId === this.view.sessionId && member.roomId === roomId);
-        this.retireCapture(id);
-        this.refreshActivity();
-        this.send({ type: "unpublish", publicationId: id });
-        if (voice) this.send({ type: "voice", roomId, joined: true, muted: true, deafened: voice.deafened });
-      }, { once: true });
+      else primary?.addEventListener("ended", () => this.voiceCaptureEnded(id, stream), { once: true });
       return id;
     } catch (error) {
       this.local.delete(id);
@@ -706,29 +708,80 @@ export class ChannelSession {
     if (this.view.connection === "connected") await this.request({ type: "unpublish", publicationId }, undefined, roomId);
   });
 
-  private async getMicrophone(): Promise<MediaStream> {
-    if (this.microphone?.active) return this.microphone;
+  private voiceCaptureEnded(id: string, stream: MediaStream): void {
+    const capture = this.local.get(id);
+    if (capture?.stream !== stream) return;
+    const roomId = capture.roomId;
+    const voice = this.view.state?.voice.find(member => member.sessionId === this.view.sessionId && member.roomId === roomId);
+    this.retireCapture(id);
+    this.refreshActivity();
+    this.send({ type: "unpublish", publicationId: id });
+    if (voice) this.send({ type: "voice", roomId, joined: true, muted: true, deafened: voice.deafened });
+  }
+
+  private async getMicrophone(): Promise<MicrophoneInput> {
+    if (this.microphone?.stream.active) return this.microphone;
+    if (this.microphoneRequest) return this.microphoneRequest.promise!;
     if (!navigator.mediaDevices?.getUserMedia) throw new Error("microphone_unavailable");
     const epoch = this.captureEpoch;
-    this.microphoneRequest ??= navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
-    try {
-      const stream = await this.microphoneRequest;
-      if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); throw new Error("closed"); }
-      this.microphone = stream;
-      return stream;
-    }
-    finally { this.microphoneRequest = null; }
+    // Resume during the gesture, before device permission consumes activation.
+    const context = new AudioContext();
+    const resumed = context.resume().then(() => true, () => false);
+    const request: MicrophoneRequest = { context, input: null };
+    request.promise = (async () => {
+      let stream: MediaStream | undefined, input: MicrophoneInput | undefined;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+        if (epoch !== this.captureEpoch) throw new Error("closed");
+        if (stream.getAudioTracks()[0]?.readyState !== "live") throw new Error("microphone_unavailable");
+        const captured = input = new MicrophoneInput(stream, context, this.view.inputVolume, () => {
+          for (const [id, capture] of [...this.local]) if (capture.microphone === captured) this.voiceCaptureEnded(id, capture.stream);
+          captured.close();
+          if (this.microphone === captured) this.microphone = null;
+        });
+        request.input = captured;
+        request.context = null;
+        const started = await resumed;
+        if (epoch !== this.captureEpoch) throw new Error("closed");
+        if (!started || !captured.stream.active) throw new Error("microphone_unavailable");
+        captured.volume(this.view.inputVolume);
+        this.microphone = captured;
+        request.input = null;
+        return captured;
+      } catch (error) {
+        if (input) input.close();
+        else stream?.getTracks().forEach(track => track.stop());
+        void request.context?.close().catch(() => {});
+        request.context = null;
+        throw error;
+      }
+    })().finally(() => { if (this.microphoneRequest === request) this.microphoneRequest = null; });
+    this.microphoneRequest = request;
+    return request.promise;
   }
+
+  setInputVolume = (volume: number): void => {
+    this.microphone?.volume(volume);
+    this.microphoneRequest?.input?.volume(volume);
+    this.patch({ inputVolume: volume });
+    saveRoomPreferences({ voiceInput: { ...readRoomPreferences().voiceInput, volume } });
+  };
+
+  setListeningVolume = (volume: number): void => {
+    this.patch({ listeningVolume: volume });
+    saveRoomPreferences({ voiceListeningVolume: volume });
+  };
 
   joinVoice = (roomId: string, listenOnly = false, providedStream?: MediaStream): Promise<void> => this.action(`voice:${roomId}`, async () => {
     if (this.view.state?.voice.some(member => member.sessionId === this.view.sessionId && member.roomId === roomId)) return;
     let capture: MediaStream | null = null;
-    if (!listenOnly) capture = providedStream ?? (await this.getMicrophone()).clone();
+    const microphone = !listenOnly && !providedStream ? await this.getMicrophone() : undefined;
+    if (!listenOnly) capture = providedStream ?? microphone!.stream.clone();
     this.voiceCaptures.set(roomId, null);
     try {
       await this.request({ type: "voice", roomId, joined: true, muted: listenOnly, deafened: false });
       if (capture) {
-        const id = await this.publish("voice", roomId, capture);
+        const id = await this.publish("voice", roomId, capture, microphone);
         this.voiceCaptures.set(roomId, id);
       }
     } catch (error) {
@@ -753,8 +806,8 @@ export class ChannelSession {
     const member = this.view.state?.voice.find(value => value.sessionId === this.view.sessionId && value.roomId === roomId);
     if (!member) return;
     if (!muted && !this.voiceCaptures.get(roomId)) {
-      const stream = (await this.getMicrophone()).clone();
-      const id = await this.publish("voice", roomId, stream);
+      const microphone = await this.getMicrophone();
+      const id = await this.publish("voice", roomId, microphone.stream.clone(), microphone);
       this.voiceCaptures.set(roomId, id);
     }
     await this.request({ type: "voice", roomId, joined: true, muted, deafened: member.deafened });
@@ -769,7 +822,7 @@ export class ChannelSession {
 
   private releaseUnusedMicrophone(): void {
     if ([...this.voiceCaptures.values()].some(Boolean) || [...this.view.pending].some(key => key.startsWith("voice:"))) return;
-    this.microphone?.getTracks().forEach(track => track.stop());
+    this.microphone?.close();
     this.microphone = null;
   }
 
@@ -800,8 +853,11 @@ export class ChannelSession {
     this.admittedPublications.clear();
     this.voiceCaptures.clear();
     this.watching.clear();
-    this.microphone?.getTracks().forEach(track => track.stop());
+    this.microphone?.close();
     this.microphone = null;
+    this.microphoneRequest?.input?.close();
+    void this.microphoneRequest?.context?.close().catch(() => {});
+    if (this.microphoneRequest) this.microphoneRequest.context = null;
     this.signals = [];
   }
 
