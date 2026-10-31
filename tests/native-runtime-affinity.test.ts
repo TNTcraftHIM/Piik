@@ -43,6 +43,14 @@ async function runtime(delay: number) {
 it("selects the launched runtime over a faster resident App and never substitutes it after exit", async () => {
   const old = await runtime(0);
   const selected = await runtime(30);
+  const fetchHTTP = globalThis.fetch;
+  // Keep the real HTTP fixtures independent of Apps already running locally.
+  vi.stubGlobal("fetch", ((input, init) => {
+    const port = Number(new URL(String(input)).port);
+    return port === old.port || port === selected.port
+      ? fetchHTTP(input, init)
+      : Promise.reject(new TypeError("Not this test's runtime"));
+  }) as typeof fetch);
   const saved = new Map<string, string>();
   const tabSaved = new Map<string, string>();
   const page = {
