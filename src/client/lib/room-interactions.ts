@@ -66,6 +66,11 @@ export class RoomInteractionSession {
     this.state = { ...this.state, ...patch };
     this.listeners.forEach(listener => listener());
   }
+  private startCooldown() {
+    clearTimeout(this.cooldownTimer);
+    this.update({ coolingDown: true });
+    this.cooldownTimer = setTimeout(() => this.update({ coolingDown: false }), INTERACTION_INTERVAL_MS);
+  }
 
   authenticated(peerId: string) {
     if (this.closed) return;
@@ -105,7 +110,11 @@ export class RoomInteractionSession {
     const beganAt = Math.min(now, message.occurredAt - this.serverOffset);
     const own = message.sender.peerId === this.state.peerId;
     const confirmsPending = own && message.requestId === this.requestId;
-    if (confirmsPending) this.requestId = null;
+    if (confirmsPending) {
+      this.requestId = null;
+      // The Host's interval starts at acceptance, after outbound queueing.
+      this.startCooldown();
+    }
     const confirmed = confirmsPending ? message : this.state.confirmed;
     const pending = confirmsPending ? null : this.state.pending;
     if (!pending) clearTimeout(this.pendingTimer);
@@ -150,9 +159,9 @@ export class RoomInteractionSession {
     // The timeout releases the send control, not this request's identity.
     // A late result may settle it until another submission or connection replaces it.
     this.requestId = requestId;
-    this.update({ pending: { requestId, payload }, coolingDown: true, error: null });
+    this.update({ pending: { requestId, payload }, error: null });
     this.pendingTimer = setTimeout(() => this.update({ pending: null, error: "unconfirmed" }), 5000);
-    this.cooldownTimer = setTimeout(() => this.update({ coolingDown: false }), INTERACTION_INTERVAL_MS);
+    this.startCooldown();
     return true;
   }
 
