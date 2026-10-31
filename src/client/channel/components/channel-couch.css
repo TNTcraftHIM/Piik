@@ -1,0 +1,23 @@
+.c3-couch { width: 328px; max-width: 100%; min-width: 0; }
+.c3-couch-width { min-width: 0; }
+.c3-couch-scene { position: relative; height: 94px; max-width: 100%; margin: auto; }
+.c3-couch-bench { position: absolute; inset: 13px 0 0; pointer-events: none; }
+.c3-couch-bench > svg { display: block; width: 100%; height: auto; }
+.c3-couch-people { position: relative; display: flex; justify-content: center; align-items: start; margin: 0 var(--c3-couch-gutter); }
+.c3-couch-guests { display: flex; min-width: 0; padding-block: 11px 6px; overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-behavior: smooth; scrollbar-width: none; }
+.c3-couch-guests:empty { display: none; }
+.c3-couch-guests::-webkit-scrollbar { display: none; }
+.c3-couch-seat { display: grid; flex: 0 0 var(--c3-couch-seat); min-width: 0; justify-items: center; scroll-snap-align: start; }
+.c3-couch-people > .c3-couch-seat { padding-block: 11px 6px; }
+.c3-couch-seat > .lr-comic-tip-wrap { max-width: 100%; }
+.c3-couch-seat .lr-pawn { min-width: 0; max-width: 100%; }
+.c3-couch-seat .lr-person { width: 42px; height: 50px; }
+.c3-couch-seat .lr-pawn-name { max-width: 100%; }
+.c3-couch-browse { position: absolute; top: 57px; }
+.c3-couch-browse.is-previous { left: -2px; }
+.c3-couch-browse.is-next { right: -2px; }
+.c3-couch-browse .lr-btn { --button-size: 28px; --button-padding: 0; width: 28px; }
+.c3-couch-browse .lr-glyph { width: 14px; height: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  .c3-couch-guests { scroll-behavior: auto; }
+}
