@@ -17,7 +17,7 @@ vi.mock("node:child_process", async (original) => ({
   },
   spawnSync: (_command: string, args: string[]) => {
     if (!args[0]?.endsWith("assemble-app.mjs")) throw new Error(`Unexpected command: ${args.join(" ")}`);
-    mkdirSync(args[2]!);
+    mkdirSync(args[1]!);
     source.assembled = true;
     if (source.scenario === "output-created") {
       mkdirSync(source.output);
@@ -30,9 +30,14 @@ vi.mock("../scripts/app-package-targets.mjs", () => ({
   CLOUDFLARED_VERSION: "fixture",
   appPackageTarget: () => ({
     id: "fixture", nodePlatform: process.platform, nodeArch: process.arch,
-    captureName: null, tunnelName: "fixture-tunnel", tunnelAsset: "fixture-tunnel",
+    tunnelName: "fixture-tunnel", tunnelAsset: "fixture-tunnel",
     tunnelSha256: createHash("sha256").update("fixture tunnel").digest("hex"),
   }),
+}));
+vi.mock("../scripts/release-version.mjs", () => ({ buildVersion: () => "development" }));
+vi.mock("../scripts/process-shutdown.mjs", () => ({
+  spawnProcess: () => { throw new Error("Incomplete archive must not launch the App"); },
+  requestShutdown: () => undefined,
 }));
 vi.mock("../scripts/build-workspace.mjs", async (original) => ({
   ...await original<typeof import("../scripts/build-workspace.mjs")>(),
@@ -50,7 +55,6 @@ vi.mock("../scripts/archive-tool.mjs", () => ({
 it.each(["archive-failure", "existing", "output-created", "dirty"] as const)(
   "cleans only this App candidate's incomplete output (%s)", async (scenario) => {
     const root = mkdtempSync(join(tmpdir(), "piik-app-candidate-"));
-    const server = join(root, "server");
     const output = join(root, "output");
     const previousArguments = process.argv;
     source.workspace = join(root, "workspace");
@@ -59,13 +63,11 @@ it.each(["archive-failure", "existing", "output-created", "dirty"] as const)(
     source.assembled = false;
     vi.stubGlobal("fetch", vi.fn(async () => new Response("fixture tunnel")));
     try {
-      mkdirSync(server);
-      writeFileSync(join(server, "server.release.json"), JSON.stringify({ version: "development" }));
       if (scenario === "existing") {
         mkdirSync(output);
         writeFileSync(join(output, "user.txt"), "keep");
       }
-      process.argv = [process.execPath, "package-app-candidate.mjs", server, "fixture", output];
+      process.argv = [process.execPath, "package-app-candidate.mjs", "fixture", output];
       vi.resetModules();
       const candidate = import("../scripts/package-app-candidate.mjs");
       const expected = { "archive-failure": "archive interrupted", existing: "must not already exist",

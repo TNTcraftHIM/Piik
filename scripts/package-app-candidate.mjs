@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
@@ -13,7 +13,6 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { networkInterfaces } from "node:os";
 import { createServer } from "node:net";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { Readable } from "node:stream";
@@ -23,6 +22,9 @@ import { fileURLToPath } from "node:url";
 import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
+import { buildVersion } from "./release-version.mjs";
+import { spawnProcess, requestShutdown } from "./process-shutdown.mjs";
+import { checkWebSourceIdentity } from "./container-web-identity.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -33,6 +35,7 @@ function run(command, args, cwd) {
     cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
@@ -54,15 +57,6 @@ function assertOutsideRepository(repositoryRoot, outputRoot) {
   if (existsSync(outputRoot)) {
     fail("App candidate output directory must not already exist");
   }
-}
-
-function serverDescriptor(directory) {
-  const descriptors = readdirSync(directory)
-    .filter((name) => name.endsWith(".release.json"));
-  if (descriptors.length !== 1) {
-    fail("Server release directory must contain one descriptor");
-  }
-  return join(directory, descriptors[0]);
 }
 
 async function download(url, path) {
@@ -94,16 +88,6 @@ async function reservePort() {
   });
 }
 
-function smokeLANAddress() {
-  const addresses = Object.values(networkInterfaces())
-    .flatMap((entries) => entries ?? [])
-    .filter((entry) => entry.family === "IPv4" && !entry.internal)
-    .map((entry) => entry.address)
-    .sort();
-  if (addresses.length === 0) fail("App smoke has no active LAN IPv4 address");
-  return addresses[0];
-}
-
 async function waitForExit(child, timeoutMs) {
   if (child.exitCode !== null || child.signalCode !== null) return child.exitCode;
   return await new Promise((resolveExit, rejectExit) => {
@@ -122,9 +106,7 @@ async function waitForExit(child, timeoutMs) {
 async function stopSmokeChild(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   try {
-    child.stdin.write("\n");
-  } catch {}
-  try {
+    await requestShutdown(child);
     await waitForExit(child, 5_000);
     return;
   } catch {}
@@ -144,70 +126,73 @@ async function stopSmokeChild(child) {
   await waitForExit(child, 5_000).catch(() => undefined);
 }
 
-async function verifyLocalPackage(root, target, temporaryRoot) {
+async function verifyLocalPackage(root, target, version, revision, temporaryRoot) {
   const app = join(root, target.appName);
   const port = await reservePort();
-  const healthURL = `http://127.0.0.1:${port}/healthz`;
-  const noticeURL = `http://127.0.0.1:${port}/third-party-licenses.txt`;
-  const child = spawn(app, [
-    "--local",
-    "--config", join(temporaryRoot, "smoke-app.json"),
-    "--lan-address", smokeLANAddress(),
-    "--port", String(port),
-  ], {
-    cwd: root,
-    env: { ...process.env, PIIK_CLIENT_GATE_NO_BROWSER: "true" },
-    stdio: "pipe",
-    windowsHide: true,
+  const origin = `http://127.0.0.1:${port}`;
+  const discoveryURL = `${origin}/connect-discovery`;
+  const child = await spawnProcess(app, [], {
+    cwd: temporaryRoot,
+    env: { ...process.env,
+      PIIK_CHANNEL_APP_DATA_DIR: join(temporaryRoot, "smoke-app-data"),
+      PIIK_CHANNEL_APP_PORT: String(port),
+      PIIK_CHANNEL_APP_NO_BROWSER: "1",
+      PIIK_CHANNEL_APP_WEB_DIR: undefined,
+      PIIK_CHANNEL_CLOUDFLARED: undefined,
+      PIIK_CHANNEL_ICE_SERVERS: "[]",
+    },
+    logDirectory: temporaryRoot,
   });
   let spawnFailure = null;
   let stderr = "";
-  let stdout = "";
-  let appReady = false;
   child.once("error", (error) => {
     spawnFailure = error;
   });
-  child.stdin.on("error", () => undefined);
-  child.stdout.on("data", (chunk) => {
-    stdout = `${stdout}${chunk.toString()}`.slice(-2_048);
-    if (stdout.includes("Local access password: ") || stdout.includes("Local access: open")) {
-      appReady = true;
-      stdout = "";
-    }
-  });
+  child.stdout.resume();
   child.stderr.on("data", (chunk) => {
     stderr = `${stderr}${chunk.toString()}`.slice(-4_096);
   });
   try {
     const deadline = Date.now() + 15_000;
-    let healthReady = false;
+    let appReady = false;
     while (Date.now() < deadline) {
       if (spawnFailure) break;
       if (child.exitCode !== null || child.signalCode !== null) break;
-      if (!healthReady) {
-        try {
-          const response = await fetch(healthURL, {
-            headers: { Connection: "close" },
-            signal: AbortSignal.timeout(500),
-          });
-          healthReady = response.ok && (await response.json())?.status === "ok";
-        } catch {}
-      }
-      if (healthReady && appReady) break;
+      try {
+        const response = await fetch(discoveryURL, {
+          headers: { Connection: "close" },
+          signal: AbortSignal.timeout(500),
+        });
+        const discovery = response.ok ? await response.json() : null;
+        appReady = discovery?.port === port && discovery?.connectURL === `${origin}/client`;
+      } catch {}
+      if (appReady) break;
       await delay(100);
     }
-    if (!healthReady || !appReady) {
-      fail("Packaged App Local health did not become ready");
+    if (!appReady) {
+      fail(`Packaged App discovery did not become ready${spawnFailure ? `: ${spawnFailure.message}` : ""}`);
     }
-    // The Web notices ship inside the binary; the embedded assets serve them.
-    const notices = await fetch(noticeURL, {
-      headers: { Connection: "close" },
-      signal: AbortSignal.timeout(2_000),
-    });
-    if (!notices.ok || (await notices.text()).length === 0) {
+    const request = async (path) => {
+      const response = await fetch(new URL(path, `${origin}/`), {
+        headers: { Connection: "close" }, signal: AbortSignal.timeout(2_000),
+      });
+      if (!response.ok) fail(`Packaged App returned HTTP ${response.status} for ${path}`);
+      return response;
+    };
+    const identity = await (await request("/api/client-launcher")).json();
+    if (identity.version !== version || identity.revision !== revision)
+      fail("Packaged App build identity mismatch");
+    const html = await (await request("/client")).text();
+    await checkWebSourceIdentity(html, revision, async asset => (await request(asset)).text());
+    const wasm = readdirSync(join(root, "web", "assets")).find(name => name.endsWith(".wasm"));
+    if (!wasm) fail("Packaged App frontend has no Rust/WASM adapter");
+    const wasmBytes = new Uint8Array(await (await request(`/assets/${wasm}`)).arrayBuffer());
+    if (!Buffer.from(wasmBytes.subarray(0, 4)).equals(Buffer.from([0, 0x61, 0x73, 0x6d])))
+      fail("Packaged App frontend did not serve WebAssembly");
+    if (!(await (await request("/third-party-licenses.txt")).text()).trim()) {
       fail("Packaged App did not serve its Web third-party notices");
     }
-    child.stdin.write("\n");
+    await requestShutdown(child);
     const exitCode = await waitForExit(child, 10_000);
     if (exitCode !== 0) {
       const detail = stderr
@@ -222,7 +207,7 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
     const closeDeadline = Date.now() + 5_000;
     while (Date.now() < closeDeadline) {
       try {
-        await fetch(healthURL, {
+        await fetch(discoveryURL, {
           headers: { Connection: "close" },
           signal: AbortSignal.timeout(300),
         });
@@ -231,13 +216,13 @@ async function verifyLocalPackage(root, target, temporaryRoot) {
       }
       await delay(100);
     }
-    fail("Packaged App left its Local server listening");
+    fail("Packaged App left its loopback server listening");
   } finally {
     await stopSmokeChild(child);
   }
 }
 
-async function verifyPackage(root, target, revision, temporaryRoot) {
+async function verifyPackage(root, target, version, revision, temporaryRoot) {
   const runtimeRoot = join(root, appPackageDirectory(target));
   const packagedRevision = readFileSync(join(runtimeRoot, "REVISION"), "ascii").trim();
   if (packagedRevision !== revision) fail("App package revision mismatch");
@@ -248,18 +233,11 @@ async function verifyPackage(root, target, revision, temporaryRoot) {
     }
   }
 
-  const app = join(runtimeRoot, target.appName);
   const tunnel = join(runtimeRoot, "runtime", "tunnel", target.tunnelName);
-  run(app, ["--help"], root);
   run(tunnel, ["--version"], root);
   verifyPlatformAssets(root, target);
 
-  if (target.captureName) {
-    const capture = join(runtimeRoot, "runtime", "native", target.captureName);
-    const probe = JSON.parse(run(capture, ["--probe"], root));
-    if (probe?.protocol !== 7) fail("Packaged native capture probe is invalid");
-  }
-  await verifyLocalPackage(runtimeRoot, target, temporaryRoot);
+  await verifyLocalPackage(runtimeRoot, target, version, revision, temporaryRoot);
 }
 
 function verifyPlatformAssets(root, target) {
@@ -309,16 +287,15 @@ function verifyPlatformAssets(root, target) {
   }
 }
 
-if (process.argv.length !== 5) {
+if (process.argv.length !== 4) {
   fail(
-    "Usage: node scripts/package-app-candidate.mjs <server-release-directory> <target> <new-output-directory>",
+    "Usage: node scripts/package-app-candidate.mjs <target> <new-output-directory>",
   );
 }
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
-const serverRoot = realpathSync(resolve(process.argv[2]));
-const target = appPackageTarget(process.argv[3]);
-const outputRoot = resolve(process.cwd(), process.argv[4]);
+const target = appPackageTarget(process.argv[2]);
+const outputRoot = resolve(process.cwd(), process.argv[3]);
 if (!target) fail("App package target is invalid");
 if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch) {
   fail(`App candidate ${target.id} requires its native runner`);
@@ -326,8 +303,7 @@ if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch
 assertOutsideRepository(repositoryRoot, outputRoot);
 
 const revision = assertCleanRevision(repositoryRoot);
-const descriptorPath = serverDescriptor(serverRoot);
-const { version } = JSON.parse(readFileSync(descriptorPath, "utf8"));
+const version = buildVersion(repositoryRoot, revision);
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.id, "candidate");
 let outputOwned = false;
 try {
@@ -348,27 +324,15 @@ try {
   if (!existsSync(tunnel)) fail("Public-link runtime is missing");
   if (process.platform !== "win32") chmodSync(tunnel, 0o755);
 
-  let capture = null;
-  if (target.captureName) {
-    run(
-      process.execPath,
-      [join(repositoryRoot, "scripts", "check-go.mjs"), "--capture-only"],
-      repositoryRoot,
-    );
-    capture = join(repositoryRoot, "build", "go-check", target.captureName);
-  }
-
   const packageRoot = join(temporaryRoot, `piik-app-${target.id}`);
   const assembleArguments = [
     join(repositoryRoot, "scripts", "assemble-app.mjs"),
-    descriptorPath,
     packageRoot,
     "--target",
     target.id,
     "--tunnel",
     tunnel,
   ];
-  if (capture) assembleArguments.push("--capture", capture);
   run(process.execPath, assembleArguments, repositoryRoot);
 
   mkdirSync(outputRoot, { recursive: false, mode: 0o700 });
@@ -379,7 +343,8 @@ try {
   const extractedRoot = join(temporaryRoot, "extracted");
   mkdirSync(extractedRoot);
   extractZip(archive, extractedRoot);
-  await verifyPackage(extractedRoot, target, revision, temporaryRoot);
+  await verifyPackage(extractedRoot, target, version, revision, temporaryRoot);
+  assertCleanRevision(repositoryRoot, revision);
   const digest = sha256(archive);
   writeFileSync(join(outputRoot, `${archiveName}.sha256`), `${digest}  ${archiveName}\n`, "ascii");
   writeFileSync(join(outputRoot, archiveName.replace(/\.zip$/, ".release.json")),
