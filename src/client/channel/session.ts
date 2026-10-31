@@ -868,7 +868,8 @@ export class ChannelSession {
           remoteControls.delete(share.id);
           this.patch({ remoteControls });
           await stopping;
-          await this.unwatch(share.id);
+          this.watching.delete(share.id);
+          this.refreshActivity();
         }
       } else {
         const stream = candidate;

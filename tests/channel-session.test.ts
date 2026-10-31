@@ -835,15 +835,24 @@ test("Browser and Native handoffs keep one publication and use the current Nativ
     appReply(); await nativeAgain;
     expect(socket.sent.filter(command => command.type === "transfer_source")).toHaveLength(1);
 
+    const send = socket.send.bind(socket);
+    vi.spyOn(socket, "send").mockImplementation(data => {
+      send(data);
+      const command = JSON.parse(data);
+      if (command.type === "subscribe" && command.publicationId === publication.id) socket.receive({
+        type: "error", requestId: command.requestId, code: "invalid_subscription",
+      });
+    });
     const browser = session.startScreen("first");
     expect(await appCommand("transfer_source")).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
-    state = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }] };
+    state = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }], subscriptions: [] };
     socket.receive({ type: "state", state }); appReply();
     expect(await appCommand("stop_capture")).toMatchObject({ publicationId: publication.id });
     expect(session.getSnapshot().streams.get(publication.id)).toBe(nextStream);
     appReply();
-    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: publication.id, enabled: false }));
-    coreReply(); await browser;
+    await browser;
+    expect(socket.sent.some(command => command.type === "subscribe" && command.enabled === false)).toBe(false);
+    expect(session.getSnapshot().error).toBeNull();
     expect(session.getSnapshot().state?.publications.map(value => value.id)).toEqual([publication.id]);
     expect(session.getSnapshot().state?.subscriptions).toEqual([]);
     expect(session.getSnapshot().remoteControls.has(publication.id)).toBe(false);
