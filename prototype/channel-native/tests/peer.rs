@@ -1,6 +1,10 @@
 //! Real local PCs exercise the adapter's source-generation handoff. Room
 //! authority/routing are covered by the domain gate; this fixture supplies leases.
-use anyhow::Result;
+use anyhow::{Context, Result};
+use rtc::rtp::{
+    codec::h264::{H264Packet, H264Payloader},
+    packetizer::{Depacketizer, Payloader},
+};
 
 // Fixture identities are stable for an unchanged directed pair/publication lease.
 fn binding(publication_id: Uuid, pair: Uuid) -> FlowBinding {
@@ -304,6 +308,10 @@ async fn add_source(
     endpoint.pc.add_track(track.clone()).await?;
     Ok(track)
 }
+fn h264_contains(packet: &rtp::Packet, expected: &[u8]) -> Result<bool> {
+    let bytes = H264Packet::default().depacketize(&packet.payload)?;
+    Ok(bytes.windows(expected.len()).any(|bytes| bytes == expected))
+}
 fn packet(seq: u16, timestamp: u32, ssrc: u32) -> rtp::Packet {
     rtp::Packet {
         header: rtp::header::Header {
@@ -549,14 +557,17 @@ async fn h264_sps_reaches_two_children_with_default_receive_levels_on_retained_p
         native.update(plans(true), vec![info.clone()], vec![]).await?;
         let (stop, stopped) = watch::channel(false);
         let (_pause, paused) = watch::channel(false);
-        let task = tokio::spawn(pump(
+        let mut task = tokio::spawn(pump(
             native.clone(), HashMap::from([(source_id, source), (children[0], first), (children[1], second)]),
             rx, event_rx, stopped, paused, reports, Arc::new(Mutex::new(Loss::default())), None,
         ));
         let mut ready = std::collections::HashSet::new();
         while ready.len() < 3 {
-            if let Some(Command::BaseState { pair_id, ready: true, .. }) = report_rx.recv().await {
-                ready.insert(pair_id);
+            tokio::select! {
+                result = &mut task => anyhow::bail!("peer pump stopped before H264 base paths were ready: {result:?}"),
+                report = report_rx.recv() => {
+                    if let Some(Command::BaseState { pair_id, ready: true, .. }) = report { ready.insert(pair_id); }
+                }
             }
         }
         let source_parameters = sender.get_parameters().await?;
@@ -567,26 +578,38 @@ async fn h264_sps_reaches_two_children_with_default_receive_levels_on_retained_p
         let sps = vec![103, 66, 192, 40, 149, 160, 30, 0, 137, 249, 112, 22, 160,
             32, 32, 40, 0, 0, 31, 64, 0, 7, 83, 0, 120, 225, 85];
         let expected = sps.clone();
+        // Existing complete-AU fixture: hardware SPS, PPS and an IDR slice.
+        let access_unit = [vec![0, 0, 0, 1], sps,
+            vec![0, 0, 0, 1, 0x68, 0x22, 0x33, 0, 0, 0, 1, 0x65], vec![0x55; 700]].concat();
         let sending = tokio::spawn(async move {
-            for sequence_number in 0..600u16 {
-                video.write_rtp(rtp::Packet {
-                    header: rtp::header::Header {
-                        version: 2, payload_type, ssrc: 0x2222, sequence_number,
-                        timestamp: 90_000 + sequence_number as u32 * 3000, marker: true,
-                        ..Default::default()
-                    },
-                    payload: sps.clone().into(),
-                }).await?;
+            let mut payloader = H264Payloader::default();
+            let mut sequence_number = 0u16;
+            for frame in 0..600u32 {
+                let payloads = payloader.payload(1200, &access_unit.clone().into())?;
+                let last = payloads.len() - 1;
+                for (part, payload) in payloads.into_iter().enumerate() {
+                    video.write_rtp(rtp::Packet {
+                        header: rtp::header::Header {
+                            version: 2, payload_type, ssrc: 0x2222, sequence_number,
+                            timestamp: 90_000 + frame * 3000, marker: part == last,
+                            ..Default::default()
+                        },
+                        payload,
+                    }).await?;
+                    sequence_number = sequence_number.wrapping_add(1);
+                }
                 sleep(Duration::from_millis(20)).await;
             }
             Ok::<_, anyhow::Error>(())
         });
         let mut outputs = std::collections::HashSet::new();
         while outputs.len() < 2 {
-            let packet = packet_rx.recv().await.unwrap();
-            assert_eq!(packet.payload.as_ref(), expected);
+            let packet = tokio::select! {
+                result = &mut task => anyhow::bail!("peer pump stopped before H264 picture delivery: {result:?}"),
+                packet = packet_rx.recv() => packet.context("H264 output observer closed")?,
+            };
             assert_ne!(packet.header.ssrc, 0x2222);
-            outputs.insert(packet.header.ssrc);
+            if h264_contains(&packet, &expected)? { outputs.insert(packet.header.ssrc); }
         }
         let track = child_tracks.lock().unwrap()[0].clone();
         let ssrc = track.ssrcs().await[0];
@@ -600,13 +623,12 @@ async fn h264_sps_reaches_two_children_with_default_receive_levels_on_retained_p
             while child_pc.current_local_description().await.as_ref().is_none_or(|sdp| sdp.sdp == previous_sdp) {
                 sleep(Duration::from_millis(10)).await;
             }
-        }).await?;
+        }).await.context("retained H264 connection did not renegotiate")?;
         native.update(plans(false), vec![info], vec![]).await?;
         let before = next_matching(&mut packet_rx, Some(ssrc)).await.header.timestamp;
         loop {
             let packet = next_matching(&mut packet_rx, Some(ssrc)).await;
-            if packet.header.timestamp > before + 9000 {
-                assert_eq!(packet.payload.as_ref(), expected);
+            if packet.header.timestamp > before + 9000 && h264_contains(&packet, &expected)? {
                 break;
             }
         }
@@ -699,7 +721,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             .await?;
         let (stop, stopped) = watch::channel(false);
         let (_pause, paused) = watch::channel(false);
-        let task = tokio::spawn(pump(
+        let mut task = tokio::spawn(pump(
             native.clone(),
             HashMap::from([(source_id, source), (child_id, child)]),
             rx,
@@ -712,13 +734,11 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         ));
         let mut ready = std::collections::HashSet::new();
         while ready.len() < 2 {
-            if let Some(Command::BaseState {
-                pair_id,
-                ready: true,
-                ..
-            }) = report_rx.recv().await
-            {
-                ready.insert(pair_id);
+            tokio::select! {
+                result = &mut task => anyhow::bail!("peer pump stopped before A/V base paths were ready: {result:?}"),
+                report = report_rx.recv() => {
+                    if let Some(Command::BaseState { pair_id, ready: true, .. }) = report { ready.insert(pair_id); }
+                }
             }
         }
         let original_control = child_control.lock().unwrap().clone().unwrap();
@@ -760,6 +780,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                     let mut payload = vec![0x55; 100];
                     payload[0] = if index == 0 { 0x10 } else { 0 };
                     payload[1] = 0;
+                    payload[2] = frame as u8; // Source frame identity survives repacketization.
                     video
                         .write_rtp(rtp::Packet {
                             header: rtp::header::Header {
@@ -779,21 +800,35 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
             }
             Ok::<_, anyhow::Error>(())
         });
-        let mut frames: HashMap<u32, std::collections::HashSet<u16>> = HashMap::new();
+        let mut frames = rtc::media::io::sample_builder::SampleBuilder::new(
+            512, rtc::rtp::codec::vp8::Vp8Packet::default(), 90_000);
+        let mut video_origin = None;
+        let mut complete_frames = std::collections::HashSet::new();
         let mut audio_packets = 0;
         let mut last_video = None;
-        while audio_packets < 2 || !frames.values().any(|packets| packets.len() == 64) {
-            let packet = packet_rx.recv().await.unwrap();
+        while audio_packets < 2 || complete_frames.len() < 2 {
+            let packet = tokio::select! {
+                result = &mut task => anyhow::bail!("peer pump stopped before complete A/V delivery: {result:?}"),
+                packet = packet_rx.recv() => packet.context("A/V output observer closed")?,
+            };
             if packet.payload.len() == 3 {
                 audio_packets += 1;
                 assert_eq!(packet.header.payload_type, 111);
             } else {
                 assert_eq!(packet.header.payload_type, 96);
                 assert_ne!(packet.header.ssrc, 0x2222);
-                frames
-                    .entry(packet.header.timestamp)
-                    .or_default()
-                    .insert(packet.header.sequence_number);
+                let now = std::time::Instant::now();
+                frames.push(now, packet.clone());
+                while let Some(sample) = frames.pop(now) {
+                    let frame = sample.data[1];
+                    let expected = [vec![0, frame], vec![0x55; 97]].concat().repeat(64);
+                    assert_eq!(sample.data.as_ref(), expected.as_slice(),
+                        "complete VP8 access unit survives hop repacketization");
+                    let origin = sample.packet_timestamp.wrapping_sub(u32::from(frame) * 18_000);
+                    assert_eq!(*video_origin.get_or_insert(origin), origin,
+                        "each complete picture retains its source-clock interval");
+                    complete_frames.insert(frame);
+                }
                 last_video = Some(packet);
             }
         }
@@ -821,13 +856,13 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                     reports.iter().find(|r| r.ssrc == ssrc),
                 ) {
                     for (report, rate, base) in
-                        [(audio, 48000u64, 50_000u32), (video, 90000u64, 900_000u32)]
+                        [(audio, 48000u64, 50_000u32), (video, 90000u64, video_origin.unwrap())]
                     {
                         let ntp = report.ntp_time.wrapping_sub(0xE0000000_00000000);
                         let expected =
                             base.wrapping_add(((ntp as u128 * rate as u128) >> 32) as u32);
                         assert!(
-                            report.rtp_time.wrapping_sub(expected) <= 1,
+                            (report.rtp_time.wrapping_sub(expected) as i32).unsigned_abs() <= 1,
                             "source RTP/NTP relation survives differential packet delay"
                         );
                         assert_ne!(report.ssrc, 0x1111);
@@ -1090,7 +1125,7 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
                             marker: true,
                             ..Default::default()
                         },
-                        payload: vec![0x10, 0, 0x55].into(),
+                        payload: vec![0x10, 0, 0x44, 0x55].into(),
                     })
                     .await?;
                 sleep(Duration::from_millis(20)).await;
@@ -1115,7 +1150,10 @@ async fn screen_video_bursts_and_source_audio_share_a_stream_and_relay_pli() -> 
         let next = timeout(Duration::from_secs(5), async {
             loop {
                 let packet = packet_rx.recv().await.unwrap();
-                if packet.header.payload_type == 96 && packet.header.timestamp >= 9_000_000 {
+                if packet.header.payload_type == 96 && packet.header.ssrc != ssrc {
+                    let bytes = rtc::rtp::codec::vp8::Vp8Packet::default().depacketize(&packet.payload)
+                        .expect("replacement picture must carry a complete VP8 payload");
+                    assert_eq!(bytes.as_ref(), [0, 0x44, 0x55]);
                     break packet;
                 }
             }
@@ -1275,7 +1313,7 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
                     }
                 }
             })
-            .await?;
+            .await.context("shadow room base paths did not become ready")?;
             // The receiver offers its own dynamic Opus PT before Native attaches
             // a sender to that negotiated transceiver. PT111 is not universal.
             receiver_pc
@@ -1303,7 +1341,7 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
                     sleep(Duration::from_millis(10)).await;
                 }
             })
-            .await?;
+            .await.context("shadow receiver did not negotiate its Opus payload type")?;
             let sender_a = tokio::spawn(async move {
                 for seq in 1000..4000 {
                     source_a
@@ -1369,7 +1407,7 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
                     }
                 }
             })
-            .await?;
+            .await.context("prepared shadow did not deliver RTP")?;
             assert_ne!(shadow.header.ssrc, 0x22222222);
             assert!(shadow.header.sequence_number < 1000);
             assert_eq!(
