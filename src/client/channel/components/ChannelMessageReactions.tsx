@@ -34,14 +34,14 @@ export function ChannelMessageReactions({ reactions, selfUserId, pending, disabl
   return <div className="c3-message-reactions">
     {messageReactionIds.map(reaction => {
       const count = choices.filter(choice => choice.includes(reaction)).length;
-      return count > 0 && <button key={reaction} className="c3-message-reaction" type="button"
-        aria-label={`${t(`interaction.reaction.${reaction}`)} · ${count}`}
+      return count > 0 && <button key={reaction} className={`lr-chip c3-message-reaction${selected.includes(reaction) ? " is-selected" : ""}`} type="button"
+        aria-label={`${t(`interaction.reaction.${reaction}`)} ${count}`}
         aria-pressed={selected.includes(reaction)} disabled={!canSet} onClick={() => set(reaction)}>
         <ReactionIcon reaction={reaction} /><span>{count}</span>
       </button>;
     })}
     <Tooltip kind="hint-reaction-picker" className="c3-message-action" text={label}>
-      <button ref={trigger} popoverTarget={id} className="c3-add-reaction" type="button" aria-label={label} disabled={disabled || !selfUserId}>
+      <button ref={trigger} popoverTarget={id} className="lr-btn is-dense is-quiet c3-add-reaction" type="button" aria-label={label} disabled={disabled || !selfUserId}>
         <Glyph name="smile" size={16} /><Glyph name="plus" size={10} />
       </button>
     </Tooltip>

@@ -1,19 +1,14 @@
-article:has(.c3-message-reactions) { position: relative; }
+.c3-reaction-message { position: relative; }
 .c3-message-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .c3-message-reactions:has(.c3-message-reaction) { margin-top: 7px; }
-.c3-message-reaction { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--wall); color: var(--muted); font-size: 12px; }
-.c3-message-reaction:hover { background: var(--control-hover); }
-.c3-message-reaction[aria-pressed="true"] { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); }
+.c3-message-reaction.lr-chip { min-height: 28px; padding: 3px 9px; border-width: 1px; border-radius: 9px; font-size: 12px; }
 .c3-message-action.lr-comic-tip-wrap { position: absolute; right: 0; top: -4px; }
-.c3-add-reaction { display: flex; align-items: center; justify-content: center; gap: 0; height: 29px; min-width: 32px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); color: var(--muted); opacity: 0; pointer-events: none; transition: opacity 140ms, background-color 140ms; }
-article:hover .c3-add-reaction, article:focus-within .c3-add-reaction { opacity: 1; pointer-events: auto; }
-.c3-add-reaction:hover { background: var(--control-hover); color: var(--ink); }
+.c3-add-reaction.lr-btn { --button-size: 29px; --button-padding: 4px; min-width: 32px; gap: 0; opacity: 0; pointer-events: none; }
+.c3-add-reaction > .lr-glyph:last-child { width: 10px; height: 10px; }
+.c3-reaction-message:is(:hover, :focus-within) > div > .c3-message-reactions .c3-add-reaction { opacity: 1; pointer-events: auto; }
 .c3-message-reaction-menu { position: fixed; inset: auto; margin: 0; width: 286px; max-width: calc(100vw - 16px); padding: 12px; border-radius: 17px; }
 .c3-message-reaction-menu > strong { display: block; font-size: 12px; margin: 0 3px 9px; }
 .c3-message-reaction-menu .lr-reaction-option { font-size: 23px; }
 @media (hover: none) {
-  .c3-add-reaction { opacity: 1; pointer-events: auto; border-color: transparent; background: transparent; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .c3-add-reaction { transition: none; }
+  .c3-add-reaction.lr-btn { opacity: 1; pointer-events: auto; }
 }

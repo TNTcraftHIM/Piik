@@ -84,7 +84,7 @@ function Message({ index, time, children, model, roomId, messageId }: {
   model: DesignConversationModel; roomId: string; messageId: string;
 }) {
   const name = useContext(DesignNames);
-  return <article className="cd-message">
+  return <article className="cd-message c3-reaction-message">
     <DesignAvatar index={index} />
     <div><header><strong>{name(index)}</strong><time>{time}</time></header>
       {children}<ChannelMessageReactions selfUserId={designPeople[3].id} pending={false}
