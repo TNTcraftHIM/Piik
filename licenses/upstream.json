@@ -18,5 +18,15 @@
     "file": "cloudflared-2026.10.3.txt",
     "source": "https://github.com/cloudflare/cloudflared/tree/de6376c5af4a67cbc65258682e5a01781827643d",
     "sha256": "86d91fce84e045818cd3e4e95aba68d32274ed42b9eb1fe88612e12d9e7e1ce1"
+  },
+  "kotlin-stdlib@2.2.10": {
+    "file": "kotlin-stdlib-2.2.10.txt",
+    "source": "https://github.com/JetBrains/kotlin/tree/v2.2.10/license",
+    "sha256": "b89c81530d06246b446c48697e25c3e0d664b48662cbc6d384f75a40e95cfdc2"
+  },
+  "jetbrains-annotations@13.0": {
+    "file": "jetbrains-annotations-13.0.txt",
+    "source": "https://repo.maven.apache.org/maven2/org/jetbrains/annotations/13.0/annotations-13.0-sources.jar",
+    "sha256": "87d9969aec44fb1ae09b0cca9586ceec329ff12a99342de28037cb648f792881"
   }
 }

@@ -384,8 +384,9 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;30.0.16248370'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
           echo "GRADLE_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v gradle)")")")" >> "$GITHUB_ENV"
-          go install golang.org/x/mobile/cmd/gomobile@v0.0.0-20261011034528-197770444867
-          go install golang.org/x/mobile/cmd/gobind@v0.0.0-20261011034528-197770444867
+          rustup toolchain install 1.91.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android,wasm32-unknown-unknown
+          cargo +1.91.0 install wasm-bindgen-cli --version 0.2.129 --locked
+          cargo +1.91.0 install cargo-about --version 0.9.3 --locked --features cli
       - name: Prepare Android signing
         if: matrix.target == 'android-universal'
         env:

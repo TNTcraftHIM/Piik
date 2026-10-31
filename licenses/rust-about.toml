@@ -1,0 +1,44 @@
+# Licenses in the shipped Rust dependency graph; new terms require review.
+accepted = ["Apache-2.0", "MIT", "BSD-3-Clause", "BSD-2-Clause", "ISC", "Zlib", "Unicode-3.0"]
+ignore-dev-dependencies = true
+ignore-build-dependencies = true
+private = { ignore = true }
+
+[attohttpc]
+accepted = ["MPL-2.0"]
+
+[option-ext]
+accepted = ["MPL-2.0"]
+
+# These packaged files contain combined or extended notices that the scanner
+# cannot identify. Preserve the complete upstream text rather than synthesize it.
+[curve25519-dalek.clarify]
+license = "BSD-3-Clause"
+[[curve25519-dalek.clarify.files]]
+path = "LICENSE"
+checksum = "cca0bd3c4fcdba74145ef9d49c62337e2c9fbf9368288f11d0547f1b0273219f"
+
+[netlink-packet-core.clarify]
+license = "MIT"
+[[netlink-packet-core.clarify.files]]
+path = "LICENSE-MIT"
+checksum = "964a53330f9cd970c1790311024281a994644f9b554ff6d37e233672287bf767"
+
+[netlink-proto.clarify]
+license = "MIT"
+[[netlink-proto.clarify.files]]
+path = "LICENSE-MIT"
+checksum = "964a53330f9cd970c1790311024281a994644f9b554ff6d37e233672287bf767"
+
+[netlink-sys.clarify]
+license = "MIT"
+[[netlink-sys.clarify.files]]
+path = "LICENSE-MIT"
+checksum = "964a53330f9cd970c1790311024281a994644f9b554ff6d37e233672287bf767"
+
+# dlopen2 omits its workspace's license from the published crate.
+[dlopen2.clarify]
+license = "MIT"
+[[dlopen2.clarify.git]]
+path = "LICENSE"
+checksum = "39fa265207450e77c62e90c5594a06c085b655d8374c7ced4bf7894b6bd95dd2"

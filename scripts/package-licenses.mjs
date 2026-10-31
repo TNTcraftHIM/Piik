@@ -116,26 +116,36 @@ export function writeServerLicenseNotices(repositoryRoot, outputFile, goCommand,
     WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules));
 }
 
-export function writeAndroidLicenseNotices(repositoryRoot, outputFile, goCommand) {
-  const mobileRoot = join(repositoryRoot, "mobile");
-  const target = { goos: "android", goarch: "arm64", cgo: false };
-  const notices = goNotices(mobileRoot, goCommand, target, "./bridge");
-  // gomobile adds the JNI binding runtime when generating the AAR. It is not
-  // imported by the bridge package before generation, and has its own notice.
-  const runtime = JSON.parse(execFileSync(goCommand, ["list", "-m", "-json", "golang.org/x/mobile"], {
-    cwd: mobileRoot, encoding: "utf8", windowsHide: true,
-  }));
-  const files = new Map(noticesIn(runtime.Dir).map((file) => [file, readFileSync(join(runtime.Dir, file), "utf8")]));
-  if (!files.size) throw new Error("Missing Go mobile runtime license");
-  notices.modules.set(`${runtime.Path}@${runtime.Version}`, files);
+function rustNotices(repositoryRoot, manifest, targets) {
+  const command = process.env.CARGO_ABOUT ?? "cargo-about";
+  const options = { cwd: repositoryRoot, encoding: "utf8", windowsHide: true,
+    maxBuffer: 16 * 1024 * 1024, env: { ...process.env, RUSTUP_TOOLCHAIN: "1.91.0" } };
+  if (execFileSync(command, ["--version"], options).trim() !== "cargo-about 0.9.3")
+    throw new Error("Rust notices require cargo-about 0.9.3.");
+  const output = join(repositoryRoot, "build", "licenses", `${manifest.split("/").at(-2)}.txt`);
+  mkdirSync(dirname(output), { recursive: true });
+  execFileSync(command, ["generate", "--locked", "--fail", "--output-file", output,
+    "--manifest-path", join(repositoryRoot, manifest),
+    ...targets.flatMap(target => ["--target", target]),
+    "--config", join(repositoryRoot, "licenses", "rust-about.toml"),
+    join(repositoryRoot, "licenses", "rust-about.hbs")], options);
+  return readFileSync(output, "utf8");
+}
+
+export function writeAndroidLicenseNotices(repositoryRoot, outputFile) {
+  const runtime = rustNotices(repositoryRoot, "prototype/channel-android/Cargo.toml",
+    ["aarch64-linux-android", "x86_64-linux-android"]);
+  const browser = rustNotices(repositoryRoot, "prototype/channel-browser/Cargo.toml", ["wasm32-unknown-unknown"]);
   mkdirSync(dirname(outputFile), { recursive: true });
   writeFileSync(outputFile, "Piik Android third-party software notices\n" +
     section("Piik (MIT)", readFileSync(join(repositoryRoot, "LICENSE"), "utf8")) +
-    WEB_NOTICE_LINE + notices.toolchain + moduleSections(notices.modules) +
+    WEB_NOTICE_LINE + section("Rust runtime and paired Android platform verifier", runtime) +
+    section("Browser Rust/WASM adapter", browser) +
+    section("Kotlin standard library (Apache-2.0)", pinnedNotice("kotlin-stdlib@2.2.10")) +
+    section("JetBrains annotations (Apache-2.0)", pinnedNotice("jetbrains-annotations@13.0")) +
     section("WebRTC FrameDropper (BSD-3-Clause)",
       ["LICENSE", "PATENTS"].map(file => readFileSync(join(repositoryRoot,
         "native", "third_party", "webrtc-frame-dropper", file), "utf8")).join("\n")) +
-    section("Android NDK libc++ (Apache-2.0 WITH LLVM-exception)", pinnedNotice("libc++@ndk-30.0.16248370")) +
     section(`cloudflared@${CLOUDFLARED_VERSION}`, pinnedNotice(`cloudflared@${CLOUDFLARED_VERSION}`)) +
     section("Piik Android cloudflared changes (MIT)",
       "Android system DNS adapter and exhausted-QUIC-dial fallback. Source and provenance: mobile/cloudflared/."));

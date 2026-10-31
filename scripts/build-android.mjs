@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { spawnSync, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeAndroidLicenseNotices } from './package-licenses.mjs';
+import { writeAndroidLicenseNotices, writeWebLicenseNotices } from './package-licenses.mjs';
 import { writeAndroidAppIcon } from './app-icons.mjs';
 import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256, ANDROID_APP_PACKAGE_TARGET, androidVersionCode } from './app-package-targets.mjs';
 import { buildVersion } from './release-version.mjs';
@@ -13,6 +13,10 @@ import { assertCleanRevision } from './build-workspace.mjs';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const android = join(root, 'mobile', 'android');
 const gradleHome = process.env.GRADLE_HOME;
+const targets = [
+  { abi: 'arm64-v8a', goarch: 'arm64', rust: 'aarch64-linux-android', machine: 'AArch64' },
+  { abi: 'x86_64', goarch: 'amd64', rust: 'x86_64-linux-android', machine: 'Advanced Micro Devices X86-64' },
+];
 const tunnelOnly = process.argv.includes('--tunnel-only');
 const release = process.argv.includes('--release');
 let output;
@@ -83,14 +87,11 @@ if (!host) throw new Error('Unsupported NDK build host.');
 const tools = join(process.env.ANDROID_NDK_HOME, 'toolchains', 'llvm', 'prebuilt', host, 'bin');
 const exe = process.platform === 'win32' ? '.exe' : '';
 const clang = join(tools, `clang${exe}`);
-for (const [abi, arch, target, machine] of [
-  ['arm64-v8a', 'arm64', 'aarch64-linux-android29', 'AArch64'],
-  ['x86_64', 'amd64', 'x86_64-linux-android29', 'Advanced Micro Devices X86-64'],
-]) {
+for (const { abi, goarch, rust, machine } of targets) {
   const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libcloudflared.so');
   mkdirSync(dirname(output), { recursive: true });
-  const env = { ...process.env, GOOS: 'android', GOARCH: arch, CGO_ENABLED: '1',
-    CC: `"${clang}" --target=${target}`, GOWORK: 'off' };
+  const env = { ...process.env, GOOS: 'android', GOARCH: goarch, CGO_ENABLED: '1',
+    CC: `"${clang}" --target=${rust}29`, GOWORK: 'off' };
   run('go', ['build', '-mod=readonly', `-overlay=${overlay}`, '-tags=piik_cloudflared', '-trimpath', '-buildvcs=false', '-buildmode=pie',
     `-ldflags=-s -w -X main.Version=${CLOUDFLARED_VERSION} -X main.BuildTime=source-pinned -linkmode=external -extldflags=-Wl,-z,max-page-size=16384`,
     '-o', output, './cmd/cloudflared'], { cwd: source, env });
@@ -117,35 +118,40 @@ if (!tunnelOnly) {
   const versionName = version === 'development' ? `${version}-${revision.slice(0, 7)}` : version;
   const launcher = readdirSync(join(gradleHome, 'lib')).find(name => /^gradle-launcher-.*\.jar$/.test(name));
   if (!launcher) throw new Error('GRADLE_HOME does not contain a Gradle launcher.');
-  const frameDropper = join(root, 'native', 'third_party', 'webrtc-frame-dropper');
-  for (const [abi, target] of [['arm64-v8a', 'aarch64-linux-android29'], ['x86_64', 'x86_64-linux-android29']]) {
-    const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libpiik_frame_dropper.so');
-    mkdirSync(dirname(output), { recursive: true });
-    run(join(tools, `clang++${exe}`), [`--target=${target}`, '-std=c++17', '-O2', '-fPIC', '-shared',
-      '-static-libstdc++', '-fno-exceptions', '-fno-rtti', '-fvisibility=hidden',
-      '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '-Wl,--exclude-libs,ALL',
-      '-Wl,-z,defs', '-Wl,-z,max-page-size=16384', '-Wl,-soname,libpiik_frame_dropper.so',
-      '-I', frameDropper, join(android, 'frame_dropper.cc'),
-      join(frameDropper, 'modules', 'video_coding', 'utility', 'frame_dropper.cc'),
-      join(frameDropper, 'rtc_base', 'numerics', 'exp_filter.cc'), '-o', output]);
+  const cargoTarget = resolve(process.env.CARGO_TARGET_DIR ?? join(root, 'build', 'android-rust-target'));
+  for (const { abi, rust, machine } of targets) {
+    const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libpiik_channel_android.so');
+    const key = rust.replaceAll('-', '_');
+    const env = { ...process.env, CARGO_TARGET_DIR: cargoTarget,
+      PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision,
+      [`CARGO_TARGET_${key.toUpperCase()}_LINKER`]: clang,
+      [`CARGO_TARGET_${key.toUpperCase()}_RUSTFLAGS`]: `-C link-arg=--target=${rust}29 -C link-arg=-Wl,-z,max-page-size=16384`,
+      [`CC_${key}`]: clang, [`CXX_${key}`]: join(tools, `clang++${exe}`),
+      [`AR_${key}`]: join(tools, `llvm-ar${exe}`),
+      [`CFLAGS_${key}`]: `--target=${rust}29`, [`CXXFLAGS_${key}`]: `--target=${rust}29` };
+    run('cargo', ['+1.91.0', 'build', '--locked', '--manifest-path', join(root, 'prototype', 'channel-android', 'Cargo.toml'),
+      '--target', rust, '--lib', ...(release ? ['--release'] : [])], { env });
+    copyFileSync(join(cargoTarget, rust, release ? 'release' : 'debug', 'libpiik_channel_android.so'), output);
+    run(join(tools, `llvm-strip${exe}`), ['--strip-debug', output]);
+    rmSync(join(dirname(output), 'libpiik_frame_dropper.so'), { force: true });
     const elf = execFileSync(join(tools, `llvm-readelf${exe}`), ['-h', '-l', '-d', output], { encoding: 'utf8', windowsHide: true });
     const loads = [...elf.matchAll(/^\s*LOAD\s+.*$/gm)];
-    if (!/Type:\s+DYN/.test(elf) || !loads.length || loads.some(([line]) => !/0x4000\s*$/.test(line)))
-      throw new Error(`FrameDropper ${abi} must have 16KB LOAD alignment.`);
+    if (!elf.includes(machine) || !/Type:\s+DYN/.test(elf) || !loads.length || loads.some(([line]) => !/0x4000\s*$/.test(line)))
+      throw new Error(`Rust JNI ${abi} must have 16KB LOAD alignment.`);
     for (const [, library] of elf.matchAll(/Shared library: \[([^\]]+)\]/g))
-      if (!['libc.so', 'libdl.so', 'libm.so'].includes(library))
-        throw new Error(`Unexpected FrameDropper Android dependency: ${library}`);
-    console.log(`Android WebRTC FrameDropper: ${abi} (static C++ runtime, 16KB)`);
+      if (!['libc.so', 'libdl.so', 'libm.so', 'liblog.so', 'libandroid.so', 'libmediandk.so', 'libEGL.so', 'libGLESv2.so'].includes(library))
+        throw new Error(`Unexpected Rust JNI Android dependency: ${library}`);
+    console.log(`Android Rust runtime: ${abi} (16KB)`);
   }
-  const webEnv = { ...process.env, VITE_PIIK_VERSION: version, VITE_PIIK_REVISION: revision };
-  if (process.platform === 'win32') run(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm run build:web'], { env: webEnv });
-  else run('npm', ['run', 'build:web'], { env: webEnv });
-  writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'), 'go');
+  const webEnv = { ...process.env, CARGO_TARGET_DIR: cargoTarget, RUSTUP_TOOLCHAIN: '1.91.0', VITE_PIIK_VERSION: version, VITE_PIIK_REVISION: revision };
+  writeWebLicenseNotices(root, join(root, 'public', 'third-party-licenses.txt'));
+  run(process.execPath, [join(root, 'prototype', 'channel-browser', 'build.mjs')], { env: webEnv });
+  run(process.execPath, [join(root, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--config', 'prototype/channel-browser/web.vite.config.ts'], { env: webEnv });
+  const webAssets = join(android, 'app', 'src', 'main', 'assets', 'web');
+  rmSync(webAssets, { recursive: true, force: true });
+  cpSync(join(root, 'build', 'channel-web'), webAssets, { recursive: true });
+  writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'));
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
-  mkdirSync(join(android, 'app', 'libs'), { recursive: true });
-  run(process.env.PIIK_GOMOBILE || 'gomobile', ['bind', '-trimpath', '-target=android/arm64,android/amd64', '-androidapi', '29',
-    `-ldflags=-s -w -checklinkname=0 -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Release=${version} -X github.com/TNTcraftHIM/Piik/internal/app/buildinfo.Revision=${revision}`,
-    '-javapkg', 'tv.piik', '-o', join(android, 'app', 'libs', 'piik.aar'), './mobile/bridge']);
   // Recreate the final ZIP so replaced native libraries leave no free blocks.
   run('java', ['-classpath', join(gradleHome, 'lib', launcher), 'org.gradle.launcher.GradleMain',
     '-Dorg.gradle.jvmargs=-Xmx2g', '-p', android, '--no-daemon',
@@ -161,7 +167,7 @@ if (!tunnelOnly) {
       'verify', '--verbose', '--print-certs', apk], { encoding: 'utf8', windowsHide: true });
     if (/CN=Android Debug\b/i.test(signing)) throw new Error('A release APK cannot use an Android debug signing key.');
     const badging = execFileSync(join(sdkTools, `aapt${exe}`), ['dump', 'badging', apk], { encoding: 'utf8', windowsHide: true });
-    if (!badging.includes(`package: name='tv.piik.android' versionCode='${versionCode}' versionName='${versionName}'`) ||
+    if (!badging.includes(`package: name='tv.piik.android.channel3' versionCode='${versionCode}' versionName='${versionName}'`) ||
         /application-debuggable/.test(badging) || !badging.includes("native-code: 'arm64-v8a' 'x86_64'"))
       throw new Error('Android release identity, ABIs or debuggable flag differs from the package contract.');
     const { id: target, artifact } = ANDROID_APP_PACKAGE_TARGET;
