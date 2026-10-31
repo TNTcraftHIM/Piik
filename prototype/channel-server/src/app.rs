@@ -40,7 +40,7 @@ use tokio::{
     task::JoinHandle,
     time::timeout,
 };
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::services::ServeDir;
 use uuid::Uuid;
 
 const IO_TIMEOUT: Duration = Duration::from_secs(5);
@@ -298,8 +298,8 @@ pub async fn serve(
         .into_iter()
         .map(|(site, id)| (site, Arc::new(Permission::new(id))))
         .collect();
-    let assets =
-        ServeDir::new(&config.assets).fallback(ServeFile::new(config.assets.join("index.html")));
+    let index = config.assets.join("index.html");
+    let assets = ServeDir::new(&config.assets).fallback(web::document(index.clone()));
     let app = Arc::new(App {
         desktop: Desktop::new()?,
         config,
@@ -315,6 +315,8 @@ pub async fn serve(
         launch: Mutex::new(None),
     });
     let router = Router::new()
+        .route("/", web::document(index.clone()))
+        .route("/index.html", web::document(index))
         .route("/connect-discovery", get(discovery))
         .route("/health", get(health))
         .route("/rooms", get(upgrade))
