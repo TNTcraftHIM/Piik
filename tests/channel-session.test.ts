@@ -725,11 +725,12 @@ test("camera permission denial permits retry and closing discards a late camera 
 
 test("Browser source replacement keeps its publication, rejects only the candidate and fences late ended/grant events", async () => {
   const { session, socket } = await setup();
-  const old = remoteTrack("video"), next = remoteTrack("video"), cancelled = remoteTrack("video"), stopped = remoteTrack("video");
+  const old = remoteTrack("video"), expired = remoteTrack("video"), next = remoteTrack("video"), cancelled = remoteTrack("video"), stopped = remoteTrack("video");
   const oldStream = remoteStream("old", [old]), nextStream = remoteStream("next", [next]);
   let grant!: (stream: MediaStream) => void;
   const getDisplayMedia = vi.fn().mockResolvedValueOnce(oldStream)
     .mockRejectedValueOnce(new DOMException("Declined", "NotAllowedError"))
+    .mockResolvedValueOnce(remoteStream("expired", [expired]))
     .mockResolvedValueOnce(nextStream)
     .mockImplementation(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
   vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia } });
@@ -744,6 +745,17 @@ test("Browser source replacement keeps its publication, rejects only the candida
     await expect(session.startScreen("first")).rejects.toMatchObject({ name: "NotAllowedError" });
     expect(old.stop).not.toHaveBeenCalled();
     expect(session.getSnapshot().streams.get(publication.id)).toBe(oldStream);
+    const ending = session.startScreen("first");
+    const ended = expect(ending).rejects.toThrow("capture_unavailable");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    Object.defineProperty(expired, "readyState", { value: "ended" });
+    expired.dispatchEvent(new Event("ended"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await ended;
+    expect(expired.stop).toHaveBeenCalledOnce();
+    expect(old.stop).not.toHaveBeenCalled();
+    expect(session.getSnapshot().streams.get(publication.id)).toBe(oldStream);
+    expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
     const replacing = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
     expect(socket.sent.at(-1)).toMatchObject({ publicationId: publication.id, toSessionId: "endpoint" });
@@ -776,7 +788,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
   } finally { session.close(); }
 });
 
-test.each(["live", "stop-before-reply"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
+test.each(["live", "stop-before-reply", "candidate-ended-before-reply"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -847,6 +859,21 @@ test.each(["live", "stop-before-reply"])("Browser and Native handoffs keep one p
     const browser = session.startScreen("first");
     const transferring = await appCommand("transfer_source");
     expect(transferring).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
+    if (outcome === "candidate-ended-before-reply") {
+      const ended = expect(browser).rejects.toThrow("capture_unavailable");
+      Object.defineProperty(next, "readyState", { value: "ended", configurable: true });
+      next.dispatchEvent(new Event("ended"));
+      state = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }], subscriptions: [] };
+      socket.receive({ type: "state", state }); appReply();
+      expect(await appCommand("stop_capture")).toMatchObject({ publicationId: publication.id });
+      appReply(); await ended;
+      expect(socket.sent.at(-1)).toMatchObject({ type: "unpublish", publicationId: publication.id });
+      socket.receive({ type: "state", state: { ...state, publications: [] } });
+      expect(next.stop).toHaveBeenCalledOnce();
+      expect(session.getSnapshot().streams.has(publication.id)).toBe(false);
+      expect(session.getSnapshot().ownedScreens.size).toBe(0);
+      return;
+    }
     if (outcome === "stop-before-reply") {
       const cancelled = expect(browser).rejects.toMatchObject({ name: "AbortError" });
       const stopping = session.stopScreen(publication.id);

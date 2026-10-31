@@ -859,6 +859,14 @@ export class ChannelSession {
           this.send({ type: "unpublish", publicationId: share.id });
           throw new DOMException("Capture cancelled", "AbortError");
         }
+        if (candidate.getVideoTracks()[0]?.readyState !== "live") {
+          if (!previous) {
+            // The Native transfer already made this Browser the publication owner.
+            this.send({ type: "unpublish", publicationId: share.id });
+            await this.stopScreen(share.id);
+          }
+          throw new Error("capture_unavailable");
+        }
         this.local.set(share.id, { roomId, kind: "screen", stream: candidate, camera: source === "camera" });
         this.admittedPublications.add(share.id);
         this.media.setLocal(share.id, candidate);
