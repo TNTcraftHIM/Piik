@@ -186,9 +186,13 @@ function microphoneMixer(clones: MediaStream[]) {
     createGain = vi.fn(() => this.gain);
     createAnalyser = () => ({ fftSize: 256, getFloatTimeDomainData: vi.fn() });
     createMediaStreamSource = vi.fn(() => ({ connect: vi.fn() }));
-    createMediaStreamDestination = vi.fn(() => ({ stream: Object.assign(remoteStream("processed", [remoteTrack("audio")]), {
-      active: true, clone: () => clones.shift()!,
-    }) }));
+    createMediaStreamDestination = vi.fn(() => {
+      const track = remoteTrack("audio");
+      vi.mocked(track.stop).mockImplementation(() => { Object.defineProperty(track, "readyState", { value: "ended" }); });
+      const stream = Object.assign(remoteStream("processed", [track]), { clone: () => clones.shift()! });
+      Object.defineProperty(stream, "active", { get: () => track.readyState === "live" });
+      return { stream };
+    });
   }
   const contexts: Context[] = [];
   vi.stubGlobal("AudioContext", class extends Context { constructor() { super(); contexts.push(this); } });
@@ -259,6 +263,32 @@ test("closing during microphone permission releases the pending context and late
   expect(contexts[0].createMediaStreamSource).not.toHaveBeenCalled();
   expect(contexts[0].close).toHaveBeenCalledOnce();
   expect(raw.stop).toHaveBeenCalledOnce();
+});
+
+test("a source ending while voice join awaits authority cannot publish a live orphan clone", async () => {
+  const { session, socket } = await setup();
+  const track = remoteTrack("audio"), clone = remoteStream("pending-voice", [track]);
+  const contexts = microphoneMixer([clone]), raw = remoteTrack("audio");
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("source", [raw]) } });
+  try {
+    const joining = session.joinVoice("first");
+    const rejected = expect(joining).rejects.toThrow("microphone_unavailable");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: true }));
+    const join = socket.sent.at(-1)!;
+    Object.defineProperty(raw, "readyState", { value: "ended" });
+    raw.onended?.call(raw, new Event("ended"));
+    expect(track.readyState).toBe("live");
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    socket.receive({ type: "room_reply", roomId: "first", requestId: join.requestId, result: { type: "done" } });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "voice", joined: false }));
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+    const leave = socket.sent.at(-1)!;
+    socket.receive({ type: "room_reply", roomId: "first", requestId: leave.requestId, result: { type: "done" } });
+    await rejected;
+    expect(track.stop).toHaveBeenCalled();
+    expect(session.getSnapshot().pending.has("voice:first")).toBe(false);
+    expect(session.getSnapshot().state?.voice).toEqual([]);
+  } finally { session.close(); }
 });
 
 test("ending a Browser microphone retires its publication while room listening remains joined", async () => {

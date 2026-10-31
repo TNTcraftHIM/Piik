@@ -651,9 +651,10 @@ export class ChannelSession {
     this.local.set(id, { roomId, kind, stream, microphone });
     this.media.setLocal(id, stream);
     try {
+      if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
       await this.request({ type: "publish", publication: { id, roomId, kind, muted: false } });
       const primary = kind === "screen" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
-      if (primary?.readyState === "ended") {
+      if (primary?.readyState === "ended" || (microphone && !microphone.stream.active)) {
         this.send({ type: "unpublish", publicationId: id });
         throw new Error(kind === "screen" ? "capture_unavailable" : "microphone_unavailable");
       }
