@@ -76,10 +76,11 @@ export class BrowserVoiceEndpoint {
     if (localOnly) return levels;
     const connections = [...this.connections.values()].filter(connection => !connection.config.pending && connection.pc.connectionState === "connected");
     await Promise.all(connections.map(async connection => {
+      const received = [...this.received].filter(([, binding]) => binding.connectionId === connection.config.connectionId);
       const stats = await connection.pc.getStats();
-      if (!this.current(connection)) return;
-      for (const binding of this.received.values()) {
-        if (binding.connectionId !== connection.config.connectionId) continue;
+      if (!this.current(connection) || connection.config.pending || connection.pc.connectionState !== "connected") return;
+      for (const [key, binding] of received) {
+        if (this.received.get(key) !== binding) continue;
         const publisher = this.state?.publications.find(pub => pub.id === binding.publicationId)?.peerId;
         if (!publisher) continue;
         for (const row of stats.values()) if (row.type === "inbound-rtp" && row.kind === "audio" && row.trackIdentifier === binding.track.id) {
@@ -92,16 +93,18 @@ export class BrowserVoiceEndpoint {
   async connectionMetrics(): Promise<readonly VoiceConnectionMetric[]> {
     const connections = [...this.connections.values()].filter(connection => !connection.config.pending && connection.pc.connectionState === "connected");
     const samples = await Promise.all(connections.map(async connection => {
+      const received = [...this.received].filter(([, binding]) => binding.connectionId === connection.config.connectionId);
+      const senders = [...connection.senders].map(([publicationId, sender]) => ({ publicationId, sender, track: sender.track }));
       const report = await connection.pc.getStats();
       if (!this.current(connection) || connection.config.pending || connection.pc.connectionState !== "connected") return [];
-      const samples: VoiceConnectionMetric[] = [], retained = new Set<string>();
       const { config } = connection;
+      const samples: VoiceConnectionMetric[] = [];
+      const retained = new Set([...config.send.map(id => `send/${id}`), ...config.receive.map(id => `receive/${id}`)]);
       const viaPeerId = config.transport === "sfu" ? null : config.parentPeerId === this.peerId ? config.childPeerId : config.parentPeerId ?? null;
       const sample = (publicationId: string, track: MediaStreamTrack, direction: "send" | "receive") => {
         const publication = this.state?.publications.find(publication => publication.id === publicationId);
         if (!publication || track.readyState === "ended") return;
         const key = `${direction}/${publicationId}`;
-        retained.add(key);
         const previous = connection.metrics.get(key) ?? createStatsAccumulator();
         connection.metrics.set(key, previous);
         samples.push({ connectionId: config.connectionId, peerId: publication.peerId, viaPeerId,
@@ -109,11 +112,11 @@ export class BrowserVoiceEndpoint {
           metrics: collectConnectionMetricsFromReport(report, direction, previous,
             { kind: "audio", trackIdentifier: track.id, audioTrackIdentifier: track.id }) });
       };
-      for (const binding of this.received.values()) {
-        if (binding.connectionId === config.connectionId && config.receive.includes(binding.publicationId)) sample(binding.publicationId, binding.track, "receive");
+      for (const [key, binding] of received) {
+        if (this.received.get(key) === binding && config.receive.includes(binding.publicationId)) sample(binding.publicationId, binding.track, "receive");
       }
-      for (const [publicationId, sender] of connection.senders) {
-        if (config.send.includes(publicationId) && sender.track) sample(publicationId, sender.track, "send");
+      for (const { publicationId, sender, track } of senders) {
+        if (config.send.includes(publicationId) && connection.senders.get(publicationId) === sender && sender.track === track && track) sample(publicationId, track, "send");
       }
       for (const key of connection.metrics.keys()) if (!retained.has(key)) connection.metrics.delete(key);
       return samples;
@@ -331,10 +334,16 @@ export class BrowserVoiceEndpoint {
   private async configureSenders(connection: Connection): Promise<void> {
     const bitrate = this.state?.bitrate ?? 32_000;
     for (const sender of connection.senders.values()) {
-      const parameters = sender.getParameters();
-      if (!parameters.encodings.length || !parameters.codecs?.length) continue;
-      if (parameters.encodings[0]?.maxBitrate !== audioSenderCeiling(parameters, bitrate)) {
-        await this.wait(connection, () => configureAudioSender(sender, bitrate));
+      try {
+        const parameters = sender.getParameters();
+        if (!parameters.encodings.length || !parameters.codecs?.length) continue;
+        if (parameters.encodings[0]?.maxBitrate !== audioSenderCeiling(parameters, bitrate)) {
+          await this.wait(connection, () => configureAudioSender(sender, bitrate));
+        }
+      } catch (error) {
+        if (!this.current(connection)) throw error;
+        // A rejected tuning request leaves the negotiated transport usable.
+        // Readback on the next explicit reconcile retries an unapplied ceiling.
       }
     }
   }
@@ -345,8 +354,10 @@ export class BrowserVoiceEndpoint {
 
   async reconcile(): Promise<void> {
     const generation = this.generation;
-    for (const config of this.state?.connections ?? []) {
+    for (const planned of this.state?.connections ?? []) {
       if (generation !== this.generation) return;
+      const config = this.state?.connections.find(current => current.connectionId === planned.connectionId);
+      if (!config) continue;
       const connection = this.connections.get(config.connectionId) ?? this.create(config);
       try {
         await this.syncSenders(connection);

@@ -34,6 +34,18 @@ type recordedInput struct {
 	resetErr  error
 }
 
+func receiveTestInput(m *Manager, c *connection, plain []byte) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.receiveLocked(c, plain)
+}
+
+func revokeTestEdge(s *Session, edgeID string) {
+	s.manager.mu.Lock()
+	defer s.manager.mu.Unlock()
+	s.revokeEdgeLocked(edgeID)
+}
+
 func setTestPolicy(s *Session, mode, password string) error {
 	change, err := s.BeginPolicy(context.Background(), mode, password, s.coPlay)
 	if err != nil {
@@ -63,7 +75,11 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	request := func(c *connection, password string) {
 		t.Helper()
 		data, _ := json.Marshal(inputEvent{Type: "request", Intent: strings.Repeat("f", 32), Password: password})
-		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: data}, c.epoch)
+		header := make([]byte, 20)
+		binary.BigEndian.PutUint64(header, c.cipher.received+1)
+		_, _ = rand.Read(header[8:])
+		data = c.cipher.aead.Seal(header, header[8:], data, inputAAD(0, header[:8], c.epoch))
+		s.receivePacket(c.edgeID, inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: base64.StdEncoding.EncodeToString(data)}, nil)
 	}
 	request(first, "")
 	if s.State().Mode != "off" || first.requested || m.owner != nil {
@@ -128,7 +144,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	request(first, "")
-	s.RevokeEdge("root-edge")
+	revokeTestEdge(s, "root-edge")
 	if m.owner != nil {
 		t.Fatal("route loss retained input")
 	}
@@ -142,7 +158,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.Pause(false)
-	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + oldGrant + `"}`)}, first.epoch)
+	receiveTestInput(m, first, []byte(`{"type":"key","code":"KeyA","down":true,"grant":"`+oldGrant+`"}`))
 	request(second, "")
 	if m.owner != nil || second.requested || len(sink.events) != 0 {
 		t.Fatal("disabled remote control retained input or accepted a new request")
@@ -170,7 +186,7 @@ func TestSourceAuthorizationPolicy(t *testing.T) {
 	if m.owner != nil || first.grant != "" || m.connections[endpointKey{s, first.id}] != nil {
 		t.Fatal("room membership removal retained the active input grant")
 	}
-	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + revokedGrant + `"}`)}, first.epoch)
+	receiveTestInput(m, first, []byte(`{"type":"key","code":"KeyA","down":true,"grant":"`+revokedGrant+`"}`))
 	request(first, "")
 	if m.owner != nil || first.requested || len(sink.events) != 0 {
 		t.Fatal("removed endpoint regained input with its old grant or key")
@@ -203,7 +219,7 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 		_, _ = rand.Read(header[8:])
 		plain := []byte(`{"type":"request","intent":"` + epoch + `"}`)
 		data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
-		s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)})
+		s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)}, nil)
 		views := s.State().Requests
 		if len(views) != 1 || views[0].State != "pending" {
 			t.Fatal("new channel did not require fresh approval")
@@ -219,12 +235,11 @@ func TestRouteReplacementRequiresApprovalAndIgnoresOldClosure(t *testing.T) {
 	if oldGrant == newGrant || len(sink.resets) != 1 {
 		t.Fatal("replacement retained old input")
 	}
-	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: oldEpoch, Closed: true})
-	m.receive(m.connections[endpointKey{s, peer.EndpointID}], webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + newEpoch + `"}`)}, oldEpoch)
+	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: oldEpoch, Closed: true}, nil)
 	if m.owner == nil || m.connections[endpointKey{s, peer.EndpointID}].grant != newGrant {
 		t.Fatal("old descendant closure retired the new grant")
 	}
-	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: newEpoch, Closed: true})
+	s.receivePacket("same-root-relay", inputroute.Packet{ID: peer.EndpointID, Epoch: newEpoch, Closed: true}, nil)
 	if m.owner != nil || len(sink.resets) != 2 {
 		t.Fatal("current route loss did not release input")
 	}
@@ -368,6 +383,14 @@ func TestInputFailureDiagnosticsPreserveExecutionAuthority(t *testing.T) {
 			}
 			if record["event"] != stage+"-failed" || record["connectionId"] != diagnostics.ID(c.edgeID) || record["inputGeneration"] != diagnostics.ID(c.epoch) {
 				t.Fatalf("failure stage or generation missing: %v", record)
+			}
+			if stage == "apply" {
+				if record["operation"] != "text" || record["sourceKind"] != c.owner.target.Kind {
+					t.Fatal("failure lost its operation or target kind")
+				}
+				if _, ok := record["targetReady"].(bool); !ok {
+					t.Fatal("failure lost its target observation")
+				}
 			}
 			for _, private := range []string{grant, c.intent, c.edgeID, c.epoch, "KeyA", "private committed text"} {
 				if strings.Contains(logs.String(), private) {
@@ -572,7 +595,7 @@ func TestCoPlayGamepadGrantIsolationAndRetirement(t *testing.T) {
 	}
 	sendTestInput(m, keyboard, inputEvent{Type: "key", Code: "KeyB", Down: true})
 	<-sink.events
-	s.receivePacket(a.edgeID, inputroute.Packet{ID: a.id, Epoch: a.epoch, Closed: true})
+	s.receivePacket(a.edgeID, inputroute.Packet{ID: a.id, Epoch: a.epoch, Closed: true}, nil)
 	if !first.closed || a.grant != "" || b.grant == "" || !keyboard.keys["KeyB"] {
 		t.Fatal("one route loss affected another participant")
 	}
@@ -848,7 +871,7 @@ func sendTestInput(m *Manager, c *connection, event inputEvent) {
 		event.Grant = c.grant
 	}
 	data, _ := json.Marshal(event)
-	m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: data}, c.epoch)
+	receiveTestInput(m, c, data)
 	if event.Type == "gamepad" {
 		// Unit reports model the next periodic full report after lazy creation;
 		// production deliberately drops the report that started enumeration.
@@ -865,7 +888,7 @@ func sendTestInput(m *Manager, c *connection, event inputEvent) {
 			}
 			time.Sleep(time.Millisecond)
 		}
-		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: data}, c.epoch)
+		receiveTestInput(m, c, data)
 	}
 }
 
@@ -1092,7 +1115,7 @@ func TestCoPlayRetirementAndLegacyAdmission(t *testing.T) {
 		sendTestInput(m, c, inputEvent{Type: "key", Code: "KeyA", Down: true})
 	}
 	<-sink.events
-	s.RevokeEdge(a.edgeID)
+	revokeTestEdge(s, a.edgeID)
 	if a.grant != "" || b.grant == "" || len(sink.events) != 0 || m.owner != s {
 		t.Fatal("one route loss released another player's held key")
 	}
@@ -1201,12 +1224,13 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		})
 		c.OnOpen(func() { channels <- c })
 	})
+	losses := map[string]func(){}
 	for _, id := range []string{"first", "second"} {
 		c, err := host.CreateDataChannel(id, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		s.Attach(id, c)
+		losses[id] = s.Attach(id, c)
 	}
 	offer, err := host.CreateOffer(nil)
 	if err != nil {
@@ -1305,7 +1329,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 		return c.grant
 	}
 	key := func(c *connection, grant string) {
-		m.receive(c, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"key","code":"KeyA","down":true,"grant":"` + grant + `"}`)}, c.epoch)
+		receiveTestInput(m, c, []byte(`{"type":"key","code":"KeyA","down":true,"grant":"`+grant+`"}`))
 	}
 	<-s.Changes() // Drain display setup; the next notification must be a request.
 	first := request("first")
@@ -1374,7 +1398,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	waitState("ready")
 	second = request("second")
 	grant2 = decide(second, true)
-	s.RevokeEdge("second")
+	losses["second"]()
 	key(second, grant2)
 	if len(sink.events) != 2 || len(sink.resets) != 3 {
 		t.Fatal("disconnect kept a grant")
@@ -1383,7 +1407,7 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	// without reviving the old grant or a pending approval from before loss.
 	second = request("second")
 	staleRequest := second.requestID
-	s.RevokeEdge("second")
+	losses["second"]()
 	if s.Decide(staleRequest, true) == nil || len(s.State().Requests) != 0 {
 		t.Fatal("transport loss kept a pending approval")
 	}
@@ -1415,13 +1439,13 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	}
 	first = request("first")
 	oldRequest, oldIntent := first.requestID, first.intent
-	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + oldIntent + `"}`)}, first.epoch)
+	receiveTestInput(m, first, []byte(`{"type":"release","intent":"`+oldIntent+`"}`))
 	first = request("first")
 	if s.Decide(oldRequest, true) == nil {
 		t.Fatal("late approval authorized a replacement request")
 	}
 	nextGrant := decide(first, true)
-	m.receive(first, webrtc.DataChannelMessage{IsString: true, Data: []byte(`{"type":"release","intent":"` + oldIntent + `"}`)}, first.epoch)
+	receiveTestInput(m, first, []byte(`{"type":"release","intent":"`+oldIntent+`"}`))
 	key(first, grant)
 	key(first, nextGrant)
 	if len(sink.events) != 3 || nextGrant == grant || sink.target != nextDisplay {
@@ -1523,5 +1547,312 @@ func TestAttendedGrantLifecycle(t *testing.T) {
 	key(first, nextGrant)
 	if len(sink.events) != beforeCloseEvents || len(sink.resets) != beforeCloseResets+1 || len(s.State().Requests) != 0 || s.Decide(first.requestID, true) == nil {
 		t.Fatal("source retirement kept a grant")
+	}
+}
+
+func TestLateOldEpochCannotHideRelayedGrantFromBranchLoss(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 8), resets: make(chan struct{}, 8), focused: true}
+	m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+	s := m.NewSession()
+	t.Cleanup(s.Close)
+	s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+	if err := setTestPolicy(s, "ask", ""); err != nil {
+		t.Fatal(err)
+	}
+	peer := protocol.RemoteInputPeer{PeerID: "viewer-route-test", EndpointID: strings.Repeat("a", 32), Secret: strings.Repeat("b", 64)}
+	if err := s.SetPeers([]protocol.RemoteInputPeer{peer}); err != nil {
+		t.Fatal(err)
+	}
+	observed := make(chan inputroute.Packet, 10)
+	s.route.Close()
+	s.route = inputroute.New(func(edge string, p inputroute.Packet, current func() bool) {
+		s.receivePacket(edge, p, current)
+		observed <- p
+	})
+	rootChannel, relayUp := inputChannelPair(t)
+	s.Attach("sfu-root", rootChannel)
+	relay := inputroute.New(nil)
+	t.Cleanup(relay.Close)
+	relay.AttachUp(relayUp)
+	viewer, branch := inputChannelPair(t)
+	ready := make(chan struct{}, 10)
+	viewer.OnMessage(func(message webrtc.DataChannelMessage) {
+		var p inputroute.Packet
+		if json.Unmarshal(message.Data, &p) == nil && p.Ready != nil && *p.Ready {
+			ready <- struct{}{}
+		}
+	})
+	loseBranch := relay.AttachDown("shared-branch", branch)
+	relay.SetUpAvailable(true)
+	select {
+	case <-ready:
+	case <-time.After(3 * time.Second):
+		t.Fatal("relay not ready")
+	}
+	cipher, _ := newInputCipher(peer.Secret)
+	encode := func(seq uint64, epoch string, event inputEvent) inputroute.Packet {
+		header := make([]byte, 20)
+		binary.BigEndian.PutUint64(header, seq)
+		_, _ = rand.Read(header[8:])
+		plain, _ := json.Marshal(event)
+		data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
+		return inputroute.Packet{ID: peer.EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)}
+	}
+	sendPacket := func(p inputroute.Packet) {
+		t.Helper()
+		data, _ := json.Marshal(p)
+		if err := viewer.SendText(string(data)); err != nil {
+			t.Fatal(err)
+		}
+		deadline := time.After(3 * time.Second)
+		for {
+			select {
+			case got := <-observed:
+				if got == p {
+					return
+				}
+			case <-deadline:
+				t.Fatal("packet did not reach actual manager")
+			}
+		}
+	}
+	approve := func() string {
+		t.Helper()
+		views := s.State().Requests
+		if len(views) != 1 || views[0].State != "pending" {
+			t.Fatalf("request state: %+v", views)
+		}
+		if err := s.Decide(views[0].ID, true); err != nil {
+			t.Fatal(err)
+		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.connections[endpointKey{s, peer.EndpointID}].grant
+	}
+	oldEpoch, newEpoch := strings.Repeat("c", 32), strings.Repeat("d", 32)
+	sendPacket(encode(1, oldEpoch, inputEvent{Type: "request", Intent: oldEpoch}))
+	oldGrant := approve()
+	// Packet 2 was sent on the old longer branch before the route migrated.
+	// The new shorter path overtakes it. Its lower sequence must be rejected.
+	late := encode(2, oldEpoch, inputEvent{Type: "key", Code: "KeyA", Down: true, Grant: oldGrant})
+	sendPacket(encode(3, newEpoch, inputEvent{Type: "request", Intent: newEpoch}))
+	newGrant := approve()
+	sendPacket(encode(4, newEpoch, inputEvent{Type: "key", Code: "KeyW", Down: true, Grant: newGrant}))
+	sendPacket(late)
+	m.mu.Lock()
+	current := m.connections[endpointKey{s, peer.EndpointID}]
+	if current.grant != newGrant || current.keys["KeyA"] || !current.keys["KeyW"] {
+		m.mu.Unlock()
+		t.Fatal("late old packet changed authority")
+	}
+	m.mu.Unlock()
+	// The shared upstream branch then disconnects while the root SFU leg stays up.
+	loseBranch()
+	// On recovery, a sync is ordered behind all branch retirement packets. It
+	// may report current availability but cannot restore the previous grant.
+	sendPacket(encode(5, newEpoch, inputEvent{Type: "sync"}))
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if current.grant != "" || current.keys["KeyW"] {
+		t.Fatal("branch loss retained current grant and held key after a late old epoch")
+	}
+}
+
+func waitInputChannel(t *testing.T, label string, ready func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if ready() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal(label)
+}
+
+func inputChannelPair(t *testing.T) (*webrtc.DataChannel, *webrtc.DataChannel) {
+	t.Helper()
+	settings := webrtc.SettingEngine{}
+	settings.SetIncludeLoopbackCandidate(true)
+	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	api := webrtc.NewAPI(webrtc.WithSettingEngine(settings))
+	a, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = a.Close() })
+	b, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = b.Close() })
+	remote := make(chan *webrtc.DataChannel, 1)
+	b.OnDataChannel(func(c *webrtc.DataChannel) { remote <- c })
+	local, err := a.CreateDataChannel(inputroute.Label, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offer, err := a.CreateOffer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gather := webrtc.GatheringCompletePromise(a)
+	if err = a.SetLocalDescription(offer); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-gather:
+	case <-time.After(5 * time.Second):
+		t.Fatal("offer gather")
+	}
+	if err = b.SetRemoteDescription(*a.LocalDescription()); err != nil {
+		t.Fatal(err)
+	}
+	answer, err := b.CreateAnswer(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gather = webrtc.GatheringCompletePromise(b)
+	if err = b.SetLocalDescription(answer); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-gather:
+	case <-time.After(5 * time.Second):
+		t.Fatal("answer gather")
+	}
+	if err = a.SetRemoteDescription(*b.LocalDescription()); err != nil {
+		t.Fatal(err)
+	}
+	var other *webrtc.DataChannel
+	select {
+	case other = <-remote:
+	case <-time.After(5 * time.Second):
+		t.Fatal("remote data channel")
+	}
+	waitInputChannel(t, "SCTP opens", func() bool {
+		return local.ReadyState() == webrtc.DataChannelStateOpen && other.ReadyState() == webrtc.DataChannelStateOpen
+	})
+	return local, other
+}
+
+func TestInputRetirementOrdersAlreadyReadPackets(t *testing.T) {
+	for _, retired := range []string{"channel", "ice", "explicit-close"} {
+		t.Run(retired, func(t *testing.T) {
+			sink := &recordedInput{events: make(chan inputEvent, 8), resets: make(chan struct{}, 8), focused: true}
+			m := &Manager{sink: sink, connections: map[endpointKey]*connection{}}
+			s := m.NewSession()
+			t.Cleanup(s.Close)
+			s.SetTarget(nativecapture.CaptureTarget{Kind: "display", SourceID: "1"}, nil)
+			if err := setTestPolicy(s, "room", ""); err != nil {
+				t.Fatal(err)
+			}
+			peer := protocol.RemoteInputPeer{PeerID: "viewer-route-test", EndpointID: strings.Repeat("a", 32), Secret: strings.Repeat("b", 64)}
+			if err := s.SetPeers([]protocol.RemoteInputPeer{peer}); err != nil {
+				t.Fatal(err)
+			}
+			var arm atomic.Bool
+			entered, resume := make(chan struct{}), make(chan struct{})
+			resumed := false
+			defer func() {
+				if !resumed {
+					close(resume)
+				}
+			}()
+			observed := make(chan inputroute.Packet, 8)
+			s.route.Close()
+			s.route = inputroute.New(func(edge string, p inputroute.Packet, current func() bool) {
+				// This is the production handoff after Relay unlocks. Retirement
+				// must invalidate the captured delivery before Manager accepts it.
+				if (p.Data != "" || p.Closed) && arm.Swap(false) {
+					close(entered)
+					<-resume
+				}
+				s.receivePacket(edge, p, current)
+				observed <- p
+			})
+			viewer, root := inputChannelPair(t)
+			loseInput := s.Attach("root-edge", root)
+			cipher, _ := newInputCipher(peer.Secret)
+			epoch := strings.Repeat("c", 32)
+			send := func(seq uint64, event inputEvent) {
+				t.Helper()
+				header := make([]byte, 20)
+				binary.BigEndian.PutUint64(header, seq)
+				_, _ = rand.Read(header[8:])
+				plain, _ := json.Marshal(event)
+				data := cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], epoch))
+				packet, _ := json.Marshal(inputroute.Packet{ID: peer.EndpointID, Epoch: epoch, Data: base64.StdEncoding.EncodeToString(data)})
+				if err := viewer.SendText(string(packet)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			waitData := func() {
+				t.Helper()
+				deadline := time.After(3 * time.Second)
+				for {
+					select {
+					case p := <-observed:
+						if p.Data != "" {
+							return
+						}
+					case <-deadline:
+						t.Fatal("input did not reach Manager")
+					}
+				}
+			}
+			initial := inputEvent{Type: "sync"}
+			if retired == "explicit-close" {
+				initial = inputEvent{Type: "request", Intent: strings.Repeat("d", 32)}
+			}
+			send(1, initial)
+			waitData()
+			arm.Store(true)
+			if retired == "explicit-close" {
+				if len(s.State().Requests) != 1 {
+					t.Fatal("request was not approved")
+				}
+				data, _ := json.Marshal(inputroute.Packet{ID: peer.EndpointID, Epoch: epoch, Closed: true})
+				if err := viewer.SendText(string(data)); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				send(2, inputEvent{Type: "request", Intent: strings.Repeat("d", 32)})
+			}
+			select {
+			case <-entered:
+			case <-time.After(3 * time.Second):
+				t.Fatal("request was not read")
+			}
+			if retired != "ice" {
+				if err := root.Close(); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				loseInput()
+			}
+			close(resume)
+			resumed = true
+			if retired == "explicit-close" {
+				select {
+				case <-observed:
+				case <-time.After(3 * time.Second):
+					t.Fatal("explicit retirement did not reach Manager")
+				}
+			} else {
+				waitData()
+			}
+			if len(s.State().Requests) != 0 {
+				t.Fatal("already-read packet retained or recreated authorization after retirement")
+			}
+			if retired == "ice" {
+				send(3, inputEvent{Type: "request", Intent: strings.Repeat("e", 32)})
+				waitData()
+				views := s.State().Requests
+				if len(views) != 1 || views[0].State != "active" {
+					t.Fatalf("fresh request on recovered channel: %+v", views)
+				}
+			}
+		})
 	}
 }

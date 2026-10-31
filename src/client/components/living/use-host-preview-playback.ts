@@ -26,6 +26,11 @@ export function useHostPreviewPlayback(
       setSuspended(false);
       return;
     }
+    // Native PiP/fullscreen sound controls must not turn shared audio into
+    // local monitoring. The Host's volume control owns outgoing sound.
+    const keepMuted = () => { video.muted = true; };
+    keepMuted();
+    video.addEventListener("volumechange", keepMuted);
     const syncPlayback = () => {
       const shouldPause = shouldPauseLocalPreview(document.visibilityState, document.hasFocus(), isPictureInPicture(video), autoPause);
       setSuspended(shouldPause);
@@ -39,6 +44,7 @@ export function useHostPreviewPlayback(
     pictureEvents.forEach(event => video.addEventListener(event, syncPlayback));
     syncPlayback();
     return () => {
+      video.removeEventListener("volumechange", keepMuted);
       document.removeEventListener("visibilitychange", syncPlayback);
       window.removeEventListener("blur", syncPlayback);
       window.removeEventListener("focus", syncPlayback);

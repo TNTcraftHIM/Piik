@@ -11,6 +11,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativeaudio"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/inputroute"
 	"github.com/pion/rtcp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/webrtc/v4"
@@ -21,6 +22,8 @@ type ReceiverEvents struct {
 	LocalCandidate  func(candidate *webrtc.ICECandidateInit, current func() bool)
 	ConnectionState func(state webrtc.PeerConnectionState, pair *SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool)
 	DataChannel     func(*webrtc.DataChannel)
+	// Bound before SDP starts the transport; runs in Pion's ordered ICE observer.
+	InputTransportAvailable func(bool)
 }
 
 type ReceiverOptions struct {
@@ -90,6 +93,9 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 	if err != nil {
 		return nil, webrtc.SessionDescription{}, err
 	}
+	if options.Events.InputTransportAvailable != nil {
+		inputroute.ObserveTransport(connection.SCTP().Transport().ICETransport(), options.Events.InputTransportAvailable)
+	}
 	if err = connection.SetRemoteDescription(options.Offer); err != nil {
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
@@ -124,6 +130,17 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		_ = connection.Close()
 		return nil, webrtc.SessionDescription{}, err
 	}
+	// Install before OnTrack can feed the source. Only the received original
+	// requests upstream repair; derived outputs keep their existing recovery.
+	receiver.source.writeNACK = func(nack *rtcp.TransportLayerNack) {
+		receiver.mu.Lock()
+		ssrc, closed := receiver.videoSSRC, receiver.closed
+		receiver.mu.Unlock()
+		if !closed && ssrc != 0 {
+			nack.MediaSSRC = uint32(ssrc)
+			_ = connection.WriteRTCP([]rtcp.Packet{nack})
+		}
+	}
 	if hasAudio {
 		receiver.audioSource, err = engine.NewRelayedAudioSource(options.EdgeCapacity)
 		if err != nil {
@@ -146,6 +163,12 @@ func (engine *Engine) NewReceiver(options ReceiverOptions) (_ *Receiver, _ webrt
 		}
 		if !receiver.active() {
 			return
+		}
+		if state == webrtc.PeerConnectionStateConnected && isCurrentState(state) {
+			// A retained source can have lost a frame's dependencies while ICE
+			// restarted. Refresh it when transport resumes, before downstream
+			// decoders have to exhaust NACK repair and request their own key.
+			receiver.RequestKeyFrame()
 		}
 		debug := slog.Default().Enabled(engine.ctx, slog.LevelDebug)
 		if debug {

@@ -9,6 +9,37 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/sfu"
 )
 
+func TestCancelPreparedVideoAttachmentDoesNotFailRoom(t *testing.T) {
+	h := newRouterHarness(t, routerHarnessOptions{capacity: 2})
+	created := h.createRoom()
+	host := h.connectHost(created, nil, "", "")
+	viewer := h.connectViewer(created, "cancel-video-attachment")
+	h.locked(func() { h.doComplete(host); h.doComplete(viewer) })
+	prepared := h.waitPrepared(viewer.sessionID)
+	h.routeReady(viewer, int64(prepared.Revision))
+	h.settle()
+	h.locked(func() {
+		rm, _ := h.router.rooms.Get(created.RoomID)
+		rm.roomMedia, rm.mediaGeneration = true, "room_media_12345678"
+		rm.controller.SetVideoPublication(testShareGeneration, false, h.router.now())
+		rm.controller.SetVideoPublication("", false, h.router.now())
+		rm.controller.SetVideoPublication(testShareGeneration, false, h.router.now())
+		h.router.requestPump(created.RoomID)
+		op := rm.controller.Operation()
+		if op == nil || op.AttachConnectionID == "" || op.Current != nil {
+			t.Fatal("expected admitted attachment waiting for the pump continuation")
+		}
+		// A stop can overtake the asynchronous BeginCurrentCandidate step.
+		h.router.setVideoPublication(created.RoomID, "", false)
+	})
+	h.settle()
+	for _, message := range h.messages(host.sessionID) {
+		if failure, ok := message.(protocol.ErrorMessage); ok && failure.Code == "SERVER_ERROR" {
+			t.Fatal("canceling a video attachment surfaced a media routing error")
+		}
+	}
+}
+
 func TestRoomVideoFailuresCannotInvalidateAnotherPhysicalFacet(t *testing.T) {
 	h := newRouterHarness(t, routerHarnessOptions{capacity: 2})
 	created := h.createRoom()

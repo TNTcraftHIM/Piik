@@ -7,8 +7,8 @@ import (
 	"github.com/pion/transport/v5/packetio"
 )
 
-// packetBufferFactory uses LiveKit's claimed video RTCP reader and preserves
-// stock Pion SRTP/SRTCP bounds for all remaining streams, including audio.
+// packetBufferFactory uses LiveKit's claimed DownTrack RTCP reader and preserves
+// stock Pion SRTP/SRTCP bounds for all remaining streams.
 func packetBufferFactory(factory *buffer.Factory) func(packetio.BufferPacketType, uint32) io.ReadWriteCloser {
 	return func(kind packetio.BufferPacketType, ssrc uint32) io.ReadWriteCloser {
 		if kind == packetio.RTCPBufferPacket {

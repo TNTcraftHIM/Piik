@@ -10,6 +10,7 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
 	"github.com/TNTcraftHIM/Piik/internal/media/encoded"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/mediatransportutil/pkg/utils"
 	"github.com/pion/ice/v4"
 	"github.com/pion/interceptor"
 	"github.com/pion/logging"
@@ -488,5 +489,182 @@ func TestRelayAssemblyRecoversAtNewIndependentFrame(t *testing.T) {
 				t.Fatal("complete independent recovery was not assembled")
 			}
 		})
+	}
+}
+
+func TestRelayInputRejectsTruncatedH264BeforeIndependentRecovery(t *testing.T) {
+	for _, leadingNAL := range []bool{false, true} {
+		t.Run(map[bool]string{false: "fragment-only", true: "complete-NAL-before-fragment"}[leadingNAL], func(t *testing.T) {
+			requests := 0
+			input := relayVideoInput{codec: "h264", onPacketDropped: func() { requests++ }}
+			payloader := &codecs.H264Payloader{}
+			var key []byte
+			for _, nalu := range sfu.H264KeyFrame2x2 {
+				key = append(key, 0, 0, 0, 1)
+				key = append(key, nalu...)
+			}
+			sequence := uint16(10)
+			push := func(timestamp uint32, marker bool, payload []byte) {
+				t.Helper()
+				if err := input.push(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: sequence, Timestamp: timestamp, Marker: marker}, Payload: payload}); err != nil {
+					t.Fatal(err)
+				}
+				sequence++
+			}
+			payloads := payloader.Payload(1200, key)
+			for i, payload := range payloads {
+				push(0, i == len(payloads)-1, payload)
+			}
+			recovered := false
+			assembled := 0
+			for sample, _ := input.pop(); sample != nil; sample, _ = input.pop() {
+				assembled++
+				frame, err := input.frame(sample.Data)
+				if err != nil {
+					t.Fatal(err)
+				}
+				recovered = recovered || frame.KeyFrame
+			}
+			if !recovered {
+				t.Fatal("initial IDR did not establish recovery")
+			}
+			if assembled != 1 {
+				t.Fatal("same-timestamp SPS/PPS/IDR was split before its marker")
+			}
+			partial := []byte{0, 0, 0, 1}
+			if leadingNAL {
+				partial = append(partial, 0x61, 0x80, 0, 0, 0, 1)
+			}
+			partial = append(partial, 0x61)
+			partial = append(partial, bytes.Repeat([]byte{0x55}, 70)...)
+			payloads = payloader.Payload(16, partial)
+			if len(payloads) < 3 || payloads[len(payloads)-1][1]&0x40 == 0 {
+				t.Fatal("fixture is not a real fragmented NAL")
+			}
+			// Chrome can abandon a FU without reserving its unsent tail sequence.
+			for _, payload := range payloads[:len(payloads)-1] {
+				push(3000, false, payload)
+				if sample, _ := input.pop(); sample != nil {
+					t.Fatal("unmarked FU escaped during incremental input")
+				}
+			}
+			push(6000, true, []byte{0x61, 0x80})
+			for sample, timestamp := input.pop(); sample != nil; sample, timestamp = input.pop() {
+				if timestamp == 3000 {
+					t.Fatalf("truncated AU escaped: bytes=%d", len(sample.Data))
+				}
+			}
+			if requests == 0 {
+				t.Fatal("truncated AU did not request independent recovery")
+			}
+			// An IDR NAL in the same damaged AU is not independent recovery.
+			payloads = payloader.Payload(16, partial)
+			for _, payload := range payloads[:len(payloads)-1] {
+				push(7000, false, payload)
+				if sample, _ := input.pop(); sample != nil {
+					t.Fatal("unmarked FU escaped during incremental input")
+				}
+			}
+			push(7000, true, sfu.H264KeyFrame2x2IDR)
+			if sample, _ := input.pop(); sample != nil {
+				t.Fatal("same-timestamp IDR revived a truncated AU")
+			}
+
+			payloads = payloader.Payload(1200, key)
+			for i, payload := range payloads {
+				push(9000, i == len(payloads)-1, payload)
+			}
+			recovered = false
+			for sample, timestamp := input.pop(); sample != nil; sample, timestamp = input.pop() {
+				frame, err := input.frame(sample.Data)
+				if err != nil || timestamp != 9000 {
+					t.Fatalf("recovery lost original RTP time: %d, %v", timestamp, err)
+				}
+				recovered = recovered || frame.KeyFrame && frame.Width > 0 && frame.Height > 0
+			}
+			if !recovered {
+				t.Fatal("fresh IDR did not recover immediately")
+			}
+			push(12000, false, []byte{0x61, 0x81})
+			if sample, _ := input.pop(); sample != nil {
+				t.Fatal("multi-NAL AU escaped before its marker")
+			}
+			push(12000, true, []byte{0x61, 0x82})
+			sample, timestamp := input.pop()
+			if sample == nil || timestamp != 12000 ||
+				!bytes.Equal(sample.Data, []byte{0, 0, 0, 1, 0x61, 0x81, 0, 0, 0, 1, 0x61, 0x82}) {
+				t.Fatal("quiet multi-NAL frame did not resume on the original RTP timeline")
+			}
+
+			// Drain after every arrival, as run.write does. Padding occupies a
+			// sequence between real FU fragments but has no media timestamp.
+			requestsBefore := requests
+			completeNAL := append([]byte{0x61}, bytes.Repeat([]byte{0x55}, 70)...)
+			payloads = payloader.Payload(16, completeNAL)
+			packets := make([]*rtp.Packet, 0, len(payloads)+1)
+			for i, payload := range payloads {
+				packets = append(packets, &rtp.Packet{Header: rtp.Header{Version: 2,
+					SequenceNumber: sequence, Timestamp: 15000, Marker: i == len(payloads)-1}, Payload: payload})
+				sequence++
+				if i == 0 {
+					padding := &rtp.Packet{Header: rtp.Header{Version: 2, Padding: true,
+						SequenceNumber: sequence}, PaddingSize: 4}
+					wire, err := padding.Marshal()
+					if err != nil {
+						t.Fatal(err)
+					}
+					padding = &rtp.Packet{}
+					if err = padding.Unmarshal(wire); err != nil {
+						t.Fatal(err)
+					}
+					if len(padding.Payload) != 0 {
+						t.Fatal("fixture is not padding-only RTP")
+					}
+					packets = append(packets, padding)
+					sequence++
+				}
+			}
+			// The SDK must also keep a middle fragment behind its missing
+			// predecessor after earlier packets have already been consumed.
+			packets[2], packets[3] = packets[3], packets[2]
+			assembled = 0
+			for _, packet := range packets {
+				if err := input.push(packet); err != nil {
+					t.Fatal(err)
+				}
+				for sample, timestamp := input.pop(); sample != nil; sample, timestamp = input.pop() {
+					assembled++
+					if timestamp != 15000 || !bytes.Equal(sample.Data, append([]byte{0, 0, 0, 1}, completeNAL...)) {
+						t.Fatal("padding or reordering changed the complete FU access unit")
+					}
+				}
+			}
+			if assembled != 1 || requests != requestsBefore {
+				t.Fatalf("FU with padding/reordering: complete=%d recovery requests=%d", assembled, requests-requestsBefore)
+			}
+		})
+	}
+}
+
+func TestRelayFrameTimingUsesOneSourceClockAcrossWrap(t *testing.T) {
+	clock := utils.NewWrapAround[uint32, uint64](utils.WrapAroundParams{})
+	anchor := uint32(0xfffff000)
+	clock.Update(anchor)
+	for _, sample := range []struct {
+		ticks         uint32
+		pts, duration time.Duration
+	}{
+		{3000, time.Second / 30, 0}, // First frame retains the caller's nominal fallback.
+		{6000, time.Second / 15, time.Second / 30},
+		{3000, time.Second / 30, 0}, // Reordering cannot create a negative interval.
+		{9000, 100 * time.Millisecond, time.Second / 30},
+	} {
+		pts, duration, ok := relayFrameTiming(clock, anchor+sample.ticks)
+		if !ok || pts != sample.pts || duration != sample.duration {
+			t.Fatalf("source ticks %d: pts=%v duration=%v accepted=%v", sample.ticks, pts, duration, ok)
+		}
+	}
+	if _, _, ok := relayFrameTiming(clock, anchor-1); ok {
+		t.Fatal("frame before the source anchor was accepted")
 	}
 }

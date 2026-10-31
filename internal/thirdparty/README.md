@@ -1,4 +1,7 @@
-# Scoped Go Dependency Repairs
+# Scoped Go Dependency Changes
+
+Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
+to compare retained patches with current official source.
 
 The root `go.mod` replaces these two modules with local source. They retain
 their original module paths and Apache-2.0 licenses. The checked-in source,
@@ -15,7 +18,9 @@ Modified upstream files carry a notice; formatting follows the project Go
 toolchain. The package notice collector reads the replacement modules' license
 files directly, so App archives retain their attribution.
 
-These repairs preserve the existing gateway selector and PCPv6 composition.
+Assigned-port and deletion handling repair NAT-PMP behavior. The Context methods
+extend cancellation support; the shorter optional PCPv6 waits are Piik's mapping
+budget policy. These changes preserve the gateway selector and PCPv6 composition.
 The [NAT research owner](../../docs/research/nat-traversal.md#gateway-and-survey-limits)
 describes the runtime limits. Do not add a second gateway client in Piik.
 
@@ -35,8 +40,6 @@ the temporary allocator input described below. No build-time patch is applied.
 
 Measurement corrections are marked in the modified files: probe finalization
 returns the current acknowledged capacity and rejects invalid/empty feedback;
-inconclusive probes use existing backoff from completion without growing the
-next probe or reporting measured congestion;
 probe timing begins with its first acknowledged packet, excluding pre-probe idle
 time; congestion statistics retain the packet that starts each new CTR group,
 including its received/lost accounting; overlapping TWCC feedback changes each
@@ -47,10 +50,12 @@ advances in send order with a receive-time watermark, while older ACKs repair
 counts without rewinding it. Reset reseeds that delay baseline without discarding
 delivery history. Piik's shared
 forwarding package uses this copy for both individual transports and publications.
-Delay inference tolerates ordinary clock-rate skew using RFC 6817 A.2's
+Two recovery policies accompany those corrections. Inconclusive probes use
+existing backoff from completion without growing the next probe or reporting
+measured congestion. Delay inference tolerates clock-rate skew using RFC 6817 A.2's
 500 ppm virtual-sender-clock allowance; packet timestamps, acknowledged traffic
 and loss remain unadjusted. Long, lossless TWCC controls and real queue/loss
-recovery controls fence this measurement repair.
+recovery controls exercise both policies.
 Its regression checks use real TWCC feedback and retain the no-feedback and
 idle-before-probe controls. The
 [media research owner](../../docs/research/node-local-media-design.md#send-queue-recovery)
@@ -99,6 +104,23 @@ capacity. Once an upstream revision supports this input and passes those
 checks, remove the replacement directive and its replacement checksums. The
 separate local send-side estimator corrections retain their own removal gate.
 
+## Pion H.264 Profile Matching
+
+Until [upstream #3668](https://github.com/pion/webrtc/pull/3668) is available,
+the root module replaces Pion with the immutable
+[6ed9e55c revision](https://github.com/TNTcraftHIM/pion-webrtc/commit/6ed9e55c5935edf3b55d0528fdfb5cc85110a013),
+based on official v4.2.26. It matches equivalent H.264 subprofiles according to
+[RFC 6184 Table 5](https://www.rfc-editor.org/rfc/rfc6184.html#section-8.1).
+Without this repair, an offer containing Constrained Baseline `42c01f` and VP8
+can select VP8 even though the receiver prefers and supports that H.264 profile.
+The patch changes only profile matching and its regressions; level and
+packetization handling stay upstream-owned. Piik adds no SDP aliases or local
+Pion source. The package notice collector reads the replacement's MIT license.
+
+Once an upstream revision passes the actual receiver negotiation and encoded
+forwarding controls, remove this replacement and its checksums. Keep the mixed
+H.264/VP8 regression in the existing media-edge receiver test table.
+
 ## Pion Repaired-Packet Identity
 
 The shared [RTP receive adapter](../media/forwarding/codecs.go) uses the negotiated
@@ -109,4 +131,14 @@ an earlier RTX packet can therefore be queued with payload type zero.
 Ordinary packet validation remains unchanged. A real simulcast/NACK regression
 fences that ordering without sleeps and fails when the correction is removed.
 Remove the adapter when a maintained upstream version passes that same control
-without it; no Pion source fork or second retransmission handler is retained.
+without it; this repair adds no second retransmission handler.
+
+Pion's [wire-level NACK generator](https://github.com/pion/interceptor/blob/v0.1.51/pkg/nack/generator_interceptor.go)
+also does not observe repaired primary sequence numbers. Native receive and SFU
+publication use the public [interceptor options](https://github.com/pion/webrtc/blob/v4.2.26/interceptor.go)
+to leave video NACK generation to their existing LiveKit input buffer, after
+deencapsulation. That buffer retries missing packets and removes repaired holes;
+its existing RTCP callback returns NACKs to the actual upstream SSRC. Pion retains
+audio NACK behavior, receiver reports, TWCC and the retransmission responder.
+The shared real-peer regression holds a hole open, restores its exact primary
+packet through RTX, and verifies that retries stop on both receiving paths.

@@ -297,6 +297,7 @@ export const en: Record<CopyKey, string> = {
   "client.update.major": "New major Piik release",
   "client.update.majorHint": "This update includes breaking changes. Read the release notes before upgrading.",
   "client.update.downloads": "Gitee mirror",
+  "client.update.extractAPK": "Extract the ZIP, then install the APK.",
   "client.update.differentBuild": "This build differs from the official release",
   "client.update.official": "An official Piik release is available",
 

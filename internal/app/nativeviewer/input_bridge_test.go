@@ -89,6 +89,7 @@ func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
 	}
 	offer = localDescription(upstream, offer)
 	events := make(chan Event, 32)
+	observed := make(chan Event, 32)
 	session, err := Start(t.Context(), Options{ShareID: "input-viewer", EdgeCapacity: 2, Events: events})
 	if err != nil {
 		t.Fatal(err)
@@ -107,6 +108,8 @@ func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
 			case event := <-events:
 				if event.Type == "edge-candidate" && event.ConnectionID == "upstream" && event.Candidate != nil {
 					_ = upstream.AddICECandidate(*event.Candidate)
+				} else {
+					observed <- event
 				}
 			case <-t.Context().Done():
 				return
@@ -187,6 +190,9 @@ func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Native connecting callback was not delayed")
 	}
+	// ICE restart retires the selected pair and enters Checking directly. Input
+	// must release on that ordered event, before this queued media projection.
+	waitMessage(states, `{"ready":false}`)
 	waitMessage(requests, `{"ready":true}`)
 	if err = remote.SendText(`{"ready":true}`); err != nil {
 		t.Fatal(err)
@@ -197,12 +203,22 @@ func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
 	}
 	waitMessage(requests, packet)
 	resume()
-	waitMessage(states, `{"ready":false}`)
-	waitMessage(requests, `{"ready":true}`)
-	if err = remote.SendText(`{"ready":true}`); err != nil {
-		t.Fatal(err)
+	// Wait until the delayed real callback has delivered its projection. Input
+	// already recovered on the ordered transport observer; this older callback
+	// must not demand another handshake or retire the fresh return path.
+	completed := time.NewTimer(5 * time.Second)
+	defer completed.Stop()
+	for {
+		select {
+		case event := <-observed:
+			if event.ConnectionID == "upstream" && event.State == "connecting" {
+				goto resumed
+			}
+		case <-completed.C:
+			t.Fatal("delayed Native projection did not finish")
+		}
 	}
-	waitMessage(states, `{"ready":true}`)
+resumed:
 	if err = local.SendText(packet); err != nil {
 		t.Fatal(err)
 	}
@@ -218,12 +234,6 @@ func TestInputChannelUsesPlaybackAndRelay(t *testing.T) {
 	if !strings.Contains(relay.SDP, "\nm=application ") {
 		t.Fatal("relay child has no input return path")
 	}
-	session.receiver("upstream").input.LoseDown("playback", nil)
-	waitMessage(requests, closed)
-	if err = local.SendText(packet); err != nil {
-		t.Fatal(err)
-	}
-	waitMessage(requests, packet)
 	session.CloseEdge("playback")
 	waitMessage(requests, closed)
 }

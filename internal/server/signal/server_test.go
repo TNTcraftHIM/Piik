@@ -2864,6 +2864,32 @@ func TestSignalRequiresAllowedOriginTimelyAuthenticationAndBoundedPayloads(t *te
 	expectCloseCode(t, oversized, 1009)
 }
 
+func TestClosingSignalSessionDoesNotReserveLateViewerAdmission(t *testing.T) {
+	h := startHarness(t, harnessOptions{})
+	client := openClient(t, h)
+	if !waitFor(t, defaultWait, func() bool { return h.sessionCount() == 1 }) {
+		t.Fatal("signaling session was not registered")
+	}
+	message, err := json.Marshal(map[string]any{
+		"type": "authenticate", "protocol": protocol.SignalingProtocol,
+		"roomId": h.room.RoomID, "role": protocol.RoleViewer, "clientId": "late-viewer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.locked(func() {
+		sess := h.server.sessions.Keys()[0]
+		// An authentication deadline can queue close before a frame already
+		// read from the socket acquires the signaling lock.
+		sess.close(websocket.StatusCode(protocol.SignalCloseAuthenticationFailed), "Authentication required")
+		h.server.handleMessage(sess, message)
+		if peers := h.store.GetViewerPeerIDs(h.room.RoomID); len(peers) != 0 {
+			t.Fatalf("closing session left room capacity reserved: %v", peers)
+		}
+	})
+	expectCloseCode(t, client, int(protocol.SignalCloseAuthenticationFailed))
+}
+
 func TestSignalTerminatesStaleV12BeforeAuthentication(t *testing.T) {
 	h := startHarness(t, harnessOptions{})
 	invalidClient := openClient(t, h)

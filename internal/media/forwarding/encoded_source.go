@@ -104,6 +104,9 @@ func (input *EncodedSource) WriteFrame(layer int, frame encoded.Frame) error {
 		input.rtpBytes[layer] += uint64(packet.MarshalSize())
 	}
 	input.codecBytes[layer] += uint64(len(frame.Data))
+	if len(packets) == 0 {
+		return nil
+	}
 	// Retain the capture instant's Go monotonic component when converting to
 	// the media core's epoch-based monotonic clock, including after wall jumps.
 	localTime := mono.FromTime(sourceTime)

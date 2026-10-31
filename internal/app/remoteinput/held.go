@@ -1,6 +1,9 @@
 package remoteinput
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 type controllerTextSink struct {
 	manager    *Manager
@@ -69,13 +72,19 @@ func (m *Manager) releaseButton(button int) error {
 	return err
 }
 
-func (m *Manager) retryReleases() {
+func (m *Manager) retryReleases() error {
+	var result error
 	for code := range m.pendingKeys {
-		_ = m.releaseKey(code)
+		if err := m.releaseKey(code); err != nil {
+			result = errors.Join(result, fmt.Errorf("key release retry: %w", err))
+		}
 	}
 	for button := range m.pendingButtons {
-		_ = m.releaseButton(button)
+		if err := m.releaseButton(button); err != nil {
+			result = errors.Join(result, fmt.Errorf("button release retry: %w", err))
+		}
 	}
+	return result
 }
 
 func (m *Manager) noteInputResult(c *connection, err error) {
@@ -87,10 +96,10 @@ func (m *Manager) noteInputResult(c *connection, err error) {
 }
 
 func (m *Manager) applyHeld(c *connection, b bounds, event inputEvent) error {
-	m.retryReleases()
+	releaseErr := m.retryReleases()
 	releasing := (event.Type == "key" || event.Type == "button") && !event.Down
 	if !releasing && (len(m.pendingKeys) != 0 || len(m.pendingButtons) != 0) {
-		return errors.New("held input cleanup is unavailable")
+		return fmt.Errorf("held input cleanup is unavailable (%d key, %d button releases pending): %w", len(m.pendingKeys), len(m.pendingButtons), releaseErr)
 	}
 	switch event.Type {
 	case "key":

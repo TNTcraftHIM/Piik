@@ -152,6 +152,7 @@ type peerSignalDebugInput struct {
 type roomRuntime struct {
 	hostPeerID      string
 	controller      *route.Controller
+	revisions       *route.RevisionSequence
 	roomMedia       bool
 	mediaGeneration string
 	pendingMedia    *preparedCandidate
@@ -1069,25 +1070,21 @@ func (r *router) removeViewer(roomID, peerID string) {
 	}
 	if rm != nil && rm.controller != nil && rm.controller.ConfirmDeparture(peerID, r.nowPtr()) {
 		r.requestPump(roomID)
-	} else if rm != nil && rm.controller == nil && rm.viewerSettings.Len() == 0 {
-		r.rooms.Delete(roomID)
 	}
 }
 
-// stopRoom preserves Viewer settings across shares.
+// stopRoom preserves Viewer settings and the room's revision sequence across shares.
 func (r *router) stopRoom(roomID string) {
-	if rm, _ := r.rooms.Get(roomID); rm != nil && rm.roomMedia && rm.controller != nil {
+	rm, _ := r.rooms.Get(roomID)
+	if rm == nil {
+		return
+	}
+	if rm.roomMedia && rm.controller != nil {
 		r.setVideoPublication(roomID, "", false)
 		return
 	}
-	var settings ordered.Map[string, viewerRouteSettings]
-	if rm, _ := r.rooms.Get(roomID); rm != nil {
-		settings = rm.viewerSettings
-	}
 	r.clearRoom(roomID)
-	if settings.Len() > 0 {
-		r.room(roomID).viewerSettings = settings
-	}
+	r.rooms.Set(roomID, &roomRuntime{revisions: rm.revisions, viewerSettings: rm.viewerSettings})
 }
 
 func (r *router) deleteRoom(roomID string) {
@@ -1097,7 +1094,7 @@ func (r *router) deleteRoom(roomID string) {
 func (r *router) room(roomID string) *roomRuntime {
 	rm, ok := r.rooms.Get(roomID)
 	if !ok {
-		rm = &roomRuntime{}
+		rm = &roomRuntime{revisions: &route.RevisionSequence{}}
 		r.rooms.Set(roomID, rm)
 	}
 	return rm
@@ -1112,6 +1109,7 @@ func (r *router) createController(roomID string, rm *roomRuntime, host authentic
 	}
 	rm.controller = route.New(route.Options{
 		HostPeerID:                host.peerID,
+		Revisions:                 rm.revisions,
 		DebugRoomID:               roomID,
 		DebugLog:                  routeDebugSink(),
 		EndpointMediaCopyCapacity: r.capacity,

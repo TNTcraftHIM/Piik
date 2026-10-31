@@ -36,9 +36,6 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 					PublicationGeneration: generation, ConnectionID: connectionID, Candidate: candidate})
 			},
 			ConnectionState: func(state webrtc.PeerConnectionState, _ *mediaedge.SelectedPair, isCurrentState func(webrtc.PeerConnectionState) bool) {
-				if current() && isCurrentState(state) && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
-					session.remoteInput.RevokeEdge(connectionID)
-				}
 				session.emit(Event{Type: "publication-state", ShareID: session.shareID,
 					Current:               func() bool { return current() && isCurrentState(state) },
 					PublicationGeneration: generation, ConnectionID: connectionID, State: state.String()})
@@ -63,7 +60,7 @@ func (session *Session) PreparePublication(generation, connectionID string, serv
 	if session.remoteInput != nil {
 		channel, channelErr := publication.OpenDataChannel(remoteinput.ChannelLabel)
 		if channelErr == nil {
-			session.remoteInput.Attach(connectionID, channel)
+			publication.OnInputTransportLost(session.remoteInput.Attach(connectionID, channel))
 		}
 	}
 	offer, err := publication.CreateOffer()

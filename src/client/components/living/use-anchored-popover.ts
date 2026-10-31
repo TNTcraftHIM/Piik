@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useSurfaceDocument } from "../../ui/panel-window";
 
 // Native popovers own visibility, dismissal and focus. This only places a
@@ -11,6 +11,11 @@ export function useAnchoredPopover(
   } = {},
 ) {
   const ownerDocument = useSurfaceDocument();
+  const reposition = useRef<(() => void) | null>(null);
+  // A React layout change can move the anchor without resizing it.
+  useLayoutEffect(() => {
+    if (panel.current?.matches(":popover-open")) reposition.current?.();
+  });
   useLayoutEffect(() => {
     const menu = panel.current;
     if (!enabled || !menu) return;
@@ -31,17 +36,21 @@ export function useAnchoredPopover(
         return;
       }
       const above = Math.max(0, rect.top - top - 8), below = Math.max(0, bottom - rect.bottom - 8);
+      // Measure against the viewport, not the previous side's constrained size.
+      menu.style.maxWidth = `${right - left}px`;
+      menu.style.maxHeight = `${Math.min(maxHeight, bottom - top)}px`;
       const height = Math.min(menu.scrollHeight, maxHeight);
       // Scrollable palettes can prefer their requested side without requiring
       // every row to fit; compact menus retain the full-content threshold.
       const preferredHeight = Math.min(height, minVisibleHeight);
       const openAbove = side === "above" ? above >= preferredHeight || above > below : below < preferredHeight && above > below;
-      menu.style.maxWidth = `${right - left}px`;
-      menu.style.maxHeight = `${Math.min(maxHeight, openAbove ? above : below)}px`;
+      const beside = openAbove ? above : below;
+      menu.style.maxHeight = `${Math.min(maxHeight, beside >= preferredHeight ? beside : bottom - top)}px`;
       menu.classList.toggle("is-above", openAbove);
       const x = align === "center" ? rect.left + (rect.width - menu.offsetWidth) / 2 : rect.right - menu.offsetWidth;
       menu.style.left = `${Math.max(left, Math.min(x, right - menu.offsetWidth))}px`;
-      menu.style.top = `${Math.max(top, openAbove ? rect.top - menu.offsetHeight - 8 : rect.bottom + 8)}px`;
+      const y = openAbove ? rect.top - menu.offsetHeight - 8 : rect.bottom + 8;
+      menu.style.top = `${Math.max(top, Math.min(y, bottom - menu.offsetHeight))}px`;
     };
     // The containing panel may reposition itself in the same resize. Measure
     // after its layout owner has finished, including content/translation changes.
@@ -50,6 +59,7 @@ export function useAnchoredPopover(
       view.cancelAnimationFrame(frame);
       frame = view.requestAnimationFrame(place);
     };
+    reposition.current = schedule;
     const observer = new ResizeObserver(schedule);
     const toggled = () => {
       observer.disconnect();
@@ -70,6 +80,7 @@ export function useAnchoredPopover(
     viewport?.addEventListener("scroll", schedule);
     toggled();
     return () => {
+      reposition.current = null;
       observer.disconnect();
       view.cancelAnimationFrame(frame);
       menu.removeEventListener("beforetoggle", schedule);

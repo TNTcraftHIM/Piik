@@ -35,8 +35,9 @@ type MediaEvent struct {
 }
 
 type MediaOptions struct {
-	// Settings can contain the application-owned UDP mux. Media never closes it.
-	Settings webrtc.SettingEngine
+	// Settings returns a fresh, nonblocking snapshot for each peer. It may
+	// contain the application-owned UDP mux, which Media never closes.
+	Settings func() webrtc.SettingEngine
 	// Events run without media locks and hand exact handles back to room authority.
 	// Physical close must be scheduled asynchronously from these callbacks.
 	Events func(MediaEvent)
@@ -116,6 +117,9 @@ type mediaSubscription struct {
 }
 
 func NewMedia(options MediaOptions) *Media {
+	if options.Settings == nil {
+		options.Settings = func() webrtc.SettingEngine { return webrtc.SettingEngine{} }
+	}
 	return &Media{options: options, publications: make(map[ResourceFence]*mediaPublication), voice: newVoiceMedia(options.Settings)}
 }
 
@@ -169,11 +173,11 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 		return err
 	}
 	registry := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(engine, registry); err != nil {
+	if err := forwarding.RegisterIngressInterceptors(engine, registry); err != nil {
 		return err
 	}
 	pc, err := webrtc.NewAPI(webrtc.WithMediaEngine(engine), webrtc.WithInterceptorRegistry(registry),
-		webrtc.WithSettingEngine(media.options.Settings)).NewPeerConnection(webrtc.Configuration{})
+		webrtc.WithSettingEngine(media.options.Settings())).NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		return err
 	}
@@ -213,19 +217,6 @@ func (media *Media) PreparePublication(fence ResourceFence, connectionID string,
 }
 
 func (publication *mediaPublication) connectionStateChanged(state webrtc.PeerConnectionState) {
-	publication.mu.Lock()
-	input := publication.input
-	publication.mu.Unlock()
-	if input != nil {
-		// Historical loss retires grants even if this PC has recovered. Recovery
-		// requests a fresh handshake; it must never restore the previous grant.
-		if state != webrtc.PeerConnectionStateConnected {
-			input.SetUpAvailable(false)
-		}
-		if state != webrtc.PeerConnectionStateFailed && publication.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
-			input.SetUpAvailable(true)
-		}
-	}
 	if state == webrtc.PeerConnectionStateFailed {
 		publication.fail(errors.New("SFU publisher transport failed"))
 		return
@@ -360,6 +351,7 @@ func (media *Media) AcceptPublisherOffer(fence ResourceFence, connectionID strin
 	}
 	if publication.input == nil && strings.Contains(offer.SDP, "\nm=application ") {
 		publication.input = inputroute.New(nil)
+		inputroute.ObserveTransport(publication.pc.SCTP().Transport().ICETransport(), publication.input.SetUpAvailable)
 	}
 	publication.mu.Unlock()
 	if err = publication.pc.SetRemoteDescription(offer); err != nil {
@@ -461,10 +453,11 @@ func (publication *mediaPublication) consumeTrack(track *webrtc.TrackRemote, rec
 				Codec: track.Codec(), Formats: publication.metadata.Formats,
 				HeaderExtensions: receiver.GetParameters().HeaderExtensions,
 				OnRTCP: func(_ int, packets []rtcp.Packet) {
-					// Pion's ingress interceptors already own NACK and receiver reports.
+					// The buffer sees repaired primary sequence numbers and owns NACK;
+					// Pion retains receiver reports and transport-wide feedback.
 					for _, packet := range packets {
 						switch packet.(type) {
-						case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest:
+						case *rtcp.PictureLossIndication, *rtcp.FullIntraRequest, *rtcp.TransportLayerNack:
 							_ = publication.pc.WriteRTCP([]rtcp.Packet{packet})
 						}
 					}
@@ -606,7 +599,7 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		audio = publication.audio
 	}
 	transport, err := forwarding.NewTransport(forwarding.TransportOptions{
-		Source: source, Settings: media.options.Settings, ConnectionID: fence.ViewerPeerID + ":" + connectionID,
+		Source: source, Settings: media.options.Settings(), ConnectionID: fence.ViewerPeerID + ":" + connectionID,
 		InitialBitrate: int(metadata.Formats[len(metadata.Formats)-1].Bitrate), Audio: audio,
 		OnDemandChanged: publication.wakeDemand,
 	})
@@ -627,7 +620,12 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 		if channelErr != nil {
 			return webrtc.SessionDescription{}, channelErr
 		}
-		input.AttachDown(fence.ViewerPeerID+":"+connectionID, channel)
+		lost := input.AttachDown(fence.ViewerPeerID+":"+connectionID, channel)
+		inputroute.ObserveTransport(transport.PC.SCTP().Transport().ICETransport(), func(available bool) {
+			if !available {
+				lost()
+			}
+		})
 	}
 	transport.PC.OnICECandidate(func(candidate *webrtc.ICECandidate) {
 		var value *webrtc.ICECandidateInit
@@ -653,13 +651,9 @@ func (media *Media) PrepareSubscriber(ctx context.Context, fence SubscriptionFen
 func (publication *mediaPublication) subscriberStateChanged(subscriber *mediaSubscription, state webrtc.PeerConnectionState) {
 	publication.mu.Lock()
 	current := !publication.closed && publication.failure == nil && publication.subscribers[subscriber.key] == subscriber && subscriber.ctx.Err() == nil
-	input := publication.input
 	publication.mu.Unlock()
 	if !current {
 		return
-	}
-	if input != nil && (state == webrtc.PeerConnectionStateDisconnected || state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed) {
-		input.LoseDown(subscriber.key.peerID+":"+subscriber.key.connectionID, nil)
 	}
 	// Failed still belongs to the route's terminal failure owner. Other queued
 	// states describe current readiness, never permission to attach an old PC.

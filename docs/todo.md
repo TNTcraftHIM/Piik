@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-26
+Last reviewed: 2026-10-29
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -19,22 +19,36 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
-- [ ] **macOS window capture with sound (#500).** Follow
-  [#500](https://github.com/TNTcraftHIM/Piik/issues/500). Compare the same window
-  with source sound on and off in the App that waits for video `active`
-  before starting source audio. Obtain the App diagnostic if the window stays black.
+- [ ] **macOS source-picker thumbnails (#500).** The reporter confirmed normal
+  sharing on 2026-10-28; the remaining [#500](https://github.com/TNTcraftHIM/Piik/issues/500)
+  report concerns missing screen thumbnails in the source picker. The macOS
+  helper now implements the existing preview command; verify its build and
+  display/window thumbnails on a physical Mac before closing the issue.
 - [ ] **Control loss when the Host browser is minimized (#502).** Follow
-  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) with the corrected
-  Windows App. If minimizing still prevents input, obtain its Host App
-  diagnostic ZIP to identify the rejected system operation.
+  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
+  host with the Windows input-recovery candidate. The v2.5.0 report shows
+  rejected input followed by failed release cleanup. The candidate repairs a
+  reproduced thread-desktop mismatch and records the native rejection context;
+  confirm the original host's trigger before closing the issue.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
   temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
+- [ ] **Return Pion to an upstream pin.** Follow
+  [upstream #3668](https://github.com/pion/webrtc/pull/3668). Once upstream
+  includes equivalent H.264 profile matching, verify the receiver and forwarding
+  controls and remove the temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#pion-h264-profile-matching)
+  owns the patch and removal boundary.
 
 ## Next
 
+- [ ] **3.0 semantic reconstruction.** Continue the isolated `feat/channel-prototype`
+  from the accepted domain/room/participant model. Map existing behavior and
+  ownership, remove accidental constraints, then implement cohesive Rust runtimes
+  with mature components. Preserve the reviewed recovery semantics, not Go
+  function or module parity. The prototype's design owners and ledger govern
+  its implementation; keep it outside the maintenance candidate.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
@@ -64,11 +78,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Parked Product Work
 
-- **Piik 3.0 scope.** Explore independent room, chat, voice and screen-share
-  lifecycles, with optional image/file exchange, retaining the current topology
-  and route controller. Compare continued Go with scoped Rust components before
-  choosing implementation scope. The [hosting and subscription assessment](./research/room-interactions.md#multi-room-and-distributed-hosting-assessment)
-  distinguishes per-room hosting, federation and replicated room authority.
 - **Virtual gamepads beyond Windows.** Linux uinput passed its isolated kernel
   gate; desktop permissions and game recognition need physical checks. macOS
   virtual HID needs an entitled App and macOS SDK/runtime checks. The

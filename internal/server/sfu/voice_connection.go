@@ -3,12 +3,15 @@ package sfu
 import (
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	livekitsfu "github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/livekit/livekit-server/pkg/sfu/buffer"
 	"github.com/pion/interceptor"
-	"github.com/pion/rtp"
+	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/rtcerr"
 )
@@ -21,20 +24,21 @@ var voiceCodec = webrtc.RTPCodecCapability{
 type voiceReceiveSlot struct {
 	transceiver *webrtc.RTPTransceiver
 	publication VoicePublication
-	rtcp        bool
 }
 
 type voiceSendSlot struct {
 	mu          sync.Mutex
 	publication VoicePublication
 	transceiver *webrtc.RTPTransceiver
-	track       *webrtc.TrackLocalStaticRTP
+	output      *forwarding.AudioOutput
+	input       *forwarding.Source
 	active      bool
 }
 
 func (s *voiceSendSlot) disable() {
 	s.mu.Lock()
 	s.active = false
+	s.detachSource()
 	s.mu.Unlock()
 }
 
@@ -44,13 +48,25 @@ func (s *voiceSendSlot) source() VoicePublication {
 	return s.publication
 }
 
-func (s *voiceSendSlot) write(publication VoicePublication, packet *rtp.Packet) {
+func (s *voiceSendSlot) attach(publication VoicePublication, source *forwarding.Source) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.active && s.publication == publication {
-		// A failed subscriber write belongs to that connection, not the source.
-		_ = s.track.WriteRTP(packet)
+	if s.active && s.publication == publication && s.input != source {
+		if err := s.output.ReplaceSource(source); err == nil {
+			s.input = source
+		}
 	}
+}
+
+// Called under the slot mutex; the negotiated output survives a source's end.
+func (s *voiceSendSlot) detachSource() {
+	s.output.DetachSource()
+	s.input = nil
+}
+
+type voiceInput struct {
+	publication VoicePublication
+	source      *forwarding.Source
 }
 
 type voiceOffer struct {
@@ -60,16 +76,17 @@ type voiceOffer struct {
 }
 
 type voiceConnection struct {
-	owner *voiceMedia
-	key   voiceKey
-	pc    *webrtc.PeerConnection
+	owner   *voiceMedia
+	key     voiceKey
+	pc      *webrtc.PeerConnection
+	factory *buffer.Factory
 	// The owner mutex protects plans and the packet-forwarding view.
 	plan     VoiceConnectionPlan
 	version  uint64
 	emit     func(VoiceMediaEvent)
 	outgoing map[string]*voiceSendSlot
 	remote   map[string]VoicePublication
-	bindings map[string]*webrtc.TrackRemote
+	bindings map[string]*voiceInput
 	closed   bool
 	readers  sync.WaitGroup
 	// SDP mutations are serialized independently of room signaling and RTP.
@@ -89,22 +106,34 @@ type voiceConnection struct {
 }
 
 func newVoiceConnection(owner *voiceMedia, plan VoiceConnectionPlan, emit func(VoiceMediaEvent)) (*voiceConnection, error) {
+	c := &voiceConnection{owner: owner, key: plan.key(), emit: emit,
+		outgoing: make(map[string]*voiceSendSlot), remote: make(map[string]VoicePublication), bindings: make(map[string]*voiceInput),
+		events: make(chan VoiceMediaEvent, 128), stop: make(chan struct{})}
 	engine := &webrtc.MediaEngine{}
 	if err := engine.RegisterCodec(webrtc.RTPCodecParameters{RTPCodecCapability: voiceCodec, PayloadType: 111}, webrtc.RTPCodecTypeAudio); err != nil {
 		return nil, err
 	}
 	registry := &interceptor.Registry{}
-	if err := webrtc.RegisterDefaultInterceptors(engine, registry); err != nil {
-		return nil, err
-	}
-	pc, err := webrtc.NewAPI(webrtc.WithMediaEngine(engine), webrtc.WithInterceptorRegistry(registry),
-		webrtc.WithSettingEngine(owner.settings)).NewPeerConnection(webrtc.Configuration{})
+	settings := owner.settings()
+	factory, err := forwarding.ConfigureAudioForwarding(&settings, registry, func(ssrc uint32) *livekitsfu.DownTrack {
+		owner.mu.Lock()
+		defer owner.mu.Unlock()
+		for _, slot := range c.sendSlots {
+			if track := slot.output.DownTrack(); track.SSRC() == ssrc {
+				return track
+			}
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	c := &voiceConnection{owner: owner, key: plan.key(), pc: pc, emit: emit,
-		outgoing: make(map[string]*voiceSendSlot), remote: make(map[string]VoicePublication), bindings: make(map[string]*webrtc.TrackRemote),
-		events: make(chan VoiceMediaEvent, 128), stop: make(chan struct{})}
+	pc, err := webrtc.NewAPI(webrtc.WithMediaEngine(engine), webrtc.WithInterceptorRegistry(registry),
+		webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		return nil, err
+	}
+	c.pc, c.factory = pc, factory
 	// A silent room still negotiates its admitted transport. The empty receive
 	// slot is reused by a later authorized publication; it emits no audio.
 	idle, err := pc.AddTransceiverFromKind(webrtc.RTPCodecTypeAudio,
@@ -121,7 +150,16 @@ func newVoiceConnection(owner *voiceMedia, plan VoiceConnectionPlan, emit func(V
 			c.queue(VoiceMediaEvent{Candidate: &value})
 		}
 	})
-	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) { c.queue(VoiceMediaEvent{State: state}) })
+	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		if state == webrtc.PeerConnectionStateConnected {
+			owner.mu.Lock()
+			for _, slot := range c.sendSlots {
+				slot.output.SetConnected()
+			}
+			owner.mu.Unlock()
+		}
+		c.queue(VoiceMediaEvent{State: state})
+	})
 	pc.OnTrack(c.consume)
 	go c.deliver()
 	return c, nil
@@ -259,29 +297,11 @@ func (c *voiceConnection) syncSlots(plan VoiceConnectionPlan) error {
 		}
 		c.receiveSlots[index].publication = pub
 	}
-	for _, slot := range c.receiveSlots {
-		if !slot.rtcp {
-			slot.rtcp = true
-			if c.startReader() {
-				go func(receiver *webrtc.RTPReceiver) {
-					defer c.readers.Done()
-					for {
-						if _, _, err := receiver.ReadRTCP(); err != nil {
-							return
-						}
-					}
-				}(slot.transceiver.Receiver())
-			}
-		}
-	}
 	for _, slot := range c.sendSlots {
 		if slot.publication.ID != "" && !slices.Contains(plan.Subscribe, slot.publication) {
 			slot.disable()
-			if err := slot.transceiver.Sender().ReplaceTrack(nil); err != nil {
-				return err
-			}
 			slot.mu.Lock()
-			slot.publication, slot.track = VoicePublication{}, nil
+			slot.publication = VoicePublication{}
 			slot.mu.Unlock()
 		}
 	}
@@ -290,25 +310,38 @@ func (c *voiceConnection) syncSlots(plan VoiceConnectionPlan) error {
 			c.authorizeOutput(c.sendSlots[index], pub)
 			continue
 		}
-		track, err := webrtc.NewTrackLocalStaticRTP(voiceCodec, pub.ID, pub.PeerID)
-		if err != nil {
-			return err
-		}
 		index := slices.IndexFunc(c.sendSlots, func(slot *voiceSendSlot) bool { return slot.publication.ID == "" })
 		if index < 0 {
-			transceiver, err := c.pc.AddTransceiverFromTrack(track, webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
+			output, err := forwarding.NewAudioOutput(forwarding.AudioOutputOptions{
+				ID: c.key.connection + "_voice_" + strconv.Itoa(len(c.sendSlots)), StreamID: c.key.peer,
+				Codec:         webrtc.RTPCodecParameters{RTPCodecCapability: voiceCodec, PayloadType: 111},
+				BufferFactory: c.factory, RTCPWriter: c.pc.WriteRTCP,
+			})
 			if err != nil {
 				return err
 			}
-			c.sendSlots = append(c.sendSlots, &voiceSendSlot{transceiver: transceiver})
+			transceiver, err := c.pc.AddTransceiverFromTrack(output.Track(), webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly})
+			if err != nil {
+				output.Close()
+				return err
+			}
+			output.SetTransceiver(transceiver)
+			c.owner.mu.Lock()
+			if c.closed {
+				c.owner.mu.Unlock()
+				output.Close()
+				return errors.New("voice connection is retiring")
+			}
+			c.sendSlots = append(c.sendSlots, &voiceSendSlot{transceiver: transceiver, output: output})
 			index = len(c.sendSlots) - 1
-			c.readRTCP(transceiver.Sender())
-		} else if err = c.sendSlots[index].transceiver.Sender().ReplaceTrack(track); err != nil {
-			return err
+			if c.pc.ConnectionState() == webrtc.PeerConnectionStateConnected {
+				output.SetConnected()
+			}
+			c.owner.mu.Unlock()
 		}
 		slot := c.sendSlots[index]
 		slot.mu.Lock()
-		slot.publication, slot.track = pub, track
+		slot.publication = pub
 		slot.mu.Unlock()
 		c.authorizeOutput(slot, pub)
 	}
@@ -410,18 +443,24 @@ func (c *voiceConnection) startReader() bool {
 	return true
 }
 
-func (c *voiceConnection) readRTCP(sender *webrtc.RTPSender) {
-	if !c.startReader() {
-		return
-	}
-	go func() {
-		defer c.readers.Done()
-		for {
-			if _, _, err := sender.ReadRTCP(); err != nil {
-				return
+func (c *voiceConnection) readInputRTCP(input *voiceInput, receiver *webrtc.RTPReceiver) {
+	defer c.readers.Done()
+	for {
+		packets, _, err := receiver.ReadRTCP()
+		if err != nil {
+			return
+		}
+		c.owner.mu.Lock()
+		source := input.source
+		c.owner.mu.Unlock()
+		if source != nil {
+			for _, packet := range packets {
+				if report, ok := packet.(*rtcp.SenderReport); ok {
+					_ = source.SenderReport(0, report)
+				}
 			}
 		}
-	}()
+	}
 }
 
 func (c *voiceConnection) consume(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
@@ -439,17 +478,30 @@ func (c *voiceConnection) consume(track *webrtc.TrackRemote, receiver *webrtc.RT
 		return
 	}
 	c.owner.mu.Lock()
-	if c.closed || c.bindings[mid] != nil || len(c.bindings) >= maxVoicePublications {
+	if c.closed || (c.bindings[mid] == nil && len(c.bindings) >= maxVoicePublications) {
 		c.owner.mu.Unlock()
 		return
 	}
-	c.bindings[mid] = track
+	if previous := c.bindings[mid]; previous != nil {
+		c.detachInputLocked(previous.source)
+	}
+	input := &voiceInput{}
+	c.bindings[mid] = input
 	c.readers.Add(1)
 	c.owner.mu.Unlock()
+	if c.startReader() {
+		go c.readInputRTCP(input, receiver)
+	}
 	defer func() {
 		c.owner.mu.Lock()
-		delete(c.bindings, mid)
+		if c.bindings[mid] == input {
+			delete(c.bindings, mid)
+		}
+		c.detachInputLocked(input.source)
 		c.owner.mu.Unlock()
+		if input.source != nil {
+			input.source.Close()
+		}
 		c.readers.Done()
 	}()
 	for {
@@ -458,22 +510,67 @@ func (c *voiceConnection) consume(track *webrtc.TrackRemote, receiver *webrtc.RT
 			return
 		}
 		c.owner.mu.Lock()
+		if c.closed || c.bindings[mid] != input {
+			c.owner.mu.Unlock()
+			return
+		}
 		pub := c.remote[mid]
-		var outputs []*voiceSendSlot
-		if !c.closed && pub.ID != "" && slices.Contains(c.plan.Publish, pub) {
-			for _, other := range c.owner.connections {
-				if other != c && !other.closed && other.key.room == c.key.room {
-					if out := other.outgoing[pub.ID]; out != nil && slices.Contains(other.plan.Subscribe, pub) {
-						outputs = append(outputs, out)
-					}
+		if pub.ID == "" || !slices.Contains(c.plan.Publish, pub) {
+			c.owner.mu.Unlock()
+			continue
+		}
+		previous := input.source
+		if previous == nil || input.publication != pub {
+			source, err := forwarding.NewSource(forwarding.SourceOptions{
+				ID: pub.ID, StreamID: pub.PeerID, Codec: track.Codec(),
+			})
+			if err == nil {
+				err = source.BindLayer(0, packet.SSRC, webrtc.RTPParameters{Codecs: []webrtc.RTPCodecParameters{track.Codec()}})
+			}
+			if err != nil {
+				c.owner.mu.Unlock()
+				if source != nil {
+					source.Close()
+				}
+				c.queue(VoiceMediaEvent{State: webrtc.PeerConnectionStateFailed})
+				return
+			}
+			c.detachInputLocked(previous)
+			input.publication, input.source = pub, source
+		}
+		for _, other := range c.owner.connections {
+			if other != c && !other.closed && other.key.room == c.key.room {
+				if out := other.outgoing[pub.ID]; out != nil && slices.Contains(other.plan.Subscribe, pub) {
+					out.attach(pub, input.source)
 				}
 			}
 		}
 		c.owner.mu.Unlock()
+		if previous != nil && previous != input.source {
+			previous.Close()
+		}
 		// Destination transports own their negotiated extensions and RTCP.
 		packet.Extension, packet.ExtensionProfile, packet.Extensions = false, 0, nil
-		for _, out := range outputs {
-			out.write(pub, packet)
+		_ = input.source.WriteRTP(0, packet)
+	}
+}
+
+// Authority revocation fences already-buffered input at every attached output.
+// Physical source closure remains with its reader, outside the authority lock.
+func (c *voiceConnection) detachInputLocked(source *forwarding.Source) {
+	if source == nil {
+		return
+	}
+	for _, other := range c.owner.connections {
+		if other.key.room != c.key.room {
+			continue
+		}
+		for _, out := range other.outgoing {
+			out.mu.Lock()
+			if out.input == source {
+				out.detachSource()
+			}
+			out.mu.Unlock()
 		}
 	}
 }
@@ -481,6 +578,9 @@ func (c *voiceConnection) consume(track *webrtc.TrackRemote, receiver *webrtc.RT
 // retireLocked revokes packet delivery before physical close can block.
 func (c *voiceConnection) retireLocked() {
 	c.closed = true
+	for _, input := range c.bindings {
+		c.detachInputLocked(input.source)
+	}
 	for _, out := range c.outgoing {
 		out.disable()
 	}
@@ -494,6 +594,11 @@ func (c *voiceConnection) close() error {
 		close(c.stop)
 		c.closeErr = c.pc.Close()
 		c.readers.Wait()
+		c.signaling.Lock()
+		for _, slot := range c.sendSlots {
+			slot.output.Close()
+		}
+		c.signaling.Unlock()
 		c.owner.mu.Lock()
 		if c.owner.connections[c.key] == c {
 			delete(c.owner.connections, c.key)

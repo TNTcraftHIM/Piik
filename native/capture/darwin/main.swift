@@ -1,7 +1,9 @@
 import AVFoundation
+import AppKit
 import AudioToolbox
 import CoreAudio
 import CoreGraphics
+import CoreImage
 import CoreMedia
 import CoreVideo
 import Darwin
@@ -324,6 +326,89 @@ private func listSources() async throws {
         $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
     }
     try writeJSON(Array((displays + windows).prefix(1024)))
+}
+
+private func bitmapPreview(_ image: VideoImage) throws -> Data {
+    // Core Video's clean rect and Core Image both use a lower-left origin.
+    let pixels = CIImage(cvPixelBuffer: image.buffer)
+        .cropped(to: CVImageBufferGetCleanRect(image.buffer))
+    guard let source = CIContext().createCGImage(pixels, from: pixels.extent) else {
+        throw CaptureFailure(description: "source preview image is unavailable")
+    }
+    let scale = min(1, 320 / CGFloat(source.width), 180 / CGFloat(source.height))
+    let width = max(1, Int(CGFloat(source.width) * scale))
+    let height = max(1, Int(CGFloat(source.height) * scale))
+    // Opaque RGB keeps the system BMP encoder within the shared preview budget.
+    guard let context = CGContext(data: nil, width: width, height: height,
+        bitsPerComponent: 8, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue) else {
+        throw CaptureFailure(description: "source preview bitmap is unavailable")
+    }
+    let bounds = CGRect(x: 0, y: 0, width: width, height: height)
+    context.setFillColor(CGColor(gray: 0, alpha: 1))
+    context.fill(bounds)
+    context.interpolationQuality = .high
+    context.draw(source, in: bounds)
+    guard let thumbnail = context.makeImage(),
+          let data = NSBitmapImageRep(cgImage: thumbnail).representation(using: .bmp, properties: [:]) else {
+        throw CaptureFailure(description: "source preview encoding failed")
+    }
+    return data
+}
+
+private final class PreviewOutput: NSObject, SCStreamOutput, SCStreamDelegate {
+    let done = StopSignal()
+    private(set) var data: Data?
+
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
+                of outputType: SCStreamOutputType) {
+        guard !done.isStopped, outputType == .screen, sampleBuffer.isValid,
+              let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer,
+                createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
+              let attachments = attachments.first,
+              let status = attachments[.status] as? Int, SCFrameStatus(rawValue: status) == .complete,
+              let buffer = CMSampleBufferGetImageBuffer(sampleBuffer),
+              let image = VideoImage(buffer, attachments: attachments) else { return }
+        do {
+            data = try bitmapPreview(image)
+            done.signal()
+        } catch { done.signal(error) }
+    }
+
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        done.signal(error)
+    }
+}
+
+private func previewSource(_ arguments: [String]) async throws {
+    guard arguments.count == 6, let sourceID = UInt32(arguments[3]), sourceID > 0,
+          let pid = UInt32(arguments[4]) else {
+        throw CaptureFailure(description: "invalid source preview arguments")
+    }
+    let filter = try await captureFilter(kind: arguments[2], sourceID: sourceID,
+        pid: pid, creationTime: arguments[5])
+    let configuration = SCStreamConfiguration()
+    configuration.width = 320
+    configuration.height = 180
+    configuration.scalesToFit = true
+    if #available(macOS 14.0, *) { configuration.preservesAspectRatio = true }
+    configuration.minimumFrameInterval = CMTime(value: 1, timescale: 1)
+    configuration.queueDepth = 3
+    configuration.pixelFormat = kCVPixelFormatType_32BGRA
+    configuration.showsCursor = false
+    let output = PreviewOutput()
+    let stream = SCStream(filter: filter, configuration: configuration, delegate: output)
+    try stream.addStreamOutput(output, type: .screen,
+        sampleHandlerQueue: DispatchQueue(label: "piik.capture.preview"))
+    try await stream.startCapture()
+    do { try output.done.wait() }
+    catch {
+        try? await stream.stopCapture()
+        throw error
+    }
+    try await stream.stopCapture()
+    guard let data = output.data else { throw CaptureFailure(description: "source preview is empty") }
+    FileHandle.standardOutput.write(data)
 }
 
 private final class StopSignal {
@@ -1169,12 +1254,30 @@ private func geometrySelfTest() throws {
         }
     }
     let buffer = try syntheticPixelBuffer()
+    let fullPreview = try bitmapPreview(VideoImage(buffer))
+    guard fullPreview.starts(with: [0x42, 0x4d]), fullPreview.count <= 192 * 1024,
+          let fullThumbnail = NSBitmapImageRep(data: fullPreview),
+          fullThumbnail.pixelsWide == 320, fullThumbnail.pixelsHigh == 180 else {
+        throw CaptureFailure(description: "source preview bitmap self-test failed")
+    }
     let ceiling = OutputProfile(width: 1280, height: 720, fps: frameRate, bitrate: bitrate)
     let rect = CGRect(x: 50, y: 40, width: 200, height: 300)
     let attachments: [SCStreamFrameInfo: Any] = [
         .contentRect: rect.dictionaryRepresentation,
         .scaleFactor: CGFloat(2), .contentScale: CGFloat(1),
     ]
+    // Leave unequal black padding above/below the crop, with dark content on
+    // top and light content below. Decode the actual BMP to detect a Y flip.
+    try require(CVPixelBufferLockBaseAddress(buffer, []), "preview-test-buffer-lock")
+    guard let luma = CVPixelBufferGetBaseAddressOfPlane(buffer, 0) else {
+        CVPixelBufferUnlockBaseAddress(buffer, [])
+        throw CaptureFailure(description: "preview test pixels are unavailable")
+    }
+    let stride = CVPixelBufferGetBytesPerRowOfPlane(buffer, 0)
+    for row in 80..<680 {
+        memset(luma.advanced(by: row * stride + 100), row < 380 ? 80 : 180, 400)
+    }
+    CVPixelBufferUnlockBaseAddress(buffer, [])
     // Core Video returns a lower-left origin; the surface crop starts 80 px
     // from the top, so its lower edge is 720 - 80 - 600 = 40 px from the bottom.
     guard let image = VideoImage(buffer, attachments: attachments),
@@ -1182,6 +1285,16 @@ private func geometrySelfTest() throws {
           try image.fitted(to: ceiling).height == 600,
           CVImageBufferGetCleanRect(buffer) == CGRect(x: 100, y: 40, width: 400, height: 600) else {
         throw CaptureFailure(description: "capture content geometry self-test failed")
+    }
+    let preview = try bitmapPreview(image)
+    guard preview.starts(with: [0x42, 0x4d]), preview.count <= 192 * 1024,
+          let thumbnail = NSBitmapImageRep(data: preview),
+          thumbnail.pixelsWide == 120, thumbnail.pixelsHigh == 180,
+          let top = thumbnail.colorAt(x: 5, y: 3)?.usingColorSpace(.deviceRGB),
+          let bottom = thumbnail.colorAt(x: 5, y: 176)?.usingColorSpace(.deviceRGB),
+          top.redComponent > 0.15, top.redComponent < 0.45,
+          bottom.redComponent > 0.6, bottom.redComponent < 0.9 else {
+        throw CaptureFailure(description: "source preview conversion self-test failed")
     }
     var upscaled = attachments
     upscaled[.contentScale] = CGFloat(2)
@@ -2191,6 +2304,8 @@ private struct PiikCapture {
                 try audioSelfTest()
             } else if arguments.count == 2, arguments[1] == "--list" {
                 try await listSources()
+            } else if arguments.count > 1, arguments[1] == "--preview" {
+                try await previewSource(arguments)
             } else if arguments.count == 2, arguments[1] == "--list-microphones" {
                 try listMicrophones()
             } else if arguments.count == 2, arguments[1] == "--capture-microphone" {

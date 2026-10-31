@@ -150,6 +150,38 @@ func TestStopCancelsAttachmentAndRejectsLateFrame(t *testing.T) {
 	eq(t, edgeOf(t, routes, B).ConnectionID, "voice-b")
 }
 
+func TestCanceledPublicationPreparationReleasesNoRoomResources(t *testing.T) {
+	for _, change := range []string{"stop", "replacement", "pause", "child-session", "parent-session"} {
+		t.Run(change, func(t *testing.T) {
+			routes := voiceTree(t)
+			routes.SetVideoPublication("share", false, 10)
+			op := must(t, routes.Reconcile(11).Operation)
+			eq(t, op.Reason, DemandPublicationAttach)
+			// The effect layer prepares this optional facet without a reservation,
+			// then yields before handing the guarded result back to the controller.
+			prepared := BeginInput{Guard: cursorGuard(op), NowMs: 13, ConnectionID: "late-video"}
+			switch change {
+			case "stop":
+				routes.SetVideoPublication("", false, 12)
+			case "replacement":
+				routes.SetVideoPublication("replacement-share", false, 12)
+			case "pause":
+				routes.SetVideoPublication("share", true, 12)
+			case "child-session":
+				routes.UpsertParticipant(viewerInput(A, "replacement-child", 1), ms(12))
+			case "parent-session":
+				routes.UpsertParticipant(hostInput("replacement-parent", 1), ms(12))
+			}
+			result := routes.BeginCurrentCandidate(prepared)
+			eq(t, result.Accepted, false)
+			eq(t, len(result.Released), 0)
+			eq(t, edgeOf(t, routes, A).ConnectionID, "voice-a")
+			eq(t, edgeOf(t, routes, B).ConnectionID, "voice-b")
+			eq(t, edgeOf(t, routes, A).Usable && edgeOf(t, routes, B).Usable, true)
+		})
+	}
+}
+
 func TestVoiceOptInRetainsAlreadyProvenVideo(t *testing.T) {
 	routes := newController(1, Options{})
 	addViewer(routes, A, 0, ms(1))

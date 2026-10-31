@@ -111,6 +111,7 @@ const candidate = (
 
 function createFakeSubscriber(events: SubscriberEvents, log: string[], label: string) {
   return {
+    isConnected: vi.fn(() => true),
     resync: vi.fn(),
     updateConfig: vi.fn(),
     acceptSignal: vi.fn(async () => undefined),
@@ -174,6 +175,55 @@ function receiveMetrics(
 }
 
 describe("minimal route transition contracts", () => {
+  it.each(["connected", "failed", "superseded"] as const)("retains the old media while a committed Peer waits, then handles %s", async outcome => {
+    const messages: ClientMessage[] = [];
+    let status: "disconnected" | "connected" | "failed" = "disconnected";
+    const activatePeer = vi.fn((_assignment: ParticipantRouteAssignment, revision?: number): boolean | "waiting" =>
+      revision === undefined || status === "connected" ? true : status === "disconnected" ? "waiting" : false);
+    let subscriber!: ReturnType<typeof createFakeSubscriber>;
+    const onSfuStream = vi.fn();
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer, onSfuStream,
+      send: message => { messages.push(message); return true; },
+      createSubscriber: events => (subscriber = createFakeSubscriber(events, [], "retained")),
+    });
+    await prepareSfu(route, 1);
+    subscriber.events.onStream({} as MediaStream);
+    subscriber.events.onFirstDecodedFrame();
+    await vi.waitFor(() => expect(onSfuStream).toHaveBeenCalledOnce());
+    const assignment = peerAssignment("candidate_parent");
+    route.accept({ revision: 2, phase: "prepare", assignment, candidate: candidate(2) });
+    route.accept({ revision: 2, phase: "active", assignment });
+    await vi.waitFor(() => expect(activatePeer).toHaveBeenCalledWith(assignment, 2));
+    expect(messages.filter(message => message.type === "route-failed")).toEqual([]);
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+    expect(route.retryPeerActivation("retired_connection")).toBe(false);
+
+    if (outcome === "superseded") {
+      const replacement = peerAssignment("replacement_parent");
+      route.accept({ revision: 3, phase: "prepare", assignment: replacement, candidate: candidate(3) });
+      status = "connected";
+      expect(route.retryPeerActivation(candidate(2).connectionId)).toBe(false);
+      expect(route.retryPeerActivation(candidate(3).connectionId)).toBe(false);
+      expect(subscriber.disconnect).not.toHaveBeenCalled();
+      route.accept({ revision: 3, phase: "active", assignment: replacement });
+      await vi.waitFor(() => expect(subscriber.disconnect).toHaveBeenCalledOnce());
+      expect(activatePeer).toHaveBeenCalledWith(replacement, 3);
+    } else {
+      status = outcome;
+      expect(route.retryPeerActivation(candidate(2).connectionId)).toBe(true);
+      if (outcome === "connected") await vi.waitFor(() => expect(subscriber.disconnect).toHaveBeenCalledOnce());
+      else {
+        await vi.waitFor(() => expect(messages).toContainEqual({
+          type: "route-failed", revision: 2, phase: "active", connectionId: candidate(2).connectionId,
+        }));
+        expect(subscriber.disconnect).not.toHaveBeenCalled();
+      }
+    }
+    expect(messages.filter(message => message.type === "route-failed")).toHaveLength(outcome === "failed" ? 1 : 0);
+    await route.disconnect();
+  });
+
   it("reports active failure when a prepared Peer disappears before commit delivery", async () => {
     const messages: ClientMessage[] = [];
     const onSfuStream = vi.fn();
@@ -1403,6 +1453,17 @@ describe("minimal route transition contracts", () => {
     expect(messages.filter((message) => message.type === "route-ready")).toEqual([
       { type: "route-ready", revision: 2, phase: "prepare" },
     ]);
+    subscriber.isConnected.mockReturnValue(false);
+    route.accept({ revision: 2, phase: "active", assignment: viewerSfuAssignment() });
+    for (const timestampMs of [17_100, 19_100, 21_100]) {
+      currentMetrics = receiveMetrics(timestampMs - 100);
+      subscriber.events.onStats(receiveMetrics(timestampMs, { framesPerSecond: 1 }));
+    }
+    expect(messages.filter(message => message.type === "route-failed")).toEqual([]);
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+    subscriber.isConnected.mockReturnValue(true);
+    subscriber.events.onState("connected");
+    await route.disconnect();
   });
 
   it("rejects a quality SFU candidate after three comparable regressions", async () => {
@@ -1451,7 +1512,10 @@ describe("minimal route transition contracts", () => {
     for (const timestampMs of [1_100, 3_100, 5_100]) {
       currentMetrics = receiveMetrics(timestampMs - 100);
       subscriber.events.onStats(
-        receiveMetrics(timestampMs, { framesPerSecond: 30 }),
+        receiveMetrics(timestampMs, {
+          framesPerSecond: 30,
+          intervalFramesDecoded: 60,
+        }),
       );
     }
 

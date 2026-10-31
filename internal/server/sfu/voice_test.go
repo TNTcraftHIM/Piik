@@ -19,8 +19,9 @@ import (
 )
 
 type voiceFixtureSource struct {
-	track  *webrtc.TrackLocalStaticRTP
-	active atomic.Bool
+	track    *webrtc.TrackLocalStaticRTP
+	active   atomic.Bool
+	sequence atomic.Uint32
 }
 
 type voiceFixturePeer struct {
@@ -179,14 +180,13 @@ func newVoiceFixturePeer(t *testing.T, ctx context.Context, service *Media, sett
 		go func() {
 			ticker := time.NewTicker(10 * time.Millisecond)
 			defer ticker.Stop()
-			var sequence uint16
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
 					if source.active.Load() {
-						sequence++
+						sequence := uint16(source.sequence.Add(1))
 						_ = track.WriteRTP(&rtp.Packet{Header: rtp.Header{Version: 2, SequenceNumber: sequence, Timestamp: uint32(sequence) * 480}, Payload: []byte{marker, 0, 0}})
 					}
 				}
@@ -212,7 +212,7 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	defer mux.Close()
 	serverSettings := settings
 	serverSettings.SetICEUDPMux(mux)
-	service := NewMedia(MediaOptions{Settings: serverSettings})
+	service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return serverSettings }})
 	defer service.Close()
 	a1, a2, b1 := VoicePublication{"voice_a1", "speaker_a"}, VoicePublication{"voice_a2", "speaker_c"}, VoicePublication{"voice_b1", "speaker_b"}
 	aPlan := VoiceConnectionPlan{RoomID: "1234", PeerID: "relay_a", SessionID: "session_a", ConnectionID: "connection_a", Publish: []VoicePublication{a1, a2}, Subscribe: []VoicePublication{b1}}
@@ -389,6 +389,63 @@ func TestVoiceJunctionDuplexAuthorizationAndExactRetirement(t *testing.T) {
 	}
 }
 
+func TestVoiceSubscriptionReusesSlotAcrossIndependentPacketClocks(t *testing.T) {
+	ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
+	defer cancel()
+	settings := webrtc.SettingEngine{}
+	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+	settings.SetIncludeLoopbackCandidate(true)
+	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
+	service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return settings }})
+	t.Cleanup(func() { _ = service.Close() })
+	first, next := VoicePublication{"voice_first", "speaker_first"}, VoicePublication{"voice_next", "speaker_next"}
+	send := VoiceConnectionPlan{RoomID: "1234", PeerID: "sender", SessionID: "sender_session", ConnectionID: "sender_connection", Publish: []VoicePublication{first, next}}
+	receive := VoiceConnectionPlan{RoomID: "1234", PeerID: "listener", SessionID: "listener_session", ConnectionID: "listener_connection", Subscribe: []VoicePublication{first}}
+	sender := newVoiceFixturePeer(t, ctx, service, settings, send, map[string]byte{first.ID: 0xa1, next.ID: 0xa2})
+	listener := newVoiceFixturePeer(t, ctx, service, settings, receive, nil)
+	// Different microphones have independent RTP clocks. Reusing an output
+	// section must not make the second source look like old SRTP packets.
+	sender.sources[first.ID].sequence.Store(20_000)
+	sender.sources[next.ID].sequence.Store(1_000)
+	for _, peer := range []*voiceFixturePeer{sender, listener} {
+		if err := configureVoiceForTest(service, peer.plan, peer.event); err != nil {
+			t.Fatal(err)
+		}
+	}
+	waitForSource := func(marker byte, target int) {
+		t.Helper()
+		ticker := time.NewTicker(5 * time.Millisecond)
+		defer ticker.Stop()
+		for listener.count(marker) < target {
+			select {
+			case err := <-sender.errors:
+				t.Fatal(err)
+			case err := <-listener.errors:
+				t.Fatal(err)
+			case <-ctx.Done():
+				t.Fatalf("source %x did not reach listener: %v", marker, ctx.Err())
+			case <-ticker.C:
+			}
+		}
+	}
+	waitForSource(0xa1, 3)
+	sections := len(listener.pc.GetTransceivers())
+	receive.Subscribe = []VoicePublication{next}
+	if err := configureVoiceForTest(service, receive, listener.event); err != nil {
+		t.Fatal(err)
+	}
+	waitForSource(0xa2, 3)
+	firstTarget := listener.count(0xa1) + 3
+	receive.Subscribe = []VoicePublication{first}
+	if err := configureVoiceForTest(service, receive, listener.event); err != nil {
+		t.Fatal(err)
+	}
+	waitForSource(0xa1, firstTarget)
+	if len(listener.pc.GetTransceivers()) != sections {
+		t.Fatal("source replacement grew the negotiated media sections")
+	}
+}
+
 func TestVoiceFullRoomAdmitsBothPublicationReplacementFacets(t *testing.T) {
 	service := NewMedia(MediaOptions{})
 	t.Cleanup(func() {
@@ -542,7 +599,7 @@ func TestVoiceSilentTransportAcceptsLatePublicationOnSameConnection(t *testing.T
 	settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
 	settings.SetIncludeLoopbackCandidate(true)
 	settings.SetIPFilter(func(ip net.IP) bool { return ip.IsLoopback() })
-	service := NewMedia(MediaOptions{Settings: settings})
+	service := NewMedia(MediaOptions{Settings: func() webrtc.SettingEngine { return settings }})
 	defer service.Close()
 	pub := VoicePublication{ID: "late_voice", PeerID: "speaker"}
 	aPlan := VoiceConnectionPlan{RoomID: "1234", PeerID: "a", SessionID: "session_a", ConnectionID: "connection_a"}

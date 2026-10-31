@@ -120,6 +120,43 @@ func TestRebuiltDirectConnectionConsumesCurrentSessionOpportunity(t *testing.T) 
 	eq(t, hasTuple(must(t, routes.Reconcile(4).Operation), isPeer), false)
 }
 
+func TestRegeneratedEdgeFailureConsumesOnlyItsAcquiredSessionOpportunity(t *testing.T) {
+	for _, prediction := range []bool{false, true} {
+		for _, changed := range []string{"none", "child", "parent"} {
+			t.Run(fmt.Sprintf("nat=%t/session=%s", prediction, changed), func(t *testing.T) {
+				routes := newController(2, Options{SfuEnabled: true, QualityConvergenceEnabled: true, NatPredictionEnabled: prediction})
+				addViewer(routes, A, 0, nil)
+				routes.Reconcile(0)
+				commitCurrent(t, routes, 1, "original")
+				observePersistentDegraded(t, routes, A, "original", 10)
+				op := must(t, routes.Reconcile(14).Operation)
+				eq(t, op.Reason, DemandQualityConvergence)
+				eq(t, op.Candidates[0].Tuple, regenerateTuple(HOST))
+				prepared := beginOperation(t, routes, BeginInput{NowMs: 15, ConnectionID: "regenerated", Reservation: direct()})
+				guard := guardFor(A, prepared.Current.Revision, "regenerated")
+				eq(t, routes.CandidateReady(guard, 16, nil, CandidateProof{RelativeQualityApproved: true}).Committed, false)
+				eq(t, routes.ObserveSenderQualityEvidence(senderSample(HOST, A, prepared.Current.Revision,
+					"regenerated", "regenerated-sender", SenderQualityHealthy, 17), nil).Committed, true)
+
+				switch changed {
+				case "child":
+					routes.UpsertParticipant(viewerInput(A, "replacement-child", 0), ms(18))
+				case "parent":
+					routes.UpsertParticipant(hostInput("replacement-parent", 2), ms(18))
+				}
+				edge := edgeOf(t, routes, A)
+				eq(t, routes.InvalidateEdge(EdgeGuard{
+					ChildPeerID: A, ChildSessionID: edge.ChildSessionID, ParentSessionID: edge.ParentSessionID,
+					RouteRevision: routes.Revision(), ConnectionID: edge.ConnectionID,
+				}, ms(19)), true)
+				repair := must(t, routes.Reconcile(20).Operation)
+				eq(t, hasTuple(repair, isPeer), changed != "none")
+				eq(t, hasTuple(repair, isSfu), true)
+			})
+		}
+	}
+}
+
 func TestFreshRelayOpportunityBehindHealthySfu(t *testing.T) {
 	for _, voiceOnly := range []bool{false, true} {
 		for _, nat := range []bool{false, true} {

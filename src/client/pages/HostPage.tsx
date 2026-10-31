@@ -2911,11 +2911,14 @@ export function HostPage({
           if (!isCurrentShare(generation, shareGeneration)) {
             audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose(); return;
           }
+          if (!captured.getVideoTracks().some(track => track.readyState === "live")) {
+            throw new DOMException("Browser capture ended before sharing started", "NotReadableError");
+          }
         } catch (error) {
           audio.sourceStream.getTracks().forEach(track => track.stop()); audio.dispose();
           if (isCurrentShare(generation, shareGeneration)) {
             activeGenerationRef.current = null;
-            disposeResources(false); setNoticeError(error, "sourceAudio"); setPhase("error");
+            disposeResources(false); setCaptureError(error, selection.source, "capture"); setPhase("error");
           }
           return;
         }
@@ -3255,6 +3258,9 @@ export function HostPage({
             captured.getTracks().forEach(track => track.stop());
             audio.dispose();
             return;
+          }
+          if (!captured.getVideoTracks().some(track => track.readyState === "live")) {
+            throw new DOMException("Browser capture ended before source replacement", "NotReadableError");
           }
         } catch (error) {
           audio.dispose();

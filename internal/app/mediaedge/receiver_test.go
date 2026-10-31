@@ -10,12 +10,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding"
+	"github.com/TNTcraftHIM/Piik/internal/media/forwarding/forwardingtest"
 	"github.com/livekit/livekit-server/pkg/sfu"
+	"github.com/pion/rtcp"
 	"github.com/pion/rtp"
 	"github.com/pion/sdp/v3"
 	"github.com/pion/stun/v4"
 	"github.com/pion/webrtc/v4"
 )
+
+func TestReceiverStopsNACKAfterRTXRepair(t *testing.T) {
+	forwardingtest.IngressRepair(t, func(offer webrtc.SessionDescription, _ webrtc.SettingEngine) (*webrtc.PeerConnection, func() *forwarding.Source) {
+		engine, err := NewEngine(EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = engine.Close() })
+		receiver, _, err := engine.NewReceiver(ReceiverOptions{Offer: offer, EdgeCapacity: 1})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = receiver.Close() })
+		return receiver.connection, func() *forwarding.Source { return receiver.source.media.Source }
+	})
+}
 
 func TestOfferSendsCodecDistinguishesBundledAndRejectedMedia(t *testing.T) {
 	for _, test := range []struct {
@@ -288,6 +307,7 @@ func TestReceiverNegotiatesForwardableH264(t *testing.T) {
 		{"baseline", []string{"42001f"}, ""},
 		{"missing-profile", []string{""}, ""},
 		{"equivalent-baseline", []string{"42c01f"}, "42c01f"},
+		{"equivalent-baseline-with-vp8", []string{"42c01f", "vp8"}, "42c01f"},
 		{"small-browser-output", []string{"42e00b"}, "42e00b"},
 		{"level-5.1", []string{"42e033"}, "42e033"},
 		{"level-ceiling", []string{"42e034"}, "42e034"},
@@ -401,9 +421,27 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = upstream.AddTrack(track); err != nil {
+	videoSender, err := upstream.AddTrack(track)
+	if err != nil {
 		t.Fatal(err)
 	}
+	recoveryRequests := make(chan struct{}, 16)
+	go func() {
+		for {
+			packets, _, readErr := videoSender.ReadRTCP()
+			if readErr != nil {
+				return
+			}
+			for _, packet := range packets {
+				if _, ok := packet.(*rtcp.PictureLossIndication); ok {
+					select {
+					case recoveryRequests <- struct{}{}:
+					default:
+					}
+				}
+			}
+		}
+	}()
 	for _, transceiver := range upstream.GetTransceivers() {
 		if transceiver.Kind() == webrtc.RTPCodecTypeVideo {
 			if err = transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{videoCodecs[codec]}); err != nil {
@@ -627,6 +665,11 @@ func testReceiverForwarding(t *testing.T, codec string) {
 	source, audio := nativeReceiver.Source(), nativeReceiver.AudioSource()
 	socket := nativeReceiver.socket
 	for _, restart := range []bool{false, true} {
+		if restart {
+			for len(recoveryRequests) > 0 {
+				<-recoveryRequests
+			}
+		}
 		previousGathering := nativeReceiver.localCandidates
 		candidateMu.Lock()
 		remoteReady = false
@@ -660,6 +703,10 @@ func testReceiverForwarding(t *testing.T, codec string) {
 			_ = upstream.AddICECandidate(*candidate)
 		}
 		waitConnected(t, upstream, "renegotiated receiver")
+		if restart {
+			waitConnected(t, nativeReceiver.connection, "receiver after ICE restart")
+			waitSignal(t, recoveryRequests, "recovery frame request after Native transport resumes")
+		}
 		if (previousGathering != nativeReceiver.localCandidates) != restart {
 			t.Fatalf("collector replaced=%v, ICE restart=%v", previousGathering != nativeReceiver.localCandidates, restart)
 		}

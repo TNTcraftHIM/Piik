@@ -568,7 +568,7 @@ func endpointTransitionEquals(left, right EndpointTransition) bool {
 // sfu-reuse edge, which belongs to another holder), publication, overlap.
 func reservationResources(reservation CandidateReservation) []*Resource {
 	resources := []*Resource{}
-	if reservation.Kind != ReservationDirect && !(reservation.Kind == ReservationSfuReuse && reservation.Borrowed) {
+	if reservation.Kind == ReservationSfuCreate || reservation.Kind == ReservationSfuReuse && !reservation.Borrowed {
 		resources = append(resources, reservation.Edge)
 	}
 	if reservation.Kind == ReservationSfuCreate {

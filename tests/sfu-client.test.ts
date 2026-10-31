@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QUALITY_PROFILES } from "../src/client/media/quality.ts";
 import { SfuPublisher } from "../src/client/sfu/publisher.ts";
 import { SfuSubscriber } from "../src/client/sfu/subscriber.ts";
+import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import * as senderTracks from "../src/client/media/sender-video-track";
 import {
   clientMessageSchema,
+  type ClientMessage,
   type SfuSignalMessage,
 } from "../src/shared/protocol.ts";
 
@@ -648,6 +650,74 @@ describe("embedded SFU browser transport", () => {
     expect(onDisconnected).not.toHaveBeenCalled();
     await subscriber.disconnect();
     expect(onStream).toHaveBeenLastCalledWith(null);
+  });
+
+  it("waits for the exact SFU transport when decoded proof or commit arrives during disconnection", async () => {
+    const messages: ClientMessage[] = [];
+    const onSfuStream = vi.fn(), activatePeer = vi.fn(() => true);
+    const route = new ViewerSfuRoute("viewer_12345678", {
+      activatePeer, onSfuStream,
+      send: message => { messages.push(message); return true; },
+    });
+    cleanups.push(() => route.disconnect());
+    route.accept({ revision: 3, phase: "active", assignment: {
+      upstream: { kind: "peer", peerId: "healthy_parent" }, childPeerIds: [], sfuPublicationGeneration: null,
+    } });
+    await vi.advanceTimersByTimeAsync(0);
+    const assignment = { upstream: { kind: "sfu" as const }, childPeerIds: [], sfuPublicationGeneration: config.publicationGeneration };
+    route.accept({ revision: config.revision, phase: "prepare", assignment, candidate: {
+      childPeerId: "viewer_12345678", connectionId: config.connectionId, transport: "sfu", qualityProbe: false,
+    } });
+    await route.acceptConfig({ type: "sfu-config", ...config });
+    const pc = FakePc.instances[0]!;
+    await route.acceptSignal(signal({ description: { type: "offer", sdp: "offer" } }));
+    let completeStats!: (report: Map<string, object>) => void;
+    const report = new Promise<Map<string, object>>(resolve => { completeStats = resolve; });
+    pc.ontrack?.({ track: new FakeTrack("video"), receiver: { getStats: () => report } });
+    pc.state("connected");
+    pc.state("disconnected");
+    completeStats(new Map([["video", { id: "video", type: "inbound-rtp", kind: "video", framesDecoded: 1 }]]));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(messages.filter(message => message.type === "route-ready")).toEqual([]);
+    expect(onSfuStream).not.toHaveBeenCalled();
+
+    pc.state("connected");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(messages.filter(message => message.type === "route-ready")).toEqual([
+      { type: "route-ready", revision: config.revision, phase: "prepare" },
+    ]);
+    pc.state("disconnected");
+    route.accept({ revision: config.revision, phase: "active", assignment });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onSfuStream).not.toHaveBeenCalled();
+    pc.state("connected");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onSfuStream).toHaveBeenCalledOnce();
+    expect(FakePc.instances).toHaveLength(1);
+    expect(pc.close).not.toHaveBeenCalled();
+  });
+
+  it("keeps a healthy subscription when a manual restart cannot be sent", async () => {
+    const send = vi.fn(() => true);
+    const onState = vi.fn(), onDisconnected = vi.fn();
+    const subscriber = new SfuSubscriber({ send, onStream: vi.fn(), onState, onDisconnected });
+    cleanups.push(() => subscriber.disconnect());
+    await subscriber.connect(config);
+    subscriber.activate();
+    const pc = FakePc.instances[0]!;
+    pc.state("connected");
+    onState.mockClear();
+    send.mockReturnValue(false);
+
+    expect(subscriber.reconnect()).toBe(false);
+    subscriber.resync();
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(onDisconnected).not.toHaveBeenCalled();
+    expect(onState).not.toHaveBeenCalled();
+
+    send.mockReturnValue(true);
+    expect(subscriber.reconnect()).toBe(true);
+    expect(onState).toHaveBeenCalledExactlyOnceWith("reconnecting");
   });
 
   it("reports Browser video rejection through the existing SFU failure owner", async () => {

@@ -69,12 +69,12 @@ func (p VoiceConnectionPlan) key() voiceKey {
 
 type voiceMedia struct {
 	mu          sync.Mutex
-	settings    webrtc.SettingEngine
+	settings    func() webrtc.SettingEngine
 	connections map[voiceKey]*voiceConnection
 	closed      bool
 }
 
-func newVoiceMedia(settings webrtc.SettingEngine) *voiceMedia {
+func newVoiceMedia(settings func() webrtc.SettingEngine) *voiceMedia {
 	return &voiceMedia{settings: settings, connections: make(map[voiceKey]*voiceConnection)}
 }
 
@@ -156,6 +156,11 @@ func (media *Media) ConfigureVoice(plan VoiceConnectionPlan, emit func(VoiceMedi
 		if !slices.Contains(plan.Subscribe, out.source()) {
 			out.disable()
 			delete(c.outgoing, id)
+		}
+	}
+	for _, input := range c.bindings {
+		if !slices.Contains(plan.Publish, input.publication) {
+			c.detachInputLocked(input.source)
 		}
 	}
 	v.mu.Unlock()

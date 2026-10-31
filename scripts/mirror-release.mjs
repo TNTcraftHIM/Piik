@@ -8,7 +8,7 @@ const [directory, version, revision, option] = process.argv.slice(2);
 if (option && option !== "--dry-run") {
   throw new Error("Use mirror-release.mjs <artifacts> <version> <full-SHA> [--dry-run]");
 }
-const { files } = readReleaseArtifacts(directory, version, revision);
+const { mirrorFiles: files } = readReleaseArtifacts(directory, version, revision);
 if (files.some((file) => file.size > 100_000_000)) throw new Error("Gitee's 100 MB attachment limit is exceeded");
 const repository = "TNTcraftHIM/Piik";
 const api = `https://gitee.com/api/v5/repos/${repository}`;
