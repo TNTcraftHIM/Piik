@@ -165,6 +165,13 @@ remove both patch entries.
 Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
 to prepare and review updates without changing the current pin.
 
+Optional port mapping selects its socket in the pair-owned worker, independently
+of host-candidate signaling. The prepared `portmapper` 0.20.0 scheduling repair
+moves its blocking gateway lookup off the Tokio reactor without changing the
+public API or mapping protocols. Its
+[official baseline](https://github.com/n0-computer/net-tools/tree/80b449c74d38c564c598ae286de13032276f3515/portmapper)
+and the Piik worker remain separate owners; [TODO](../../docs/todo.md) tracks adoption.
+
 The unpublished combination includes the application GoogCc adapter, complete
 H264 access units, shared encoding ownership, coordinated UDP socket handoff and
 service-owned fixed Server UDP listeners.

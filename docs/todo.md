@@ -72,6 +72,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   The prebound-UDP capability addition also awaits approval.
   Submit the approved scope and verify the combined Native adapter before
   updating its fixed dependency. Local implementation and verification continue.
+- [ ] **Portmapper gateway scheduling.** The verified async gateway-lookup
+  repair awaits upstream-submission and patched-dependency approval. The
+  [Native dependency owner](../prototype/channel-native/README.md#rtc-dependency)
+  records its scope. Continue local integration without changing the formal pin.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session
