@@ -13,8 +13,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   a separate bounded asset slice; preset icons do not complete image support.
   The [network model](./research/channel-network-design.md) and
   [data model](./research/channel-storage-and-identity.md) own responsibilities.
-  Decide whether message reactions persist with history before implementing
-  their storage; the owner question is pending. Character reactions remain transient.
+  Message reactions persist with their messages; character reactions remain transient.
 - [ ] **3.0 Native platforms and integration.** Complete capture/input on the
   remaining platforms and packaging over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)

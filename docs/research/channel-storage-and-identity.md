@@ -62,7 +62,7 @@ channel or every attachment's bytes.
 
 | Record | Durable information |
 | --- | --- |
-| Message | Stable identity, authenticated author, room-confirmed order and send time, text and attachment descriptions. |
+| Message | Stable identity, authenticated author, room-confirmed order and send time, text, attachment descriptions and message reactions. |
 | Attachment within a message | Stable identity, filename, media type, byte size and expected whole-file digest. |
 | Image presentation | Optional dimensions and preview reference on the same attachment; no separate image storage or delivery lifecycle. |
 
@@ -73,6 +73,10 @@ than creating an upload/pending/commit lifecycle for metadata. The room owner
 saves the message transactionally and restores it on ordinary restart.
 Serving availability is derived from current
 readable copies, not a permanent `available` flag on the saved message.
+
+Message reactions are confirmed and saved by the room owner with that message.
+History synchronization restores them when a participant returns. Character
+expressions and throwing props are live interactions and do not enter history.
 
 The sender prepares readable local content and its digest before sending one
 chat command. A retry returns the original message, including its original
