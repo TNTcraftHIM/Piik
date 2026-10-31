@@ -1,5 +1,5 @@
 //! One admitted output keeps its sender and RTP clock across local encodings.
-use super::{compatible, SenderReports, Source, SourceFeed, TrackKey, VIDEO_PACKETS};
+use super::{compatible, SenderReports, Source, SourceFeed, TrackKey, RTP_PACKETS};
 #[cfg(any(feature = "capture", test))]
 use super::{packetizer::Packetizer, video};
 use anyhow::Result;
@@ -136,11 +136,7 @@ impl Output {
         }
         let (input, mut reader, report) = match &source.feed {
             SourceFeed::Rtp { report, .. } => {
-                let (packets, rx) = mpsc::channel(if source.kind == RtpCodecKind::Video {
-                    VIDEO_PACKETS
-                } else {
-                    1
-                });
+                let (packets, rx) = mpsc::channel(RTP_PACKETS);
                 (Input::Rtp(packets), Reader::Rtp(rx), report.clone())
             }
             #[cfg(any(feature = "capture", test))]
@@ -188,6 +184,8 @@ impl Output {
                 }
             }
         });
+        // Audio has no startup frame to preserve while its sending format is negotiated.
+        let audio = source.kind == RtpCodecKind::Audio;
         let task = tokio::spawn(async move {
             let result = async {
                 loop {
@@ -197,18 +195,20 @@ impl Output {
                             anyhow::ensure!(format.borrow().is_some(), "encoded codec no longer negotiated");
                             continue;
                         }
-                        packets = reader.recv(), if format.borrow().is_some() => {
+                        packets = reader.recv(), if audio || format.borrow().is_some() => {
                             match packets { Some(packets) => packets?, None => break }
                         }
                     };
-                    let payload_type = format.borrow().as_ref()
-                        .ok_or_else(|| anyhow::anyhow!("encoded codec no longer negotiated"))?.payload_type;
+                    let Some(payload_type) = format.borrow().as_ref().map(|codec| codec.payload_type) else {
+                        continue;
+                    };
                     for packet in packets {
                       // The sender owns negotiated PT (e.g. a remote offer may use 109).
                       // Construct a hop-local header: no upstream TWCC/abs-send-time/CSRC.
                       let packet = rtp::Packet {
                         header: rtp::header::Header {
                             version: 2,
+                            padding: packet.header.padding,
                             marker: packet.header.marker,
                             payload_type,
                             sequence_number: packet.header.sequence_number,

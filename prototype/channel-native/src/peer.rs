@@ -1988,9 +1988,7 @@ impl Driver {
                     }
                 };
                 match event {
-                    TrackRemoteEvent::OnRtpPacket(packet)
-                        if packet.header.ssrc == ssrc && !packet.payload.is_empty() =>
-                    {
+                    TrackRemoteEvent::OnRtpPacket(packet) if packet.header.ssrc == ssrc => {
                         match ingress.accept(&packet) {
                             Ok(false) => continue,
                             Ok(true) => {}
@@ -1998,6 +1996,10 @@ impl Driver {
                                 eprintln!("Native encoded input failed: {error}");
                                 break;
                             }
+                        }
+                        // Padding occupies the same sequence space, but cannot announce a source.
+                        if packet.payload.is_empty() && (first || !packet.header.padding) {
+                            continue;
                         }
                         if first {
                             first = false;

@@ -1,6 +1,8 @@
 use super::*;
 use piik_channel_core::wire::{FlowBinding, Kind};
 
+mod opus_startup;
+
 fn driver() -> (
     Driver,
     mpsc::Receiver<Event>,

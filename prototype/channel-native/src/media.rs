@@ -30,7 +30,7 @@ use std::{
 use tokio::sync::{mpsc, watch, Notify};
 use uuid::Uuid;
 
-pub(crate) const VIDEO_PACKETS: usize = 256;
+pub(crate) const RTP_PACKETS: usize = 256;
 pub(crate) const H264_RELAY_PROFILE: &str = "42e034";
 // One directed flow owns each kind; a publication can have several hop flows.
 pub(crate) type TrackKey = (Uuid, RtpCodecKind);
@@ -626,6 +626,16 @@ mod tests {
             .observe(&packet(6, vec![0x67, 0x42, 0xc0, 0x3c]))
             .is_err());
         assert!(sps.observe(&packet(7, vec![0x67, 0x64, 0, 0x28])).is_err());
+        // Pure padding belongs to RTP sequence space, not the H264 parser.
+        let mut ingress = RtpIngress::new(&codec("42e034"));
+        let mut padding = packet(8, vec![]);
+        padding.header.padding = true;
+        assert!(ingress.accept(&padding)?);
+        assert!(!ingress.accept(&padding)?);
+        assert!(ingress.accept(&packet(9, vec![0x67, 0x42, 0xc0, 0x28]))?);
+        assert!(ingress
+            .accept(&packet(10, vec![0x67, 0x64, 0, 0x28]))
+            .is_err());
         Ok(())
     }
 }
