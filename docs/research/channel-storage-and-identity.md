@@ -6,7 +6,6 @@ accepted data ownership and develops synchronization, delivery and recovery. The
 [prototype README](../../prototype/channel-server/README.md) describes running
 behavior; [TODO](../todo.md) owns pending decisions and implementation.
 The first version keeps one room data owner and reuses established room paths.
-The next implementation stage is recorded in TODO.
 
 ## Ownership And Placement
 
@@ -232,12 +231,14 @@ per-hop queue signals; each recipient's bounded pull limits its in-flight demand
 `bufferedAmount` does not prove downstream storage consumption. Keep bulk data
 out of the ordered control queue, while sharing transport ownership and admission.
 Separate queues do not isolate physical bandwidth.
-Closing a chat panel or stopping video does not cancel a file transfer's needed
-connection; completion releases only that transfer's resources.
+Downloads belong to the participant session. Closing a chat panel or stopping
+video does not cancel a file transfer's needed connection; completion releases
+only that transfer's resources. Image preview URLs belong to their view.
 
-Use a writable local sink, not an unbounded in-memory Blob. Start with recovery
-of an active task across connection loss; persistent downloads across process
-restart are not required for the first transfer implementation.
+Use a writable local sink, not an unbounded in-memory Blob. Unsupported storage
+is an explicit capability result. Start with recovery of an active task across
+connection loss; persistent downloads across process restart are not required
+for the first transfer implementation.
 
 No optional configured file-host store is proposed. A room owner may hold a file
 as an ordinary sender or recipient; ownership does not require retaining every
@@ -270,7 +271,6 @@ This initial model borrows cooperative distribution, while using Piik's
 existing tree and complete-copy cache index. Concurrent request aggregation has
 a separate published precedent in [CCNx section 2.4.2](https://www.rfc-editor.org/rfc/rfc8569.html#section-2.4.2);
 this is an experimental protocol reference, not a proposed Piik dependency.
-Implementing the bounded shared-flow behavior still needs acceptance evidence.
 
 Publish attachment metadata to the room, but request large file bodies only for
 interested consumers and necessary relays. Proactively filling every participant's
@@ -308,25 +308,11 @@ Keep durable domain and room data for the 3.0 communication model, stored
 outside program/update files. This does not change the published 2.x App's
 process-only room behavior.
 
-Room availability follows its actual hosting runtime, not the highlighted UI
-panel or a person's voice/watch activity. Browser hosting runs in its owning
-page with WASM and IndexedDB; closing that page ends hosting. App hosting runs in
-the App's Native participant with SQLite and continues when a Browser page closes,
-until hosting stops or the App process ends. The network model owns signaling
-recovery and participant lifetimes. When the runtime ends, the room pauses and
-retains its data. Restarting with the same data restores that room's identity
-and history.
-Recreating a same-named room without its data creates a new room.
-Server remains an explicitly started unattended service. All three wrappers use
-the shared core; none takes over another runtime's room implicitly. Connecting
-an App does not migrate an existing Browser room or its origin-local data.
-
-An App and Browser may be endpoints of the same user without sharing live
-activities. One App's Native endpoint can host several rooms in a domain, each
-with independent authority and saved data. A user creating a room after joining
-another user's domain hosts it through their own actual runtime; the domain
-retains only its directory summary, without requiring another domain or storing
-that room's history on the domain owner's device.
+The [network model](./channel-network-design.md#activity-and-lifecycle) owns
+hosting availability, signaling recovery and participant lifetimes. When the
+hosting runtime ends, the room pauses and retains its data. Restarting with the
+same data restores that room's identity and history without resuming captures
+or calls. Recreating a same-named room without its data creates a new room.
 
 The domain directory can retain the unavailable room's summary and owner binding.
 It does not automatically become a substitute room host or recover data it never
@@ -375,42 +361,3 @@ A Browser-held room authority additionally needs access to its original local
 data and credential. Explicit export/import can support that move; it is separate
 from editing a bookmark. This is part of Browser hosting design, not a reason to
 introduce a mandatory fixed website.
-
-## Current Implementation
-
-Without an App link, the prototype's create-room action starts a Browser-owned
-Rust/WASM runtime. Its policy and confirmed history stay in IndexedDB; the domain stores
-only its directory summary. Server embeds one Native participant to operate its
-initial rooms through the same room core, with one SQLite database per room.
-The separate Native executable and local App entry use that same participant
-runtime. App-linked creation stores rooms in the Native endpoint's SQLite;
-Browser page closure does not stop it or move existing Browser rooms.
-These adapters commit before confirmation and share
-retry and pagination rules. Participant reading windows remain separate from
-the owner's retained history. Reopening a room restores its data without
-restarting captures or voice.
-
-Domain WebSocket rendezvous carries admission, activity changes and repair.
-Browser- and Native-room chat and history use authenticated requests and signed
-room-owner results over their base paths. The same paths carry voice and requested
-file ranges. File descriptions stay in confirmed messages; file contents stay
-with participants. The domain stores neither for these rooms.
-Server rooms use this same peer path. There is no Domain chat/history executor
-or HTTP attachment store alongside it.
-
-Downloads belong to the participant session; changing the chat view does not
-cancel them. Image preview URLs belong to their view. A Browser receiver writes
-to a bounded local sink and verifies the complete file before exposing it, while
-the sender reads bounded ranges from its selected file. Unsupported storage is
-an explicit capability result, not permission to buffer an arbitrary file in RAM.
-
-A file must reach D through an intermediate peer when C-D direct connectivity
-is unavailable. Lost message confirmation must not duplicate a committed send;
-refreshing a participant must recover confirmed history. File delivery must
-share upstream ranges for simultaneous consumers, handle a slow or cancelled
-branch independently, and resume after path/source loss. Corrupted downloads
-must fail whole-file verification. Exercise file traffic alongside voice and
-picture playback through the same resource owner.
-The [network model](./channel-network-design.md#authority-and-information-boundaries)
-owns authentication across intermediate peers. [TODO](../todo.md) tracks the
-remaining runtime integration.
