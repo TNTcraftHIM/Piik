@@ -1,0 +1,12 @@
+.c3-room-slot { display: contents; }
+.c3-room-tool > .lr-floating-body { overflow: hidden; }
+.c3-room-tool .c3-room-company { flex: none; width: 100%; max-width: none; padding-block: 8px 0; border-bottom: 1px solid var(--line); }
+.c3-room-tool .c3-conversation { padding: 14px 2px 12px; gap: 12px; }
+.c3-room-tool .c3-chat-heading { display: none; }
+.c3-room-tool .c3-message { gap: 8px; }
+.c3-room-tool .c3-room-start { margin-block: 16px 24px; }
+.c3-room-tool .c3-room-start-mark { width: 48px; height: 48px; border-radius: 16px; }
+.c3-room-tool .c3-room-start h3 { font-size: 17px; }
+.c3-room-tool .c3-voice-dock { padding: 10px 2px 0; gap: 8px; }
+.c3-room-tool .c3-voice-participants, .c3-room-tool .c3-voice-dock > svg { display: none; }
+.c3-room-tool .c3-voice-controls { gap: 2px; }

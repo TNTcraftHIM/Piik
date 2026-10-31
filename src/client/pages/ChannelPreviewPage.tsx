@@ -20,6 +20,7 @@ import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
 import { ChannelDomainControls } from "../channel/components/ChannelDomainControls";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
+import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
 import { roomPeople } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
@@ -36,6 +37,8 @@ export function ChannelPreviewPage() {
   const channel = useChannel(selectRoom);
   const { state, self, sessionId, connection, pending, streams } = channel;
   const [chatOpen, setChatOpen] = useState(true);
+  const [toolSurface, setToolSurface] = useState<RoomToolSurface>({ open: false, document: null });
+  const couchSlot = useRef<HTMLDivElement>(null), conversationSlot = useRef<HTMLDivElement>(null), voiceSlot = useRef<HTMLDivElement>(null);
   const [focusedScreen, setFocusedScreen] = useState<string | null>(null);
   const [voiceFocus, setVoiceFocus] = useState("");
   const [copied, setCopied] = useState(false);
@@ -181,15 +184,31 @@ export function ChannelPreviewPage() {
         <header className="c3-room-heading">
           <div className="c3-room-name"><span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="arrowLeft" quiet size="compact"
             title={{ text: copy("房间列表", "Rooms") }} hint="hint-collapse" controls="c3-room-list" expanded={mobilePane === "rooms"}
-            onClick={() => setMobilePane("rooms")} /></span><ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} /><h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2></div>
+            onClick={() => setMobilePane("rooms")} /></span><ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} />
+            <Tooltip className="c3-room-title" overflow={{ text: room?.name ?? copy("欢迎回来", "Welcome back"), selector: "h2" }}>
+              <h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2>
+            </Tooltip></div>
           <div className="c3-room-actions">
             {room?.authorized && <><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available || !can("publish")} />
               <ChannelJoinVoice joined={joined} disabled={!connected || !room.available || !can("voice")} busy={busy("voice", roomId)}
                 onJoin={listenOnly => run(channel.joinVoice(roomId, listenOnly).then(() => setVoiceFocus(roomId)))} /></>}
           </div>
           <div className="c3-room-tools">
+            <ChannelRoomTool title={room?.name ?? copy("房间", "Room")} surface={toolSurface} onSurfaceChange={setToolSurface}
+              home={{ couch: couchSlot, conversation: conversationSlot, voice: voiceSlot }}
+              couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}
+                floating={toolSurface.open} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
+              conversation={room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
+                users={state?.users ?? []} selfUserId={self?.id ?? null} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
+                canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
+                attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}
+                history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
+                onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
+                isReactionPending={seq => busy(`reaction:${roomId}:${seq}`)} onReaction={channel.setMessageReaction}
+                onSend={channel.sendMessage} floating={toolSurface.open} hidden={!toolSurface.open && visibleScreens.length > 0 && !chatOpen} />}
+              voice={<ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />} />
             {room?.canManage && <ChannelRoomControls key={room.id} channel={channel} room={room} />}
-            {visibleScreens.length > 0 && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
+            {visibleScreens.length > 0 && !toolSurface.open && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
               iconOnly quiet pressed={chatOpen} hint={chatOpen ? "hint-close" : "hint-chat-open"} onClick={() => setChatOpen(!chatOpen)} />}
             <Tooltip className="c3-pane-navigation" kind="hint-details" disabled={mobilePane === "people"} text={vis ? undefined : copy("域内用户", "Domain users")}><button id="c3-people-trigger" type="button" className="c3-people-trigger"
               onClick={() => setMobilePane("people")} aria-label={copy("域内用户", "Domain users")} aria-controls="c3-people" aria-expanded={mobilePane === "people"}>
@@ -198,8 +217,7 @@ export function ChannelPreviewPage() {
               <span>{onlineUsers.length}</span><Glyph name="chevron" size={14} />
             </button></Tooltip>
           </div>
-          {room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}
-            selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
+          <div ref={couchSlot} className="c3-room-slot" />
         </header>
         {!connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span>{connectionLabel}</span>
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" onClick={channel.reconnect} />}
@@ -208,7 +226,7 @@ export function ChannelPreviewPage() {
           <span>{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
         {self && !owner && !permissions.size && <div className="c3-notice" role="status"><Glyph name="lock" size={20} />
           <span>{copy("当前为只读。请联系域主分配身份组。", "Read-only access. Ask the domain owner for a role to participate.")}</span></div>}
-        <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${chatOpen ? "" : " chat-collapsed"}`}>
+        <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${chatOpen && !toolSurface.open ? "" : " chat-collapsed"}`}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
@@ -225,16 +243,9 @@ export function ChannelPreviewPage() {
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
-          {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
-            users={state?.users ?? []} selfUserId={self?.id ?? null} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
-            canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
-            attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}
-            history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
-            onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
-            isReactionPending={seq => busy(`reaction:${roomId}:${seq}`)} onReaction={channel.setMessageReaction}
-            onSend={channel.sendMessage} hidden={visibleScreens.length > 0 && !chatOpen} />}
+          <div ref={conversationSlot} className="c3-room-slot" />
         </div>
-        <ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />
+        <div ref={voiceSlot} className="c3-room-slot" />
         {voiceStreams.map(publication => <ChannelAudio key={publication.id} stream={streams.get(publication.id)!}
           volume={channel.listeningVolume} createContext={createVoiceAudioContext}
           muted={myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true}

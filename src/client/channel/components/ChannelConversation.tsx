@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
@@ -10,14 +10,16 @@ import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSiz
 import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
 import { ChannelMessageReactions } from "./ChannelMessageReactions";
 import type { ReactionId } from "../../../shared/room-interactions";
+import { useSurfaceDocument } from "../../ui/panel-window";
 import "./channel-conversation.css";
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, selfUserId, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, isReactionPending, onReaction }: {
+export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, selfUserId, canSend, sending, onSend, hidden, floating = false, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, isReactionPending, onReaction }: {
   roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUser[];
   entry?: ChannelEntry;
   selfUserId: string | null;
   canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
+  floating?: boolean;
   attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
   onLatest: (roomId: string) => Promise<void>;
@@ -26,6 +28,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   onReaction: (roomId: string, messageSeq: number, reaction: ReactionId, active: boolean) => Promise<void>;
 }) {
   const { lang } = useCopy();
+  const surfaceDocument = useSurfaceDocument();
   const zh = lang === "zh";
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [filesByRoom, setFilesByRoom] = useState<Record<string, DraftFile[]>>({});
@@ -36,7 +39,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   const preparing = useRef<AbortController | null>(null);
   const chooser = useRef<HTMLInputElement>(null);
   const log = useRef<HTMLDivElement>(null);
-  const follow = useRef(true);
+  const reading = useRef({ position: 0, following: true });
   const readingAnchor = useRef<{ room: string; message: string; offset: number } | null>(null);
   const draft = drafts[roomId] ?? "";
   const files = filesByRoom[roomId] ?? [];
@@ -52,10 +55,9 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     return () => { request.abort(); };
   }, [attachments, attachmentsAvailable, limitsRetry]);
   useEffect(() => () => { preparing.current?.abort(); }, []);
-  useEffect(() => { readingAnchor.current = null; }, [roomId]);
-  useEffect(() => { follow.current = true; }, [roomId]);
-  useEffect(() => { if (history?.atLatest) follow.current = true; }, [history?.atLatest]);
-  useEffect(() => {
+  useLayoutEffect(() => { readingAnchor.current = null; reading.current = { position: 0, following: true }; }, [roomId]);
+  useLayoutEffect(() => { if (history?.atLatest) reading.current.following = true; }, [history?.atLatest]);
+  useLayoutEffect(() => {
     const anchor = readingAnchor.current;
     if (anchor?.room === roomId && !loadingHistory && log.current) {
       const node = log.current;
@@ -65,8 +67,15 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
       readingAnchor.current = null;
       return;
     }
-    if (!hidden && follow.current) log.current?.scrollTo({ top: log.current.scrollHeight });
-  }, [roomId, messages.length, hidden, loadingHistory, history?.atLatest]);
+    const node = log.current;
+    if (hidden || !node) return;
+    const saved = reading.current;
+    const restore = () => { node.scrollTop = saved.following ? (messages.length ? node.scrollHeight : 0) : saved.position; };
+    restore();
+    const view = node.ownerDocument.defaultView;
+    const frame = view?.requestAnimationFrame(restore);
+    return () => { if (frame !== undefined) view?.cancelAnimationFrame(frame); };
+  }, [roomId, messages.length, hidden, loadingHistory, history?.atLatest, floating, surfaceDocument]);
   function addFiles(incoming: File[]) {
     if (!attachmentsAvailable || !limits || working || !canSend) return;
     if (files.length + incoming.length > limits.maxAttachmentsPerMessage) {
@@ -83,7 +92,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
   async function send(event: FormEvent) {
     event.preventDefault();
     if ((!draft.trim() && !files.length) || !canSend || working) return;
-    follow.current = true;
+    reading.current.following = true;
     const request = new AbortController();
     preparing.current = request;
     setFileError("");
@@ -104,7 +113,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     <div className="c3-chat-heading"><Glyph name="chat" size={18} /><strong>{zh ? "聊天" : "Chat"}</strong>
       <span>{roomName}</span></div>
     <div className="c3-message-log" ref={log} role="log" aria-label={zh ? "消息" : "Messages"}
-      onScroll={event => { const node = event.currentTarget; follow.current = node.scrollHeight - node.scrollTop - node.clientHeight < 60; }}>
+      onScroll={event => { const node = event.currentTarget; reading.current = { position: node.scrollTop, following: node.scrollHeight - node.scrollTop - node.clientHeight < 60 }; }}>
       {history?.hasMore && <div className="c3-history-more"><ChannelAction icon="arrowUp" quiet label={zh ? "更早的消息" : "Earlier messages"}
         busy={loadingHistory} disabled={!available} onClick={() => {
           const node = log.current;
@@ -114,7 +123,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
               .find(element => element.getBoundingClientRect().bottom > top);
             readingAnchor.current = message ? { room: roomId, message: message.dataset.messageId!, offset: message.getBoundingClientRect().top - top } : null;
           }
-          follow.current = false;
+          reading.current.following = false;
           void onHistory(roomId).catch(() => { readingAnchor.current = null; });
         }} /></div>}
       {!history?.hasMore && <ChannelRoomStart roomName={roomName} icon={roomIcon} canSend={canSend}
@@ -141,7 +150,7 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
     {history?.atLatest === false && <div className="c3-history-more"><ChannelAction icon="arrowDown" quiet
       label={zh ? "最新消息" : "Latest messages"} busy={loadingHistory} disabled={!available} onClick={() => {
         readingAnchor.current = null;
-        follow.current = true;
+        reading.current.following = true;
         void onLatest(roomId).catch(() => {});
       }} /></div>}
     {files.length > 0 && <div className="c3-draft-files">{files.map(entry => <div key={entry.id}>

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { CouchBench } from "../../components/living/CouchBench";
 import { PawnSvg, type PawnState } from "../../components/living/Pawn";
@@ -27,9 +27,9 @@ const noSubscription = () => () => {};
 const noSnapshot = () => null;
 
 /** Presence supplies people; the existing interaction session owns every effect and send. */
-export function ChannelCouch({ people, selfUserId, session, className = "" }: {
+export function ChannelCouch({ people, selfUserId, session, className = "", floating = false }: {
   people: readonly ChannelCouchPerson[]; selfUserId: string | null;
-  session: RoomInteractionSession | null; className?: string;
+  session: RoomInteractionSession | null; className?: string; floating?: boolean;
 }) {
   const { lang, t, vis } = useCopy();
   const copy = (chinese: string, english: string) => lang === "zh" ? chinese : english;
@@ -56,6 +56,7 @@ export function ChannelCouch({ people, selfUserId, session, className = "" }: {
     return seat * SEAT_WIDTH >= offset - 1 && (seat + 1) * SEAT_WIDTH <= offset + guestWidth + 1;
   }).map(person => ({ peerId: person.userId }));
   useEffect(() => { setTarget(null); }, [session?.key]);
+  useLayoutEffect(() => { setTarget(null); }, [floating, surfaceDocument]);
   useEffect(() => {
     if (target && (!selected || !target.trigger.isConnected)) setTarget(null);
   }, [target, selected]);
