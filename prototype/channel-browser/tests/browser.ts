@@ -47,9 +47,38 @@ window.runBrowserRoomCheck = async () => {
     check(end?.type === "history_end", "signed peer history completes its page");
     const messages = replies.flatMap(({ record }) => record.type === "history_message" ? [record.message] : []);
     check(messages.length === end.count, "signed peer page count matches its records");
+    const snapshots = JSON.parse(JSON.stringify(replies)).filter((reply: { record: { type: string } }) => reply.record.type === "message_reactions");
+    check(snapshots.length === messages.length, "every retained body has its reaction snapshot");
     return { messages, hasMore: end.hasMore, oldestSeq: end.oldestSeq, before: end.before };
   };
   try {
+    const previousDatabase = `${database}-schema-2`;
+    const old = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(previousDatabase, 2);
+      request.onupgradeneeded = () => { request.result.createObjectStore("retained").put("original", "marker"); };
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    old.close();
+    try {
+      try { await BrowserRoomHost.storedPolicies(previousDatabase); throw new Error("old schema accepted"); }
+      catch (error) { check(String(error).includes("unsupported_storage_version"), "previous private schema is explicitly rejected"); }
+      const saved = await new Promise<IDBDatabase>((resolve, reject) => {
+        const request = indexedDB.open(previousDatabase, 2);
+        request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+      });
+      try {
+        const marker = await new Promise(resolve => {
+          const request = saved.transaction("retained").objectStore("retained").get("marker");
+          request.onsuccess = () => resolve(request.result);
+        });
+        check(marker === "original", "rejecting the old schema does not clear its data");
+      } finally { saved.close(); }
+    } finally {
+      await new Promise<void>((resolve, reject) => {
+        const request = indexedDB.deleteDatabase(previousDatabase);
+        request.onsuccess = () => resolve(); request.onerror = () => reject(request.error);
+      });
+    }
     await bindHost();
     const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
     check(initial.reply?.result.type === "done", "browse confirms activity without reading history");
@@ -102,6 +131,44 @@ window.runBrowserRoomCheck = async () => {
     await bindHost();
     check((await send("After reopen", "third")).message.seq === 3, "persisted sequence after reopen");
 
+    const react = async (reaction: string, active: boolean, asOwner = false, signal?: AbortSignal) => {
+      const command = { type: "set_reaction", messageSeq: 1, reaction, active };
+      const packet = asOwner ? JSON.parse(signer.sign(session, JSON.stringify({
+        roomId: host.roomId, bindingId, sender: session, recipient: session, requestId: crypto.randomUUID(), command,
+      }))) : peerPacket(command);
+      return JSON.parse(JSON.stringify(await host.dispatchPeer(packet, Date.now(), signal)))[0].record;
+    };
+    const firstReaction = await react("wave", true);
+    check(firstReaction.type === "reaction_confirmed" && firstReaction.changed && firstReaction.snapshot.revision === 1
+      && firstReaction.snapshot.choices[peerMember.userId][0] === "wave", "reaction belongs to the authenticated user");
+    const repeatedReaction = await react("wave", true);
+    check(!repeatedReaction.changed && JSON.stringify(repeatedReaction.snapshot) === JSON.stringify(firstReaction.snapshot), "explicit reaction set is idempotent");
+    const [ownerReaction, secondChoice] = await Promise.all([react("wave", true, true), react("laugh", true)]);
+    check(ownerReaction.snapshot.revision === 2 && secondChoice.snapshot.revision === 3
+      && secondChoice.snapshot.choices[peerMember.userId].length === 2, "serialized users preserve independent choices");
+    const removedReaction = await react("wave", false);
+    check(removedReaction.snapshot.revision === 4 && removedReaction.snapshot.choices[peerMember.userId].join() === "laugh"
+      && removedReaction.snapshot.choices[owner.userId].join() === "wave", "removing a choice keeps the other user and reaction");
+    check(!(await react("wave", false)).changed, "repeated removal is idempotent");
+    const reactionAbort = new AbortController(), originalPut = IDBObjectStore.prototype.put;
+    let reactionWriteSucceeded = false;
+    IDBObjectStore.prototype.put = function (...args) {
+      const request = originalPut.apply(this, args);
+      if (this.name === "messages") request.addEventListener("success", () => { reactionWriteSucceeded = true; reactionAbort.abort(); }, { once: true });
+      return request;
+    };
+    try {
+      const failure = await react("heart", true, false, reactionAbort.signal);
+      check(failure.type === "error" && failure.code === "AbortError", "aborted reaction write cannot confirm");
+    }
+    finally { IDBObjectStore.prototype.put = originalPut; }
+    check(reactionWriteSucceeded, "reaction rollback occurs after a real IndexedDB put success");
+    await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
+    const recovered = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now())));
+    const recoveredReaction = recovered.find((reply: { record: { type: string; snapshot?: { messageSeq: number } } }) =>
+      reply.record.type === "message_reactions" && reply.record.snapshot?.messageSeq === 1).record.snapshot;
+    check(JSON.stringify(recoveredReaction) === JSON.stringify(removedReaction.snapshot), "reopen restores committed reactions and excludes the aborted choice");
+
     const controller = new AbortController();
     const originalAdd = IDBObjectStore.prototype.add;
     let insertSucceeded = false;
@@ -120,8 +187,10 @@ window.runBrowserRoomCheck = async () => {
     check(unavailable.reply?.result.code === "attachment_unavailable" && (await history()).messages.length === 4, "runtime reopen does not revive complete copy sources");
     for (let index = 0; index < 106; index++) await send(`Message ${index}`, `page-${index}`);
     const latest = await history(), older = await history(latest.messages[0].seq), empty = await history(0);
-    check(latest.messages.length === 100 && latest.hasMore && latest.oldestSeq === 1, "shared latest page");
-    check(older.messages.length === 10 && !older.hasMore && older.messages[0].seq === 1 && older.messages.at(-1)!.seq === 10, "shared older page");
+    check(latest.messages.length === 50 && latest.hasMore && latest.oldestSeq === 1, "shared latest page");
+    check(older.messages.length === 50 && older.hasMore && older.messages[0].seq === 11 && older.messages.at(-1)!.seq === 60, "shared older page");
+    const earliest = await history(older.messages[0].seq);
+    check(earliest.messages.length === 10 && !earliest.hasMore && earliest.messages[0].seq === 1, "all older history remains reachable");
     check(empty.messages.length === 0 && !empty.hasMore && empty.oldestSeq === 1, "before zero empty page");
     await host.close();
     host = await BrowserRoomHost.open(database, policy);
@@ -177,7 +246,7 @@ window.runBrowserRoomCheck = async () => {
     check(frame.kind === "conversation" && frame.body.payload === packet.payload, "Rust control framing preserves signed payload bytes");
     const replies = await host.dispatchPeer(frame.body, Date.now());
     const confirmation = replies[0];
-    check(replies.length === 1 && confirmation.record.type === "confirmed" && confirmation.record.message.seq === 112 && confirmation.record.inserted,
+    check(replies.length === 2 && confirmation.record.type === "confirmed" && confirmation.record.message.seq === 112 && confirmation.record.inserted,
       "signed peer send confirms persisted room sequence");
     const signedReply = signer.sign(session, JSON.stringify(confirmation));
     check(JSON.stringify(JSON.parse(verify_reply(signedReply, signer.signing_key()))) === JSON.stringify(confirmation), "Rust verifies typed reply");
@@ -187,7 +256,7 @@ window.runBrowserRoomCheck = async () => {
     check(repeated[0].record.type === "confirmed" && !repeated[0].record.inserted && confirmation.record.type === "confirmed"
       && JSON.stringify(repeated[0].record.message) === JSON.stringify(confirmation.record.message), "peer retry reuses original confirmation");
     const page = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
-    check(page.length === 101 && page.slice(0, 100).every(reply => reply.record.type === "history_message")
+    check(page.length === 101 && page.slice(0, 100).every((reply, index) => String(reply.record.type) === (index % 2 ? "message_reactions" : "history_message"))
       && page[100].record.type === "history_end" && page[100].record.hasMore, "history returns shared typed records and one end marker");
     peerMember.participates = false;
     await host.dispatch({ now: Date.now(), bindingId, hostSessionId: session, revision: ++revision, endpoints, action: { type: "sync" } });
@@ -195,6 +264,9 @@ window.runBrowserRoomCheck = async () => {
     check(denied.length === 1 && denied[0].record.type === "error" && denied[0].record.code === "forbidden", "current domain write permission controls signed peer sends");
     const readable = await host.dispatchPeer(peerPacket({ type: "history", before: null }), Date.now());
     check(readable.at(-1)?.record.type === "history_end", "losing write permission preserves permitted history reads");
+    const readOnlyReaction = await react("laugh", true);
+    check(readOnlyReaction.type === "reaction_confirmed" && !readOnlyReaction.changed,
+      "room access permits the existing user's reaction independently of chat write permission");
     const ready = JSON.parse(JSON.stringify(await host.dispatchPeer(peerPacket({ type: "interaction_ready" }), 1000)));
     check(ready[0].record.type === "interaction_ready" && ready[0].record.serverTime === 1000 && ready[0].record.reactionIds.includes("wave"), "read-only participant initializes interaction time and reactions");
     const interactionPacket = peerPacket({ type: "interaction", reaction: "wave", targetUserId: owner.userId });
@@ -214,7 +286,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 2);
+      const request = indexedDB.open(database, 3);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     let oldPolicy = "";
@@ -236,7 +308,7 @@ window.runBrowserRoomCheck = async () => {
       check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), "invalid old policy remains unchanged");
     } finally { db.close(); }
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 3);
+      const upgrade = indexedDB.open(database, 4);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {
@@ -248,6 +320,8 @@ window.runBrowserRoomCheck = async () => {
       latest: latest.messages.length, older: older.messages.length, beforeZero: true, versionChangeClearsPending: true,
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true,
       signedPeerHistory: true, signedPeerPermission: true, immediateReadPermission: true, immediateBindingFence: true, immediateNotHistory: true,
+      retainedReactions: true, independentUserChoices: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
+      previousSchemaPreserved: true,
       missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
   } finally {
     await host.close();

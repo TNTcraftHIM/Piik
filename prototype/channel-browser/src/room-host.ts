@@ -1,4 +1,4 @@
-import init, { attachment_result, conversation_replies, create_room_policy, history_page, history_page_size, prepare_confirmation, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
+import init, { attachment_result, conversation_replies, create_room_policy, history_page, history_page_size, prepare_confirmation, reaction_result, RoomHost, SessionSigner } from "../pkg/piik_channel_browser.js";
 export { AttachmentHash, FileDelivery, attachment_limits, attachment_media_type, decode_control, encode_control, route_conversation, route_input, input_binding_current, verify_reply } from "../pkg/piik_channel_browser.js";
 export async function initializeFiles(): Promise<void> { await init(); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await init(); return new SessionSigner(seed); }
@@ -8,17 +8,21 @@ export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
 }
 interface RoomRecord { id: string; policy: string; bindingId?: string }
-interface StoredMessage extends ChannelMessage { roomId: string; nonce: string }
-export interface SentResult { type: "sent"; message: ChannelMessage; inserted: boolean }
+interface MessageReactions { revision: number; choices: Record<string, string[]> }
+interface RetainedMessage extends ChannelMessage { reactions: MessageReactions }
+interface StoredMessage extends RetainedMessage { roomId: string; nonce: string }
+export interface SentResult { type: "sent"; message: RetainedMessage; inserted: boolean }
 export interface PageResult {
-  type: "page"; messages: ChannelMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
+  type: "page"; messages: RetainedMessage[]; hasMore: boolean; oldestSeq: number | null; before: number | null;
 }
 interface AttachmentResult { type: "attachment"; messageSeq: number; attachment: ChannelMessage["attachments"][number] }
-type HistoryResult = SentResult | PageResult | AttachmentResult;
+interface ReactionResult { type: "reacted"; snapshot: MessageReactions & { messageId: string; messageSeq: number }; changed: boolean }
+type HistoryResult = SentResult | PageResult | AttachmentResult | ReactionResult;
 interface SendRequest { type: "send"; roomId: string; draft: { userId: string; nonce: string; text: string; time: number; attachments: ChannelMessage["attachments"] } }
 interface ReadRequest { type: "read"; roomId: string; before: number | null }
 interface AttachmentRequest { type: "attachment"; roomId: string; messageSeq: number; attachmentId: string }
-type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest;
+interface ReactionRequest { type: "set_reaction"; roomId: string; messageSeq: number; userId: string; reaction: string; active: boolean }
+type HistoryRequest = SendRequest | ReadRequest | AttachmentRequest | ReactionRequest;
 interface HostWork { policy: object | null; history: HistoryRequest | null }
 type ConversationWork = { type: "history"; value: HistoryRequest } | { type: "immediate"; value: ConversationReply["record"] };
 type ConversationResult = { type: "history"; value: HistoryResult } | { type: "immediate"; value: ConversationReply["record"] };
@@ -29,7 +33,7 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 2);
+    const request = indexedDB.open(name, 3);
     let unsupported = false;
     request.onupgradeneeded = event => {
       if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }
@@ -185,12 +189,16 @@ export class BrowserRoomHost {
     return this.enqueue(async () => {
       if (!this.bindingId) throw new Error("stale_room_host");
       const prepared: { address: ConversationAddress; work: { Ok: ConversationWork } | { Err: string } } = JSON.parse(this.room.prepare_peer(JSON.stringify(packet), BigInt(now)));
+      const work = prepared.work;
       let result: { Ok: ConversationResult } | { Err: string };
       try {
-        if ("Err" in prepared.work || prepared.work.Ok.type === "immediate") {
+        if ("Err" in work) {
           await this.roomTransaction(["rooms"], "readonly", () => {}, () => {}, signal);
-          result = "Err" in prepared.work ? prepared.work : { Ok: prepared.work.Ok };
-        } else result = { Ok: { type: "history", value: await this.executeHistory(prepared.work.Ok.value, null, signal) } };
+          result = work;
+        } else if (work.Ok.type === "immediate") {
+          await this.roomTransaction(["rooms"], "readonly", () => {}, () => {}, signal);
+          result = { Ok: work.Ok };
+        } else result = { Ok: { type: "history", value: await this.executeHistory(work.Ok.value, null, signal) } };
       } catch (error) {
         const cause = failure(error);
         result = { Err: cause.name === "AbortError" ? cause.name : cause.message };
@@ -206,7 +214,7 @@ export class BrowserRoomHost {
   private executeHistory(request: HistoryRequest, policy: object | null, signal?: AbortSignal): Promise<HistoryResult> {
     const rows: StoredMessage[] = [];
     let oldest: number | undefined, result: HistoryResult;
-    return this.roomTransaction(["rooms", "messages"], request.type === "send" || policy ? "readwrite" : "readonly", (tx, abort) => {
+    return this.roomTransaction(["rooms", "messages"], request.type === "send" || request.type === "set_reaction" || policy ? "readwrite" : "readonly", (tx, abort) => {
       this.savePolicy(tx, policy);
       const messages = tx.objectStore("messages");
       if (request.type === "send") {
@@ -220,6 +228,14 @@ export class BrowserRoomHost {
           read(messages.openCursor(IDBKeyRange.bound([request.roomId], [request.roomId, Infinity]), "prev"), cursor => {
             prepare({ type: "new", lastSeq: cursor?.value.seq ?? 0 });
           }, abort);
+        }, abort);
+      } else if (request.type === "set_reaction") {
+        read<StoredMessage | undefined>(messages.get([request.roomId, request.messageSeq]), previous => {
+          const confirmation: ReactionResult = JSON.parse(reaction_result(JSON.stringify(request), JSON.stringify(previous ?? null)));
+          if (confirmation.changed) messages.put({ ...previous!, reactions: {
+            revision: confirmation.snapshot.revision, choices: confirmation.snapshot.choices,
+          } });
+          result = confirmation;
         }, abort);
       } else if (request.type === "attachment") {
         read<StoredMessage | undefined>(messages.get([request.roomId, request.messageSeq]), value => {

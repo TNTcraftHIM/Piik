@@ -468,7 +468,8 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         };
         host.dispatch_peer(&signer.sign(reader_session, &request).unwrap(), now())
             .unwrap()
-            .result.map(|result| match result {
+            .result
+            .map(|result| match result {
                 piik_channel_core::conversation::ConversationResult::History(history) => history,
                 _ => panic!("history result expected"),
             })
@@ -494,7 +495,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
         panic!("room confirmation")
     };
     assert!(original.inserted);
-    assert_eq!(original.message.seq, 1);
+    assert_eq!(original.message.message.seq, 1);
     assert_eq!(rooms[0].0.current_readers(), vec![reader.session]);
     let domain_db = rusqlite::Connection::open(folder.join("channel.sqlite")).unwrap();
     domain_db.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'metadata unavailable'); END;").unwrap();
@@ -515,12 +516,12 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
     else {
         panic!("other room")
     };
-    assert_eq!(other.message.seq, 1);
-    assert_ne!(other.message.id, original.message.id);
+    assert_eq!(other.message.message.seq, 1);
+    assert_ne!(other.message.message.id, original.message.message.id);
     let binding = rooms[0].1;
     assert!(
         matches!(peer(&mut rooms[0].0, binding, ConversationCommand::History { before: None }).unwrap(),
-        HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].id == original.message.id)
+        HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].message.id == original.message.message.id)
     );
     assert_eq!(
         domain_db
@@ -549,7 +550,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
     );
     assert!(
         matches!(peer(&mut reopened, binding, ConversationCommand::History { before: None }).unwrap(),
-        HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].id == original.message.id)
+        HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].message.id == original.message.message.id)
     );
     drop(reopened);
     drop(domain_db);

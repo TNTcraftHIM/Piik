@@ -8,7 +8,10 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{
-    conversation::{self, ConversationRecord, ConversationReply, ConversationResult, SessionSigner, SignedPacket},
+    conversation::{
+        self, ConversationRecord, ConversationReply, ConversationResult, SessionSigner,
+        SignedPacket,
+    },
     history::HistoryResult,
 };
 use piik_channel_core::{
@@ -131,7 +134,17 @@ impl RoomTurns {
             {
                 Some((
                     ConversationRecord::LiveMessage {
-                        message: confirmation.message.clone(),
+                        message: confirmation.message.message.clone(),
+                    },
+                    hosted.current_readers(),
+                ))
+            }
+            Ok(ConversationResult::History(HistoryResult::Reacted(confirmation)))
+                if confirmation.changed =>
+            {
+                Some((
+                    ConversationRecord::MessageReactions {
+                        snapshot: confirmation.snapshot.clone(),
                     },
                     hosted.current_readers(),
                 ))

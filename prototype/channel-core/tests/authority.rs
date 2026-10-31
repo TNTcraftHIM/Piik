@@ -167,7 +167,9 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
 #[test]
 fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation() {
     use piik_channel_core::{
-        conversation::{ConversationCommand, ConversationResult}, history::HistoryResult, wire::RoomAccess,
+        conversation::{ConversationCommand, ConversationResult},
+        history::HistoryResult,
+        wire::RoomAccess,
     };
     let mut core = support::RoomNetwork::new();
     let owner = Uuid::new_v4();
@@ -201,9 +203,9 @@ fn hosted_history_uses_authenticated_peer_author_and_the_original_confirmation()
         panic!("confirmed send")
     };
     assert!(first.inserted);
-    assert_eq!(first.message.user_id, user);
-    assert_eq!(first.message.text, "Hello");
-    assert_eq!(first.message.seq, 1);
+    assert_eq!(first.message.message.user_id, user);
+    assert_eq!(first.message.message.text, "Hello");
+    assert_eq!(first.message.message.seq, 1);
     let ConversationResult::History(HistoryResult::Sent(retry)) = core
         .peer_request(author, &room, send("Changed retry"))
         .result

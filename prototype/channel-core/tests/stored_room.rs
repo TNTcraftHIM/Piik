@@ -1,7 +1,10 @@
 #![cfg(feature = "sqlite")]
 
 use piik_channel_core::{
-    conversation::{ConversationAddress, ConversationCommand, ConversationRequest, ConversationResult, SessionSigner},
+    conversation::{
+        ConversationAddress, ConversationCommand, ConversationRequest, ConversationResult,
+        SessionSigner,
+    },
     history::HistoryResult,
     host::{HostAction, HostInput, HostOutput, RequestContext, RoomResult},
     wire::{Request, RoomAccess},
@@ -53,7 +56,16 @@ fn command(host: &mut StoredRoomHost, owner: Uuid, actor: Uuid, value: Value) ->
 }
 
 fn policy(id: &str, owner: Uuid, access: RoomAccess) -> RoomState {
-    RoomState::new(id.into(), id.into(), Default::default(), owner, access, false, None).unwrap()
+    RoomState::new(
+        id.into(),
+        id.into(),
+        Default::default(),
+        owner,
+        access,
+        false,
+        None,
+    )
+    .unwrap()
 }
 
 fn peer(
@@ -81,7 +93,8 @@ fn peer(
         1,
     )
     .unwrap()
-    .result.map(|result| match result {
+    .result
+    .map(|result| match result {
         ConversationResult::History(history) => history,
         _ => panic!("history result expected"),
     })
@@ -97,6 +110,141 @@ fn sent(
 }
 
 #[test]
+fn message_reactions_commit_explicit_user_choices_and_recover_with_the_original_message() {
+    let path =
+        std::env::temp_dir().join(format!("piik-message-reactions-{}.sqlite", Uuid::new_v4()));
+    let owner = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let mut host =
+        StoredRoomHost::create(&path, policy("reactions", owner, RoomAccess::Private)).unwrap();
+    let original = sent(peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::Chat {
+            text: "Retained".into(),
+            nonce: "original".into(),
+            attachments: vec![],
+        },
+    ));
+    let reaction = |reaction: &str, active| ConversationCommand::SetReaction {
+        message_seq: original.message.message.seq,
+        reaction: reaction.into(),
+        active,
+    };
+    assert!(matches!(
+        peer(&mut host, owner, viewer, reaction("wave", true)),
+        Err("room_access_required")
+    ));
+    host.dispatch(input(owner, viewer, |context| HostAction::GrantInvited {
+        context,
+    }))
+    .unwrap();
+    let set = |host: &mut StoredRoomHost, actor, key, active| match peer(
+        host,
+        owner,
+        actor,
+        reaction(key, active),
+    )
+    .unwrap()
+    {
+        HistoryResult::Reacted(confirmation) => confirmation,
+        _ => panic!("reaction confirmation expected"),
+    };
+    let first = set(&mut host, owner, "wave", true);
+    assert!(first.changed);
+    assert_eq!(first.snapshot.reactions.revision, 1);
+    let repeated = set(&mut host, owner, "wave", true);
+    assert!(!repeated.changed);
+    assert_eq!(repeated.snapshot, first.snapshot);
+    assert_eq!(
+        set(&mut host, viewer, "wave", true)
+            .snapshot
+            .reactions
+            .revision,
+        2
+    );
+    assert_eq!(
+        set(&mut host, owner, "laugh", true)
+            .snapshot
+            .reactions
+            .revision,
+        3
+    );
+    let removed = set(&mut host, viewer, "wave", false);
+    assert_eq!(removed.snapshot.reactions.revision, 4);
+    assert!(!removed.snapshot.reactions.choices.contains_key(&viewer));
+    assert!(!set(&mut host, viewer, "wave", false).changed);
+    assert!(matches!(
+        peer(&mut host, owner, viewer, reaction("tomato", true)),
+        Err("invalid_reaction")
+    ));
+    assert!(matches!(
+        peer(
+            &mut host,
+            owner,
+            viewer,
+            ConversationCommand::SetReaction {
+                message_seq: 99,
+                reaction: "wave".into(),
+                active: true,
+            }
+        ),
+        Err("message_unavailable")
+    ));
+    assert!(serde_json::from_value::<ConversationCommand>(json!({
+        "type":"set_reaction", "messageSeq":1, "reaction":"wave", "active":true, "userId":owner,
+    }))
+    .is_err());
+
+    let database = rusqlite::Connection::open(&path).unwrap();
+    database.execute_batch(
+        "CREATE TABLE reaction_commit_failure (id TEXT REFERENCES message(id) DEFERRABLE INITIALLY DEFERRED);
+         CREATE TRIGGER reject_reaction AFTER UPDATE OF reactions ON message
+         BEGIN INSERT INTO reaction_commit_failure VALUES('missing-message'); END;",
+    ).unwrap();
+    assert!(matches!(
+        peer(&mut host, owner, owner, reaction("heart", true)),
+        Err("storage_failed")
+    ));
+    database
+        .execute_batch("DROP TRIGGER reject_reaction")
+        .unwrap();
+    drop(host);
+    let mut host = StoredRoomHost::open(&path).unwrap();
+    let HistoryResult::Page { messages, .. } = peer(
+        &mut host,
+        owner,
+        viewer,
+        ConversationCommand::History { before: None },
+    )
+    .unwrap() else {
+        panic!("history expected")
+    };
+    assert_eq!(messages.len(), 1);
+    assert_eq!(
+        serde_json::to_value(&messages[0].message).unwrap(),
+        serde_json::to_value(&original.message.message).unwrap()
+    );
+    assert_eq!(messages[0].reaction_snapshot(), removed.snapshot);
+    let retry = sent(peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::Chat {
+            text: "Changed retry".into(),
+            nonce: "original".into(),
+            attachments: vec![],
+        },
+    ));
+    assert!(!retry.inserted);
+    assert_eq!(retry.message.reaction_snapshot(), removed.snapshot);
+    drop(host);
+    drop(database);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() {
     let path = std::env::temp_dir().join(format!("piik-stored-room-{}.sqlite", Uuid::new_v4()));
     let owner = Uuid::new_v4();
@@ -105,8 +253,15 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
         StoredRoomHost::create(&path, policy("private", owner, RoomAccess::Private)).unwrap();
     let database = rusqlite::Connection::open(&path).unwrap();
     database.execute_batch("CREATE TRIGGER reject_policy BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'disk full'); END;").unwrap();
-    let metadata = command(&mut host, owner, owner, json!({"type":"update_room","roomId":"private","name":"Changed","icon":"future_room","access":"private","hidden":false}));
-    assert!(matches!(metadata.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed"));
+    let metadata = command(
+        &mut host,
+        owner,
+        owner,
+        json!({"type":"update_room","roomId":"private","name":"Changed","icon":"future_room","access":"private","hidden":false}),
+    );
+    assert!(
+        matches!(metadata.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed")
+    );
     assert_eq!(host.summary().name, "private");
     assert_eq!(serde_json::to_value(host.summary().icon).unwrap(), "couch");
     let failed = host
@@ -157,7 +312,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
         .unwrap();
     let original = sent(peer(&mut host, owner, viewer, message));
     assert!(original.inserted);
-    assert_eq!(original.message.seq, 1);
+    assert_eq!(original.message.message.seq, 1);
     drop(host);
 
     let mut restored = StoredRoomHost::open(&path).unwrap();
@@ -212,7 +367,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
                 attachments: vec![],
             },
         ));
-        assert_eq!(result.message.seq, 1);
+        assert_eq!(result.message.message.seq, 1);
         command(
             host,
             owner,
@@ -231,8 +386,14 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         let mut restored = StoredRoomHost::open(path).unwrap();
         assert_eq!(restored.policy().id, room);
         assert_eq!(restored.summary().name, format!("Saved {room}"));
-        assert_eq!(serde_json::to_value(restored.policy().icon.clone()).unwrap(), format!("future_{room}"));
-        assert_eq!(serde_json::to_value(restored.summary().icon).unwrap(), format!("future_{room}"));
+        assert_eq!(
+            serde_json::to_value(restored.policy().icon.clone()).unwrap(),
+            format!("future_{room}")
+        );
+        assert_eq!(
+            serde_json::to_value(restored.summary().icon).unwrap(),
+            format!("future_{room}")
+        );
         let output = restored
             .dispatch(input(owner, owner, |_| HostAction::Sync))
             .unwrap();
@@ -241,7 +402,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         assert!(output.projection.base_links.is_empty());
         assert!(
             matches!(peer(&mut restored, owner, owner, ConversationCommand::History { before: None }).unwrap(),
-                HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].text == room)
+                HistoryResult::Page { messages, .. } if messages.len() == 1 && messages[0].message.text == room)
         );
         drop(restored);
         std::fs::remove_file(path).unwrap();
@@ -271,10 +432,10 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
         ))
         .message;
         assert_eq!(
-            original.attachments[0].sha256,
+            original.message.attachments[0].sha256,
             attachment["sha256"].as_str().unwrap()
         );
-        let query = json!({"type":"file_offer", "roomId":"private", "messageSeq":original.seq, "attachmentId":attachment["id"], "available":true});
+        let query = json!({"type":"file_offer", "roomId":"private", "messageSeq":original.message.seq, "attachmentId":attachment["id"], "available":true});
         let denied = command(&mut host, owner, viewer, query.clone());
         assert!(matches!(
             denied.reply.unwrap().result,
@@ -286,7 +447,7 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
             &mut host,
             owner,
             owner,
-            json!({"type":"file_offer", "roomId":"private", "messageSeq":original.seq+1, "attachmentId":attachment["id"], "available":true}),
+            json!({"type":"file_offer", "roomId":"private", "messageSeq":original.message.seq+1, "attachmentId":attachment["id"], "available":true}),
         );
         assert!(
             matches!(missing.reply.unwrap().result, RoomResult::Error { code } if code == "attachment_unavailable")

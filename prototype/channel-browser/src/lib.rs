@@ -2,9 +2,11 @@ use piik_channel_core::{
     conversation::{
         self, ConversationAddress, ConversationReply, SessionSigner as SharedSigner, SignedPacket,
     },
-    history::{ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, HISTORY_PAGE},
+    history::{
+        ConfirmationInput, HistoryRequest, HistoryResult, MessageDraft, StoredMessage, HISTORY_PAGE,
+    },
     host::{HostInput, RoomHost as SharedRoomHost},
-    wire::{ChatMessage, RoomAccess},
+    wire::RoomAccess,
     RoomState,
 };
 use serde::{Deserialize, Serialize};
@@ -70,7 +72,7 @@ pub fn history_page(
     before: Option<u64>,
 ) -> Result<String, JsValue> {
     encode(&HistoryResult::page(
-        parse::<Vec<ChatMessage>>(rows)?,
+        parse::<Vec<StoredMessage>>(rows)?,
         oldest_seq,
         before,
     ))
@@ -79,9 +81,17 @@ pub fn history_page(
 #[wasm_bindgen]
 pub fn attachment_result(request: &str, message: &str) -> Result<String, JsValue> {
     let result = parse::<HistoryRequest>(request)?
-        .attachment_result(parse::<Option<ChatMessage>>(message)?)
+        .attachment_result(parse::<Option<StoredMessage>>(message)?)
         .map_err(error)?;
     encode(&result)
+}
+
+#[wasm_bindgen]
+pub fn reaction_result(request: &str, message: &str) -> Result<String, JsValue> {
+    let confirmation = parse::<HistoryRequest>(request)?
+        .reaction_result(parse::<Option<StoredMessage>>(message)?)
+        .map_err(error)?;
+    encode(&HistoryResult::Reacted(confirmation))
 }
 
 #[wasm_bindgen]

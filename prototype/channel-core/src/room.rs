@@ -261,6 +261,26 @@ impl RoomRuntime {
         })
     }
 
+    pub fn set_reaction(
+        &self,
+        member: Member,
+        message_seq: u64,
+        reaction: String,
+        active: bool,
+    ) -> Result<HistoryRequest, &'static str> {
+        self.authorize(member, RoomPermission::Read)?;
+        if message_seq == 0 || !crate::history::valid_message_reaction(&reaction) {
+            return Err("invalid_reaction");
+        }
+        Ok(HistoryRequest::SetReaction {
+            room_id: self.policy.id.clone(),
+            message_seq,
+            user_id: member.user_id,
+            reaction,
+            active,
+        })
+    }
+
     pub fn chat(
         &self,
         member: Member,

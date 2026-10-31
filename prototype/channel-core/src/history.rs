@@ -1,11 +1,58 @@
 use crate::attachment::{AttachmentDescriptor, ATTACHMENT_LIMITS};
 use crate::wire::{valid_id, ChatMessage};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
 
 pub const HISTORY_WINDOW: usize = 1000;
-pub const HISTORY_PAGE: usize = 100;
+// Each retained message has a body and a reaction snapshot on the peer wire.
+pub const HISTORY_PAGE: usize = 50;
+
+#[derive(Clone, Default, Deserialize, Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageReactions {
+    pub revision: u64,
+    pub choices: BTreeMap<Uuid, BTreeSet<String>>,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoredMessage {
+    #[serde(flatten)]
+    pub message: ChatMessage,
+    pub reactions: MessageReactions,
+}
+
+impl StoredMessage {
+    pub fn reaction_snapshot(&self) -> MessageReactionSnapshot {
+        MessageReactionSnapshot {
+            message_id: self.message.id,
+            message_seq: self.message.seq,
+            reactions: self.reactions.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Deserialize, Serialize, Debug, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MessageReactionSnapshot {
+    pub message_id: Uuid,
+    pub message_seq: u64,
+    #[serde(flatten)]
+    pub reactions: MessageReactions,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReactionConfirmation {
+    pub snapshot: MessageReactionSnapshot,
+    pub changed: bool,
+}
+
+pub fn valid_message_reaction(reaction: &str) -> bool {
+    crate::conversation::INTERACTION_REACTIONS.contains(&reaction)
+        && !matches!(reaction, "tomato" | "poop")
+}
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -65,13 +112,16 @@ impl MessageDraft {
                 inserted: false,
             }),
             ConfirmationInput::New { last_seq } => Ok(MessageConfirmation {
-                message: ChatMessage {
-                    seq: last_seq + 1,
-                    id: Uuid::new_v4(),
-                    user_id: self.user_id,
-                    text: self.text.clone(),
-                    time: self.time,
-                    attachments: self.attachments.clone(),
+                message: StoredMessage {
+                    message: ChatMessage {
+                        seq: last_seq + 1,
+                        id: Uuid::new_v4(),
+                        user_id: self.user_id,
+                        text: self.text.clone(),
+                        time: self.time,
+                        attachments: self.attachments.clone(),
+                    },
+                    reactions: MessageReactions::default(),
                 },
                 inserted: true,
             }),
@@ -86,14 +136,14 @@ impl MessageDraft {
     rename_all_fields = "camelCase"
 )]
 pub enum ConfirmationInput {
-    Existing { message: ChatMessage },
+    Existing { message: StoredMessage },
     New { last_seq: u64 },
 }
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MessageConfirmation {
-    pub message: ChatMessage,
+    pub message: StoredMessage,
     pub inserted: bool,
 }
 
@@ -104,6 +154,13 @@ pub struct MessageConfirmation {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryRequest {
+    SetReaction {
+        room_id: String,
+        message_seq: u64,
+        user_id: Uuid,
+        reaction: String,
+        active: bool,
+    },
     Attachment {
         room_id: String,
         message_seq: u64,
@@ -120,9 +177,54 @@ pub enum HistoryRequest {
 }
 
 impl HistoryRequest {
+    /// Read the row, apply this explicit choice, and commit it in one transaction.
+    pub fn reaction_result(
+        &self,
+        message: Option<StoredMessage>,
+    ) -> Result<ReactionConfirmation, &'static str> {
+        let Self::SetReaction {
+            message_seq,
+            user_id,
+            reaction,
+            active,
+            ..
+        } = self
+        else {
+            return Err("not_a_reaction_update");
+        };
+        if !valid_message_reaction(reaction) {
+            return Err("invalid_reaction");
+        }
+        let mut message = message
+            .filter(|message| message.message.seq == *message_seq)
+            .ok_or("message_unavailable")?;
+        let choices = &mut message.reactions.choices;
+        let changed = if *active {
+            choices
+                .entry(*user_id)
+                .or_default()
+                .insert(reaction.clone())
+        } else if let Some(selected) = choices.get_mut(user_id) {
+            let removed = selected.remove(reaction);
+            if selected.is_empty() {
+                choices.remove(user_id);
+            }
+            removed
+        } else {
+            false
+        };
+        if changed {
+            message.reactions.revision += 1;
+        }
+        Ok(ReactionConfirmation {
+            snapshot: message.reaction_snapshot(),
+            changed,
+        })
+    }
+
     pub fn attachment_result(
         &self,
-        message: Option<ChatMessage>,
+        message: Option<StoredMessage>,
     ) -> Result<HistoryResult, &'static str> {
         let Self::Attachment {
             message_seq,
@@ -133,9 +235,10 @@ impl HistoryRequest {
             return Err("not_an_attachment_read");
         };
         let message = message
-            .filter(|message| message.seq == *message_seq)
+            .filter(|message| message.message.seq == *message_seq)
             .ok_or("attachment_unavailable")?;
         let attachment = message
+            .message
             .attachments
             .into_iter()
             .find(|file| file.id == *attachment_id)
@@ -154,12 +257,13 @@ impl HistoryRequest {
     rename_all_fields = "camelCase"
 )]
 pub enum HistoryResult {
+    Reacted(ReactionConfirmation),
     Attachment {
         message_seq: u64,
         attachment: AttachmentDescriptor,
     },
     Page {
-        messages: Vec<ChatMessage>,
+        messages: Vec<StoredMessage>,
         has_more: bool,
         oldest_seq: Option<u64>,
         before: Option<u64>,
@@ -169,7 +273,7 @@ pub enum HistoryResult {
 
 impl HistoryResult {
     pub fn page(
-        mut newest_first: Vec<ChatMessage>,
+        mut newest_first: Vec<StoredMessage>,
         oldest_seq: Option<u64>,
         before: Option<u64>,
     ) -> Self {

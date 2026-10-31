@@ -2,7 +2,7 @@
 use crate::{
     attachment::AttachmentDescriptor,
     file_delivery::FileControl,
-    history::{HistoryRequest, HistoryResult},
+    history::{HistoryRequest, HistoryResult, MessageReactionSnapshot},
     wire::ChatMessage,
 };
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
@@ -192,6 +192,11 @@ impl ConversationAddress {
     deny_unknown_fields
 )]
 pub enum ConversationCommand {
+    SetReaction {
+        message_seq: u64,
+        reaction: String,
+        active: bool,
+    },
     InteractionReady,
     Interaction {
         reaction: String,
@@ -220,6 +225,13 @@ pub struct ConversationRequest {
     deny_unknown_fields
 )]
 pub enum ConversationRecord {
+    ReactionConfirmed {
+        snapshot: MessageReactionSnapshot,
+        changed: bool,
+    },
+    MessageReactions {
+        snapshot: MessageReactionSnapshot,
+    },
     InteractionReady {
         server_time: u64,
         reaction_ids: Vec<String>,
@@ -312,9 +324,19 @@ impl ConversationAddress {
             Err(code) => vec![ConversationRecord::Error { code: code.into() }],
             Ok(ConversationResult::Immediate(record)) => vec![record],
             Ok(ConversationResult::History(HistoryResult::Sent(confirmation))) => {
-                vec![ConversationRecord::Confirmed {
-                    message: confirmation.message,
-                    inserted: confirmation.inserted,
+                let snapshot = confirmation.message.reaction_snapshot();
+                vec![
+                    ConversationRecord::Confirmed {
+                        message: confirmation.message.message,
+                        inserted: confirmation.inserted,
+                    },
+                    ConversationRecord::MessageReactions { snapshot },
+                ]
+            }
+            Ok(ConversationResult::History(HistoryResult::Reacted(confirmation))) => {
+                vec![ConversationRecord::ReactionConfirmed {
+                    snapshot: confirmation.snapshot,
+                    changed: confirmation.changed,
                 }]
             }
             Ok(ConversationResult::History(HistoryResult::Page {
@@ -329,7 +351,15 @@ impl ConversationAddress {
                 }
                 let mut records: Vec<_> = messages
                     .into_iter()
-                    .map(|message| ConversationRecord::HistoryMessage { message })
+                    .flat_map(|message| {
+                        let snapshot = message.reaction_snapshot();
+                        [
+                            ConversationRecord::HistoryMessage {
+                                message: message.message,
+                            },
+                            ConversationRecord::MessageReactions { snapshot },
+                        ]
+                    })
                     .collect();
                 records.push(ConversationRecord::HistoryEnd {
                     count,
@@ -391,7 +421,7 @@ mod tests {
         assert!(decode_control(&vec![0; CONTROL_FRAME_BYTES + 1]).is_err());
     }
     #[test]
-    fn worst_legal_message_and_hundred_record_history_fit_actual_signed_control_frames() {
+    fn worst_legal_message_reactions_and_history_fit_actual_signed_control_frames() {
         let signer = SessionSigner::from_seed([9; 32]);
         let mut request = request();
         request.address.room_id = "\0".repeat(128);
@@ -421,15 +451,28 @@ mod tests {
         let packet = signer.sign(request.address.sender, &request).unwrap();
         let bytes = encode_control(&ControlFrame::Conversation(packet)).unwrap();
         assert!(bytes.len() <= CONTROL_FRAME_BYTES);
-        let message = draft
+        let mut message = draft
             .prepare_confirmation(crate::history::ConfirmationInput::New { last_seq: 0 })
             .unwrap()
             .message;
-        let messages = (0..100)
+        message.reactions.choices = (0..64)
+            .map(|_| {
+                (
+                    Uuid::new_v4(),
+                    INTERACTION_REACTIONS
+                        .iter()
+                        .filter(|reaction| crate::history::valid_message_reaction(reaction))
+                        .map(|reaction| (*reaction).to_owned())
+                        .collect(),
+                )
+            })
+            .collect();
+        message.reactions.revision = 64 * 14;
+        let messages = (0..crate::history::HISTORY_PAGE)
             .map(|index| {
                 let mut message = message.clone();
-                message.id = Uuid::new_v4();
-                message.seq = index + 1;
+                message.message.id = Uuid::new_v4();
+                message.message.seq = index as u64 + 1;
                 message
             })
             .collect();
@@ -445,7 +488,10 @@ mod tests {
         assert_eq!(replies.len(), 101);
         assert!(matches!(
             replies.last().unwrap().record,
-            ConversationRecord::HistoryEnd { count: 100, .. }
+            ConversationRecord::HistoryEnd {
+                count: crate::history::HISTORY_PAGE,
+                ..
+            }
         ));
         assert!(serde_json::from_value::<ConversationRecord>(serde_json::json!({"type":"history_end","count":101,"hasMore":false,"oldestSeq":null,"before":null})).is_err());
         for reply in replies {
@@ -554,13 +600,15 @@ mod room_tests {
         };
         let packet = sender_key.sign(sender, &request).unwrap();
         let first = host.dispatch_peer(&packet, 10).unwrap();
-        let ConversationResult::History(HistoryResult::Sent(confirmation)) = first.result.as_ref().unwrap() else {
+        let ConversationResult::History(HistoryResult::Sent(confirmation)) =
+            first.result.as_ref().unwrap()
+        else {
             panic!("send expected")
         };
         let original = serde_json::to_value(&confirmation.message).unwrap();
-        assert_eq!(confirmation.message.user_id, actor.user_id);
-        assert_eq!(confirmation.message.time, 10);
-        let reply = first.replies().unwrap().pop().unwrap();
+        assert_eq!(confirmation.message.message.user_id, actor.user_id);
+        assert_eq!(confirmation.message.message.time, 10);
+        let reply = first.replies().unwrap().remove(0);
         let signed = host_key.sign(host_session, &reply).unwrap();
         assert_eq!(
             ConversationReply::verify(&signed, host_key.signing_key())
@@ -575,7 +623,8 @@ mod room_tests {
         };
         let packet = sender_key.sign(sender, &request).unwrap();
         let retry = host.dispatch_peer(&packet, 20).unwrap();
-        let ConversationResult::History(HistoryResult::Sent(confirmation)) = retry.result.unwrap() else {
+        let ConversationResult::History(HistoryResult::Sent(confirmation)) = retry.result.unwrap()
+        else {
             panic!("retry expected")
         };
         assert!(!confirmation.inserted);

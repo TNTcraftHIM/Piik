@@ -405,6 +405,14 @@ impl RoomHost {
                     now,
                 )
                 .map(ConversationWork::Immediate),
+            ConversationCommand::SetReaction {
+                message_seq,
+                reaction,
+                active,
+            } => self
+                .room
+                .set_reaction(endpoint.member, message_seq, reaction, active)
+                .map(ConversationWork::History),
             ConversationCommand::Chat {
                 text,
                 nonce,

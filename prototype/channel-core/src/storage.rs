@@ -1,7 +1,7 @@
 //! The local Server experiment's metadata and confirmed room history.
 //! Media sessions and routes never enter this database.
 use crate::{
-    history::{ConfirmationInput, HistoryRequest, HistoryResult, HISTORY_PAGE},
+    history::{ConfirmationInput, HistoryRequest, HistoryResult, StoredMessage, HISTORY_PAGE},
     wire::ChatMessage,
 };
 use rusqlite::{params, Connection, OptionalExtension, Row, TransactionBehavior};
@@ -19,7 +19,7 @@ impl Storage {
         let connection = Connection::open(path)?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
-        if version != 2 && (version != 0 || existing) {
+        if version != 3 && (version != 0 || existing) {
             return Err("unsupported_storage_version".into());
         }
         connection.execute_batch(
@@ -28,10 +28,10 @@ impl Storage {
              CREATE TABLE IF NOT EXISTS message (
                room_id TEXT NOT NULL, seq INTEGER NOT NULL, id TEXT NOT NULL UNIQUE,
                user_id TEXT NOT NULL, nonce TEXT NOT NULL, text TEXT NOT NULL,
-               time INTEGER NOT NULL, attachments TEXT NOT NULL,
+               time INTEGER NOT NULL, attachments TEXT NOT NULL, reactions TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
              );
-             PRAGMA user_version=2;",
+             PRAGMA user_version=3;",
         )?;
         Ok(Self { connection })
     }
@@ -60,20 +60,43 @@ impl Storage {
             HistoryRequest::Read { .. } | HistoryRequest::Attachment { .. } => {
                 TransactionBehavior::Deferred
             }
-            HistoryRequest::Send { .. } => TransactionBehavior::Immediate,
+            HistoryRequest::Send { .. } | HistoryRequest::SetReaction { .. } => {
+                TransactionBehavior::Immediate
+            }
         };
         let transaction = self
             .connection
             .transaction_with_behavior(behavior)
             .map_err(|_| "storage_failed")?;
         let result = match request {
+            HistoryRequest::SetReaction {
+                room_id,
+                message_seq,
+                ..
+            } => {
+                let message = transaction.query_row(
+                    "SELECT seq,id,user_id,text,time,attachments,reactions FROM message WHERE room_id=?1 AND seq=?2",
+                    params![room_id, message_seq], read_message).optional().map_err(|_| "storage_failed")?;
+                let confirmation = request.reaction_result(message)?;
+                if confirmation.changed {
+                    let reactions = serde_json::to_string(&confirmation.snapshot.reactions)
+                        .map_err(|_| "storage_failed")?;
+                    transaction
+                        .execute(
+                            "UPDATE message SET reactions=?3 WHERE room_id=?1 AND seq=?2",
+                            params![room_id, message_seq, reactions],
+                        )
+                        .map_err(|_| "storage_failed")?;
+                }
+                HistoryResult::Reacted(confirmation)
+            }
             HistoryRequest::Attachment {
                 room_id,
                 message_seq,
                 ..
             } => {
                 let message = transaction.query_row(
-                    "SELECT seq,id,user_id,text,time,attachments FROM message WHERE room_id=?1 AND seq=?2",
+                    "SELECT seq,id,user_id,text,time,attachments,reactions FROM message WHERE room_id=?1 AND seq=?2",
                     params![room_id, message_seq], read_message).optional().map_err(|_| "storage_failed")?
                     ;
                 request.attachment_result(message)?
@@ -86,7 +109,7 @@ impl Storage {
                 let messages = {
                     let mut query = transaction
                         .prepare(
-                            "SELECT seq,id,user_id,text,time,attachments FROM message
+                            "SELECT seq,id,user_id,text,time,attachments,reactions FROM message
                          WHERE room_id=?1 AND seq<=?2
                          ORDER BY seq DESC LIMIT ?3",
                         )
@@ -110,7 +133,7 @@ impl Storage {
             HistoryRequest::Send { room_id, draft } => {
                 let previous = transaction
                     .query_row(
-                        "SELECT seq,id,user_id,text,time,attachments FROM message
+                        "SELECT seq,id,user_id,text,time,attachments,reactions FROM message
                          WHERE room_id=?1 AND user_id=?2 AND nonce=?3",
                         params![room_id, draft.user_id.to_string(), draft.nonce],
                         read_message,
@@ -133,15 +156,17 @@ impl Storage {
                 };
                 let confirmation = draft.prepare_confirmation(input)?;
                 if confirmation.inserted {
-                    let message = &confirmation.message;
+                    let message = &confirmation.message.message;
                     let attachments = serde_json::to_string(&message.attachments)
                         .map_err(|_| "storage_failed")?;
+                    let reactions = serde_json::to_string(&confirmation.message.reactions)
+                        .map_err(|_| "storage_failed")?;
                     transaction.execute(
-                        "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments)
-                         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
+                        "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions)
+                         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                         params![room_id, message.seq, message.id.to_string(),
                             message.user_id.to_string(), draft.nonce, message.text,
-                            message.time, attachments],
+                            message.time, attachments, reactions],
                     ).map_err(|_| "storage_failed")?;
                 }
                 HistoryResult::Sent(confirmation)
@@ -160,19 +185,26 @@ fn read_uuid(row: &Row<'_>, index: usize) -> rusqlite::Result<Uuid> {
     })
 }
 
-fn read_message(row: &Row<'_>) -> rusqlite::Result<ChatMessage> {
+fn read_message(row: &Row<'_>) -> rusqlite::Result<StoredMessage> {
     use rusqlite::types::Type;
     let attachments: String = row.get(5)?;
     let attachments = serde_json::from_str(&attachments).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(5, Type::Text, Box::new(error))
     })?;
-    Ok(ChatMessage {
-        seq: row.get(0)?,
-        id: read_uuid(row, 1)?,
-        user_id: read_uuid(row, 2)?,
-        text: row.get(3)?,
-        time: row.get(4)?,
-        attachments,
+    let reactions: String = row.get(6)?;
+    let reactions = serde_json::from_str(&reactions).map_err(|error| {
+        rusqlite::Error::FromSqlConversionFailure(6, Type::Text, Box::new(error))
+    })?;
+    Ok(StoredMessage {
+        message: ChatMessage {
+            seq: row.get(0)?,
+            id: read_uuid(row, 1)?,
+            user_id: read_uuid(row, 2)?,
+            text: row.get(3)?,
+            time: row.get(4)?,
+            attachments,
+        },
+        reactions,
     })
 }
 
@@ -208,7 +240,9 @@ mod tests {
             })
             .unwrap()
         {
-            HistoryResult::Sent(confirmation) => (confirmation.message, confirmation.inserted),
+            HistoryResult::Sent(confirmation) => {
+                (confirmation.message.message, confirmation.inserted)
+            }
             _ => panic!("send returned a history page"),
         }
     }
@@ -232,7 +266,14 @@ mod tests {
                 before: cursor,
             } => {
                 assert_eq!(cursor, before);
-                (messages, has_more, oldest_seq)
+                (
+                    messages
+                        .into_iter()
+                        .map(|message| message.message)
+                        .collect(),
+                    has_more,
+                    oldest_seq,
+                )
             }
             _ => panic!("read returned a message confirmation"),
         }
@@ -284,7 +325,7 @@ mod tests {
             let connection = Connection::open(&path).unwrap();
             connection
                 .execute_batch(
-                    "CREATE TABLE message(body TEXT); INSERT INTO message VALUES('old'); PRAGMA user_version=1;",
+                    "CREATE TABLE message(body TEXT); INSERT INTO message VALUES('old'); PRAGMA user_version=2;",
                 )
                 .unwrap();
         }
@@ -294,7 +335,12 @@ mod tests {
             .to_string()
             .contains("unsupported_storage_version"));
         let connection = Connection::open(&path).unwrap();
-        assert_eq!(connection.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0)).unwrap(), 1);
+        assert_eq!(
+            connection
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+                .unwrap(),
+            2
+        );
         assert_eq!(
             connection
                 .query_row("SELECT body FROM message", [], |row| row
@@ -321,8 +367,11 @@ mod tests {
             assert_eq!(confirmed(&mut store, "living", &draft).0.seq, seq);
         }
         let (latest, more, oldest) = page(&mut store, "living", None);
-        assert_eq!((latest.len(), more, oldest), (100, true, Some(1)));
-        assert_eq!((latest[0].seq, latest[99].seq), (911, 1010));
+        assert_eq!((latest.len(), more, oldest), (HISTORY_PAGE, true, Some(1)));
+        assert_eq!(
+            (latest[0].seq, latest[HISTORY_PAGE - 1].seq),
+            (1011 - HISTORY_PAGE as u64, 1010)
+        );
         let (older, more, oldest) = page(&mut store, "living", Some(11));
         assert_eq!((older.len(), more, oldest), (10, false, Some(1)));
         assert_eq!((older[0].seq, older[9].seq), (1, 10));
