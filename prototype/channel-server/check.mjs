@@ -176,7 +176,7 @@ test("Server-owned private invitations admit new users, conceal content and revo
   const roomId = "studio";
   if (!creator.welcome.state.channel.rooms.some(room => room.id === roomId && room.available)) await creator.wait(event => event.type === "state"
     && event.state.channel.rooms.some(room => room.id === roomId && room.available), "Server room host available for management");
-  assert.equal((await creator.request({ type: "update_room", roomId, name: "Private check", access: "private", hidden: true, password: "test-room-password" })).type, "ack");
+  assert.equal((await creator.request({ type: "update_room", roomId, name: "Private check", icon: "couch", access: "private", hidden: true, password: "test-room-password" })).type, "ack");
   const concealed = await outsider.wait(event => event.type === "state" && !event.state.channel.rooms.some(room => room.id === roomId), "hidden room excluded");
   assert(!concealed.state.publications.some(p => p.roomId === roomId));
   assert.equal((await outsider.request({ type: "browse", roomId, active: true })).type, "error");
@@ -199,5 +199,5 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert(revoked.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === privatePublication) && !pair.outgoing.some(flow => flow.publicationId === privatePublication)));
   assert.equal((await guest.request({ type: "history", roomId })).type, "error");
   assert.equal((await creator.request({ type: "unpublish", publicationId: privatePublication })).type, "ack");
-  assert.equal((await creator.request({ type: "update_room", roomId, name: "Studio", access: "public", hidden: false })).type, "ack");
+  assert.equal((await creator.request({ type: "update_room", roomId, name: "Studio", icon: "couch", access: "public", hidden: false })).type, "ack");
 });

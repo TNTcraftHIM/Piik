@@ -8,7 +8,7 @@ import * as launchSession from "../src/client/lib/session";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { ChannelAttachments } from "../src/client/channel/attachments";
-import { signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
+import { identityIconSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
@@ -73,8 +73,8 @@ async function setup(window = 1000, read = true, hash = "") {
   const socket = ChannelSocket.current;
   await socket.onopen?.();
   socket.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state: {
-    channel: { id: "domain", name: "Friends", ownerId: "self", historyWindow: window,
-      rooms: ["first", "second"].map(id => ({ id, name: id, creatorId: "self", access: "public",
+    channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window,
+      rooms: ["first", "second"].map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })), roles: [] },
@@ -121,7 +121,7 @@ test("domain and room invitations use the current Welcome origin without local b
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
-  const localRoom = { id: "saved-browser-room", name: "Browser room", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
+  const localRoom = { id: "saved-browser-room", name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
     bind: vi.fn(async (_binding: string) => {}),
@@ -149,12 +149,12 @@ test("App hosting uses its own participant while Browser rooms retain their page
     socket.receive({ type: "ack", requestId: register.requestId });
     expect(storedPolicies).toHaveBeenCalledOnce();
 
-    const creating = session.createRoom({ name: "App room", access: "private", hidden: true, password: "private-room" });
+    const creating = session.createRoom({ name: "App room", icon: "couch", access: "private", hidden: true, password: "private-room" });
     await vi.waitFor(() => expect(app.sent.some(command => command.type === "open")).toBe(true));
     const opening = app.sent.find(command => command.type === "open")!;
-    const policy = JSON.parse(opening.policy as string) as { id: string; name: string; creatorId: string; access: string; hidden: boolean; password: string };
-    expect(policy).toMatchObject({ name: "App room", creatorId: "self", access: "private", hidden: true, password: "private-room" });
-    app.receive({ id: opening.id, result: { id: policy.id, name: policy.name, creatorId: "self", access: "private", hidden: true, hasPassword: true } });
+    const policy = JSON.parse(opening.policy as string) as { id: string; name: string; icon: string; creatorId: string; access: string; hidden: boolean; password: string };
+    expect(policy).toMatchObject({ name: "App room", icon: "couch", creatorId: "self", access: "private", hidden: true, password: "private-room" });
+    app.receive({ id: opening.id, result: { id: policy.id, name: policy.name, icon: policy.icon, creatorId: "self", access: "private", hidden: true, hasPassword: true } });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "browse" && command.roomId === policy.id)).toBe(true));
     const browse = socket.sent.findLast(command => command.type === "browse" && command.roomId === policy.id)!;
     socket.receive({ type: "room_reply", roomId: policy.id, requestId: browse.requestId, result: { type: "done" } });
@@ -435,7 +435,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue(null);
   const host = {
-    roomId: "", summary: () => ({ id: host.roomId, name: "Browser room", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
+    roomId: "", summary: () => ({ id: host.roomId, name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
     bind: async () => {}, close: async () => {},
   };
   vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
@@ -446,7 +446,7 @@ test("remembered App intent does not prevent Browser hosting when no App is conn
   try {
     expect(discovery).toHaveBeenCalledOnce();
     expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
-    const creating = session.createRoom({ name: "Browser room", access: "public", hidden: false });
+    const creating = session.createRoom({ name: "Browser room", icon: "couch", access: "public", hidden: false });
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
     const register = socket.sent.find(command => command.type === "host_register")!;
     socket.receive({ type: "host_bound", roomId: host.roomId, bindingId: "browser-binding" });
@@ -477,7 +477,7 @@ test("an App failure during creation does not turn that request into a Browser r
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
-    const creating = session.createRoom({ name: "App room", access: "public", hidden: false });
+    const creating = session.createRoom({ name: "App room", icon: "couch", access: "public", hidden: false });
     const failed = expect(creating).rejects.toThrow("app_disconnected");
     await vi.waitFor(() => expect(prepared).toBeTypeOf("function"));
     app.close();
@@ -492,7 +492,7 @@ test("an App failure during creation does not turn that request into a Browser r
 test("host binding precedes its first input and a failed binding retires that host", async () => {
   const host = {
     roomId: "",
-    summary: () => ({ id: host.roomId, name: "Hosted", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
+    summary: () => ({ id: host.roomId, name: "Hosted", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false }),
     bind: vi.fn(async (_binding: string) => {}),
     dispatch: vi.fn(async (_input: unknown) => ({ bindingId: "binding" })),
     close: vi.fn(async () => {}),
@@ -506,7 +506,7 @@ test("host binding precedes its first input and a failed binding retires that ho
   } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
   const { session, socket } = await setup();
   try {
-    const creating = session.createRoom({ name: "Hosted", access: "public", hidden: false });
+    const creating = session.createRoom({ name: "Hosted", icon: "couch", access: "public", hidden: false });
     void creating.catch(() => {});
     await vi.waitFor(() => expect(socket.sent.some(command => command.type === "host_register")).toBe(true));
     const registration = socket.sent.at(-1)!;
@@ -533,11 +533,54 @@ test("host binding precedes its first input and a failed binding retires that ho
   } finally { session.close(); }
 });
 
+test("decorative identity keys remain extensible while missing icons and invalid wire values are rejected", async () => {
+  const { session } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.icon = "Future_domain-7";
+    state.channel.rooms[0].icon = "Future_room-8";
+    state.channel.name = "😀".repeat(32);
+    expect(snapshotSchema.parse(state).channel).toMatchObject({ name: state.channel.name, icon: "Future_domain-7", rooms: [
+      expect.objectContaining({ icon: "Future_room-8" }), expect.anything(),
+    ] });
+    expect(snapshotSchema.safeParse({ ...state, channel: { ...state.channel, name: "😀".repeat(33) } }).success).toBe(false);
+    expect(snapshotSchema.safeParse({ ...state, channel: { ...state.channel, icon: undefined } }).success).toBe(false);
+    expect(snapshotSchema.safeParse({ ...state, channel: { ...state.channel, rooms: [{ ...state.channel.rooms[0], icon: undefined }] } }).success).toBe(false);
+    expect(identityIconSchema.safeParse("a".repeat(65)).success).toBe(false);
+    expect(identityIconSchema.safeParse("room/icon").success).toBe(false);
+  } finally { session.close(); }
+});
+
+test("domain settings use a domain-scoped acknowledgement and surface rejected updates", async () => {
+  const { session, socket } = await setup();
+  try {
+    let settled = false;
+    const settings = { name: "Friends renamed", icon: "Future_domain-7" };
+    const saving = session.updateDomain(settings).then(() => { settled = true; });
+    const request = socket.sent.at(-1)!;
+    expect(request).toEqual({ type: "update_domain", ...settings, requestId: expect.any(String) });
+    expect(session.getSnapshot().pending.has("domain")).toBe(true);
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    socket.receive({ type: "ack", requestId: request.requestId });
+    await saving;
+    expect(session.getSnapshot().pending.has("domain")).toBe(false);
+
+    const denied = session.updateDomain(settings);
+    const rejected = expect(denied).rejects.toThrow("forbidden");
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "forbidden" });
+    await rejected;
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: "forbidden" });
+    expect(session.getSnapshot().pending.has("domain")).toBe(false);
+  } finally { session.close(); }
+});
+
 test("room replies settle only the request belonging to that room", async () => {
   const { session, socket } = await setup();
   try {
     let settled = false;
-    const saving = session.updateRoom("first", { name: "Saved", access: "public", hidden: false }).then(() => { settled = true; });
+    const saving = session.updateRoom("first", { name: "Saved", icon: "couch", access: "public", hidden: false }).then(() => { settled = true; });
     const request = socket.sent.at(-1)!;
     socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId, result: { type: "done" } });
     await Promise.resolve();
@@ -546,7 +589,7 @@ test("room replies settle only the request belonging to that room", async () => 
       result: { type: "done" } });
     await saving;
     expect(settled).toBe(true);
-    const updating = session.updateRoom("first", { name: "Unavailable", access: "public", hidden: false });
+    const updating = session.updateRoom("first", { name: "Unavailable", icon: "couch", access: "public", hidden: false });
     const rejected = expect(updating).rejects.toThrow("room_host_offline");
     socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId,
       result: { type: "error", code: "room_host_offline" } });
@@ -585,7 +628,7 @@ test.each([
 test("a separate directory storage error does not fail a committed room request", async () => {
   const { session, socket } = await setup();
   try {
-    const updating = session.updateRoom("first", { name: "Saved", access: "public", hidden: false });
+    const updating = session.updateRoom("first", { name: "Saved", icon: "couch", access: "public", hidden: false });
     const request = socket.sent.at(-1)!;
     const state = structuredClone(session.getSnapshot().state!);
     state.channel.rooms[0].name = "Saved";

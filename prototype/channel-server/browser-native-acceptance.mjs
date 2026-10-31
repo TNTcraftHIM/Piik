@@ -71,7 +71,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await browser(1, "tab", personalTab);
   };
   try {
-    const browserRoom = await action(1, "createRoom({name:'Browser-owned room',access:'public',hidden:false})");
+    const browserRoom = await action(1, "createRoom({name:'Browser-owned room',icon:'couch',access:'public',hidden:false})");
     start(); await ready();
     const discovery = await fetch(`${local}/connect-discovery`).then(response => response.json());
     assert.deepEqual(discovery, { service: "piik-channel-app", protocol: 1, port, connectURL: `${local}/client` });
@@ -84,7 +84,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await until("linked Browser restores its admitted identity", () => view(1), value => value.connection === "connected"
       && value.self.id === initial[1].self.id);
     await appReady(1);
-    const room = await action(1, "createRoom({name:'App-owned room',access:'private',hidden:true,password:'app-room-password'})");
+    const room = await action(1, "createRoom({name:'App-owned room',icon:'couch',access:'private',hidden:true,password:'app-room-password'})");
     await action(1, `browse(${JSON.stringify(room)})`);
     const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
     assert(!invite.includes(token), "room invitations never carry the local App token");
@@ -212,7 +212,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await until("second Site admits its own Browser user", () => view(0), value => value.connection === "connected");
     await appReady(0);
     const otherIdentity = (await view(0)).self.id;
-    const otherRoom = await action(0, "createRoom({name:'Other Site App room',access:'public',hidden:false})");
+    const otherRoom = await action(0, "createRoom({name:'Other Site App room',icon:'couch',access:'public',hidden:false})");
     const otherBinding = (await view(0)).state.channel.rooms.find(entry => entry.id === otherRoom).delivery.bindingId;
     await action(0, `sendMessage(${JSON.stringify(otherRoom)}, 'Other Site before revocation')`);
     await browser(1, "tab", approvalTab);

@@ -2,10 +2,12 @@ import { z } from "zod";
 
 // This is the experimental channel wire boundary; production room contracts stay separate.
 const id = z.string().min(1).max(128);
+const identityNameSchema = z.string().refine(name => name.length <= 64, "Name exceeds 64 UTF-16 units");
+export const identityIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
 export const userSchema = z.object({ id, name: z.string().max(40), roles: z.array(id).max(16) });
 export const roomSchema = z.object({
-  id, name: z.string().max(64), creatorId: id, access: z.enum(["public", "private"]),
+  id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
   members: z.array(id).optional(),
   available: z.boolean(), reading: z.boolean(),
@@ -31,7 +33,7 @@ export const messageSchema = z.object({
 });
 export const snapshotSchema = z.object({
   channel: z.object({
-    id, name: z.string(), ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(),
+    id, name: identityNameSchema, icon: identityIconSchema, ownerId: id.nullable(), rooms: z.array(roomSchema).max(32), historyWindow: z.number().int().positive(),
     roles: z.array(z.object({ id, name: z.string(), permissions: z.array(z.string()) })),
   }),
   users: z.array(userSchema).max(64),
@@ -71,7 +73,7 @@ export type ChannelFileKey = z.infer<typeof fileKeySchema>;
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
 export type ChannelRoom = z.infer<typeof roomSchema>;
-export type RoomSummary = Pick<ChannelRoom, "id" | "name" | "creatorId" | "access" | "hidden" | "hasPassword">;
+export type RoomSummary = Pick<ChannelRoom, "id" | "name" | "icon" | "creatorId" | "access" | "hidden" | "hasPassword">;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
@@ -84,12 +86,14 @@ export type ConversationReply = ConversationAddress & { record:
   | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
   | { type: "error"; code: string }
 };
-export interface RoomSettings {
-  name: string; access: "public" | "private"; hidden: boolean; password?: string | null;
+export interface DomainSettings { name: string; icon: string }
+export interface RoomSettings extends DomainSettings {
+  access: "public" | "private"; hidden: boolean; password?: string | null;
 }
 export type ChannelCommand =
   | { type: "join"; name: string; signingKey: number[]; credential?: string; key?: string; roomId?: string; sessionId?: string }
   | { type: "set_name"; name: string }
+  | ({ type: "update_domain" } & DomainSettings)
   | { type: "input_register"; publicationId: string; flowId: string; secret: number[] }
   | { type: "host_register"; room: RoomSummary; resumeBinding?: string }
   | { type: "host_output"; roomId: string; output: unknown }

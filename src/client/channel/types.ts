@@ -1,4 +1,4 @@
-import type { ChannelMessage, ChannelSnapshot, ChannelUser, RoomSettings } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelUser, DomainSettings, RoomSettings } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState } from "./app-link";
@@ -41,6 +41,7 @@ export interface ChannelActions {
   loadLatestHistory(roomId: string): Promise<void>;
   attachments: ChannelAttachments;
   renameSelf(name: string): Promise<void>;
+  updateDomain(settings: DomainSettings): Promise<void>;
   createRoom(settings: RoomSettings): Promise<string>;
   updateRoom(roomId: string, settings: RoomSettings): Promise<void>;
   enterRoom(roomId: string, password: string): Promise<void>;

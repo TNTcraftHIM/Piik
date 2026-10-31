@@ -524,7 +524,7 @@ async function senderAllocationFailure() {
 async function branchShortcut(initial) {
   const host = 1, relay = 2, source = 3, viewer = 4, watchers = [relay, viewer];
   await Promise.all(watchers.map(index => evaluate(index, 'window.__channelProbe.observeQuality()')));
-  const room = await action(host, "createRoom({name:'Branch shortcut',access:'public',hidden:false})");
+  const room = await action(host, "createRoom({name:'Branch shortcut',icon:'couch',access:'public',hidden:false})");
   await browser(host, 'click', '.c3-room-link[aria-label="Branch shortcut"]');
   // Fill the host's two base branches before admitting the downstream viewer.
   for (const index of [source, relay]) {
@@ -707,12 +707,12 @@ async function roomBase(initial) {
   const branchShortcuts = await branchShortcut(initial);
   // Host this fixture at its source so its two viewers have a known base path;
   // cross-room lease reuse must not depend on an optional quality-based shortcut.
-  const pictureRoom = await action(1, "createRoom({name:'Picture room',access:'public',hidden:false})");
+  const pictureRoom = await action(1, "createRoom({name:'Picture room',icon:'couch',access:'public',hidden:false})");
   const source = await capturedScreen(1, pictureRoom);
   await action(2, `watch(${JSON.stringify(source)})`);
   await playing(2, source);
   const originalPair = (await view(2)).state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === source)).id;
-  const room = await action(1, "createRoom({name:'Connected room',access:'public',hidden:false})");
+  const room = await action(1, "createRoom({name:'Connected room',icon:'couch',access:'public',hidden:false})");
   for (const index of [1, 2]) await browser(index, "click", '.c3-room-link[aria-label="Connected room"]');
   await until("base reuses the existing screen connection", () => view(2), value =>
     value.state.pairs.some(pair => pair.id === originalPair && pair.rooms.includes(room)));
@@ -860,7 +860,7 @@ async function roomOwner(initial, serverRoom) {
   assert.equal(serverWS, undefined, "Server room conversation uses the same peer carrier as a Browser room");
   await until("another reader receives the Server's peer confirmation", () => evaluate(2,
     `${hook}.snapshot().messagesByRoom[${JSON.stringify(serverRoom)}]`), messages => messages?.some(message => message.text === "Server room through its native peer"));
-  const room = await action(1, "createRoom({name:'Browser-owned room',access:'private',hidden:true,password:'browser-room-password'})");
+  const room = await action(1, "createRoom({name:'Browser-owned room',icon:'couch',access:'private',hidden:true,password:'browser-room-password'})");
   const invite = await action(1, `createRoomInvite(${JSON.stringify(room)})`);
   await action(2, "close()");
   await evaluate(2, "localStorage.removeItem('piik.channel.prototype.credential')");
@@ -1223,7 +1223,7 @@ try {
 
   // The continuing publisher hosts this room so a separate relay can leave.
   // Native acceptance separately checks Server-hosted paths.
-  const roomId = await action(2, "createRoom({name:'Shared viewing',access:'public',hidden:false})");
+  const roomId = await action(2, "createRoom({name:'Shared viewing',icon:'couch',access:'public',hidden:false})");
   for (const index of active) await browser(index, "click", '.c3-room-link[aria-label="Shared viewing"]');
 
   let secondPublisher = 1;
