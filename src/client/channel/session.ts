@@ -102,7 +102,7 @@ export class ChannelSession {
     (peer, kind, data) => {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
       else void this.conversation.receive(peer, data as string).catch(() => {});
-    }, (peer, ready) => { this.attachments.peerState(peer, ready); if (ready) this.syncInteractions(); }, peer => this.attachments.bulkClosed(peer),
+    }, (peer, ready) => { this.attachments.peerState(peer, ready); if (ready) this.syncInteractions(peer); }, peer => this.attachments.bulkClosed(peer),
     (pair, channel) => this.input.setChannel(pair, channel));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
@@ -646,7 +646,7 @@ export class ChannelSession {
     if (this.view.interactionsByRoom.size) this.patch({ interactionsByRoom: new Map() });
   }
 
-  private syncInteractions(): void {
+  private syncInteractions(readyPeer?: string): void {
     const reading = this.reading;
     if (!reading) return;
     void reading.ready.then(() => {
@@ -655,7 +655,13 @@ export class ChannelSession {
       const delivery = room?.delivery;
       if (!delivery) return;
       if (reading.interaction && reading.interactionBinding !== delivery.bindingId) this.closeInteractions();
-      if (reading.interaction || (delivery.hostSessionId !== this.view.sessionId && !delivery.nextHops[delivery.hostSessionId])) return;
+      if (reading.interaction) {
+        if (readyPeer && delivery.nextHops[delivery.hostSessionId] === readyPeer && !reading.interaction.getSnapshot().ready) {
+          reading.interaction.authenticated(this.view.self.id);
+        }
+        return;
+      }
+      if (delivery.hostSessionId !== this.view.sessionId && !delivery.nextHops[delivery.hostSessionId]) return;
       const interaction = this.view.interactionsByRoom.get(reading.roomId) ?? new RoomInteractionSession(message => {
         const current = this.reading;
         if (current?.interaction !== interaction || this.view.connection !== "connected") return false;

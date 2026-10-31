@@ -246,20 +246,22 @@ test("interaction readiness follows read admission and existing peer readiness, 
     const send = vi.mocked(ChannelConversation.prototype.send), original = send.getMockImplementation()!;
     let attempts = 0;
     send.mockImplementation(async (command, requestId) => {
-      if (command.type === "interaction_ready" && ++attempts === 1) throw new Error("peer_data_unavailable");
+      if (command.type === "interaction_ready") attempts++;
       return original(command, requestId);
     });
     state.channel.rooms[0].delivery!.nextHops = { host: "host" };
     state.pairs = [{ id: "room-base", peerId: "host", rooms: ["first"], outgoing: [], incoming: [] }];
     socket.receive({ type: "state", state });
     await vi.waitFor(() => expect(attempts).toBe(1));
-    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.size).toBe(0));
+    const pending = session.getSnapshot().interactionsByRoom.get("first")!;
+    expect(pending.getSnapshot().ready).toBe(false);
     RoomPeerConnection.instances[0].connected();
     await vi.waitFor(() => expect(attempts).toBe(2));
     const request = peer.interactions.at(-1)!;
     expect(request.type).toBe("interaction_ready");
     peer.reply(request, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "future-decoration"] });
     const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
+    expect(interaction).toBe(pending);
     expect(interaction.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
     state.channel.rooms[0].available = false;
     socket.receive({ type: "state", state });
