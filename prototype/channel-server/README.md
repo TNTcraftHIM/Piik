@@ -378,18 +378,29 @@ rooms. Each endpoint may publish one screen and one voice source per room.
 
 ## Checks
 
-Build the executable before running the finite integration checks:
+Run the shared Rust and Browser-adapter checks from the repository root:
 
 ```powershell
-cargo +1.91.0 build --manifest-path prototype/channel-native/Cargo.toml
-cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml
-cargo test --manifest-path prototype/channel-core/Cargo.toml
-cargo test --manifest-path prototype/channel-core/Cargo.toml --features sqlite
-cargo +1.91.0 build --manifest-path prototype/channel-server/Cargo.toml --bin piik-channel-prototype
+npm run check:rust
+```
+
+This entry point uses Rust 1.91.0 and the Browser adapter's pinned `wasm-bindgen`
+and `cargo-about` tools. It collects core tests with and without SQLite, Native
+forwarding tests, Server tests including `native_session`, the shared Web/WASM
+build, Browser-adapter TypeScript and the finite WebSocket protocol check. The
+Web build uses development identity. It builds Native before
+the process-lock tests and supplies that executable to them. `CARGO_TARGET_DIR`
+selects the shared build directory; the working directory selects the source tree.
+It leaves capture disabled, so shared checks need no desktop media SDK or Linux
+GStreamer installation. Capture-enabled compilation belongs to platform packaging;
+physical capture/input and Browser media acceptance remain separate checks.
+The ordinary Web type-check and unit tests remain `npm run typecheck` and `npm test`.
+
+For Browser acceptance, generate the adapter with the command above, build the
+capture-enabled App and select the executables when using a custom target directory:
+
+```powershell
 cargo +1.91.0 build --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
-node prototype/channel-browser/build.mjs
-npm run typecheck
-node prototype/channel-server/run-browser-check.mjs --protocol
 node prototype/channel-server/run-browser-check.mjs
 node prototype/channel-server/run-browser-check.mjs --rooms
 node prototype/channel-server/run-browser-check.mjs --identity
@@ -401,9 +412,9 @@ node prototype/channel-server/run-browser-check.mjs --app
 ```
 
 The real Native session integration tests live in `tests/native_session.rs`
-in this crate, including App approval, storage ownership and startup/retry. They run the actual
-Native executable for process-lock checks, so build it first. With a custom Cargo
-target directory, set `CHANNEL_NATIVE_EXECUTABLE` to that executable. Use
+in this crate, including App approval, storage ownership and startup/retry. To run
+them separately, build Native first and set `CHANNEL_NATIVE_EXECUTABLE` when using
+a custom target directory. Use
 `cargo +1.91.0 test --manifest-path prototype/channel-server/Cargo.toml --test native_session`
 to run those tests alone. Build Server and App separately as above: App enables
 the Native `capture` feature, while Server needs only forwarding. Building both

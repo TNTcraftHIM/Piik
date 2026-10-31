@@ -20,6 +20,7 @@
     "check:go-core": "node scripts/check-go.mjs --core",
     "check:go-vuln": "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./cmd/piik-app ./cmd/piik-server",
     "check:go-race": "node scripts/check-go.mjs --race",
+    "check:rust": "node scripts/check-rust.mjs",
     "check:container": "node scripts/check-container.mjs",
     "check:native": "node scripts/check-go.mjs --capture-only",
     "gate:app-media": "tsx scripts/app-media-gate.ts",

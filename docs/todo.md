@@ -18,7 +18,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
   after the held dependency decision. Keep the first version's accepted scope
-  and the prototype isolated.
+  and the prototype isolated. Before main integration, switch normal CI and Web
+  builds to the selected Rust runtime and shared WASM frontend, replacing the
+  Go validation and obsolete acceptance callers rather than retaining two backends.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
