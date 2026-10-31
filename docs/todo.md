@@ -12,7 +12,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Assess the recorded shortcut-provider dialog-cancellation limitation.
+  Compare the released str0m transport with the current adapter before retaining
+  more dependency patches, preserving source timing, A/V alignment, shared UDP
+  ownership and bounded queues through the existing room runtime.
   Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
   after the held dependency decision. Keep the first version's accepted scope
