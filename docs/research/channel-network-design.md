@@ -509,60 +509,34 @@ reopening it does not resume captures or calls.
 
 ## Implementation Boundary
 
-Without an App link, the current prototype interface creates rooms in their owner's
-[Browser runtime](../../prototype/channel-browser/README.md). The shared Rust
-core owns policy, activities, publication plans and confirmed history; IndexedDB
-stores that room's data. The domain supplies credential-free identity facts,
-binds the current runtime and projects authorized directory views. Its own
-default rooms use the same core with SQLite. A failed directory save cannot
-undo a policy already committed by its room owner.
+Browser/WASM and Native/SQLite adapters execute the shared room core. The domain
+binds their authenticated runtimes and projects authorized directory summaries;
+a failed directory save cannot undo policy already committed by the room owner.
+The [Server and App compositions](../../prototype/channel-server/README.md)
+describe their runtime setup. Both compose a
+[Native participant](../../prototype/channel-native/README.md), whose caller owns
+hosting lifetime. An OS file lock excludes simultaneous writers of a saved room.
+Capture remains a separate producer.
 
-A shared transport book combines logical flows into physical pairs. Changing
-one room's activity cannot retire a pair still used by another room. Domain
-rendezvous carries admission, activity changes and repair. Browser- and Native-hosted
-rooms carry authenticated chat and history on a base DataChannel tree, rooted
-at the actual host session. Both endpoints must confirm an installed open channel
-before an edge carries bidirectional voice. A non-listening participant may
-forward that voice; changing views retains necessary transit. DataChannel failure
-repairs base paths while preserving the pair's healthy media leases.
+The shared transport book combines logical flows into physical pairs. Both
+endpoints must confirm an installed open base DataChannel before an edge carries
+bidirectional voice. DataChannel failure repairs base paths while preserving the
+pair's healthy media leases. Changing one room's activity cannot retire a pair
+still used by another room.
 
-Screens retain independent plans and start on ready room paths, installing only
-the missing source-to-viewer suffix. Existing picture branches stay in place;
-base connectivity does not substitute for picture proof. Reverse flow may use
-all three neighbors of an internal base node. The small fanout policy for new
-branches is a topology choice, not a measurement of device media capacity.
-Failed picture preparation uses the same availability candidates without
-retiring the shared base connection. Necessary transit survives local unwatch.
-Convergence prepares one alternative branch per publication, including its
-downstream transit. Every affected viewer must have decoded its current picture;
-its candidate must pass the shared quality comparison and supply a prewarmed
-player frame. Pure transit proves forwarding instead of pretending to display.
-Only then does the room select the prepared branch and retire its old leases.
-Source sound, volume, pause and container fullscreen follow the same player
-handover; native element fullscreen defers it. Preparation and switching share
-one finite operation. The first viewer's approval bounds the remaining wait to
-the existing quality-evidence lifetime. Failure or changed viewing demand cancels
-that candidate while preserving the required old paths. Each admitted session
-gets one direct attempt for that publication, independent of view toggles.
-The Server embeds one real Native participant for its default rooms. Those rooms
-use the same base paths, conversation carrier, file delivery and screen plans;
-an administrator's page is a separate endpoint. Domain state contains directory
-summaries and identity, not another implementation of room business rules.
-
-Before implementing the next slice, map its user-visible behavior, authority,
-state transitions, resource lifetime and recovery. Existing code is evidence of
-current behavior, not proof that its semantics or structure should survive.
-Simplify that model first: remove obsolete behavior, duplicated responsibilities
-and accidental constraints, while preserving the accepted product contract.
-Implement the resulting concepts in Rust using suitable mature components;
-module and function parity with Go is not an acceptance criterion. Verify the
-same complete user flows and failure cases against the new ownership model.
-
-The [Native participant](../../prototype/channel-native/README.md) now operates
-the same room core with one SQLite database per room, an admitted session and
-real base DataChannels. It forwards encoded media without local playback.
-Capture is a separate producer, not part of room hosting. Its caller owns hosting lifetime. An OS file lock excludes another
-runtime from simultaneously operating the same saved room.
+Picture startup installs only the missing source-to-viewer suffix on ready room
+paths. Reverse flow may use all three neighbors of an internal base node; the
+small fanout policy for new branches is a topology choice, not device capacity.
+Convergence prepares one alternative branch per publication, including transit.
+Every affected viewer must have decoded its current picture, and its candidate
+must pass the shared quality comparison and supply a prewarmed player frame.
+Pure transit proves forwarding. Selection retains those prepared inputs and
+outputs before retiring the old leases. Source sound, volume, pause and container
+fullscreen follow the player handover; native element fullscreen defers it.
+Preparation and switching share one finite operation. The first viewer's approval
+bounds the remaining wait to the quality-evidence lifetime. Failure or changed
+viewing demand cancels the candidate while preserving required old paths. Each
+admitted session gets one direct attempt per publication, independent of view toggles.
 
 The App entry assigns room execution, storage, signing and peer connections to
 its Native participant. A loopback control socket authenticates the Browser's
@@ -576,12 +550,6 @@ after Native verifies the actual domain admission. Revocation stops that site's
 hosting without deleting its data or affecting other sites. Changing a tunnel URL
 requires approval of the replacement origin; it does not inherit an earlier
 origin's data automatically. URLs carry discovery hints, never App permission.
-The shared Rust core has no HTTP runtime; Browser/WASM, Native and Server consume
-it directly. Domain runtime keeps directory, membership and authenticated rendezvous;
-room execution and storage remain with the explicit room host. Evaluate
-capture, encoding and input at their platform boundaries; retain native helpers
-only where platform APIs or a proven component require them. Do not add a
-separate storage service.
 
 Use safe Rust for owned business rules and Native resource lifecycles; TypeScript
 owns the Web interface and Browser API bridge. Prefer maintained safe Rust APIs
@@ -616,8 +584,7 @@ inside every module. The [versioning standard](../standards/versioning.md) still
 separates build identity, wire compatibility, stored schema and live generations.
 A published cutover needs its own handshake and data-upgrade decision.
 
-The isolated Native participant uses webrtc-rs/rtc 0.21.1.
-Its [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc389547450e245877310c9cbed/src/peer_connection/mod.rs)
+The Native transport's [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc389547450e245877310c9cbed/src/peer_connection/mod.rs)
 owns sockets, candidate gathering and protocol deadlines. Its
 [interceptor registry](https://github.com/webrtc-rs/rtc/blob/2a732df55ca4bcf26b80914fa0f570cfaf74cfcb/src/peer_connection/configuration/interceptor_registry.rs)
 provides RTCP, GCC/TWCC and pacing; congestion control needs explicit configuration.
@@ -638,18 +605,12 @@ RTX owner retain packet accounting and mechanical probe execution; the async
 adapter retains sockets and candidate gathering. The public estimator interface
 alone lacks departure, queue, flight and probe control, so generic transport
 extensions are still required. This separation removes the SDK's concrete
-controller dependency without duplicating its transport owners; the controlled
-RTP/TWCC packet traces remain identical. Feedback retention is selected through
-the existing builder by the Piik adapter, not by changing the SDK-wide default.
+controller dependency without duplicating its transport owners. Feedback retention
+is selected through the existing builder by the Piik adapter, not by changing
+the SDK-wide default.
 Its small executor follows [WebRTC's BitrateProber](https://webrtc.googlesource.com/src/+/main/modules/pacing/bitrate_prober.cc).
 Probe padding reuses real cached RTX media; internal controller messages finish
 inside the interceptor chain without depending on an application event.
-The isolated candidate also carries upstream fixes for
-[authenticated DTLS completion retries](https://github.com/webrtc-rs/rtc/pull/289),
-[SCTP ERROR handling](https://github.com/webrtc-rs/rtc/pull/277),
-[DCEP reliability](https://github.com/webrtc-rs/rtc/pull/280) and
-[ForwardTSN parameters](https://github.com/webrtc-rs/rtc/pull/276), which the
-pinned 0.21.1 baseline lacks.
 
 The candidate drives the Native allocator and hardware encoders from actual
 transport estimates. Probing begins with the first media departure rather than
@@ -673,10 +634,9 @@ Payload demand and encrypted wire capacity retain their distinct overhead.
 
 The runtime's shared physical-socket wrapper requests a bounded 1 MiB receive
 buffer through its existing Quinn UDP adapter, preserving larger caller values.
-A real startup burst reproduced drops before SRTP with the Windows 64 KiB
-default; the same burst and Browser H264 startup arrive without loss after the
-correction. IPv4, IPv6 and adopted sockets share this owner. Socket-option errors
-leave the connection usable; no media policy or additional receive queue is added.
+This accommodates media startup bursts before SRTP processing. IPv4, IPv6 and
+adopted sockets share this owner. Socket-option errors leave the connection usable;
+no media policy or additional receive queue is added.
 
 Native encoded forwarding separates control turns from real-time packet writers.
 Audio and video retain separate source identities within one publication. Each
