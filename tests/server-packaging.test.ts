@@ -27,9 +27,14 @@ vi.mock("node:child_process", async (original) => ({
       expect(args).toContain("--no-default-features");
       expect(args).not.toContain("--features");
       expect(args[args.indexOf("--bin") + 1]).toBe("piik-channel-prototype");
+      expect(args[args.indexOf("--target") + 1]).toBe("x86_64-unknown-linux-musl");
       const binary = join(options.env.CARGO_TARGET_DIR!, args[args.indexOf("--target") + 1]!, "release");
       mkdirSync(binary, { recursive: true });
       writeFileSync(join(binary, "piik-channel-prototype"), "fixture Server");
+    } else if (command === "readelf") {
+      stdout = source.scenario === "dynamic-loader" ? " INTERP 0x00000000" :
+        source.scenario === "dynamic-library" ? " (NEEDED) Shared library: [libc.so]" :
+          " DYNAMIC 0x00000000\n (FLAGS_1) Flags: PIE";
     } else if (args[0] === "-czf") {
       writeFileSync(args[1]!, "fixture archive");
       if (source.scenario === "archive-failure") return { status: 1, stderr: "archive interrupted" };
@@ -54,7 +59,7 @@ vi.mock("../scripts/package-licenses.mjs", () => ({
 vi.mock("../scripts/release-version.mjs", () => ({ buildVersion: () => "development" }));
 vi.mock("../scripts/archive-tool.mjs", () => ({ tarExecutable: () => "fixture-tar" }));
 
-it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "existing"] as const)(
+it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "existing", "dynamic-loader", "dynamic-library"] as const)(
   "exports a Server release only after all tracked inputs are settled (%s)", async (scenario) => {
     const root = mkdtempSync(join(tmpdir(), "piik-server-package-"));
     const output = join(root, "release");
@@ -93,12 +98,13 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
         expect(readFileSync(join(output, "user.txt"), "utf8")).toBe("keep");
       } else {
         const expected = { dirty: "clean Git checkout", revision: "package source",
-          "docker-failure": "container failed", "archive-failure": "archive interrupted" }[scenario];
+          "docker-failure": "container failed", "archive-failure": "archive interrupted",
+          "dynamic-loader": "statically linked", "dynamic-library": "statically linked" }[scenario];
         await expect(packaging).rejects.toThrow(expected);
         expect(existsSync(output)).toBe(false);
       }
       expect(existsSync(source.workspace)).toBe(false);
-      expect(source.containerRead).toBe(scenario !== "existing" && scenario !== "archive-failure");
+      expect(source.containerRead).toBe(["clean", "dirty", "revision", "docker-failure"].includes(scenario));
     } finally {
       process.argv = previousArguments;
       stdout.mockRestore();

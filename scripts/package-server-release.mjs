@@ -204,12 +204,25 @@ try {
   copyFileSync(join(repositoryRoot, "LICENSE"), join(runtimeRoot, "LICENSE"));
   const binaryName = serverBinaryName(target);
   const serverPath = join(runtimeRoot, binaryName);
+  const buildEnv = { ...process.env, CARGO_TARGET_DIR: cargoTarget,
+    PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision };
+  if (target.goos === "linux") {
+    const key = target.rustTarget.replaceAll("-", "_");
+    buildEnv[`CARGO_TARGET_${key.toUpperCase()}_LINKER`] ??= "musl-gcc";
+    buildEnv[`CC_${key}`] ??= "musl-gcc";
+  }
   run("cargo", ["+1.91.0", "build", "--locked", "--release", "--no-default-features",
     "--manifest-path", join(repositoryRoot, "prototype", "channel-server", "Cargo.toml"),
     "--target", target.rustTarget, "--bin", "piik-channel-prototype"], repositoryRoot,
-  { ...process.env, CARGO_TARGET_DIR: cargoTarget, PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision });
+  buildEnv);
   copyFileSync(join(cargoTarget, target.rustTarget, "release",
     target.goos === "windows" ? "piik-channel-prototype.exe" : "piik-channel-prototype"), serverPath);
+  if (target.goos === "linux") {
+    const elf = run("readelf", ["--program-headers", "--dynamic", serverPath], repositoryRoot);
+    if (/^\s*INTERP\s/m.test(elf) || /\(NEEDED\)/.test(elf)) {
+      fail("Linux Server must be statically linked with no PT_INTERP or DT_NEEDED; check flags that disable musl crt-static.");
+    }
+  }
   cpSync(web, join(runtimeRoot, "web"), { recursive: true });
   if (target.goos !== "windows") chmodSync(serverPath, 0o755);
   writeServerLicenseNotices(

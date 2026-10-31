@@ -218,9 +218,6 @@ chmod 0644 "$stage/LICENSE" "$stage/REVISION" "$stage/THIRD-PARTY-NOTICES.txt"
 
 test -r "$stage/web/index.html"
 test -r "$stage/web/$main_asset"
-dependencies="$(ldd "$stage/piik-server")"
-printf '%s\n' "$dependencies"
-if grep -q 'not found' <<< "$dependencies"; then exit 72; fi
 
 if [ -n "$(comm -12 <(find "$old_release" -type f -printf '%D:%i\n' | sort -u) <(find "$stage" -type f -printf '%D:%i\n' | sort -u))" ]; then
   exit 80
