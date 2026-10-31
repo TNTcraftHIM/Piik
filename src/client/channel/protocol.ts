@@ -67,7 +67,9 @@ export const eventSchema = z.discriminatedUnion("type", [
 
 export type ChannelSnapshot = z.infer<typeof snapshotSchema>;
 export type ChannelPublication = z.infer<typeof publicationSchema>;
-export type ChannelMessage = z.infer<typeof messageSchema>;
+export interface MessageReactions { revision: number; choices: Record<string, string[]> }
+export interface MessageReactionSnapshot extends MessageReactions { messageId: string; messageSeq: number }
+export type ChannelMessage = z.infer<typeof messageSchema> & { reactions?: MessageReactions };
 export type ChannelAttachment = z.infer<typeof attachmentSchema>;
 export type ChannelFileKey = z.infer<typeof fileKeySchema>;
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
@@ -81,6 +83,8 @@ export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" }> | Extr
 export interface SignedConversationPacket { sender: string; payload: string; signature: number[]; remainingHops: number }
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:
+  | { type: "reaction_confirmed"; snapshot: MessageReactionSnapshot; changed: boolean }
+  | { type: "message_reactions"; snapshot: MessageReactionSnapshot }
   | { type: "interaction_ready"; serverTime: number; reactionIds: string[] }
   | { type: "interaction"; id: string; occurredAt: number; senderUserId: string; reaction: string; targetUserId?: string }
   | { type: "confirmed"; message: ChannelMessage; inserted: boolean }
@@ -103,6 +107,7 @@ export type ChannelCommand =
   | { type: "browse"; roomId: string; active: boolean }
   | { type: "interaction_ready"; roomId: string }
   | { type: "interaction"; roomId: string; reaction: string; targetUserId?: string }
+  | { type: "set_reaction"; roomId: string; messageSeq: number; reaction: string; active: boolean }
   | { type: "history"; roomId: string; before?: number }
   | { type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[] }
   | ({ type: "file_offer"; available: boolean } & ChannelFileKey)

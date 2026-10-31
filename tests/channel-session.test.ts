@@ -8,7 +8,7 @@ import * as launchSession from "../src/client/lib/session";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { ChannelAttachments } from "../src/client/channel/attachments";
-import { identityIconSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
+import { identityIconSchema, messageSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
@@ -43,7 +43,7 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
-  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" }> & { requestId: string };
+  type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" | "set_reaction" }> & { requestId: string };
   type InteractionRequest = Extract<ChannelCommand, { type: "interaction_ready" | "interaction" }> & { requestId: string };
   const sent: PeerRequest[] = [], pending: PeerRequest[] = [];
   const interactions: InteractionRequest[] = [];
@@ -63,14 +63,23 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
     sent, interactions,
     async next() { await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0)); return pending.shift()!; },
     reply(request: PeerRequest | InteractionRequest, record: ConversationReply["record"]) {
-      deliver({ roomId: request.roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: request.requestId, record });
+      const reply = { roomId: request.roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: request.requestId };
+      deliver({ ...reply, record: "message" in record ? { ...record, message: messageSchema.parse(record.message) } : record });
+      if (record.type === "confirmed") deliver({ ...reply, record: { type: "message_reactions", snapshot: {
+        messageId: record.message.id, messageSeq: record.message.seq, ...(record.message.reactions ?? { revision: 0, choices: {} }),
+      } } });
     },
     page(request: PeerRequest, messages: ChannelMessage[], hasMore = false, oldestSeq: number | null = 1) {
-      for (const message of messages) peer.reply(request, { type: "history_message", message });
+      for (const message of messages) {
+        peer.reply(request, { type: "history_message", message });
+        peer.reply(request, { type: "message_reactions", snapshot: {
+          messageId: message.id, messageSeq: message.seq, ...(message.reactions ?? { revision: 0, choices: {} }),
+        } });
+      }
       peer.reply(request, { type: "history_end", count: messages.length, hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null });
     },
     live(message: ChannelMessage, roomId = "first") {
-      deliver({ roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: "live", record: { type: "live_message", message } });
+      deliver({ roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: "live", record: { type: "live_message", message: messageSchema.parse(message) } });
     },
     async history(messages: ChannelMessage[], hasMore = false, older = false) {
       const loading = older ? session.loadHistory("first") : session.loadLatestHistory("first");
@@ -100,7 +109,72 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   return { session, socket, peer };
 }
 
-const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [] });
+const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [],
+  reactions: { revision: 0, choices: {} } });
+const reactionSnapshot = (seq: number, revision: number, choices: Record<string, string[]> = {}) =>
+  ({ messageId: `message-${seq}`, messageSeq: seq, revision, choices });
+
+test("message reaction confirmation applies canonical snapshots and survives later body confirmation", async () => {
+  const { session, peer } = await setup();
+  try {
+    await peer.history([message(1)]);
+    const setting = session.setMessageReaction("first", 1, "heart", true), request = await peer.next();
+    expect(request).toMatchObject({ type: "set_reaction", roomId: "first", messageSeq: 1, reaction: "heart", active: true });
+    expect(request).not.toHaveProperty("userId");
+    expect(session.getSnapshot().pending.has("reaction:first:1")).toBe(true);
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 0, choices: {} });
+    const snapshot = reactionSnapshot(1, 2, { self: ["heart"], friend: ["clap"] });
+    peer.reply(request, { type: "reaction_confirmed", changed: false, snapshot });
+    await setting;
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions).toEqual({ revision: 2, choices: snapshot.choices });
+    expect(session.getSnapshot().pending.has("reaction:first:1")).toBe(false);
+    const sending = session.sendMessage("first", message(1).text), chat = await peer.next();
+    peer.reply(chat, { type: "confirmed", message: message(1), inserted: false });
+    await sending;
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions?.revision).toBe(2);
+    // The chat request is settled before its separately carried snapshot arrives.
+    peer.reply(chat, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { friend: ["clap"] }) });
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([{ ...message(1), reactions: { revision: 3, choices: { friend: ["clap"] } } }]);
+    const removing = session.setMessageReaction("first", 1, "heart", false), removal = await peer.next();
+    peer.reply(removal, { type: "reaction_confirmed", changed: false, snapshot: reactionSnapshot(1, 3, { friend: ["clap"] }) });
+    await removing;
+    expect(session.getSnapshot().messagesByRoom.first[0].reactions?.revision).toBe(3);
+  } finally { session.close(); }
+});
+
+test("history assembles early live reaction snapshots and preserves the newer projection in a historical window", async () => {
+  const { session, peer } = await setup(2);
+  try {
+    await peer.history([message(3), message(4)], true);
+    const older = session.loadHistory("first"), request = await peer.next();
+    peer.reply({ ...request, requestId: "live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(1, 3, { self: ["heart"] }) });
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([message(3), message(4)]);
+    peer.reply(request, { type: "history_message", message: message(1) });
+    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(1, 1, { self: ["wave"] }) });
+    peer.reply(request, { type: "history_message", message: message(2) });
+    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(2, 0) });
+    peer.reply(request, { type: "history_end", count: 2, hasMore: false, oldestSeq: 1, before: 3 });
+    await older;
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([{ ...message(1), reactions: { revision: 3, choices: { self: ["heart"] } } }, message(2)]);
+    expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
+    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(2, 4, { friend: ["clap"] }) });
+    peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(5, 2, { self: ["wave"] }) });
+    peer.live(message(5));
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1, 2]);
+    expect(session.getSnapshot().messagesByRoom.first[1].reactions).toEqual({ revision: 4, choices: { friend: ["clap"] } });
+    const latest = session.loadLatestHistory("first");
+    peer.page(await peer.next(), [message(1), message(2)], false, 1);
+    await latest;
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.reactions?.revision)).toEqual([3, 4]);
+    const refreshing = session.loadLatestHistory("first"), refresh = await peer.next();
+    peer.reply({ ...refresh, requestId: "new-live-reaction" }, { type: "message_reactions", snapshot: reactionSnapshot(3, 5, { self: ["wave"] }) });
+    peer.live(message(3));
+    peer.page(refresh, [message(1), message(2)], false, 1);
+    await refreshing;
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([2, 3]);
+    expect(session.getSnapshot().messagesByRoom.first.map(message => message.reactions?.revision)).toEqual([4, 5]);
+  } finally { session.close(); }
+});
 
 test("room interactions reuse their original acknowledgement and user identity without chat or media permission", async () => {
   vi.useFakeTimers();
@@ -819,6 +893,7 @@ test("room replies settle only the request belonging to that room", async () => 
 test.each([
   ["missing record", [2]],
   ["duplicate sequence", [2, 2]],
+  ["missing snapshot", [2, 3]],
 ] as const)("an incomplete peer history page (%s) preserves messages and permits a complete retry", async (_fault, sequences) => {
   const { session, peer } = await setup();
   try {
@@ -827,7 +902,10 @@ test.each([
     const incomplete = session.loadLatestHistory("first");
     const rejected = expect(incomplete).rejects.toThrow("incomplete_history");
     const request = await peer.next();
-    for (const seq of sequences) peer.reply(request, { type: "history_message", message: message(seq) });
+    for (const seq of sequences) {
+      peer.reply(request, { type: "history_message", message: message(seq) });
+      if (_fault !== "missing snapshot") peer.reply(request, { type: "message_reactions", snapshot: reactionSnapshot(seq, 0) });
+    }
     peer.reply(request, { type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
     await rejected;
     expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
@@ -837,6 +915,8 @@ test.each([
     const retry = await peer.next();
     peer.reply(retry, { type: "history_message", message: message(2) });
     peer.reply(retry, { type: "history_message", message: message(3) });
+    peer.reply(retry, { type: "message_reactions", snapshot: reactionSnapshot(2, 0) });
+    peer.reply(retry, { type: "message_reactions", snapshot: reactionSnapshot(3, 0) });
     expect(session.getSnapshot().messagesByRoom.first).toBe(existing);
     peer.reply(retry, { type: "history_end", count: 2, hasMore: false, oldestSeq: 2, before: null });
     await complete;

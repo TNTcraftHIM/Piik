@@ -28,6 +28,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
   return { ...view,
     activateApp: session.activateApp,
     browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf, updateDomain: session.updateDomain,
+    setMessageReaction: session.setMessageReaction,
     createRoom: session.createRoom, updateRoom: session.updateRoom, enterRoom: session.enterRoom,
     createRoomInvite: session.createRoomInvite, revokeRoomAccess: session.revokeRoomAccess,
     attachments: session.attachments, loadHistory: session.loadHistory, loadLatestHistory: session.loadLatestHistory,

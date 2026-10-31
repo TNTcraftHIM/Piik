@@ -1,7 +1,7 @@
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
-import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type DomainSettings, type RoomSettings } from "./protocol";
+import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
@@ -31,8 +31,14 @@ function stored(key: string, value?: string): string | null {
 }
 
 function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
-  return [...new Map(messages.map(message => [message.id, message])).values()]
-    .sort((a, b) => a.seq - b.seq);
+  const merged = new Map<string, ChannelMessage>();
+  for (const message of messages) merged.set(message.id, mergeMessage(merged.get(message.id), message));
+  return [...merged.values()].sort((a, b) => a.seq - b.seq);
+}
+
+function mergeMessage(previous: ChannelMessage | undefined, message: ChannelMessage): ChannelMessage {
+  return previous?.reactions && (!message.reactions || previous.reactions.revision > message.reactions.revision)
+    ? { ...message, reactions: previous.reactions } : message;
 }
 
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
@@ -58,8 +64,9 @@ export class ChannelSession {
   private invitedRoom = new URLSearchParams(location.hash.slice(1)).get("room") ?? undefined;
   private roomId: string | null = this.invitedRoom ?? null;
   private requests = new Map<string, {
-    roomId?: string; bindingId?: string; history?: ChannelMessage[];
-    pendingSend?: Extract<ChannelCommand, { type: "chat" | "history" }>;
+    roomId?: string; bindingId?: string;
+    history?: { before?: number; entries: Map<number, { message?: ChannelMessage; snapshot?: MessageReactionSnapshot }> };
+    pendingSend?: Extract<ChannelCommand, { type: "chat" | "history" | "set_reaction" }>;
     resolve(): void; reject(error: Error): void; result?: (event: ChannelReply) => void; timer: ReturnType<typeof setTimeout>;
   }>();
   private hostedRooms = new Map<string, { host: HostedRoom; bindingId?: string }>();
@@ -333,7 +340,7 @@ export class ChannelSession {
 
   private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command)): Promise<void> {
     const reading = this.reading;
-    const conversation = command.type === "chat" || command.type === "history";
+    const conversation = command.type === "chat" || command.type === "history" || command.type === "set_reaction";
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
     if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
@@ -343,7 +350,8 @@ export class ChannelSession {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
-        ...(conversation ? { bindingId: delivery!.bindingId, pendingSend: command, ...(command.type === "history" ? { history: [] } : {}) } : {}) });
+        ...(conversation ? { bindingId: delivery!.bindingId, pendingSend: command,
+          ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) } : {}) });
       if (conversation) this.sendConversations();
       else this.write({ ...command, requestId });
     });
@@ -367,6 +375,10 @@ export class ChannelSession {
 
   private receiveConversation(reply: ConversationReply): void {
     const record = reply.record;
+    if (record.type === "message_reactions" || record.type === "reaction_confirmed") {
+      this.applyReactionSnapshot(reply.roomId, reply.bindingId, record.snapshot);
+      if (record.type === "message_reactions") return;
+    }
     const interaction = this.view.interactionsByRoom.get(reply.roomId);
     if (interaction && this.reading?.interactionBinding === reply.bindingId) {
       if (record.type === "interaction_ready") {
@@ -395,25 +407,50 @@ export class ChannelSession {
     const request = this.requests.get(reply.requestId);
     if (!request || request.roomId !== reply.roomId || request.bindingId !== reply.bindingId) return;
     if (record.type === "history_message") {
-      if (!request.history || request.history.length >= 100 || request.history.some(message => message.seq === record.message.seq)) {
+      const entries = request.history?.entries, entry = entries?.get(record.message.seq);
+      if (!entries || entry?.message || (!entry && entries.size >= 100)
+        || (entry?.snapshot && entry.snapshot.messageId !== record.message.id)) {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
         return;
       }
-      request.history.push(record.message);
+      entries.set(record.message.seq, { ...entry, message: record.message });
       return;
     }
     if (record.type === "history_end" && request.history) {
-      if (record.count !== request.history.length) {
+      const entries = [...request.history.entries.values()].filter(entry => entry.message);
+      if (record.count !== entries.length || entries.some(entry => !entry.snapshot)) {
         this.receive({ type: "error", requestId: reply.requestId, code: "incomplete_history" });
         return;
       }
-      this.applyHistory(reply.roomId, request.history, record);
+      const page = entries.map(({ message, snapshot }) => ({ ...message!, reactions: { revision: snapshot!.revision, choices: snapshot!.choices } }));
+      this.applyHistory(reply.roomId, page.sort((a, b) => a.seq - b.seq), record);
     } else if (record.type === "confirmed") {
       request.result?.(record);
       this.applyMessage(reply.roomId, record.message);
     }
     this.receive(record.type === "error" ? { type: "error", requestId: reply.requestId, code: record.code }
       : { type: "ack", requestId: reply.requestId });
+  }
+
+  private applyReactionSnapshot(roomId: string, bindingId: string, snapshot: MessageReactionSnapshot): void {
+    const state = this.view.state;
+    if (!state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.delivery?.bindingId === bindingId)) return;
+    for (const [requestId, request] of this.requests) {
+      if (request.roomId !== roomId || request.bindingId !== bindingId || !request.history
+        || (request.history.before !== undefined && snapshot.messageSeq >= request.history.before)) continue;
+      const entries = request.history.entries, entry = entries.get(snapshot.messageSeq);
+      if ((!entry && entries.size >= 100) || (entry?.message && entry.message.id !== snapshot.messageId)) {
+        this.receive({ type: "error", requestId, code: "incomplete_history" });
+        continue;
+      }
+      if (!entry?.snapshot || entry.snapshot.revision < snapshot.revision) entries.set(snapshot.messageSeq, { ...entry, snapshot });
+    }
+    const messages = this.view.messagesByRoom[roomId];
+    if (!messages?.some(message => message.id === snapshot.messageId && message.seq === snapshot.messageSeq
+      && (!message.reactions || message.reactions.revision < snapshot.revision))) return;
+    this.patch({ messagesByRoom: { ...this.view.messagesByRoom, [roomId]: messages.map(message =>
+      message.id === snapshot.messageId && message.seq === snapshot.messageSeq
+        ? { ...message, reactions: { revision: snapshot.revision, choices: snapshot.choices } } : message) } });
   }
 
   private applyHistory(roomId: string, page: ChannelMessage[], result: Extract<ConversationReply["record"], { type: "history_end" }>): void {
@@ -423,7 +460,8 @@ export class ChannelSession {
     const last = page.at(-1)?.seq ?? 0;
     const latest = result.before === null;
     const existing = latest ? current.filter(message => message.seq > last) : current;
-    const merged = mergeMessages([...existing, ...page]
+    const projected = page.map(message => mergeMessage(current.find(previous => previous.id === message.id), message));
+    const merged = mergeMessages([...existing, ...projected]
       .filter(message => result.oldestSeq === null || message.seq >= result.oldestSeq));
     const messages = latest ? merged.slice(-state.channel.historyWindow) : merged.slice(0, state.channel.historyWindow);
     const atLatest = latest || ((this.view.historyByRoom[roomId]?.atLatest ?? true) && merged.length <= state.channel.historyWindow);
@@ -437,8 +475,14 @@ export class ChannelSession {
     // A bounded historical window stays put until its reader requests latest.
     if (this.view.historyByRoom[roomId]?.atLatest === false) return;
     const messages = this.view.messagesByRoom[roomId] ?? [];
+    let projected: ChannelMessage = { ...message, reactions: { revision: 0, choices: {} } };
+    for (const request of this.requests.values()) {
+      const snapshot = request.roomId === roomId ? request.history?.entries.get(message.seq)?.snapshot : undefined;
+      if (snapshot?.messageId === message.id) projected = mergeMessage(projected,
+        { ...message, reactions: { revision: snapshot.revision, choices: snapshot.choices } });
+    }
     this.patch({ messagesByRoom: { ...this.view.messagesByRoom,
-      [roomId]: mergeMessages([...messages, message]).slice(-state.channel.historyWindow) } });
+      [roomId]: mergeMessages([...messages, projected]).slice(-state.channel.historyWindow) } });
   }
 
   private commandRoom(command: ChannelCommand): string | undefined {
@@ -662,6 +706,8 @@ export class ChannelSession {
     this.outgoingMessages.delete(roomId);
     if (this.view.historyByRoom[roomId]?.atLatest === false) void this.loadLatestHistory(roomId).catch(() => {});
   });
+  setMessageReaction = (roomId: string, messageSeq: number, reaction: string, active: boolean): Promise<void> =>
+    this.action(`reaction:${roomId}:${messageSeq}`, () => this.request({ type: "set_reaction", roomId, messageSeq, reaction, active }));
   loadHistory = (roomId: string): Promise<void> => this.action(`history:${roomId}`, () => this.request({ type: "history", roomId, before: this.view.historyByRoom[roomId]?.before }));
   loadLatestHistory = (roomId: string): Promise<void> => this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }));
   renameSelf = (name: string): Promise<void> => this.action("rename", async () => {
