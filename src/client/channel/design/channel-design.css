@@ -102,9 +102,6 @@
 .cd-inline-preview { margin-top: 10px; max-width: 236px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; }
 .cd-inline-preview > svg { display: block; width: 100%; }
 .cd-inline-preview > span { display: flex; align-items: center; gap: 7px; padding: 8px 10px; background: var(--wall); color: var(--muted); font-size: 10px; }
-.cd-reaction { display: inline-flex; align-items: center; margin-top: 8px; min-height: 28px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 9px; background: var(--wall); color: var(--muted); font-size: 11px; }
-.cd-reaction:hover { background: var(--control-hover); }
-.cd-reaction[aria-pressed="true"] { border-color: var(--action); background: var(--control-selected); color: var(--control-selected-ink); }
 .cd-composer { display: flex; align-items: center; gap: 5px; margin: 0 24px 20px; padding: 7px 8px 7px 16px; min-height: 51px; border: 1px solid var(--control-edge); border-radius: 14px; background: var(--wall); box-shadow: inset 0 1px 0 var(--surface-rim); }
 .cd-composer:focus-within { outline: 2px solid var(--action); outline-offset: 2px; }
 .cd-composer input { width: 0; flex: 1; min-width: 0; outline: none; border: 0; background: transparent; font-size: 14px; padding: 5px 0; }

@@ -10,16 +10,6 @@
 .cd-members-foot .lr-welcome-text::before { content: none; }
 .cd-message { position: relative; }
 .cd-message header { padding-right: 35px; }
-.cd-message-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
-.cd-message-reactions:has(.cd-reaction) { margin-top: 7px; }
-.cd-message-reactions .cd-reaction { margin: 0; gap: 6px; font-size: 12px; }
-.cd-message-action.lr-comic-tip-wrap { position: absolute; right: 0; top: -4px; }
-.cd-add-reaction { display: flex; align-items: center; justify-content: center; gap: 0; height: 29px; min-width: 32px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--paper); color: var(--muted); opacity: 0; pointer-events: none; transition: opacity 140ms, background-color 140ms; }
-.cd-message:hover .cd-add-reaction, .cd-message:focus-within .cd-add-reaction { opacity: 1; pointer-events: auto; }
-.cd-add-reaction:hover { background: var(--control-hover); color: var(--ink); }
-.cd-message-reaction-menu { position: fixed; inset: auto; margin: 0; width: 286px; max-width: calc(100vw - 16px); padding: 12px; border-radius: 17px; }
-.cd-message-reaction-menu > strong { display: block; font-size: 12px; margin: 0 3px 9px; }
-.cd-message-reaction-menu .lr-reaction-option { font-size: 23px; }
 .cd-local-file { display: flex; align-items: center; gap: 10px; max-width: 350px; min-width: 0; margin-top: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--wall); }
 .cd-local-file > .lr-glyph { flex: none; color: var(--muted); }
 .cd-local-file > span { flex: 1; min-width: 0; }
@@ -42,10 +32,4 @@
   .cd-draft-files { margin-inline: 14px; max-height: 110px; }
   .cd-chat .cd-composer { gap: 1px; }
   .cd-chat .cd-composer .lr-btn { --button-size: 30px; --button-padding: 4px; }
-}
-@media (hover: none) {
-  .cd-add-reaction { opacity: 1; pointer-events: auto; border-color: transparent; background: transparent; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .cd-add-reaction { transition: none; }
 }

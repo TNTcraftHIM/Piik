@@ -1,15 +1,12 @@
-import { useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { REACTION_IDS, isThrow, type ReactionId } from "../../../shared/room-interactions";
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import type { ReactionId } from "../../../shared/room-interactions";
 import { Glyph } from "../../ui/icons";
-import { useCopy } from "../../ui/copy";
 import { useSurfaceDocument } from "../../ui/panel-window";
-import { ReactionIcon } from "../../components/living/RoomReaction";
-import { Tooltip } from "../../components/living/Tooltip";
-import { RoomReactionGrid } from "../../components/living/RoomReactionPicker";
-import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { downloadBlob } from "../../lib/download";
 import { fileSize } from "../attachments";
 import { ChannelAction } from "../components/ChannelMedia";
+import { ChannelMessageReactions } from "../components/ChannelMessageReactions";
+import type { MessageReactions } from "../protocol";
 import { DesignAvatar } from "./DesignAvatar";
 import { DesignArtwork } from "./DesignArtwork";
 import { DesignIdentityMark } from "./DesignIdentityPicker";
@@ -18,20 +15,24 @@ import { designPeople, type DesignCopy, type DesignRoom } from "./fixtures";
 
 interface DesignFile { id: string; file: File }
 interface DesignMessage { id: string; text: string; files: DesignFile[] }
-type MessageReactionSelection = Partial<Record<ReactionId, boolean>>;
 interface DesignConversationRoom {
   messages: DesignMessage[];
   draft: string;
   files: DesignFile[];
-  reactions: Record<string, MessageReactionSelection>;
+  reactions: Record<string, MessageReactions>;
 }
+const initialReactions: MessageReactions = { revision: 1, choices: {
+  [designPeople[0].id]: ["laugh"], [designPeople[1].id]: ["laugh"],
+} };
 const emptyRoom: DesignConversationRoom = { messages: [], draft: "", files: [], reactions: {} };
+const gamesRoom: DesignConversationRoom = { ...emptyRoom, reactions: { "fixture-highlight": initialReactions } };
+const roomInitial = (roomId: string) => roomId === "games" ? gamesRoom : emptyRoom;
 
 /** One prototype conversation owner, shared by the room and its floating view. */
 export function useDesignConversation() {
   const [rooms, setRooms] = useState<Record<string, DesignConversationRoom>>({});
   function updateRoom(roomId: string, update: (room: DesignConversationRoom) => DesignConversationRoom) {
-    setRooms(previous => ({ ...previous, [roomId]: update(previous[roomId] ?? emptyRoom) }));
+    setRooms(previous => ({ ...previous, [roomId]: update(previous[roomId] ?? roomInitial(roomId)) }));
   }
   return {
     rooms,
@@ -50,44 +51,16 @@ export function useDesignConversation() {
         messages: [...room.messages, { id, text: room.draft.trim(), files: room.files }],
       }));
     },
-    toggleReaction: (roomId: string, messageId: string, reaction: ReactionId) => updateRoom(roomId, room => ({
-      ...room, reactions: { ...room.reactions, [messageId]: {
-        ...room.reactions[messageId], [reaction]: !room.reactions[messageId]?.[reaction],
-      } },
-    })),
+    setReaction: (roomId: string, messageId: string, reaction: ReactionId, active: boolean) => updateRoom(roomId, room => {
+      const saved = room.reactions[messageId] ?? { revision: 0, choices: {} };
+      const selected = saved.choices[designPeople[3].id] ?? [];
+      const choices = { ...saved.choices, [designPeople[3].id]: active
+        ? [...new Set([...selected, reaction])] : selected.filter(value => value !== reaction) };
+      return { ...room, reactions: { ...room.reactions, [messageId]: { revision: saved.revision + 1, choices } } };
+    }),
   };
 }
 export type DesignConversationModel = ReturnType<typeof useDesignConversation>;
-
-const messageReactionIds = REACTION_IDS.filter(id => !isThrow(id));
-
-function MessageReactions({ copy, selected, toggle, initialLaugh = false }: {
-  copy: DesignCopy; selected: MessageReactionSelection; toggle: (reaction: ReactionId) => void; initialLaugh?: boolean;
-}) {
-  const { t } = useCopy();
-  const name = useContext(DesignNames);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
-  const id = useId();
-  useAnchoredPopover(trigger, menu, { side: "above", align: "center" });
-  const visible = messageReactionIds.filter(reaction => selected[reaction] || (initialLaugh && reaction === "laugh"));
-  return <div className="cd-message-reactions">
-    {visible.map(reaction => <button key={reaction} className="cd-reaction" type="button" aria-label={t(`interaction.reaction.${reaction}`)}
-      aria-pressed={!!selected[reaction]} onClick={() => toggle(reaction)}>
-      <ReactionIcon reaction={reaction} /><span>{(initialLaugh && reaction === "laugh" ? 2 : 0) + (selected[reaction] ? 1 : 0)}</span>
-    </button>)}
-    <Tooltip kind="hint-reaction-picker" className="cd-message-action" text={copy("回应这条消息", "React to this message")}>
-      <button ref={trigger} popoverTarget={id} className="cd-add-reaction" type="button" aria-label={copy("回应这条消息", "React to this message")}>
-        <Glyph name="smile" size={16} /><Glyph name="plus" size={10} />
-      </button>
-    </Tooltip>
-    <div ref={menu} id={id} popover="auto" className="lr-floating-surface cd-message-reaction-menu" aria-label={copy("消息表情", "Message reactions")}>
-      <strong>{copy("回应这条消息", "React to this message")}</strong>
-      <RoomReactionGrid person={{ peerId: designPeople[3].id, displayName: name(3) }} selfPeerId={designPeople[3].id}
-        reactionIds={messageReactionIds} canSend onSend={reaction => { toggle(reaction); menu.current?.hidePopover(); }} />
-    </div>
-  </div>;
-}
 
 function LocalAttachment({ entry, copy, onRemove }: { entry: DesignFile; copy: DesignCopy; onRemove?: () => void }) {
   const [image, setImage] = useState<string>();
@@ -106,17 +79,17 @@ function LocalAttachment({ entry, copy, onRemove }: { entry: DesignFile; copy: D
   </div>;
 }
 
-function Message({ index, time, children, copy, initialLaugh, model, roomId, messageId }: {
-  index: number; time: string; children: ReactNode; copy: DesignCopy; initialLaugh?: boolean;
+function Message({ index, time, children, model, roomId, messageId }: {
+  index: number; time: string; children: ReactNode;
   model: DesignConversationModel; roomId: string; messageId: string;
 }) {
   const name = useContext(DesignNames);
   return <article className="cd-message">
     <DesignAvatar index={index} />
     <div><header><strong>{name(index)}</strong><time>{time}</time></header>
-      {children}<MessageReactions copy={copy} initialLaugh={initialLaugh}
-        selected={model.rooms[roomId]?.reactions[messageId] ?? {}}
-        toggle={reaction => model.toggleReaction(roomId, messageId, reaction)} />
+      {children}<ChannelMessageReactions selfUserId={designPeople[3].id} pending={false}
+        reactions={(model.rooms[roomId] ?? roomInitial(roomId)).reactions[messageId]}
+        onSet={(reaction, active) => model.setReaction(roomId, messageId, reaction, active)} />
     </div>
   </article>;
 }
@@ -170,14 +143,14 @@ export function DesignConversation({ room, roomName, showingScreens, copy, model
       </div>}
       {demoRoom && <>
         <div className="cd-date"><span>{copy("今天", "Today")}</span></div>
-        <Message model={model} roomId={room.id} messageId="fixture-arrival" index={0} time="20:42" copy={copy}><p>{copy("都到齐了吗？就差一个人了。", "Everyone here? We need one more.")}</p></Message>
-        <Message model={model} roomId={room.id} messageId="fixture-jump" index={1} time="20:43" copy={copy}>
+        <Message model={model} roomId={room.id} messageId="fixture-arrival" index={0} time="20:42"><p>{copy("都到齐了吗？就差一个人了。", "Everyone here? We need one more.")}</p></Message>
+        <Message model={model} roomId={room.id} messageId="fixture-jump" index={1} time="20:43">
           <p>{copy("来了。这次绝对不跳空。", "Here. Definitely making that jump this time.")}</p>
           {!compact && !showingScreens && <div className="cd-inline-preview"><DesignArtwork /><span><Glyph name="gamepad" size={16} />{copy("今晚的目标：过第一关", "Tonight's ambition: finish level one")}</span></div>}
         </Message>
-        <Message model={model} roomId={room.id} messageId="fixture-highlight" index={2} time="20:44" copy={copy} initialLaugh><p>{copy("这句话我截图了。", "Saving this for the highlight reel.")}</p></Message>
+        <Message model={model} roomId={room.id} messageId="fixture-highlight" index={2} time="20:44"><p>{copy("这句话我截图了。", "Saving this for the highlight reel.")}</p></Message>
       </>}
-      {messages.map(message => <Message model={model} roomId={room.id} messageId={message.id} key={message.id} index={3} time={copy("刚刚", "Just now")} copy={copy}>
+      {messages.map(message => <Message model={model} roomId={room.id} messageId={message.id} key={message.id} index={3} time={copy("刚刚", "Just now")}>
         {message.text && <p>{message.text}</p>}
         {message.files.map(entry => <LocalAttachment key={entry.id} entry={entry} copy={copy} />)}
       </Message>)}
