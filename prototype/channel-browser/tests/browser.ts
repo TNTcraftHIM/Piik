@@ -1,10 +1,12 @@
 import { BrowserRoomHost, createRoomPolicy, createSessionSigner, decode_control, encode_control, verify_reply, type SentResult } from "../src/room-host";
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
+import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
+import { prepareIdentityImage } from "../../../src/client/channel/identity-image";
 
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 interface Output {
-  projection: { views: Record<string, { room: { canManage: boolean; participantSessionIds: string[] }; publications: unknown[] }> };
+  projection: { views: Record<string, { room: { icon: string; canManage: boolean; participantSessionIds: string[] }; publications: unknown[] }> };
   reply: { result: { type: string; code?: string; key?: string } } | null;
   invitation: { accepted: boolean } | null;
 }
@@ -80,6 +82,46 @@ window.runBrowserRoomCheck = async () => {
       });
     }
     await bindHost();
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 128;
+    const context = canvas.getContext("2d")!, pixels = context.createImageData(128, 128);
+    let seed = 1;
+    for (let index = 0; index < pixels.data.length; index++) {
+      seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; pixels.data[index] = seed >>> 24;
+    }
+    context.putImageData(pixels, 0, 0);
+    const originalImage = await new Promise<Blob>(resolve => canvas.toBlob(blob => resolve(blob!), "image/png"));
+    const icon = await prepareIdentityImage(originalImage);
+    check(icon.length <= IDENTITY_IMAGE_URL_BYTES && identityIconSchema.safeParse(icon).success, "noisy image becomes bounded raster metadata");
+    const decoded = new Image(); decoded.src = icon; await decoded.decode();
+    check(decoded.naturalWidth <= 128 && decoded.naturalWidth === decoded.naturalHeight, "identity is a decodable square thumbnail");
+    const originalEncode = HTMLCanvasElement.prototype.toDataURL;
+    let png: string;
+    HTMLCanvasElement.prototype.toDataURL = function () { return originalEncode.call(this, "image/png"); };
+    try { png = await prepareIdentityImage(originalImage); }
+    finally { HTMLCanvasElement.prototype.toDataURL = originalEncode; }
+    check(png.startsWith("data:image/png;") && png.length <= IDENTITY_IMAGE_URL_BYTES, "native PNG fallback also fits the identity budget");
+    const imageChange = { type: "update_room", roomId: host.roomId, name: "Browser-owned room", icon, access: "public", hidden: false };
+    const imageSaved = await dispatch(imageChange);
+    check(imageSaved.reply?.result.type === "done" && imageSaved.projection.views[peerSession].room.icon === icon,
+      "shared Rust commits and projects identity images to authorized readers");
+    const imageAbort = new AbortController(), originalRoomPut = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (...args) {
+      const request = originalRoomPut.apply(this, args);
+      if (this.name === "rooms") request.addEventListener("success", () => imageAbort.abort(), { once: true });
+      return request;
+    };
+    try {
+      check((await dispatch({ ...imageChange, icon: png }, imageAbort.signal)).reply?.result.code === "AbortError",
+        "failed image replacement does not confirm after IndexedDB put success");
+    } finally { IDBObjectStore.prototype.put = originalRoomPut; }
+    await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
+    check(host.summary().icon === icon, "reopen preserves the committed image and excludes the aborted replacement");
+    await dispatch({ ...imageChange, icon: "future-room_7" });
+    await host.close(); host = await BrowserRoomHost.open(database, policy); await bindHost();
+    check(host.summary().icon === "future-room_7", "choosing a preset replaces the retained image");
+    try { await prepareIdentityImage(new Blob(["not an image"])); throw new Error("invalid image accepted"); }
+    catch (error) { check(String(error) !== "Error: invalid image accepted", "native decoder rejects unsupported image contents"); }
     const initial = await dispatch({ type: "browse", active: true, roomId: host.roomId });
     check(initial.reply?.result.type === "done", "browse confirms activity without reading history");
     check((await history()).messages.length === 0, "history is an explicit independent read");
@@ -324,6 +366,7 @@ window.runBrowserRoomCheck = async () => {
       bindingWriteOwner: true, lateBindingClaim: true, sameBindingActivity: true, privateRoomProjection: true, privateInvitationGrant: true, restoredWithoutCapture: true,
       signedPeerHistory: true, signedPeerPermission: true, immediateReadPermission: true, immediateBindingFence: true, immediateNotHistory: true,
       retainedReactions: true, independentUserChoices: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
+      identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, identityPresetReplacement: true,
       previousSchemaPreserved: true,
       missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
   } finally {

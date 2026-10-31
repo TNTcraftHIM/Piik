@@ -1,3 +1,4 @@
+use base64ct::{Base64, Encoding};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -170,7 +171,9 @@ pub(crate) fn title(value: &str) -> Option<String> {
     (!value.is_empty() && value.encode_utf16().count() <= 64).then(|| value.to_owned())
 }
 
-/// Decorative key, independent of the UI's current preset menu.
+pub const IDENTITY_IMAGE_URL_BYTES: usize = 24 * 1024;
+
+/// A decorative key or a small retained raster, carried by its identity owner.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(try_from = "String")]
 pub struct IdentityIcon(String);
@@ -185,12 +188,24 @@ impl TryFrom<String> for IdentityIcon {
     type Error = &'static str;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if value.is_empty()
-            || value.len() > 64
-            || !value
+        if !value.is_empty()
+            && value.len() <= 64
+            && value
                 .bytes()
                 .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
         {
+            return Ok(Self(value));
+        }
+        if value.len() > IDENTITY_IMAGE_URL_BYTES {
+            return Err("invalid_identity_icon");
+        }
+        let (media_type, encoded) = value
+            .strip_prefix("data:")
+            .and_then(|data| data.split_once(";base64,"))
+            .filter(|(media_type, _)| matches!(*media_type, "image/png" | "image/webp"))
+            .ok_or("invalid_identity_icon")?;
+        let bytes = Base64::decode_vec(encoded).map_err(|_| "invalid_identity_icon")?;
+        if crate::attachment::sniff_media_type(&bytes) != media_type {
             return Err("invalid_identity_icon");
         }
         Ok(Self(value))

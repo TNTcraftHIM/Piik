@@ -3,7 +3,10 @@ import { z } from "zod";
 // This is the experimental channel wire boundary; production room contracts stay separate.
 const id = z.string().min(1).max(128);
 const identityNameSchema = z.string().refine(name => name.length <= 64, "Name exceeds 64 UTF-16 units");
-export const identityIconSchema = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+export const IDENTITY_IMAGE_URL_BYTES = 24 * 1024;
+export const identityImageSchema = z.string().max(IDENTITY_IMAGE_URL_BYTES)
+  .regex(/^data:image\/(?:png|webp);base64,(?=[A-Za-z0-9+/])(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/);
+export const identityIconSchema = z.union([z.string().regex(/^[A-Za-z0-9_-]{1,64}$/), identityImageSchema]);
 const signingKey = z.array(z.number().int().min(0).max(255)).length(32);
 export const userSchema = z.object({ id, name: z.string().max(40), roles: z.array(id).max(16) });
 export const roomSchema = z.object({

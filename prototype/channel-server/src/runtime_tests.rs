@@ -75,7 +75,8 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let mut guest = Endpoint::join(&mut hub, "invite");
     owner.drain();
     let original = serde_json::to_value(hub.authority.export_state()).unwrap();
-    let update = json!({"type":"update_domain","name":"  Friends  ","icon":"future-domain_42","requestId":"metadata"});
+    let icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
+    let update = json!({"type":"update_domain","name":"  Friends  ","icon":icon,"requestId":"metadata"});
     guest.request(&mut hub, update.clone());
     assert!(guest
         .drain()
@@ -114,7 +115,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         .find(|event| event["type"] == "state")
         .unwrap();
     assert_eq!(state["state"]["channel"]["name"], "Friends");
-    assert_eq!(state["state"]["channel"]["icon"], "future-domain_42");
+    assert_eq!(state["state"]["channel"]["icon"], icon);
     let _: piik_channel_core::wire::Snapshot =
         serde_json::from_value(state["state"].clone()).unwrap();
     drop(hub);
@@ -125,7 +126,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         .unwrap();
     let saved = serde_json::to_value(restored.export_state()).unwrap();
     assert_eq!(saved["name"], "Friends");
-    assert_eq!(saved["icon"], "future-domain_42");
+    assert_eq!(saved["icon"], icon);
     drop(store);
     drop(database);
     std::fs::remove_file(path).unwrap();

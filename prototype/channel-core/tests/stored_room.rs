@@ -339,6 +339,7 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
 
 #[test]
 fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activity() {
+    let image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
     let owner = Uuid::new_v4();
     let first = std::env::temp_dir().join(format!("piik-stored-first-{}.sqlite", Uuid::new_v4()));
     let second = std::env::temp_dir().join(format!("piik-stored-second-{}.sqlite", Uuid::new_v4()));
@@ -355,7 +356,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             host,
             owner,
             owner,
-            json!({"type":"update_room","icon":format!("future_{room}"),"roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false}),
+            json!({"type":"update_room","icon":image,"roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false}),
         );
         let result = sent(peer(
             host,
@@ -388,11 +389,11 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         assert_eq!(restored.summary().name, format!("Saved {room}"));
         assert_eq!(
             serde_json::to_value(restored.policy().icon.clone()).unwrap(),
-            format!("future_{room}")
+            image
         );
         assert_eq!(
             serde_json::to_value(restored.summary().icon).unwrap(),
-            format!("future_{room}")
+            image
         );
         let output = restored
             .dispatch(input(owner, owner, |_| HostAction::Sync))

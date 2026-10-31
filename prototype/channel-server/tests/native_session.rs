@@ -251,6 +251,13 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
         .await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.users.iter().any(|user| user.name == "Owner renamed"))).await;
 
+    let image: piik_channel_core::wire::IdentityIcon = serde_json::from_value(json!(
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg=="
+    )).unwrap();
+    domain.command(domain.connection, json!({"type":"update_room", "roomId":"one", "name":"one",
+        "icon":image, "access":"public", "hidden":false})).await;
+    domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.icon == image))).await;
+
     // A real socket loss resumes the same admitted session and live RoomHost.
     domain.events.clear();
     domain.socket.close(None).await.unwrap();
@@ -348,6 +355,7 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     assert_ne!(domain.bound("one").await, binding);
     domain.bound("two").await;
     domain.until(|_, event| matches!(event, Event::State { state } if state.channel.rooms.iter().any(|room| room.id == "one" && room.available && !room.reading))).await;
+    assert_eq!(StoredRoomHost::open(&folder.join("one.sqlite")).unwrap().policy().icon, image);
     for id in ["one", "two"] {
         assert_eq!(
             StoredRoomHost::open(&folder.join(format!("{id}.sqlite")))

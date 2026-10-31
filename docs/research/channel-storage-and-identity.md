@@ -19,7 +19,7 @@ arrangement adds a storage server, a second application or a configuration task.
 | --- | --- |
 | Domain identity, users, roles and room-to-owner binding | Domain runtime's durable data. Clients and room runtimes receive authorized identity facts. |
 | Room name, icon, access and grants | Room runtime's durable data. The domain directory holds only its authorized summary. |
-| Identity images | Small retained assets at their domain or room owner; independent of the uploader's live session. |
+| Identity images | Small retained metadata at their domain or room owner; independent of the uploader's live session. The directory carries the authorized room summary. |
 | Messages and attachment descriptions | Confirmed history at the room runtime; participants may keep readable local copies. |
 | File bytes | The sender and recipients that retain complete copies. The domain owner does not automatically receive or store them. |
 | Presence, available file holders and active activities | Current authenticated sessions. Rebuild these facts when participants reconnect; a saved record does not prove present availability. |
@@ -190,8 +190,7 @@ owns route admission and repair; file work adds range demand and progress, not
 another topology planner or mandatory direct ICE connections.
 
 1. Authorize message attachments against current room access and the retained
-   message. Identity images follow their domain/room visibility rules through
-   the same transfer mechanism. A digest identifies bytes, not permission.
+   message. A digest identifies bytes, not permission.
 2. Reuse an active distribution or a suitable complete cached source using known
    room connectivity and capacity. Keep a working flow. Source changes are
    explicit and admitted; an intermediate peer cannot silently substitute its
@@ -296,11 +295,12 @@ storage follows [origin, quota and persistence rules](https://storage.spec.whatw
 the [File System Standard](https://fs.spec.whatwg.org/) supplies origin-private
 storage. A session-only source must not be presented as a retained copy.
 
-Images use this same attachment/transfer model. Loading a visible image requests
-its preview; it does not subscribe everyone to every original file. Small identity
-images remain with their domain/room owner, as specified in the ownership table,
-so an avatar does not disappear when its uploader leaves. Retention policy can
-differ without creating another transport or external storage service.
+Conversation images use this same attachment/transfer model. Loading a visible
+image requests its preview; it does not subscribe everyone to every original file.
+Domain and room icons are small visible metadata: the Browser encodes a bounded
+square raster and its existing owner saves and projects that value alongside the
+name. They follow directory visibility and survive the uploader leaving, without
+an attachment offer, separate transfer or storage service.
 
 ## Persistence And Recovery
 
