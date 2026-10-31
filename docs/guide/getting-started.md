@@ -26,6 +26,10 @@ Only have a four-digit code? Open the same Piik site and select **Join a room**.
 Enter the site passphrase or room password if asked. If code entry is unavailable
 or an old link fails, ask the Host for their current invitation.
 
+Each App's Local room or Public invite creates a separate site, so your friend's
+code does not work on your own App page. Open their full invitation instead;
+you do not need to create a room in your App to watch them.
+
 ## Use Piik online
 
 1. Open [demo.piik.tv](https://demo.piik.tv) in your browser.
