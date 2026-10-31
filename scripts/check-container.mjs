@@ -2,12 +2,12 @@
 
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { randomBytes, randomUUID } from "node:crypto";
-import { createSocket } from "node:dgram";
-import { copyFileSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import WebSocket from "ws";
 import { resetBuildWorkspace } from "./build-workspace.mjs";
 import { checkWebSourceIdentity } from "./container-web-identity.mjs";
 
@@ -18,7 +18,11 @@ if (process.argv.length !== 4 || !image || !/^[0-9a-f]{40}$/.test(revision ?? ""
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const project = `piik-check-${randomUUID()}`;
 const workspace = resetBuildWorkspace(root, "container-check", project);
-const environment = { ...process.env, PIIK_IMAGE: image };
+const origin = "https://share.example.com";
+const ownerKey = randomUUID();
+const inviteKey = randomUUID();
+const environment = { ...process.env, PIIK_IMAGE: image,
+  PIIK_CHANNEL_OWNER_KEY: ownerKey, PIIK_CHANNEL_INVITE_KEY: inviteKey };
 function docker(...args) {
   return execFileSync("docker", args, {
     cwd: workspace, env: environment, encoding: "utf8", timeout: 90_000,
@@ -37,47 +41,43 @@ async function until(check, label) {
   } while (Date.now() < deadline);
   throw new Error(`Container check timed out: ${label}`, { cause: failure });
 }
-async function request(path, options) {
-  const response = await fetch(`http://127.0.0.1:8787${path}`, {
-    ...options, signal: AbortSignal.timeout(2_000),
-  });
+async function request(path) {
+  const response = await fetch(`http://127.0.0.1:8787${path}`, { signal: AbortSignal.timeout(2_000) });
   assert.ok(response.ok, `${path}: HTTP ${response.status}`);
   return response;
 }
-async function expectServices(sfu, natPrediction) {
-  const capabilities = await (await request("/api/capabilities")).json();
-  // Capability metadata is extensible. This gate checks configured services,
-  // not the absence of other compatible capabilities.
-  assert.equal(capabilities.sfu, sfu);
-  assert.equal(capabilities.natPrediction, natPrediction);
-}
-async function binding(port) {
-  const socket = createSocket("udp4");
-  const packet = Buffer.alloc(20);
-  packet.writeUInt16BE(1); // RFC 8489 Binding Request, no attributes.
-  packet.writeUInt32BE(0x2112a442, 4);
-  randomBytes(12).copy(packet, 8);
+async function rooms() {
+  const socket = new WebSocket("ws://127.0.0.1:8787/prototype/channel", { origin });
+  let timer;
   try {
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`STUN ${port} timed out`)), 2_000);
-      const finish = (error) => { clearTimeout(timer); error ? reject(error) : resolve(); };
-      socket.once("error", finish);
-      socket.once("message", (reply) => {
-        try {
-          assert.ok(reply.length >= 20);
-          assert.equal(reply.readUInt16BE(0), 0x0101);
-          assert.deepEqual(reply.subarray(4, 20), packet.subarray(4, 20));
-          finish();
-        } catch (error) { finish(error); }
+    return await new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error("Server rooms did not become available")), 10_000);
+      socket.once("error", reject);
+      socket.once("open", () => {
+        const publicKey = generateKeyPairSync("ed25519").publicKey.export({ format: "jwk" });
+        socket.send(JSON.stringify({ type: "join", name: "Container check", key: ownerKey,
+          signingKey: [...Buffer.from(publicKey.x, "base64url")] }));
       });
-      socket.send(packet, port, "127.0.0.1", (error) => { if (error) finish(error); });
+      socket.on("message", bytes => {
+        try {
+          const event = JSON.parse(bytes.toString());
+          assert.notEqual(event.type, "error", event.code);
+          if (!["welcome", "state"].includes(event.type)) return;
+          const { channel } = event.state;
+          if (channel.rooms.length === 3 && channel.rooms.every(room => room.available)) {
+            resolve({ channelId: channel.id, roomIds: channel.rooms.map(room => room.id).sort() });
+          }
+        } catch (error) { reject(error); }
+      });
     });
-  } finally { socket.close(); }
+  } finally { clearTimeout(timer); socket.terminate(); }
 }
 
 copyFileSync(join(root, "deploy/container/compose.yaml"), join(workspace, "compose.yaml"));
 const sample = readFileSync(join(root, "deploy/container/.env.example"), "utf8");
-writeFileSync(join(workspace, ".env"), sample);
+writeFileSync(join(workspace, ".env"), sample
+  .replace(/^PIIK_CHANNEL_OWNER_KEY=$/m, `PIIK_CHANNEL_OWNER_KEY=${ownerKey}`)
+  .replace(/^PIIK_CHANNEL_INVITE_KEY=$/m, `PIIK_CHANNEL_INVITE_KEY=${inviteKey}`));
 try {
   const metadata = JSON.parse(docker("image", "inspect", image))[0];
   assert.equal(metadata.Config.User, "65532:65532");
@@ -85,47 +85,30 @@ try {
   assert.equal(metadata.Os, "linux");
   assert.equal(metadata.Architecture, process.arch === "x64" ? "amd64" : process.arch);
   assert.ok(["amd64", "arm64"].includes(metadata.Architecture));
-  assert.match(compose("run", "--rm", "--no-deps", "piik", "--check-config"), /config=ok/);
+  compose("config", "--quiet");
   compose("up", "-d", "--pull", "never");
-  await until(async () => assert.deepEqual(await (await request("/healthz")).json(), { status: "ok" }), "ready");
-  await expectServices(false, false);
-  assert.equal((await (await request("/api/site-access")).json()).required, false);
+  await until(async () => assert.equal(await (await request("/healthz")).text(), "piik-channel-prototype"), "ready");
   const html = await (await request("/")).text();
   await checkWebSourceIdentity(html, revision, async asset => (await request(asset)).text());
-  await binding(3478);
-  const room = await (await request("/api/rooms", {
-    method: "POST", headers: { Origin: "https://share.example.com", "Content-Type": "application/json" },
-    body: JSON.stringify({ codeEntryPolicy: "open" }),
-  })).json();
-  assert.match(room.roomId, /^[1-9][0-9]{3}$/);
-  assert.ok(room.hostToken);
+  const initial = await rooms();
   const container = JSON.parse(docker("inspect", compose("ps", "-q", "piik")))[0];
   assert.equal(container.HostConfig.ReadonlyRootfs, true);
   assert.ok(container.HostConfig.CapDrop.includes("ALL"));
-  assert.ok(container.HostConfig.SecurityOpt.some((value) => value.startsWith("no-new-privileges")));
+  assert.ok(container.HostConfig.SecurityOpt.some(value => value.startsWith("no-new-privileges")));
 
-  // Recreate with optional services on the same persistent room volume.
-  writeFileSync(join(workspace, ".env"), `${sample}\nSFU_UDP_PORT=7882\nSFU_PUBLIC_IP=127.0.0.1\nNAT_PREDICTION_ENABLED=true\nPIIK_DEBUG=server\n`);
   compose("up", "-d", "--force-recreate", "--pull", "never");
-  await until(() => expectServices(true, true), "optional services");
-  await request(`/api/rooms/${room.roomId}/access`, {
-    method: "POST",
-    headers: { Origin: "https://share.example.com", Authorization: `Bearer ${room.hostToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "set-code-entry-policy", policy: "private" }),
-  });
-  for (const port of [3478, 3479, 3480]) await binding(port);
-  compose("kill", "--signal", "SIGUSR1", "piik");
-  const state = join(workspace, "state");
-  mkdirSync(state);
-  await until(() => {
-    compose("cp", "piik:/home/nonroot/.", state);
-    assert.ok(readdirSync(join(state, "logs")).some((name) => name.endsWith(".zip")));
-  }, "diagnostic export");
-  assert.equal(readFileSync(join(state, "rooms.sqlite")).subarray(0, 16).toString(), "SQLite format 3\0");
+  await until(async () => assert.equal(await (await request("/healthz")).text(), "piik-channel-prototype"), "restart");
+  assert.deepEqual(await rooms(), initial, "Recreated Server must reopen its persistent rooms");
   compose("stop");
   const stopped = JSON.parse(docker("inspect", compose("ps", "-aq", "piik")))[0];
   assert.equal(stopped.State.ExitCode, 0, "SIGTERM must shut down cleanly");
-  process.stdout.write("Container checks passed: P2P, embedded services, room persistence, diagnostics and shutdown.\n");
+  const state = join(workspace, "state");
+  mkdirSync(state);
+  compose("cp", "piik:/home/nonroot/.", state);
+  for (const file of ["channel.sqlite", ...initial.roomIds.map(id => `rooms/${id}.sqlite`)]) {
+    assert.equal(readFileSync(join(state, file)).subarray(0, 16).toString(), "SQLite format 3\0");
+  }
+  process.stdout.write("Container checks passed: shared frontend, authenticated Native rooms, persistence and shutdown.\n");
 } catch (error) {
   try { process.stderr.write(`${compose("logs", "--no-color", "--tail", "60")}\n`); } catch { /* Startup may have failed. */ }
   throw error;

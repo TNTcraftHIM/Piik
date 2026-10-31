@@ -1,5 +1,5 @@
 [Unit]
-Description=Piik web, signaling, STUN and SFU application
+Description=Piik rooms, Web interface and media forwarding
 After=network-online.target
 Wants=network-online.target
 
@@ -8,8 +8,8 @@ Type=simple
 User=piik
 Group=piik
 WorkingDirectory=/opt/piik/current
-Environment=PIIK_ENV=production
-Environment=ROOM_DATABASE_PATH=/var/lib/piik/rooms.sqlite
+Environment=PIIK_CHANNEL_PORT=8787
+Environment=PIIK_CHANNEL_DATA_DIR=/var/lib/piik
 EnvironmentFile=/etc/piik/piik.env
 ExecStart=/opt/piik/current/piik-server
 Restart=on-failure
@@ -32,7 +32,7 @@ ProtectKernelLogs=true
 ProtectControlGroups=true
 ProtectClock=true
 ProtectHostname=true
-# Pion uses Go's net.Interfaces, which queries Linux through NETLINK_ROUTE.
+# Native interface discovery queries Linux through NETLINK_ROUTE.
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 RestrictNamespaces=true
 RestrictRealtime=true

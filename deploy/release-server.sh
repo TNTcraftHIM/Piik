@@ -103,7 +103,7 @@ wait_for_health() {
   local body=''
   for _ in $(seq 1 120); do
     body="$(curl -fsS --max-time 2 http://127.0.0.1:8787/healthz 2>/dev/null || true)"
-    if [ "$body" = '{"status":"ok"}' ]; then
+    if [ "$body" = 'piik-channel-prototype' ]; then
       return 0
     fi
     sleep 0.25
@@ -165,7 +165,6 @@ for service in piik nginx; do
   test "$(systemctl show "${service}.service" -p ActiveState --value)" = 'active'
   test "$(systemctl show "${service}.service" -p NRestarts --value)" = '0'
 done
-# The first Go/embedded-media cutover owns its infrastructure recovery separately.
 test -x "$old_release/piik-server"
 old_pid="$(systemctl show piik.service -p MainPID --value)"
 test "$old_pid" -gt 1
@@ -181,7 +180,7 @@ while IFS= read -r raw_entry; do
   esac
   case "$entry" in
     /*|*\\*) printf 'invalid archive entry: %s\n' "$raw_entry" >&2; exit 41 ;;
-    LICENSE|REVISION|THIRD-PARTY-NOTICES.txt|piik-server) ;;
+    LICENSE|REVISION|THIRD-PARTY-NOTICES.txt|piik-server|web|web/*) ;;
     *) printf 'unexpected archive entry: %s\n' "$raw_entry" >&2; exit 42 ;;
   esac
 done < <(tar -tzf "$artifact")
@@ -194,17 +193,20 @@ tar --no-same-owner --no-same-permissions -xzf "$artifact" -C "$stage"
 tab=$'\t'
 if [ -n "$(tail -c 1 "$manifest")" ]; then exit 61; fi
 if grep -qEv "^[0-9a-f]{64}${tab}[0-9]+${tab}[^${tab}]*$" "$manifest"; then exit 62; fi
-if grep -qEv "^[0-9a-f]{64}${tab}[0-9]+${tab}(LICENSE|REVISION|THIRD-PARTY-NOTICES\.txt|piik-server)$" "$manifest"; then exit 63; fi
+if grep -qEv "^[0-9a-f]{64}${tab}[0-9]+${tab}(LICENSE|REVISION|THIRD-PARTY-NOTICES\.txt|piik-server|web/[A-Za-z0-9_./-]+)$" "$manifest"; then exit 63; fi
 if [ -n "$(cut -f3 "$manifest" | sort | uniq -d)" ]; then exit 64; fi
 if [ "$(wc -l < "$manifest")" -ne "$file_count" ]; then exit 65; fi
 if [ -n "$(find "$stage" -type l)" ]; then exit 66; fi
 if [ -n "$(find "$stage" -type f -printf '%D:%i\n' | sort | uniq -d)" ]; then exit 67; fi
 if [ -n "$(find "$stage" ! -type f ! -type d ! -type l)" ]; then exit 68; fi
 if [ "$(find "$stage" -type f | wc -l)" -ne "$file_count" ]; then exit 69; fi
-if ! awk -F'\t' '{ printf "%s  %s\n", $1, $3 }' "$manifest" | (cd "$stage" && sha256sum -c --strict --quiet -); then exit 70; fi
 while IFS="$tab" read -r _ size path; do
+  case "/$path/" in
+    *'/../'*|*'/./'*|*'//'*) printf 'invalid manifest path: %s\n' "$path" >&2; exit 63 ;;
+  esac
   test "$(stat -c '%s' "$stage/$path")" = "$size" || exit 70
 done < "$manifest"
+if ! awk -F'\t' '{ printf "%s  %s\n", $1, $3 }' "$manifest" | (cd "$stage" && sha256sum -c --strict --quiet -); then exit 70; fi
 if [ "$(cat "$stage/REVISION")" != "$revision" ]; then exit 71; fi
 printf 'artifact_manifest=ok files=%s revision=%s\n' "$file_count" "$revision"
 
@@ -214,19 +216,11 @@ chmod 0755 "$stage/piik-server"
 test -x "$stage/piik-server"
 chmod 0644 "$stage/LICENSE" "$stage/REVISION" "$stage/THIRD-PARTY-NOTICES.txt"
 
-# Runs as the service user under the manager (no sudo/polkit round trip) so a
-# binary or environment file the service cannot use fails here, before cutover.
-systemd-run \
-  --uid=piik \
-  --gid=piik \
-  --wait \
-  --collect \
-  --quiet \
-  --service-type=exec \
-  --property='EnvironmentFile=/etc/piik/piik.env' \
-  --property='Environment=PIIK_ENV=production' \
-  --property='RuntimeMaxSec=20s' \
-  "$stage/piik-server" --check-config
+test -r "$stage/web/index.html"
+test -r "$stage/web/$main_asset"
+dependencies="$(ldd "$stage/piik-server")"
+printf '%s\n' "$dependencies"
+if grep -q 'not found' <<< "$dependencies"; then exit 72; fi
 
 if [ -n "$(comm -12 <(find "$old_release" -type f -printf '%D:%i\n' | sort -u) <(find "$stage" -type f -printf '%D:%i\n' | sort -u))" ]; then
   exit 80
@@ -266,8 +260,8 @@ test "$(readlink -f -- "$current")" = "$release"
 pid="$(systemctl show piik.service -p MainPID --value)"
 test "$pid" -gt 1
 test "$(readlink -f "/proc/${pid}/cwd")" = "$release"
-test "$(curl -fsS --max-time 5 http://127.0.0.1:8787/healthz)" = '{"status":"ok"}'
-test "$(curl -fsS --max-time 8 "$public_origin/healthz")" = '{"status":"ok"}'
+test "$(curl -fsS --max-time 5 http://127.0.0.1:8787/healthz)" = 'piik-channel-prototype'
+test "$(curl -fsS --max-time 8 "$public_origin/healthz")" = 'piik-channel-prototype'
 curl -fsS --max-time 5 http://127.0.0.1:8787/ | grep -Fq "$main_asset"
 curl -fsS --max-time 8 "$public_origin/" | grep -Fq "$main_asset"
 test "$(curl -sS -o /dev/null -w '%{http_code}' --max-time 8 "$public_origin/$main_asset")" = '200'

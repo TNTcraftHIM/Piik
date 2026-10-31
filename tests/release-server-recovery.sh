@@ -20,6 +20,12 @@ eval "$(extract_function wait_for_health)"
 eval "$(extract_function recover)"
 eval "$(extract_function validate_artifact_names)"
 
+# Readiness follows the Rust service's plaintext endpoint.
+(
+  curl() { printf 'piik-channel-prototype'; }
+  wait_for_health
+)
+
 # Reject the other architecture before any deployment state is touched.
 (
   release_id='abcdef0'

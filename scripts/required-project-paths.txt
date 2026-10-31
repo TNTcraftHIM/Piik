@@ -54,7 +54,6 @@ cmd/piik-app/piik.ico
 cmd/piik-app/piik_windows_amd64.syso
 internal/server/webassets/dist/.gitkeep
 deploy/release-server.sh
-deploy/check-release.sh
 docs/adr/0001-p2p-first-media-topology.md
 docs/adr/0010-cross-platform-client-runtime.md
 docs/research/agent-context-governance.md
