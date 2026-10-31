@@ -11,8 +11,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   remaining platforms and packaging over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Complete Android playback-sound, independent-encoding and system-picker
-  cancellation acceptance before replacing its packaging path.
+  Complete Android playback-sound, system-picker cancellation and runtime-stop
+  acceptance before replacing the published package.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
   Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)

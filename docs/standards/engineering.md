@@ -24,7 +24,8 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 | `internal/thirdparty/` | Scoped Go dependency repairs with pinned upstream provenance, licenses and tests; removal criteria live beside the source |
 | `native/capture`, `native/fixtures`, `native/probes` | Platform capture implementations, synthetic workloads and standalone capability probes |
 | `site/` | Independently published static introduction; its assets do not implement product behavior |
-| `mobile/` | Android platform shell and in-process capture bridge over the shared Go core |
+| `mobile/` | Android system-browser shell, platform consent and tunnel adapter; the isolated runtime enters through `prototype/channel-android` |
+| `prototype/channel-*` | Isolated 3.0 Rust core, domain/runtime composition, Native media and Browser/WASM adapters |
 | `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |
 | `tests/` | TypeScript/tooling tests and cross-language fixtures; Go tests stay beside their packages |
 | `deploy/` | Operator scripts and container, proxy, service and certificate templates |
@@ -36,7 +37,8 @@ checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
 `site/` introduces Piik; `src/client/` is Piik's interactive application.
 `internal/app/nativecapture` owns the desktop helper process and frame contract;
 `native/capture/` implements its platform APIs. `nativehost` consumes a capture
-stream; the Android App supplies that stream in-process through `mobile/`.
+stream. The isolated Android shell delegates runtime and capture ownership to
+`prototype/channel-android` and the shared Rust Native adapter.
 `scripts/` prepares and verifies artifacts;
 `deploy/` operates them. Move files with their actual consumers, and update paths
 and checks together; a smaller root alone does not justify another abstraction.
@@ -53,7 +55,7 @@ and checks together; a smaller root alone does not justify another abstraction.
 | `internal/server/sfu`, `internal/app/mediaedge` | Server forwarding and native peer adapters over the shared `internal/media/forwarding`; Pion/LiveKit own transport and adaptation |
 | `internal/app` | Local/public-link/Site composition, loopback service, native sessions and App lifecycle; never a second room backend |
 | `internal/app/nativecapture`, `native/capture/*` | Desktop capture process, frame contract and platform capture/encoding adapters |
-| `internal/app/nativehost/capture.go`, `mobile/bridge`, `mobile/android` | Capture producer contract, shared mobile frame bridge and Android-owned consent/codec resources; reuse room control and media routes |
+| `prototype/channel-android`, `prototype/channel-native/src/capture/android`, `mobile/android` | Android JNI runtime, Rust capture/codec owners and system consent; reuse the shared App, source and media routes |
 | `src/client/pages`, `lib`, `media`, `native` | Browser orchestration and endpoint adapters; bind current media and retire owned resources |
 | `src/client/media/viewer-presentation.ts`, `ui/media-status.ts` | Playback facts and their derived status projection; UI indicators do not create recovery or quality policy |
 | `src/client/components`, `locales`, `ui` | Shared interaction, visual primitives and localized copy; same product interface for Server and App |
@@ -165,7 +167,7 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 | SFU endpoints | [src/client/sfu/publisher.ts](../../src/client/sfu/publisher.ts), [src/client/sfu/subscriber.ts](../../src/client/sfu/subscriber.ts), [src/client/sfu/peer.ts](../../src/client/sfu/peer.ts), [internal/server/sfu](../../internal/server/sfu) |
 | Localized copy and failure facts | [src/client/locales](../../src/client/locales), [src/client/ui/copy.ts](../../src/client/ui/copy.ts), [src/client/ui/media-failure.ts](../../src/client/ui/media-failure.ts) |
 | Native control connection and media adapters | [src/client/native/client-connection.ts](../../src/client/native/client-connection.ts), [src/client/native](../../src/client/native), [internal/app/loopback](../../internal/app/loopback), [internal/app/nativecontrol](../../internal/app/nativecontrol), [internal/app/nativehost](../../internal/app/nativehost), [internal/app/nativeviewer](../../internal/app/nativeviewer), [internal/app/nativecapture](../../internal/app/nativecapture) |
-| Android App and platform lifecycle | [mobile/README.md](../../mobile/README.md), [mobile/bridge](../../mobile/bridge), [mobile/android/app/src/main](../../mobile/android/app/src/main) |
+| Android App and platform lifecycle | [mobile/README.md](../../mobile/README.md), [prototype/channel-android](../../prototype/channel-android), [prototype/channel-native/src/capture/android](../../prototype/channel-native/src/capture/android), [mobile/android/app/src/main](../../mobile/android/app/src/main) |
 | Room authority, persistence and graph | [internal/server/signal](../../internal/server/signal), [internal/server/room](../../internal/server/room), [internal/server/route](../../internal/server/route) |
 | Room signaling intent and interaction delivery | [src/client/lib/signaling.ts](../../src/client/lib/signaling.ts), [src/client/lib/room-interactions.ts](../../src/client/lib/room-interactions.ts); admission and transient delivery follow [rooms and access](./rooms-access.md) |
 | Shared wire contract | [src/shared/protocol.ts](../../src/shared/protocol.ts), [internal/server/protocol](../../internal/server/protocol), [tests/fixtures/wire-samples.json](../../tests/fixtures/wire-samples.json) |

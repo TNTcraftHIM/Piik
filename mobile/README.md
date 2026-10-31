@@ -31,31 +31,30 @@ Browser camera and room voice keep their Browser permissions.
 ## Development build
 
 Use Rust 1.91 with `aarch64-linux-android`, NDK 30.0.16248370, JDK 17,
-Gradle 8.11.1 and Android platform/build-tools 35. Configure Cargo's target linker
-and C toolchain to use the NDK with Android API 29 and 16 KB page alignment, then
-build the JNI library:
+Gradle 8.11.1 and Android platform/build-tools 35. Also install the
+`x86_64-linux-android` and `wasm32-unknown-unknown` Rust targets,
+wasm-bindgen CLI 0.2.129 and cargo-about 0.9.3.
+Set `ANDROID_HOME`, `ANDROID_NDK_HOME` and `GRADLE_HOME`, then run the shared
+packaging entry point:
 
 ```sh
-cargo +1.91.0 build --locked --manifest-path prototype/channel-android/Cargo.toml --target aarch64-linux-android --lib
+node scripts/build-android.mjs
 ```
 
-Gradle's existing project consumes the JNI library as
-`android/app/src/main/jniLibs/arm64-v8a/libpiik_channel_android.so`, the Android
-cloudflared helper as `libcloudflared.so` in that same directory, the existing
-App icon, and the [3.0 frontend bundle](../prototype/channel-browser/README.md)
-as `android/app/src/main/assets/web/`. Once these generated inputs are staged,
-run the ordinary project build:
+That script configures API 29 and 16 KB alignment, builds the ARM64 and x64
+Rust JNI libraries and cloudflared helpers, bundles the
+[shared frontend](../prototype/channel-browser/README.md), and passes those
+inputs, icons and third-party notices to the existing Gradle project.
+`CARGO_TARGET_DIR` can place build output outside the checkout;
+`WASM_BINDGEN` and `CARGO_ABOUT` can point to installed tool executables.
+For a signed release candidate, use the same entry point with a new output directory:
 
 ```sh
-gradle --no-daemon --max-workers=2 -p mobile/android :app:assembleDebug
+node scripts/build-android.mjs --release --output build/android-release
 ```
 
-The existing `scripts/build-android.mjs`, Go bridge and release workflow still
-belong to the 2.x packaging path. They do not build this Rust runtime APK.
-The 3.0 packaging replacement remains part of the existing
-[TODO](../docs/todo.md); this runtime step adds no alternate release pipeline.
 Toolchain paths and generated libraries, assets and APKs stay outside tracked
-source.
+source. [TODO](../docs/todo.md) owns remaining device acceptance and publication holds.
 
 ## Signed release APK
 

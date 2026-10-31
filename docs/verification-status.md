@@ -41,7 +41,10 @@ phases, including NAT and Auto codec behavior.
 - The isolated 3.0 Android Rust App passes NDK/JNI builds and emulator use through
   Firefox: App linkage, system screen selection, continuous decoded preview,
   pending-page cancellation and capture stop preserve the running room.
-  [TODO](./todo.md) owns remaining Android acceptance and packaging.
+  Its Rust encoder components also pass independent bitrate updates, keyframe
+  requests, source-clock preservation and sibling isolation on the emulator's
+  software codec.
+  [TODO](./todo.md) owns remaining Android device acceptance.
 - The published 2.x Android system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source
   replacement, cancellation and background return preserve the share. Local/public
