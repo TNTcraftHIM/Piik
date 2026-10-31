@@ -47,7 +47,7 @@ function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneo
   source: ChannelStageSource & { remoteControl: NonNullable<ChannelStageSource["remoteControl"]> };
 } & Pick<ChannelStageProps, "onInputPolicy" | "onInputDecide" | "onInputSimultaneous" | "onInputShortcut">) {
   const shortcut = useCallback((key?: number) => onInputShortcut(source.id, key), [onInputShortcut, source.id]);
-  return <HostRemoteControl {...source.remoteControl}
+  return <HostRemoteControl {...source.remoteControl} iconOnly
     onPolicy={(mode, password) => onInputPolicy(source.id, mode, password)}
     onDecide={(id, allow) => onInputDecide(source.id, id, allow)}
     onShortcut={source.remoteControl.canSetStopShortcut ? shortcut : undefined}

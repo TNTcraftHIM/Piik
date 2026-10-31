@@ -14,11 +14,12 @@ import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./remote-control.css";
 
 // Form drafts stay here; the App snapshot owns applied authorization.
-export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy, onDecide, onShortcut, gamepad, simultaneous, onSimultaneous }: {
+export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly = false, onPolicy, onDecide, onShortcut, gamepad, simultaneous, onSimultaneous }: {
   mode: RemoteControlMode;
   platform: RemoteInputPlatform;
   requests: (RemoteControlRequest & { name: string })[];
   disabled?: boolean;
+  iconOnly?: boolean;
   onPolicy: (mode: RemoteControlMode, password?: string) => Promise<void>;
   onDecide: (id: string, allow: boolean) => Promise<void>;
   onShortcut?: (key?: number) => Promise<RemoteStopShortcut>;
@@ -86,7 +87,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, onPolicy
   };
   return <>
     <span className="lr-remote-trigger">
-      <Btn id={`${id}-trigger`} icon="mouse" cap="remote.title"
+      <Btn id={`${id}-trigger`} icon="mouse" cap={iconOnly ? undefined : "remote.title"}
         title={detached ? "floating.focus" : pending ? "remote.requests" : controller?.state === "suspended" ? "remote.hostFocus" : controller ? "remote.controlling" : "remote.title"} hint={detached ? "hint-window-detach" : "hint-remote-control"}
         tone={mode !== "off" || open ? "on" : undefined}
         popoverTarget={detached ? undefined : id} expanded={open} controls={detached ? undefined : id}
