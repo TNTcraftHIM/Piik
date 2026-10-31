@@ -116,6 +116,22 @@ const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", t
 const reactionSnapshot = (seq: number, revision: number, choices: Record<string, string[]> = {}) =>
   ({ messageId: `message-${seq}`, messageSeq: seq, revision, choices });
 
+test("a browser without WebAssembly reports its capability failure before joining", async () => {
+  vi.mocked(ChannelConversation.prototype.initialize).mockRestore();
+  vi.stubGlobal("WebAssembly", undefined);
+  vi.stubGlobal("location", new URL("https://channel.test/__channel-preview"));
+  vi.stubGlobal("WebSocket", ChannelSocket);
+  const session = new ChannelSession();
+  try {
+    session.start();
+    const socket = ChannelSocket.current;
+    await socket.onopen?.();
+    expect(session.getSnapshot()).toMatchObject({ connection: "closed", error: "webassembly_unavailable" });
+    expect(socket.sent.some(command => command.type === "join")).toBe(false);
+    expect(socket.readyState).toBe(3);
+  } finally { session.close(); }
+});
+
 test("message reaction confirmation applies canonical snapshots and survives later body confirmation", async () => {
   const { session, peer } = await setup();
   try {

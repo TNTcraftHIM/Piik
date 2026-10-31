@@ -71,8 +71,10 @@ export function ChannelPreviewPage() {
   }, []);
   useEffect(() => { if (!voiceStreams.length) closeVoiceAudioContext(); }, [voiceStreams.length, closeVoiceAudioContext]);
   useEffect(() => closeVoiceAudioContext, [closeVoiceAudioContext]);
-  const failure = channel.error ? channel.error === "room_runtime_unavailable"
-    ? copy("房间运行组件尚未构建。请先构建 Browser room adapter，再刷新原型。", "Room runtime is not built. Build the Browser room adapter, then reload the prototype.")
+  const failure = channel.error ? channel.error === "webassembly_unavailable"
+    ? copy("当前浏览器不支持 WebAssembly，无法使用房间。请更新浏览器或使用支持 WebAssembly 的浏览器。", "This browser does not support WebAssembly, which Piik needs for rooms. Update your browser or use one that supports WebAssembly.")
+    : channel.error === "room_runtime_unavailable"
+      ? copy("未能加载房间组件。请刷新页面后重试。", "Could not load room components. Reload the page and try again.")
     : channel.error === "directory_storage_failed"
       ? copy("房间操作已成功，但域目录保存失败。", "The room operation succeeded, but the domain directory could not be saved.")
     : channel.error === "app_disconnected"
