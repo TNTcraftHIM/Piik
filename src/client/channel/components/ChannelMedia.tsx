@@ -212,11 +212,11 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     </div>}
     {blocked && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
-    <div id={controlsId} ref={controls} className="c3-mini-controls" role="group" aria-label={lang === "zh" ? "本机播放" : "Local playback"}>
-      <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} size="dense" quiet
+    <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={lang === "zh" ? "本机播放" : "Local playback"}>
+      <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} quiet
         hint={paused ? "hint-local-play" : "hint-local-pause"} onClick={() => { if (ref.current?.paused) play(); else ref.current?.pause(); }} />
       {!local && <>
-        <Btn icon={audio.muted || audio.level === 0 ? "speakerOff" : "speaker"} size="dense" quiet
+        <Btn icon={audio.muted || audio.level === 0 ? "speakerOff" : "speaker"} quiet
           title={!hasAudio ? "playback.noAudio" : audio.muted ? "playback.unmute" : "playback.mute"}
           hint={!hasAudio ? "hint-no-audio" : audio.muted ? "hint-unmute" : "hint-mute"}
           disabled={!hasAudio} pressed={audio.muted} onClick={() => output.current?.setMuted(!audio.muted)} />
@@ -226,7 +226,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
       </>}
       <span className="c3-mini-space" />
       {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId} />}
-      <Btn icon={fullscreen.active ? "contract" : "expand"} size="dense" quiet
+      <Btn icon={fullscreen.active ? "contract" : "expand"} quiet
         title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen" : "playback.fullscreen"}
         hint={fullscreenFailed || !fullscreen.ready ? "hint-fullscreen-unavailable" : fullscreen.active ? "hint-fullscreen-exit" : "hint-fullscreen"}
         disabled={(!fullscreen.ready && !fullscreen.active) || !!nativeEntryBlocked} onClick={fullscreenToggle} />
