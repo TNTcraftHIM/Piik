@@ -5,6 +5,7 @@ import { PawnSvg } from "./Pawn";
 import { participantColor } from "./participant-color";
 import { ReactionIcon } from "./RoomReaction";
 import { Tooltip } from "./Tooltip";
+import "./room-interactions.css";
 
 export interface InteractionParticipant { peerId: string; displayName: string }
 

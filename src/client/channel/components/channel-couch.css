@@ -9,7 +9,7 @@
 .c3-couch-guests::-webkit-scrollbar { display: none; }
 .c3-couch-seat { display: grid; flex: 0 0 var(--c3-couch-seat); min-width: 0; justify-items: center; scroll-snap-align: start; }
 .c3-couch-people > .c3-couch-seat { padding-block: 11px 6px; }
-.c3-couch-seat > .lr-comic-tip-wrap { max-width: 100%; }
+.c3-couch-seat > .lr-comic-tip-wrap { min-width: 0; max-width: 100%; }
 .c3-couch-seat .lr-pawn { min-width: 0; max-width: 100%; }
 .c3-couch-seat .lr-person { width: 42px; height: 50px; }
 .c3-couch-seat .lr-pawn-name { max-width: 100%; }
