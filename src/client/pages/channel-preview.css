@@ -108,6 +108,13 @@
 @container (min-width: 1000px) {
   .c3-room-heading { grid-template-areas: "title company actions tools"; grid-template-columns: minmax(0, 1fr) auto auto auto; padding-block: 8px; }
 }
+@container (max-width: 900px) {
+  .c3-room-heading { grid-template-areas: "title title" "actions tools" "company company"; grid-template-columns: minmax(0, 1fr) auto; }
+  .c3-room-actions { flex-wrap: wrap; }
+}
+@container (max-width: 600px) {
+  .c3-room-actions > :is(.lr-comic-tip-wrap, .c3-share-control) .lr-cap { display: none; }
+}
 @container (max-width: 800px) {
   .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 1fr) minmax(188px, .8fr); overflow-y: auto; }
   .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
@@ -139,12 +146,11 @@
   .c3-channel-title { padding-inline: 6px; }
   .c3-channel-title h1 { font-size: 19px; }
   .c3-people-panel { padding-inline: 12px; }
-  .c3-room-heading { grid-template-areas: "title title" "actions tools" "company company"; grid-template-columns: minmax(0, 1fr) auto; padding: 12px 12px 4px; gap: 8px 6px; }
+  .c3-room-heading { padding: 12px 12px 4px; gap: 8px 6px; }
   .c3-room-name { min-width: 0; }
   .c3-room-name h2 { font-size: 16px; }
   .c3-room-name > svg { display: none; }
-  .c3-room-actions { gap: 8px; flex-wrap: wrap; }
-  .c3-room-actions > :is(.lr-comic-tip-wrap, .c3-share-control) .lr-cap { display: none; }
+  .c3-room-actions { gap: 8px; }
   .c3-avatar-stack > svg + svg { display: none; }
   .c3-people-trigger > svg { display: none; }
   .c3-workspace:not(.has-screens) > .c3-monitor { max-height: 140px; overflow-y: auto; }
