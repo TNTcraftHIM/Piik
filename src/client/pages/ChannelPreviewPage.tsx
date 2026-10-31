@@ -121,6 +121,9 @@ export function ChannelPreviewPage() {
       appControl={<AppConnectionButton discovery={channelAppDiscovery} onConnected={() => run(channel.activateApp())} />} diagnosticControl={null}
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
+    {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
+      <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
+    </div>}
     <main className="c3-shell" data-pane={mobilePane}>
       <ChannelBookmarks currentName={state?.channel.name ?? location.host}
         currentIcon={<ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={26} />} onCurrent={() => setMobilePane("rooms")} />
@@ -193,9 +196,6 @@ export function ChannelPreviewPage() {
           <span>{copy("房间暂不可用，请等待恢复托管。", "This room is unavailable. Wait for hosting to resume.")}</span></div>}
         {self && !owner && !permissions.size && <div className="c3-notice" role="status"><Glyph name="lock" size={20} />
           <span>{copy("当前为只读。请联系域主分配身份组。", "Read-only access. Ask the domain owner for a role to participate.")}</span></div>}
-        {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>
-          <Btn icon="x" title="notice.dismiss" size="compact" quiet onClick={channel.clearError} />
-        </div>}
         <div className={`c3-workspace${visibleScreens.length ? " has-screens" : ""}${chatOpen ? "" : " chat-collapsed"}`}>
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),

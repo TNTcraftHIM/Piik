@@ -1,7 +1,7 @@
 /* Layout belongs to the channel; palette, controls, cast and motion stay shared. */
-.c3-app { height: 100dvh; min-height: 0; }
+.c3-app { --c3-content-width: min(1480px, calc(100% - 40px)); height: 100dvh; min-height: 0; }
 .c3-app > .lr-top { flex: none; padding-block: 16px; }
-.c3-shell { flex: 1; min-height: 0; width: min(1480px, calc(100% - 40px)); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 220px minmax(0, 1fr) 224px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; }
+.c3-shell { flex: 1; min-height: 0; width: var(--c3-content-width); margin: 0 auto 24px; display: grid; grid-template-columns: 58px 220px minmax(0, 1fr) 224px; background: var(--paper); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--panel-shadow); overflow: clip; }
 .c3-shell > .c3-domain-rail { border-radius: 22px 0 0 22px; }
 :where(.c3-shell) :is(h1,h2,h3,p) { margin: 0; }
 .c3-shell button { cursor: pointer; }
@@ -73,6 +73,7 @@
 .c3-notice > span { flex: 1; min-width: 0; }
 .c3-notice > svg { flex: none; }
 .c3-notice.is-error > svg { color: var(--danger); }
+.c3-app > .c3-notice { width: var(--c3-content-width); margin: 0 auto 12px; background: var(--paper); }
 .c3-people-panel { display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: 12px; background: color-mix(in srgb, var(--wall) 60%, var(--paper)); border-inline-start: 1px solid var(--line); }
 .c3-people-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: none; min-height: 76px; }
 .c3-people-panel h2 { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 650; }
@@ -96,7 +97,8 @@
 .c3-offline-users summary { color: var(--muted); cursor: pointer; font-size: 12px; padding: 6px 10px; }
 .c3-visual .c3-channel-caption { display: none; }
 @media (max-width: 1180px) {
-  .c3-shell { grid-template-columns: 54px 194px minmax(0, 1fr) 204px; width: calc(100% - 28px); }
+  .c3-app { --c3-content-width: calc(100% - 28px); }
+  .c3-shell { grid-template-columns: 54px 194px minmax(0, 1fr) 204px; }
   .c3-room-heading { gap: 10px; padding: 16px 18px; }
   .c3-room-actions { gap: 6px; }
 }
@@ -122,8 +124,9 @@
   .c3-people-panel > header { min-height: 72px; }
 }
 @media (max-width: 700px) {
+  .c3-app { --c3-content-width: calc(100% - 16px); }
   .c3-app > .lr-top { padding-block: 10px; }
-  .c3-shell { width: calc(100% - 16px); grid-template-columns: 52px minmax(0, 1fr); margin-bottom: 8px; border-radius: 18px; }
+  .c3-shell { grid-template-columns: 52px minmax(0, 1fr); margin-bottom: 8px; border-radius: 18px; }
   .c3-shell > .c3-domain-rail { border-radius: 18px 0 0 18px; padding-block: 16px; }
   .c3-shell > .c3-domain-rail .c3-domain-icon.lr-btn { --button-size: 40px; width: 40px; border-radius: 14px; }
   .c3-sidebar { gap: 18px; padding: 20px 12px 14px; }
