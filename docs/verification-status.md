@@ -78,6 +78,12 @@ WebRTC and LiveKit own adaptation. The
 Native recovery fixes from Browser-controlled recovery and sustained-loss limits.
 Browser scripts cannot tune the encoder's internal QP thresholds.
 
+The combined 3.0 Native candidate's capture-free embedded Server passes the
+VP8 dual-downlink restoration and healthy-sibling isolation control. When the
+connection grant falls below every available source representation, forwarding
+pauses rather than changing another connection's source. H264 recovery acceptance
+remains in [TODO](./todo.md).
+
 ## Interpretation
 
 Evidence applies to its tested revision, device and workload. Builds and local

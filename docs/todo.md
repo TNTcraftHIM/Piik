@@ -16,8 +16,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
   Complete Browser-to-Native recovery acceptance of the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),
-  and complete independent weak-downlink adaptation for the default forwarding-only
-  Server, including VP8.
+  and complete the default forwarding-only Server's H264 recovery acceptance.
   Preserve lightweight Server deployment and healthy siblings, then promote
   the candidate after the held dependency decision. It includes transport
   probing/feedback, incoming-H264 derivation and coordinated UDP preparation
