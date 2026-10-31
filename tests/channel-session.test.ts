@@ -94,6 +94,7 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
     channel: { id: "domain", name: "Friends", icon: "future-domain_7", ownerId: "self", historyWindow: window,
       rooms: ["first", "second"].map(id => ({ id, name: id, icon: "couch", creatorId: "self", access: "public",
         hidden: false, hasPassword: false, authorized: true, canManage: true,
+        participantSessionIds: id === "first" ? ["endpoint"] : [],
         available: true, reading: id === "first", capabilities: { attachments: true },
         delivery: { hostSessionId: "host", bindingId: "binding", nextHops: { host: "host" } } })), roles: [] },
     users: [{ id: "self", name: "Me", roles: [] }], sessions: [{ id: "endpoint", userId: "self", online: true, signingKey: testSigningKey }],
@@ -839,6 +840,7 @@ test("decorative identity keys remain extensible while missing icons and invalid
     expect(snapshotSchema.safeParse({ ...state, channel: { ...state.channel, name: "😀".repeat(33) } }).success).toBe(false);
     expect(snapshotSchema.safeParse({ ...state, channel: { ...state.channel, icon: undefined } }).success).toBe(false);
     expect(snapshotSchema.safeParse({ ...state, channel: { ...state.channel, rooms: [{ ...state.channel.rooms[0], icon: undefined }] } }).success).toBe(false);
+    expect(snapshotSchema.safeParse({ ...state, channel: { ...state.channel, rooms: [{ ...state.channel.rooms[0], participantSessionIds: undefined }] } }).success).toBe(false);
     expect(identityIconSchema.safeParse("a".repeat(65)).success).toBe(false);
     expect(identityIconSchema.safeParse("room/icon").success).toBe(false);
   } finally { session.close(); }

@@ -10,6 +10,7 @@ export const roomSchema = z.object({
   id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
   members: z.array(id).optional(),
+  participantSessionIds: z.array(id),
   available: z.boolean(), reading: z.boolean(),
   capabilities: z.object({ attachments: z.boolean() }),
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
