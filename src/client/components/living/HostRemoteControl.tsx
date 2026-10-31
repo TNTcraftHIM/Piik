@@ -13,8 +13,10 @@ import { Tooltip } from "./Tooltip";
 import { RemoteShortcutSelect } from "./RemoteShortcutSelect";
 import "./remote-control.css";
 
+type HostStopShortcut = RemoteStopShortcut & { stopShortcutLabel?: string | null };
+
 // Form drafts stay here; the App snapshot owns applied authorization.
-export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly = false, onPolicy, onDecide, onShortcut, gamepad, simultaneous, onSimultaneous }: {
+export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly = false, onPolicy, onDecide, onShortcut, stopShortcutLabel, gamepad, simultaneous, onSimultaneous }: {
   mode: RemoteControlMode;
   platform: RemoteInputPlatform;
   requests: (RemoteControlRequest & { name: string })[];
@@ -22,7 +24,8 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
   iconOnly?: boolean;
   onPolicy: (mode: RemoteControlMode, password?: string) => Promise<void>;
   onDecide: (id: string, allow: boolean) => Promise<void>;
-  onShortcut?: (key?: number) => Promise<RemoteStopShortcut>;
+  onShortcut?: (key?: number) => Promise<HostStopShortcut>;
+  stopShortcutLabel?: string | null;
   gamepad?: boolean;
   simultaneous?: boolean;
   onSimultaneous?: (enabled: boolean) => Promise<void>;
@@ -45,28 +48,29 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
   const pending = requests.filter(request => request.state === "pending").length;
   const controller = requests.find(request => request.state !== "pending");
   const policyAction = mode !== "off" ? "remote.apply" : draft === "room" ? "remote.enableRoom" : "remote.enable";
-  const [shortcut, setShortcut] = useState<RemoteStopShortcut | null>(null);
-  const shortcutUnavailable = mode === "off" && Boolean(onShortcut) && !shortcut?.available;
+  const [shortcut, setShortcut] = useState<HostStopShortcut | null>(null);
+  const shortcutUnavailable = mode === "off" && Boolean(onShortcut) && shortcut?.stopShortcutLabel === undefined && !shortcut?.available;
   useEffect(() => {
     if (!open || !onShortcut) return;
     let current = true;
     setShortcut(null);
     // Restore this Site's choice before allowing a new permission request.
     const key = readRoomPreferences().remoteStopKey;
-    const load = mode === "off" ? onShortcut(key).catch(() => ({ key, available: false })) : onShortcut();
+    const load = onShortcut().then(current => mode === "off" && current.stopShortcutLabel === undefined
+      ? onShortcut(key).catch(() => ({ key, available: false })) : current);
     void load.then(value => { if (current) setShortcut(value); }, () => { if (current) setShortcut(null); });
     return () => { current = false; };
-  }, [open, mode, onShortcut]);
+  }, [open, mode, onShortcut, stopShortcutLabel]);
   useEffect(() => {
     setDraft(mode === "off" ? readRoomPreferences().remoteControlMode : mode);
     setPassword(""); setPreparing(false);
     if (mode !== "off") saveRoomPreferences({ remoteControlMode: mode });
   }, [mode]);
-  const perform = async (id: string, operation: () => Promise<void>) => {
+  const perform = async (id: string, operation: (identity: symbol) => Promise<void>) => {
     const identity = Symbol();
     latestOperation.current = identity;
     setPendingActions(current => new Map(current).set(id, identity)); setFailedId(null);
-    try { await operation(); if (latestOperation.current === identity) setPassword(""); }
+    try { await operation(identity); if (latestOperation.current === identity) setPassword(""); }
     catch { if (latestOperation.current === identity) setFailedId(id === "enable" ? "policy" : id.replace(/^stop:/, "")); }
     finally {
       setPendingActions(current => {
@@ -80,9 +84,22 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
     if (nextMode === "off") setPendingActions(current => {
       const next = new Map(current); next.delete("enable"); return next;
     });
-    return perform(nextMode !== "off" && mode === "off" ? "enable" : "policy", async () => {
-      try { await onPolicy(nextMode, password); }
-      finally { if (onShortcut) setShortcut(await onShortcut().catch(() => null)); }
+    return perform(nextMode !== "off" && mode === "off" ? "enable" : "policy", async identity => {
+      try {
+        if (nextMode !== "off" && onShortcut && shortcut?.stopShortcutLabel !== undefined && !shortcut.available) {
+          const registered = await onShortcut(readRoomPreferences().remoteStopKey);
+          if (latestOperation.current !== identity) return;
+          setShortcut(registered);
+          if (!registered.available) throw new Error("input_shortcut_unavailable");
+        }
+        await onPolicy(nextMode, password);
+      }
+      finally {
+        if (onShortcut && latestOperation.current === identity) {
+          const current = await onShortcut().catch(() => null);
+          if (latestOperation.current === identity) setShortcut(current);
+        }
+      }
     });
   };
   return <>
@@ -181,11 +198,12 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
         {!vis && <p className="lr-remote-note">{t(platform === "linux" && mode === "off" ? "remote.linuxEnable" : "remote.policyLifetime")}</p>}
         {onShortcut && shortcut && <>
           <RemoteShortcutSelect host mac={platform === "darwin"} value={shortcut.key} disabled={busy || disabled}
+            actualLabel={shortcut.stopShortcutLabel}
             onChange={key => void perform("shortcut", async () => {
               setShortcut(await onShortcut(key));
               saveRoomPreferences({ remoteStopKey: key });
             })} />
-          {(!shortcut.available || failedId === "shortcut") && <p role="alert"><Glyph name="alert" size={14} />
+          {((!shortcut.available && shortcut.stopShortcutLabel === undefined) || failedId === "shortcut") && <p role="alert"><Glyph name="alert" size={14} />
             <span className={vis ? "visually-hidden" : undefined}>{t("remote.shortcutFailed")}</span></p>}
         </>}
         {!onShortcut && (mode === "room" || mode === "password" || requests.some(request => request.state !== "pending")) && <p className="lr-remote-note">

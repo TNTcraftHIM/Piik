@@ -861,11 +861,16 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-clo
     expect(old.stop).toHaveBeenCalledOnce();
     expect(session.getSnapshot().ownedScreens).toEqual(new Set([publication.id]));
 
+    const oldShortcut = session.inputShortcut(publication.id, 10);
+    const oldShortcutCommand = app.sent.at(-1)!;
+    const retiredShortcut = expect(oldShortcut).rejects.toMatchObject({ name: "AbortError" });
     const nativeAgain = session.startNativeScreen("first", target);
     expect(await appCommand("prepare_capture")).toMatchObject({ publicationId: publication.id });
     appReply({ captureId: secondCaptureId, sessionId: nativeSessionId });
     expect(await appCommand("commit_capture")).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId });
     appReply(); await nativeAgain;
+    app.receive({ id: oldShortcutCommand.id, result: { key: 10, available: true } });
+    await retiredShortcut;
     expect(socket.sent.filter(command => command.type === "transfer_source")).toHaveLength(1);
 
     const send = socket.send.bind(socket);
@@ -1035,6 +1040,16 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     app.receive({ id: app.sent.at(-1)!.id, result: { key: 9, available: true } });
     await expect(registeringShortcut).resolves.toEqual({ key: 9, available: true });
     await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 9, available: true });
+    app.receive({ type: "input_state", publicationId, state: { ...remote, platform: "linux", canSetStopShortcut: true, stopShortcutLabel: null } });
+    await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 10, available: false, stopShortcutLabel: null });
+    const portalShortcut = session.inputShortcut(publicationId, 10);
+    app.receive({ id: app.sent.at(-1)!.id, result: { key: 10, available: true, stopShortcutLabel: "Super + Escape" } });
+    await expect(portalShortcut).resolves.toEqual({ key: 10, available: true, stopShortcutLabel: "Super + Escape" });
+    await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 10, available: true, stopShortcutLabel: "Super + Escape" });
+    app.receive({ type: "input_state", publicationId, state: { ...remote, platform: "linux", canSetStopShortcut: true, stopShortcut: 10, stopShortcutLabel: "Shift + Escape" } });
+    await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 10, available: true, stopShortcutLabel: "Shift + Escape" });
+    app.receive({ type: "input_state", publicationId, state: { ...remote, platform: "linux", canSetStopShortcut: true, stopShortcutLabel: null } });
+    await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 10, available: false, stopShortcutLabel: null });
     const enabling = session.inputPolicy(publicationId, "ask");
     expect(app.sent.at(-1)).toMatchObject({ type: "input_policy", publicationId, mode: "ask" });
     app.receive({ id: app.sent.at(-1)!.id, result: null });

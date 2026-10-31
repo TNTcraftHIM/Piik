@@ -7,8 +7,7 @@ import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import "./channel-stage.css";
 import type { InputTransport } from "../../remote-control/input-route";
 import type { RemoteControlMode } from "../../remote-control/protocol";
-import type { RemoteStopShortcut } from "../../native/wire";
-import type { ChannelRemoteControlState } from "../app-link";
+import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
 import { useCallback } from "react";
 
@@ -40,7 +39,7 @@ export interface ChannelStageProps {
   onInputPolicy: (publicationId: string, mode: RemoteControlMode, password?: string) => Promise<void>;
   onInputDecide: (publicationId: string, requestId: string, allow: boolean) => Promise<void>;
   onInputSimultaneous: (publicationId: string, enabled: boolean) => Promise<void>;
-  onInputShortcut: (publicationId: string, key?: number) => Promise<RemoteStopShortcut>;
+  onInputShortcut: (publicationId: string, key?: number) => Promise<ChannelStopShortcut>;
 }
 
 function SourceControl({ source, onInputPolicy, onInputDecide, onInputSimultaneous, onInputShortcut }: {

@@ -12,6 +12,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
+  Complete Linux global-stop binding/activation acceptance and assess the recorded
+  shortcut-provider dialog-cancellation limitation.
   Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
   after the held dependency decision. Keep the first version's accepted scope

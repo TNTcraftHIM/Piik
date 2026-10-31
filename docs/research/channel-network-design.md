@@ -758,6 +758,28 @@ input with the selected monitor. Paused/removed devices follow the
 so their completed releases do not block another source. Text input follows the
 actual device capability.
 
+Linux's optional global stop uses the standard
+[GlobalShortcuts Portal](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html),
+with the package's installed desktop identity registered through the
+[host Registry](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.host.portal.Registry.html).
+Desktop owns one process binding; source consent owns pending registration and
+closes its Request and candidate session on cancellation. A preferred Browser
+chord does not establish the actual binding: the system's returned description,
+changes and session closure feed the existing source snapshot. Activation revokes
+input through the same desktop executor while capture keeps its lifetime.
+
+In the isolated Linux VM, GNOME Portal `50.0-r0` and control-center `50.3-r0`
+open real shortcut consent after normal desktop integration. Cancelling the
+source returns with input Off and releases Piik's Request/session, but leaves
+the provider's dialog visible. The backend's
+[`on_request_handle_close_cb`](https://github.com/GNOME/xdg-desktop-portal-gnome/blob/50.0/src/globalshortcuts.c)
+only marks the bind cancelled; the
+[50.3 provider](https://github.com/GNOME/gnome-control-center/blob/50.3/global-shortcuts-provider/cc-global-shortcuts-provider.c)
+has no corresponding external-dialog cancellation. Piik adds no provider
+workaround. The headless fixture did not establish an approved binding or actual
+shortcut activation; those remain platform acceptance work, separately from the
+Mutter capture-cancellation defect below.
+
 GNOME Portal 50.0 with Mutter 50.2 leaves an unstarted Mutter session after a
 cancelled permission dialog, including cancellation through the system UI.
 Piik's Portal requests, sessions and PipeWire streams are released. The backend

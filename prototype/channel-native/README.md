@@ -45,8 +45,12 @@ The App enables the Native `capture`
 Cargo feature; Server disables it so forwarding does not require desktop media
 libraries. Linux App builds need GStreamer 1.20+ development libraries and
 `pkg-config`; runtime capture needs the PipeWire, conversion, H264 parser and
-hardware encoder plugins, plus a working desktop Portal backend. Hardware
-selection uses the VA/VA-API, NVENC, MSDK and QSV plugins only when the installed encoder exposes
+hardware encoder plugins, plus a working desktop Portal backend.
+The optional global stop shortcut also needs normal desktop integration: install
+the package's `piik-app.desktop` entry with `piik-app` on the desktop's PATH.
+Without that identity or a GlobalShortcuts backend, ordinary control and its
+manual stop remain available.
+Hardware selection uses the VA/VA-API, NVENC, MSDK and QSV plugins only when the installed encoder exposes
 live bitrate control. Selection opens the actual device and skips unavailable encoders.
 The [network design](../../docs/research/channel-network-design.md) owns source,
 clock and encoder lifetimes; [verification status](../../docs/verification-status.md#device-evidence-boundary)
@@ -101,7 +105,14 @@ Portal session. Approval preserves the existing producer, encoders and media
 clock; cancelling keeps the current sharing session. The same source consent
 owner cancels pending permission on replacement, local stop or capture closure.
 The backend must provide RemoteDesktop and ConnectToEIS; text entry is advertised
-only when the granted device provides it. Linux global stop shortcuts and
+only when the granted device provides it. Linux global stop uses one process-owned
+GlobalShortcuts Portal session. The Browser's key is a preference; the source UI
+shows the actual system binding, including remapping or an unbound state.
+Enabling control requests missing shortcut consent; opening its panel does not.
+Source retirement cancels pending registration while the committed binding stays
+process-owned. Global stop revokes input without stopping capture.
+[Platform verification](../../docs/verification-status.md#device-evidence-boundary)
+retains the real binding/activation and GNOME dialog-cleanup limits. Linux
 gamepads remain platform work.
 
 The App entry point keeps the Windows MTA alive outside its async runtime.

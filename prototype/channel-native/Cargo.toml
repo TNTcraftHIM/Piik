@@ -54,7 +54,7 @@ objc2-application-services = { version = "=0.3.2", default-features = false, fea
 objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSEvent"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ashpd = { version = "=0.13.13", optional = true, default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
+ashpd = { version = "=0.13.13", optional = true, default-features = false, features = ["tokio", "screencast", "remote_desktop", "global_shortcuts"] }
 reis = { version = "=0.7.1", optional = true }
 rustix = { version = "1", features = ["time", "net"] }
 gst = { package = "gstreamer", version = "=0.24.5", optional = true, features = ["v1_20"] }

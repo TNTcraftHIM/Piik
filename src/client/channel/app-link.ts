@@ -1,7 +1,7 @@
 import type { RoomSummary } from "./protocol";
 import { z } from "zod";
 import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
-import { nativeCaptureTargetSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type RemoteStopShortcut } from "../native/wire";
+import { nativeCaptureTargetSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import { activateNativePicker } from "../native/activation";
 
@@ -19,7 +19,11 @@ const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
 const inputControlStateSchema = remoteControlStateSchema.extend({
   canSetStopShortcut: z.boolean(), stopShortcut: remoteShortcutKeySchema.nullable().optional(),
+  // Omitted: fixed chord. Null: system-managed, unbound. Text: actual OS chord.
+  stopShortcutLabel: z.string().min(1).max(512).nullable().optional(),
 });
+const stopShortcutSchema = remoteStopShortcutSchema.extend({ stopShortcutLabel: inputControlStateSchema.shape.stopShortcutLabel });
+export type ChannelStopShortcut = z.infer<typeof stopShortcutSchema>;
 export type ChannelRemoteControlState = z.infer<typeof inputControlStateSchema>;
 const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema }).strict();
 class AppCompatibilityError extends Error {}
@@ -202,8 +206,12 @@ export class ChannelApp {
     await this.request({ type: "input_policy", publicationId, mode, simultaneous });
   }
 
-  async inputShortcut(publicationId: string, key: number): Promise<RemoteStopShortcut> {
-    return remoteStopShortcutSchema.parse(await this.request({ type: "input_shortcut", publicationId, key }));
+  async inputShortcut(publicationId: string, key: number): Promise<ChannelStopShortcut> {
+    const captureId = this.captures.get(publicationId);
+    if (!captureId) throw new Error("capture_unavailable");
+    const result = await this.request({ type: "input_shortcut", publicationId, key });
+    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture replaced", "AbortError");
+    return stopShortcutSchema.parse(result);
   }
 
   stopCaptures(): void {

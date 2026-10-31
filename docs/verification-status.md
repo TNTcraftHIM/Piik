@@ -47,6 +47,10 @@ phases, including NAT and Auto codec behavior.
   keyboard and pointer input to a desktop window. Stopping capture releases
   its Portal sessions and stream. The GNOME cancellation cleanup defect is
   recorded in the [network design](./research/channel-network-design.md#implementation-boundary).
+  Global-stop Portal identity and real consent presentation have VM evidence;
+  source cancellation retains input Off but the GNOME provider leaves its dialog
+  visible. Approved binding, actual shortcut activation and capture continuity
+  across that activation remain unproved under the same evidence owner.
   Hardware encoding and physical sound remain platform acceptance work.
 - The isolated 3.0 Android Rust App passes NDK/JNI builds and emulator use through
   Firefox: App linkage, system screen selection, decoded H.264 picture and captured

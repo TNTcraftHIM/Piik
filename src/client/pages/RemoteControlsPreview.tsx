@@ -44,10 +44,20 @@ export function RemoteControlsPreview() {
   const [touchMode, setTouchMode] = useState<RoomPreferences["remoteTouchMode"]>("direct");
   const [releaseKey, setReleaseKey] = useState(10);
   const [stopKey, setStopKey] = useState(10);
+  const [systemShortcut, setSystemShortcut] = useState(false);
+  const [stopShortcutLabel, setStopShortcutLabel] = useState<string | null>(null);
+  const stopSnapshot = useRef({ key: stopKey, label: stopShortcutLabel, system: systemShortcut });
+  stopSnapshot.current = { key: stopKey, label: stopShortcutLabel, system: systemShortcut };
   const shortcut = useCallback(async (key?: number) => {
+    const current = stopSnapshot.current;
     if (key !== undefined) setStopKey(key);
-    return { key: key ?? stopKey, available: true };
-  }, [stopKey]);
+    if (current.system) {
+      const label = key !== undefined ? "Super + Escape" : current.label;
+      if (key !== undefined) { current.key = key; current.label = label; setStopShortcutLabel(label); }
+      return { key: key ?? current.key, available: label !== null, stopShortcutLabel: label };
+    }
+    return { key: key ?? current.key, available: true };
+  }, []);
   const input = useCallback((event: RemoteInputEvent) => setLastInput(JSON.stringify(event)), []);
   const placePointer = useCallback((position: { x: number; y: number }) => {
     const layer = mouseLayer.current, video = mouseVideo.current;
@@ -146,14 +156,18 @@ export function RemoteControlsPreview() {
     </p>
     <div className="cp-tools">
       <HostRemoteControl mode={mode} platform={platform} requests={requests}
+        stopShortcutLabel={systemShortcut ? stopShortcutLabel : undefined}
         gamepad={platform !== "darwin"}
         simultaneous={simultaneous}
         onSimultaneous={async enabled => { setSimultaneous(enabled); setRequests([]); }}
-        onShortcut={platform === "linux" ? undefined : shortcut}
+        onShortcut={platform === "linux" && !systemShortcut ? undefined : shortcut}
         onPolicy={async value => { setMode(value); setRequests([]); }}
         onDecide={async (id, allow) => setRequests(current => allow
           ? current.map(request => request.id === id ? { ...request, state: "active" } : request)
           : current.filter(request => request.id !== id))} />
+      <label><input type="checkbox" checked={systemShortcut} onChange={event => {
+        setSystemShortcut(event.target.checked); setStopShortcutLabel(null); setMode("off");
+      }} /> {en ? "System-managed stop shortcut" : "系统管理的停止快捷键"}</label>
       <button type="button" className="lr-btn" onClick={() => {
         setMode("ask");
         setRequests([{ id: "preview-request", ...participants[0]!, state: "pending" }]);

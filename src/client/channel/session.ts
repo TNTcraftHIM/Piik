@@ -5,9 +5,9 @@ import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessag
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
-import { ChannelApp, discoverChannelAppHealth, type NativeCaptureSources } from "./app-link";
+import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources } from "./app-link";
 import { isClientActivated } from "../lib/session";
-import type { NativeCaptureTarget, RemoteStopShortcut } from "../native/wire";
+import type { NativeCaptureTarget } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
@@ -566,14 +566,16 @@ export class ChannelSession {
       await this.app.inputSimultaneous(publicationId, state.mode, enabled);
     });
 
-  inputShortcut = async (publicationId: string, key?: number): Promise<RemoteStopShortcut> => {
+  inputShortcut = async (publicationId: string, key?: number): Promise<ChannelStopShortcut> => {
     const app = this.app, state = this.view.remoteControls.get(publicationId);
     if (!app?.screens.has(publicationId) || !state) throw new Error("input_unavailable");
-    if (key === undefined) return { key: state.stopShortcut ?? readRoomPreferences().remoteStopKey, available: state.stopShortcut != null };
+    if (key === undefined) return { key: state.stopShortcut ?? readRoomPreferences().remoteStopKey, available: state.stopShortcut != null,
+      ...(state.stopShortcutLabel !== undefined ? { stopShortcutLabel: state.stopShortcutLabel } : {}) };
     const shortcut = await app.inputShortcut(publicationId, key);
     const current = this.view.remoteControls.get(publicationId);
-    if (this.app === app && app.screens.has(publicationId) && current && shortcut.available && current.stopShortcut !== shortcut.key) {
-      this.patch({ remoteControls: new Map(this.view.remoteControls).set(publicationId, { ...current, stopShortcut: shortcut.key }) });
+    if (this.app === app && app.screens.has(publicationId) && current && shortcut.available) {
+      this.patch({ remoteControls: new Map(this.view.remoteControls).set(publicationId, { ...current, stopShortcut: shortcut.key,
+        ...(shortcut.stopShortcutLabel !== undefined ? { stopShortcutLabel: shortcut.stopShortcutLabel } : {}) }) });
     }
     return shortcut;
   };

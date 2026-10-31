@@ -1046,17 +1046,33 @@ async fn connection(
                             Operation::InputShortcut {
                                 publication_id,
                                 key,
-                            } => (|| -> Result<Value> {
-                                let lease = captures
+                            } => {
+                                let shortcut = captures
                                     .get(&publication_id)
                                     .and_then(Capture::lease)
-                                    .ok_or_else(|| anyhow!("input_source_unavailable"))?;
-                                if lease.remote.is_none() {
-                                    bail!("input_source_unavailable");
+                                    .and_then(|lease| lease.remote.as_ref())
+                                    .ok_or_else(|| anyhow!("input_source_unavailable"))
+                                    .and_then(|source| source.set_shortcut(key));
+                                match shortcut {
+                                    Ok(shortcut) => {
+                                        let desktop = app.desktop.clone();
+                                        input_policies.push(async move {
+                                            match shortcut.await {
+                                                Ok(()) => {
+                                                    let label = desktop.shortcut_label();
+                                                    let available = label.as_ref().is_none_or(Option::is_some);
+                                                    let mut value = json!({"key":key,"available":available});
+                                                    if let Some(label) = label { value["stopShortcutLabel"] = json!(label); }
+                                                    json!({"id":request.id,"result":value})
+                                                }
+                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                            }
+                                        }.boxed());
+                                        continue;
+                                    }
+                                    Err(error) => Err(error),
                                 }
-                                app.desktop.set_shortcut(key)?;
-                                Ok(json!({"key":key,"available":true}))
-                            })(),
+                            }
                         };
                         match result {
                             Ok(result) => json!({"id":request.id,"result":result}),

@@ -816,6 +816,81 @@ async fn windows_hotkey_revokes_and_unregisters_on_process_close() {
 
 #[cfg(all(feature = "capture", target_os = "linux"))]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires isolated desktop Portal consent, cancellation marker and actual shortcut activation"]
+async fn linux_global_shortcut_cancels_revokes_and_closes() -> Result<()> {
+    let stage = std::env::var("PIIK_LINUX_SHORTCUT_STAGE")?;
+    let cancel = std::env::var("PIIK_LINUX_SHORTCUT_CANCEL")?;
+    let (desktop, recording) = desktop();
+    let (source, mut replies, mut view) = source(&desktop);
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !view.borrow().can_set_stop_shortcut {
+            view.changed().await?;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    assert_eq!(view.borrow().stop_shortcut_label, Some(None));
+    assert!(view.borrow().stop_shortcut.is_none());
+    let pending = source.set_shortcut(10)?;
+    std::fs::write(&stage, "cancel-pending")?;
+    tokio::time::timeout(Duration::from_secs(90), async {
+        while !std::path::Path::new(&cancel).exists() {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    })
+    .await?;
+    source.set_mode(Mode::Off)?;
+    assert!(tokio::time::timeout(Duration::from_secs(5), pending)
+        .await?
+        .is_err());
+    assert_eq!(view.borrow().stop_shortcut_label, Some(None));
+
+    std::fs::write(&stage, "approve")?;
+    tokio::time::timeout(Duration::from_secs(90), source.set_shortcut(10)?).await??;
+    let label = view
+        .borrow()
+        .stop_shortcut_label
+        .clone()
+        .flatten()
+        .ok_or_else(|| anyhow!("missing actual shortcut"))?;
+    source.set_shortcut(10)?.await?;
+    source.set_mode(Mode::Room)?;
+    let mut client = Client::new(&source);
+    client.send(&source, json!({"type":"request","intent":Uuid::new_v4()}));
+    let state = client.state(&mut replies);
+    assert_eq!(state["state"], "active");
+    client.send(
+        &source,
+        json!({"type":"key","code":"KeyA","down":true,"grant":state["grant"]}),
+    );
+    std::fs::write(&stage, format!("activate:{label}"))?;
+    tokio::time::timeout(Duration::from_secs(90), async {
+        while view.borrow().mode != Mode::Ask || !view.borrow().requests.is_empty() {
+            view.changed().await?;
+        }
+        Ok::<_, anyhow::Error>(())
+    })
+    .await??;
+    assert_eq!(
+        recording.lock().unwrap().events.len(),
+        2,
+        "held key must be released by local stop"
+    );
+    assert_eq!(view.borrow().stop_shortcut, Some(10));
+    assert_eq!(view.borrow().stop_shortcut_label, Some(Some(label)));
+    assert!(
+        source.run(|_, _| Ok(())).is_ok(),
+        "stop preserves the source"
+    );
+    desktop.close();
+    assert!(!desktop.1.view().available);
+    assert!(desktop.1.view().key.is_none());
+    std::fs::write(&stage, "complete")?;
+    Ok(())
+}
+
+#[cfg(all(feature = "capture", target_os = "linux"))]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated desktop's owned input window and attended Portal consent"]
 async fn linux_portal_grant_delivers_encrypted_input_to_owned_window() -> Result<()> {
     let events = std::env::var("PIIK_LINUX_INPUT_EVENTS")?;

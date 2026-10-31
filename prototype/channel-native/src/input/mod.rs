@@ -5,6 +5,8 @@ mod gamepad;
 mod keyboard;
 #[cfg(all(feature = "capture", target_os = "linux"))]
 pub(crate) mod linux;
+#[cfg(all(feature = "capture", target_os = "linux"))]
+mod linux_shortcut;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(test)]
@@ -78,6 +80,9 @@ pub struct SourceView {
     pub can_set_stop_shortcut: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stop_shortcut: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    /// Omitted for a fixed chord; null for an unbound system-managed shortcut.
+    pub stop_shortcut_label: Option<Option<String>>,
 }
 
 #[derive(Clone)]
@@ -85,6 +90,7 @@ pub struct Desktop(
     Arc<Mutex<Executor>>,
     #[cfg(target_os = "windows")] Arc<Mutex<Option<windows::Shortcut>>>,
     #[cfg(target_os = "macos")] Arc<Mutex<Option<macos::Shortcut>>>,
+    #[cfg(all(feature = "capture", target_os = "linux"))] Arc<linux_shortcut::Shortcut>,
 );
 
 /// Clones refer to the same capture identity. Explicit close retires every clone.
@@ -128,17 +134,31 @@ impl Desktop {
     }
 
     fn with_backend(sink: Box<dyn Sink>, gamepad: Option<gamepad::Backend>) -> Self {
+        let executor = Arc::new(Mutex::new(Executor {
+            sink,
+            sources: BTreeMap::new(),
+            owner: None,
+            releases: BTreeMap::new(),
+            gamepad,
+        }));
         Self(
-            Arc::new(Mutex::new(Executor {
-                sink,
-                sources: BTreeMap::new(),
-                owner: None,
-                releases: BTreeMap::new(),
-                gamepad,
-            })),
+            executor.clone(),
             #[cfg(any(target_os = "windows", target_os = "macos"))]
             Arc::new(Mutex::new(None)),
+            #[cfg(all(feature = "capture", target_os = "linux"))]
+            Arc::new(linux_shortcut::Shortcut::new(Arc::downgrade(&executor))),
         )
+    }
+
+    pub fn shortcut_label(&self) -> Option<Option<String>> {
+        #[cfg(all(feature = "capture", target_os = "linux"))]
+        {
+            Some(self.1.view().label)
+        }
+        #[cfg(not(all(feature = "capture", target_os = "linux")))]
+        {
+            None
+        }
     }
 
     /// Browser preferences own the key; Native holds only this process binding.
@@ -181,6 +201,8 @@ impl Desktop {
         #[cfg(not(any(target_os = "windows", target_os = "macos")))]
         let shortcut_view = None;
         let mut executor = self.0.lock().unwrap();
+        #[cfg(all(feature = "capture", target_os = "linux"))]
+        let shortcut = self.1.view();
         ensure!(
             !executor.sources.contains_key(&video),
             "input_source_already_active"
@@ -195,6 +217,13 @@ impl Desktop {
             simultaneous: false,
             can_set_stop_shortcut: cfg!(any(target_os = "windows", target_os = "macos")),
             stop_shortcut: shortcut_view,
+            stop_shortcut_label: None,
+        });
+        #[cfg(all(feature = "capture", target_os = "linux"))]
+        view.send_modify(|view| {
+            view.can_set_stop_shortcut = shortcut.available;
+            view.stop_shortcut = shortcut.key;
+            view.stop_shortcut_label = Some(shortcut.label);
         });
         executor.sources.insert(
             video,
@@ -269,10 +298,49 @@ impl Desktop {
         }
         #[cfg(any(target_os = "windows", target_os = "macos"))]
         self.1.lock().unwrap().take();
+        #[cfg(all(feature = "capture", target_os = "linux"))]
+        self.1.close();
     }
 }
 
 impl Source {
+    /// Source consent owns pending system interaction; Desktop owns the binding.
+    pub fn set_shortcut(
+        &self,
+        key: u8,
+    ) -> Result<futures_util::future::BoxFuture<'static, Result<()>>> {
+        ensure!((1..=11).contains(&key), "invalid_input_shortcut");
+        #[cfg(all(feature = "capture", target_os = "linux"))]
+        {
+            let (request, registration) = AbortHandle::new_pair();
+            let mut completed = None;
+            self.run(|_, source| {
+                source.cancel_permission();
+                completed = Some(self.0.desktop.1.bind(key, request.clone(), registration)?);
+                source.permission = Some(request.clone());
+                Ok(())
+            })?;
+            let source = self.clone();
+            Ok(Box::pin(async move {
+                let result = completed
+                    .unwrap()
+                    .await
+                    .map_err(|_| anyhow!("input_shortcut_unavailable"))
+                    .and_then(|result| result);
+                source.run(|_, source| {
+                    ensure!(!request.is_aborted(), "input_authorization_cancelled");
+                    source.permission.take();
+                    result
+                })
+            }))
+        }
+        #[cfg(not(all(feature = "capture", target_os = "linux")))]
+        {
+            let result = self.0.desktop.set_shortcut(key);
+            Ok(Box::pin(async move { result }))
+        }
+    }
+
     pub fn publication(&self) -> Uuid {
         self.0.publication
     }
@@ -1123,6 +1191,7 @@ impl Executor {
             simultaneous: source.simultaneous,
             can_set_stop_shortcut: source.view.borrow().can_set_stop_shortcut,
             stop_shortcut: source.view.borrow().stop_shortcut,
+            stop_shortcut_label: source.view.borrow().stop_shortcut_label.clone(),
             requests: source
                 .controllers
                 .iter()
