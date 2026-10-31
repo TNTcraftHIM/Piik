@@ -14,6 +14,15 @@ export function command(program: string, args: string[], input?: string): string
     maxBuffer: 2 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"], input }).trim();
 }
 
+function routeState(ipv6 = false): string {
+  const routes: Record<string, unknown>[] = JSON.parse(command("ip", [
+    ...(ipv6 ? ["-6"] : []), "-j", "route", "show", "table", "all",
+  ]));
+  // Kernel route expiry counts down while the host configuration stays unchanged.
+  for (const route of routes) delete route.expires;
+  return JSON.stringify(routes);
+}
+
 // Owns only namespaces and veth pairs created by this run. All routing,
 // firewall and sysctl changes happen inside those namespaces.
 export class LabNetwork {
@@ -22,8 +31,8 @@ export class LabNetwork {
   private readonly pendingLinks = new Set<string>();
   private readonly shaped = new Set<string>();
   private readonly udpAddresses = new Map<number, string>();
-  private readonly originalRoutes = command("ip", ["-j", "route", "show", "table", "all"]);
-  private readonly originalRoutes6 = command("ip", ["-6", "-j", "route", "show", "table", "all"]);
+  private readonly originalRoutes = routeState();
+  private readonly originalRoutes6 = routeState(true);
   private readonly originalRules = command("nft", ["-s", "list", "ruleset"]);
   readonly wan = `${this.prefix}-wan`;
 
@@ -192,8 +201,8 @@ add rule ip lab_nat postrouting oifname "wan0" snat to ${before}
     return {
       namespacesRemoved: failures.length === 0 && !remaining.includes(this.prefix),
       linksRemoved: !JSON.parse(command("ip", ["-j", "link", "show"])).some((link: { ifname: string }) => this.pendingLinks.has(link.ifname)),
-      hostNetworkUnchanged: command("ip", ["-j", "route", "show", "table", "all"]) === this.originalRoutes &&
-        command("ip", ["-6", "-j", "route", "show", "table", "all"]) === this.originalRoutes6 &&
+      hostNetworkUnchanged: routeState() === this.originalRoutes &&
+        routeState(true) === this.originalRoutes6 &&
         command("nft", ["-s", "list", "ruleset"]) === this.originalRules,
     };
   }
