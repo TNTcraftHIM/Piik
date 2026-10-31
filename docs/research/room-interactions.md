@@ -874,8 +874,14 @@ For 200 samples, Browser input dispatch and AES-GCM-to-send each had a 0.1 ms
 at the 95th percentile, matching the short timer rather than a rendering-frame
 wait. Encrypted Pion delivery through Host authorization to a recorded input
 sink was 0.13 ms at the 95th percentile. No slow point appeared in these local
-components. End-to-end timing still needs target execution, Native capture and
-encoding, remote transport and physical display response in the same trial.
+components.
+
+The combined 3.0 Windows candidate completed that path on 2026-10-31: normal
+Host approval, real OS clicks, WGC capture and encoding, P2P delivery and Browser
+decoding. Across 20 clicks, input-to-compositor response was 40.8 ms median and
+53.9 ms at the 95th percentile, measured on the Viewer's single monotonic clock.
+This is local P2P timing through compositor presentation, without physical display
+scanout. The combined candidate's evidence index owns the exact build and samples.
 
 The reviewed implementation uses WGC capture and the documented Windows input
 API, without game-memory access, injected game code or an input driver.
