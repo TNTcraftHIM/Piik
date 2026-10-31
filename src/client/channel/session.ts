@@ -646,7 +646,7 @@ export class ChannelSession {
   });
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, microphone?: MicrophoneInput): Promise<string> {
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone }: { microphone?: MicrophoneInput } = {}): Promise<string> {
     const id = crypto.randomUUID();
     this.local.set(id, { roomId, kind, stream, microphone });
     this.media.setLocal(id, stream);
@@ -782,7 +782,7 @@ export class ChannelSession {
     try {
       await this.request({ type: "voice", roomId, joined: true, muted: listenOnly, deafened: false });
       if (capture) {
-        const id = await this.publish("voice", roomId, capture, microphone);
+        const id = await this.publish("voice", roomId, capture, { microphone });
         this.voiceCaptures.set(roomId, id);
       }
     } catch (error) {
@@ -808,7 +808,7 @@ export class ChannelSession {
     if (!member) return;
     if (!muted && !this.voiceCaptures.get(roomId)) {
       const microphone = await this.getMicrophone();
-      const id = await this.publish("voice", roomId, microphone.stream.clone(), microphone);
+      const id = await this.publish("voice", roomId, microphone.stream.clone(), { microphone });
       this.voiceCaptures.set(roomId, id);
     }
     await this.request({ type: "voice", roomId, joined: true, muted, deafened: member.deafened });
