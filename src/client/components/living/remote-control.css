@@ -1,4 +1,4 @@
-.lr-tv-screen > .lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: default; touch-action: none; overflow: hidden; outline: 2px solid var(--primary); outline-offset: -2px; border-radius: inherit; }
+.lr-remote-input-surface { position: absolute; inset: 0; z-index: 3; cursor: default; touch-action: none; overflow: hidden; outline: 2px solid var(--primary); outline-offset: -2px; border-radius: inherit; }
 .lr-remote-input-surface.is-suspended { outline-color: var(--muted); cursor: default; pointer-events: none; }
 .lr-remote-input-surface.is-locked { cursor: none; }
 .lr-remote-viewer-control { position: relative; display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
