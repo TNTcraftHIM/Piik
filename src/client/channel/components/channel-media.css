@@ -43,6 +43,8 @@
   pointer-events: none;
   transform: translateY(4px);
 }
+.c3-mini-player > .lr-playback-reveal { right: 50%; bottom: 0; translate: 50% 0; border-radius: 10px 10px 0 0; border-bottom: 0; }
+.c3-mini-player[data-controls-hidden="true"]:has(> .lr-remote-input-surface) > .lr-playback-reveal { display: grid; place-items: center; }
 .c3-mini-message {
   z-index: 1;
   position: absolute;

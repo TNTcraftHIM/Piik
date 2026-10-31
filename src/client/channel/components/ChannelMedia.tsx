@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { Btn } from "../../components/living/primitives";
+import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
 import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
@@ -72,6 +73,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const [activeVideo, setActiveVideo] = useState<HTMLVideoElement | null>(null);
   const ref = useRef<HTMLVideoElement>(null);
   const controls = useRef<HTMLDivElement>(null);
+  const controlsId = useId();
   const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [ready, setReady] = useState(false);
@@ -210,7 +212,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     </div>}
     {blocked && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
-    <div ref={controls} className="c3-mini-controls" role="group" aria-label={lang === "zh" ? "本机播放" : "Local playback"}>
+    <div id={controlsId} ref={controls} className="c3-mini-controls" role="group" aria-label={lang === "zh" ? "本机播放" : "Local playback"}>
       <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} size="dense" quiet
         hint={paused ? "hint-local-play" : "hint-local-pause"} onClick={() => { if (ref.current?.paused) play(); else ref.current?.pause(); }} />
       {!local && <>
@@ -229,6 +231,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
         hint={fullscreenFailed || !fullscreen.ready ? "hint-fullscreen-unavailable" : fullscreen.active ? "hint-fullscreen-exit" : "hint-fullscreen"}
         disabled={(!fullscreen.ready && !fullscreen.active) || !!nativeEntryBlocked} onClick={fullscreenToggle} />
     </div>
+    <PlaybackControlsReveal controls={controls} controlsId={controlsId} hidden={visibility.hidden} />
   </div>;
 }
 
