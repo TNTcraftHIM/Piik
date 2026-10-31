@@ -7,13 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 voice controls.** Connect individual listening gain/mute and the
-  existing microphone device and processing controls to the shared UI and
-  current capture/playback owners. Microphone and total listening gain are connected.
-- [ ] **3.0 identity images.** Complete the bounded image asset slice for domain
-  and room identity. Preset icons are connected; image selection remains a design
-  study. The [data model](./research/channel-storage-and-identity.md) owns storage
-  and distribution responsibilities.
+- [ ] **3.0 Native source previews.** Connect bounded Windows/macOS thumbnails
+  through the existing approved App connection and shared source picker. Keep
+  preview capture independent of active publications; system-picker platforms
+  retain their existing selection flow.
 - [ ] **3.0 Native platforms and integration.** Complete capture/input on the
   remaining platforms and packaging over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)
@@ -81,8 +78,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   The prebound-UDP capability addition also awaits approval.
   Submit the approved scope and verify the combined Native adapter before
   updating its fixed dependency. Local implementation and verification continue.
-- [ ] **Maintenance publication.** Held on 2026-10-27. Completed fixes stay on
-  the maintenance branch; publish only on the owner's next instruction.
+- [ ] **Maintenance publication.** Prepare v2.5.1 after the remaining 3.0 product
+  flows, applicable 2.x backfeeds and feasible issue work converge. Keep completed
+  fixes on the maintenance branch and follow the
+  [release approval boundary](./standards/versioning.md#automatic-publication).
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session

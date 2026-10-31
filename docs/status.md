@@ -61,11 +61,15 @@ The shared distribution entry points package the Rust App/Server and Browser
 bundle. Android packages ARM64/x64 JNI and the system-browser shell.
 [TODO](./todo.md) owns remaining Native media/input and platform work.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
-The functional domain and room editors share preset icons and their existing
-authority and storage owners; Browser reload and Native restart preserve the edits.
+The functional domain and room editors share preset and bounded raster icons
+with their existing authority and storage owners; Browser reload and Native
+restart preserve the edits.
 Message reactions use room-owned history. The room mini window moves the existing
 conversation, couch and voice controls between the page and floating/PiP surfaces;
 personal drafts, attachment selections and voice participation remain page-owned.
+Voice controls reuse one microphone capture across rooms, with device/processing
+updates and individual local listening controls. Browser cameras use the same
+visual publication and source picker as screen sharing.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 
 ## Accepted Release Contract
