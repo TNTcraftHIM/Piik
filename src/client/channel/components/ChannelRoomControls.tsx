@@ -17,13 +17,14 @@ function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
   const zh = lang === "zh";
   const [name, setName] = useState(room?.name ?? "");
   const [icon, setIcon] = useState(room?.icon ?? "couch");
+  const [imageBusy, setImageBusy] = useState(false);
   const [access, setAccess] = useState<RoomSettings["access"]>(room?.access ?? "public");
   const [hidden, setHidden] = useState(room?.hidden ?? false);
   const [password, setPassword] = useState("");
   const [removePassword, setRemovePassword] = useState(false);
   return <form className="c3-room-form" onSubmit={event => {
     event.preventDefault();
-    if (!name.trim() || disabled) return;
+    if (!name.trim() || disabled || imageBusy) return;
     void onSave({ name: name.trim(), icon, access, hidden: access === "private" && hidden,
       ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) }).catch(() => {});
   }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
@@ -31,7 +32,7 @@ function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
       ? (zh ? "由 App 托管，关闭网页后房间继续运行。" : "Hosted by App. The room keeps running when this page closes.")
       : (zh ? "由此网页托管，关闭网页后房间暂停。" : "Hosted by this page. The room pauses when this page closes.")}</p>}
     <ChannelIdentityFields name={name} icon={icon} label={zh ? "房间名称" : "Room name"}
-      disabled={disabled} onName={setName} onIcon={setIcon} />
+      disabled={disabled} onName={setName} onIcon={setIcon} imageBusy={imageBusy} onImageBusyChange={setImageBusy} />
     <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
       <legend className="visually-hidden">{zh ? "谁可以进入" : "Who can enter"}</legend>
       {(["public", "private"] as const).map(value => <label key={value}>
@@ -54,7 +55,7 @@ function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
     </div>}
     <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} onClick={onCancel} />
       <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : (zh ? "创建房间" : "Create room")}
-        primary type="submit" disabled={disabled || !name.trim()} busy={busy} /></div>
+        primary type="submit" disabled={disabled || imageBusy || !name.trim()} busy={busy} /></div>
   </form>;
 }
 

@@ -2,7 +2,6 @@
 .cd-channel-heading > div { min-width: 0; flex: 1; }
 .cd-channel-heading h2 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-channel-heading .lr-btn { --button-size: 30px; --button-padding: 4px; }
-.cd-room-link > .cd-identity-mark { flex-shrink: 0; }
 .cd-room-content { position: relative; }
 .cd-chat { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; min-width: 0; }
 .cd-members-foot .lr-welcome { margin-top: 10px; font-size: 11px; font-weight: 400; white-space: normal; overflow: visible; line-height: 1.8; text-wrap: pretty; }

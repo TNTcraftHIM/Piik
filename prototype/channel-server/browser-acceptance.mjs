@@ -39,11 +39,12 @@ const sessionPrefix = `channel-acceptance-${randomUUID()}`;
 const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}`);
 const lifecycleOnly = process.argv.includes("--lifecycle");
 const roomsOnly = process.argv.includes("--rooms");
+const identityOnly = process.argv.includes("--identity");
 const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
 const appOnly = process.argv.includes("--app");
-const active = lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const active = identityOnly ? [0, 1] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   // Omitting launch options on later commands selects a different Browser context.
   const { stdout } = await run(executable, ["--session", sessions[index], "--json",
@@ -1074,6 +1075,91 @@ async function lifecycle(initial, roomId) {
     recoveryMs: Date.now() - disconnectedAt }, null, 2));
 }
 
+async function identityControls(serverRoom) {
+  const png = join(temporary, "picture.png"), invalid = join(temporary, "notes.txt");
+  const data = await evaluate(0, `(() => {
+    const canvas = document.createElement('canvas'); canvas.width = canvas.height = 256;
+    const context = canvas.getContext('2d'); context.fillStyle = '#ef9463'; context.fillRect(0,0,256,256);
+    context.fillStyle = '#fff4d6'; context.beginPath(); context.arc(128,128,84,0,Math.PI*2); context.fill();
+    context.fillStyle = '#35322f'; context.fillRect(88,100,18,30); context.fillRect(150,100,18,30);
+    context.fillRect(106,162,44,10); return canvas.toDataURL('image/png');
+  })()`);
+  await writeFile(png, Buffer.from(data.split(',')[1], "base64"));
+  await writeFile(invalid, "This is not a picture.");
+  const openDomain = () => browser(0, "find", "role", "button", "click", "--name", "Domain appearance", "--exact");
+  const upload = async path => {
+    await browser(0, "upload", '.c3-identity-picker input[type="file"]', path);
+  };
+  const preview = () => until("chosen identity decodes", () => evaluate(0,
+    "!!document.querySelector('.c3-identity-upload img')?.naturalWidth"), Boolean);
+  await openDomain(); await upload(invalid);
+  await until("invalid picture leaves an actionable error", () => evaluate(0,
+    "document.querySelector('.c3-identity-error')?.textContent"), value => value?.includes("Try another"));
+  await upload(png); await preview();
+  await browser(0, "find", "role", "button", "click", "--name", "Cancel", "--exact");
+  assert.equal((await view(0)).state.channel.icon, "couch", "cancel never writes the draft image");
+  await openDomain();
+  assert.equal(await evaluate(0, "!!document.querySelector('.c3-identity-upload img')"), false);
+  await upload(png); await preview();
+  await browser(0, "click", ".c3-identity-form button[type=submit]");
+  const domainIcon = await until("domain image reaches the other user", () => evaluate(1,
+    `${hook}.snapshot().state.channel.icon`), value => value.startsWith("data:image/"));
+  await until("domain rail renders the saved image", () => evaluate(1,
+    "[...document.querySelectorAll('.c3-domain-icon img')].some(image => image.naturalWidth > 0)"), Boolean);
+
+  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await upload(png); await preview();
+  await browser(0, "click", ".c3-room-form button[type=submit]");
+  await until("Native room projects its saved image", () => view(1), value =>
+    value.state.channel.rooms.find(room => room.id === serverRoom)?.icon.startsWith("data:image/"));
+  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await browser(0, "find", "role", "button", "click", "--name", "Star", "--exact");
+  await browser(0, "click", ".c3-room-form button[type=submit]");
+  await until("preset replaces Native room image", () => view(1), value => value.state.channel.rooms.find(room => room.id === serverRoom)?.icon === "star");
+
+  await browser(0, "find", "role", "button", "click", "--name", "Create room", "--exact");
+  await browser(0, "fill", ".c3-room-form input[type=text], .c3-room-form input:not([type])", "Identity room");
+  await upload(png); await preview();
+  await browser(0, "click", ".c3-room-form button[type=submit]");
+  const created = await until("Browser room is created with its image", () => view(1), value =>
+    value.state.channel.rooms.some(room => room.name === "Identity room" && room.icon.startsWith("data:image/")));
+  const room = created.state.channel.rooms.find(room => room.name === "Identity room");
+  await browser(0, "reload");
+  await until("Browser reload restores hosting and both identities", () => view(0), value =>
+    value.connection === "connected" && value.state.channel.icon === domainIcon &&
+    value.state.channel.rooms.some(item => item.id === room.id && item.available && item.icon === room.icon));
+  await browser(0, "click", '.c3-room-link[aria-label="Identity room"]');
+  await until("conversation welcome renders its room image", () => evaluate(0,
+    "!!document.querySelector('.c3-room-start-mark img')?.naturalWidth"), Boolean);
+  await browser(0, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await until("identity editor opens", () => evaluate(0, "!!document.querySelector('.c3-room-form')"), Boolean);
+  await browser(0, "screenshot", join(output, "identity-desktop.png"));
+  await browser(0, "press", "Escape");
+  await browser(0, "set", "viewport", "390", "844");
+  for (const [lang, theme, vis] of [["en", "light", false], ["zh", "dark", false], ["en", "dark", true]]) {
+    await evaluate(0, `(async () => {
+      (await import('/src/client/ui/copy.ts')).setCopy({lang:${JSON.stringify(lang)},vis:${vis}});
+      (await import('/src/client/ui/theme.ts')).applyTheme(${JSON.stringify(theme)});
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); return true;
+    })()`);
+    await browser(0, "click", 'button[aria-controls="c3-room-settings"]');
+    await until("translated identity editor opens", () => evaluate(0, "!!document.querySelector('.c3-room-form')"), Boolean);
+    const bounds = await evaluate(0, `(() => { const form = document.querySelector('.c3-room-form').getBoundingClientRect();
+      return {left:form.left, right:form.right, width:innerWidth, scroll:document.documentElement.scrollWidth}; })()`);
+    assert(bounds.left >= 0 && bounds.right <= bounds.width && bounds.scroll <= bounds.width, JSON.stringify(bounds));
+    await browser(0, "screenshot", join(output, `identity-${lang}-${theme}-${vis ? "visual" : "text"}.png`));
+    await browser(0, "press", "Escape");
+  }
+  await evaluate(0, `(async () => { (await import('/src/client/ui/copy.ts')).setCopy({lang:'en',vis:false}); return true; })()`);
+  await browser(0, "click", 'button[aria-controls="c3-room-settings"]');
+  await browser(0, "find", "role", "button", "click", "--name", "Remove", "--exact");
+  await browser(0, "click", ".c3-room-form button[type=submit]");
+  await until("removing Browser image restores a preset", () => view(1), value => value.state.channel.rooms.find(item => item.id === room.id)?.icon === "couch");
+  for (const index of active) await assertNoError(index, "identity image editing");
+  await writeFile(join(output, "identity-result.json"), JSON.stringify({ passed: true, domain: true, nativeRoom: true,
+    browserRoom: true, reload: true, cancel: true, invalidImage: true, presetReplacement: true, narrowThemesAndLanguages: true }, null, 2));
+}
+
 async function roomsAndFiles() {
   await browser(0, "find", "role", "button", "click", "--name", "Create room", "--exact");
   await browser(0, "fill", ".c3-room-form input:not([type])", "Movie night");
@@ -1197,7 +1283,10 @@ try {
   }
   const roomId = initial[0].state.channel.rooms[0].id;
   assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
-  if (appOnly) {
+  if (identityOnly) {
+    await identityControls(roomId);
+    console.log(`Identity image acceptance passed; evidence: ${output}`);
+  } else if (appOnly) {
     await appRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,
       capturedScreen, playing, progressing, hook, output });
     console.log(`Linked App room acceptance passed; evidence: ${output}`);

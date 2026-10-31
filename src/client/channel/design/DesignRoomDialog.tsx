@@ -14,7 +14,7 @@ export function DesignRoomDialog({ copy, room, onClose, onSave }: {
   const [privateRoom, setPrivateRoom] = useState(room?.private ?? false);
   const [hidden, setHidden] = useState(room?.hidden ?? false);
   const [password, setPassword] = useState(room?.password ?? "");
-  const [identity, setIdentity] = useState<DesignIdentity>({ icon: room?.icon ?? "couch", image: room?.image });
+  const [identity, setIdentity] = useState<DesignIdentity>({ icon: room?.icon ?? "couch" });
   useEffect(() => {
     const element = dialog.current!;
     if (!element.open) element.showModal();
@@ -38,7 +38,7 @@ export function DesignRoomDialog({ copy, room, onClose, onSave }: {
         <span>{copy("房间名称", "Room name")}</span>
         <span className="lr-input"><input name="room-name" value={name} onChange={event => setName(event.currentTarget.value)} autoComplete="off" autoFocus required maxLength={64} placeholder={copy("比如，周末联机…", "Maybe, Weekend party…")} /></span>
       </label>
-      <DesignIdentityPicker copy={copy} value={identity} onChange={setIdentity} busy={imageBusy} onBusyChange={setImageBusy} />
+      <DesignIdentityPicker value={identity} onChange={setIdentity} busy={imageBusy} onBusyChange={setImageBusy} />
       <fieldset className="cd-access-field">
         <legend>{copy("谁可以进入", "Who can join")}</legend>
         <div className="lr-toggle cd-access-track">

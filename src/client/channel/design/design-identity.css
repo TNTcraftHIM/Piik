@@ -1,6 +1,1 @@
-.cd-identity-mark { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; vertical-align: middle; }
-.cd-identity-mark img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 25%; }
-.cd-identity-picker { border: 0; padding: 0; margin: 20px 0; min-width: 0; }
-.cd-identity-picker legend { padding: 0; margin-bottom: 10px; font-size: 12px; font-weight: 600; }
-.cd-identity-upload { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
-.cd-identity-error { margin-top: 5px; color: var(--danger); font-size: 11px; }
+.cd-create-dialog .c3-identity-picker { margin: 20px 0; }

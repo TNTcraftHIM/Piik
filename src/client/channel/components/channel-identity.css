@@ -1,3 +1,5 @@
+.c3-identity-mark { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; vertical-align: middle; }
+.c3-identity-mark img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 25%; }
 .c3-identity-name { display: grid; gap: 10px; min-width: 0; }
 .c3-identity-picker { min-width: 0; margin: 0; padding: 0; border: 0; }
 .c3-identity-picker legend { padding: 0; margin-bottom: 10px; font-size: 13px; }
@@ -6,3 +8,5 @@
 .c3-identity-options .lr-chip > span { font-size: 11px; line-height: 1.25; white-space: nowrap; }
 .c3-identity-form { display: grid; gap: 16px; }
 .c3-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.c3-identity-upload { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
+.c3-identity-picker .c3-identity-error { margin: 5px 0 0; color: var(--danger); font-size: 11px; }

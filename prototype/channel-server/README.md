@@ -179,10 +179,11 @@ conversation and selected screens in the middle, and a persistent domain-wide
 user list on the right. Narrow layouts navigate between room and user panes.
 It retains real roles, self-name editing, room controls, files, history, voice
 and multiple watched screens through the existing session and shared components.
-The domain owner can edit its name and preset icon beside the domain title.
+The domain owner can edit its name and icon beside the domain title.
 Room creation and settings share the same identity fields; the room owner or
-domain owner saves them at that room's runtime. Both surfaces use the same icon
-choices. Identity images remain a design study.
+domain owner saves them at that room's runtime. Both surfaces share preset icons
+and custom images. The browser crops images to a small square; saving retains
+them with the domain or room metadata, including after a restart.
 
 In the design studies, room creation and editing share one native dialog
 with conditional private options. Pencils beside the user, domain and room names
@@ -219,10 +220,9 @@ selected room and preserves its reading position when detached or returned.
 
 The composer supports the attachment button, file drop and image
 paste, with a draft preview before sending. Channel appearance and room creation
-share preset icons and custom image selection. These design-board changes stay
-in memory. The functional prototype uses the same preset icons, reaction
-controls, couch and room mini window; persistent identity images remain
-integration work.
+share the functional prototype's preset icons and custom image picker. These
+design-board changes stay in memory. The functional prototype persists its
+identity images and uses the same reaction controls, couch and room mini window.
 
 References for spatial hierarchy and viewing modes:
 [Discord's server introduction](https://discord.com/blog/starting-your-first-discord-server)
@@ -391,6 +391,7 @@ npm run typecheck
 node prototype/channel-server/run-browser-check.mjs --protocol
 node prototype/channel-server/run-browser-check.mjs
 node prototype/channel-server/run-browser-check.mjs --rooms
+node prototype/channel-server/run-browser-check.mjs --identity
 node prototype/channel-server/run-browser-check.mjs --lifecycle
 node prototype/channel-server/run-browser-check.mjs --hosts
 node prototype/channel-server/run-browser-check.mjs --base
