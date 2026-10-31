@@ -154,6 +154,34 @@ impl Plan {
         true
     }
 
+    pub fn needs_repair(&self, requested: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) -> bool {
+        connected.contains(&self.source)
+            && requested.iter().any(|child| {
+                *child != self.source
+                    && connected.contains(child)
+                    && !self.parents.contains_key(child)
+            })
+            && self.failed_parents.iter().any(|(child, parents)| {
+                !self.parents.contains_key(child)
+                    && connected.contains(child)
+                    && parents.iter().any(|parent| connected.contains(parent))
+            })
+    }
+
+    pub fn retry_required(&mut self, requested: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) {
+        if !self.needs_repair(requested, connected) {
+            return;
+        }
+        // Detached transit can block a required path too. Keep every installed
+        // parent's failure memory, including a healthy relay's failed shortcut.
+        self.failed_parents.retain(|child, parents| {
+            if !self.parents.contains_key(child) && connected.contains(child) {
+                parents.retain(|parent| !connected.contains(parent));
+            }
+            !parents.is_empty()
+        });
+    }
+
     pub fn can_shortcut(&self, child: Uuid) -> bool {
         self.parents
             .get(&child)
@@ -285,6 +313,12 @@ impl BaseTree {
     }
     pub fn root(&self) -> Uuid {
         self.plan.source
+    }
+    pub fn needs_repair(&self, demand: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) -> bool {
+        self.plan.needs_repair(demand, connected)
+    }
+    pub fn retry_required(&mut self, demand: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) {
+        self.plan.retry_required(demand, connected);
     }
     pub fn links(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
         self.plan
@@ -445,6 +479,32 @@ mod tests {
     }
 
     #[test]
+    fn required_repair_retains_a_healthy_relays_failed_shortcut() {
+        let available = set(&[1, 2, 3, 4]);
+        let mut plan = Plan::new(id(1));
+        let requested = set(&[2, 3]);
+        plan.reconcile(&requested, &available, &available, None);
+        plan.mark_ready(id(2), id(1), Readiness::Decoded);
+        plan.failed(id(1), id(3));
+        plan.reconcile(&requested, &available, &available, None);
+        assert_eq!(plan.parents[&id(3)], id(2));
+        plan.mark_ready(id(3), id(2), Readiness::Decoded);
+        let requested = set(&[2, 3, 4]);
+        plan.reconcile(&requested, &available, &available, None);
+        while let Some(parent) = plan.parents.get(&id(4)).copied() {
+            plan.failed(parent, id(4));
+            plan.reconcile(&requested, &available, &available, None);
+        }
+        assert!(plan.needs_repair(&requested, &available));
+        plan.retry_required(&requested, &available);
+        plan.reconcile(&requested, &available, &available, None);
+        assert_eq!(plan.parents[&id(4)], id(1));
+        assert_eq!(plan.parents[&id(3)], id(2));
+        assert!(!plan.can_shortcut(id(3)));
+        assert!(!plan.needs_repair(&requested, &available));
+    }
+
+    #[test]
     fn healthy_unwatch_rewatch_and_ancestor_loss_do_not_mark_a_leg_failed() {
         let mut plan = Plan::new(id(1));
         let available = set(&[1, 2, 3, 4]);
@@ -514,6 +574,19 @@ mod tests {
         base.state(id(2), id(4), true);
         base.state(id(4), id(2), true);
         let mut screen = Plan::new(id(3));
+        screen.reconcile(&set(&[4]), &available, &available, Some(&base));
+        assert_eq!(
+            screen.parents,
+            BTreeMap::from([(id(1), id(3)), (id(2), id(1)), (id(4), id(2))])
+        );
+        // Failure can belong to detached transit rather than the subscriber.
+        screen.failed(id(3), id(1));
+        screen.reconcile(&set(&[4]), &available, &available, Some(&base));
+        assert_eq!(screen.parents[&id(4)], id(3));
+        screen.failed(id(3), id(4));
+        screen.reconcile(&set(&[4]), &available, &available, Some(&base));
+        assert!(screen.parents.is_empty());
+        screen.retry_required(&set(&[4]), &available);
         screen.reconcile(&set(&[4]), &available, &available, Some(&base));
         assert_eq!(
             screen.parents,

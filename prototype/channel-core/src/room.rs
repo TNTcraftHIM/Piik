@@ -14,6 +14,8 @@ use uuid::Uuid;
 #[cfg(test)]
 use crate::publication::SCREEN_PREPARE_MS;
 
+const REQUIRED_REPAIR_MS: u64 = 5_000;
+
 #[derive(Clone, Default)]
 struct Activity {
     reading: bool,
@@ -30,6 +32,7 @@ pub struct RoomRuntime {
     activity: BTreeMap<Uuid, Activity>,
     publications: BTreeMap<Uuid, Publication>,
     base: Option<BaseTree>,
+    repair_at: Option<u64>,
     files: crate::file_room::FileRoom,
 }
 
@@ -50,6 +53,7 @@ impl RoomRuntime {
             activity: BTreeMap::new(),
             publications: BTreeMap::new(),
             base: None,
+            repair_at: None,
             files: Default::default(),
         }
     }
@@ -505,6 +509,11 @@ impl RoomRuntime {
     }
 
     pub fn reconcile(&mut self, endpoints: &BTreeMap<Uuid, Endpoint>, now: u64) {
+        let repair_due = self.repair_at.is_some_and(|deadline| deadline <= now);
+        if repair_due {
+            self.repair_at = None;
+        }
+        let mut needs_repair = false;
         let readable: BTreeSet<_> = endpoints
             .iter()
             .filter_map(|(session, endpoint)| {
@@ -555,7 +564,11 @@ impl RoomRuntime {
                     (endpoint.connected && readable.contains(session)).then_some(*session)
                 })
                 .collect();
+            if repair_due {
+                base.retry_required(&demand, &base_connected);
+            }
             base.reconcile(&demand, &readable, &base_connected);
+            needs_repair |= base.needs_repair(&demand, &base_connected);
         }
         for (id, publication) in &mut self.publications {
             publication.retain_sessions(endpoints);
@@ -563,6 +576,9 @@ impl RoomRuntime {
                 .iter()
                 .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
                 .collect();
+            if repair_due {
+                publication.retry_required(&subscribers, &connected);
+            }
             publication.reconcile(
                 &subscribers,
                 &available,
@@ -570,6 +586,13 @@ impl RoomRuntime {
                 self.base.as_ref(),
                 now,
             );
+            needs_repair |= publication.needs_repair(&subscribers, &connected);
+        }
+        if needs_repair {
+            self.repair_at
+                .get_or_insert(now.saturating_add(REQUIRED_REPAIR_MS));
+        } else {
+            self.repair_at = None;
         }
     }
 
@@ -577,6 +600,7 @@ impl RoomRuntime {
         self.publications
             .values()
             .filter_map(Publication::deadline)
+            .chain(self.repair_at)
             .min()
     }
 
@@ -704,6 +728,167 @@ mod tests {
             .unwrap();
         room.reconcile(&endpoints, 0);
         (room, endpoints)
+    }
+
+    #[test]
+    fn required_routes_recover_without_replacing_healthy_flows_or_endpoint_authority() {
+        let id = Uuid::from_u128;
+        for count in [2, 3] {
+            let mut endpoints: BTreeMap<_, _> = (1..=count)
+                .map(|n| {
+                    (
+                        id(n),
+                        Endpoint {
+                            member: crate::Member {
+                                user_id: id(n),
+                                participates: true,
+                                domain_owner: n == 1,
+                            },
+                            connected: true,
+                            signing_key: [0; 32],
+                        },
+                    )
+                })
+                .collect();
+            let mut room = RoomRuntime::new(
+                RoomState::new(
+                    "repair".into(),
+                    "Repair".into(),
+                    Default::default(),
+                    id(1),
+                    RoomAccess::Public,
+                    false,
+                    None,
+                )
+                .unwrap(),
+            );
+            room.set_host_session(id(1));
+            for (session, endpoint) in &endpoints {
+                room.browse(endpoint.member, *session, true).unwrap();
+            }
+            room.reconcile(&endpoints, 0);
+            for link in room.base_links().collect::<Vec<_>>() {
+                room.base_state(link.parent, link.child, true).unwrap();
+                room.base_state(link.child, link.parent, true).unwrap();
+            }
+            room.publish(endpoints[&id(1)].member, id(1), id(10), Kind::Screen, false)
+                .unwrap();
+            for n in 2..=count {
+                room.subscribe(endpoints[&id(n)].member, id(n), id(10), true)
+                    .unwrap();
+            }
+            room.reconcile(&endpoints, 0);
+            for flow in room.flows().collect::<Vec<_>>() {
+                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                    .unwrap();
+            }
+            room.reconcile(&endpoints, 1);
+            let old = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
+            let healthy = room.flows().find(|flow| flow.receiver == id(3));
+            let preparing = if count == 3 {
+                room.publish(endpoints[&id(3)].member, id(3), id(11), Kind::Screen, false)
+                    .unwrap();
+                room.subscribe(endpoints[&id(1)].member, id(1), id(11), true)
+                    .unwrap();
+                room.reconcile(&endpoints, 1);
+                Some(
+                    room.flows()
+                        .find(|flow| flow.publication_id == id(11))
+                        .unwrap(),
+                )
+            } else {
+                None
+            };
+            room.failed_pair(id(1), id(2));
+            room.reconcile(&endpoints, 2);
+            if count == 3 {
+                assert!(room
+                    .base_links()
+                    .any(|link| link.parent == id(3) && link.child == id(2)));
+                room.failed_pair(id(3), id(2));
+            }
+            room.reconcile(&endpoints, 3);
+            let deadline = room
+                .next_route_deadline()
+                .expect("required failed paths must have a repair wake");
+            assert_eq!(deadline, if count == 2 { 5_002 } else { 5_003 });
+            // Demand toggles cannot bypass or restart the room's cooldown.
+            for enabled in [false, true] {
+                room.subscribe(endpoints[&id(2)].member, id(2), id(10), enabled)
+                    .unwrap();
+                room.reconcile(&endpoints, 1_000);
+                assert_eq!(room.next_route_deadline(), Some(deadline));
+            }
+            room.reconcile(&endpoints, deadline - 1);
+            assert!(!room.base_links().any(|link| link.child == id(2)));
+            assert!(!room.flows().any(|flow| flow.receiver == id(2)));
+            room.reconcile(&endpoints, deadline);
+            assert!(room
+                .base_links()
+                .any(|link| link.parent == id(1) && link.child == id(2)));
+            let restored = room.flows().find(|flow| flow.receiver == id(2)).unwrap();
+            assert_ne!(restored.id, old.id);
+            assert_eq!(
+                room.next_route_deadline(),
+                Some(if preparing.is_some() {
+                    1 + SCREEN_PREPARE_MS
+                } else {
+                    deadline + SCREEN_PREPARE_MS
+                })
+            );
+            if let Some(healthy) = healthy {
+                assert!(room
+                    .flows()
+                    .any(|flow| flow.id == healthy.id && flow.selected));
+            }
+            let view = room.snapshot(endpoints[&id(2)].member, id(2)).unwrap();
+            assert!(view.room.reading && view.subscriptions.contains(&id(10)));
+            assert!(view
+                .publications
+                .iter()
+                .any(|p| p.id == id(10) && p.session_id == id(1)));
+            assert_eq!(
+                room.flow_state(old.id, id(2), id(1), FlowState::Decoded, deadline),
+                Err("unassigned_flow")
+            );
+            room.base_state(id(1), id(2), true).unwrap();
+            room.base_state(id(2), id(1), true).unwrap();
+            room.flow_state(restored.id, id(2), id(1), FlowState::Decoded, deadline + 1)
+                .unwrap();
+            if let Some(preparing) = preparing {
+                assert!(room.flows().any(|flow| flow.id == preparing.id));
+                room.flow_state(
+                    preparing.id,
+                    preparing.receiver,
+                    preparing.sender,
+                    FlowState::Decoded,
+                    deadline + 1,
+                )
+                .unwrap();
+            }
+            room.reconcile(&endpoints, deadline + 1);
+            assert_eq!(room.next_route_deadline(), None);
+            if count == 2 {
+                room.failed_pair(id(1), id(2));
+                room.reconcile(&endpoints, 10_000);
+                assert_eq!(room.next_route_deadline(), Some(15_000));
+                endpoints.get_mut(&id(2)).unwrap().connected = false;
+                room.reconcile(&endpoints, 10_001);
+                assert_eq!(room.next_route_deadline(), None);
+                endpoints.get_mut(&id(2)).unwrap().connected = true;
+                room.reconcile(&endpoints, 10_002);
+                assert_eq!(room.next_route_deadline(), Some(15_002));
+                room.subscribe(endpoints[&id(2)].member, id(2), id(10), false)
+                    .unwrap();
+                room.browse(endpoints[&id(2)].member, id(2), false).unwrap();
+                room.reconcile(&endpoints, 10_003);
+                assert_eq!(
+                    room.next_route_deadline(),
+                    None,
+                    "no demand owns no repair wake"
+                );
+            }
+        }
     }
 
     #[test]

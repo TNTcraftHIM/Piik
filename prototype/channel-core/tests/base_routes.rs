@@ -63,6 +63,88 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
 }
 
 #[test]
+fn required_repair_wakes_the_existing_host_and_renews_only_retired_transport() {
+    use piik_channel_core::host::HostAction;
+    for control_only in [false, true] {
+        let mut network = RoomNetwork::new();
+        let host = Uuid::new_v4();
+        let viewer = Uuid::new_v4();
+        let (source, _) = join(&mut network, host, None);
+        let (receiver, _) = join(&mut network, viewer, None);
+        let room = network.create(host, RoomAccess::Public, false);
+        browse(&mut network, viewer, &room, true);
+        let old = pair(&network, viewer, source, &room);
+        for connection in [host, viewer] {
+            command(
+                &mut network,
+                connection,
+                json!({"type":"base_state", "roomId":room, "pairId":old.id, "ready":true}),
+            );
+        }
+        let publication = publish(&mut network, host, &room, "screen");
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"subscribe", "publicationId":publication, "enabled":true}),
+        );
+        let old_flow = pair(&network, viewer, source, &room).incoming[0].id;
+        command(
+            &mut network,
+            viewer,
+            json!({"type":"flow_state", "pairId":old.id, "flowId":old_flow, "state":"decoded"}),
+        );
+        let failure = if control_only {
+            json!({"type":"base_state", "roomId":room, "pairId":old.id, "ready":false})
+        } else {
+            json!({"type":"link_state", "pairId":old.id, "state":"failed"})
+        };
+        network.command_at(viewer, failure, 200);
+        if control_only {
+            assert_eq!(network.state(viewer).pairs[0].id, old.id);
+            assert!(network.state(viewer).pairs[0].rooms.is_empty());
+        } else {
+            assert!(network.state(viewer).pairs.is_empty());
+        }
+        assert!(network.authority.expire(5_199).events.is_empty());
+        let wake = network.authority.expire(5_200);
+        assert!(wake.events.iter().any(|(_, event)| matches!(event, Event::HostInput { input, .. } if matches!(input.action, HostAction::RouteWake))));
+        assert!(
+            network.authority.expire(5_200).events.is_empty(),
+            "only one wake may be outstanding"
+        );
+        network.deliver(wake);
+        let restored = pair(&network, viewer, source, &room);
+        assert_eq!(restored.id == old.id, control_only);
+        assert_eq!(restored.incoming[0].id == old_flow, control_only);
+        assert!(network.state(viewer).subscriptions.contains(&publication));
+        assert!(network
+            .state(viewer)
+            .sessions
+            .iter()
+            .any(|session| session.id == receiver));
+        // A completion from the retired transport cannot retire the new attempt.
+        if !control_only {
+            network.command_at(
+                viewer,
+                json!({"type":"link_state", "pairId":old.id, "state":"failed"}),
+                5_201,
+            );
+            assert_eq!(pair(&network, viewer, source, &room).id, restored.id);
+        }
+        for connection in [host, viewer] {
+            network.command_at(
+                connection,
+                json!({"type":"base_state", "roomId":room, "pairId":restored.id, "ready":true}),
+                5_202,
+            );
+        }
+        network.command_at(viewer, json!({"type":"flow_state", "pairId":restored.id, "flowId":restored.incoming[0].id, "state":"decoded"}), 5_203);
+        assert!(network.authority.expire(30_000).events.is_empty());
+        assert_eq!(pair(&network, viewer, source, &room).id, restored.id);
+    }
+}
+
+#[test]
 fn room_participants_follow_personal_activity_and_clear_when_the_host_is_offline() {
     let mut network = RoomNetwork::new();
     let connections: Vec<_> = (0..5).map(|_| Uuid::new_v4()).collect();

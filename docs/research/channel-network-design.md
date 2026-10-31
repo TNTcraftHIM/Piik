@@ -378,6 +378,11 @@ A user needs an admitted path into the room tree, not a direct connection to
 every other user. Joining or repairing a tree uses mature ICE/STUN handling and
 the existing bounded retry principles. Reuse reachable participants as relays;
 do not add an all-pairs probe, full mesh or periodic topology rebalance.
+With unchanged authority and demand, an exhausted required path becomes eligible
+again after the room's five-second repair cooldown. The existing room wake-up
+schedules missing paths while retaining healthy branches, their failed-shortcut
+history and running screen-operation deadlines. Required leases on a retired
+physical pair receive a new pair identity.
 
 App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to

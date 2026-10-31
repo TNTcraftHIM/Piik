@@ -64,6 +64,14 @@ impl Publication {
             .retain(|child| endpoints.contains_key(child));
     }
 
+    pub fn needs_repair(&self, requested: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) -> bool {
+        self.plan.needs_repair(requested, connected)
+    }
+
+    pub fn retry_required(&mut self, requested: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) {
+        self.plan.retry_required(requested, connected);
+    }
+
     pub fn transfer_source(&mut self, session: Uuid) {
         self.operation = None;
         if self.info.session_id == session {
