@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -24,6 +25,7 @@ import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
 import { SERVER_PACKAGE_TARGETS } from "./server-package-targets.mjs";
+import { buildChannelWeb } from "./build-channel-web.mjs";
 
 // A Windows build ships the same archive shape with an `.exe` binary, so the
 // binary name, the manifest allowlist and the archive allowlist all follow the
@@ -32,15 +34,13 @@ function serverBinaryName(target) {
   return target.goos === "windows" ? "piik-server.exe" : "piik-server";
 }
 
-// Everything the archive may contain. deploy/release-server.sh enforces the same
-// four names in its entry allowlist and manifest pattern; both change together.
+// deploy/release-server.sh enforces the same executable, notices and web tree.
 function runtimePaths(target) {
   return ["REVISION", "LICENSE", "THIRD-PARTY-NOTICES.txt", serverBinaryName(target)];
 }
-
-// The Vite output the server embeds. Its index.html names the main asset the
-// deployment postflight proves over HTTP.
-const WEB_DIST = "internal/server/webassets/dist";
+function runtimePathAllowed(path, paths) {
+  return paths.includes(path) || path.startsWith("web/");
+}
 
 function fail(message) {
   throw new Error(message);
@@ -52,24 +52,13 @@ function run(command, args, cwd, environment = process.env) {
     env: environment,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {
     fail(`${command} failed: ${(result.stderr || result.stdout).trim()}`);
   }
   return result.stdout.trim();
-}
-
-function buildWebAssets(cwd) {
-  if (process.platform === "win32") {
-    run(
-      process.env.ComSpec || "cmd.exe",
-      ["/d", "/s", "/c", "npm run build:web"],
-      cwd,
-    );
-    return;
-  }
-  run("npm", ["run", "build:web"], cwd);
 }
 
 function sha256(path) {
@@ -115,7 +104,7 @@ function regularFiles(root) {
 function recordsFor(root, paths) {
   return regularFiles(root).map((absolute) => {
     const path = normalizedRelative(root, absolute);
-    if (!paths.includes(path)) fail(`Unexpected packaged file: ${path}`);
+    if (!runtimePathAllowed(path, paths)) fail(`Unexpected packaged file: ${path}`);
     return { path, size: statSync(absolute).size, sha256: sha256(absolute) };
   });
 }
@@ -148,16 +137,14 @@ function validateArchiveEntries(entries, paths) {
     ) {
       fail(`Invalid archive entry: ${rawEntry}`);
     }
-    if (!paths.includes(entry)) fail(`Unexpected archive entry: ${rawEntry}`);
+    if (entry !== "web" && !runtimePathAllowed(entry, paths)) fail(`Unexpected archive entry: ${rawEntry}`);
   }
 }
 
-// mainAsset is the hashed entry script Vite named in the embedded index.html.
-// The deployment postflight proves it over HTTP, so it is read from the same
-// build the binary embeds rather than from the archive.
+// The deployment postflight proves the packaged frontend's entry over HTTP.
 function mainAssetOf(distributionRoot) {
   const html = readFileSync(join(distributionRoot, "index.html"), "utf8");
-  const match = html.match(/<script[^>]+src="\/(assets\/index-[A-Za-z0-9_-]+\.js)"/);
+  const match = html.match(/<script[^>]+src="(?:\.?\/)?(assets\/index-[A-Za-z0-9_-]+\.js)"/);
   if (!match) fail("Built Web HTML has no unique main asset");
   if (!existsSync(join(distributionRoot, ...match[1].split("/")))) {
     fail("Built Web main asset is missing");
@@ -165,7 +152,7 @@ function mainAssetOf(distributionRoot) {
   return match[1];
 }
 
-const { values, positionals } = parseArgs({ allowPositionals: true, options: {
+const { values, positionals } = parseArgs({ args: process.argv.slice(2), allowPositionals: true, options: {
   arch: { type: "string", default: "amd64" },
   os: { type: "string", default: "linux" },
   "container-image": { type: "string" },
@@ -183,6 +170,11 @@ if (containerImage && target.goos !== "linux") {
 if (containerImage && !/^[a-z0-9][a-z0-9._/:+-]*$/.test(containerImage)) {
   fail("Container image tag is invalid");
 }
+const nativeOS = process.platform === "win32" ? "windows" : process.platform;
+const nativeArch = process.arch === "x64" ? "amd64" : process.arch;
+if (target.goos !== nativeOS || target.goarch !== nativeArch) {
+  fail(`Build ${target.rustTarget} on its native platform and architecture.`);
+}
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
 const outputRoot = resolve(process.cwd(), positionals[0]);
@@ -194,13 +186,12 @@ if (existsSync(outputRoot)) fail("Output directory must not already exist");
 
 const revision = assertCleanRevision(repositoryRoot);
 const version = buildVersion(repositoryRoot, revision);
-process.env.VITE_PIIK_VERSION = version;
-process.env.VITE_PIIK_REVISION = revision;
+const cargoTarget = resolve(process.env.CARGO_TARGET_DIR ?? join(repositoryRoot, "build", "rust-target"));
 
 if (!existsSync(join(repositoryRoot, "LICENSE"))) fail("Missing release input: LICENSE");
-buildWebAssets(repositoryRoot);
+const web = buildChannelWeb(repositoryRoot, { version, revision, cargoTarget });
 assertCleanRevision(repositoryRoot, revision);
-const mainAsset = mainAssetOf(join(repositoryRoot, WEB_DIST));
+const mainAsset = mainAssetOf(web);
 
 const releaseId = revision.slice(0, 7);
 const temporaryRoot = resetBuildWorkspace(repositoryRoot, "server-package", "assembly");
@@ -211,28 +202,19 @@ let outputOwned = false;
 try {
   mkdirSync(runtimeRoot, { recursive: true });
   copyFileSync(join(repositoryRoot, "LICENSE"), join(runtimeRoot, "LICENSE"));
-  const goCommand = process.env.PIIK_GO?.trim() || "go";
   const binaryName = serverBinaryName(target);
   const serverPath = join(runtimeRoot, binaryName);
-  run(goCommand, [
-    "build",
-    "-trimpath",
-    "-ldflags",
-    `-s -w -X main.BuildRevision=${revision} -X main.BuildVersion=${version}`,
-    "-o",
-    serverPath,
-    "./cmd/piik-server",
-  ], repositoryRoot, {
-    ...process.env,
-    GOOS: target.goos,
-    GOARCH: target.goarch,
-    CGO_ENABLED: "0",
-  });
+  run("cargo", ["+1.91.0", "build", "--locked", "--release", "--no-default-features",
+    "--manifest-path", join(repositoryRoot, "prototype", "channel-server", "Cargo.toml"),
+    "--target", target.rustTarget, "--bin", "piik-channel-prototype"], repositoryRoot,
+  { ...process.env, CARGO_TARGET_DIR: cargoTarget, PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision });
+  copyFileSync(join(cargoTarget, target.rustTarget, "release",
+    target.goos === "windows" ? "piik-channel-prototype.exe" : "piik-channel-prototype"), serverPath);
+  cpSync(web, join(runtimeRoot, "web"), { recursive: true });
   if (target.goos !== "windows") chmodSync(serverPath, 0o755);
   writeServerLicenseNotices(
     repositoryRoot,
     join(runtimeRoot, "THIRD-PARTY-NOTICES.txt"),
-    goCommand,
     target,
   );
   assertCleanRevision(repositoryRoot, revision);

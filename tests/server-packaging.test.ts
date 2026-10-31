@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 
 const source = vi.hoisted(() => ({
-  revision: "a".repeat(40), workspace: "", scenario: "", containerRead: false,
+  revision: "a".repeat(40), workspace: "", web: "", scenario: "", containerRead: false,
 }));
 
 // Keep the packager's archive/descriptor/export flow real while replacing
@@ -18,35 +18,32 @@ vi.mock("node:child_process", async (original) => ({
       ? " M deploy/container/Dockerfile\n" : "";
     throw new Error(`Unexpected Git observation: ${args.join(" ")}`);
   },
-  spawnSync: (command: string, args: string[]) => {
+  spawnSync: (command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => {
     let stdout = "";
     if (command === "docker") {
       source.containerRead = true;
       if (source.scenario === "docker-failure") return { status: 1, stderr: "container failed" };
-    } else if (args[0] === "build") {
-      writeFileSync(args[args.indexOf("-o") + 1]!, "fixture Server");
+    } else if (command === "cargo") {
+      expect(args).toContain("--no-default-features");
+      expect(args).not.toContain("--features");
+      expect(args[args.indexOf("--bin") + 1]).toBe("piik-channel-prototype");
+      const binary = join(options.env.CARGO_TARGET_DIR!, args[args.indexOf("--target") + 1]!, "release");
+      mkdirSync(binary, { recursive: true });
+      writeFileSync(join(binary, "piik-channel-prototype"), "fixture Server");
     } else if (args[0] === "-czf") {
       writeFileSync(args[1]!, "fixture archive");
       if (source.scenario === "archive-failure") return { status: 1, stderr: "archive interrupted" };
     } else if (args[0] === "-tzf") {
-      stdout = "LICENSE\nREVISION\nTHIRD-PARTY-NOTICES.txt\npiik-server\n";
+      stdout = "LICENSE\nREVISION\nTHIRD-PARTY-NOTICES.txt\npiik-server\nweb/\nweb/index.html\nweb/assets/\nweb/assets/index-fixture.js\nweb/adapter.wasm\n";
     } else if (args[0] === "-xzf") {
       cpSync(join(source.workspace, "runtime"), args[args.indexOf("-C") + 1]!, { recursive: true });
-    } else if (!args.join(" ").includes("build:web")) {
+    } else {
       throw new Error(`Unexpected build operation: ${command} ${args.join(" ")}`);
     }
     return { status: 0, stdout, stderr: "" };
   },
 }));
-vi.mock("node:fs", async (original) => {
-  const fs = await original<typeof import("node:fs")>();
-  return {
-    ...fs,
-    readFileSync: (...args: Parameters<typeof fs.readFileSync>) => String(args[0]).replaceAll("\\", "/").endsWith("/webassets/dist/index.html")
-      ? '<script src="/assets/index-fixture.js"></script>' : fs.readFileSync(...args),
-    existsSync: (path: Parameters<typeof fs.existsSync>[0]) => String(path).endsWith("index-fixture.js") || fs.existsSync(path),
-  };
-});
+vi.mock("../scripts/build-channel-web.mjs", () => ({ buildChannelWeb: () => source.web }));
 vi.mock("../scripts/build-workspace.mjs", async (original) => ({
   ...await original<typeof import("../scripts/build-workspace.mjs")>(),
   resetBuildWorkspace: () => { mkdirSync(source.workspace); return source.workspace; },
@@ -65,9 +62,16 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
     const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     vi.stubEnv("VITE_PIIK_VERSION", "development");
     vi.stubEnv("VITE_PIIK_REVISION", "");
+    vi.stubEnv("CARGO_TARGET_DIR", join(root, "cargo"));
+    vi.stubGlobal("process", { ...process, platform: "linux", arch: "x64" });
     source.workspace = join(root, "workspace");
     source.scenario = scenario;
     source.containerRead = false;
+    source.web = join(root, "web");
+    mkdirSync(join(source.web, "assets"), { recursive: true });
+    writeFileSync(join(source.web, "index.html"), '<script src="./assets/index-fixture.js"></script>');
+    writeFileSync(join(source.web, "assets", "index-fixture.js"), source.revision);
+    writeFileSync(join(source.web, "adapter.wasm"), "fixture WASM");
     try {
       if (scenario === "existing") {
         mkdirSync(output);
@@ -80,6 +84,9 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
         await packaging;
         const descriptor = JSON.parse(readFileSync(join(output, "piik-aaaaaaa.release.json"), "utf8"));
         expect(descriptor.revision).toBe(source.revision);
+        expect(descriptor.fileCount).toBe(7);
+        expect(descriptor.mainAsset).toBe("assets/index-fixture.js");
+        expect(readFileSync(join(output, descriptor.manifest), "utf8")).toContain("web/adapter.wasm");
         expect(existsSync(join(output, descriptor.artifact))).toBe(true);
       } else if (scenario === "existing") {
         await expect(packaging).rejects.toThrow("must not already exist");
@@ -96,6 +103,7 @@ it.each(["clean", "dirty", "revision", "docker-failure", "archive-failure", "exi
       process.argv = previousArguments;
       stdout.mockRestore();
       vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
       rmSync(root, { recursive: true, force: true });
     }
   },

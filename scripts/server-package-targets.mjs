@@ -1,8 +1,8 @@
 // Keep the published x64 archive name; additional architectures are explicit.
-// A Windows target ships the same four runtime files with an `.exe` binary and a
+// A Windows target ships the same runtime tree with an `.exe` binary and a
 // ZIP container, so `--os windows` selects it without touching the Linux names.
 export const SERVER_PACKAGE_TARGETS = [
-  { id: "server", goos: "linux", goarch: "amd64", suffix: "" },
-  { id: "server-linux-arm64", goos: "linux", goarch: "arm64", suffix: "-linux-arm64" },
-  { id: "server-windows-amd64", goos: "windows", goarch: "amd64", suffix: "-windows-amd64" },
+  { id: "server", goos: "linux", goarch: "amd64", rustTarget: "x86_64-unknown-linux-gnu", suffix: "" },
+  { id: "server-linux-arm64", goos: "linux", goarch: "arm64", rustTarget: "aarch64-unknown-linux-gnu", suffix: "-linux-arm64" },
+  { id: "server-windows-amd64", goos: "windows", goarch: "amd64", rustTarget: "x86_64-pc-windows-msvc", suffix: "-windows-amd64" },
 ];
