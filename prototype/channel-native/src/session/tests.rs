@@ -20,7 +20,7 @@ async fn pending_capture_ends_with_its_room_and_retires_a_late_publication() {
                 json!({
                     "id":id,"name":id,"icon":"couch","creatorId":user,"access":"public","hidden":false,
                     "hasPassword":false,"authorized":true,"canManage":true,"available":true,
-                    "reading":false,"capabilities":{"attachments":false},
+                    "reading":false,"participantSessionIds":[],"capabilities":{"attachments":false},
                     "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}
                 })
             };

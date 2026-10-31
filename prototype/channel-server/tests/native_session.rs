@@ -788,7 +788,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
             .command(
                 browser,
                 json!({"type":"host_register","room":{
-                    "id":format!("reserved-{index}"),"name":format!("Reserved {index}"),
+                    "id":format!("reserved-{index}"),"name":format!("Reserved {index}"),"icon":"couch",
                     "creatorId":user,"access":"public","hidden":false,"hasPassword":false,
                 }}),
             )
