@@ -4,7 +4,7 @@ use crate::{
     file::Files,
     media::{
         supported, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source,
-        SourceFeed, SourceOrigin, TrackKey, H264_RELAY_PROFILE, VIDEO_PACKETS,
+        SourceFeed, SourceOrigin, TrackKey, H264_RELAY_PROFILE,
     },
 };
 use anyhow::{anyhow, Context, Result};
@@ -767,7 +767,6 @@ fn builder(
         Slot::Pacer,
         PacerBuilder::new()
             .with_target_bitrate(300_000.0)
-            .with_queue_limit(VIDEO_PACKETS)
             .build(),
     )
     .with(Slot::Custom(20_000), feedback)
