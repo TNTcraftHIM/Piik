@@ -44,7 +44,7 @@ Native endpoint and routing model, preserving its original presentation clock.
 Optional source sound uses WASAPI and a Rust Opus encoder, retaining independent
 stereo channels. The selecting page owns both captures independently of App room hosting.
 The macOS ScreenCaptureKit/VideoToolbox adapter uses that same producer and
-App path. Native and App pass Apple SDK builds; native device acceptance remains open.
+App path.
 Linux uses that same App path through a Portal-owned PipeWire source, independent
 GStreamer hardware encoders and optional system-output sound. Server forwarding
 builds without the desktop capture dependencies. Linux RemoteDesktop/EIS input
