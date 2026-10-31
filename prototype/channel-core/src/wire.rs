@@ -309,6 +309,7 @@ pub struct Room {
     pub can_manage: bool,
     pub available: bool,
     pub reading: bool,
+    pub participant_session_ids: Vec<Uuid>,
     pub capabilities: RoomCapabilities,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub delivery: Option<RoomDelivery>,

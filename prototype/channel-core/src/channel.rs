@@ -789,10 +789,18 @@ impl Channel {
                 || view.room.creator_id != room.summary.creator_id
                 || view.publications.len() > 40
                 || view.voice.len() > 20
+                || view.room.participant_session_ids.len() > 20
+                || view.room.participant_session_ids.iter().any(|session| {
+                    !projection
+                        .views
+                        .get(session)
+                        .is_some_and(|v| v.room.authorized)
+                })
                 || view.subscriptions.len() > 40
                 || view.files.len() > HISTORY_WINDOW
                 || (!view.room.authorized
                     && (view.room.reading
+                        || !view.room.participant_session_ids.is_empty()
                         || !view.publications.is_empty()
                         || !view.voice.is_empty()
                         || !view.subscriptions.is_empty()

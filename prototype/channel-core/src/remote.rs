@@ -54,6 +54,7 @@ impl RemoteRoom {
                 view.subscriptions.clear();
                 view.room.available = false;
                 view.room.reading = false;
+                view.room.participant_session_ids.clear();
             }
         }
     }
@@ -120,6 +121,9 @@ impl RemoteRoom {
         if let Some(view) = self.projection.as_ref().and_then(|p| p.views.get(&session)) {
             let mut view = view.clone();
             view.room.available = available;
+            if !available {
+                view.room.participant_session_ids.clear();
+            }
             return Some(view);
         }
         let manager = member.domain_owner || member.user_id == self.summary.creator_id;
@@ -140,6 +144,7 @@ impl RemoteRoom {
                 can_manage: manager,
                 available: false,
                 reading: false,
+                participant_session_ids: Vec::new(),
                 capabilities: RoomCapabilities { attachments: false },
                 members: None,
             },

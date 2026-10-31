@@ -612,6 +612,11 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     assert!(initial.publications.is_empty());
     assert!(initial.pairs.is_empty());
     assert!(initial.voice.is_empty());
+    assert!(initial
+        .channel
+        .rooms
+        .iter()
+        .all(|room| room.participant_session_ids.is_empty()));
     assert!(!initial
         .channel
         .rooms

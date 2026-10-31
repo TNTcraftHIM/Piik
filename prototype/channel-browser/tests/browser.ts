@@ -4,7 +4,7 @@ import type { SignedConversationPacket } from "../../../src/client/channel/proto
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
 interface Output {
-  projection: { views: Record<string, { room: { canManage: boolean }; publications: unknown[] }> };
+  projection: { views: Record<string, { room: { canManage: boolean; participantSessionIds: string[] }; publications: unknown[] }> };
   reply: { result: { type: string; code?: string; key?: string } } | null;
   invitation: { accepted: boolean } | null;
 }
@@ -84,6 +84,9 @@ window.runBrowserRoomCheck = async () => {
     check(initial.reply?.result.type === "done", "browse confirms activity without reading history");
     check((await history()).messages.length === 0, "history is an explicit independent read");
     check(initial.projection.views[session].room.canManage, "room owner view comes from shared Rust");
+    check(initial.projection.views[session].room.participantSessionIds.join() === session
+      && initial.projection.views[peerSession].room.participantSessionIds.join() === session,
+    "shared Rust projects reading activity to every authorized view without inventing a seat for an idle endpoint");
     const privatePolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Hidden room", icon: "future-room_7", creatorId: owner.userId,
       access: "private", hidden: true });
     const privateHost = await BrowserRoomHost.open(database, privatePolicy);

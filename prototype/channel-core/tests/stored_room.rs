@@ -398,6 +398,10 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             .dispatch(input(owner, owner, |_| HostAction::Sync))
             .unwrap();
         assert!(!output.projection.views[&owner].room.reading);
+        assert!(output.projection.views[&owner]
+            .room
+            .participant_session_ids
+            .is_empty());
         assert!(output.projection.views[&owner].publications.is_empty());
         assert!(output.projection.base_links.is_empty());
         assert!(

@@ -92,6 +92,7 @@ impl RoomRuntime {
             subscriptions: Vec::new(),
         };
         if snapshot.room.authorized {
+            snapshot.room.participant_session_ids = self.personal_sessions().into_iter().collect();
             snapshot.files = self
                 .base
                 .as_ref()
@@ -153,6 +154,16 @@ impl RoomRuntime {
         self.activity
             .get(&session)
             .is_some_and(|activity| activity.reading)
+    }
+    fn personal_sessions(&self) -> BTreeSet<Uuid> {
+        self.activity
+            .iter()
+            .filter_map(|(session, activity)| {
+                (activity.reading || activity.voice.is_some() || !activity.watching.is_empty())
+                    .then_some(*session)
+            })
+            .chain(self.publications.values().map(|p| p.info.session_id))
+            .collect()
     }
     pub fn browse(
         &mut self,
@@ -494,17 +505,9 @@ impl RoomRuntime {
                 (endpoint.connected && available.contains(session)).then_some(*session)
             })
             .collect();
+        let mut demand = self.personal_sessions();
         if let Some(base) = &mut self.base {
-            let mut demand: BTreeSet<_> = self
-                .activity
-                .iter()
-                .filter_map(|(session, activity)| {
-                    (activity.reading || activity.voice.is_some() || !activity.watching.is_empty())
-                        .then_some(*session)
-                })
-                .collect();
             demand.extend(self.files.demand());
-            demand.extend(self.publications.values().map(|p| p.info.session_id));
             let base_connected = endpoints
                 .iter()
                 .filter_map(|(session, endpoint)| {
@@ -1068,6 +1071,14 @@ mod tests {
 
         let admitted = room.snapshot(viewer, viewer_session).unwrap();
         assert!(admitted.room.authorized);
+        assert_eq!(
+            admitted
+                .room
+                .participant_session_ids
+                .into_iter()
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from([owner_session, viewer_session])
+        );
         assert_eq!(admitted.publications.len(), 2);
         assert_eq!(admitted.voice.len(), 2);
         assert_eq!(
@@ -1079,6 +1090,7 @@ mod tests {
         let locked = room.snapshot(viewer, viewer_session).unwrap();
         assert!(!locked.room.authorized);
         assert!(!locked.room.can_manage);
+        assert!(locked.room.participant_session_ids.is_empty());
         assert!(locked.publications.is_empty());
         assert!(locked.voice.is_empty());
         assert!(locked.subscriptions.is_empty());

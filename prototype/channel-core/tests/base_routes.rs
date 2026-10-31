@@ -63,6 +63,105 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
 }
 
 #[test]
+fn room_participants_follow_personal_activity_and_clear_when_the_host_is_offline() {
+    let mut network = RoomNetwork::new();
+    let connections: Vec<_> = (0..5).map(|_| Uuid::new_v4()).collect();
+    let sessions: Vec<_> = connections
+        .iter()
+        .map(|c| join(&mut network, *c, None).0)
+        .collect();
+    let room = network.create(connections[0], RoomAccess::Public, false);
+    let participants = |network: &RoomNetwork| {
+        network
+            .state(connections[1])
+            .channel
+            .rooms
+            .iter()
+            .find(|r| r.id == room)
+            .unwrap()
+            .participant_session_ids
+            .iter()
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    assert!(
+        participants(&network).is_empty(),
+        "hosting alone is not personal activity"
+    );
+    browse(&mut network, connections[1], &room, true);
+    command(
+        &mut network,
+        connections[2],
+        json!({
+            "type":"voice", "roomId":room, "joined":true, "muted":true, "deafened":true
+        }),
+    );
+    let publication = publish(&mut network, connections[3], &room, "screen");
+    command(
+        &mut network,
+        connections[4],
+        json!({
+            "type":"subscribe", "publicationId":publication, "enabled":true
+        }),
+    );
+    assert_eq!(
+        participants(&network),
+        sessions[1..].iter().copied().collect()
+    );
+    browse(&mut network, connections[1], &room, false);
+    voice(&mut network, connections[2], &room, false);
+    assert_eq!(
+        participants(&network),
+        sessions[3..].iter().copied().collect()
+    );
+    command(
+        &mut network,
+        connections[3],
+        json!({"type":"unpublish", "publicationId":publication}),
+    );
+    assert!(
+        participants(&network).is_empty(),
+        "retiring a publication also retires its watching activity"
+    );
+
+    // The room host has its own authenticated access, without needing a seat.
+    assert!(network
+        .peer_request(
+            connections[0],
+            &room,
+            ConversationCommand::Interaction {
+                reaction: "wave".into(),
+                target_user_id: None,
+            }
+        )
+        .result
+        .is_ok());
+    assert!(
+        participants(&network).is_empty(),
+        "interaction cooldown is not personal activity"
+    );
+    browse(&mut network, connections[1], &room, true);
+    assert_eq!(
+        participants(&network),
+        std::collections::BTreeSet::from([sessions[1]])
+    );
+    let effects = network.authority.disconnect(connections[0], 200);
+    network.deliver(effects);
+    assert!(
+        participants(&network).is_empty(),
+        "an unavailable room has no live participant projection"
+    );
+    let effects = network
+        .authority
+        .expire(200 + piik_channel_core::RECOVERY_MS);
+    network.deliver(effects);
+    assert!(
+        participants(&network).is_empty(),
+        "retired host projection stays empty"
+    );
+}
+
+#[test]
 fn input_registration_is_private_and_follows_only_the_committed_picture() {
     use piik_channel_core::input::{self, InputFrame};
     use std::collections::BTreeMap;
@@ -672,6 +771,18 @@ fn voice_uses_only_mutually_ready_tree_paths_and_non_listeners_can_forward_both_
         );
     }
     browse(&mut network, c, &room, false);
+    assert!(
+        !network
+            .state(c)
+            .channel
+            .rooms
+            .iter()
+            .find(|r| r.id == room)
+            .unwrap()
+            .participant_session_ids
+            .contains(&cs),
+        "media transit does not create a seat"
+    );
     assert_eq!(
         pair(&network, c, bs, &room).id,
         cb.id,
@@ -910,6 +1021,18 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     let lease = pair(&network, viewer, host_session, &room).id;
     browse(&mut network, source, &room, false);
     browse(&mut network, viewer, &room, false);
+    assert!(
+        network
+            .state(viewer)
+            .channel
+            .rooms
+            .iter()
+            .find(|r| r.id == room)
+            .unwrap()
+            .participant_session_ids
+            .is_empty(),
+        "active file delivery does not create seats"
+    );
     assert_eq!(pair(&network, viewer, host_session, &room).id, lease);
     let effects = network.authority.disconnect(source, 100);
     network.deliver(effects);
