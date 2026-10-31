@@ -198,14 +198,15 @@ export function ChannelPreviewPage() {
               home={{ couch: couchSlot, conversation: conversationSlot, voice: voiceSlot }}
               couch={room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}
                 floating={toolSurface.open} selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
-              conversation={room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
+              conversation={<>{room && !room.authorized && <ChannelRoomEntry key={room.id} channel={channel} room={room} />}
+                <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
                 users={state?.users ?? []} selfUserId={self?.id ?? null} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
-                canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
-                attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}
+                canSend={connected && !!room?.authorized && room.available && can("chat")} sending={busy("chat", roomId)}
+                attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.authorized && room.available}
                 history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
                 onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
                 isReactionPending={seq => busy(`reaction:${roomId}:${seq}`)} onReaction={channel.setMessageReaction}
-                onSend={channel.sendMessage} floating={toolSurface.open} hidden={!toolSurface.open && visibleScreens.length > 0 && !chatOpen} />}
+                onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !chatOpen)} /></>}
               voice={<ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />} />
             {room?.canManage && <ChannelRoomControls key={room.id} channel={channel} room={room} />}
             {visibleScreens.length > 0 && !toolSurface.open && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
