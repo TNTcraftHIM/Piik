@@ -38,22 +38,31 @@ beforeEach(() => {
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
 
-async function setup(window = 1000, read = true, hash = "") {
+async function setup(window = 1000, read = true, hash = "", readyInteractions = true) {
   vi.stubGlobal("location", new URL(`https://channel.test/__channel-preview${hash ? `#${hash}` : ""}`));
   vi.stubGlobal("localStorage", { getItem: () => null, setItem: () => {} });
   vi.stubGlobal("WebSocket", ChannelSocket);
   const session = new ChannelSession();
   type PeerRequest = Extract<ChannelCommand, { type: "chat" | "history" }> & { requestId: string };
+  type InteractionRequest = Extract<ChannelCommand, { type: "interaction_ready" | "interaction" }> & { requestId: string };
   const sent: PeerRequest[] = [], pending: PeerRequest[] = [];
+  const interactions: InteractionRequest[] = [];
   vi.spyOn(ChannelConversation.prototype, "send").mockImplementation(async (command, requestId) => {
+    if (command.type === "interaction_ready" || command.type === "interaction") {
+      const request = { ...command, requestId };
+      interactions.push(request);
+      if (readyInteractions && command.type === "interaction_ready") queueMicrotask(() => peer.reply(request,
+        { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "heart", "future-decoration"] }));
+      return;
+    }
     const request = { ...command, requestId };
     sent.push(request); pending.push(request);
   });
   const deliver = (reply: ConversationReply) => (session as unknown as { receiveConversation(value: ConversationReply): void }).receiveConversation(reply);
   const peer = {
-    sent,
+    sent, interactions,
     async next() { await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0)); return pending.shift()!; },
-    reply(request: PeerRequest, record: ConversationReply["record"]) {
+    reply(request: PeerRequest | InteractionRequest, record: ConversationReply["record"]) {
       deliver({ roomId: request.roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: request.requestId, record });
     },
     page(request: PeerRequest, messages: ChannelMessage[], hasMore = false, oldestSeq: number | null = 1) {
@@ -92,6 +101,99 @@ async function setup(window = 1000, read = true, hash = "") {
 }
 
 const message = (seq: number) => ({ id: `message-${seq}`, seq, userId: "self", text: `Hello ${seq}`, time: seq, attachments: [] });
+
+test("room interactions reuse their original acknowledgement and user identity without chat or media permission", async () => {
+  vi.useFakeTimers();
+  const { session, socket, peer } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.ownerId = "friend-user-1234";
+    state.users.push({ id: "friend-user-1234", name: "Friend", roles: [] });
+    socket.receive({ type: "state", state });
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.get("first")?.getSnapshot().ready).toBe(true));
+    const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
+    expect(interaction.getSnapshot()).toMatchObject({ peerId: "self", reactionIds: ["wave", "heart"] });
+    expect(interaction.send({ kind: "reaction", reaction: "heart", targetPeerId: "friend-user-1234" })).toBe(true);
+    const request = peer.interactions.at(-1)!;
+    expect(request).toEqual({ type: "interaction", roomId: "first", reaction: "heart", targetUserId: "friend-user-1234", requestId: interaction.getSnapshot().pending!.requestId });
+    expect(session.getSnapshot().pending.size).toBe(0);
+    expect(socket.sent.some(command => command.type === "interaction")).toBe(false);
+    peer.reply(request, { type: "interaction", id: "future", occurredAt: Date.now(), senderUserId: "self", reaction: "future-decoration" });
+    expect(interaction.getSnapshot().pending?.requestId).toBe(request.requestId);
+    expect(interaction.getSnapshot().reactions).toEqual([]);
+    peer.reply(request, { type: "interaction", id: "confirmed", occurredAt: Date.now(), senderUserId: "self", reaction: "heart", targetUserId: "friend-user-1234" });
+    expect(interaction.getSnapshot()).toMatchObject({ pending: null, confirmed: {
+      sender: { peerId: "self", displayName: "Me" }, payload: { kind: "reaction", reaction: "heart", targetPeerId: "friend-user-1234" },
+    } });
+    expect(interaction.send({ kind: "reaction", reaction: "wave" })).toBe(false);
+    vi.advanceTimersByTime(800);
+    expect(interaction.send({ kind: "reaction", reaction: "wave" })).toBe(true);
+    peer.reply(peer.interactions.at(-1)!, { type: "error", code: "rate_limited" });
+    expect(interaction.getSnapshot()).toMatchObject({ pending: null, error: "rate-limited" });
+    expect(session.getSnapshot().error).toBeNull();
+    vi.advanceTimersByTime(2400);
+    expect(interaction.getSnapshot().reactions).toEqual([]);
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([]);
+    expect(interaction.send({ kind: "reaction", reaction: "wave" })).toBe(true);
+    socket.close();
+    expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(interaction);
+    expect(interaction.getSnapshot()).toMatchObject({ ready: false, pending: null, error: "unconfirmed", reactions: [] });
+    session.reconnect();
+    const resumed = ChannelSocket.current;
+    await resumed.onopen?.();
+    resumed.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    const browse = resumed.sent.findLast(command => command.type === "browse" && command.active)!;
+    resumed.receive({ type: "ack", requestId: browse.requestId });
+    peer.page(await peer.next(), [], false, null);
+    await vi.waitFor(() => expect(interaction.getSnapshot().ready).toBe(true));
+    expect(session.getSnapshot().interactionsByRoom.get("first")).toBe(interaction);
+    expect(interaction.send({ kind: "reaction", reaction: "wave" })).toBe(true);
+    expect(peer.interactions.at(-1)?.requestId).toBe(interaction.getSnapshot().pending?.requestId);
+    session.browse("second");
+    expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
+    expect(interaction.getSnapshot()).toMatchObject({ ready: false, pending: null, peerId: null });
+  } finally { session.close(); }
+});
+
+test("interaction readiness follows read admission and existing peer readiness, then clears with room availability", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket, peer } = await setup(1000, false, "", false);
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].delivery!.nextHops = {};
+    socket.receive({ type: "state", state });
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    await Promise.resolve(); await Promise.resolve();
+    expect(peer.interactions).toEqual([]);
+    expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
+    const send = vi.mocked(ChannelConversation.prototype.send), original = send.getMockImplementation()!;
+    let attempts = 0;
+    send.mockImplementation(async (command, requestId) => {
+      if (command.type === "interaction_ready" && ++attempts === 1) throw new Error("peer_data_unavailable");
+      return original(command, requestId);
+    });
+    state.channel.rooms[0].delivery!.nextHops = { host: "host" };
+    state.pairs = [{ id: "room-base", peerId: "host", rooms: ["first"], outgoing: [], incoming: [] }];
+    socket.receive({ type: "state", state });
+    await vi.waitFor(() => expect(attempts).toBe(1));
+    await vi.waitFor(() => expect(session.getSnapshot().interactionsByRoom.size).toBe(0));
+    RoomPeerConnection.instances[0].connected();
+    await vi.waitFor(() => expect(attempts).toBe(2));
+    const request = peer.interactions.at(-1)!;
+    expect(request.type).toBe("interaction_ready");
+    peer.reply(request, { type: "interaction_ready", serverTime: Date.now(), reactionIds: ["wave", "future-decoration"] });
+    const interaction = session.getSnapshot().interactionsByRoom.get("first")!;
+    expect(interaction.getSnapshot()).toMatchObject({ ready: true, reactionIds: ["wave"] });
+    state.channel.rooms[0].available = false;
+    socket.receive({ type: "state", state });
+    expect(session.getSnapshot().interactionsByRoom.size).toBe(0);
+    peer.reply(request, { type: "interaction", id: "late", occurredAt: Date.now(), senderUserId: "self", reaction: "wave" });
+    expect(interaction.getSnapshot().reactions).toEqual([]);
+    expect(interaction.getSnapshot().ready).toBe(false);
+  } finally { session.close(); }
+});
 
 test("domain and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();

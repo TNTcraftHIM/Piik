@@ -12,7 +12,7 @@ interface ConversationOptions {
   reply(reply: ConversationReply): void;
 }
 
-/** Browser I/O for the shared Rust conversation protocol. The session owns requests. */
+/** Browser I/O for the shared Rust conversation protocol. Callers own requests. */
 export class ChannelConversation {
   private identity: Promise<{ runtime: Runtime; signer: SessionSigner }> | undefined;
   constructor(private options: ConversationOptions) {}
@@ -39,7 +39,7 @@ export class ChannelConversation {
     return new TextDecoder().decode(runtime.encode_control(JSON.stringify({ kind: "file", body: JSON.parse(control) })));
   }
 
-  async send(command: Extract<ChannelCommand, { type: "chat" | "history" }>, requestId: string): Promise<void> {
+  async send(command: Extract<ChannelCommand, { type: "chat" | "history" | "interaction_ready" | "interaction" }>, requestId: string): Promise<void> {
     const { runtime, signer } = await this.ready();
     const { state, sessionId, connected } = this.options.context();
     if (!connected || !sessionId) throw new Error("disconnected");
@@ -104,6 +104,8 @@ export class ChannelConversation {
           const live: ConversationReply = { ...reply, recipient, record: { type: "live_message", message: reply.record.message } };
           broadcasts.push(live);
         }
+      } else if (reply.record.type === "interaction") {
+        for (const recipient of await host.currentReaders()) if (recipient !== reply.recipient) broadcasts.push({ ...reply, recipient });
       }
     }
     await Promise.allSettled([

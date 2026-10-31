@@ -5,6 +5,7 @@ import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlSt
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
+import type { RoomInteractionSession } from "../lib/room-interactions";
 
 export interface ChannelScreenInput {
   flowId: string;
@@ -16,6 +17,7 @@ export interface ChannelScreenInput {
 export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export interface ChannelView {
+  interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
   inputVolume: number;
   listeningVolume: number;
   appConnected: boolean;

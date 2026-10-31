@@ -81,6 +81,8 @@ export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" }> | Extr
 export interface SignedConversationPacket { sender: string; payload: string; signature: number[]; remainingHops: number }
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:
+  | { type: "interaction_ready"; serverTime: number; reactionIds: string[] }
+  | { type: "interaction"; id: string; occurredAt: number; senderUserId: string; reaction: string; targetUserId?: string }
   | { type: "confirmed"; message: ChannelMessage; inserted: boolean }
   | { type: "history_message" | "live_message"; message: ChannelMessage }
   | { type: "history_end"; count: number; hasMore: boolean; oldestSeq: number | null; before: number | null }
@@ -99,6 +101,8 @@ export type ChannelCommand =
   | { type: "host_output"; roomId: string; output: unknown }
   | { type: "host_stop"; roomId: string; bindingId: string }
   | { type: "browse"; roomId: string; active: boolean }
+  | { type: "interaction_ready"; roomId: string }
+  | { type: "interaction"; roomId: string; reaction: string; targetUserId?: string }
   | { type: "history"; roomId: string; before?: number }
   | { type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[] }
   | ({ type: "file_offer"; available: boolean } & ChannelFileKey)

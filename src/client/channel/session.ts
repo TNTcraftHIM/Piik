@@ -11,6 +11,8 @@ import type { NativeCaptureTarget, RemoteStopShortcut } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
+import { RoomInteractionSession } from "../lib/room-interactions";
+import { createOpaqueId } from "../lib/opaque-id";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -36,6 +38,7 @@ function mergeMessages(messages: ChannelMessage[]): ChannelMessage[] {
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
+    interactionsByRoom: new Map(),
     inputVolume: readRoomPreferences().voiceInput.volume,
     listeningVolume: readRoomPreferences().voiceListeningVolume,
     appConnected: false,
@@ -69,7 +72,8 @@ export class ChannelSession {
   private watching = new Set<string>();
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
-  private reading: { roomId: string; socket: WebSocket | null; ready: Promise<void> } | null = null;
+  private reading: { roomId: string; socket: WebSocket | null; ready: Promise<void>;
+    interaction?: RoomInteractionSession; interactionBinding?: string } | null = null;
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
   private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput }>();
@@ -91,7 +95,7 @@ export class ChannelSession {
     (peer, kind, data) => {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
       else void this.conversation.receive(peer, data as string).catch(() => {});
-    }, (peer, ready) => this.attachments.peerState(peer, ready), peer => this.attachments.bulkClosed(peer),
+    }, (peer, ready) => { this.attachments.peerState(peer, ready); if (ready) this.syncInteractions(); }, peer => this.attachments.bulkClosed(peer),
     (pair, channel) => this.input.setChannel(pair, channel));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
@@ -276,6 +280,7 @@ export class ChannelSession {
     }
     const visible = this.projectActivity(state);
     const sameChannel = this.historyChannel === state.channel.id;
+    if (!sameChannel) this.closeInteractions();
     this.historyChannel = state.channel.id;
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
     for (const [id, request] of this.requests) if (request.bindingId
@@ -290,7 +295,9 @@ export class ChannelSession {
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id))),
     });
-    if (this.reading && !state.channel.rooms.some(room => room.id === this.reading!.roomId && room.authorized && room.available)) this.reading = null;
+    if (this.reading && !state.channel.rooms.some(room => room.id === this.reading!.roomId && room.authorized && room.available)) {
+      this.closeInteractions(); this.reading = null;
+    }
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
       if (room.available && previousRooms?.some(previous => previous.id === room.id && !previous.available)
         && this.voiceCaptures.get(room.id) === null && !this.view.pending.has(`voice:${room.id}`)) {
@@ -311,6 +318,7 @@ export class ChannelSession {
     this.input.update();
     this.attachments.update(sessionId, state.files, state.channel.rooms);
     this.sendConversations();
+    this.syncInteractions();
     this.releaseUnusedMicrophone();
   }
 
@@ -359,6 +367,27 @@ export class ChannelSession {
 
   private receiveConversation(reply: ConversationReply): void {
     const record = reply.record;
+    const interaction = this.view.interactionsByRoom.get(reply.roomId);
+    if (interaction && this.reading?.interactionBinding === reply.bindingId) {
+      if (record.type === "interaction_ready") {
+        interaction.setSupportedReactions(record.reactionIds);
+        interaction.receive({ type: "room-interactions-ready", serverTime: record.serverTime });
+        return;
+      }
+      if (record.type === "interaction") {
+        const user = this.view.state?.users.find(user => user.id === record.senderUserId);
+        if (user) interaction.receive({ type: "room-interaction", id: record.id, requestId: reply.requestId, occurredAt: record.occurredAt,
+          sender: { peerId: user.id, displayName: user.name, role: "viewer" },
+          payload: { kind: "reaction", reaction: record.reaction, ...(record.targetUserId ? { targetPeerId: record.targetUserId } : {}) } });
+        return;
+      }
+      if (record.type === "error" && !this.requests.has(reply.requestId)) {
+        if (!interaction.getSnapshot().ready) this.closeInteractions();
+        else interaction.receive({ type: "room-interaction-rejected", requestId: reply.requestId,
+          reason: record.code === "rate_limited" ? "rate-limited" : record.code === "target_unavailable" ? "target-unavailable" : "busy" });
+        return;
+      }
+    }
     if (record.type === "live_message") {
       this.applyMessage(reply.roomId, record.message);
       return;
@@ -539,6 +568,7 @@ export class ChannelSession {
   browse = (roomId: string): void => {
     const previous = this.roomId;
     this.roomId = roomId;
+    if (previous !== roomId) this.closeInteractions();
     if (this.reading?.roomId !== roomId || this.reading.socket !== this.socket) this.reading = null;
     if (this.view.connection !== "connected") return;
     for (const room of this.view.state?.channel.rooms ?? []) {
@@ -552,18 +582,57 @@ export class ChannelSession {
       this.reading = reading;
       void reading.ready.then(async () => {
         if (this.reading !== reading || this.socket !== reading.socket || this.roomId !== roomId) return;
+        this.syncInteractions();
         if (this.view.pending.has(`history:${roomId}`)) return;
         await this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }).catch(error => {
           if (this.reading === reading && this.socket === reading.socket) throw error;
         }));
       }).catch(error => {
         if (this.reading === reading && this.socket === reading.socket && this.view.connection === "connected") {
+          this.closeInteractions();
           this.reading = null;
           this.patch({ error: error instanceof Error ? error.message : "operation_failed" });
         }
       });
     }
   };
+  private closeInteractions(): void {
+    for (const interaction of this.view.interactionsByRoom.values()) interaction.close();
+    if (this.reading) { delete this.reading.interaction; delete this.reading.interactionBinding; }
+    if (this.view.interactionsByRoom.size) this.patch({ interactionsByRoom: new Map() });
+  }
+
+  private syncInteractions(): void {
+    const reading = this.reading;
+    if (!reading) return;
+    void reading.ready.then(() => {
+      if (this.reading !== reading || this.socket !== reading.socket || this.view.connection !== "connected" || !this.view.self) return;
+      const room = this.view.state?.channel.rooms.find(room => room.id === reading.roomId && room.authorized && room.available);
+      const delivery = room?.delivery;
+      if (!delivery) return;
+      if (reading.interaction && reading.interactionBinding !== delivery.bindingId) this.closeInteractions();
+      if (reading.interaction || (delivery.hostSessionId !== this.view.sessionId && !delivery.nextHops[delivery.hostSessionId])) return;
+      const interaction = this.view.interactionsByRoom.get(reading.roomId) ?? new RoomInteractionSession(message => {
+        const current = this.reading;
+        if (current?.interaction !== interaction || this.view.connection !== "connected") return false;
+        const command = message.type === "subscribe-room-interactions" ? { type: "interaction_ready" as const, roomId: current.roomId }
+          : message.type === "send-room-interaction" && message.payload.kind === "reaction"
+            ? { type: "interaction" as const, roomId: current.roomId, reaction: message.payload.reaction,
+              ...(message.payload.targetPeerId ? { targetUserId: message.payload.targetPeerId } : {}) } : null;
+        if (!command) return false;
+        const requestId = message.type === "send-room-interaction" ? message.requestId : createOpaqueId();
+        void this.conversation.send(command, requestId).catch(() => {
+          if (this.reading !== current || current.interaction !== interaction) return;
+          if (command.type === "interaction_ready") this.closeInteractions();
+          else interaction.receive({ type: "room-interaction-rejected", requestId, reason: "busy" });
+        });
+        return true;
+      });
+      reading.interaction = interaction; reading.interactionBinding = delivery.bindingId;
+      this.patch({ interactionsByRoom: new Map([[reading.roomId, interaction]]) });
+      interaction.authenticated(this.view.self.id);
+    }).catch(() => {});
+  }
   acceptRoomInvitation = async (): Promise<string | null> => {
     const params = new URLSearchParams(location.hash.slice(1));
     const roomId = params.get("room"), key = params.get("invite");
@@ -845,6 +914,7 @@ export class ChannelSession {
   }
 
   private releaseMedia(): void {
+    this.closeInteractions();
     this.captureEpoch += 1;
     this.app?.stopCaptures();
     this.input.reset();
@@ -896,6 +966,7 @@ export class ChannelSession {
   }
 
   private beginRecovery(): void {
+    for (const interaction of this.view.interactionsByRoom.values()) interaction.disconnected();
     if (!this.view.sessionId || this.recoveryDeadline !== null) return;
     this.recoveryDeadline = setTimeout(() => {
       this.recoveryDeadline = null;
