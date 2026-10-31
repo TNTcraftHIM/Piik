@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
 
-export function ChannelUser({ id, name, self, owner, roles, online, voice, activity, onRoles, rolesDisabled, availableRoles }: {
+export function ChannelUser({ id, name, self, owner, roles, online, voice, activity, actions, onRoles, rolesDisabled, availableRoles }: {
   id: string; name: string; self: boolean; owner: boolean; roles: string[]; online: boolean;
   voice?: { microphone: boolean; deafened?: boolean }; activity?: string;
+  actions?: ReactNode;
   onRoles?: (roles: string[]) => void;
   rolesDisabled?: boolean; availableRoles?: { id: string; name: string }[];
 }) {
@@ -22,6 +23,7 @@ export function ChannelUser({ id, name, self, owner, roles, online, voice, activ
         <strong>{name}{self && <span className="c3-you">{zh ? "你" : "you"}</span>}</strong>
         {(activity || owner || !online) && <small>{activity || (owner ? (zh ? "域主" : "Domain owner") : (zh ? "离线" : "Offline"))}</small>}
       </div>
+      {actions}
       {onRoles && !owner && <button type="button" className="lr-btn is-compact is-quiet" aria-expanded={editing}
         aria-label={zh ? `${name} 的身份组` : `Roles for ${name}`} onClick={() => setEditing(!editing)}>
         <Glyph name="sliders" size={18} />

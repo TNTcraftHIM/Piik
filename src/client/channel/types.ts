@@ -19,6 +19,7 @@ export type ScreenPresentation = "prepared" | "waiting" | "failed";
 export interface ChannelView {
   interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
   inputVolume: number;
+  voicePlaybackByUser: ReadonlyMap<string, { volume: number; muted: boolean }>;
   listeningVolume: number;
   appConnected: boolean;
   ownedScreens: ReadonlySet<string>;
@@ -71,6 +72,8 @@ export interface ChannelActions {
   setDeafened(roomId: string, deafened: boolean): Promise<void>;
   setInputVolume(volume: number): void;
   setListeningVolume(volume: number): void;
+  setVoiceVolume(userId: string, volume: number): void;
+  setVoiceMuted(userId: string, muted: boolean): void;
   clearError(): void;
   reconnect(): void;
 }

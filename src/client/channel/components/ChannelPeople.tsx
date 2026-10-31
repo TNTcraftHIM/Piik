@@ -1,4 +1,5 @@
-import { BackButton } from "../../components/living/primitives";
+import { BackButton, Btn } from "../../components/living/primitives";
+import { AudioVolumeMenu } from "../../components/living/AudioVolumeMenu";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import type { ChannelUser as User } from "../protocol";
@@ -14,9 +15,17 @@ export function ChannelPeople({ channel, roomId, onBack }: { channel: ChannelCon
   const run = (operation: Promise<void>) => { void operation.catch(() => {}); };
   const row = (user: User) => {
     const sharing = state?.publications.some(publication => publication.userId === user.id && publication.kind === "screen");
+    const voice = state ? voiceAppearance(state, user.id, roomId) : undefined;
+    const listening = state?.voice.some(activity => activity.sessionId === channel.sessionId && activity.roomId === roomId);
+    const playback = channel.voicePlaybackByUser.get(user.id) ?? { volume: 1, muted: false };
     return <ChannelUser key={user.id} id={user.id} name={user.name} self={user.id === self?.id}
       owner={user.id === state?.channel.ownerId} roles={user.roles} online={online.has(user.id)}
-      voice={state ? voiceAppearance(state, user.id, roomId) : undefined}
+      voice={voice}
+      actions={voice && listening && user.id !== self?.id && <AudioVolumeMenu volume={playback.volume}
+        onVolume={volume => channel.setVoiceVolume(user.id, volume)} label="voice.personVolume" icon="speaker" heading={user.name}>
+        <Btn icon={playback.muted ? "speakerOff" : "speaker"} size="dense" quiet title="voice.listenPerson"
+          pressed={!playback.muted} onClick={() => channel.setVoiceMuted(user.id, !playback.muted)} />
+      </AudioVolumeMenu>}
       activity={sharing ? (zh ? "正在分享画面" : "Sharing a screen") : undefined}
       rolesDisabled={connection !== "connected" || pending.has(`roles:${user.id}`)} availableRoles={state?.channel.roles}
       onRoles={isOwner ? roles => run(channel.setRoles(user.id, roles)) : undefined} />;

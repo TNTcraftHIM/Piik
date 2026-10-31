@@ -46,6 +46,7 @@ export class ChannelSession {
   private view: ChannelView = {
     interactionsByRoom: new Map(),
     inputVolume: readRoomPreferences().voiceInput.volume,
+    voicePlaybackByUser: new Map(),
     listeningVolume: readRoomPreferences().voiceListeningVolume,
     appConnected: false,
     ownedScreens: new Set(),
@@ -299,6 +300,7 @@ export class ChannelSession {
     }
     for (const id of this.outgoingMessages.keys()) if (!canRead(id)) this.outgoingMessages.delete(id);
     this.patch({ state: visible, self: state.users.find(user => user.id === userId) ?? null,
+      voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
       messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id))),
       historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id))),
     });
@@ -893,6 +895,21 @@ export class ChannelSession {
     this.patch({ listeningVolume: volume });
     saveRoomPreferences({ voiceListeningVolume: volume });
   };
+
+  setVoiceVolume = (userId: string, volume: number): void => {
+    if (!Number.isFinite(volume)) return;
+    this.setVoicePlayback(userId, { volume: Math.min(2, Math.max(0, volume)) });
+  };
+
+  setVoiceMuted = (userId: string, muted: boolean): void => { this.setVoicePlayback(userId, { muted }); };
+
+  private setVoicePlayback(userId: string, patch: Partial<{ volume: number; muted: boolean }>): void {
+    if (!this.view.state?.users.some(user => user.id === userId)) return;
+    const values = new Map(this.view.voicePlaybackByUser);
+    const value = { volume: 1, muted: false, ...values.get(userId), ...patch };
+    if (value.volume === 1 && !value.muted) values.delete(userId); else values.set(userId, value);
+    this.patch({ voicePlaybackByUser: values });
+  }
 
   joinVoice = (roomId: string, listenOnly = false, providedStream?: MediaStream): Promise<void> => this.action(`voice:${roomId}`, async () => {
     if (this.view.state?.voice.some(member => member.sessionId === this.view.sessionId && member.roomId === roomId)) return;

@@ -243,7 +243,8 @@ export function ChannelAudio({ stream, muted, volume, createContext, label }: {
     const element = ref.current;
     if (!element) return;
     element.srcObject = stream;
-    const playback = output.current = new ViewerAudio(element, () => {}, createContext);
+    // Room and person levels each range from 0 to 2, as in the shared voice sink.
+    const playback = output.current = new ViewerAudio(element, () => {}, createContext, 4);
     playback.bind(stream);
     let current = true;
     setBlocked(false);

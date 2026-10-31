@@ -248,8 +248,8 @@ export function ChannelPreviewPage() {
         </div>
         <div ref={voiceSlot} className="c3-room-slot" />
         {voiceStreams.map(publication => <ChannelAudio key={publication.id} stream={streams.get(publication.id)!}
-          volume={channel.listeningVolume} createContext={createVoiceAudioContext}
-          muted={myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true}
+          volume={channel.listeningVolume * (channel.voicePlaybackByUser.get(publication.userId)?.volume ?? 1)} createContext={createVoiceAudioContext}
+          muted={(myVoice.find(value => value.roomId === publication.roomId)?.deafened ?? true) || (channel.voicePlaybackByUser.get(publication.userId)?.muted ?? false)}
           label={`${nameOfUser(publication.userId)} — ${nameOfRoom(publication.roomId)}`} />)}
       </section>
       <ChannelPeople channel={channel} roomId={roomId} onBack={() => setMobilePane("room")} />

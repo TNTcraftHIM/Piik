@@ -356,6 +356,33 @@ test("App hosting uses its own participant while Browser rooms retain their page
   } finally { session.close(); }
 });
 
+test("personal voice playback follows user identity without sending room commands", async () => {
+  const { session, socket } = await setup();
+  try {
+    const initial = session.getSnapshot().state!;
+    const friend = { id: "friend", name: "Friend", roles: [] };
+    const state = { ...initial, users: [...initial.users, friend],
+      sessions: [...initial.sessions, { id: "friend-first", userId: friend.id, online: true, signingKey: testSigningKey }] };
+    socket.receive({ type: "state", state });
+    const sent = socket.sent.length;
+    session.setVoiceVolume(friend.id, 1.7);
+    session.setVoiceMuted(friend.id, true);
+    expect(session.getSnapshot().voicePlaybackByUser.get(friend.id)).toEqual({ volume: 1.7, muted: true });
+    expect(socket.sent).toHaveLength(sent);
+    socket.receive({ type: "state", state: { ...state,
+      sessions: [...initial.sessions, { id: "friend-reconnected", userId: friend.id, online: true, signingKey: testSigningKey }] } });
+    expect(session.getSnapshot().voicePlaybackByUser.get(friend.id)).toEqual({ volume: 1.7, muted: true });
+    session.setVoiceMuted(friend.id, false);
+    expect(session.getSnapshot().voicePlaybackByUser.get(friend.id)).toEqual({ volume: 1.7, muted: false });
+    session.setVoiceVolume(friend.id, 1);
+    expect(session.getSnapshot().voicePlaybackByUser.size).toBe(0);
+    session.setVoiceVolume(friend.id, 5);
+    expect(session.getSnapshot().voicePlaybackByUser.get(friend.id)?.volume).toBe(2);
+    socket.receive({ type: "state", state: initial });
+    expect(session.getSnapshot().voicePlaybackByUser.size).toBe(0);
+  } finally { session.close(); }
+});
+
 function microphoneMixer(clones: MediaStream[]) {
   class Context {
     currentTime = 0;
