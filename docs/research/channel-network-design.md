@@ -330,6 +330,12 @@ they cannot independently close or mutate a connection another flow still uses.
 The combined physical graph may contain cycles while each forwarding plan
 remains acyclic and each publication has one committed input at a receiver.
 
+Reusable Browser media transceivers retain bidirectional intent, including outputs
+with encoding declarations. Removing an outgoing source must leave the carrier
+able to receive its replacement; the standard
+[track-removal semantics](https://www.w3.org/TR/webrtc/#dom-rtcpeerconnection-removetrack)
+preserve reception from `sendrecv`, while `sendonly` becomes `inactive`.
+
 Reuse is conditional on the same domain, compatible peer/session/authority
 identity and capacity. Do not share transports across unrelated domains.
 Reusing code is not one global operation queue: serialize changes to a physical
