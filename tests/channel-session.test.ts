@@ -5,6 +5,7 @@ import * as hosting from "../src/client/channel/hosting";
 import * as appLink from "../src/client/channel/app-link";
 import * as nativeActivation from "../src/client/native/activation";
 import * as launchSession from "../src/client/lib/session";
+import * as cameraPreviews from "../src/client/media/camera-previews";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { ChannelAttachments } from "../src/client/channel/attachments";
@@ -630,6 +631,95 @@ test("local stop does not retire another capture acknowledged before its authori
     state.publications = [];
     socket.receive({ type: "state", state });
     expect(second.stop).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("camera and display shares use independent picture publications and the same stop owner", async () => {
+  const { session, socket } = await setup();
+  const display = remoteTrack("video"), camera = remoteTrack("video");
+  const cameraStream = remoteStream("camera", [camera]);
+  const getDisplayMedia = vi.fn(async () => remoteStream("display", [display]));
+  const getUserMedia = vi.fn(async () => cameraStream);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia, getUserMedia } });
+  const previews = vi.spyOn(cameraPreviews, "loadCameraPreviews").mockResolvedValue();
+  try {
+    const screenStarting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const first = socket.sent.at(-1)!;
+    socket.receive({ type: "ack", requestId: first.requestId });
+    await screenStarting;
+    expect(getDisplayMedia).toHaveBeenCalledWith({ video: { frameRate: { ideal: 30 } }, audio: true });
+
+    const cameraStarting = session.startScreen("second", "camera", "rear");
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(2));
+    const second = socket.sent.at(-1)!;
+    socket.receive({ type: "ack", requestId: second.requestId });
+    await cameraStarting;
+    const firstId = (first.publication as { id: string }).id, secondId = (second.publication as { id: string }).id;
+    expect(second.publication).toEqual({ id: secondId, roomId: "second", kind: "screen", muted: false });
+    expect(secondId).not.toBe(firstId);
+    expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: {
+      resizeMode: { exact: "none" }, deviceId: { exact: "rear" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 },
+    } });
+    expect(camera.contentHint).toBe("motion");
+    expect(session.getSnapshot().ownedScreens).toEqual(new Set([firstId, secondId]));
+    const signal = new AbortController().signal, publish = vi.fn();
+    await session.cameraPreviews(signal, publish);
+    expect(previews).toHaveBeenLastCalledWith(signal, publish, cameraStream);
+
+    const stopping = session.stopScreen(firstId);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await stopping;
+    expect(display.stop).toHaveBeenCalledOnce();
+    expect(camera.stop).not.toHaveBeenCalled();
+    camera.dispatchEvent(new Event("ended"));
+    expect(socket.sent.at(-1)).toMatchObject({ type: "unpublish", publicationId: secondId });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(session.getSnapshot().pending.size).toBe(0));
+    expect(camera.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    await session.cameraPreviews(signal, publish);
+    expect(previews).toHaveBeenLastCalledWith(signal, publish, undefined);
+    expect(socket.sent.some(command => command.type === "voice")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("a rejected camera publication releases its capture without retaining a picture lease", async () => {
+  const { session, socket } = await setup();
+  const camera = remoteTrack("video");
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia: async () => remoteStream("camera", [camera]) } });
+  try {
+    const starting = session.startScreen("first", "camera", "front");
+    const rejected = expect(starting).rejects.toThrow("permission_denied");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "permission_denied" });
+    await rejected;
+    expect(camera.stop).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(session.getSnapshot().pending.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test("camera permission denial permits retry and closing discards a late camera grant", async () => {
+  const { session, socket } = await setup();
+  const denied = new DOMException("Declined", "NotAllowedError"), camera = remoteTrack("video");
+  let grant!: (stream: MediaStream) => void;
+  const getUserMedia = vi.fn().mockRejectedValueOnce(denied)
+    .mockImplementationOnce(() => new Promise<MediaStream>(resolve => { grant = resolve; }));
+  vi.stubGlobal("navigator", { mediaDevices: { getUserMedia } });
+  try {
+    await expect(session.startScreen("first", "camera")).rejects.toBe(denied);
+    expect(session.getSnapshot().pending.size).toBe(0);
+    const retrying = session.startScreen("first", "camera");
+    const closed = expect(retrying).rejects.toThrow("closed");
+    expect(grant).toBeDefined();
+    session.close();
+    grant(remoteStream("late-camera", [camera]));
+    await closed;
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(camera.stop).toHaveBeenCalledOnce();
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
   } finally { session.close(); }
 });
 

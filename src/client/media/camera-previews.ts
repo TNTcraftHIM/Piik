@@ -42,7 +42,7 @@ async function snapshot(stream: MediaStream, signal: AbortSignal): Promise<strin
 
 /** Picker-only snapshots. Never open another camera while a camera is shared. */
 export async function loadCameraPreviews(signal: AbortSignal,
-  publish: (sources: CameraPreview[]) => void, activeVideo?: HTMLVideoElement | null): Promise<void> {
+  publish: (sources: CameraPreview[]) => void, active?: HTMLVideoElement | MediaStream | null): Promise<void> {
   let owned: MediaStream | null = null;
   const release = () => { owned?.getTracks().forEach(track => track.stop()); owned = null; };
   const open = async (id: string) => {
@@ -58,10 +58,12 @@ export async function loadCameraPreviews(signal: AbortSignal,
     signal.throwIfAborted();
     let devices = await browserCameras();
     signal.throwIfAborted();
-    if (activeVideo) {
-      const stream = activeVideo.srcObject as MediaStream | null;
+    if (active) {
+      const stream = "getVideoTracks" in active ? active : active.srcObject as MediaStream | null;
       const id = stream?.getVideoTracks()[0]?.getSettings().deviceId;
-      publish(devices.map(device => ({ ...device, preview: device.id === id ? frame(activeVideo) : null })));
+      const preview = "getVideoTracks" in active ? await snapshot(active, signal) : frame(active);
+      signal.throwIfAborted();
+      publish(devices.map(device => ({ ...device, preview: device.id === id ? preview : null })));
       return;
     }
     // Permission exposes device identities. Keep that first frame before retiring

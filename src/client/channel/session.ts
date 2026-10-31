@@ -15,6 +15,9 @@ import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession } from "../lib/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
+import { DEFAULT_QUALITY_SETTINGS } from "../../shared/protocol";
+import { captureBrowserSource, type BrowserCaptureSource } from "../media/quality";
+import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -86,7 +89,7 @@ export class ChannelSession {
     interaction?: RoomInteractionSession; interactionBinding?: string } | null = null;
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
-  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput }>();
+  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; camera?: boolean }>();
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hostedRooms.get(roomId)?.host,
@@ -771,9 +774,9 @@ export class ChannelSession {
   });
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone }: { microphone?: MicrophoneInput } = {}): Promise<string> {
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, camera }: { microphone?: MicrophoneInput; camera?: boolean } = {}): Promise<string> {
     const id = crypto.randomUUID();
-    this.local.set(id, { roomId, kind, stream, microphone });
+    this.local.set(id, { roomId, kind, stream, microphone, camera });
     this.media.setLocal(id, stream);
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
@@ -794,13 +797,17 @@ export class ChannelSession {
     }
   }
 
-  startScreen = (roomId: string): Promise<void> => this.action(`screen:${roomId}`, async () => {
-    if (!navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
+  startScreen = (roomId: string, source: BrowserCaptureSource = "browser", deviceId = ""): Promise<void> => this.action(`screen:${roomId}`, async () => {
+    if (source === "camera" ? !navigator.mediaDevices?.getUserMedia : !navigator.mediaDevices?.getDisplayMedia) throw new Error("capture_unavailable");
     const epoch = this.captureEpoch;
-    const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
+    const stream = source === "camera" ? await captureBrowserSource(DEFAULT_QUALITY_SETTINGS, source, deviceId)
+      : await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
     if (epoch !== this.captureEpoch) { stream.getTracks().forEach(track => track.stop()); throw new Error("closed"); }
-    await this.publish("screen", roomId, stream);
+    await this.publish("screen", roomId, stream, { camera: source === "camera" });
   });
+  cameraPreviews = (signal: AbortSignal, publish: (sources: CameraPreview[]) => void): Promise<void> =>
+    loadCameraPreviews(signal, publish, [...this.local.values()].find(capture => capture.camera
+      && capture.stream.getVideoTracks().some(track => track.readyState === "live"))?.stream);
   nativeSources = async (): Promise<NativeCaptureSources> => (await this.connectApp()).sources();
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> => this.action(`screen:${roomId}`, async () => {

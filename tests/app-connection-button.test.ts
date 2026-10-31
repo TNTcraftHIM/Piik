@@ -6,6 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConnectionButton } from "../src/client/components/living/AppConnectionButton";
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
+import { ChannelShareControl } from "../src/client/channel/components/ChannelShareControl";
+import type { ChannelController } from "../src/client/channel/types";
 
 describe("shared App connection entry", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -32,6 +34,24 @@ describe("shared App connection entry", () => {
     expect(html).toContain('data-source-tab="camera"');
     expect(html).not.toContain("lr-source-app-connection");
     expect(html).not.toContain("lr-app-connect");
+  });
+
+  it.each([
+    { camera: true, display: false, available: true, picker: true },
+    { camera: true, display: true, available: true, picker: true },
+    { camera: false, display: true, available: true, picker: false },
+    { camera: false, display: false, available: false, picker: false },
+  ])("uses actual camera/display capability for the single channel sharing entry ($camera/$display)", entry => {
+    vi.stubGlobal("navigator", { mediaDevices: {
+      ...(entry.camera ? { getUserMedia: vi.fn() } : {}),
+      ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
+    } });
+    const channel = { appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined } as unknown as ChannelController;
+    const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
+    const button = html.match(/<button\b[^>]*>/)![0];
+    expect(button.includes("disabled")).toBe(!entry.available);
+    expect(button.toLowerCase().includes("popovertarget=")).toBe(entry.picker);
+    expect(html.match(/<button\b/g)).toHaveLength(1);
   });
 });
 

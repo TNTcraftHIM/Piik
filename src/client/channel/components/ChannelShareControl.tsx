@@ -12,7 +12,7 @@ const noPreview = async () => null;
 export function ChannelShareControl({ channel, roomId, disabled }: {
   channel: ChannelController; roomId: string; disabled: boolean;
 }) {
-  const { lang } = useCopy();
+  const { t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -21,10 +21,12 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const [sources, setSources] = useState<NativeSourceList>({ kind: "browser" });
   const { appConnected, nativeSources, startNativeScreen, startScreen } = channel;
   const browserSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
+  const cameraSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
   const busy = channel.pending.has(`screen:${roomId}`);
   const captureRequest = channel.nativeCaptureRequest(roomId);
-  const available = browserSupported || appConnected;
-  const label = lang === "zh" ? "分享屏幕" : "Share screen";
+  const available = browserSupported || cameraSupported || appConnected;
+  const pickerAvailable = appConnected || cameraSupported;
+  const label = t("host.start");
   useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
   const close = useCallback(() => { panel.current?.hidePopover(); }, []);
   const refresh = useCallback(() => {
@@ -56,15 +58,17 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
           onClick={() => { void channel.stopScreen(captureRequest.publicationId).catch(() => {}); }} />
       </> : <Btn icon="cast" title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
         hint={available ? "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
-        disabled={disabled || busy || !available} busy={busy} expanded={appConnected || open ? open : undefined}
-        controls={appConnected || open ? id : undefined} popoverTarget={appConnected ? id : undefined}
-        onClick={() => { if (!appConnected) start(() => startScreen(roomId)); }} />}
+        disabled={disabled || busy || !available} busy={busy} expanded={pickerAvailable || open ? open : undefined}
+        controls={pickerAvailable || open ? id : undefined} popoverTarget={pickerAvailable ? id : undefined}
+        onClick={() => { if (!pickerAvailable) start(() => startScreen(roomId)); }} />}
     </span>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => setOpen(event.newState === "open")}>
-      {open && <CaptureSourcePicker nativeSources={sources} browserSupported={browserSupported} cameraSupported={false}
+      {open && <CaptureSourcePicker nativeSources={sources} browserSupported={browserSupported} cameraSupported={cameraSupported}
+        loadCameras={channel.cameraPreviews}
         initialTab="window" selectionDisabled={disabled || busy}
         onBrowser={() => start(() => startScreen(roomId))}
+        onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
         onNative={(target, audio) => start(() => startNativeScreen(roomId, target, audio))}
         onPreview={noPreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });

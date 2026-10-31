@@ -8,6 +8,8 @@ import type { RemoteControlMode } from "../remote-control/protocol";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomPreferences } from "../lib/room-preferences";
 import type { CaptureDevice } from "../media/capture-devices";
+import type { BrowserCaptureSource } from "../media/quality";
+import type { loadCameraPreviews } from "../media/camera-previews";
 
 export interface ChannelScreenInput {
   flowId: string;
@@ -56,7 +58,8 @@ export interface ChannelActions {
   createRoomInvite(roomId: string): Promise<string>;
   revokeRoomAccess(roomId: string, userId: string): Promise<void>;
   setRoles(userId: string, roles: string[]): Promise<void>;
-  startScreen(roomId: string): Promise<void>;
+  startScreen(roomId: string, source?: BrowserCaptureSource, deviceId?: string): Promise<void>;
+  cameraPreviews: typeof loadCameraPreviews;
   nativeSources(): Promise<NativeCaptureSources>;
   nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean): Promise<void>;

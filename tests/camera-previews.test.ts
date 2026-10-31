@@ -95,13 +95,27 @@ test("cancelling a frame wait immediately releases it and never opens the next c
   expect(videos[0]!.srcObject).toBeNull();
 });
 
-test("an active camera is borrowed without opening or stopping any camera", async () => {
+test.each(["video", "stream"])("an active camera %s is borrowed without opening or stopping any camera", async source => {
   const { stream, getUserMedia, publish, tracks } = setup();
   const active = { srcObject: stream("front"), readyState: 2, videoWidth: 1280, videoHeight: 720 } as HTMLVideoElement;
-  await loadCameraPreviews(new AbortController().signal, publish, active);
+  await loadCameraPreviews(new AbortController().signal, publish, source === "video" ? active : active.srcObject as MediaStream);
   expect(getUserMedia).not.toHaveBeenCalled();
   expect(tracks[0]!.stop).not.toHaveBeenCalled();
   expect(publish.mock.lastCall?.[0].map(source => !!source.preview)).toEqual([true, false]);
+});
+
+test("cancelling a borrowed stream snapshot leaves its shared camera running", async () => {
+  const { stream, videos, tracks, getUserMedia, publish } = setup({ frames: false });
+  const request = new AbortController();
+  const pending = loadCameraPreviews(request.signal, publish, stream("front"));
+  const cancelled = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  await vi.waitFor(() => expect(videos).toHaveLength(1));
+  request.abort();
+  await cancelled;
+  expect(getUserMedia).not.toHaveBeenCalled();
+  expect(tracks[0]!.stop).not.toHaveBeenCalled();
+  expect(videos[0]!.srcObject).toBeNull();
+  expect(publish).not.toHaveBeenCalled();
 });
 
 test("a busy camera keeps its identity and does not suppress other choices", async () => {
