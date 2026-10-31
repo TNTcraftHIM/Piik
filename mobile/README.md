@@ -2,7 +2,7 @@
 
 On the isolated 3.0 branch, this directory contains the Java system-browser
 shell for the shared Rust App. It currently targets Android 10 or later on
-ARM64, with the isolated application ID `tv.piik.android.channel3`. It does not
+ARM64 and x64, with the isolated application ID `tv.piik.android.channel3`. It does not
 replace the published 2.x package or its data.
 
 `AppRuntimeService` owns one runtime. Its serial worker starts Rust, receives
