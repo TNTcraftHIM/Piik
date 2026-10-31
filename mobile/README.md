@@ -20,6 +20,14 @@ and Android's certificate trust. Gradle reads the paired Android artifact
 version from the JNI crate's Cargo lock. No Go business core or gomobile AAR is
 used by this shell. The independent cloudflared helper remains Go-built.
 
+Screen/app selection uses Android's system picker. One MediaProjection owns the
+image source and optional playback sound; Rust encodings use the shared Native
+producer and source clock. Permission and first-frame waits belong to the
+selecting page and use the same stop operation as active capture. The
+[network design](../docs/research/channel-network-design.md#implementation-boundary)
+owns that boundary. Android does not expose a controlled keyboard/mouse endpoint;
+Browser camera and room voice keep their Browser permissions.
+
 ## Development build
 
 Use Rust 1.91 with `aarch64-linux-android`, NDK 30.0.16248370, JDK 17,
@@ -57,8 +65,3 @@ Gradle reads signing material from `PIIK_ANDROID_KEYSTORE` (an absolute path),
 back up the signing key securely. Updates to an installed package must retain
 its application ID and signing key. The experimental application ID above keeps
 this runtime separate from the published 2.x App.
-
-This step does not implement MediaProjection, MediaCodec capture/encoding,
-playback sound or Android native input. Their accepted producer and permission
-boundary is in the [network design](../docs/research/channel-network-design.md#implementation-boundary).
-Browser camera and voice continue to use browser permissions.

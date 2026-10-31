@@ -94,7 +94,7 @@ const nativeDisplayTargetSchema = z
 const nativePickerTargetSchema = z
   .object({
     kind: z.literal("picker"),
-    sourceId: decimalIdentifierSchema,
+    sourceId: decimalIdentifierSchema.or(z.literal("0")),
     title: z.string().min(1).max(4096),
   })
   .strict();

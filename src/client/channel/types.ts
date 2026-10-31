@@ -1,7 +1,7 @@
 import type { ChannelMessage, ChannelSnapshot, ChannelUser, RoomSettings } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { NativeCaptureTarget } from "../native/wire";
-import type { NativeCaptureSources, ChannelRemoteControlState } from "./app-link";
+import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState } from "./app-link";
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -49,6 +49,7 @@ export interface ChannelActions {
   setRoles(userId: string, roles: string[]): Promise<void>;
   startScreen(roomId: string): Promise<void>;
   nativeSources(): Promise<NativeCaptureSources>;
+  nativeCaptureRequest(roomId: string): NativeCaptureRequest | undefined;
   startNativeScreen(roomId: string, target: NativeCaptureTarget, audio?: boolean): Promise<void>;
   stopScreen(publicationId: string): Promise<void>;
   watch(publicationId: string): Promise<void>;

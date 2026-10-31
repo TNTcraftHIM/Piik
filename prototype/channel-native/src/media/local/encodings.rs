@@ -1,7 +1,7 @@
 //! One producer selects and retires the actual encoders used by its Outputs.
 use super::*;
 use crate::capture::{Encoding, EncodingControl};
-use futures_util::{stream::FuturesUnordered, StreamExt};
+use futures_util::{future::Aborted, stream::FuturesUnordered, StreamExt};
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 use tokio::sync::Notify;
 
@@ -146,7 +146,10 @@ pub(super) async fn run(
         let frame = tokio::select! {
             _ = control.video.stopped() => return Ok(()),
             _ = cancelled.changed() => return Ok(()),
-            frame = initial.as_mut().unwrap().recv() => frame.ok_or_else(|| anyhow!("capture ended before its first frame"))??,
+            frame = initial.as_mut().unwrap().recv() => match frame {
+                Some(frame) => frame?,
+                None => return Ok(()),
+            },
         };
         let mut sps = H264Sps::default();
         sps.access_unit(&frame.bytes)?;
@@ -261,9 +264,11 @@ pub(super) async fn run(
         entry.retire();
     }
     while pumps.next().await.is_some() {}
-    if let Some(encoding) = initial {
-        let _ = stop(encoding).await;
-    }
+    let result = if let Some(encoding) = initial {
+        result.and(stop(encoding).await)
+    } else {
+        result
+    };
     let joined = tokio::task::spawn_blocking(move || capture.stop())
         .await
         .map_err(anyhow::Error::from)
@@ -273,11 +278,10 @@ pub(super) async fn run(
             eprintln!("Native audio task failed: {error}");
         }
     }
-    let error = result.and(joined).err().map(|error| format!("{error:#}"));
+    let result = result.and(joined);
+    let error = result.as_ref().err().map(|error| format!("{error:#}"));
     if let Some(ready) = ready {
-        let _ = ready.send(Err(anyhow!(error
-            .clone()
-            .unwrap_or_else(|| "capture ended before its first frame".into()))));
+        let _ = ready.send(result.and(Err(Aborted.into())));
     }
     if !*cancelled.borrow() {
         tokio::select! {

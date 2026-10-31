@@ -15,7 +15,7 @@ anyhow = "1"
 jni = "0.22"
 ndk-context = "0.1"
 rustls-platform-verifier = "=0.7.1"
-piik-channel-prototype = { path = "../channel-server" }
+piik-channel-prototype = { path = "../channel-server", features = ["capture"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "net"] }
 
 # Workspace-root patch; match channel-native and channel-server.

@@ -98,7 +98,7 @@ impl Capture {
         super::AudioCapture::start(target)
     }
 
-    pub fn start(target: Target, fps: u32) -> Result<Self> {
+    pub fn start(target: Target, fps: u32, _audio: bool) -> Result<Self> {
         ensure!(
             matches!(target.kind, TargetKind::Picker),
             "Linux capture uses the system picker"
@@ -573,7 +573,7 @@ mod tests {
             .into_iter()
             .next()
             .context("no system picker")?;
-        let capture = Capture::start(target.clone(), 30)?;
+        let capture = Capture::start(target.clone(), 30, false)?;
         eprintln!("Portal check: select a source for the first capture");
         let frame = tokio::time::timeout(Duration::from_secs(90), capture.frames.recv_after(None))
             .await??

@@ -19,7 +19,11 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use futures_util::{stream::FuturesUnordered, SinkExt, StreamExt};
+use futures_util::{
+    future::{AbortHandle, Abortable, Aborted},
+    stream::FuturesUnordered,
+    SinkExt, StreamExt,
+};
 use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target},
@@ -265,15 +269,9 @@ fn lock_directory(directory: &std::path::Path) -> Result<std::fs::File> {
         .create(true)
         .truncate(false)
         .open(directory.join("app.lock"))?;
-    // std's Unix implementation omits Android on the pinned Rust toolchain.
-    #[cfg(unix)]
-    let locked = rustix::fs::flock(&owner, rustix::fs::FlockOperation::NonBlockingLockExclusive)
-        .map_err(std::io::Error::from);
-    #[cfg(not(unix))]
-    let locked = owner.try_lock().map_err(std::io::Error::from);
-    locked.map_err(|error| match error.kind() {
+    piik_channel_native::hosted_room::try_lock_file(&owner).map_err(|error| match error.kind() {
         std::io::ErrorKind::WouldBlock => anyhow!("This App data directory is already in use"),
-        _ => anyhow!("Cannot lock App data directory: {error}"),
+        _ => error.into(),
     })?;
     Ok(owner)
 }
@@ -613,6 +611,7 @@ enum Operation {
     },
     Targets,
     StartCapture {
+        publication_id: Uuid,
         room_id: String,
         target: Target,
         #[serde(default)]
@@ -638,6 +637,27 @@ enum Operation {
         key: u8,
     },
 }
+
+enum Capture {
+    Pending(AbortHandle),
+    Active(CaptureLease),
+}
+impl Capture {
+    fn lease(&self) -> Option<&CaptureLease> {
+        match self {
+            Self::Active(lease) if !lease.is_stopped() => Some(lease),
+            _ => None,
+        }
+    }
+}
+impl Drop for Capture {
+    fn drop(&mut self) {
+        if let Self::Pending(request) = self {
+            request.abort();
+        }
+    }
+}
+
 async fn connection(
     socket: WebSocket,
     app: &App,
@@ -660,12 +680,12 @@ async fn connection(
         };
         let processing = async {
             let mut host = None;
-            let mut captures: BTreeMap<Uuid, CaptureLease> = BTreeMap::new();
+            let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();
+            let mut capture_starts = FuturesUnordered::new();
             let mut audio_errors = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
             let mut input_policies = FuturesUnordered::new();
             loop {
-                let mut initial_input = None;
                 let message = tokio::select! {
                     message = async {
                         if host.is_some() { Ok(queue.recv().await) }
@@ -673,7 +693,7 @@ async fn connection(
                     } => message?,
                     Some((publication_id, error)) = audio_errors.next(), if !audio_errors.is_empty() => {
                         let error: Option<String> = error;
-                        if error.is_some() && captures.get(&publication_id).is_some_and(|lease| !lease.is_stopped()) {
+                        if error.is_some() && captures.get(&publication_id).and_then(Capture::lease).is_some() {
                             let event = json!({"type":"capture_audio_failed","publicationId":publication_id});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
@@ -681,7 +701,7 @@ async fn connection(
                     }
                     Some((publication_id, changed, state)) = input_states.next(), if !input_states.is_empty() => {
                         let state: Option<SourceView> = state;
-                        if let Some(state) = state.filter(|_| captures.get(&publication_id).is_some_and(|lease| !lease.is_stopped())) {
+                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(Capture::lease).is_some()) {
                             let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                             input_states.push(next_input_state(publication_id, changed));
@@ -691,6 +711,45 @@ async fn connection(
                     Some(response) = input_policies.next(), if !input_policies.is_empty() => {
                         let response: Value = response;
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        continue;
+                    }
+                    Some((id, publication_id, request, result)) = capture_starts.next(), if !capture_starts.is_empty() => {
+                        let request: AbortHandle = request;
+                        let result: Result<CaptureLease> = result;
+                        let mut initial_input = None;
+                        let result = if request.is_aborted() {
+                            // Stop already retired this request, including a completed
+                            // future that had not yet been observed by the processor.
+                            drop(result);
+                            Err(anyhow!("capture_cancelled"))
+                        } else {
+                            match result {
+                                Ok(mut lease) => {
+                                    if let Some(error) = lease.audio_error.take() {
+                                        audio_errors.push(async move { (publication_id, error.await.ok()) });
+                                    }
+                                    if let Some(state) = &lease.input_state {
+                                        initial_input = Some(state.borrow().clone());
+                                        input_states.push(next_input_state(publication_id, state.clone()));
+                                    }
+                                    captures.insert(publication_id, Capture::Active(lease));
+                                    Ok(())
+                                }
+                                Err(error) => Err(error),
+                            }
+                        };
+                        let response = match result {
+                            Ok(()) => json!({"id":id,"result":null}),
+                            Err(error) => {
+                                if !request.is_aborted() { captures.remove(&publication_id); }
+                                json!({"id":id,"error":error.to_string()})
+                            }
+                        };
+                        timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
+                        if let Some(state) = initial_input {
+                            let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
                         continue;
                     }
                 };
@@ -735,40 +794,38 @@ async fn connection(
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::StartCapture {
+                                publication_id,
                                 room_id,
                                 target,
                                 audio,
                             } => match &host {
                                 Some(commands) => {
-                                    captures.retain(|_, lease| !lease.is_stopped());
-                                    let publication_id = Uuid::new_v4();
-                                    match start_capture(
-                                        commands,
-                                        publication_id,
-                                        room_id,
-                                        target,
-                                        audio,
-                                    )
-                                    .await
-                                    {
-                                        Ok(mut lease) => {
-                                            if let Some(error) = lease.audio_error.take() {
-                                                audio_errors.push(async move {
-                                                    (publication_id, error.await.ok())
-                                                });
-                                            }
-                                            if let Some(state) = &lease.input_state {
-                                                initial_input =
-                                                    Some((publication_id, state.borrow().clone()));
-                                                input_states.push(next_input_state(
+                                    captures.retain(|_, capture| !matches!(capture, Capture::Active(lease) if lease.is_stopped()));
+                                    if captures.contains_key(&publication_id) {
+                                        Err(anyhow!("capture_already_active"))
+                                    } else {
+                                        let (cancel, registration) = AbortHandle::new_pair();
+                                        captures.insert(
+                                            publication_id,
+                                            Capture::Pending(cancel.clone()),
+                                        );
+                                        let commands = commands.clone();
+                                        capture_starts.push(async move {
+                                            let result = Abortable::new(
+                                                start_capture(
+                                                    &commands,
                                                     publication_id,
-                                                    state.clone(),
-                                                ));
-                                            }
-                                            captures.insert(publication_id, lease);
-                                            Ok(json!({"publicationId":publication_id}))
-                                        }
-                                        Err(error) => Err(error),
+                                                    room_id,
+                                                    target,
+                                                    audio,
+                                                ),
+                                                registration,
+                                            )
+                                            .await
+                                            .unwrap_or_else(|_| Err(anyhow!("capture_cancelled")));
+                                            (request.id, publication_id, cancel, result)
+                                        });
+                                        continue;
                                     }
                                 }
                                 None => Err(anyhow!("hello_required")),
@@ -785,7 +842,7 @@ async fn connection(
                             } => {
                                 let policy = captures
                                     .get(&publication_id)
-                                    .filter(|lease| !lease.is_stopped())
+                                    .and_then(Capture::lease)
                                     .ok_or_else(|| anyhow!("input_source_unavailable"))
                                     .and_then(|lease| {
                                         lease.set_input_policy(mode, password, simultaneous)
@@ -811,7 +868,7 @@ async fn connection(
                             } => (|| -> Result<Value> {
                                 let lease = captures
                                     .get(&publication_id)
-                                    .filter(|lease| !lease.is_stopped())
+                                    .and_then(Capture::lease)
                                     .ok_or_else(|| anyhow!("input_source_unavailable"))?;
                                 let source = lease
                                     .remote
@@ -826,7 +883,7 @@ async fn connection(
                             } => (|| -> Result<Value> {
                                 let lease = captures
                                     .get(&publication_id)
-                                    .filter(|lease| !lease.is_stopped())
+                                    .and_then(Capture::lease)
                                     .ok_or_else(|| anyhow!("input_source_unavailable"))?;
                                 if lease.remote.is_none() {
                                     bail!("input_source_unavailable");
@@ -847,15 +904,6 @@ async fn connection(
                     writer.send(Message::Text(response.to_string().into())),
                 )
                 .await??;
-                if let Some((publication_id, state)) = initial_input {
-                    let event =
-                        json!({"type":"input_state","publicationId":publication_id,"state":state});
-                    timeout(
-                        IO_TIMEOUT,
-                        writer.send(Message::Text(event.to_string().into())),
-                    )
-                    .await??;
-                }
             }
             Ok(())
         };
@@ -902,7 +950,11 @@ async fn capture_targets() -> Result<Value> {
         tokio::task::spawn_blocking(|| {
             let sources = piik_channel_native::capture::targets()?;
             let audio = piik_channel_native::capture::audio_capabilities();
-            Ok(json!({"sources": sources, "processAudio": audio.process_audio, "systemAudio": audio.system_audio}))
+            let mut result = json!({"sources": sources, "processAudio": audio.process_audio, "systemAudio": audio.system_audio});
+            if let Some(activation) = piik_channel_native::capture::activation_url()? {
+                result["activationURL"] = json!(activation);
+            }
+            Ok(result)
         }).await?
     }
     #[cfg(not(feature = "capture"))]
@@ -937,6 +989,12 @@ async fn start_capture(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)?;
-    lease.ready().await.map_err(|_| anyhow!("capture_failed"))?;
+    lease.ready().await.map_err(|error| {
+        if error.is::<Aborted>() {
+            anyhow!("capture_cancelled")
+        } else {
+            anyhow!("capture_failed")
+        }
+    })?;
     Ok(lease)
 }

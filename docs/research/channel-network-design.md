@@ -694,7 +694,7 @@ PulseAudio monitor pipeline. App enables
 this capture feature; Server forwarding has no desktop capture dependency.
 Platform acceptance is tracked in [verification status](../verification-status.md#device-evidence-boundary).
 
-Android is planned at this same producer boundary. One user-approved
+Android uses this same producer boundary. One user-approved
 [MediaProjection](https://developer.android.com/media/grow/media-projection)
 owns one VirtualDisplay and image source. Independent MediaCodec encodings consume
 owned immutable snapshots, retaining the existing source clock and output owners;

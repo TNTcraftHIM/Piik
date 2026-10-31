@@ -1,11 +1,29 @@
 //! Native capture producers, independent of rooms and RTP.
+#[cfg(all(feature = "capture", target_os = "android"))]
+mod android;
+#[cfg(all(feature = "capture", target_os = "android"))]
+pub use android::{
+    audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
+    EncodingControl,
+};
+
+/// Foreground handoff supplied by the installed App, separate from capture consent.
+pub fn activation_url() -> anyhow::Result<Option<String>> {
+    #[cfg(all(feature = "capture", target_os = "android"))]
+    return android::activation_url().map(Some);
+    #[cfg(not(all(feature = "capture", target_os = "android")))]
+    Ok(None)
+}
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod audio;
 #[cfg(any(feature = "capture", test))]
 mod cadence;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod converter;
-#[cfg(any(all(feature = "capture", target_os = "windows"), test))]
+#[cfg(any(
+    all(feature = "capture", any(target_os = "windows", target_os = "android")),
+    test
+))]
 mod frame_dropper;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod gpu;

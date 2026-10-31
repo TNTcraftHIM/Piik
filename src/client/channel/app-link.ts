@@ -3,13 +3,15 @@ import { z } from "zod";
 import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget, type RemoteStopShortcut } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
+import { activateNativePicker } from "../native/activation";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
 type AppHealth = z.infer<typeof healthSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
-  processAudio: z.boolean(), systemAudio: z.boolean() }).strict();
+  processAudio: z.boolean(), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
+export type NativeCaptureRequest = { publicationId: string; activationURL: string };
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
 const inputControlStateSchema = remoteControlStateSchema.extend({
   canSetStopShortcut: z.boolean(), stopShortcut: remoteShortcutKeySchema.nullable().optional(),
@@ -17,6 +19,7 @@ const inputControlStateSchema = remoteControlStateSchema.extend({
 export type ChannelRemoteControlState = z.infer<typeof inputControlStateSchema>;
 const inputStateSchema = z.object({ type: z.literal("input_state"), publicationId: z.uuid(), state: inputControlStateSchema }).strict();
 class AppCompatibilityError extends Error {}
+type AppCommand = { type: string; publicationId?: string; roomId?: string; [key: string]: unknown };
 
 function identity(body: unknown, port: number): void {
   const value = identitySchema.parse(body);
@@ -43,15 +46,25 @@ export const channelAppDiscovery: AppDiscovery = {
 /** Hosting survives this link; captures selected through it belong to this page. */
 export class ChannelApp {
   private socket: WebSocket;
-  private requests = new Map<string, { resolve(value: unknown): void; reject(error: Error): void }>();
+  private requests = new Map<string, { command: AppCommand; resolve(value: unknown): void; reject(error: Error): void }>();
   readonly ready: Promise<void>;
   private rejectReady!: (error: Error) => void;
   private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
   private captures = new Set<string>();
+  private activationURL?: string;
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return this.captures; }
+
+  captureRequest(roomId: string): NativeCaptureRequest | undefined {
+    if (!this.activationURL) return;
+    for (const { command } of this.requests.values()) {
+      if (command.type === "start_capture" && command.roomId === roomId && command.publicationId && this.captures.has(command.publicationId)) {
+        return { publicationId: command.publicationId, activationURL: this.activationURL };
+      }
+    }
+  }
 
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
     onClose: () => void, onAudioFailure: (publicationId: string) => void,
@@ -85,8 +98,8 @@ export class ChannelApp {
         const request = this.requests.get(reply.id);
         if (!request) return;
         this.requests.delete(reply.id);
-        if (reply.error) request.reject(reply.error === "input_authorization_cancelled"
-          ? new DOMException("Input authorization cancelled", "AbortError") : new Error(reply.error));
+        if (reply.error) request.reject(reply.error === "input_authorization_cancelled" || reply.error === "capture_cancelled"
+          ? new DOMException(reply.error, "AbortError") : new Error(reply.error));
         else request.resolve(reply.result);
       } catch { lost(); }
     };
@@ -94,11 +107,11 @@ export class ChannelApp {
     socket.onerror = () => { /* Close retires the connection and its requests. */ };
   }
 
-  private request<T>(command: object): Promise<T> {
+  private request<T>(command: AppCommand): Promise<T> {
     if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("app_disconnected"));
     const id = crypto.randomUUID();
     return new Promise((resolve, reject) => {
-      this.requests.set(id, { resolve: value => resolve(value as T), reject });
+      this.requests.set(id, { command, resolve: value => resolve(value as T), reject });
       this.socket.send(JSON.stringify({ ...command, id }));
     });
   }
@@ -110,15 +123,23 @@ export class ChannelApp {
 
   async sources(): Promise<NativeCaptureSources> {
     await this.ready;
-    return captureSourcesSchema.parse(await this.request({ type: "targets" }));
+    const sources = captureSourcesSchema.parse(await this.request({ type: "targets" }));
+    this.activationURL = sources.activationURL;
+    return sources;
   }
 
-  async startCapture(roomId: string, target: NativeCaptureTarget, audio = false): Promise<string> {
-    await this.ready;
-    const result = z.object({ publicationId: z.uuid() }).strict()
-      .parse(await this.request({ type: "start_capture", roomId, target, audio }));
-    this.captures.add(result.publicationId);
-    return result.publicationId;
+  async startCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> {
+    if (!this.connected) throw new Error("app_disconnected");
+    this.captures.add(publicationId);
+    try {
+      const pending = this.request({ type: "start_capture", publicationId, roomId, target, audio });
+      activateNativePicker(this.activationURL);
+      await pending;
+      if (!this.captures.has(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
+    } catch (error) {
+      await this.stopCapture(publicationId).catch(() => {});
+      throw error;
+    }
   }
 
   async stopCapture(publicationId: string): Promise<void> {

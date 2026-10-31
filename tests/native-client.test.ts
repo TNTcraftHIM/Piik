@@ -898,7 +898,7 @@ describe("native App private wire", () => {
     } finally { client.close(); }
   });
 
-  it("keeps 64-bit Windows identities as exact decimal strings", () => {
+  it("keeps exact positive physical identities and accepts system picker zero", () => {
     expect(
       nativeCaptureTargetSchema.safeParse({
         kind: "window",
@@ -931,6 +931,15 @@ describe("native App private wire", () => {
         title: "System picker",
       }).success,
     ).toBe(true);
+    expect(nativeCaptureTargetSchema.safeParse({
+      kind: "picker", sourceId: "0", title: "System picker",
+    }).success).toBe(true);
+    expect(nativeCaptureTargetSchema.safeParse({
+      kind: "display", sourceId: "0", title: "Display",
+    }).success).toBe(false);
+    expect(nativeCaptureTargetSchema.safeParse({
+      kind: "window", sourceId: "0", pid: 1234, creationTime: "134327999999999999", title: "Game",
+    }).success).toBe(false);
   });
 
   it("fences native events by share and connection identity", () => {

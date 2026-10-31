@@ -10,6 +10,10 @@ public final class MainActivity extends Activity {
   static MainActivity current;
   boolean visible, notificationRequest;
   static final int NOTIFICATIONS = 13;
+  static final int PROJECTION = 14, SOURCE_AUDIO = 15;
+  CapturePlatform capture;
+  boolean projectionRequest, audioRequest;
+  boolean mediaEntry() { return getIntent().getData() != null && "piik://media".equals(getIntent().getData().toString()); }
   boolean wakeEntry() {
     return getIntent().getData() != null && "piik://app".equals(getIntent().getData().toString());
   }
@@ -22,7 +26,7 @@ public final class MainActivity extends Activity {
       notificationRequest = state.getBoolean("notificationRequest");
     }
     Uri requested = getIntent().getData();
-    if (requested != null && !wakeEntry()) {
+    if (requested != null && !wakeEntry() && !mediaEntry()) {
       finish();
       return;
     }
@@ -70,6 +74,7 @@ public final class MainActivity extends Activity {
     }
     var owner = service.runtime;
     if (owner == null) return;
+    if (mediaEntry()) { captureAvailable(); return; }
     if (wakeEntry()) {
       finish();
       return;
@@ -96,11 +101,54 @@ public final class MainActivity extends Activity {
       notificationRequest = false;
       startForegroundService(new Intent(this, AppRuntimeService.class));
     }
+    if (request == SOURCE_AUDIO) audioRequest = false;
+    if (request == SOURCE_AUDIO && capture != null) {
+      capture.audioPermission(results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED);
+      captureAvailable();
+    }
+  }
+
+  void captureAvailable() {
+    if (!visible || !mediaEntry()) return;
+    AppRuntimeService service = AppRuntimeService.instance;
+    if (service == null) return;
+    if (capture == null) {
+      capture = service.captureRequests.poll();
+      if (capture != null) capture.presented(this);
+    }
+    if (capture == null || capture.isClosed() || projectionRequest || audioRequest) return;
+    if (capture.needsAudioPermission()) {
+      audioRequest = true;
+      requestPermissions(new String[] {android.Manifest.permission.RECORD_AUDIO}, SOURCE_AUDIO);
+      return;
+    }
+    projectionRequest = true;
+    startActivityForResult(getSystemService(android.media.projection.MediaProjectionManager.class).createScreenCaptureIntent(), PROJECTION);
+  }
+  void captureClosed(CapturePlatform owner) {
+    if (capture != owner) return;
+    if (projectionRequest) finishActivity(PROJECTION);
+    capture = null;
+    finish();
+  }
+  @Override protected void onActivityResult(int request, int result, Intent data) {
+    super.onActivityResult(request, result, data);
+    if (request != PROJECTION) return;
+    projectionRequest = false;
+    CapturePlatform owner = capture;
+    capture = null;
+    if (owner != null) {
+      AppRuntimeService service = AppRuntimeService.instance;
+      if (service != null) service.captureRequests.remove(owner);
+      owner.grant(result, data);
+    }
+    finish();
   }
 
   @Override
   protected void onDestroy() {
     if (current == this) current = null;
+    if (capture != null && isFinishing()) capture.close();
     super.onDestroy();
   }
 

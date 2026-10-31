@@ -110,7 +110,7 @@ impl Capture {
         super::AudioCapture::start(target)
     }
 
-    pub fn start(target: Target, fps: u32) -> Result<Self> {
+    pub fn start(target: Target, fps: u32, _audio: bool) -> Result<Self> {
         ensure!(fps > 0, "capture fps must be positive");
         let clock = CaptureClock::new()?;
         let shared = Arc::new(Shared::default());

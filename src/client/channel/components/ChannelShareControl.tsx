@@ -3,6 +3,7 @@ import { CaptureSourcePicker, type NativeSourceList } from "../../components/liv
 import { Btn } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
+import { activateNativePicker } from "../../native/activation";
 import type { ChannelController } from "../types";
 import "./channel-share-control.css";
 
@@ -21,6 +22,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const { appConnected, nativeSources, startNativeScreen, startScreen } = channel;
   const browserSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
   const busy = channel.pending.has(`screen:${roomId}`);
+  const captureRequest = channel.nativeCaptureRequest(roomId);
   const available = browserSupported || appConnected;
   const label = lang === "zh" ? "分享屏幕" : "Share screen";
   useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
@@ -47,11 +49,16 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   };
   return <>
     <span ref={trigger} className="c3-share-control">
-      <Btn icon="cast" title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
+      {captureRequest ? <>
+        <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
+          onClick={() => activateNativePicker(captureRequest.activationURL)} />
+        <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
+          onClick={() => { void channel.stopScreen(captureRequest.publicationId).catch(() => {}); }} />
+      </> : <Btn icon="cast" title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
         hint={available ? "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
         disabled={disabled || busy || !available} busy={busy} expanded={appConnected || open ? open : undefined}
         controls={appConnected || open ? id : undefined} popoverTarget={appConnected ? id : undefined}
-        onClick={() => { if (!appConnected) start(() => startScreen(roomId)); }} />
+        onClick={() => { if (!appConnected) start(() => startScreen(roomId)); }} />}
     </span>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => setOpen(event.newState === "open")}>

@@ -101,7 +101,7 @@ impl Producer {
         // Both source reports project original capture PTS through this one pair.
         let now = Instant::now();
         let clock = SystemInstant::now(now);
-        let capture = Capture::start(target.clone(), settings.fps)?;
+        let capture = Capture::start(target.clone(), settings.fps, audio)?;
         let encoding = capture.encode(settings)?;
         let video_control = capture.control();
         let (audio_error, warning) = if audio {

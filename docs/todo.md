@@ -11,6 +11,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md) in cohesive
   Rust owners. Complete Native low-bandwidth adaptation, capture/input on the
   remaining platforms and packaging over the shared UI and Native participant.
+  Complete Android playback-sound, independent-encoding and system-picker
+  cancellation acceptance before replacing its packaging path.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
   Complete Browser-to-Native recovery acceptance of the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),

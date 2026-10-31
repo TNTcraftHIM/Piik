@@ -1,4 +1,4 @@
-.c3-share-control { display: inline-flex; }
+.c3-share-control { display: inline-flex; gap: 8px; }
 .lr-anchored-card.c3-share-picker {
   width: min(720px, calc(100vw - 16px));
   height: min(560px, calc(100dvh - 16px));

@@ -15,6 +15,8 @@ public final class AppRuntimeService extends Service {
   NativeRuntime runtime;
   CompletableFuture<NativeRuntime> startup;
   Throwable failure;
+  final java.util.ArrayDeque<CapturePlatform> captureRequests = new java.util.ArrayDeque<>();
+  int projections;
 
   @Override
   public void onCreate() {
@@ -45,7 +47,8 @@ public final class AppRuntimeService extends Service {
     startForeground(
         3,
         notification(),
-        Build.VERSION.SDK_INT >= 34 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0);
+        (Build.VERSION.SDK_INT >= 34 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE : 0)
+            | (projections > 0 ? ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION : 0));
   }
 
   void refreshNotification() {

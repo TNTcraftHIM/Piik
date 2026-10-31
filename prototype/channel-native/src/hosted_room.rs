@@ -7,6 +7,7 @@ use piik_channel_core::{
 };
 use std::{
     fs::File,
+    io,
     path::{Path, PathBuf},
 };
 use uuid::Uuid;
@@ -86,6 +87,16 @@ impl HostedRoom {
     }
 }
 
+/// The caller keeps the file open for the lifetime of its exclusive ownership.
+pub fn try_lock_file(file: &File) -> io::Result<()> {
+    // std's Unix implementation omits Android on the pinned Rust toolchain.
+    #[cfg(unix)]
+    return rustix::fs::flock(file, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+        .map_err(io::Error::from);
+    #[cfg(not(unix))]
+    file.try_lock().map_err(io::Error::from)
+}
+
 fn lock(path: &Path, room_id: &str) -> Result<File> {
     let mut lock_path = path.as_os_str().to_os_string();
     lock_path.push(".lock");
@@ -95,9 +106,33 @@ fn lock(path: &Path, room_id: &str) -> Result<File> {
         .read(true)
         .write(true)
         .open(lock_path)?;
-    match file.try_lock() {
+    match try_lock_file(&file) {
         Ok(()) => Ok(file),
-        Err(std::fs::TryLockError::WouldBlock) => bail!("room_storage_in_use: {room_id}"),
-        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
+        Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+            bail!("room_storage_in_use: {room_id}")
+        }
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn room_lock_is_exclusive_until_its_file_closes() -> Result<()> {
+        let directory = std::env::temp_dir().join(format!("piik-room-lock-{}", Uuid::new_v4()));
+        std::fs::create_dir(&directory)?;
+        let path = directory.join("room.sqlite");
+        let owner = lock(&path, "test-room")?;
+        assert_eq!(
+            lock(&path, "test-room").unwrap_err().to_string(),
+            "room_storage_in_use: test-room"
+        );
+        drop(owner);
+        drop(lock(&path, "test-room")?);
+        std::fs::remove_file(directory.join("room.sqlite.lock"))?;
+        std::fs::remove_dir(directory)?;
+        Ok(())
     }
 }

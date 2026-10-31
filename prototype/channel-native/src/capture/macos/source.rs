@@ -15,7 +15,7 @@ impl Capture {
         super::AudioCapture::start(target)
     }
 
-    pub fn start(target: Target, fps: u32) -> Result<Self> {
+    pub fn start(target: Target, fps: u32, _audio: bool) -> Result<Self> {
         ensure!(fps > 0 && fps <= i32::MAX as u32, "invalid source FPS");
         let runtime = tokio::runtime::Handle::try_current()?;
         let frames = Frames::new();

@@ -673,18 +673,24 @@ export class ChannelSession {
     await this.publish("screen", roomId, stream);
   });
   nativeSources = async (): Promise<NativeCaptureSources> => (await this.connectApp()).sources();
+  nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const epoch = this.captureEpoch;
     const app = await this.connectApp();
     if (epoch !== this.captureEpoch) throw new Error("closed");
-    const id = await app.startCapture(roomId, target, audio);
-    if (epoch !== this.captureEpoch || this.app !== app) {
-      await app.stopCapture(id);
-      throw new Error("closed");
-    }
+    const id = crypto.randomUUID();
+    const starting = app.startCapture(id, roomId, target, audio);
     this.patch({});
-    // Native owns the source; this page previews it through the ordinary route.
-    await this.watch(id, roomId);
+    await starting;
+    this.patch({});
+    try {
+      if (epoch !== this.captureEpoch || this.app !== app) throw new Error("closed");
+      // Native owns the source; this page previews it through the ordinary route.
+      await this.watch(id, roomId);
+    } catch (error) {
+      await app.stopCapture(id).catch(() => {});
+      throw error;
+    }
   });
   stopScreen = (publicationId: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
     if (this.app?.screens.has(publicationId)) {

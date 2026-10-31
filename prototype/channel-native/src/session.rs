@@ -740,14 +740,10 @@ impl Session {
                     match result {
                         RoomResult::Done => self.finish_capture(request, socket).await?,
                         RoomResult::Error { code } => {
-                            let publication_id = request.publication_id;
                             let _ = request.result.send(Err(code));
-                            self.unpublish_capture(publication_id, socket).await?;
                         }
                         _ => {
-                            let publication_id = request.publication_id;
                             let _ = request.result.send(Err("invalid_capture_reply".into()));
-                            self.unpublish_capture(publication_id, socket).await?;
                         }
                     }
                 }
@@ -758,9 +754,7 @@ impl Session {
                     .and_then(|id| self.pending_captures.remove(id))
                 {
                     let request = request.request;
-                    let publication_id = request.publication_id;
                     let _ = request.result.send(Err(code));
-                    self.unpublish_capture(publication_id, socket).await?;
                     return Ok(());
                 }
                 if request_id.as_ref().is_some_and(|id| {
@@ -795,6 +789,22 @@ impl Session {
         }
         if !cfg!(feature = "capture") {
             let _ = request.result.send(Err("capture_unavailable".into()));
+            return Ok(());
+        }
+        if self
+            .pending_captures
+            .values()
+            .any(|pending| pending.request.publication_id == request.publication_id)
+            || self.live.as_ref().is_some_and(|live| {
+                live.room.snapshot.borrow().as_ref().is_some_and(|state| {
+                    state
+                        .publications
+                        .iter()
+                        .any(|publication| publication.id == request.publication_id)
+                })
+            })
+        {
+            let _ = request.result.send(Err("capture_already_active".into()));
             return Ok(());
         }
         let binding_id = self.live.as_ref().and_then(|live| {
@@ -857,7 +867,9 @@ impl Session {
         });
         if !current || request.result.is_closed() {
             let _ = request.result.send(Err("publication_unavailable".into()));
-            self.unpublish_capture(publication_id, socket).await?;
+            if current {
+                self.unpublish_capture(publication_id, socket).await?;
+            }
             return Ok(());
         }
         let result = await_peer(

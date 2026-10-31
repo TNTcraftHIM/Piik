@@ -54,6 +54,11 @@ owns platform acceptance. `ashpd` and the `reis` input bindings use MIT licensin
 the GStreamer Rust bindings use MIT/Apache-2.0. GStreamer and system-installed
 plugins retain their own licenses.
 
+Android uses MediaProjection and independent NDK MediaCodec encodings through
+the Rust JNI, NDK and EGL bindings. The [Android runtime](../../mobile/README.md)
+owns the system-browser shell and build inputs; source permission and capture
+retain the same selecting-page lease.
+
 The App's source picker starts that producer on its existing Native endpoint.
 Local and received sources share the same encoded outputs and room routes.
 Each local output packetizes complete access units on its own stable RTP clock;

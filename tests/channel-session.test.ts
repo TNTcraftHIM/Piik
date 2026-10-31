@@ -3,6 +3,7 @@ import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
 import * as appLink from "../src/client/channel/app-link";
+import * as nativeActivation from "../src/client/native/activation";
 import * as launchSession from "../src/client/lib/session";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
@@ -281,11 +282,11 @@ test("local stop does not retire another capture acknowledged before its authori
 });
 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
+  vi.stubGlobal("navigator", { userAgent: "test", userActivation: { isActive: false } });
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
-  const publicationId = crypto.randomUUID();
   try {
     await app.onopen?.();
     app.receive({ id: app.sent.at(-1)!.id, result: null });
@@ -293,14 +294,19 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
     const listing = session.nativeSources();
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
-    const sources = { sources: [target], processAudio: false, systemAudio: true };
+    const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
+    const sources = { sources: [target], processAudio: false, systemAudio: true, activationURL };
     app.receive({ id: app.sent.at(-1)!.id, result: sources });
     await expect(listing).resolves.toEqual(sources);
     const starting = session.startNativeScreen("first", target, true);
     await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
-    expect(app.sent.at(-1)).toMatchObject({ type: "start_capture", roomId: "first", target, audio: true });
-    app.receive({ id: app.sent.at(-1)!.id, result: { publicationId } });
+    const publicationId = app.sent.at(-1)!.publicationId as string;
+    expect(app.sent.at(-1)).toMatchObject({ type: "start_capture", publicationId, roomId: "first", target, audio: true });
+    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("subscribe"));
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
+    expect(session.getSnapshot().pending.has("screen:first")).toBe(true);
     const watch = socket.sent.at(-1)!;
     const state = session.getSnapshot().state!;
     socket.receive({ type: "state", state });
@@ -315,7 +321,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
 
     const controllerSessionId = crypto.randomUUID(), intent = crypto.randomUUID().replaceAll("-", "");
-    const remote = { mode: "ask", platform: "windows", requests: [{ id: intent, peerId: controllerSessionId, state: "pending" }] };
+    const remote = { mode: "ask", platform: "windows", canSetStopShortcut: false, requests: [{ id: intent, peerId: controllerSessionId, state: "pending" }] };
     app.receive({ type: "input_state", publicationId, state: remote });
     expect(session.getSnapshot().remoteControls.get(publicationId)).toEqual(remote);
     await expect(session.inputShortcut(publicationId)).resolves.toEqual({ key: 10, available: false });
@@ -360,6 +366,68 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     session.close();
     expect(app.readyState).toBe(3);
     expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("pending Native capture stays page-owned through same-page stop and close", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
+    const activationURL = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
+    const sources = { sources: [target], processAudio: false, systemAudio: true, activationURL };
+    const capabilities = session.nativeSources();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    app.receive({ id: app.sent.at(-1)!.id, result: sources });
+    await capabilities;
+    const activate = vi.spyOn(nativeActivation, "activateNativePicker").mockImplementation(() => {
+      expect(app.sent.at(-1)?.type).toBe("start_capture");
+    });
+    const starting = session.startNativeScreen("first", target).catch(error => error);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    const request = app.sent.at(-1)!;
+    const publicationId = request.publicationId as string;
+    expect(publicationId).toEqual(expect.any(String));
+    expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
+    expect(session.nativeCaptureRequest("first")).toEqual({ publicationId, activationURL });
+    expect(activate).toHaveBeenCalledWith(activationURL);
+
+    const listing = session.nativeSources();
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("targets"));
+    app.receive({ id: app.sent.at(-1)!.id, result: sources });
+    await listing;
+    const stopping = session.stopScreen(publicationId);
+    expect(app.sent.at(-1)).toMatchObject({ type: "stop_capture", publicationId });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    app.receive({ id: request.id, error: "capture_cancelled" });
+    await stopping;
+    expect(await starting).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
+    expect(session.getSnapshot().error).toBeNull();
+    expect(socket.sent.some(command => command.type === "subscribe")).toBe(false);
+
+    const failed = session.startNativeScreen("first", target).catch(error => error);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    app.receive({ id: app.sent.at(-1)!.id, error: "capture_failed" });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("stop_capture"));
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    expect((await failed).message).toBe("capture_failed");
+
+    const closing = session.startNativeScreen("first", target).catch(error => error);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("start_capture"));
+    expect(session.getSnapshot().ownedScreens.size).toBe(1);
+    session.close();
+    expect((await closing).message).toBe("app_disconnected");
+    expect(app.readyState).toBe(3);
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(session.nativeCaptureRequest("first")).toBeUndefined();
   } finally { session.close(); }
 });
 

@@ -41,6 +41,16 @@ describe("Android App foreground actions", () => {
     expect(androidAppIntent("piik://app", desktop)).toBeNull();
   });
 
+  it("uses a connected App's complete package-specific media capability", () => {
+    const activation = "intent://media#Intent;scheme=piik;package=tv.piik.android.test;end";
+    const assign = vi.fn();
+    vi.stubGlobal("navigator", { userAgent: "desktop", userActivation: { isActive: true } });
+    vi.stubGlobal("window", { location: { assign } });
+    activateNativePicker(activation);
+    expect(assign).toHaveBeenCalledWith(activation);
+    expect(androidAppIntent(activation.replace(";end", ";S.extra=value;end"))).toBeNull();
+  });
+
   it("keeps activation optional and validates the known health extension", () => {
     const health = { protocol: NATIVE_CLIENT_PROTOCOL, service: "piik-client", port: NATIVE_CLIENT_PORT_START,
       instanceToken: "a".repeat(43), nativeMedia: {} };

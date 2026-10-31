@@ -10,7 +10,7 @@ default-run = "piik-channel-native"
 
 [features]
 default = ["capture"]
-capture = ["dep:ashpd", "dep:reis", "dep:rustix", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus"]
+capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus", "dep:ndk", "dep:ndk-context", "dep:jni", "dep:khronos-egl", "dep:glow"]
 
 [dependencies]
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
@@ -33,8 +33,17 @@ sha2 = "=0.10.9"
 subtle = "=2.6.1"
 
 [target.'cfg(target_os = "android")'.dependencies]
+ndk = { version = "=0.9.0", optional = true, features = ["api-level-29", "media"] }
+ndk-context = { version = "0.1", optional = true }
+jni = { version = "0.22", optional = true }
+khronos-egl = { version = "=6.0.0", optional = true, features = ["static", "no-pkg-config"] }
+glow = { version = "=0.16.0", optional = true }
+libc = "0.2"
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 rustls-platform-verifier = "=0.7.1"
+
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cidre = { version = "=0.29.0", optional = true, default-features = false, features = ["sc", "vt", "async", "io_surface", "macos_13_0"] }
@@ -47,12 +56,12 @@ objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std
 [target.'cfg(target_os = "linux")'.dependencies]
 ashpd = { version = "=0.13.13", optional = true, default-features = false, features = ["tokio", "screencast", "remote_desktop"] }
 reis = { version = "=0.7.1", optional = true }
-rustix = { version = "1", optional = true, features = ["time", "net"] }
+rustix = { version = "1", features = ["time", "net"] }
 gst = { package = "gstreamer", version = "=0.24.5", optional = true, features = ["v1_20"] }
 gst-app = { package = "gstreamer-app", version = "=0.24.5", optional = true, features = ["v1_20"] }
 gst-video = { package = "gstreamer-video", version = "=0.24.5", optional = true, features = ["v1_20"] }
 
-[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))'.dependencies]
+[target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "android"))'.dependencies]
 rusty-opus = { version = "=1.0.2", optional = true }
 
 # Remove after upstream webrtc-rs/rtc#296 and #298 are released; see README.md.

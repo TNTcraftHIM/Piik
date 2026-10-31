@@ -1,9 +1,6 @@
 //! Opaque input follows the core's selected lineage on the existing pair.
 use super::*;
-#[cfg(all(
-    any(feature = "capture", test),
-    any(target_os = "windows", target_os = "macos", target_os = "linux")
-))]
+#[cfg(any(feature = "capture", test))]
 use crate::input::SourceView;
 use crate::input::{Desktop, Registration, Reply, Source as InputSource};
 use futures_util::{stream::SelectAll, Stream};
@@ -13,10 +10,7 @@ use serde::Deserialize;
 pub(super) struct Inputs {
     local: Uuid,
     snapshot: watch::Receiver<Option<Snapshot>>,
-    #[cfg(all(
-        any(feature = "capture", test),
-        any(target_os = "windows", target_os = "macos", target_os = "linux")
-    ))]
+    #[cfg(any(feature = "capture", test))]
     desktop: Option<Desktop>,
     bindings: HashMap<(Uuid, Uuid), InputBinding>,
     registrations: Vec<InputRegistration>,
@@ -36,19 +30,19 @@ impl Inputs {
         snapshot: watch::Receiver<Option<Snapshot>>,
         desktop: Option<Desktop>,
     ) -> Self {
-        #[cfg(not(all(
-            any(feature = "capture", test),
-            any(target_os = "windows", target_os = "macos", target_os = "linux")
-        )))]
+        #[cfg(not(any(feature = "capture", test)))]
         let _ = desktop;
         Self {
             local,
             snapshot,
-            #[cfg(all(
-                any(feature = "capture", test),
-                any(target_os = "windows", target_os = "macos", target_os = "linux")
-            ))]
-            desktop,
+            #[cfg(any(feature = "capture", test))]
+            desktop: desktop.filter(|_| {
+                cfg!(any(
+                    target_os = "windows",
+                    target_os = "macos",
+                    target_os = "linux"
+                ))
+            }),
             bindings: HashMap::new(),
             registrations: vec![],
             sources: HashMap::new(),
@@ -56,10 +50,7 @@ impl Inputs {
         }
     }
 
-    #[cfg(all(
-        any(feature = "capture", test),
-        any(target_os = "windows", target_os = "macos", target_os = "linux")
-    ))]
+    #[cfg(any(feature = "capture", test))]
     pub fn source(
         &mut self,
         publication: Uuid,

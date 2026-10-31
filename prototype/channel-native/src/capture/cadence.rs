@@ -28,14 +28,14 @@ impl Cadence {
 
 // Encoder admission only: after its Cadence, before FrameDropper/MFT input.
 // Dropped inputs count; repeated static-IDR requests do not call observe().
-#[cfg(all(feature = "capture", target_os = "windows"))]
+#[cfg(all(feature = "capture", any(target_os = "windows", target_os = "android")))]
 #[derive(Default)]
 pub(super) struct AdmissionRate {
     first: Option<i64>,
     intervals: u32,
     pub fps: Option<f32>,
 }
-#[cfg(all(feature = "capture", target_os = "windows"))]
+#[cfg(all(feature = "capture", any(target_os = "windows", target_os = "android")))]
 impl AdmissionRate {
     pub fn observe(&mut self, qpc: i64) -> Option<f32> {
         if let Some(first) = self.first {

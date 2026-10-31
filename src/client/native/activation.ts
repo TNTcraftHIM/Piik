@@ -1,6 +1,8 @@
 // Android intents only foreground Piik. App-owned pending requests still own
 // permission, and the normal loopback approval/health checks own Site access.
 export function androidAppIntent(action: unknown, userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent): string | null {
+  // A connected App can name its installed package without frontend version rules.
+  if (typeof action === "string" && /^intent:\/\/media#Intent;scheme=piik;package=[A-Za-z0-9_.]+;end$/.test(action)) return action;
   if (action !== "piik://app" && action !== "piik://media") return null;
   // A connected App supplies its own media action. Android tablets can report
   // a desktop UA; only an unconnected cold wake needs the browser OS hint.

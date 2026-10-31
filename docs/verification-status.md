@@ -38,7 +38,11 @@ phases, including NAT and Auto codec behavior.
   its Portal sessions and stream. The GNOME cancellation cleanup defect is
   recorded in the [network design](./research/channel-network-design.md#implementation-boundary).
   Hardware encoding and physical sound remain platform acceptance work.
-- Android's system-browser App passed emulator screen/camera sharing
+- The isolated 3.0 Android Rust App passes NDK/JNI builds and emulator use through
+  Firefox: App linkage, system screen selection, continuous decoded preview,
+  pending-page cancellation and capture stop preserve the running room.
+  [TODO](./todo.md) owns remaining Android acceptance and packaging.
+- The published 2.x Android system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source
   replacement, cancellation and background return preserve the share. Local/public
   startup and launcher reentry also have emulator evidence. Full-App checks now

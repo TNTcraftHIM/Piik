@@ -829,7 +829,7 @@ async fn linux_portal_grant_delivers_encrypted_input_to_owned_window() -> Result
         .into_iter()
         .next()
         .ok_or_else(|| anyhow!("no system picker"))?;
-    let capture = crate::capture::Capture::start(target.clone(), 30)?;
+    let capture = crate::capture::Capture::start(target.clone(), 30, false)?;
     let desktop = Desktop::new()?;
     let (source, mut replies, _) = desktop.source(Uuid::new_v4(), Uuid::new_v4(), target)?;
     let control = capture.control();
