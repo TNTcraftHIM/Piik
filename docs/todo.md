@@ -7,23 +7,17 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 shared room paths and Native runtime.** Implement the accepted [network model](./research/channel-network-design.md)
-  and [room-data model](./research/channel-storage-and-identity.md) in cohesive
-  Rust owners. Complete Native low-bandwidth adaptation, capture/input on the
-  remaining platforms and packaging over the shared UI and Native participant.
+- [ ] **3.0 Native platforms and integration.** Complete capture/input on the
+  remaining platforms and packaging over the shared UI and Native participant,
+  retaining the accepted [network model](./research/channel-network-design.md)
+  and [room-data model](./research/channel-storage-and-identity.md).
   Complete Android playback-sound, independent-encoding and system-picker
   cancellation acceptance before replacing its packaging path.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Complete Browser-to-Native recovery acceptance of the
-  [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency),
-  and complete the default forwarding-only Server's H264 recovery acceptance.
-  Preserve lightweight Server deployment and healthy siblings, then promote
-  the candidate after the held dependency decision. It includes transport
-  probing/feedback, incoming-H264 derivation and coordinated UDP preparation
-  under the existing connection owner alongside gateway mapping.
-  Reuse mature components and the shared
-  frontend; preserve useful behavior rather than translating
-  functions. Keep the first version's accepted scope and the prototype isolated.
+  Promote the
+  [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
+  after the held dependency decision. Keep the first version's accepted scope
+  and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

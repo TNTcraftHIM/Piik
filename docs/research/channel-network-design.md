@@ -632,9 +632,9 @@ configuration ceilings independently of actual usage and current allocation.
 Received sources without a known ceiling retain unbounded demand; their measured
 source cost informs allocation, not a fabricated configuration limit.
 The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
-owns the exact source and controlled results. Publisher and relay recovery are
-separate checks; the current whole-App relay candidate still fails its
-20-second Original-restoration criterion.
+owns the exact source and controlled results. Publisher and relay recovery
+require separate evidence; [verification status](../verification-status.md#adaptation-boundaries)
+owns their current acceptance boundaries.
 
 Feedback history and active flight have separate lifetimes. The existing History
 owner retains late reports for 60 seconds while releasing bytes already passed
@@ -804,7 +804,7 @@ Each RID retains its own RTP/Sender Report mapping into one
 source timeline. Outputs reuse complete-frame packetization and keyframe handoff;
 the source supplies the encoding work, so the default Server needs no decoder or
 encoder runtime. Layered Native forwarding must preserve downstream supply rather
-than collapse it into a single low encoding. [TODO](../todo.md) owns completion.
+than collapse it into a single low encoding.
 The isolated incoming-H264 candidates share complete source access units between
 original forwarding and one demand-driven decoder. Windows GPU, Linux GStreamer
 and macOS VideoToolbox adapters feed the same derived-producer boundary.
@@ -814,7 +814,7 @@ output releases its derivation without stopping healthy siblings. Source RTP/SR
 mapping preserves the sender's clock through decoding and re-encoding.
 The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
 separates each platform's source and checks; integration still requires the held
-SDK dependency and whole-App recovery acceptance.
+SDK dependency decision and remaining platform acceptance.
 Completeness belongs to the assembler across reception, expiry and delivery:
 expired fragments must never become decoder inputs. Codec metadata may legitimately
 produce no RTP; that leaves the existing sender and its last clock correlation alive.
