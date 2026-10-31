@@ -123,6 +123,7 @@ export type ChannelCommand =
   | { type: "set_roles"; userId: string; roles: string[] }
   | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; muted: boolean } }
   | { type: "unpublish"; publicationId: string }
+  | { type: "transfer_source"; publicationId: string; toSessionId: string }
   | { type: "subscribe"; publicationId: string; enabled: boolean }
   | { type: "voice"; roomId: string; joined: boolean; muted: boolean; deafened: boolean }
   | { type: "signal"; pairId: string; payload: ChannelSignal }

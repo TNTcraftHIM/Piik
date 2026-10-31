@@ -169,6 +169,7 @@ impl RoomRuntime {
         member: Member,
         session: Uuid,
         command: Command,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
     ) -> Result<RoomOperation, &'static str> {
         let mut op = RoomOperation {
             result: RoomResult::Done,
@@ -230,6 +231,10 @@ impl RoomRuntime {
             Command::Unpublish { publication_id } => {
                 self.unpublish(session, publication_id)?;
             }
+            Command::TransferSource {
+                publication_id,
+                to_session_id,
+            } => self.transfer_source(member, session, publication_id, to_session_id, endpoints)?,
             Command::Subscribe {
                 publication_id,
                 enabled,
@@ -522,9 +527,12 @@ impl RoomHost {
                     return Ok(RoomResult::Invited);
                 }
                 HostAction::Command { context, command } => {
-                    let op =
-                        self.room
-                            .command(member.unwrap(), context.session_id, command.clone())?;
+                    let op = self.room.command(
+                        member.unwrap(),
+                        context.session_id,
+                        command.clone(),
+                        &input.endpoints,
+                    )?;
                     if op.policy_changed {
                         work.policy = Some(self.policy().clone());
                     }

@@ -201,9 +201,9 @@ impl Channel {
                 }
             }
             Command::Unpublish { .. } => {}
-            Command::Subscribe { .. } | Command::FlowState { .. } => {
-                return Err("publication_unavailable")
-            }
+            Command::Subscribe { .. }
+            | Command::TransferSource { .. }
+            | Command::FlowState { .. } => return Err("publication_unavailable"),
             Command::Leave => {
                 self.retire_session(session_id);
                 broadcast = true;
@@ -433,7 +433,9 @@ impl Channel {
             | Command::RevokeRoomAccess { room_id, .. }
             | Command::Voice { room_id, .. } => Some(room_id.clone()),
             Command::Publish { publication } => Some(publication.room_id.clone()),
-            Command::Unpublish { publication_id } | Command::Subscribe { publication_id, .. } => {
+            Command::Unpublish { publication_id }
+            | Command::TransferSource { publication_id, .. }
+            | Command::Subscribe { publication_id, .. } => {
                 self.publication_room_id(*publication_id)
             }
             Command::FlowState {

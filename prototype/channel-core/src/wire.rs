@@ -90,6 +90,10 @@ pub enum Command {
     Unpublish {
         publication_id: Uuid,
     },
+    TransferSource {
+        publication_id: Uuid,
+        to_session_id: Uuid,
+    },
     Subscribe {
         publication_id: Uuid,
         enabled: bool,

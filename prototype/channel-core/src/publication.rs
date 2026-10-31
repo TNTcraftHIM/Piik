@@ -64,6 +64,24 @@ impl Publication {
             .retain(|child| endpoints.contains_key(child));
     }
 
+    pub fn transfer_source(&mut self, session: Uuid) {
+        self.operation = None;
+        if self.info.session_id == session {
+            // Retain proven paths; old-source preparation must prove a new lease.
+            let preparing: BTreeSet<_> = self
+                .plan
+                .preparing_edges()
+                .map(|(_, child)| child)
+                .collect();
+            self.leases.retain(|child, _| !preparing.contains(child));
+        } else {
+            self.info.session_id = session;
+            self.plan = Plan::new(session);
+            self.leases.clear();
+            self.direct_attempted.clear();
+        }
+    }
+
     pub fn reconcile(
         &mut self,
         requested: &BTreeSet<Uuid>,

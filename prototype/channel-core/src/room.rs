@@ -377,6 +377,47 @@ impl RoomRuntime {
         Ok(true)
     }
 
+    pub fn transfer_source(
+        &mut self,
+        member: Member,
+        session: Uuid,
+        id: Uuid,
+        to_session: Uuid,
+        endpoints: &BTreeMap<Uuid, Endpoint>,
+    ) -> Result<(), &'static str> {
+        self.authorize(member, RoomPermission::Write)?;
+        let publication = self.publication(id).ok_or("publication_unavailable")?;
+        if publication.session_id != session {
+            return Err("not_publication_owner");
+        }
+        if publication.kind != Kind::Screen {
+            return Err("invalid_source_transfer");
+        }
+        let target = endpoints
+            .get(&to_session)
+            .filter(|endpoint| endpoint.connected)
+            .ok_or("source_unavailable")?;
+        if target.member.user_id != publication.user_id {
+            return Err("forbidden");
+        }
+        self.authorize(target.member, RoomPermission::Write)?;
+        if self.publications.values().any(|other| {
+            other.info.id != id
+                && other.info.session_id == to_session
+                && other.info.kind == Kind::Screen
+        }) {
+            return Err("source_already_published");
+        }
+        self.publications
+            .get_mut(&id)
+            .unwrap()
+            .transfer_source(to_session);
+        if let Some(activity) = self.activity.get_mut(&to_session) {
+            activity.watching.remove(&id);
+        }
+        Ok(())
+    }
+
     pub fn subscribe(
         &mut self,
         member: Member,
@@ -663,6 +704,201 @@ mod tests {
             .unwrap();
         room.reconcile(&endpoints, 0);
         (room, endpoints)
+    }
+
+    #[test]
+    fn screen_transfer_requires_the_current_source_and_a_live_writable_same_user_target() {
+        let id = Uuid::from_u128;
+        let (mut room, mut endpoints) = screen_on_room_base();
+        endpoints.insert(id(5), endpoints[&id(3)].clone());
+        let source = endpoints[&id(3)].member;
+        assert_eq!(
+            room.transfer_source(endpoints[&id(4)].member, id(4), id(10), id(5), &endpoints),
+            Err("not_publication_owner")
+        );
+        assert_eq!(
+            room.transfer_source(source, id(3), id(10), id(4), &endpoints),
+            Err("forbidden")
+        );
+        endpoints.get_mut(&id(5)).unwrap().connected = false;
+        assert_eq!(
+            room.transfer_source(source, id(3), id(10), id(5), &endpoints),
+            Err("source_unavailable")
+        );
+        endpoints.get_mut(&id(5)).unwrap().connected = true;
+        endpoints.get_mut(&id(5)).unwrap().member.participates = false;
+        assert_eq!(
+            room.transfer_source(source, id(3), id(10), id(5), &endpoints),
+            Err("forbidden")
+        );
+        endpoints.get_mut(&id(5)).unwrap().member = source;
+        room.publish(source, id(5), id(11), Kind::Screen, false)
+            .unwrap();
+        assert_eq!(
+            room.transfer_source(source, id(3), id(10), id(5), &endpoints),
+            Err("source_already_published")
+        );
+        assert_eq!(room.publication(id(10)).unwrap().session_id, id(3));
+        assert!(room
+            .snapshot(endpoints[&id(4)].member, id(4))
+            .unwrap()
+            .subscriptions
+            .contains(&id(10)));
+    }
+
+    #[test]
+    fn screen_transfer_preserves_viewers_room_paths_and_unrelated_voice() {
+        let id = Uuid::from_u128;
+        let (mut room, mut endpoints) = screen_on_room_base();
+        endpoints.insert(id(5), endpoints[&id(3)].clone());
+        let source = endpoints[&id(3)].member;
+        room.browse(source, id(5), true).unwrap();
+        room.subscribe(source, id(5), id(10), true).unwrap();
+        for session in [id(3), id(4)] {
+            room.set_voice(endpoints[&session].member, session, true, false, false)
+                .unwrap();
+        }
+        room.publish(source, id(3), id(11), Kind::Voice, false)
+            .unwrap();
+        for now in 1..=3 {
+            room.reconcile(&endpoints, now);
+            let links: Vec<_> = room.base_links().collect();
+            for link in links {
+                room.base_state(link.parent, link.child, true).unwrap();
+                room.base_state(link.child, link.parent, true).unwrap();
+            }
+        }
+        room.reconcile(&endpoints, 4);
+        let base: Vec<_> = room
+            .base_links()
+            .map(|link| (link.parent, link.child))
+            .collect();
+        let old_screen: BTreeSet<_> = room
+            .flows()
+            .filter(|flow| flow.publication_id == id(10))
+            .map(|flow| flow.id)
+            .collect();
+        let voice: BTreeSet<_> = room
+            .flows()
+            .filter(|flow| flow.publication_id == id(11))
+            .map(|flow| flow.id)
+            .collect();
+        assert!(!voice.is_empty());
+
+        room.transfer_source(source, id(3), id(10), id(5), &endpoints)
+            .unwrap();
+        room.reconcile(&endpoints, 5);
+        let picture = room.publication(id(10)).unwrap();
+        assert_eq!(
+            (picture.id, picture.user_id, picture.session_id),
+            (id(10), source.user_id, id(5))
+        );
+        assert!(picture.kind == Kind::Screen);
+        assert!(room
+            .snapshot(endpoints[&id(4)].member, id(4))
+            .unwrap()
+            .subscriptions
+            .contains(&id(10)));
+        assert!(!room
+            .snapshot(source, id(5))
+            .unwrap()
+            .subscriptions
+            .contains(&id(10)));
+        assert_eq!(
+            base,
+            room.base_links()
+                .map(|link| (link.parent, link.child))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            voice,
+            room.flows()
+                .filter(|flow| flow.publication_id == id(11))
+                .map(|flow| flow.id)
+                .collect()
+        );
+        assert_eq!(room.publication(id(11)).unwrap().session_id, id(3));
+        assert!(room
+            .flows()
+            .filter(|flow| flow.publication_id == id(10))
+            .all(|flow| !old_screen.contains(&flow.id)));
+        assert!(room.flows().any(|flow| flow.publication_id == id(10)
+            && flow.sender == id(5)
+            && flow.input_flow_id.is_none()));
+        assert_eq!(room.unpublish(id(3), id(10)), Err("not_publication_owner"));
+    }
+
+    #[test]
+    fn same_endpoint_source_change_preserves_proven_paths_and_retires_old_preparation() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints) = screen_on_room_base();
+        let source = endpoints[&id(3)].member;
+        let before: BTreeMap<_, _> = room
+            .flows()
+            .map(|flow| ((flow.sender, flow.receiver), flow.id))
+            .collect();
+        room.flow_state(
+            before[&(id(3), id(1))],
+            id(1),
+            id(3),
+            FlowState::Forwardable,
+            1,
+        )
+        .unwrap();
+        room.reconcile(&endpoints, 1);
+        room.transfer_source(source, id(3), id(10), id(3), &endpoints)
+            .unwrap();
+        room.reconcile(&endpoints, 2);
+        let after: BTreeMap<_, _> = room
+            .flows()
+            .map(|flow| ((flow.sender, flow.receiver), flow.id))
+            .collect();
+        assert_eq!(before[&(id(3), id(1))], after[&(id(3), id(1))]);
+        assert_ne!(before[&(id(1), id(2))], after[&(id(1), id(2))]);
+        assert_ne!(before[&(id(2), id(4))], after[&(id(2), id(4))]);
+        assert_eq!(room.next_route_deadline(), Some(2 + SCREEN_PREPARE_MS));
+        assert_eq!(
+            room.flow_state(before[&(id(1), id(2))], id(2), id(1), FlowState::Decoded, 3),
+            Err("unassigned_flow")
+        );
+
+        for now in 4..=6 {
+            let selected: Vec<_> = room.flows().filter(|flow| flow.selected).collect();
+            for flow in selected {
+                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, now)
+                    .unwrap();
+            }
+            room.reconcile(&endpoints, now);
+        }
+        let selected: BTreeSet<_> = room
+            .flows()
+            .filter(|flow| flow.selected)
+            .map(|flow| flow.id)
+            .collect();
+        let trial: Vec<_> = room.flows().filter(|flow| !flow.selected).collect();
+        assert!(!trial.is_empty());
+        room.transfer_source(source, id(3), id(10), id(3), &endpoints)
+            .unwrap();
+        room.reconcile(&endpoints, 7);
+        assert_eq!(
+            selected,
+            room.flows()
+                .filter(|flow| flow.selected)
+                .map(|flow| flow.id)
+                .collect()
+        );
+        for flow in trial {
+            assert_eq!(
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::SwitchReady,
+                    8
+                ),
+                Err("unassigned_flow")
+            );
+        }
     }
 
     #[test]
@@ -1095,8 +1331,15 @@ mod tests {
         assert!(locked.voice.is_empty());
         assert!(locked.subscriptions.is_empty());
 
-        room.update(owner, "Friends".into(), Default::default(), RoomAccess::Private, true, None)
-            .unwrap();
+        room.update(
+            owner,
+            "Friends".into(),
+            Default::default(),
+            RoomAccess::Private,
+            true,
+            None,
+        )
+        .unwrap();
         assert!(room.snapshot(viewer, viewer_session).is_none());
         let own = room.snapshot(owner, owner_session).unwrap();
         assert!(own.room.authorized && own.room.can_manage);

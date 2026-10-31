@@ -7,6 +7,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **3.0 source replacement.** Replace an active Browser or Native source
+  through its existing publication and route owner. Keep the current capture
+  during selection or preparation failure; commit a prepared replacement with
+  its own source generation and input authority.
 - [ ] **3.0 Native platforms and integration.** Complete capture/input on the
   remaining platforms and packaging over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)
