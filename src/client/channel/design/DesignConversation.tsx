@@ -28,6 +28,16 @@ const emptyRoom: DesignConversationRoom = { messages: [], draft: "", files: [], 
 const gamesRoom: DesignConversationRoom = { ...emptyRoom, reactions: { "fixture-highlight": initialReactions } };
 const roomInitial = (roomId: string) => roomId === "games" ? gamesRoom : emptyRoom;
 
+export function setDesignMessageReaction(saved: MessageReactions | undefined, userId: string, reaction: ReactionId, active: boolean): MessageReactions {
+  const current = saved ?? { revision: 0, choices: {} };
+  const selected = new Set(current.choices[userId] ?? []);
+  if (selected.has(reaction) === active) return current;
+  if (active) selected.add(reaction); else selected.delete(reaction);
+  const choices = { ...current.choices };
+  if (selected.size) choices[userId] = [...selected]; else delete choices[userId];
+  return { revision: current.revision + 1, choices };
+}
+
 /** One prototype conversation owner, shared by the room and its floating view. */
 export function useDesignConversation() {
   const [rooms, setRooms] = useState<Record<string, DesignConversationRoom>>({});
@@ -52,11 +62,8 @@ export function useDesignConversation() {
       }));
     },
     setReaction: (roomId: string, messageId: string, reaction: ReactionId, active: boolean) => updateRoom(roomId, room => {
-      const saved = room.reactions[messageId] ?? { revision: 0, choices: {} };
-      const selected = saved.choices[designPeople[3].id] ?? [];
-      const choices = { ...saved.choices, [designPeople[3].id]: active
-        ? [...new Set([...selected, reaction])] : selected.filter(value => value !== reaction) };
-      return { ...room, reactions: { ...room.reactions, [messageId]: { revision: saved.revision + 1, choices } } };
+      return { ...room, reactions: { ...room.reactions,
+        [messageId]: setDesignMessageReaction(room.reactions[messageId], designPeople[3].id, reaction, active) } };
     }),
   };
 }

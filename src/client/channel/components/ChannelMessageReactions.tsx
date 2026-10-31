@@ -1,4 +1,4 @@
-import { useId, useRef } from "react";
+import { useId, useRef, useState } from "react";
 import { REACTION_IDS, isThrow, type ReactionId } from "../../../shared/room-interactions";
 import { ReactionIcon } from "../../components/living/RoomReaction";
 import { RoomReactionGrid } from "../../components/living/RoomReactionPicker";
@@ -24,6 +24,7 @@ export function ChannelMessageReactions({ reactions, selfUserId, pending, disabl
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
+  const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, menu, { side: "above", align: "center" });
   const choices = Object.values(reactions?.choices ?? {});
   const selected = selfUserId ? reactions?.choices[selfUserId] ?? [] : [];
@@ -40,12 +41,14 @@ export function ChannelMessageReactions({ reactions, selfUserId, pending, disabl
         <ReactionIcon reaction={reaction} /><span>{count}</span>
       </button>;
     })}
-    <Tooltip kind="hint-reaction-picker" className="c3-message-action" text={label}>
-      <button ref={trigger} popoverTarget={id} className="lr-btn is-dense is-quiet c3-add-reaction" type="button" aria-label={label} disabled={disabled || !selfUserId}>
+    <Tooltip kind="hint-reaction-picker" className="c3-message-action" disabled={open} text={label}>
+      <button ref={trigger} popoverTarget={id} className="lr-btn is-dense is-quiet c3-add-reaction" type="button" aria-label={label}
+        aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={disabled || !selfUserId}>
         <Glyph name="smile" size={16} /><Glyph name="plus" size={10} />
       </button>
     </Tooltip>
-    <div ref={menu} id={id} popover="auto" className="lr-floating-surface c3-message-reaction-menu"
+    <div ref={menu} id={id} popover="auto" role="dialog" className="lr-floating-surface c3-message-reaction-menu"
+      onToggle={event => setOpen(event.newState === "open")}
       aria-label={lang === "zh" ? "消息表情" : "Message reactions"}>
       <strong>{label}</strong>
       <RoomReactionGrid person={selfUserId ? { peerId: selfUserId, displayName: "" } : undefined} selfPeerId={selfUserId}

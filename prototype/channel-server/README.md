@@ -208,7 +208,9 @@ The design board uses the production interaction session and effect renderer;
 only its transport is a local loopback. Cooldown, repeated throws, acknowledgements
 and expiry therefore follow the same behavior as the room interface.
 Chat avatars and the member list are informational; message reactions stay
-below their message. **Room mini window** beside the share action opens a movable,
+below their message and are saved by that room's owner. The functional couch
+uses the room's personal activity projection, independently of screen sharing.
+The design board's **Room mini window** beside the share action opens a movable,
 resizable view with the same couch, chat and voice shortcuts. Its detach action
 uses the existing browser picture-in-picture window where available. Messages,
 drafts, attachments, reactions and voice state share the room's owner; closing
@@ -218,8 +220,9 @@ its reading position when detached or returned.
 The composer supports the attachment button, file drop and image
 paste, with a draft preview before sending. Channel appearance and room creation
 share preset icons and custom image selection. These design-board changes stay
-in memory; room-scoped file transfer is implemented in the functional
-prototype, while persistent identity images and reactions remain integration work.
+in memory. The functional prototype uses the same preset icons, reaction
+controls and couch; persistent identity images and the room mini window remain
+integration work.
 
 References for spatial hierarchy and viewing modes:
 [Discord's server introduction](https://discord.com/blog/starting-your-first-discord-server)
@@ -246,7 +249,9 @@ There is no separate offline history database or peer history replication.
 
 Browse rooms without moving an existing call, share or subscription. Join voice
 with a microphone or listen-only. Microphone mute controls your outgoing room
-voice; deafen controls local listening. Multiple users can share simultaneously.
+voice; deafen controls local listening. Their attached volume menus adjust
+microphone and total listening gain from 0% to 200%, using the existing local
+preferences. Joined rooms share one microphone capture. Multiple users can share simultaneously.
 Watch selected pictures in
 a grid or focus one picture, with chat alongside or tucked away. These presentation
 choices do not implement media layering or a new quality policy. Local previews
@@ -318,7 +323,7 @@ User credentials/invitations are stored as digests and room passwords as passwor
 hashes. Sessions, captures and routes are not restored after a process restart.
 
 This unpublished prototype uses domain checkpoint version 4 and room SQLite
-schema version 2. Older experimental
+schema version 3. Older experimental
 checkpoints are rejected rather than silently discarding their history. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
 

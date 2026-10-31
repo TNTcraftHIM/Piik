@@ -1,4 +1,5 @@
 .c3-reaction-message { position: relative; }
+.c3-reaction-message > div > :first-child { margin-inline-end: 35px; }
 .c3-message-reactions { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .c3-message-reactions:has(.c3-message-reaction) { margin-top: 7px; }
 .c3-message-reaction.lr-chip { min-height: 28px; padding: 3px 9px; border-width: 1px; border-radius: 9px; font-size: 12px; }

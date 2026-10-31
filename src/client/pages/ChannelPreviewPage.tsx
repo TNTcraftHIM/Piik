@@ -19,6 +19,8 @@ import { ChannelRoomControls, ChannelRoomEntry } from "../channel/components/Cha
 import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
 import { ChannelDomainControls } from "../channel/components/ChannelDomainControls";
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
+import { ChannelCouch } from "../channel/components/ChannelCouch";
+import { roomPeople } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import "../channel/bootstrap";
@@ -196,6 +198,8 @@ export function ChannelPreviewPage() {
               <span>{onlineUsers.length}</span><Glyph name="chevron" size={14} />
             </button></Tooltip>
           </div>
+          {room?.authorized && <ChannelCouch className="c3-room-company" people={state ? roomPeople(state, roomId) : []}
+            selfUserId={self?.id ?? null} session={channel.interactionsByRoom.get(roomId) ?? null} />}
         </header>
         {!connected && <div className="c3-notice" role="status"><Glyph name="signal" size={20} /><span>{connectionLabel}</span>
           {connection === "closed" && <Btn icon="refresh" title="common.retry" cap="common.retry" size="compact" onClick={channel.reconnect} />}
@@ -222,11 +226,12 @@ export function ChannelPreviewPage() {
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
           {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
-            users={state?.users ?? []} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
+            users={state?.users ?? []} selfUserId={self?.id ?? null} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
             canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}
             history={channel.historyByRoom[roomId]} loadingHistory={busy("history", roomId)}
             onHistory={channel.loadHistory} onLatest={channel.loadLatestHistory}
+            isReactionPending={seq => busy(`reaction:${roomId}:${seq}`)} onReaction={channel.setMessageReaction}
             onSend={channel.sendMessage} hidden={visibleScreens.length > 0 && !chatOpen} />}
         </div>
         <ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />

@@ -8,17 +8,22 @@ import { ChannelAction } from "./ChannelMedia";
 import { ChannelAttachment } from "./ChannelAttachment";
 import { type AttachmentLimits, type DraftFile, type ChannelAttachments, fileSize } from "../attachments";
 import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
+import { ChannelMessageReactions } from "./ChannelMessageReactions";
+import type { ReactionId } from "../../../shared/room-interactions";
 import "./channel-conversation.css";
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest }: {
+export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, selfUserId, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest, isReactionPending, onReaction }: {
   roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUser[];
   entry?: ChannelEntry;
+  selfUserId: string | null;
   canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
   attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
   onHistory: (roomId: string) => Promise<void>;
   onLatest: (roomId: string) => Promise<void>;
   onSend: (roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal) => Promise<void>;
+  isReactionPending: (messageSeq: number) => boolean;
+  onReaction: (roomId: string, messageSeq: number, reaction: ReactionId, active: boolean) => Promise<void>;
 }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
@@ -122,12 +127,14 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
         const previous = messages[index - 1];
         const grouped = previous?.userId === message.userId && message.time - previous.time < 120_000;
         const name = users.find(user => user.id === message.userId)?.name ?? (zh ? "用户" : "User");
-        return <article className={`c3-message${grouped ? " is-continuation" : ""}`} key={message.id} data-message-id={message.id}>
+        return <article className={`c3-message c3-reaction-message${grouped ? " is-continuation" : ""}`} key={message.id} data-message-id={message.id}>
           {!grouped && <PawnSvg color={participantColor(message.userId)} identity={message.userId} />}
           <div className="c3-message-body">{!grouped && <div className="c3-message-meta"><strong>{name}</strong>
             <time dateTime={new Date(message.time).toISOString()}>{new Date(message.time).toLocaleTimeString(zh ? "zh-CN" : "en", { hour: "2-digit", minute: "2-digit" })}</time>
           </div>}{message.text && <p>{message.text}</p>}
-          {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}</div>
+          {message.attachments.map(file => <ChannelAttachment key={file.id} roomId={roomId} messageSeq={message.seq} file={file} client={attachments} />)}
+          <ChannelMessageReactions reactions={message.reactions} selfUserId={selfUserId} pending={isReactionPending(message.seq)}
+            disabled={!available} onSet={(reaction, active) => { void onReaction(roomId, message.seq, reaction, active).catch(() => {}); }} /></div>
         </article>;
       })}
     </div>
