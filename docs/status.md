@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-30
+Last updated: 2026-10-31
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -30,6 +30,8 @@ copies stay with their participants. Screen plans can replace a leaf or relay
 branch after its affected viewers prove delivery, while preserving playback.
 Server now embeds that same Native participant for its persistent rooms. Domain,
 Browser and Native consume one shared Rust core; conversation has one peer carrier.
+The combined Native candidate adds a fixed Server UDP entry for self-hosted and
+FRP deployments, retaining App peers' existing socket ownership.
 App hosting has its own Native endpoint and process lifetime; the Browser's
 personal voice, shares and watches remain page-owned. Existing Browser rooms
 retain their page lifetime and storage when an App connects.

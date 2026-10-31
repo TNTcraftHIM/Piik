@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-30
+Last reviewed: 2026-10-31
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -14,8 +14,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   Complete Android playback-sound, system-picker cancellation and runtime-stop
   acceptance before replacing the published package.
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Complete Server public-UDP configuration for restricted firewalls and FRP;
-  preserve its media deployment capability rather than only the HTTP entry.
   Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
   after the held dependency decision. Keep the first version's accepted scope

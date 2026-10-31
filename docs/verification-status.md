@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-30
+Last updated: 2026-10-31
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -93,6 +93,9 @@ forwarding pauses rather than changing another connection's source.
 The H264 startup reproduction traced sequence gaps to a 64 KiB UDP receive
 buffer. The shared socket correction receives the complete burst, and the
 same Browser/Server startup reports zero loss for both supplied layers.
+The combined Server candidate also carries room data and Opus/H264 RTP through
+one real FRP UDP entry alongside IPv6. Peers retire independently; closing them
+and the shared transport releases both address families' ports.
 Its funded H264 encoding handoff survives an ignored first refresh request;
 the old encoding keeps playing until the new keyframe is adopted.
 In the Browser-to-Native H264 recovery control, the constrained encoding follows

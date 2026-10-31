@@ -146,7 +146,8 @@ Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-depe
 to prepare and review updates without changing the current pin.
 
 The unpublished combination includes the application GoogCc adapter, complete
-H264 access units, shared encoding ownership and coordinated UDP socket handoff.
+H264 access units, shared encoding ownership, coordinated UDP socket handoff and
+service-owned fixed Server UDP listeners.
 Its current-source patch, frozen dependencies and Windows/Linux evidence are
 indexed by `build/native-current-assembly/receipt.json`; the adjacent README
 describes the local acceptance candidate. Whole-App acceptance and promotion

@@ -379,8 +379,8 @@ the local domain's lifetime; Browser and Native participants receive the same
 discovery configuration. Public invitations and approved external sites retain
 their domain's configured ICE servers. An individual rejected ICE candidate
 does not retire the connection or its other candidate paths.
-Native gathers IPv4 and IPv6 through the same RTC transport owner; an unavailable
-address family does not disable the other.
+Ordinary Native peers gather IPv4 and IPv6 through the same RTC transport owner;
+an unavailable address family does not disable the other.
 
 The coordinated UDP candidate keeps preparation inside one authorized physical
 pair attempt. The domain's existing transport book issues its replacement UUID;
@@ -388,12 +388,18 @@ logical room/media leases and operation deadlines stay unchanged. Only currently
 capable Native endpoints participate. The prepared socket transfers to the ordinary
 PC after mutual completion, with no competing reader or separate route graph.
 
-The current Server still gives each PC dynamic UDP sockets. A restricted-firewall
-or FRP deployment needs an explicit local listener and public-address mapping;
-serving HTTP alone does not supply that media path. The async library's
-[UDP-mux candidate](https://github.com/webrtc-rs/webrtc/pull/942) is not yet in the
-pinned release. [TODO](../todo.md) owns completing this deployment boundary;
-do not keep the old 2.x fixed-port proxy as a working 3.0 configuration.
+The isolated Server candidate shares fixed UDP listeners across its peer
+connections using the library's [UDP mux](https://github.com/webrtc-rs/webrtc/pull/942).
+The Server entry binds both address families on the actual HTTP port by default,
+before opening domain data. Configured listeners must all bind successfully;
+IPv6 sockets are v6-only so both families can use that port. Local binding and an
+optional public IP/port mapping are separate facts. An FRP backend on loopback
+requires an explicit loopback bind; wildcard enumeration advertises real interfaces.
+The service owns these sockets until its peer connections retire. App peers keep
+their exclusive sockets, gateway mapping and coordinated preparation; a shared
+Server listener does not advertise preparation capability. This library addition
+remains in the [combined candidate](../../prototype/channel-native/README.md#rtc-dependency),
+outside the formal pin. [TODO](../todo.md) owns its promotion.
 
 Each Native pair may map its actual default-gateway IPv4 socket using the
 released [portmapper](https://docs.rs/portmapper/0.20.0/portmapper/) client. Its
