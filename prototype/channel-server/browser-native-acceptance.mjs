@@ -417,10 +417,13 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     start();
     await until("Native room reopens", () => view(2), value =>
       value.state.channel.rooms.some(entry => entry.id === room && entry.available));
+    await evaluate(2, `window.__channelProbe.historyBeforeNativeReentry = ${hook}.snapshot().historyByRoom['${room}']`);
     await browser(2, "click", `.c3-room-link[aria-label="${name}"]`);
+    // Browse approval starts the automatic load; an idle flag alone can precede it.
     await until("Native room history finishes on re-entry", () => evaluate(2,
-      `${hook}.snapshot().pending.has('history:${room}')`), pending => !pending);
-    await action(2, `loadLatestHistory('${room}')`);
+      `(() => { const state = ${hook}.snapshot(); return state.historyByRoom['${room}'] !== window.__channelProbe.historyBeforeNativeReentry
+        && !state.pending.has('history:${room}'); })()`), Boolean);
+    await evaluate(2, "delete window.__channelProbe.historyBeforeNativeReentry");
     assert((await evaluate(2, `${hook}.snapshot().messagesByRoom['${room}']`))
       .some(message => message.text === "Confirmed by Native room"));
     assert(!(await view(2)).state.voice.some(member => member.roomId === room), "saved data must not revive a call");
