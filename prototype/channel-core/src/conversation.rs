@@ -445,6 +445,7 @@ mod room_tests {
         let mut policy = RoomState::new(
             "room".into(),
             "Room".into(),
+            Default::default(),
             owner.user_id,
             RoomAccess::Private,
             false,

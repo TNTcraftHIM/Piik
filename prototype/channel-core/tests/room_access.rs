@@ -439,7 +439,7 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     let updated = command(
         &mut core,
         owner,
-        json!({"type":"update_room","roomId":room,"name":"Renamed","access":"private","hidden":true}),
+        json!({"type":"update_room","icon":"couch","roomId":room,"name":"Renamed","access":"private","hidden":true}),
     );
     assert!(!updated
         .events
@@ -473,7 +473,7 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
         command(
             &mut core,
             creator,
-            json!({"type":"update_room","roomId":room,"name":"Private","access":"private","hidden":false,"password":unicode_password}),
+            json!({"type":"update_room","icon":"couch","roomId":room,"name":"Private","access":"private","hidden":false,"password":unicode_password}),
         ),
         guest,
     );
@@ -527,7 +527,7 @@ fn public_to_private_requires_explicit_grant_and_password_rotation_keeps_existin
     command(
         &mut core,
         creator,
-        json!({"type":"update_room","roomId":room,"name":"Private","access":"private","hidden":false,"password":"second"}),
+        json!({"type":"update_room","icon":"couch","roomId":room,"name":"Private","access":"private","hidden":false,"password":"second"}),
     );
     assert!(core
         .state(guest)

@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub struct RoomSummary {
     pub id: String,
     pub name: String,
+    pub icon: crate::wire::IdentityIcon,
     pub creator_id: Uuid,
     pub access: RoomAccess,
     pub hidden: bool,
@@ -29,6 +30,7 @@ impl RoomSummary {
         Self {
             id: view.id,
             name: view.name,
+            icon: view.icon,
             creator_id: view.creator_id,
             access: view.access,
             hidden: view.hidden,
@@ -195,12 +197,13 @@ impl RoomRuntime {
             }
             Command::UpdateRoom {
                 name,
+                icon,
                 access,
                 hidden,
                 password,
                 ..
             } => {
-                self.update(member, name, access, hidden, password)?;
+                self.update(member, name, icon, access, hidden, password)?;
                 op.policy_changed = true;
             }
             Command::EnterRoom {
@@ -282,6 +285,7 @@ mod tests {
             RoomState::new(
                 "private".into(),
                 "Original".into(),
+                Default::default(),
                 owner.user_id,
                 RoomAccess::Private,
                 true,
@@ -291,11 +295,11 @@ mod tests {
         );
         for (request, expected) in [
             (
-                r#"{"type":"update_room","roomId":"private","name":"Renamed","access":"private","hidden":true}"#,
+                r#"{"type":"update_room","icon":"couch","roomId":"private","name":"Renamed","access":"private","hidden":true}"#,
                 true,
             ),
             (
-                r#"{"type":"update_room","roomId":"private","name":"Renamed","access":"private","hidden":true,"password":null}"#,
+                r#"{"type":"update_room","icon":"couch","roomId":"private","name":"Renamed","access":"private","hidden":true,"password":null}"#,
                 false,
             ),
         ] {

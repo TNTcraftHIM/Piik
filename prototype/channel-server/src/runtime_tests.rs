@@ -63,6 +63,75 @@ impl Endpoint {
 }
 
 #[test]
+fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
+    let path = std::env::temp_dir().join(format!("piik-domain-metadata-{}.sqlite", Uuid::new_v4()));
+    let mut hub = Hub {
+        authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
+        clients: BTreeMap::new(),
+        invitation_origin: None,
+        storage: Arc::new(Mutex::new(storage::Storage::open(&path).unwrap())),
+    };
+    let mut owner = Endpoint::join(&mut hub, "owner");
+    let mut guest = Endpoint::join(&mut hub, "invite");
+    owner.drain();
+    let original = serde_json::to_value(hub.authority.export_state()).unwrap();
+    let update = json!({"type":"update_domain","name":"  Friends  ","icon":"future-domain_42","requestId":"metadata"});
+    guest.request(&mut hub, update.clone());
+    assert!(guest
+        .drain()
+        .iter()
+        .any(|event| event["code"] == "forbidden"));
+    assert_eq!(
+        serde_json::to_value(hub.authority.export_state()).unwrap(),
+        original
+    );
+    let database = rusqlite::Connection::open(&path).unwrap();
+    database.execute_batch("CREATE TRIGGER reject_metadata BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'disk full'); END;").unwrap();
+    owner.request(&mut hub, update.clone());
+    assert!(owner
+        .drain()
+        .iter()
+        .any(|event| event["code"] == "storage_failed"));
+    assert!(
+        guest.drain().is_empty(),
+        "failed metadata must not broadcast"
+    );
+    assert_eq!(
+        serde_json::to_value(hub.authority.export_state()).unwrap(),
+        original
+    );
+    assert_eq!(
+        hub.storage.lock().unwrap().load().unwrap().unwrap(),
+        original
+    );
+    database
+        .execute_batch("DROP TRIGGER reject_metadata;")
+        .unwrap();
+    owner.request(&mut hub, update);
+    let state = guest
+        .drain()
+        .into_iter()
+        .find(|event| event["type"] == "state")
+        .unwrap();
+    assert_eq!(state["state"]["channel"]["name"], "Friends");
+    assert_eq!(state["state"]["channel"]["icon"], "future-domain_42");
+    let _: piik_channel_core::wire::Snapshot =
+        serde_json::from_value(state["state"].clone()).unwrap();
+    drop(hub);
+    let store = storage::Storage::open(&path).unwrap();
+    let mut restored = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    restored
+        .import_state(serde_json::from_value(store.load().unwrap().unwrap()).unwrap())
+        .unwrap();
+    let saved = serde_json::to_value(restored.export_state()).unwrap();
+    assert_eq!(saved["name"], "Friends");
+    assert_eq!(saved["icon"], "future-domain_42");
+    drop(store);
+    drop(database);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
 fn retired_or_closing_connections_cannot_execute_queued_requests() {
     let mut hub = Hub {
         authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
@@ -178,6 +247,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         RoomState::new(
             "hosted".into(),
             "Hosted".into(),
+            Default::default(),
             operator.user,
             RoomAccess::Public,
             false,
@@ -212,7 +282,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
     operator.drain();
     let database = rusqlite::Connection::open(&directory_path).unwrap();
     database.execute_batch("CREATE TRIGGER reject_checkpoint BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'metadata unavailable'); END;").unwrap();
-    operator.request(&mut hub, json!({"type":"update_room","roomId":"hosted","name":"Private","access":"private","hidden":false,"requestId":"make-private"}));
+    operator.request(&mut hub, json!({"type":"update_room","icon":"couch","roomId":"hosted","name":"Private","access":"private","hidden":false,"requestId":"make-private"}));
     complete_host_turn(&mut hub, &mut operator, &mut host, &mut room_store);
     assert_eq!(
         room_store.load().unwrap().unwrap()["access"],
@@ -360,6 +430,7 @@ fn room_peer_commit_owns_confirmation_retry_without_domain_checkpoint() {
                 RoomState::new(
                     id.into(),
                     id.into(),
+                    Default::default(),
                     sender.user,
                     RoomAccess::Public,
                     false,
@@ -894,7 +965,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         json!({"type":"set_name", "name":"Owner renamed"}),
     )
     .await;
-    send_request(&mut admin, json!({"type":"update_room", "roomId":"living", "name":"Saved living", "access":"private", "hidden":false, "password":"room-password"})).await;
+    send_request(&mut admin, json!({"type":"update_room","icon":"couch", "roomId":"living", "name":"Saved living", "access":"private", "hidden":false, "password":"room-password"})).await;
     state_when(&mut admin, |state| {
         state.channel.rooms.iter().any(|room| {
             room.id == "living" && room.name == "Saved living" && room.access == RoomAccess::Private

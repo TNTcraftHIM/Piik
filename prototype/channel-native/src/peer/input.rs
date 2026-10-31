@@ -353,6 +353,7 @@ mod tests {
                 history_window: 100,
                 id: id(10),
                 name: "input".into(),
+                icon: Default::default(),
                 owner_id: None,
                 rooms: vec![],
                 roles: vec![],

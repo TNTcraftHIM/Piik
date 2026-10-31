@@ -269,7 +269,7 @@ fn public_dispatch_owns_authorization_state_before_ack_and_explicit_leave() {
     let forbidden = apply(
         &mut core,
         guest,
-        json!({"type":"host_register", "room":{"id":Uuid::new_v4(), "name":"Denied", "creatorId":guest_user,
+        json!({"type":"host_register", "room":{"id":Uuid::new_v4(), "name":"Denied", "icon":"couch", "creatorId":guest_user,
             "access":"public", "hidden":false, "hasPassword":false}, "requestId":"create"}),
         2,
     );
@@ -347,7 +347,7 @@ fn domain_checkpoint_has_no_room_policy_and_preserves_the_saved_owner_name() {
         1,
     );
     let checkpoint = serde_json::to_value(core.export_state()).unwrap();
-    assert_eq!(checkpoint["version"], 3);
+    assert_eq!(checkpoint["version"], 4);
     assert!(checkpoint.get("rooms").is_none());
     assert_eq!(checkpoint["hostedRooms"], json!({}));
     let mut restored = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();

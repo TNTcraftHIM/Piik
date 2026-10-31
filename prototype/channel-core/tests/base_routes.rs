@@ -420,7 +420,6 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     let (other_session, _) = join(&mut network, other_page, Some(&credential));
     let (viewer_session, _) = join(&mut network, viewer, None);
     let room = network.create(host, RoomAccess::Public, false);
-    let durable_policy = serde_json::to_value(network.policy(&room)).unwrap();
     browse(&mut network, viewer, &room, true);
     let base = pair(&network, viewer, host_session, &room);
     assert_ne!(
@@ -466,6 +465,57 @@ fn room_base_root_is_the_actual_host_session_and_stopping_reading_preserves_acti
     );
     voice(&mut network, host, &room, false);
     let screen = publish(&mut network, viewer, &room, "screen");
+    let manager = Uuid::new_v4();
+    command(
+        &mut network,
+        manager,
+        json!({"type":"join","name":"Owner","key":"owner"}),
+    );
+    let before = network.state(viewer).clone();
+    command(
+        &mut network,
+        manager,
+        json!({"type":"update_domain","name":"Friends domain","icon":"future_domain-v2"}),
+    );
+    command(
+        &mut network,
+        manager,
+        json!({"type":"update_room","roomId":room,"name":"Session room","icon":"future_room-v2","access":"public","hidden":false}),
+    );
+    let after = network.state(viewer);
+    assert_eq!(after.channel.name, "Friends domain");
+    assert_eq!(
+        serde_json::to_value(&after.channel.icon).unwrap(),
+        "future_domain-v2"
+    );
+    assert_eq!(
+        after
+            .channel
+            .rooms
+            .iter()
+            .find(|entry| entry.id == room)
+            .unwrap()
+            .name,
+        "Session room"
+    );
+    assert_eq!(
+        serde_json::to_value(&after.channel.rooms.iter().find(|entry| entry.id == room).unwrap().icon).unwrap(),
+        "future_room-v2"
+    );
+    assert_eq!(
+        serde_json::to_value(&after.pairs).unwrap(),
+        serde_json::to_value(&before.pairs).unwrap(),
+        "metadata preserves transport and flow leases"
+    );
+    assert_eq!(
+        serde_json::to_value(&after.publications).unwrap(),
+        serde_json::to_value(&before.publications).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&after.voice).unwrap(),
+        serde_json::to_value(&before.voice).unwrap()
+    );
+    let durable_policy = serde_json::to_value(network.policy(&room)).unwrap();
     browse(&mut network, viewer, &room, false);
     let other_room = network.create(other_page, RoomAccess::Public, false);
     browse(&mut network, viewer, &other_room, true);
@@ -1640,6 +1690,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
                     RoomState::new(
                         room.clone(),
                         "Restored".into(),
+                        Default::default(),
                         creator,
                         RoomAccess::Public,
                         false,

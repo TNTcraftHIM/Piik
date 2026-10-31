@@ -182,12 +182,13 @@ impl RoomRuntime {
         &mut self,
         member: Member,
         name: String,
+        icon: crate::wire::IdentityIcon,
         access: RoomAccess,
         hidden: bool,
         password: Option<Option<String>>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Manage)?;
-        self.policy.update(name, access, hidden, password)
+        self.policy.update(name, icon, access, hidden, password)
     }
 
     pub fn invite(&mut self, member: Member) -> Result<String, &'static str> {
@@ -564,6 +565,7 @@ mod tests {
             RoomState::new(
                 "friends".into(),
                 "Friends".into(),
+                Default::default(),
                 id(1),
                 RoomAccess::Public,
                 false,
@@ -980,6 +982,7 @@ mod tests {
             RoomState::new(
                 "private".into(),
                 "Friends".into(),
+                Default::default(),
                 owner.user_id,
                 RoomAccess::Private,
                 false,
@@ -1018,7 +1021,7 @@ mod tests {
         assert!(locked.voice.is_empty());
         assert!(locked.subscriptions.is_empty());
 
-        room.update(owner, "Friends".into(), RoomAccess::Private, true, None)
+        room.update(owner, "Friends".into(), Default::default(), RoomAccess::Private, true, None)
             .unwrap();
         assert!(room.snapshot(viewer, viewer_session).is_none());
         let own = room.snapshot(owner, owner_session).unwrap();

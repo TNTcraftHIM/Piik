@@ -113,6 +113,7 @@ impl RoomNetwork {
         let policy = RoomState::new(
             Uuid::new_v4().to_string(),
             "Friends".into(),
+            Default::default(),
             user,
             access,
             hidden,

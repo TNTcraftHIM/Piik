@@ -50,6 +50,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
             RoomState::new(
                 "review".into(),
                 "Review".into(),
+                Default::default(),
                 owner.user_id,
                 RoomAccess::Public,
                 false,
@@ -223,6 +224,7 @@ fn room_host_cannot_complete_an_unissued_other_room_request() {
         RoomState::new(
             "host-review".into(),
             "Review".into(),
+            Default::default(),
             b_user,
             RoomAccess::Public,
             false,
@@ -287,6 +289,7 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
     let mut policy = RoomState::new(
         "private-review".into(),
         "Private".into(),
+        Default::default(),
         bu,
         RoomAccess::Private,
         true,
@@ -373,6 +376,7 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
         RoomState::new(
             "concurrent-review".into(),
             "Concurrent".into(),
+            Default::default(),
             bu,
             RoomAccess::Public,
             false,
@@ -531,6 +535,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
                 RoomState::new(
                     room.into(),
                     room.into(),
+                    Default::default(),
                     user,
                     RoomAccess::Public,
                     false,
@@ -738,6 +743,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
             RoomState::new(
                 room_id.into(),
                 "Lineage".into(),
+                Default::default(),
                 source_user,
                 RoomAccess::Public,
                 false,

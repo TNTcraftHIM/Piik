@@ -26,6 +26,7 @@ fn encode(value: &impl Serialize) -> Result<String, JsValue> {
 struct NewRoom {
     id: String,
     name: String,
+    icon: piik_channel_core::wire::IdentityIcon,
     creator_id: Uuid,
     access: RoomAccess,
     hidden: bool,
@@ -39,6 +40,7 @@ pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
         &RoomState::new(
             input.id,
             input.name,
+            input.icon,
             input.creator_id,
             input.access,
             input.hidden,

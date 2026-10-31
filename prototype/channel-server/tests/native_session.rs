@@ -534,6 +534,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let policy = RoomState::new(
         room.clone(),
         "Saved private".into(),
+        Default::default(),
         user,
         RoomAccess::Private,
         true,
@@ -797,6 +798,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     let refused_policy = RoomState::new(
         refused_room.clone(),
         "Retained refused room".into(),
+        Default::default(),
         user,
         RoomAccess::Public,
         false,

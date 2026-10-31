@@ -131,6 +131,7 @@ impl RemoteRoom {
                 delivery: None,
                 id: self.summary.id.clone(),
                 name: self.summary.name.clone(),
+                icon: self.summary.icon.clone(),
                 creator_id: self.summary.creator_id,
                 access: self.summary.access,
                 hidden: self.summary.hidden,

@@ -589,6 +589,7 @@ impl Session {
                                 let policy = RoomState::new(
                                     file.id.clone(),
                                     file.name.clone(),
+                                    Default::default(),
                                     user,
                                     RoomAccess::Public,
                                     false,

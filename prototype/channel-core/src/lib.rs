@@ -114,7 +114,10 @@ impl Authority {
                         .as_ref()
                         .is_some_and(|reply| matches!(reply.result, RoomResult::Invited))
             }
-            Command::Join { .. } | Command::SetName { .. } | Command::SetRoles { .. } => true,
+            Command::Join { .. }
+            | Command::SetName { .. }
+            | Command::UpdateDomain { .. }
+            | Command::SetRoles { .. } => true,
             _ => false,
         }
     }

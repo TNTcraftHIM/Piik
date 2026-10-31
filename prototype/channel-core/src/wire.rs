@@ -22,6 +22,10 @@ pub enum Command {
     SetName {
         name: String,
     },
+    UpdateDomain {
+        name: String,
+        icon: IdentityIcon,
+    },
     Browse {
         room_id: String,
         active: bool,
@@ -53,6 +57,7 @@ pub enum Command {
     UpdateRoom {
         room_id: String,
         name: String,
+        icon: IdentityIcon,
         access: RoomAccess,
         hidden: bool,
         #[serde(
@@ -160,6 +165,38 @@ pub fn valid_id(value: &str) -> bool {
     !value.is_empty() && value.len() <= 128
 }
 
+pub(crate) fn title(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty() && value.encode_utf16().count() <= 64).then(|| value.to_owned())
+}
+
+/// Decorative key, independent of the UI's current preset menu.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(try_from = "String")]
+pub struct IdentityIcon(String);
+
+impl Default for IdentityIcon {
+    fn default() -> Self {
+        Self("couch".into())
+    }
+}
+
+impl TryFrom<String> for IdentityIcon {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.is_empty()
+            || value.len() > 64
+            || !value
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
+            return Err("invalid_identity_icon");
+        }
+        Ok(Self(value))
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Kind {
@@ -263,6 +300,7 @@ pub struct Track {
 pub struct Room {
     pub id: String,
     pub name: String,
+    pub icon: IdentityIcon,
     pub creator_id: Uuid,
     pub access: RoomAccess,
     pub hidden: bool,
@@ -370,6 +408,7 @@ pub struct ChannelInfo {
     pub history_window: usize,
     pub id: Uuid,
     pub name: String,
+    pub icon: IdentityIcon,
     pub owner_id: Option<Uuid>,
     pub rooms: Vec<Room>,
     pub roles: Vec<RoleInfo>,

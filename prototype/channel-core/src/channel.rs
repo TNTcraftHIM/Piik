@@ -18,6 +18,8 @@ pub struct Channel {
     pub identity: Identity,
     pub(crate) now: u64,
     id: Uuid,
+    name: String,
+    icon: IdentityIcon,
     pub(crate) remote: BTreeMap<String, RemoteRoom>,
     transports: TransportBook,
     input_registrations: BTreeMap<Uuid, Vec<crate::input::InputRegistration>>,
@@ -47,6 +49,8 @@ impl Channel {
             identity,
             now: 0,
             id: Uuid::new_v4(),
+            name: "Piik friends".into(),
+            icon: IdentityIcon::default(),
             remote: BTreeMap::new(),
             transports: TransportBook::default(),
             input_registrations: BTreeMap::new(),
@@ -90,6 +94,15 @@ impl Channel {
                     return Err("invalid_name");
                 }
                 self.identity.users.get_mut(&user_id).unwrap().name = name.to_owned();
+                broadcast = true;
+            }
+            Command::UpdateDomain { name, icon } => {
+                if user_id != self.identity.owner_id {
+                    return Err("forbidden");
+                }
+                let name = title(&name).ok_or("invalid_domain_name")?;
+                self.name = name;
+                self.icon = icon;
                 broadcast = true;
             }
             Command::HostRegister { .. }
@@ -312,8 +325,10 @@ impl Channel {
 
     pub fn export_state(&self) -> DurableState {
         DurableState {
-            version: 3,
+            version: 4,
             id: self.id,
+            name: self.name.clone(),
+            icon: self.icon.clone(),
             owner_id: self.identity.owner_id,
             users: self.identity.export_users(),
             hosted_rooms: self
@@ -379,7 +394,7 @@ impl Channel {
     }
 
     pub fn import_state(&mut self, state: DurableState) -> Result<(), &'static str> {
-        if state.version != 3 || state.hosted_rooms.len() > 32 {
+        if state.version != 4 || state.hosted_rooms.len() > 32 {
             return Err("invalid_state");
         }
         let mut identity = Identity::new(
@@ -387,8 +402,11 @@ impl Channel {
             self.identity.invite_key.clone(),
         );
         identity.restore_users(state.owner_id, state.users)?;
+        let name = title(&state.name).ok_or("invalid_state")?;
         self.identity = identity;
         self.id = state.id;
+        self.name = name;
+        self.icon = state.icon;
         self.remote = state
             .hosted_rooms
             .into_iter()
@@ -1073,7 +1091,8 @@ impl Channel {
             channel: ChannelInfo {
                 history_window: HISTORY_WINDOW,
                 id: self.id,
-                name: "Piik friends".into(),
+                name: self.name.clone(),
+                icon: self.icon.clone(),
                 owner_id: Some(self.identity.owner_id),
                 rooms,
                 roles: vec![
@@ -1151,6 +1170,8 @@ fn room_next_hops(session: Uuid, links: &[crate::transport::BaseLink]) -> BTreeM
 pub struct DurableState {
     version: u32,
     id: Uuid,
+    name: String,
+    icon: IdentityIcon,
     owner_id: Uuid,
     users: Vec<StoredUser>,
     hosted_rooms: BTreeMap<String, RoomSummary>,

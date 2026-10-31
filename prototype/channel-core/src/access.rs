@@ -20,6 +20,7 @@ pub enum RoomPermission {
 pub struct RoomState {
     pub id: String,
     pub name: String,
+    pub icon: crate::wire::IdentityIcon,
     pub creator_id: Uuid,
     pub access: RoomAccess,
     pub hidden: bool,
@@ -36,6 +37,7 @@ impl RoomState {
     pub fn new(
         id: String,
         name: String,
+        icon: crate::wire::IdentityIcon,
         creator_id: Uuid,
         access: RoomAccess,
         hidden: bool,
@@ -44,6 +46,7 @@ impl RoomState {
         let mut room = Self {
             id,
             name: String::new(),
+            icon: icon.clone(),
             creator_id,
             access,
             hidden,
@@ -51,7 +54,7 @@ impl RoomState {
             invite_hash: None,
             grants: BTreeSet::new(),
         };
-        room.update(name, access, hidden, password.map(Some))?;
+        room.update(name, icon, access, hidden, password.map(Some))?;
         Ok(room)
     }
 
@@ -67,14 +70,12 @@ impl RoomState {
     pub fn update(
         &mut self,
         name: String,
+        icon: crate::wire::IdentityIcon,
         access: RoomAccess,
         hidden: bool,
         password: Option<Option<String>>,
     ) -> Result<(), &'static str> {
-        let name = name.trim();
-        if name.is_empty() || name.encode_utf16().count() > 64 {
-            return Err("invalid_room_name");
-        }
+        let name = crate::wire::title(&name).ok_or("invalid_room_name")?;
         let hash = match password {
             Some(Some(value)) => {
                 if access != RoomAccess::Private
@@ -95,7 +96,8 @@ impl RoomState {
             Some(None) => Some(None),
             None => None,
         };
-        self.name = name.to_owned();
+        self.name = name;
+        self.icon = icon;
         self.access = access;
         self.hidden = hidden && access == RoomAccess::Private;
         if let Some(hash) = hash {
@@ -159,6 +161,7 @@ impl RoomState {
             delivery: None,
             id: self.id.clone(),
             name: self.name.clone(),
+            icon: self.icon.clone(),
             creator_id: self.creator_id,
             access: self.access,
             hidden: self.hidden,

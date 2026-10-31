@@ -19,7 +19,7 @@ impl Storage {
         let connection = Connection::open(path)?;
         let version: u32 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
         let existing: bool = connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('checkpoint','message','attachment'))", [], |row| row.get(0))?;
-        if version != 1 && (version != 0 || existing) {
+        if version != 2 && (version != 0 || existing) {
             return Err("unsupported_storage_version".into());
         }
         connection.execute_batch(
@@ -31,7 +31,7 @@ impl Storage {
                time INTEGER NOT NULL, attachments TEXT NOT NULL,
                PRIMARY KEY(room_id,seq), UNIQUE(room_id,user_id,nonce)
              );
-             PRAGMA user_version=1;",
+             PRAGMA user_version=2;",
         )?;
         Ok(Self { connection })
     }
@@ -284,7 +284,7 @@ mod tests {
             let connection = Connection::open(&path).unwrap();
             connection
                 .execute_batch(
-                    "CREATE TABLE message(body TEXT); INSERT INTO message VALUES('old');",
+                    "CREATE TABLE message(body TEXT); INSERT INTO message VALUES('old'); PRAGMA user_version=1;",
                 )
                 .unwrap();
         }
@@ -294,6 +294,7 @@ mod tests {
             .to_string()
             .contains("unsupported_storage_version"));
         let connection = Connection::open(&path).unwrap();
+        assert_eq!(connection.query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0)).unwrap(), 1);
         assert_eq!(
             connection
                 .query_row("SELECT body FROM message", [], |row| row

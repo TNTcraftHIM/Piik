@@ -53,7 +53,7 @@ fn command(host: &mut StoredRoomHost, owner: Uuid, actor: Uuid, value: Value) ->
 }
 
 fn policy(id: &str, owner: Uuid, access: RoomAccess) -> RoomState {
-    RoomState::new(id.into(), id.into(), owner, access, false, None).unwrap()
+    RoomState::new(id.into(), id.into(), Default::default(), owner, access, false, None).unwrap()
 }
 
 fn peer(
@@ -102,6 +102,10 @@ fn failed_storage_withholds_grant_and_confirmation_then_retry_survives_reopen() 
         StoredRoomHost::create(&path, policy("private", owner, RoomAccess::Private)).unwrap();
     let database = rusqlite::Connection::open(&path).unwrap();
     database.execute_batch("CREATE TRIGGER reject_policy BEFORE UPDATE ON checkpoint BEGIN SELECT RAISE(ABORT,'disk full'); END;").unwrap();
+    let metadata = command(&mut host, owner, owner, json!({"type":"update_room","roomId":"private","name":"Changed","icon":"future_room","access":"private","hidden":false}));
+    assert!(matches!(metadata.reply.unwrap().result, RoomResult::Error { code } if code == "storage_failed"));
+    assert_eq!(host.summary().name, "private");
+    assert_eq!(serde_json::to_value(host.summary().icon).unwrap(), "couch");
     let failed = host
         .dispatch(input(owner, viewer, |context| HostAction::GrantInvited {
             context,
@@ -193,7 +197,7 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
             host,
             owner,
             owner,
-            json!({"type":"update_room","roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false}),
+            json!({"type":"update_room","icon":format!("future_{room}"),"roomId":room,"name":format!("Saved {room}"),"access":"public","hidden":false}),
         );
         let result = sent(peer(
             host,
@@ -224,6 +228,8 @@ fn separate_room_databases_reopen_without_overwriting_policy_or_restoring_activi
         let mut restored = StoredRoomHost::open(path).unwrap();
         assert_eq!(restored.policy().id, room);
         assert_eq!(restored.summary().name, format!("Saved {room}"));
+        assert_eq!(serde_json::to_value(restored.policy().icon.clone()).unwrap(), format!("future_{room}"));
+        assert_eq!(serde_json::to_value(restored.summary().icon).unwrap(), format!("future_{room}"));
         let output = restored
             .dispatch(input(owner, owner, |_| HostAction::Sync))
             .unwrap();
