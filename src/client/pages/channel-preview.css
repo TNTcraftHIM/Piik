@@ -116,11 +116,10 @@
   .c3-room-heading .lr-cap { display: none; }
 }
 @container (max-width: 800px) {
-  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(160px, 1fr) minmax(188px, .8fr); overflow-y: auto; }
-  .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(0, 1fr); }
-  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow-y: auto; }
+  .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(min-content, 1fr) minmax(188px, .8fr); overflow-y: auto; }
+  .c3-workspace.has-screens.chat-collapsed { grid-template-rows: minmax(min-content, 1fr); }
+  .c3-workspace.has-screens > .c3-monitor { border-inline-end: 0; border-bottom: 1px solid var(--line); overflow: visible; }
   .c3-workspace.has-screens .c3-conversation { min-height: 188px; padding: 12px 18px; gap: 10px; }
-  .c3-workspace.chat-collapsed .c3-monitor { overflow-y: auto; }
 }
 @media (max-width: 980px) {
   .c3-shell { grid-template-columns: 54px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
