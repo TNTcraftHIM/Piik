@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from "react";
+import { useLayoutEffect, useRef, type RefObject } from "react";
 import { useSurfaceDocument } from "../../ui/panel-window";
 
 // Native popovers own visibility, dismissal and focus. This only places a
@@ -11,6 +11,11 @@ export function useAnchoredPopover(
   } = {},
 ) {
   const ownerDocument = useSurfaceDocument();
+  const reposition = useRef<(() => void) | null>(null);
+  // A React layout change can move the anchor without resizing it.
+  useLayoutEffect(() => {
+    if (panel.current?.matches(":popover-open")) reposition.current?.();
+  });
   useLayoutEffect(() => {
     const menu = panel.current;
     if (!enabled || !menu) return;
@@ -50,6 +55,7 @@ export function useAnchoredPopover(
       view.cancelAnimationFrame(frame);
       frame = view.requestAnimationFrame(place);
     };
+    reposition.current = schedule;
     const observer = new ResizeObserver(schedule);
     const toggled = () => {
       observer.disconnect();
@@ -70,6 +76,7 @@ export function useAnchoredPopover(
     viewport?.addEventListener("scroll", schedule);
     toggled();
     return () => {
+      reposition.current = null;
       observer.disconnect();
       view.cancelAnimationFrame(frame);
       menu.removeEventListener("beforetoggle", schedule);
