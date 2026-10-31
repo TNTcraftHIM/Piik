@@ -461,8 +461,9 @@ async fn health(State(app): State<Arc<App>>) -> Json<Value> {
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     Ok(
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
-        "defaultMode":"link","modes":["local","link"],"siteAccess":"channel","version":"development",
-        "revision":"development","controlPort":port}),
+        "defaultMode":"link","modes":["local","link"],"siteAccess":"channel",
+        "version":option_env!("PIIK_BUILD_VERSION").unwrap_or("development"),
+        "revision":option_env!("PIIK_BUILD_REVISION").unwrap_or("development"),"controlPort":port}),
     )
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
