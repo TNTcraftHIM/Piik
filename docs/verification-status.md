@@ -21,6 +21,11 @@ phases, including NAT and Auto codec behavior.
 
 ## Device Evidence Boundary
 
+- The isolated 3.0 Windows desktop archive serves its bundled Web/WASM and build
+  identity from an independent directory, then exits cleanly on native Ctrl+C.
+  Windows Server archive checks and a Linux static-musl Server's resource loading,
+  SQLite creation and SIGTERM shutdown also pass. These packaged builds use the
+  formal RTC pin; the combined Native media candidate retains its own evidence.
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
