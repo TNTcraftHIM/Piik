@@ -527,6 +527,7 @@ func TestPublicationSimulcastReuseAudioDemandAndClose(t *testing.T) {
 	// Restore this allocation fixture's capacity explicitly. A congestion event
 	// cannot prove an increase; this test covers RID reuse, not bandwidth probing.
 	publication.bandwidth.target.Store(1_000_000)
+	publication.pacer.SetBitrate(1_000_000)
 	publication.allocator.SetChannelCapacity(1_000_000)
 	// Drain packets already admitted by the pacer before observing inactive output.
 	for range 6 {
