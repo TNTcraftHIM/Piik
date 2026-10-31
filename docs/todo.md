@@ -8,8 +8,8 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **3.0 shared product flows.** Bring accepted design flows into the real
-  shared UI and Rust owners: domain/room identity settings, directed interactions,
-  message reactions, the room tool and voice controls. Keep identity images as
+  shared UI and Rust owners: directed interactions, message reactions, the room
+  tool and voice controls. Keep identity images as
   a separate bounded asset slice; preset icons do not complete image support.
   The [network model](./research/channel-network-design.md) and
   [data model](./research/channel-storage-and-identity.md) own responsibilities.
