@@ -133,6 +133,30 @@ test("data needs explicit readiness, waits for server echo, and has no offline r
   expect(vi.getTimerCount()).toBe(0);
 });
 
+test("a delayed own confirmation restarts cooldown before the next interaction", () => {
+  const { session } = setup();
+  session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
+  const payload = { kind: "reaction", reaction: "poop", targetPeerId: "other_peer_1234" } as const;
+  expect(session.send(payload)).toBe(true);
+  const first = session.getSnapshot().pending!;
+  vi.advanceTimersByTime(120);
+  const acceptedAt = Date.now();
+  vi.advanceTimersByTime(60);
+  session.receive({ ...message("delayed_reaction"), occurredAt: acceptedAt, requestId: first.requestId, payload,
+    sender: { peerId: "self_peer_1234", role: "viewer", displayName: "Me" } });
+  vi.advanceTimersByTime(620); // The send-time 800ms has elapsed, but acceptance was later.
+  expect(session.getSnapshot()).toMatchObject({ pending: null, coolingDown: true });
+  expect(session.send(payload)).toBe(false);
+  vi.advanceTimersByTime(179);
+  expect(session.send(payload)).toBe(false);
+  vi.advanceTimersByTime(1);
+  expect(session.send(payload)).toBe(true);
+  // Even a second request with no outbound delay now respects the Host's interval.
+  expect(Date.now() - acceptedAt).toBeGreaterThanOrEqual(800);
+  session.close();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
 test("history and animations are bounded, deduplicated and retired with the room", () => {
   const { session } = setup();
   session.receive({ type: "room-interactions-ready", serverTime: Date.now() });
@@ -170,8 +194,10 @@ test("rejection and timeout leave delivery unconfirmed without automatic retries
   const echoed = { ...message("late_confirmed"), requestId: pending.requestId, payload: pending.payload,
     sender: { peerId: "self_peer_1234", role: "viewer" as const, displayName: "Me" } };
   session.receive(echoed);
-  expect(session.getSnapshot()).toMatchObject({ error: null, pending: null, confirmed: { id: "late_confirmed" } });
-  session.send({ kind: "chat", text: "Next attempt" });
+  expect(session.getSnapshot()).toMatchObject({ error: null, pending: null, coolingDown: true, confirmed: { id: "late_confirmed" } });
+  expect(session.send({ kind: "chat", text: "Next attempt" })).toBe(false);
+  vi.advanceTimersByTime(800);
+  expect(session.send({ kind: "chat", text: "Next attempt" })).toBe(true);
   const rejected = session.getSnapshot().pending!;
   vi.advanceTimersByTime(5000);
   session.receive({ type: "room-interaction-rejected", requestId: rejected.requestId, reason: "busy" });
@@ -224,8 +250,9 @@ test("late echoes do not confirm a newer same-text request or erase its rejectio
   expect(session.getSnapshot().confirmed).toBeNull();
   expect(session.getSnapshot().pending?.requestId).toBe(next.requestId);
   session.receive({ type: "room-interaction-rejected", requestId: next.requestId, reason: "busy" });
+  vi.advanceTimersByTime(800);
   session.receive({ ...echo, id: "late_event_5678" });
-  expect(session.getSnapshot()).toMatchObject({ confirmed: null, error: "busy" });
+  expect(session.getSnapshot()).toMatchObject({ confirmed: null, error: "busy", coolingDown: false });
   expect(session.getSnapshot().messages).toHaveLength(2);
   session.close();
 });
