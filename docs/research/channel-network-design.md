@@ -787,6 +787,9 @@ calls Mutter `Stop`, whose
 [`!started` branch](https://gitlab.gnome.org/GNOME/mutter/-/blob/50.2/src/backends/meta-remote-desktop-session.c#L691)
 returns without closing the object. This is an upstream cleanup defect; Piik
 must not start an unapproved session to work around it.
+Checked on 2026-10-31, the same early return remains in
+[50.5](https://github.com/GNOME/mutter/blob/c28623c8d29c7b61ec744cdfdbec36f5e7faef1c/src/backends/meta-remote-desktop-session.c#L634)
+and [upstream main](https://github.com/GNOME/mutter/blob/432c167ef2de37a708140b02e29881646fc9c13c/src/backends/meta-remote-desktop-session.c#L442).
 Removing that eight-line early return passes an isolated Mutter build and
 runtime comparison: the owner can close an unstarted session, another caller
 is rejected, and cancelling the normal Portal dialog releases its object while
