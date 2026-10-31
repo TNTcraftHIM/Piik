@@ -776,12 +776,13 @@ test("Browser source replacement keeps its publication, rejects only the candida
   } finally { session.close(); }
 });
 
-test("Browser and Native handoffs keep one publication and use the current Native capture lease", async () => {
+test.each(["live", "stop-before-reply"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const { session, socket } = await setup();
   const app = ChannelSocket.current;
   const old = remoteTrack("video"), next = remoteTrack("video");
+  vi.mocked(next.stop).mockImplementation(() => { Object.defineProperty(next, "readyState", { value: "ended" }); });
   const nextStream = remoteStream("browser-next", [next]);
   vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
     .mockResolvedValueOnce(remoteStream("browser-old", [old])).mockResolvedValueOnce(nextStream) } });
@@ -844,7 +845,28 @@ test("Browser and Native handoffs keep one publication and use the current Nativ
       });
     });
     const browser = session.startScreen("first");
-    expect(await appCommand("transfer_source")).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
+    const transferring = await appCommand("transfer_source");
+    expect(transferring).toMatchObject({ publicationId: publication.id, captureId: secondCaptureId, toSessionId: "endpoint" });
+    if (outcome === "stop-before-reply") {
+      const cancelled = expect(browser).rejects.toMatchObject({ name: "AbortError" });
+      const stopping = session.stopScreen(publication.id);
+      expect(app.sent.at(-1)).toMatchObject({ type: "stop_capture", publicationId: publication.id });
+      appReply(); await stopping;
+      expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
+      state = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }], subscriptions: [] };
+      socket.receive({ type: "state", state });
+      app.receive({ id: transferring.id, result: null });
+      await cancelled;
+      expect(socket.sent.at(-1)).toEqual({ type: "unpublish", publicationId: publication.id });
+      socket.receive({ type: "state", state: { ...state, publications: [] } });
+      expect(next.readyState).toBe("ended");
+      expect(next.stop).toHaveBeenCalledOnce();
+      expect(session.getSnapshot().ownedScreens.size).toBe(0);
+      expect(session.getSnapshot().state?.publications).toEqual([]);
+      expect(session.getSnapshot().error).toBeNull();
+      expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
+      return;
+    }
     state = { ...state, publications: [{ ...state.publications[0], sessionId: "endpoint" }], subscriptions: [] };
     socket.receive({ type: "state", state }); appReply();
     expect(await appCommand("stop_capture")).toMatchObject({ publicationId: publication.id });

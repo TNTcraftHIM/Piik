@@ -855,7 +855,10 @@ export class ChannelSession {
         if (!sessionId) throw new Error("disconnected");
         if (previous) await this.request({ type: "transfer_source", publicationId: share.id, toSessionId: sessionId }, undefined, roomId);
         else await app!.transferSource(share.id, sessionId);
-        if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+        if (!current()) {
+          this.send({ type: "unpublish", publicationId: share.id });
+          throw new DOMException("Capture cancelled", "AbortError");
+        }
         this.local.set(share.id, { roomId, kind: "screen", stream: candidate, camera: source === "camera" });
         this.admittedPublications.add(share.id);
         this.media.setLocal(share.id, candidate);
