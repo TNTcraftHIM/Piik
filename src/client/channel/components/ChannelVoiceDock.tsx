@@ -48,12 +48,10 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
     <div className="c3-voice-controls">
       <AudioVolumeMenu volume={channel.inputVolume} onVolume={channel.setInputVolume} label="host.microphone.volume" icon="microphone">
         <VoiceMicrophoneButton active={!muted} disabled={!available} busy={busy} quiet
-          hint={muted ? "hint-voice-microphone-on" : "hint-voice-microphone-off"}
           onClick={() => run(channel.setMuted(roomId, !muted))} />
       </AudioVolumeMenu>
       <AudioVolumeMenu volume={channel.listeningVolume} onVolume={channel.setListeningVolume} label="voice.listeningVolume" icon="headphones">
         <VoiceListeningButton deafened={deafened} disabled={!available} busy={busy} quiet
-          hint={deafened ? "hint-voice-undeafen" : "hint-voice-deafen"}
           onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       </AudioVolumeMenu>
       <span className="c3-control-divider" />
