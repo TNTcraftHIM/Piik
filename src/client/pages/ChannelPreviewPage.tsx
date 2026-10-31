@@ -17,6 +17,8 @@ import { ChannelPeople } from "../channel/components/ChannelPeople";
 import { ChannelNameEditor } from "../channel/components/ChannelNameEditor";
 import { ChannelRoomControls, ChannelRoomEntry } from "../channel/components/ChannelRoomControls";
 import { ChannelBookmarks } from "../channel/components/ChannelBookmarks";
+import { ChannelDomainControls } from "../channel/components/ChannelDomainControls";
+import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
 import "../channel/bootstrap";
@@ -120,10 +122,12 @@ export function ChannelPreviewPage() {
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
     <main className="c3-shell" data-pane={mobilePane}>
-      <ChannelBookmarks currentName={state?.channel.name ?? location.host} onCurrent={() => setMobilePane("rooms")} />
+      <ChannelBookmarks currentName={state?.channel.name ?? location.host}
+        currentIcon={<ChannelIdentityMark icon={state?.channel.icon ?? "couch"} size={26} />} onCurrent={() => setMobilePane("rooms")} />
       <aside id="c3-room-list" className="c3-sidebar" aria-label={copy("域和房间", "Domain and rooms")}>
-        <div className="c3-channel-title"><div><h1 id="c3-room-list-heading" tabIndex={-1}>{state?.channel.name ?? copy("你的域", "Your domain")}</h1>
+        <div className="c3-channel-title c3-editable"><div><h1 id="c3-room-list-heading" tabIndex={-1}>{state?.channel.name ?? copy("你的域", "Your domain")}</h1>
           <span className="c3-channel-caption">{copy("域", "Domain")}</span></div>
+          {state && owner && <ChannelDomainControls channel={channel} />}
           <span className="c3-pane-back"><BackButton onClick={() => setMobilePane("room")} /></span>
         </div>
         {channel.inviteURL && <div className="c3-invite"><ChannelAction icon={copied ? "check" : "link"}
@@ -143,8 +147,9 @@ export function ChannelPreviewPage() {
               const count = screens.filter(screen => screen.roomId === value.id).length;
               return <button type="button" key={value.id} className="c3-room-link" aria-label={value.name}
                 aria-current={roomId === value.id ? "page" : undefined} onClick={() => selectRoom(value.id)}>
-                <Glyph name={value.access === "private" ? "lock" : "couch"} size={21} /><strong>{value.name}</strong>
+                <ChannelIdentityMark icon={value.icon} size={21} /><strong>{value.name}</strong>
                 <span className="c3-room-activity">
+                  {value.access === "private" && <Glyph name="lock" size={13} />}
                   {voice && <Glyph name="headphones" size={14} />}
                   {sharing ? <Glyph name="cast" size={14} /> : watching ? <Glyph name="eye" size={14} />
                     : count > 0 ? <span>{count}<Glyph name="tv" size={13} /></span> : null}
@@ -163,7 +168,7 @@ export function ChannelPreviewPage() {
         <header className="c3-room-heading">
           <div className="c3-room-name"><span className="c3-pane-navigation"><Btn id="c3-rooms-trigger" icon="arrowLeft" quiet size="compact"
             title={{ text: copy("房间列表", "Rooms") }} hint="hint-collapse" controls="c3-room-list" expanded={mobilePane === "rooms"}
-            onClick={() => setMobilePane("rooms")} /></span><Glyph name="couch" size={25} /><h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2></div>
+            onClick={() => setMobilePane("rooms")} /></span><ChannelIdentityMark icon={room?.icon ?? "couch"} size={25} /><h2>{room?.name ?? copy("欢迎回来", "Welcome back")}</h2></div>
           <div className="c3-room-actions">
             {room?.authorized && <><ChannelShareControl channel={channel} roomId={roomId} disabled={!connected || !room.available || !can("publish")} />
               <ChannelJoinVoice joined={joined} disabled={!connected || !room.available || !can("voice")} busy={busy("voice", roomId)}
@@ -208,7 +213,7 @@ export function ChannelPreviewPage() {
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
-          {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} messages={channel.messagesByRoom[roomId] ?? []}
+          {room && !room.authorized ? <ChannelRoomEntry key={room.id} channel={channel} room={room} /> : <ChannelConversation roomId={roomId} roomName={room?.name ?? ""} roomIcon={room?.icon} messages={channel.messagesByRoom[roomId] ?? []}
             users={state?.users ?? []} entry={self ? { kind: "domain", canCreate: can("create_room") } : { kind: "entry" }}
             canSend={connected && !!roomId && !!room?.available && can("chat")} sending={busy("chat", roomId)}
             attachments={channel.attachments} attachmentsAvailable={room?.capabilities.attachments ?? false} available={connected && !!room?.available}

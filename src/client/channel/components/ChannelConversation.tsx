@@ -11,8 +11,8 @@ import { ChannelRoomStart, type ChannelEntry } from "./ChannelRoomStart";
 import "./channel-conversation.css";
 
 /** Browsing owns the conversation; drafts and reading position belong to this pane. */
-export function ChannelConversation({ roomId, roomName, entry, messages, users, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest }: {
-  roomId: string; roomName: string; messages: ChannelMessage[]; users: ChannelUser[];
+export function ChannelConversation({ roomId, roomName, roomIcon, entry, messages, users, canSend, sending, onSend, hidden, attachments, attachmentsAvailable = true, available, history, loadingHistory, onHistory, onLatest }: {
+  roomId: string; roomName: string; roomIcon?: string; messages: ChannelMessage[]; users: ChannelUser[];
   entry?: ChannelEntry;
   canSend: boolean; sending: boolean; hidden: boolean; available: boolean;
   attachments: ChannelAttachments; attachmentsAvailable?: boolean; history?: { hasMore: boolean; atLatest: boolean }; loadingHistory: boolean;
@@ -112,7 +112,7 @@ export function ChannelConversation({ roomId, roomName, entry, messages, users, 
           follow.current = false;
           void onHistory(roomId).catch(() => { readingAnchor.current = null; });
         }} /></div>}
-      {!history?.hasMore && <ChannelRoomStart roomName={roomName} canSend={canSend}
+      {!history?.hasMore && <ChannelRoomStart roomName={roomName} icon={roomIcon} canSend={canSend}
         entry={!roomId ? entry ?? { kind: "entry" } : undefined}
         empty={!messages.length && (!roomId || (!!history && !loadingHistory))} />}
       {roomId && loadingHistory && !messages.length && <div className="c3-conversation-loading" role="status">

@@ -2,10 +2,5 @@
 .cd-identity-mark img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 25%; }
 .cd-identity-picker { border: 0; padding: 0; margin: 20px 0; min-width: 0; }
 .cd-identity-picker legend { padding: 0; margin-bottom: 10px; font-size: 12px; font-weight: 600; }
-.cd-identity-options { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 5px; }
-.cd-identity-options .lr-chip { width: 100%; min-width: 0; padding-inline: 0; justify-content: center; }
 .cd-identity-upload { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-top: 9px; }
 .cd-identity-error { margin-top: 5px; color: var(--danger); font-size: 11px; }
-@media (max-width: 400px) {
-  .cd-identity-options { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}

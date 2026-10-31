@@ -6,14 +6,17 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelRoom, RoomSettings } from "../protocol";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelMedia";
+import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
 
-function RoomForm({ room, appHosted, disabled, busy, onSave }: {
-  room?: ChannelRoom; appHosted: boolean; disabled: boolean; busy: boolean; onSave: (settings: RoomSettings) => Promise<unknown>;
+function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
+  room?: ChannelRoom; appHosted: boolean; disabled: boolean; busy: boolean;
+  onSave: (settings: RoomSettings) => Promise<unknown>; onCancel(): void;
 }) {
   const { lang } = useCopy();
   const zh = lang === "zh";
   const [name, setName] = useState(room?.name ?? "");
+  const [icon, setIcon] = useState(room?.icon ?? "couch");
   const [access, setAccess] = useState<RoomSettings["access"]>(room?.access ?? "public");
   const [hidden, setHidden] = useState(room?.hidden ?? false);
   const [password, setPassword] = useState("");
@@ -21,14 +24,14 @@ function RoomForm({ room, appHosted, disabled, busy, onSave }: {
   return <form className="c3-room-form" onSubmit={event => {
     event.preventDefault();
     if (!name.trim() || disabled) return;
-    void onSave({ name: name.trim(), access, hidden: access === "private" && hidden,
+    void onSave({ name: name.trim(), icon, access, hidden: access === "private" && hidden,
       ...(access === "private" && password ? { password } : removePassword ? { password: null } : {}) }).catch(() => {});
-  }}>
+  }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }}>
     {!room && <p>{appHosted
       ? (zh ? "由 App 托管，关闭网页后房间继续运行。" : "Hosted by App. The room keeps running when this page closes.")
       : (zh ? "由此网页托管，关闭网页后房间暂停。" : "Hosted by this page. The room pauses when this page closes.")}</p>}
-    <label><span>{zh ? "房间名称" : "Room name"}</span><input className="c3-input" required maxLength={64}
-      value={name} disabled={disabled} onChange={event => setName(event.target.value)} autoComplete="off" /></label>
+    <ChannelIdentityFields name={name} icon={icon} label={zh ? "房间名称" : "Room name"}
+      disabled={disabled} onName={setName} onIcon={setIcon} />
     <fieldset className="lr-toggle c3-room-access" disabled={disabled}>
       <legend className="visually-hidden">{zh ? "谁可以进入" : "Who can enter"}</legend>
       {(["public", "private"] as const).map(value => <label key={value}>
@@ -49,8 +52,9 @@ function RoomForm({ room, appHosted, disabled, busy, onSave }: {
       <label className="c3-check"><input type="checkbox" checked={hidden} disabled={disabled} onChange={event => setHidden(event.target.checked)} />
         {zh ? "对未获准的用户隐藏房间" : "Hide from users without access"}</label>
     </div>}
-    <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : (zh ? "创建房间" : "Create room")}
-      primary type="submit" disabled={disabled || !name.trim()} busy={busy} />
+    <div className="c3-form-actions"><ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} onClick={onCancel} />
+      <ChannelAction icon={room ? "check" : "plus"} label={room ? (zh ? "保存" : "Save") : (zh ? "创建房间" : "Create room")}
+        primary type="submit" disabled={disabled || !name.trim()} busy={busy} /></div>
   </form>;
 }
 
@@ -74,16 +78,16 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   const members = room?.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const run = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return <>
-    <Tooltip kind={room ? "hint-details" : "hint-create-room"} text={vis ? undefined : title}>
+    <Tooltip kind={room ? "hint-details" : "hint-create-room"} disabled={open} text={vis ? undefined : title}>
       <button ref={trigger} type="button" className="lr-btn is-dense is-quiet" popoverTarget={id}
-        aria-label={title} aria-haspopup="dialog" disabled={!available}>
+        aria-label={title} aria-haspopup="dialog" aria-expanded={open} aria-controls={id} disabled={!available}>
         <Glyph name={room ? "sliders" : "plus"} size={18} />
         {!room && !channel.state?.channel.rooms.length && !vis && <span className="lr-cap">{title}</span>}
       </button>
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => setOpen(event.newState === "open")}>
-      {open && <><h3>{title}</h3><RoomForm key={room?.id ?? "create"} room={room} appHosted={channel.appConnected} disabled={!available || busy} busy={busy} onSave={async settings => {
+      {open && <><h3>{title}</h3><RoomForm key={room?.id ?? "create"} room={room} appHosted={channel.appConnected} disabled={!available || busy} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
         panel.current?.hidePopover();

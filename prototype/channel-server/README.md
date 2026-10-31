@@ -179,6 +179,10 @@ conversation and selected screens in the middle, and a persistent domain-wide
 user list on the right. Narrow layouts navigate between room and user panes.
 It retains real roles, self-name editing, room controls, files, history, voice
 and multiple watched screens through the existing session and shared components.
+The domain owner can edit its name and preset icon beside the domain title.
+Room creation and settings share the same identity fields; the room owner or
+domain owner saves them at that room's runtime. Both surfaces use the same icon
+choices. Identity images remain a design study.
 
 In the design studies, room creation and editing share one native dialog
 with conditional private options. Pencils beside the user, domain and room names
@@ -313,7 +317,8 @@ Storage failure leaves the send unconfirmed and preserves existing records.
 User credentials/invitations are stored as digests and room passwords as password
 hashes. Sessions, captures and routes are not restored after a process restart.
 
-This unpublished prototype uses checkpoint version 3. Older experimental
+This unpublished prototype uses domain checkpoint version 4 and room SQLite
+schema version 2. Older experimental
 checkpoints are rejected rather than silently discarding their history. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
 

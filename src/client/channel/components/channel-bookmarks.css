@@ -13,7 +13,7 @@
 .c3-bookmark-current { display: flex; align-items: center; gap: 8px; padding: 14px 0; margin-top: 10px; }
 .c3-bookmark-current > span { display: flex; flex: 1; align-items: center; gap: 9px; min-width: 0; }
 .c3-bookmark-current strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.c3-bookmark-current svg { flex: none; }
+.c3-bookmark-current svg { flex: none; width: 19px; height: 19px; }
 .c3-bookmark-list { list-style: none; padding: 4px; margin: 18px -4px; max-height: min(30dvh, 250px); overflow-y: auto; scrollbar-width: thin; }
 .c3-bookmark-list li { display: flex; align-items: center; gap: 4px; padding: 5px 4px 5px 10px; border-radius: 12px; }
 .c3-bookmark-list li:is(:hover, [data-editing="true"]) { background: var(--control-hover); }

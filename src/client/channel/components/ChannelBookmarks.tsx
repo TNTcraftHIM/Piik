@@ -79,7 +79,7 @@ export function ChannelBookmarks({ currentName, currentIcon, onCurrent, classNam
         <Btn icon="x" title="common.close" hint="hint-close" size="compact" quiet onClick={() => dialog.current?.close()} />
       </header>
       {!bookmarks.some(item => item.origin === currentOrigin) && <div className="c3-bookmark-current">
-        <span><Glyph name="couch" size={19} /><strong>{currentName}</strong></span>
+        <span>{currentIcon ?? <Glyph name="couch" size={19} />}<strong>{currentName}</strong></span>
         <Btn icon="star" size="dense" quiet title={{ text: copy("收藏当前域", "Save this domain") }} cap={{ text: copy("收藏", "Save") }}
           hint="hint-invite-link" onClick={() => save([...bookmarks, { origin: currentOrigin, name: currentName }])} />
       </div>}

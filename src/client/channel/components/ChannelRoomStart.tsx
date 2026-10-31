@@ -1,11 +1,11 @@
-import { Glyph } from "../../ui/icons";
+import { ChannelIdentityMark } from "./ChannelIdentity";
 import { useCopy } from "../../ui/copy";
 
 export type ChannelEntry = { kind: "entry" } | { kind: "domain"; canCreate: boolean };
 
 /** A room's quiet beginning; navigation and creation remain with their existing owners. */
-export function ChannelRoomStart({ roomName, entry, empty = true, canSend }: {
-  roomName: string; entry?: ChannelEntry; empty?: boolean; canSend: boolean;
+export function ChannelRoomStart({ roomName, icon = "couch", entry, empty = true, canSend }: {
+  roomName: string; icon?: string; entry?: ChannelEntry; empty?: boolean; canSend: boolean;
 }) {
   const { lang, vis } = useCopy();
   const copy = (cn: string, en: string) => lang === "zh" ? cn : en;
@@ -19,7 +19,7 @@ export function ChannelRoomStart({ roomName, entry, empty = true, canSend }: {
     : canSend ? copy("还没有消息。打个招呼吧。", "No messages yet. Say hello.")
       : copy("还没有消息。", "No messages yet.");
   return <div className={`c3-room-start${empty ? " is-empty" : ""}${entry ? " is-entry" : ""}`}>
-    <span className="c3-room-start-mark"><Glyph name="couch" size={38} /></span>
+    <span className="c3-room-start-mark"><ChannelIdentityMark icon={icon} size={38} /></span>
     <div className={vis ? "visually-hidden" : undefined}><h3>{title}</h3>{empty && <p>{note}</p>}</div>
   </div>;
 }

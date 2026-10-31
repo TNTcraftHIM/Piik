@@ -1,0 +1,8 @@
+.c3-identity-name { display: grid; gap: 10px; min-width: 0; }
+.c3-identity-picker { min-width: 0; margin: 0; padding: 0; border: 0; }
+.c3-identity-picker legend { padding: 0; margin-bottom: 10px; font-size: 13px; }
+.c3-identity-options { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.c3-identity-options .lr-chip { width: 100%; min-width: 0; padding: 8px 3px; border-radius: 12px; flex-direction: column; gap: 4px; justify-content: center; }
+.c3-identity-options .lr-chip > span { font-size: 11px; line-height: 1.25; white-space: nowrap; }
+.c3-identity-form { display: grid; gap: 16px; }
+.c3-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }

@@ -3,7 +3,6 @@
 .c3-room-form, .c3-room-form > label, .c3-private-options, .c3-private-options > label:not(.c3-check) { display: grid; gap: 10px; }
 .c3-room-form { gap: 16px; }
 .c3-room-form label { font-size: 13px; }
-.c3-room-form > .lr-btn { justify-self: end; }
 .c3-room-panel p, .c3-locked-room p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.65; }
 .c3-room-access { margin: 0; min-width: 0; width: 100%; }
 .c3-check { display: flex; align-items: center; gap: 8px; cursor: pointer; line-height: 1.5; }

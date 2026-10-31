@@ -1,22 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Chip } from "../../components/living/primitives";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { ChannelAction } from "../components/ChannelMedia";
+import { ChannelIconChoices } from "../components/ChannelIdentity";
 import type { DesignCopy } from "./fixtures";
 import "./design-identity.css";
 
 export type DesignIdentity = { icon: GlyphName; image?: File };
-
-const presets: { icon: GlyphName; name: [string, string] }[] = [
-  { icon: "couch", name: ["客厅", "Lounge"] },
-  { icon: "gamepad", name: ["游戏", "Games"] },
-  { icon: "clapperboard", name: ["电影", "Movies"] },
-  { icon: "popcorn", name: ["爆米花", "Popcorn"] },
-  { icon: "headphones", name: ["音乐", "Music"] },
-  { icon: "book", name: ["阅读", "Reading"] },
-  { icon: "heart", name: ["喜欢", "Heart"] },
-  { icon: "star", name: ["星星", "Star"] },
-];
 
 export function DesignIdentityMark({ value, size = 32 }: { value: DesignIdentity; size?: number }) {
   const [preview, setPreview] = useState<{ file: File; url: string }>();
@@ -58,12 +47,9 @@ export function DesignIdentityPicker({ copy, value, onChange, busy, onBusyChange
   }
   return <fieldset className="cd-identity-picker">
     <legend>{copy("图标或图片", "Icon or image")}</legend>
-    <div className="cd-identity-options">
-      {presets.map(preset => <Chip key={preset.icon} title={copy(...preset.name)} selected={!value.image && value.icon === preset.icon}
-        onClick={() => { request.current++; setFailed(false); onBusyChange(false); onChange({ icon: preset.icon }); }}>
-        <Glyph name={preset.icon} size={19} />
-      </Chip>)}
-    </div>
+    <ChannelIconChoices value={value.image ? "" : value.icon} onChange={icon => {
+      request.current++; setFailed(false); onBusyChange(false); onChange({ icon });
+    }} />
     <div className="cd-identity-upload">
       {value.image && <DesignIdentityMark value={value} size={36} />}
       <ChannelAction icon="arrowUp" quiet busy={busy}
