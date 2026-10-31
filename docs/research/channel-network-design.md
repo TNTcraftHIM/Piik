@@ -388,6 +388,13 @@ logical room/media leases and operation deadlines stay unchanged. Only currently
 capable Native endpoints participate. The prepared socket transfers to the ordinary
 PC after mutual completion, with no competing reader or separate route graph.
 
+The current Server still gives each PC dynamic UDP sockets. A restricted-firewall
+or FRP deployment needs an explicit local listener and public-address mapping;
+serving HTTP alone does not supply that media path. The async library's
+[UDP-mux candidate](https://github.com/webrtc-rs/webrtc/pull/942) is not yet in the
+pinned release. [TODO](../todo.md) owns completing this deployment boundary;
+do not keep the old 2.x fixed-port proxy as a working 3.0 configuration.
+
 Each Native pair may map its actual default-gateway IPv4 socket using the
 released [portmapper](https://docs.rs/portmapper/0.20.0/portmapper/) client. Its
 background probe, protocol selection and renewal stay with that library;

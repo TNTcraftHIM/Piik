@@ -4,7 +4,8 @@ import { createHash } from 'node:crypto';
 import { chmodSync, copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeAndroidLicenseNotices, writeWebLicenseNotices } from './package-licenses.mjs';
+import { writeAndroidLicenseNotices } from './package-licenses.mjs';
+import { buildChannelWeb } from './build-channel-web.mjs';
 import { writeAndroidAppIcon } from './app-icons.mjs';
 import { CLOUDFLARED_VERSION, CLOUDFLARED_SOURCE_SHA256, ANDROID_APP_PACKAGE_TARGET, androidVersionCode } from './app-package-targets.mjs';
 import { buildVersion } from './release-version.mjs';
@@ -123,7 +124,7 @@ if (!tunnelOnly) {
     const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libpiik_channel_android.so');
     const key = rust.replaceAll('-', '_');
     const env = { ...process.env, CARGO_TARGET_DIR: cargoTarget,
-      PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision,
+      PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision, PIIK_BUILD_TARGET: ANDROID_APP_PACKAGE_TARGET.id,
       [`CARGO_TARGET_${key.toUpperCase()}_LINKER`]: clang,
       [`CARGO_TARGET_${key.toUpperCase()}_RUSTFLAGS`]: `-C link-arg=--target=${rust}29 -C link-arg=-Wl,-z,max-page-size=16384`,
       [`CC_${key}`]: clang, [`CXX_${key}`]: join(tools, `clang++${exe}`),
@@ -143,13 +144,10 @@ if (!tunnelOnly) {
         throw new Error(`Unexpected Rust JNI Android dependency: ${library}`);
     console.log(`Android Rust runtime: ${abi} (16KB)`);
   }
-  const webEnv = { ...process.env, CARGO_TARGET_DIR: cargoTarget, RUSTUP_TOOLCHAIN: '1.91.0', VITE_PIIK_VERSION: version, VITE_PIIK_REVISION: revision };
-  writeWebLicenseNotices(root, join(root, 'public', 'third-party-licenses.txt'));
-  run(process.execPath, [join(root, 'prototype', 'channel-browser', 'build.mjs')], { env: webEnv });
-  run(process.execPath, [join(root, 'node_modules', 'vite', 'bin', 'vite.js'), 'build', '--config', 'prototype/channel-browser/web.vite.config.ts'], { env: webEnv });
+  const frontend = buildChannelWeb(root, { version, revision, cargoTarget });
   const webAssets = join(android, 'app', 'src', 'main', 'assets', 'web');
   rmSync(webAssets, { recursive: true, force: true });
-  cpSync(join(root, 'build', 'channel-web'), webAssets, { recursive: true });
+  cpSync(frontend, webAssets, { recursive: true });
   writeAndroidLicenseNotices(root, join(android, 'app', 'src', 'main', 'assets', 'THIRD-PARTY-NOTICES.txt'));
   writeAndroidAppIcon(join(root, 'cmd', 'piik-app', 'piik.ico'), join(android, 'app', 'src', 'main', 'res', 'drawable-nodpi', 'piik.png'));
   // Recreate the final ZIP so replaced native libraries leave no free blocks.

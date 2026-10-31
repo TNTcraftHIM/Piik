@@ -30,13 +30,15 @@ core running in Browser/WASM and Native participants.
 ## Run
 
 Use Rust 1.91 or newer, the repository's Node/npm environment and installed npm
-dependencies. Build the [Browser adapter](../channel-browser/README.md)
+dependencies. Build the [standalone frontend](../channel-browser/README.md)
 first, and rebuild it after changing the shared Rust core. From the repository
 root, start Rust in one terminal:
 
 ```powershell
 $env:PIIK_CHANNEL_OWNER_KEY = "<private stable owner key>"
 $env:PIIK_CHANNEL_INVITE_KEY = "<different private invitation key>"
+$env:PIIK_CHANNEL_WEB_DIR = (Resolve-Path build/channel-web).Path
+$env:PIIK_CHANNEL_WEB_ORIGIN = "http://127.0.0.1:8790"
 cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml
 ```
 
@@ -65,7 +67,12 @@ and domain WebSocket; this setting does not create a listener or tunnel. The
 runtime supplies `invitationOrigin` in Welcome only when configured and does not
 save it in domain or room data. Keep owner-entry credentials on the local entry.
 
-For a standalone deployment, build the
+Server binds loopback by default. `PIIK_CHANNEL_BIND_ADDRESS` selects another
+IP address; set `PIIK_CHANNEL_WEB_ORIGIN` to the exact public frontend origin.
+Packaged Server resources default to `web/` beside the executable, independently
+of its working directory.
+
+For a standalone source deployment, build the
 [same frontend as static assets](../channel-browser/README.md), then set
 `PIIK_CHANNEL_WEB_DIR` to `build/channel-web/` and `PIIK_CHANNEL_WEB_ORIGIN` to
 the service's own origin. Rust serves the frontend and existing WebSocket on
@@ -100,7 +107,7 @@ to `web/` beside it, and place the matching platform's `cloudflared` executable 
 `runtime/tunnel/` (`cloudflared.exe` on Windows). These are the defaults when the
 two overrides above are unset. On macOS, keep this same layout inside the bundle's
 `Contents/MacOS/` directory. Platform bundles, notices and distribution packaging
-remain separate work; the existing Go App packaging scripts build the 2.x App.
+use the shared [packaging entry points](../../docs/deployment.md#build-host).
 
 Both modes start one domain with a local owner entry and a separate advertised
 invitation entry. Only the loopback launcher receives the owner bootstrap; neither
@@ -282,9 +289,10 @@ stop, unwatch and leave take effect locally and are reconciled on reconnect.
 
 ## Saved data and files
 
-Saved data belongs to its domain or room runtime. This Server prototype defaults to
-`build/channel-prototype-data/channel.sqlite`. `PIIK_CHANNEL_DATA_DIR` chooses a
-different real directory. The domain checkpoint stores catalog summaries and
+Saved data belongs to its domain or room runtime. Server defaults to
+`data/channel.sqlite` beside its executable. `PIIK_CHANNEL_DATA_DIR` chooses a
+different real directory; point it at an existing source-run directory to reuse
+that data. The domain checkpoint stores catalog summaries and
 identities; `rooms/living.sqlite`, `rooms/studio.sqlite` and `rooms/quiet.sqlite`
 each store that room's policy, grants and confirmed history. Existing room names
 and policy are restored rather than overwritten by startup defaults. The Native

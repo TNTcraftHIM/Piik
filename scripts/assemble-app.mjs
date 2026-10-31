@@ -171,7 +171,7 @@ try {
   run("cargo", ["+1.91.0", "build", "--locked", "--release",
     "--manifest-path", "prototype/channel-server/Cargo.toml", "--target-dir", cargoTarget,
     "--target", target.rustTarget, "--features", "capture", "--bin", "piik-channel-app"],
-  repositoryRoot, { ...process.env, PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision });
+  repositoryRoot, { ...process.env, PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision, PIIK_BUILD_TARGET: target.id });
   copyFileSync(join(cargoTarget, target.rustTarget, "release",
     `piik-channel-app${target.goos === "windows" ? ".exe" : ""}`), appPath);
   chmodSync(appPath, 0o755);

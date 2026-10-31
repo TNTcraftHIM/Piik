@@ -30,10 +30,11 @@ npx tsc -p prototype/channel-browser/tsconfig.json
 node prototype/channel-browser/check.mjs
 ```
 
-To build the standalone frontend after generating the adapter:
+To build the standalone frontend, install cargo-about 0.9.3 and run the shared
+build entry point. It generates the adapter, Web/WASM notices and Vite bundle:
 
 ```powershell
-npx vite build --config prototype/channel-browser/web.vite.config.ts
+node scripts/build-channel-web.mjs
 ```
 
 The ignored `build/channel-web/` directory contains the HTML, styles, JavaScript

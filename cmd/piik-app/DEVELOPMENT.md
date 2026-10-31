@@ -67,22 +67,9 @@ describes automatic publication.
 
 ## Packaging
 
-From a clean revision, build the application release and run the platform's
-candidate wrapper on its native operating system. The wrapper builds capture,
-verifies the pinned public-link helper, and assembles and checks the App:
-
-```sh
-node scripts/package-server-release.mjs /outside/repository/app-release
-node scripts/package-app-candidate.mjs /outside/repository/app-release windows-amd64 /outside/repository/app-candidate
-```
-
-Supported targets are `windows-amd64`, `linux-amd64`, `linux-arm64`, `darwin-arm64` and `darwin-amd64`.
-Use the matching target name in the command above. Darwin assembly requires a
-native macOS runner with its SDK and enables cgo; Windows and Linux assembly keep
-cgo disabled.
-The result is a ZIP bundle and SHA-256 file. Manual sidecar assembly,
-explicit CI packaging, Release publication and updates are documented in
-[deployment](../../docs/deployment.md); creating a candidate does not publish it.
+The [distribution workflow](../../docs/deployment.md#build-host) owns the current
+Rust App packaging, platform prerequisites and candidate checks. Creating a
+candidate does not publish it.
 
 The App runtime contains the following files. On macOS they live inside
 `Piik App.app/Contents/MacOS`; move the whole `.app` when installing it.

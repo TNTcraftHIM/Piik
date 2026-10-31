@@ -269,9 +269,11 @@ fn lock_directory(directory: &std::path::Path) -> Result<std::fs::File> {
         .create(true)
         .truncate(false)
         .open(directory.join("app.lock"))?;
-    piik_channel_native::hosted_room::try_lock_file(&owner).map_err(|error| match error.kind() {
-        std::io::ErrorKind::WouldBlock => anyhow!("This App data directory is already in use"),
-        _ => error.into(),
+    piik_channel_native::hosted_room::try_lock_file(&owner).map_err(|error| {
+        match error.kind() {
+            std::io::ErrorKind::WouldBlock => anyhow!("This App data directory is already in use"),
+            _ => error.into(),
+        }
     })?;
     Ok(owner)
 }
@@ -463,7 +465,8 @@ fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
         "defaultMode":"link","modes":["local","link"],"siteAccess":"channel",
         "version":option_env!("PIIK_BUILD_VERSION").unwrap_or("development"),
-        "revision":option_env!("PIIK_BUILD_REVISION").unwrap_or("development"),"controlPort":port}),
+        "revision":option_env!("PIIK_BUILD_REVISION").unwrap_or("development"),
+        "packageTarget":option_env!("PIIK_BUILD_TARGET").unwrap_or_default(),"controlPort":port}),
     )
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;

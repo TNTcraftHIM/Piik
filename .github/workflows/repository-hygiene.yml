@@ -225,20 +225,21 @@ jobs:
         include:
           - os: linux
             arch: amd64
-            runner: ubuntu-latest
+            runner: ubuntu-24.04
             artifact: piik-server
           - os: linux
             arch: arm64
             runner: ubuntu-24.04-arm
             artifact: piik-server-linux-arm64
-          # Cross-compiled on the same Linux runner; no container recipe and a
-          # ZIP archive instead of the Linux tar.gz.
           - os: windows
             arch: amd64
-            runner: ubuntu-latest
+            runner: windows-latest
             artifact: piik-server-windows-amd64
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
     env:
       PIIK_BUILD_VERSION: ${{ needs.validate.outputs.version }}
     steps:
@@ -249,18 +250,19 @@ jobs:
         with:
           node-version-file: .node-version
           cache: npm
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache-dependency-path: go.sum
+      - name: Install Rust packaging tools
+        run: |
+          rustup toolchain install 1.91.0 --profile minimal --target wasm32-unknown-unknown
+          cargo +1.91.0 install wasm-bindgen-cli --version 0.2.129 --locked
+          cargo +1.91.0 install cargo-about --version 0.9.3 --locked --features cli
+      - name: Install static Server toolchain
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y musl-tools binutils
+          target="$(node --input-type=module -e 'import { SERVER_PACKAGE_TARGETS } from "./scripts/server-package-targets.mjs"; console.log(SERVER_PACKAGE_TARGETS.find(t => t.goos === process.argv[1] && t.goarch === process.argv[2]).rustTarget)' '${{ matrix.os }}' '${{ matrix.arch }}')"
+          rustup target add --toolchain 1.91.0 "$target"
       - name: Install dependencies
         run: npm ci
-      # Only the Windows target writes a ZIP, and the Linux ZIP writer shells
-      # out to the `zip` CLI.
-      - name: Ensure zip is available
-        if: matrix.os == 'windows'
-        run: command -v zip >/dev/null || (sudo apt-get update && sudo apt-get install -y zip)
       - name: Package Server release
         if: matrix.os == 'linux'
         run: >-
@@ -320,7 +322,7 @@ jobs:
           - target: android-universal
             runner: ubuntu-24.04
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: ${{ matrix.target == 'android-universal' && 45 || 20 }}
+    timeout-minutes: ${{ matrix.target == 'android-universal' && 45 || 35 }}
     env:
       PIIK_BUILD_VERSION: ${{ needs.validate.outputs.version }}
     steps:
@@ -332,38 +334,33 @@ jobs:
           node-version-file: .node-version
           cache: npm
       - name: Set up Go
+        if: matrix.target == 'android-universal'
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache-dependency-path: go.sum
-      # scripts/assemble-app.mjs runs `npm run build:web` for the Web
-      # assets the App binary embeds, so Vite and the license inputs must be
-      # installed here too.
       - name: Install dependencies
         run: npm ci
+      - name: Install Rust packaging tools
+        run: |
+          rustup toolchain install 1.91.0 --profile minimal --target wasm32-unknown-unknown
+          cargo +1.91.0 install wasm-bindgen-cli --version 0.2.129 --locked
+          cargo +1.91.0 install cargo-about --version 0.9.3 --locked --features cli
       - name: Install Linux packaging and native capture dependencies
         if: startsWith(matrix.target, 'linux-')
         run: >-
           sudo apt-get update && sudo apt-get install -y
           zip
           unzip
-          libportal-dev
           libgstreamer1.0-dev
           libgstreamer-plugins-base1.0-dev
           gstreamer1.0-pipewire
           gstreamer1.0-plugins-bad
           gstreamer1.0-pulseaudio
-      - name: Download Server release
-        if: matrix.target != 'android-universal'
-        uses: actions/download-artifact@v8
-        with:
-          name: piik-server-${{ github.sha }}
-          path: ${{ runner.temp }}/server-release
       - name: Build and verify App candidate
         if: matrix.target != 'android-universal'
         run: >-
           node scripts/package-app-candidate.mjs
-          "${{ runner.temp }}/server-release"
           "${{ matrix.target }}"
           "${{ runner.temp }}/app-release"
       - name: Set up Android Java
@@ -384,9 +381,7 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platforms;android-35' 'build-tools;35.0.0' 'ndk;30.0.16248370'
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
           echo "GRADLE_HOME=$(dirname "$(dirname "$(readlink -f "$(command -v gradle)")")")" >> "$GITHUB_ENV"
-          rustup toolchain install 1.91.0 --profile minimal --target aarch64-linux-android,x86_64-linux-android,wasm32-unknown-unknown
-          cargo +1.91.0 install wasm-bindgen-cli --version 0.2.129 --locked
-          cargo +1.91.0 install cargo-about --version 0.9.3 --locked --features cli
+          rustup target add --toolchain 1.91.0 aarch64-linux-android x86_64-linux-android
       - name: Prepare Android signing
         if: matrix.target == 'android-universal'
         env:
