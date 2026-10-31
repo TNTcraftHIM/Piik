@@ -11,8 +11,11 @@ public final class MainActivity extends Activity {
   boolean visible, notificationRequest;
   static final int NOTIFICATIONS = 13;
   static final int PROJECTION = 14, SOURCE_AUDIO = 15;
-  CapturePlatform capture;
-  boolean projectionRequest, audioRequest;
+  private static final class PendingCapture {
+    CapturePlatform capture;
+    boolean projectionRequest, audioRequest;
+  }
+  private PendingCapture pending;
   boolean mediaEntry() { return getIntent().getData() != null && "piik://media".equals(getIntent().getData().toString()); }
   boolean wakeEntry() {
     return getIntent().getData() != null && "piik://app".equals(getIntent().getData().toString());
@@ -29,6 +32,18 @@ public final class MainActivity extends Activity {
     if (requested != null && !wakeEntry() && !mediaEntry()) {
       finish();
       return;
+    }
+    if (mediaEntry()) {
+      pending = (PendingCapture) getLastNonConfigurationInstance();
+      if (pending == null) {
+        // A restored page without its live binding must not consume another request.
+        if (state != null) { finish(); return; }
+        pending = new PendingCapture();
+      }
+      if (pending.capture != null) {
+        pending.capture.presented(this);
+        if (pending.capture.isClosed()) { captureClosed(pending.capture); return; }
+      }
     }
     TextView waiting = new TextView(this);
     waiting.setPadding(24, 48, 24, 24);
@@ -49,6 +64,13 @@ public final class MainActivity extends Activity {
   protected void onSaveInstanceState(Bundle state) {
     state.putBoolean("notificationRequest", notificationRequest);
     super.onSaveInstanceState(state);
+  }
+
+  @Override
+  public Object onRetainNonConfigurationInstance() {
+    PendingCapture retained = pending;
+    pending = null;
+    return retained;
   }
 
   @Override
@@ -101,42 +123,47 @@ public final class MainActivity extends Activity {
       notificationRequest = false;
       startForegroundService(new Intent(this, AppRuntimeService.class));
     }
-    if (request == SOURCE_AUDIO) audioRequest = false;
-    if (request == SOURCE_AUDIO && capture != null) {
-      capture.audioPermission(results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED);
-      captureAvailable();
+    if (request == SOURCE_AUDIO && pending != null && pending.audioRequest) {
+      pending.audioRequest = false;
+      if (pending.capture != null) {
+        pending.capture.audioPermission(results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED);
+        captureAvailable();
+      }
     }
   }
 
   void captureAvailable() {
-    if (!visible || !mediaEntry()) return;
+    if (!visible || !mediaEntry() || isFinishing() || pending == null) return;
     AppRuntimeService service = AppRuntimeService.instance;
     if (service == null) return;
-    if (capture == null) {
-      capture = service.captureRequests.poll();
-      if (capture != null) capture.presented(this);
+    if (pending.capture == null) {
+      pending.capture = service.captureRequests.poll();
+      if (pending.capture != null) pending.capture.presented(this);
     }
-    if (capture == null || capture.isClosed() || projectionRequest || audioRequest) return;
+    CapturePlatform capture = pending.capture;
+    if (capture == null) return;
+    if (capture.isClosed()) { captureClosed(capture); return; }
+    if (pending.projectionRequest || pending.audioRequest) return;
     if (capture.needsAudioPermission()) {
-      audioRequest = true;
+      pending.audioRequest = true;
       requestPermissions(new String[] {android.Manifest.permission.RECORD_AUDIO}, SOURCE_AUDIO);
       return;
     }
-    projectionRequest = true;
+    pending.projectionRequest = true;
     startActivityForResult(getSystemService(android.media.projection.MediaProjectionManager.class).createScreenCaptureIntent(), PROJECTION);
   }
   void captureClosed(CapturePlatform owner) {
-    if (capture != owner) return;
-    if (projectionRequest) finishActivity(PROJECTION);
-    capture = null;
+    if (pending == null || pending.capture != owner) return;
+    if (pending.projectionRequest) finishActivity(PROJECTION);
+    pending.capture = null;
     finish();
   }
   @Override protected void onActivityResult(int request, int result, Intent data) {
     super.onActivityResult(request, result, data);
-    if (request != PROJECTION) return;
-    projectionRequest = false;
-    CapturePlatform owner = capture;
-    capture = null;
+    if (request != PROJECTION || pending == null || !pending.projectionRequest) return;
+    pending.projectionRequest = false;
+    CapturePlatform owner = pending.capture;
+    pending.capture = null;
     if (owner != null) {
       AppRuntimeService service = AppRuntimeService.instance;
       if (service != null) service.captureRequests.remove(owner);
@@ -148,7 +175,7 @@ public final class MainActivity extends Activity {
   @Override
   protected void onDestroy() {
     if (current == this) current = null;
-    if (capture != null && isFinishing()) capture.close();
+    if (pending != null && pending.capture != null) pending.capture.close();
     super.onDestroy();
   }
 
