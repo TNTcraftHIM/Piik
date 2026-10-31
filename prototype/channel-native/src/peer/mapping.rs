@@ -1,5 +1,5 @@
 //! Optional default-gateway mapping for one connection's actual IPv4 socket.
-use super::Event;
+use super::{Event, MAX_ICE_CANDIDATES};
 use netwatch::interfaces::HomeRouter;
 use portmapper::Client;
 use rtc::peer_connection::transport::{CandidateConfig, CandidateServerReflexiveConfig};
@@ -16,6 +16,7 @@ use webrtc::peer_connection::{RTCIceCandidate, RTCIceCandidateType, RTCIceProtoc
 
 pub(super) struct Mapping {
     client: Client,
+    candidates: mpsc::Sender<RTCIceCandidate>,
     watcher: JoinHandle<()>,
 }
 
@@ -25,37 +26,36 @@ impl Mapping {
         candidate: &RTCIceCandidate,
         events: mpsc::Sender<Event>,
     ) -> Option<Self> {
-        if candidate.component != 1
-            || candidate.protocol != RTCIceProtocol::Udp
-            || candidate.typ != RTCIceCandidateType::Host
-        {
-            return None;
-        }
-        let address = candidate.address.parse::<std::net::Ipv4Addr>().ok()?;
-        let port = NonZeroU16::new(candidate.port)?;
-        let HomeRouter {
-            gateway: IpAddr::V4(_),
-            my_ip: Some(IpAddr::V4(local)),
-        } = HomeRouter::new()?
-        else {
-            return None;
-        };
-        if address != local {
-            return None;
-        }
+        let base = eligible(candidate)?;
+        Some(Self::with_lookup(pair, base, events, tokio::task::spawn_blocking(HomeRouter::new)))
+    }
 
+    pub(super) fn observe(&self, candidate: &RTCIceCandidate) {
+        if let Some(candidate) = eligible(candidate) {
+            // Optional discovery cannot backpressure host-candidate signaling.
+            let _ = self.candidates.try_send(candidate);
+        }
+    }
+
+    fn with_lookup(
+        pair: Uuid,
+        base: RTCIceCandidate,
+        events: mpsc::Sender<Event>,
+        lookup: JoinHandle<Option<HomeRouter>>,
+    ) -> Self {
+        let (candidates, pending) = mpsc::channel(MAX_ICE_CANDIDATES);
+        candidates.try_send(base).expect("new mapping candidate queue is empty");
         let client = Client::default();
         let worker = client.clone();
-        let addresses = client.watch_external_address();
-        let base = candidate.clone();
         let watcher = tokio::spawn(async move {
-            // Complete the library's protocol discovery before asking it to select
-            // a mapper. This work never blocks the connection's ICE gathering.
+            let Some(base) = select_base(lookup, pending).await else { return };
+            let port = NonZeroU16::new(base.port).expect("eligible host candidate has a port");
+            let addresses = worker.watch_external_address();
             let _ = worker.probe().await;
             worker.update_local_port(port);
             forward(pair, base, addresses, events).await;
         });
-        Some(Self { client, watcher })
+        Self { client, candidates, watcher }
     }
 
     pub(super) async fn close(&mut self) {
@@ -70,6 +70,34 @@ impl Drop for Mapping {
     fn drop(&mut self) {
         self.watcher.abort();
     }
+}
+
+fn eligible(candidate: &RTCIceCandidate) -> Option<RTCIceCandidate> {
+    if candidate.component != 1
+        || candidate.protocol != RTCIceProtocol::Udp
+        || candidate.typ != RTCIceCandidateType::Host
+    {
+        return None;
+    }
+    candidate.address.parse::<std::net::Ipv4Addr>().ok()?;
+    NonZeroU16::new(candidate.port)?;
+    Some(candidate.clone())
+}
+
+async fn select_base(
+    lookup: JoinHandle<Option<HomeRouter>>,
+    mut candidates: mpsc::Receiver<RTCIceCandidate>,
+) -> Option<RTCIceCandidate> {
+    // The blocking closure owns only OS lookup data. Cancellation drops this
+    // continuation, so its eventual result cannot start or publish peer work.
+    let HomeRouter { gateway: IpAddr::V4(_), my_ip: Some(IpAddr::V4(local)) } =
+        lookup.await.ok()?? else { return None };
+    while let Some(candidate) = candidates.recv().await {
+        if candidate.address.parse::<std::net::Ipv4Addr>().ok() == Some(local) {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 // Only publish successful address updates; absence does not revoke ICE paths.
@@ -137,6 +165,72 @@ mod tests {
             }
         }
         Err(anyhow!("channel ended before delivery"))
+    }
+
+    #[tokio::test]
+    async fn gateway_lookup_yields_accepts_later_candidates_and_retires() -> Result<()> {
+        fn host(address: &str, port: u16) -> Result<RTCIceCandidate> {
+            Ok(RTCIceCandidate::from(&rtc::peer_connection::transport::CandidateHostConfig {
+                base_config: CandidateConfig {
+                    network: "udp".into(), address: address.into(), port, component: 1,
+                    ..Default::default()
+                },
+                ..Default::default()
+            }.new_candidate_host()?))
+        }
+        let wrong = host("192.0.2.1", 41001)?;
+        let expected = host("127.0.0.1", 41002)?;
+        let (candidates, pending) = mpsc::channel(MAX_ICE_CANDIDATES);
+        candidates.send(wrong.clone()).await?;
+        let (release, blocked) = std::sync::mpsc::channel();
+        let (started, waiting) = oneshot::channel();
+        let lookup = tokio::task::spawn_blocking(move || {
+            let _ = started.send(());
+            blocked.recv().unwrap();
+            Some(HomeRouter {
+                gateway: IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                my_ip: Some(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            })
+        });
+        let selected = tokio::spawn(select_base(lookup, pending));
+        waiting.await?;
+        for index in 2..11 {
+            candidates.try_send(host(&format!("192.0.2.{index}"), 41000 + index as u16)?)?;
+        }
+        candidates.try_send(expected.clone())?;
+        let timer = std::time::Instant::now();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        ensure!(timer.elapsed() < Duration::from_millis(500), "gateway lookup blocked the reactor");
+        eprintln!("gateway lookup pending: 100ms timer completed in {}ms", timer.elapsed().as_millis());
+        ensure!(!selected.is_finished());
+        release.send(())?;
+        let base = selected.await?.ok_or_else(|| anyhow!("later gateway candidate was lost"))?;
+        ensure!(base.address == expected.address && base.port == expected.port);
+
+        let (release, blocked) = std::sync::mpsc::channel();
+        let (started, waiting) = oneshot::channel();
+        let (finished, complete) = oneshot::channel();
+        // This closure contains only lookup data, with no peer, client or socket.
+        let lookup = tokio::task::spawn_blocking(move || {
+            let _ = started.send(());
+            blocked.recv().unwrap();
+            let _ = finished.send(());
+            Some(HomeRouter {
+                gateway: IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                my_ip: Some(IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            })
+        });
+        let (events, mut results) = mpsc::channel(1);
+        let mut mapping = Mapping::with_lookup(Uuid::new_v4(), wrong, events, lookup);
+        mapping.observe(&expected);
+        waiting.await?;
+        mapping.close().await;
+        ensure!(mapping.watcher.is_finished() && mapping.candidates.is_closed());
+        ensure!(results.recv().await.is_none(), "retired lookup retained its publisher");
+        release.send(())?;
+        complete.await?;
+        ensure!(results.recv().await.is_none(), "late lookup published after retirement");
+        Ok(())
     }
 
     #[tokio::test]
@@ -221,7 +315,9 @@ mod tests {
             let (addresses, updates) = watch::channel(None);
             let (mapped, mut candidates) = mpsc::channel(1);
             // A real idle client is never probed in this protocol fixture.
+            let (candidate_input, _) = mpsc::channel(MAX_ICE_CANDIDATES);
             mapping = Some(Mapping {
+                candidates: candidate_input,
                 client: Client::default(),
                 watcher: tokio::spawn(forward(pair, base.clone(), updates, mapped)),
             });

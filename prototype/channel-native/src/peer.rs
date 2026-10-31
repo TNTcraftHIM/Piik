@@ -57,6 +57,8 @@ use webrtc::{
     },
 };
 
+const MAX_ICE_CANDIDATES: usize = 128;
+
 pub struct NativePeers {
     cancel: watch::Sender<bool>,
     input: mpsc::Sender<Input>,
@@ -1571,7 +1573,7 @@ impl Driver {
             if !p.ignore_offer {
                 if p.pc.remote_description().await.is_some() {
                     let _ = p.pc.add_ice_candidate(ice_candidate(c)).await;
-                } else if p.candidates.len() < 128 {
+                } else if p.candidates.len() < MAX_ICE_CANDIDATES {
                     p.candidates.push(c);
                 }
             }
@@ -1971,7 +1973,9 @@ impl Driver {
             }
             Event::Candidate(id, candidate) => {
                 if let Some(p) = self.pairs.get_mut(&id) {
-                    if p.mapping.is_none() {
+                    if let Some(mapping) = &p.mapping {
+                        mapping.observe(&candidate);
+                    } else {
                         p.mapping = mapping::Mapping::start(id, &candidate, self.events.clone());
                     }
                     let Ok(candidate) = signal_candidate(candidate) else {
