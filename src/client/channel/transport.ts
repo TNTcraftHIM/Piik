@@ -1,6 +1,7 @@
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { decodedVideoFrameSamples } from "../webrtc/stats";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
+import { configureAudioSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate } from "../media/quality";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
 
 const MAX_FILE_FRAME_BYTES = 8192;
@@ -258,7 +259,19 @@ export class ChannelTransport {
         if (!output.senders.some(sender => sender.track === track)) {
           try {
             output.stream.addTrack(track);
-            output.senders.push(this.pc.addTrack(track, output.stream));
+            const sender = this.pc.addTrack(track, output.stream);
+            output.senders.push(sender);
+            if (track.kind === "audio") {
+              const owner = output;
+              this.enqueue(async () => {
+                if (this.sending.get(id) !== owner || !owner.senders.includes(sender)) return;
+                try {
+                  await configureAudioSender(sender, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(undefined));
+                } catch (error) {
+                  console.warn("Channel audio bitrate could not be applied", { flowId: id }, error);
+                }
+              });
+            }
           } catch (error) {
             attached = false;
             const live = previous.filter(sender => sender.track?.readyState === "live");

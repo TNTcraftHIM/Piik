@@ -22,6 +22,7 @@ export type {
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
+export const DEFAULT_ROOM_VOICE_BITRATE = 64_000;
 export const STARTUP_VIDEO_ENCODED_FRAMES = 5;
 export const MIN_VIDEO_FRAMERATE = 1;
 export const MIN_VIDEO_BITRATE = 100_000;

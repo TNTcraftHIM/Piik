@@ -745,7 +745,8 @@ class RoomPeerConnection extends EventTarget {
   ondatachannel: ((event: { channel: RoomDataChannel }) => void) | null = null;
   ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
   channels: RoomDataChannel[] = [];
-  senders: Array<{ track: MediaStreamTrack; stream: MediaStream }> = [];
+  senders: Array<{ track: MediaStreamTrack; stream: MediaStream;
+    getParameters(): RTCRtpSendParameters; setParameters(parameters: RTCRtpSendParameters): Promise<void> }> = [];
   receivers: RTCRtpReceiver[] = [];
   getStats = vi.fn(async (): Promise<RTCStatsReport> => new Map() as RTCStatsReport);
   close = vi.fn(() => { this.connectionState = "closed"; });
@@ -753,8 +754,13 @@ class RoomPeerConnection extends EventTarget {
   createDataChannel(label: string, options: RTCDataChannelInit) {
     const channel = new RoomDataChannel(label, options); this.channels.push(channel); return channel;
   }
-  addTrack(track: MediaStreamTrack, stream: MediaStream) { const sender = { track, stream }; this.senders.push(sender); return sender; }
-  removeTrack(sender: { track: MediaStreamTrack; stream: MediaStream }) { this.senders.splice(this.senders.indexOf(sender), 1); }
+  addTrack(track: MediaStreamTrack, stream: MediaStream): RoomPeerConnection["senders"][number] {
+    let parameters = { encodings: [{}] } as RTCRtpSendParameters;
+    const sender = { track, stream, getParameters: () => structuredClone(parameters),
+      setParameters: async (next: RTCRtpSendParameters) => { parameters = structuredClone(next); } };
+    this.senders.push(sender); return sender;
+  }
+  removeTrack(sender: RoomPeerConnection["senders"][number]) { this.senders.splice(this.senders.indexOf(sender), 1); }
   getReceivers() { return this.receivers; }
   getTransceivers() { return this.senders.map(sender => ({ sender, currentDirection: "sendrecv" as RTCRtpTransceiverDirection })); }
   async setRemoteDescription(description: RTCSessionDescriptionInit) {
@@ -1269,6 +1275,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     tracks.push(audio);
     pc.ontrack?.({ streams: [stream] });
     expect(downstream.senders.map(sender => sender.track)).toEqual([video, audio]);
+    await vi.waitFor(() => expect(downstream.senders[1].getParameters().encodings[0].maxBitrate).toBe(128_000));
     expect(downstream.senders[0]).toBe(videoSender);
     // Removing a remote track does not emit ontrack; the SDP replay republishes its stream.
     tracks.pop();
