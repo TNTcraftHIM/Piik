@@ -69,8 +69,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network design](./research/channel-network-design.md#implementation-boundary)
   owns its cause and isolated validation; Piik does not bundle a compositor fork.
 - [ ] **RTC and GoogCc upstream submissions.** The prepared DTLS-role,
-  transport/GoogCc accounting, async teardown, H264 parser and complete-sample
-  changes await external-publication approval.
+  transport/GoogCc accounting, PC initialization cancellation and last-owner Drop
+  cleanup, H264 parser and complete-sample changes await external-publication approval.
   The prebound-UDP capability addition also awaits approval.
   Submit the approved scope and verify the combined Native adapter before
   updating its fixed dependency. Local implementation and verification continue.

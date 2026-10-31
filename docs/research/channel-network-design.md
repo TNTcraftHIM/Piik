@@ -395,6 +395,8 @@ before opening domain data. Configured listeners must all bind successfully;
 IPv6 sockets are v6-only so both families can use that port. Local binding and an
 optional public IP/port mapping are separate facts. An FRP backend on loopback
 requires an explicit loopback bind; wildcard enumeration advertises real interfaces.
+Candidate availability is evaluated across the bound listeners: a family without
+an advertisable address does not invalidate another family's usable candidates.
 The service owns these sockets until its peer connections retire. App peers keep
 their exclusive sockets, gateway mapping and coordinated preparation; a shared
 Server listener does not advertise preparation capability. This library addition

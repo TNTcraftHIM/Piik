@@ -26,6 +26,11 @@ phases, including NAT and Auto codec behavior.
   Windows Server archive checks and a Linux static-musl Server's resource loading,
   SQLite creation and SIGTERM shutdown also pass. These packaged builds use the
   formal RTC pin; the combined Native media candidate retains its own evidence.
+- The combined Windows App and Server pass normal production-UI chat, voice and
+  viewing flows. The App's native window capture decodes as H264 in the Browser;
+  closing the captured window retires its share while room chat continues.
+  Server's default dual-stack listeners retain usable IPv4 paths when IPv6 has
+  no advertisable address. Both programs release their listeners on native Ctrl+C.
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
