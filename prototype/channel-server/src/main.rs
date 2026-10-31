@@ -2,8 +2,15 @@ use anyhow::Context;
 use piik_channel_prototype::{domain::Domain, serve_server, web};
 use std::{net::IpAddr, path::PathBuf};
 
+mod release;
+
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> anyhow::Result<std::process::ExitCode> {
+    if let Some(endpoint) = release::check_argument(std::env::args().skip(1))? {
+        let result = release::check_build(&endpoint);
+        println!("{}", serde_json::to_string(&result)?);
+        return Ok(std::process::ExitCode::from(result.exit_code()));
+    }
     let stop = piik_channel_native::shutdown_signal()?;
     let port = std::env::var("PIIK_CHANNEL_PORT")
         .unwrap_or_else(|_| "8791".into())
@@ -45,5 +52,7 @@ async fn main() -> anyhow::Result<()> {
     println!(
         "Web interface: {origin}/__channel-preview (use your configured owner or invitation key)"
     );
-    serve_server(listener, state, directory, owner, routes, stop).await
+    release::startup_notice();
+    serve_server(listener, state, directory, owner, routes, stop).await?;
+    Ok(std::process::ExitCode::SUCCESS)
 }

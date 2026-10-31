@@ -39,6 +39,8 @@ if-addrs = "0.15"
 rcgen = { version = "=0.14.10", default-features = false, features = ["ring"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 ring = "0.17"
+semver = "1"
+ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
 tokio-tungstenite = "0.29"
