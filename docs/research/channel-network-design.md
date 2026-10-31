@@ -727,6 +727,8 @@ closes its Request and candidate session on cancellation. A preferred Browser
 chord does not establish the actual binding: the system's returned description,
 changes and session closure feed the existing source snapshot. Activation revokes
 input through the same desktop executor while capture keeps its lifetime.
+Linux prefers Super + Alt + Fn; Ctrl + Alt + Fn selects a virtual terminal on
+GNOME rather than activating the shortcut.
 
 In the isolated Linux VM, GNOME Portal `50.0-r0` and control-center `50.3-r0`
 open real shortcut consent after normal desktop integration. Cancelling the
@@ -736,9 +738,11 @@ the provider's dialog visible. The backend's
 only marks the bind cancelled; the
 [50.3 provider](https://github.com/GNOME/gnome-control-center/blob/50.3/global-shortcuts-provider/cc-global-shortcuts-provider.c)
 has no corresponding external-dialog cancellation. Piik adds no provider
-workaround. The headless fixture did not establish an approved binding or actual
-shortcut activation; those remain platform acceptance work, separately from the
-Mutter capture-cancellation defect below.
+workaround. Approval through the real provider UI bound Super + Alt + F10;
+actual EIS keyboard input activated global stop, retired the input grants and
+left the original PipeWire capture producing a newer frame. The cancelled
+shortcut dialog remains a provider UX limitation, separate from the Mutter
+capture-cancellation defect below.
 
 GNOME Portal 50.0 with Mutter 50.2 leaves an unstarted Mutter session after a
 cancelled permission dialog, including cancellation through the system UI.

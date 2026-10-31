@@ -199,6 +199,7 @@ export function HostRemoteControl({ mode, platform, requests, disabled, iconOnly
         {onShortcut && shortcut && <>
           <RemoteShortcutSelect host mac={platform === "darwin"} value={shortcut.key} disabled={busy || disabled}
             actualLabel={shortcut.stopShortcutLabel}
+            modifierLabel={platform === "linux" ? "Super + Alt" : undefined}
             onChange={key => void perform("shortcut", async () => {
               setShortcut(await onShortcut(key));
               saveRoomPreferences({ remoteStopKey: key });

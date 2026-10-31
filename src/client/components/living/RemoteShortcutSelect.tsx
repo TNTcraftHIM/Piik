@@ -4,9 +4,10 @@ import { useCopy } from "../../ui/copy";
 import { Glyph } from "../../ui/icons";
 import { Tooltip } from "./Tooltip";
 
-export function RemoteShortcutSelect({ value, onChange, host = false, mac = false, disabled, actualLabel }: {
+export function RemoteShortcutSelect({ value, onChange, host = false, mac = false, disabled, actualLabel, modifierLabel }: {
   value: number; onChange: (value: number) => void; host?: boolean; mac?: boolean; disabled?: boolean;
   actualLabel?: string | null;
+  modifierLabel?: string;
 }) {
   const { t, vis } = useCopy();
   const id = useId();
@@ -17,7 +18,7 @@ export function RemoteShortcutSelect({ value, onChange, host = false, mac = fals
     </Tooltip>
     <div className="lr-capture-device-controls">
       <select id={id} aria-label={label} value={value} disabled={disabled} onChange={event => onChange(Number(event.target.value))}>
-        {REMOTE_SHORTCUT_KEYS.map(key => <option key={key} value={key}>Ctrl + {mac ? "Option" : "Alt"} + F{key}</option>)}
+        {REMOTE_SHORTCUT_KEYS.map(key => <option key={key} value={key}>{modifierLabel ?? `Ctrl + ${mac ? "Option" : "Alt"}`} + F{key}</option>)}
       </select>
     </div>
   </div>

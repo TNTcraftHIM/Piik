@@ -108,11 +108,13 @@ The backend must provide RemoteDesktop and ConnectToEIS; text entry is advertise
 only when the granted device provides it. Linux global stop uses one process-owned
 GlobalShortcuts Portal session. The Browser's key is a preference; the source UI
 shows the actual system binding, including remapping or an unbound state.
+Linux prefers Super + Alt + Fn to avoid the Ctrl + Alt + Fn virtual-terminal chord.
 Enabling control requests missing shortcut consent; opening its panel does not.
 Source retirement cancels pending registration while the committed binding stays
 process-owned. Global stop revokes input without stopping capture.
 [Platform verification](../../docs/verification-status.md#device-evidence-boundary)
-retains the real binding/activation and GNOME dialog-cleanup limits. Linux
+records real binding/activation with capture continuity and the remaining GNOME
+shortcut-dialog cleanup limitation. Linux
 gamepads remain platform work.
 
 The App entry point keeps the Windows MTA alive outside its async runtime.

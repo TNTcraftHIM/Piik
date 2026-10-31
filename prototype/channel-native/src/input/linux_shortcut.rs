@@ -305,7 +305,7 @@ async fn bind(
     )
     .await?;
     let mut responses = request.receive_signal("Response").await?;
-    let trigger = format!("CTRL+ALT+F{key}");
+    let trigger = format!("LOGO+ALT+F{key}");
     let shortcuts =
         [NewShortcut::new(ACTION, "Stop remote control").preferred_trigger(trigger.as_str())];
     let options = HashMap::from([("handle_token", Value::from(token.as_str()))]);
