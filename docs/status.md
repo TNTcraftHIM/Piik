@@ -63,6 +63,9 @@ bundle. Android packages ARM64/x64 JNI and the system-browser shell.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 The functional domain and room editors share preset icons and their existing
 authority and storage owners; Browser reload and Native restart preserve the edits.
+Message reactions use room-owned history. The room mini window moves the existing
+conversation, couch and voice controls between the page and floating/PiP surfaces;
+personal drafts, attachment selections and voice participation remain page-owned.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 
 ## Accepted Release Contract

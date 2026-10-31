@@ -210,18 +210,18 @@ and expiry therefore follow the same behavior as the room interface.
 Chat avatars and the member list are informational; message reactions stay
 below their message and are saved by that room's owner. The functional couch
 uses the room's personal activity projection, independently of screen sharing.
-The design board's **Room mini window** beside the share action opens a movable,
-resizable view with the same couch, chat and voice shortcuts. Its detach action
-uses the existing browser picture-in-picture window where available. Messages,
-drafts, attachments, reactions and voice state share the room's owner; closing
-the window does not leave the room. It follows the selected room and preserves
-its reading position when detached or returned.
+Both surfaces' **Room mini window** in the room header opens a movable,
+resizable view with the same couch, chat and voice controls. Its detach action
+uses the existing browser picture-in-picture window where available. Personal
+drafts, attachment selections and voice participation remain page-owned;
+closing the window returns the controls without leaving voice. It follows the
+selected room and preserves its reading position when detached or returned.
 
 The composer supports the attachment button, file drop and image
 paste, with a draft preview before sending. Channel appearance and room creation
 share preset icons and custom image selection. These design-board changes stay
 in memory. The functional prototype uses the same preset icons, reaction
-controls and couch; persistent identity images and the room mini window remain
+controls, couch and room mini window; persistent identity images remain
 integration work.
 
 References for spatial hierarchy and viewing modes:
@@ -240,7 +240,7 @@ not appear in an unauthorized user's directory. Changing a password or invitatio
 controls new admission; existing grants require explicit revocation.
 
 Messages have a confirmed order within their room. The room store retains
-confirmed history and loads pages of up to 100; it does not automatically discard
+confirmed history and loads pages of up to 50; it does not automatically discard
 old messages. The interface keeps a reading window of up to 1,000 messages and
 lets readers move through earlier pages or return to the latest messages.
 Each message supports 2,000 Unicode characters and up to eight attachments.

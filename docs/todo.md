@@ -7,13 +7,13 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 shared product flows.** Bring accepted design flows into the real
-  shared UI and Rust owners: directed interactions, message reactions, the room
-  tool and voice controls. Keep identity images as
-  a separate bounded asset slice; preset icons do not complete image support.
-  The [network model](./research/channel-network-design.md) and
-  [data model](./research/channel-storage-and-identity.md) own responsibilities.
-  Message reactions persist with their messages; character reactions remain transient.
+- [ ] **3.0 voice controls.** Connect individual listening gain/mute and the
+  existing microphone device and processing controls to the shared UI and
+  current capture/playback owners. Microphone and total listening gain are connected.
+- [ ] **3.0 identity images.** Complete the bounded image asset slice for domain
+  and room identity. Preset icons are connected; image selection remains a design
+  study. The [data model](./research/channel-storage-and-identity.md) owns storage
+  and distribution responsibilities.
 - [ ] **3.0 Native platforms and integration.** Complete capture/input on the
   remaining platforms and packaging over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)
