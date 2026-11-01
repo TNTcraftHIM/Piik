@@ -5,7 +5,7 @@ mod encoding;
 mod frames;
 mod source;
 
-pub use audio::{audio_capabilities, AudioCapture, AudioControl};
+pub use audio::{audio_capabilities, microphones, AudioCapture, AudioControl};
 pub(crate) use decoder::Decoder;
 pub use encoding::{Encoding, EncodingControl};
 pub(crate) use frames::ImageCopy;

@@ -61,6 +61,32 @@ impl SourceAudioSettings {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceMicrophoneSettings {
+    pub enabled: bool,
+    pub device_id: String,
+    pub volume: f32,
+}
+impl Default for SourceMicrophoneSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            device_id: String::new(),
+            volume: 1.0,
+        }
+    }
+}
+impl SourceMicrophoneSettings {
+    pub fn validate(&self) -> Result<()> {
+        anyhow::ensure!(
+            self.volume.is_finite() && (0.0..=2.0).contains(&self.volume),
+            "invalid_microphone_settings"
+        );
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 pub struct IceServer {
     pub urls: Vec<String>,
@@ -136,6 +162,46 @@ struct Capture {
     pending_audio: Option<Uuid>,
 }
 impl CaptureLease {
+    pub fn microphone_state(&self) -> Option<watch::Receiver<SourceMicrophoneSettings>> {
+        #[cfg(feature = "capture")]
+        if let Some(CaptureLeaseControl::Capture(control)) = &self.control {
+            return Some(control.microphone_state());
+        }
+        None
+    }
+    pub fn configure_microphone(
+        &self,
+        settings: SourceMicrophoneSettings,
+    ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
+        settings.validate()?;
+        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
+        #[cfg(feature = "capture")]
+        let control = match self.control.as_ref() {
+            Some(CaptureLeaseControl::Capture(control)) => control.clone(),
+            _ => anyhow::bail!("capture_unavailable"),
+        };
+        Ok(async move {
+            #[cfg(feature = "capture")]
+            return control.configure_microphone(settings).await;
+            #[cfg(not(feature = "capture"))]
+            anyhow::bail!("capture_unavailable")
+        })
+    }
+    pub fn cancel_microphone(
+        &self,
+    ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
+        #[cfg(feature = "capture")]
+        let control = match self.control.as_ref() {
+            Some(CaptureLeaseControl::Capture(control)) => control.clone(),
+            _ => anyhow::bail!("capture_unavailable"),
+        };
+        Ok(async move {
+            #[cfg(feature = "capture")]
+            return control.cancel_microphone().await;
+            #[cfg(not(feature = "capture"))]
+            anyhow::bail!("capture_unavailable")
+        })
+    }
     pub fn configure_video(
         &self,
         settings: crate::capture::Settings,
@@ -1060,25 +1126,10 @@ impl Driver {
             })
             .map(|(id, _)| *id)
         {
-            let old = self.captures[&video].producer.audio;
-            if let Some(old) = old {
-                self.sources.remove(&old);
-                self.relay.remove(old);
-                self.refresh_media(false).await?;
-            }
             let capture = self.captures.get_mut(&video).unwrap();
             let (control, ready, audio_error) = capture
                 .producer
-                .prepare_audio(
-                    publication,
-                    target,
-                    audio,
-                    exclude_audio,
-                    self.ready_sources.clone(),
-                    self.events.clone(),
-                    self.relay.clone(),
-                    self.cancel.clone(),
-                )
+                .prepare_audio(target, audio, exclude_audio)
                 .await?;
             let id = Uuid::new_v4();
             capture.pending_audio = Some(id);
@@ -1101,11 +1152,7 @@ impl Driver {
                 .values_mut()
                 .filter(|capture| capture.selected && capture.scope.publication_id == publication)
             {
-                if let Some(audio) = capture.producer.audio {
-                    self.sources.remove(&audio);
-                    self.relay.remove(audio);
-                }
-                capture.producer.stop_audio().await;
+                capture.producer.stop_system_audio().await;
             }
             self.refresh_media(false).await?;
         }
@@ -1120,7 +1167,8 @@ impl Driver {
             self.relay.clone(),
             self.cancel.clone(),
             self.bandwidth_changed.clone(),
-        )?;
+        )
+        .await?;
         let id = producer.video;
         let lease = CaptureLease {
             id,
@@ -1204,7 +1252,7 @@ impl Driver {
                     capture.producer.control.stop();
                     self.sources.remove(old);
                     self.relay.remove(*old);
-                    if let Some(audio) = capture.producer.audio {
+                    if let Some(audio) = capture.producer.audio() {
                         self.sources.remove(&audio);
                         self.relay.remove(audio);
                     }
@@ -1246,7 +1294,7 @@ impl Driver {
         if capture.selected {
             self.inputs.end_source(publication);
         }
-        let audio = capture.producer.audio;
+        let audio = capture.producer.audio();
         let error = capture.producer.close().await;
         self.captures.remove(&source_id);
         self.sources.remove(&source_id);
@@ -1276,43 +1324,27 @@ impl Driver {
 
     #[cfg(feature = "capture")]
     async fn capture_audio_ended(&mut self, publication: Uuid, source: Uuid) -> Result<()> {
-        if let Some(capture) = self
+        for capture in self
             .captures
             .values_mut()
-            .find(|c| c.scope.publication_id == publication && c.producer.audio == Some(source))
+            .filter(|c| c.scope.publication_id == publication)
         {
-            capture.producer.audio = None;
             capture.prepared.retain(|ready| ready.source.id != source);
-            self.sources.remove(&source);
-            self.relay.remove(source);
-            self.refresh_media(false).await?;
         }
-        Ok(())
+        self.sources.remove(&source);
+        self.relay.remove(source);
+        self.refresh_media(false).await
     }
 
     #[cfg(feature = "capture")]
     async fn cancelled_audio(&mut self) {
-        let cancelled: Vec<_> = self
+        for capture in self
             .captures
-            .iter()
-            .filter(|(_, capture)| capture.producer.audio_is_stopped())
-            .map(|(video, _)| *video)
-            .collect();
-        let changed = !cancelled.is_empty();
-        for video in cancelled {
-            let capture = self.captures.get_mut(&video).unwrap();
+            .values_mut()
+            .filter(|capture| capture.producer.audio_is_stopped())
+        {
             capture.pending_audio = None;
-            if let Some(audio) = capture.producer.audio {
-                capture.prepared.retain(|ready| ready.source.id != audio);
-                self.sources.remove(&audio);
-                self.relay.remove(audio);
-            }
-            capture.producer.stop_audio().await;
-        }
-        if changed {
-            if let Err(error) = self.refresh_media(false).await {
-                eprintln!("Native retired audio unavailable: {error}");
-            }
+            capture.producer.stop_system_audio().await;
         }
     }
 
@@ -2616,21 +2648,16 @@ impl Driver {
         #[cfg(feature = "capture")]
         if matches!(ready.source.origin, SourceOrigin::Local) {
             let Some(capture) = self.captures.values_mut().find(|c| {
-                c.producer.video == ready.source.id || c.producer.audio == Some(ready.source.id)
+                c.producer.video == ready.source.id || c.producer.audio() == Some(ready.source.id)
             }) else {
                 return Ok(());
             };
             if capture.producer.control.is_stopped() {
                 return Ok(());
             }
-            if capture.producer.audio == Some(ready.source.id)
-                && capture.producer.audio_is_stopped()
-            {
-                return Ok(());
-            }
             if !capture.selected
                 || (capture.pending_audio.is_some()
-                    && capture.producer.audio == Some(ready.source.id))
+                    && capture.producer.audio() == Some(ready.source.id))
             {
                 capture.prepared.push(ready);
                 return Ok(());
@@ -2679,7 +2706,7 @@ impl Driver {
                 let active = self.captures.values().any(|c| {
                     c.selected
                         && !c.producer.control.is_stopped()
-                        && (c.producer.video == source.id || c.producer.audio == Some(source.id))
+                        && (c.producer.video == source.id || c.producer.audio() == Some(source.id))
                 });
                 #[cfg(not(feature = "capture"))]
                 let active = false;

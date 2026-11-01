@@ -6,6 +6,7 @@ import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-contr
 import type { QualityProfile } from "../media/quality";
 import { activateNativePicker } from "../native/activation";
 import { NativeRoomHosting } from "./hosting-api";
+import type { CaptureDevice } from "../media/capture-devices";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
@@ -19,6 +20,9 @@ export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
 const captureAudioFailureSchema = z.object({ type: z.literal("capture_audio_failed"), publicationId: z.uuid() }).strict();
+const microphoneSchema = z.object({ enabled: z.boolean(), deviceId: z.string(), volume: z.number().min(0).max(2) }).strict();
+export type NativeSourceMicrophone = z.infer<typeof microphoneSchema>;
+const microphoneStateSchema = z.object({ type: z.literal("capture_microphone_state"), publicationId: z.uuid(), state: microphoneSchema }).strict();
 const inputControlStateSchema = remoteControlStateSchema.extend({
   canSetStopShortcut: z.boolean(), stopShortcut: remoteShortcutKeySchema.nullable().optional(),
   // Omitted: fixed chord. Null: system-managed, unbound. Text: actual OS chord.
@@ -62,6 +66,7 @@ export class ChannelApp {
   private timer: ReturnType<typeof setTimeout>;
   private authenticated = false;
   private captures = new Map<string, string>();
+  private microphones = new Map<string, NativeSourceMicrophone>();
   private prepared = new Set<string>();
   private activationURL?: string;
   private processAudioExclusion = false;
@@ -74,7 +79,9 @@ export class ChannelApp {
   captureRequest(roomId: string): NativeCaptureRequest | undefined {
     if (!this.activationURL) return;
     for (const { command } of this.requests.values()) {
-      if (command.type === "prepare_capture" && command.roomId === roomId && command.publicationId && this.prepared.has(command.publicationId)) {
+      if (command.roomId === roomId && command.publicationId &&
+          ((command.type === "prepare_capture" && this.prepared.has(command.publicationId)) ||
+           (command.type === "capture_microphone" && this.captures.has(command.publicationId)))) {
         return { publicationId: command.publicationId, activationURL: this.activationURL };
       }
     }
@@ -82,7 +89,8 @@ export class ChannelApp {
 
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
     onClose: () => void, onAudioFailure: (publicationId: string) => void,
-    onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {}) {
+    onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {},
+    private readonly onMicrophoneState: (publicationId: string) => void = () => {}) {
     this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
       { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
@@ -109,6 +117,14 @@ export class ChannelApp {
         if (reply.type === "capture_audio_failed") {
           const { publicationId } = captureAudioFailureSchema.parse(reply);
           if (this.captures.has(publicationId) || this.prepared.has(publicationId)) onAudioFailure(publicationId);
+          return;
+        }
+        if (reply.type === "capture_microphone_state") {
+          const { publicationId, state } = microphoneStateSchema.parse(reply);
+          if (this.captures.has(publicationId) || this.prepared.has(publicationId)) {
+            this.microphones.set(publicationId, state);
+            onMicrophoneState(publicationId);
+          }
           return;
         }
         const request = this.requests.get(reply.id);
@@ -192,6 +208,26 @@ export class ChannelApp {
     if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }
 
+  sourceMicrophone(publicationId: string): NativeSourceMicrophone | undefined {
+    return this.captures.has(publicationId) ? this.microphones.get(publicationId) : undefined;
+  }
+
+  async sourceMicrophones(): Promise<CaptureDevice[]> {
+    await this.ready;
+    return z.array(z.object({ id: z.string(), label: z.string() }).strict()).parse(await this.request({ type: "microphones" }));
+  }
+
+  async setSourceMicrophone(publicationId: string, roomId: string, settings: NativeSourceMicrophone): Promise<void> {
+    const captureId = this.captures.get(publicationId);
+    if (!captureId) throw new Error("capture_unavailable");
+    const pending = this.request({ type: "capture_microphone", publicationId, captureId, roomId, settings });
+    if (settings.enabled && !this.sourceMicrophone(publicationId)?.enabled) activateNativePicker(this.activationURL);
+    const applied = microphoneSchema.parse(await pending);
+    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+    this.microphones.set(publicationId, applied);
+    this.onMicrophoneState(publicationId);
+  }
+
   async setCapturePaused(publicationId: string, paused: boolean): Promise<void> {
     const captureId = this.captures.get(publicationId);
     if (!captureId) throw new Error("capture_unavailable");
@@ -221,12 +257,15 @@ export class ChannelApp {
   }
 
   async cancelCapture(publicationId: string): Promise<void> {
-    if (!this.prepared.delete(publicationId)) return;
+    const prepared = this.prepared.delete(publicationId);
+    const microphone = [...this.requests.values()].some(({ command }) => command.type === "capture_microphone" && command.publicationId === publicationId);
+    if (!prepared && !microphone) return;
     if (this.connected) await this.request({ type: "cancel_capture", publicationId });
   }
 
   async stopCapture(publicationId: string): Promise<void> {
     const active = this.captures.delete(publicationId);
+    this.microphones.delete(publicationId);
     const prepared = this.prepared.delete(publicationId);
     if (!active && !prepared) return;
     if (this.connected) await this.request({ type: "stop_capture", publicationId });
@@ -259,6 +298,7 @@ export class ChannelApp {
   close(): void {
     this.authenticated = false;
     this.captures.clear();
+    this.microphones.clear();
     this.prepared.clear();
     clearTimeout(this.timer);
     this.socket.onclose = null;

@@ -148,7 +148,7 @@ impl Driver {
                 capture.selected
                     && !capture.producer.control.is_stopped()
                     && (capture.producer.video == source.id
-                        || capture.producer.audio == Some(source.id))
+                        || capture.producer.audio() == Some(source.id))
             })?;
             let producer = &capture.producer;
             if producer.video == source.id {
@@ -169,7 +169,7 @@ impl Driver {
                         producer.settings().bitrate
                     },
                 )
-            } else if producer.audio == Some(source.id) {
+            } else if producer.audio() == Some(source.id) {
                 Some(producer.control.audio_bitrate())
             } else {
                 None

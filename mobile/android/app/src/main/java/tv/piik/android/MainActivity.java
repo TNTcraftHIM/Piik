@@ -6,13 +6,23 @@ import android.net.Uri;
 import android.os.*;
 import android.widget.*;
 
+// Both requests use the existing visible-App permission queue; each retains
+// its own capture resource and cancellation lifetime.
+interface CaptureRequest extends AutoCloseable {
+  boolean isClosed();
+  boolean needsAudioPermission();
+  void audioPermission(boolean granted);
+  void presented(MainActivity activity);
+  void close();
+}
+
 public final class MainActivity extends Activity {
   static MainActivity current;
   boolean visible, notificationRequest;
   static final int NOTIFICATIONS = 13;
   static final int PROJECTION = 14, SOURCE_AUDIO = 15;
   private static final class PendingCapture {
-    CapturePlatform capture;
+    CaptureRequest capture;
     boolean projectionRequest, audioRequest;
   }
   private PendingCapture pending;
@@ -140,7 +150,7 @@ public final class MainActivity extends Activity {
       pending.capture = service.captureRequests.poll();
       if (pending.capture != null) pending.capture.presented(this);
     }
-    CapturePlatform capture = pending.capture;
+    CaptureRequest capture = pending.capture;
     if (capture == null) return;
     if (capture.isClosed()) { captureClosed(capture); return; }
     if (pending.projectionRequest || pending.audioRequest) return;
@@ -149,10 +159,16 @@ public final class MainActivity extends Activity {
       requestPermissions(new String[] {android.Manifest.permission.RECORD_AUDIO}, SOURCE_AUDIO);
       return;
     }
+    if (capture instanceof MicrophonePlatform microphone) {
+      pending.capture = null;
+      microphone.grant();
+      finish();
+      return;
+    }
     pending.projectionRequest = true;
     startActivityForResult(getSystemService(android.media.projection.MediaProjectionManager.class).createScreenCaptureIntent(), PROJECTION);
   }
-  void captureClosed(CapturePlatform owner) {
+  void captureClosed(CaptureRequest owner) {
     if (pending == null || pending.capture != owner) return;
     if (pending.projectionRequest) finishActivity(PROJECTION);
     pending.capture = null;
@@ -162,7 +178,7 @@ public final class MainActivity extends Activity {
     super.onActivityResult(request, result, data);
     if (request != PROJECTION || pending == null || !pending.projectionRequest) return;
     pending.projectionRequest = false;
-    CapturePlatform owner = pending.capture;
+    CapturePlatform owner = (CapturePlatform) pending.capture;
     pending.capture = null;
     if (owner != null) {
       AppRuntimeService service = AppRuntimeService.instance;

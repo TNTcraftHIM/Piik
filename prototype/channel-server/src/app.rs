@@ -30,7 +30,7 @@ use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target},
     input::{Desktop, Mode, SourceView},
-    peer::{CaptureLease, SourceAudioSettings},
+    peer::{CaptureLease, SourceAudioSettings, SourceMicrophoneSettings},
     session::{
         self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
         TransferSource,
@@ -632,6 +632,7 @@ enum Operation {
         policy: String,
     },
     Targets,
+    Microphones,
     Preview {
         target: Target,
     },
@@ -658,6 +659,12 @@ enum Operation {
         publication_id: Uuid,
         capture_id: Uuid,
         settings: SourceAudioSettings,
+    },
+    CaptureMicrophone {
+        publication_id: Uuid,
+        capture_id: Uuid,
+        room_id: String,
+        settings: SourceMicrophoneSettings,
     },
     CaptureVideoSettings {
         publication_id: Uuid,
@@ -750,6 +757,7 @@ async fn connection(
             > = FuturesUnordered::new();
             let mut audio_errors = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
+            let mut microphone_states = FuturesUnordered::new();
             let mut operations = FuturesUnordered::new();
             let mut previews = FuturesUnordered::new();
             let mut preview: Option<(String, Option<oneshot::Sender<()>>)> = None;
@@ -784,6 +792,15 @@ async fn connection(
                         }
                         continue;
                     }
+                    Some((publication_id, producer_id, changed, state)) = microphone_states.next(), if !microphone_states.is_empty() => {
+                        let state: Option<SourceMicrophoneSettings> = state;
+                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.producer_id() == producer_id)) {
+                            let event = json!({"type":"capture_microphone_state","publicationId":publication_id,"state":state});
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                            microphone_states.push(next_microphone_state(publication_id, producer_id, changed));
+                        }
+                        continue;
+                    }
                     Some(response) = operations.next(), if !operations.is_empty() => {
                         let response: Value = response;
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
@@ -803,6 +820,7 @@ async fn connection(
                         let request: AbortHandle = request;
                         let result: Result<CaptureResult> = result;
                         let mut initial_input = None;
+                        let mut initial_microphone = None;
                         let result = if request.is_aborted() {
                             // Stop already retired this request, including a completed
                             // future that had not yet been observed by the processor.
@@ -829,6 +847,10 @@ async fn connection(
                                         initial_input = Some(state.borrow().clone());
                                         if !retained { input_states.push(next_input_state(publication_id, lease.producer_id(), state.clone())); }
                                     }
+                                    if let Some(state) = lease.microphone_state() {
+                                        initial_microphone = Some(state.borrow().clone());
+                                        if !retained { microphone_states.push(next_microphone_state(publication_id, lease.producer_id(), state)); }
+                                    }
                                     capture.pending = None;
                                     capture.active = Some(lease);
                                     Ok(Value::Null)
@@ -848,6 +870,10 @@ async fn connection(
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         if let Some(state) = initial_input {
                             let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
+                            timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
+                        }
+                        if let Some(state) = initial_microphone {
+                            let event = json!({"type":"capture_microphone_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
                         }
                         continue;
@@ -891,6 +917,17 @@ async fn connection(
                             },
                             Operation::Targets => match &host {
                                 Some(_) => capture_targets().await,
+                                None => Err(anyhow!("hello_required")),
+                            },
+                            Operation::Microphones => match &host {
+                                Some(_) => {
+                                    tokio::task::spawn_blocking(|| {
+                                        Ok(serde_json::to_value(
+                                            piik_channel_native::capture::microphones()?,
+                                        )?)
+                                    })
+                                    .await?
+                                }
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::Preview { target } => {
@@ -1016,10 +1053,24 @@ async fn connection(
                                 }
                             }
                             Operation::CancelCapture { publication_id } => {
-                                if let Some(capture) = captures.get_mut(&publication_id) {
-                                    capture.pending = None;
+                                let cancel =
+                                    captures.get_mut(&publication_id).and_then(|capture| {
+                                        capture.pending = None;
+                                        capture.lease().map(CaptureLease::cancel_microphone)
+                                    });
+                                match cancel {
+                                    Some(Ok(cancel)) => {
+                                        operations.push(async move {
+                                            match cancel.await {
+                                                Ok(()) => json!({"id":request.id,"result":null}),
+                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                            }
+                                        }.boxed());
+                                        continue;
+                                    }
+                                    Some(Err(error)) => Err(error),
+                                    None => Ok(Value::Null),
                                 }
-                                Ok(Value::Null)
                             }
                             Operation::TransferSource {
                                 publication_id,
@@ -1077,6 +1128,40 @@ async fn connection(
                                         operations.push(async move {
                                             match update.await {
                                                 Ok(()) => json!({"id":request.id,"result":null}),
+                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                            }
+                                        }.boxed());
+                                        continue;
+                                    }
+                                    Err(error) => Err(error),
+                                }
+                            }
+                            Operation::CaptureMicrophone {
+                                publication_id,
+                                capture_id,
+                                room_id,
+                                settings,
+                            } => {
+                                let update = captures
+                                    .get(&publication_id)
+                                    .and_then(Capture::lease)
+                                    .filter(|lease| {
+                                        lease.id == capture_id && lease.scope.room_id == room_id
+                                    })
+                                    .ok_or_else(|| anyhow!("capture_unavailable"))
+                                    .and_then(|lease| {
+                                        Ok((
+                                            lease.configure_microphone(settings)?,
+                                            lease
+                                                .microphone_state()
+                                                .ok_or_else(|| anyhow!("capture_unavailable"))?,
+                                        ))
+                                    });
+                                match update {
+                                    Ok((update, state)) => {
+                                        operations.push(async move {
+                                            match update.await {
+                                                Ok(()) => json!({"id":request.id,"result":state.borrow().clone()}),
                                                 Err(error) => json!({"id":request.id,"error":error.to_string()}),
                                             }
                                         }.boxed());
@@ -1215,6 +1300,23 @@ async fn next_input_state(
     producer: Uuid,
     mut changed: watch::Receiver<SourceView>,
 ) -> (Uuid, Uuid, watch::Receiver<SourceView>, Option<SourceView>) {
+    let state = changed
+        .changed()
+        .await
+        .ok()
+        .map(|_| changed.borrow_and_update().clone());
+    (publication, producer, changed, state)
+}
+async fn next_microphone_state(
+    publication: Uuid,
+    producer: Uuid,
+    mut changed: watch::Receiver<SourceMicrophoneSettings>,
+) -> (
+    Uuid,
+    Uuid,
+    watch::Receiver<SourceMicrophoneSettings>,
+    Option<SourceMicrophoneSettings>,
+) {
     let state = changed
         .changed()
         .await

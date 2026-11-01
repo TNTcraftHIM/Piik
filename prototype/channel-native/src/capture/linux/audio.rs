@@ -1,6 +1,6 @@
 //! System-output sound, independent of Portal selection and video failure.
 use super::{message_error, Clock, Pipeline};
-use crate::capture::{AudioCapabilities, AudioFrame, Target};
+use crate::capture::{AudioCapabilities, AudioFrame, MicrophoneDevice, Target};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use futures_util::StreamExt;
 use gst::prelude::*;
@@ -16,6 +16,39 @@ pub fn audio_capabilities() -> AudioCapabilities {
         process_audio_exclusion: false,
         system_audio: gst::init().is_ok() && gst::ElementFactory::find("pulsesrc").is_some(),
     }
+}
+
+pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
+    gst::init()?;
+    let monitor = gst::DeviceMonitor::new();
+    monitor
+        .add_filter(
+            Some("Audio/Source"),
+            Some(&gst::Caps::builder("audio/x-raw").build()),
+        )
+        .context("audio device provider unavailable")?;
+    monitor.start()?;
+    let devices = monitor
+        .devices()
+        .iter()
+        .filter_map(|device| {
+            // The provider configures the element's public device property with
+            // the source name which pulsesrc itself accepts. No stream is started.
+            let source = device.create_element(None).ok()?;
+            if source.factory()?.name() != "pulsesrc" {
+                return None;
+            }
+            let id = source
+                .property::<Option<String>>("device")
+                .filter(|id| !id.is_empty())?;
+            Some(MicrophoneDevice {
+                id,
+                label: device.display_name().to_string(),
+            })
+        })
+        .collect();
+    monitor.stop();
+    Ok(devices)
 }
 
 #[derive(Clone)]
@@ -41,6 +74,12 @@ pub struct AudioCapture {
 }
 impl AudioCapture {
     pub fn start(_target: Target) -> Result<Self> {
+        Self::start_device(Some("@DEFAULT_MONITOR@".into()))
+    }
+    pub fn microphone(device_id: String) -> Result<Self> {
+        Self::start_device((!device_id.is_empty()).then_some(device_id))
+    }
+    fn start_device(device_id: Option<String>) -> Result<Self> {
         gst::init()?;
         let runtime = tokio::runtime::Handle::try_current()?;
         let control = AudioControl(watch::channel(false).0);
@@ -52,7 +91,7 @@ impl AudioCapture {
             .name("piik-linux-audio".into())
             .spawn(move || {
                 let mut ready = Some(ready);
-                let result = runtime.block_on(run(&worker, frames, &mut ready));
+                let result = runtime.block_on(run(device_id, &worker, frames, &mut ready));
                 if let Some(ready) = ready {
                     let error = result
                         .as_ref()
@@ -216,6 +255,7 @@ mod tests {
 }
 
 async fn run(
+    device_id: Option<String>,
     control: &AudioControl,
     frames: mpsc::Sender<AudioFrame>,
     ready: &mut Option<oneshot::Sender<Result<()>>>,
@@ -223,9 +263,11 @@ async fn run(
     let pipeline = Pipeline(gst::Pipeline::new());
     let clock = Clock::new();
     clock.pipeline(&pipeline.0);
-    let source = gst::ElementFactory::make("pulsesrc")
-        .property("device", "@DEFAULT_MONITOR@")
-        .build()?;
+    let mut source = gst::ElementFactory::make("pulsesrc");
+    if let Some(device_id) = device_id {
+        source = source.property("device", device_id);
+    }
+    let source = source.build()?;
     let convert = gst::ElementFactory::make("audioconvert").build()?;
     let resample = gst::ElementFactory::make("audioresample").build()?;
     let caps = gst::Caps::builder("audio/x-raw")

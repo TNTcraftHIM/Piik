@@ -3,28 +3,26 @@ use super::{
     clock::SourceTime, packetizer::Packetizer, video::Video, H264Sps, Relay, Source, SourceFeed,
     SourceOrigin,
 };
+#[cfg(target_os = "windows")]
+use crate::capture::AudioCapture;
 use crate::media::MediaKind;
 use crate::media::RtpCodec;
 use crate::{
-    capture::{
-        AudioCapture, AudioControl as CaptureAudioControl, Capture, Control as VideoControl,
-        Settings, Target,
-    },
+    capture::{Capture, Control as VideoControl, Settings, Target},
     peer::{Event, InitialMedia, SourceReady},
 };
 use anyhow::{anyhow, Result};
 use rtc_shared::time::SystemInstant;
-use std::{
-    sync::{Arc, Mutex},
-    time::Instant,
-};
+use std::{sync::Arc, time::Instant};
 use tokio::{
     sync::{mpsc, oneshot, watch, Notify},
     task::JoinHandle,
 };
 use uuid::Uuid;
 
+mod audio;
 mod encodings;
+pub(crate) use audio::AudioLeaseControl;
 
 pub(crate) use super::encodings::VideoDemand;
 
@@ -34,49 +32,28 @@ pub(crate) struct Control {
     video: VideoControl,
     video_settings: watch::Sender<Settings>,
     video_requests: mpsc::Sender<VideoSettingsRequest>,
-    audio: Arc<Mutex<Option<AudioLeaseControl>>>,
-    audio_settings: watch::Sender<crate::peer::SourceAudioSettings>,
+    audio: audio::Control,
 }
 struct VideoSettingsRequest {
     settings: Settings,
     result: oneshot::Sender<Result<()>>,
 }
 
-#[derive(Clone)]
-pub(crate) struct AudioLeaseControl {
-    capture: Option<CaptureAudioControl>,
-    cancelled: watch::Sender<bool>,
-    settings: watch::Sender<crate::peer::SourceAudioSettings>,
-}
-impl AudioLeaseControl {
-    pub fn set_audio_settings(&self, settings: crate::peer::SourceAudioSettings) {
-        self.settings.send_replace(settings);
-    }
-    pub fn stop(&self) {
-        self.cancelled.send_replace(true);
-        if let Some(capture) = &self.capture {
-            capture.stop();
-        }
-    }
-    pub fn is_stopped(&self) -> bool {
-        *self.cancelled.borrow()
-    }
-}
-struct AudioLease {
-    control: AudioLeaseControl,
-    task: JoinHandle<()>,
-}
-impl AudioLease {
-    async fn close(&mut self) {
-        self.control.stop();
-        if let Err(error) = (&mut self.task).await {
-            eprintln!("Native audio task failed: {error}");
-        }
-    }
-}
 impl Control {
+    pub fn microphone_state(&self) -> watch::Receiver<crate::peer::SourceMicrophoneSettings> {
+        self.audio.microphone.clone()
+    }
+    pub async fn configure_microphone(
+        &self,
+        settings: crate::peer::SourceMicrophoneSettings,
+    ) -> Result<()> {
+        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
+        self.audio.configure_microphone(settings).await
+    }
+    pub async fn cancel_microphone(&self) -> Result<()> {
+        self.audio.cancel_microphone().await
+    }
     pub async fn configure_video(&self, settings: Settings) -> Result<()> {
-        settings.validate()?;
         anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
         let (result, applied) = oneshot::channel();
         self.video_requests
@@ -85,11 +62,11 @@ impl Control {
         applied.await.map_err(|_| anyhow!("capture_unavailable"))?
     }
     pub fn set_audio_settings(&self, settings: crate::peer::SourceAudioSettings) {
-        self.audio_settings.send_replace(settings);
+        self.audio.settings.send_replace(settings);
     }
 
     pub fn audio_bitrate(&self) -> u32 {
-        self.audio_settings.borrow().bitrate
+        self.audio.settings.borrow().bitrate
     }
     #[cfg(target_os = "linux")]
     pub(crate) async fn authorize(
@@ -102,9 +79,7 @@ impl Control {
 
     pub fn stop(&self) {
         self.video.stop();
-        if let Some(audio) = self.audio.lock().unwrap().as_ref() {
-            audio.stop();
-        }
+        self.audio.stop();
     }
     pub fn is_stopped(&self) -> bool {
         self.video.is_stopped()
@@ -113,13 +88,11 @@ impl Control {
 
 pub(crate) struct Producer {
     pub video: Uuid,
-    pub audio: Option<Uuid>,
     pub control: Control,
     task: Option<JoinHandle<Option<String>>>,
     demands: watch::Sender<Vec<VideoDemand>>,
-    audio_lease: Option<AudioLease>,
-    epoch: Instant,
-    clock: SystemInstant,
+    audio_task: Option<JoinHandle<()>>,
+    system_audio: Option<AudioLeaseControl>,
 }
 impl Producer {
     pub fn settings(&self) -> Settings {
@@ -134,7 +107,7 @@ impl Producer {
             true
         });
     }
-    pub fn start(
+    pub async fn start(
         publication_id: Uuid,
         target: Target,
         settings: Settings,
@@ -157,80 +130,59 @@ impl Producer {
         let capture = Capture::start(target.clone(), settings.fps, audio)?;
         let encoding = capture.encode(settings)?;
         let video_control = capture.control();
-        let (audio_settings, settings_rx) =
-            watch::channel(crate::peer::SourceAudioSettings::default());
-        let (audio_ready, required_audio) = if exclude_audio.is_some() {
-            let (ready, started) = oneshot::channel();
-            (Some(ready), Some(started))
-        } else {
-            (None, None)
-        };
-        let (audio_error, warning) = if audio {
-            let (error, warning) = oneshot::channel();
-            (Some(error), Some(warning))
-        } else {
-            (None, None)
-        };
-        let audio = if let Some(error) = audio_error {
+        let (audio_control, audio_task) = audio::start(
+            publication_id,
+            now,
+            clock,
+            ready_sources.clone(),
+            events.clone(),
+            relay,
+            cancelled.clone(),
+        );
+        let mut system_audio = None;
+        let mut required_audio = None;
+        let mut warning = None;
+        if audio {
             #[cfg(target_os = "windows")]
-            let input = AudioCapture::start_with_exclusion(target, exclude_audio);
+            let input = AudioCapture::start_with_exclusion(target, exclude_audio.clone());
             #[cfg(not(target_os = "windows"))]
             let input = if exclude_audio.is_some() {
                 Err(anyhow!("audio exclusion unavailable"))
             } else {
                 capture.audio(target)
             };
-            match input {
-                Ok(capture) => {
-                    let id = Uuid::new_v4();
-                    let (retire, retired) = watch::channel(false);
-                    let control = AudioLeaseControl {
-                        capture: Some(capture.control()),
-                        cancelled: retire,
-                        settings: audio_settings.clone(),
-                    };
-                    let task = tokio::spawn(audio_source(
-                        capture,
-                        id,
-                        publication_id,
-                        now,
-                        clock,
-                        ready_sources.clone(),
-                        events.clone(),
-                        relay.clone(),
-                        video_control.clone(),
-                        cancelled.clone(),
-                        error,
-                        retired,
-                        audio_ready,
-                        settings_rx,
-                    ));
-                    Some((id, AudioLease { control, task }))
+            let prepared = match input {
+                Ok(input) => audio_control.system(Some(input)).await,
+                Err(error) => Err(error),
+            };
+            match prepared {
+                Ok((control, ready, failed)) => {
+                    system_audio = Some(control);
+                    warning = failed;
+                    if exclude_audio.is_some() {
+                        required_audio = Some(ready);
+                    }
                 }
                 Err(failure) => {
                     let error_text = format!("{failure:#}");
-                    if let Some(ready) = audio_ready {
-                        let _ = ready.send(Err(anyhow!(error_text.clone())));
+                    let (error, failed) = oneshot::channel();
+                    let _ = error.send(error_text.clone());
+                    warning = Some(failed);
+                    if exclude_audio.is_some() {
+                        let (ready, started) = oneshot::channel();
+                        let _ = ready.send(Err(anyhow!(error_text)));
+                        required_audio = Some(started);
                     }
-                    eprintln!("Native source audio failed: {error_text}");
-                    let _ = error.send(error_text);
-                    None
                 }
             }
-        } else {
-            None
-        };
-        let audio_id = audio.as_ref().map(|(id, _)| *id);
+        }
         let (video_settings, _) = watch::channel(settings);
         let (video_requests, changes) = mpsc::channel(1);
         let control = Control {
             video: video_control,
             video_settings,
             video_requests,
-            audio_settings,
-            audio: Arc::new(Mutex::new(
-                audio.as_ref().map(|(_, lease)| lease.control.clone()),
-            )),
+            audio: audio_control,
         };
         let video = Uuid::new_v4();
         let (ready, started) = oneshot::channel();
@@ -254,13 +206,11 @@ impl Producer {
         Ok((
             Self {
                 video,
-                audio: audio_id,
                 control,
                 task: Some(task),
                 demands,
-                audio_lease: audio.map(|(_, lease)| lease),
-                epoch: now,
-                clock,
+                audio_task: Some(audio_task),
+                system_audio,
             },
             started,
             warning,
@@ -268,24 +218,21 @@ impl Producer {
         ))
     }
 
-    pub async fn stop_audio(&mut self) {
-        if let Some(control) = self.control.audio.lock().unwrap().take() {
+    pub fn audio(&self) -> Option<Uuid> {
+        *self.control.audio.source.borrow()
+    }
+
+    pub async fn stop_system_audio(&mut self) {
+        if let Some(control) = self.system_audio.take() {
             control.stop();
         }
-        if let Some(audio) = self.audio_lease.as_mut() {
-            audio.close().await;
-        }
-        self.audio_lease = None;
-        self.audio = None;
+        let _ = self.control.audio.stop_system().await;
     }
 
     pub fn audio_is_stopped(&self) -> bool {
-        self.control
-            .audio
-            .lock()
-            .unwrap()
+        self.system_audio
             .as_ref()
-            .is_some_and(|audio| audio.is_stopped())
+            .is_some_and(AudioLeaseControl::is_stopped)
     }
 
     pub async fn close(&mut self) -> Option<String> {
@@ -300,179 +247,31 @@ impl Producer {
         } else {
             None
         };
-        self.stop_audio().await;
+        if let Some(task) = self.audio_task.take() {
+            let _ = task.await;
+        }
         error
     }
 
     #[cfg(target_os = "windows")]
     pub async fn prepare_audio(
         &mut self,
-        publication_id: Uuid,
         target: Target,
         enabled: bool,
         exclude: Option<Target>,
-        ready_sources: mpsc::Sender<SourceReady>,
-        events: mpsc::Sender<Event>,
-        relay: Relay,
-        cancelled: watch::Receiver<bool>,
     ) -> Result<(
         AudioLeaseControl,
         oneshot::Receiver<Result<()>>,
         Option<oneshot::Receiver<String>>,
     )> {
-        self.stop_audio().await;
+        self.stop_system_audio().await;
         anyhow::ensure!(!self.control.is_stopped(), "capture_unavailable");
-        let (retire, retired) = watch::channel(false);
-        let (ready, started) = oneshot::channel();
-        let (warning, failed) = oneshot::channel();
-        let capture = if enabled {
-            Some(AudioCapture::start_with_exclusion(target, exclude)?)
-        } else {
-            None
-        };
-        let control = AudioLeaseControl {
-            capture: capture.as_ref().map(|c| c.control()),
-            cancelled: retire,
-            settings: self.control.audio_settings.clone(),
-        };
-        *self.control.audio.lock().unwrap() = Some(control.clone());
-        if let Some(capture) = capture {
-            let id = Uuid::new_v4();
-            self.audio = Some(id);
-            let task = tokio::spawn(audio_source(
-                capture,
-                id,
-                publication_id,
-                self.epoch,
-                self.clock,
-                ready_sources,
-                events,
-                relay,
-                self.control.video.clone(),
-                cancelled,
-                warning,
-                retired,
-                Some(ready),
-                self.control.audio_settings.subscribe(),
-            ));
-            self.audio_lease = Some(AudioLease {
-                control: control.clone(),
-                task,
-            });
-            if self.control.is_stopped() {
-                self.stop_audio().await;
-                anyhow::bail!("capture_unavailable");
-            }
-            Ok((control, started, Some(failed)))
-        } else {
-            if self.control.is_stopped() {
-                self.stop_audio().await;
-                anyhow::bail!("capture_unavailable");
-            }
-            let _ = ready.send(Ok(()));
-            Ok((control, started, None))
-        }
-    }
-}
-
-async fn audio_source(
-    mut capture: AudioCapture,
-    id: Uuid,
-    publication_id: Uuid,
-    now: Instant,
-    clock: SystemInstant,
-    ready_sources: mpsc::Sender<SourceReady>,
-    events: mpsc::Sender<Event>,
-    relay: Relay,
-    video: VideoControl,
-    mut cancelled: watch::Receiver<bool>,
-    warning: oneshot::Sender<String>,
-    mut retired: watch::Receiver<bool>,
-    mut ready: Option<oneshot::Sender<Result<()>>>,
-    mut settings: watch::Receiver<crate::peer::SourceAudioSettings>,
-) {
-    let result = {
-        let work = async {
-            capture.ready().await?;
-            let mut encoder =
-                rusty_opus::OpusEncoder::new(48_000, 2, rusty_opus::Application::Audio)?;
-            encoder.complexity = 10;
-            encoder.use_cbr = true;
-            let mut encoded = [0u8; 1500];
-            let mut source = RtpSource::new(
-                id,
-                publication_id,
-                MediaKind::Audio,
-                crate::peer::codec(),
-                111,
-                now,
-                clock,
-            )?;
-            if let Some(ready) = ready.take() {
-                let _ = ready.send(Ok(()));
-            }
-            let mut first = true;
-            loop {
-                let mut frame = tokio::select! {
-                    frame = capture.recv() => match frame {
-                        Some(frame) => frame?,
-                        None => break,
-                    },
-                    _ = cancelled.changed() => break,
-                };
-                let length = encode_audio(
-                    &mut encoder,
-                    &mut frame.samples,
-                    *settings.borrow_and_update(),
-                    &mut encoded,
-                )?;
-                let packets =
-                    source.packetize(encoded[..length].to_vec(), frame.presentation_time)?;
-                if first {
-                    tokio::select! {
-                        result = ready_sources.send(SourceReady { source: source.source.clone(), media: InitialMedia::Rtp(packets) }) => { result?; }
-                        _ = cancelled.changed() => break,
-                    }
-                    first = false;
-                } else {
-                    for packet in packets {
-                        relay.write(id, packet);
-                    }
-                }
-            }
-            Ok::<_, anyhow::Error>(())
-        };
-        tokio::pin!(work);
-        tokio::select! {
-            result = &mut work => result,
-            _ = retired.changed() => Ok(()),
-        }
-    };
-    if let Some(ready) = ready.take() {
-        let error = result
-            .as_ref()
-            .err()
-            .map(|error| format!("{error:#}"))
-            .unwrap_or_else(|| "audio preparation cancelled".into());
-        let _ = ready.send(Err(anyhow!(error)));
-    }
-    let joined = tokio::task::spawn_blocking(move || capture.stop())
-        .await
-        .map_err(anyhow::Error::from)
-        .and_then(|result| result);
-    if !video.is_stopped() && !*cancelled.borrow() && !*retired.borrow() {
-        let error = result
-            .and(joined)
-            .err()
-            .map(|error| format!("{error:#}"))
-            .unwrap_or_else(|| "source audio ended".into());
-        eprintln!("Native source audio failed: {error}");
-        let _ = warning.send(error);
-        tokio::select! {
-            _ = events.send(Event::CaptureAudioEnded { publication_id, source: id }) => {},
-            _ = cancelled.changed() => {},
-            _ = retired.changed() => {},
-        }
+        let capture = enabled
+            .then(|| AudioCapture::start_with_exclusion(target, exclude))
+            .transpose()?;
+        let (control, ready, warning) = self.control.audio.system(capture).await?;
+        self.system_audio = Some(control.clone());
+        Ok((control, ready, warning))
     }
 }
 
@@ -483,10 +282,8 @@ fn encode_audio(
     encoded: &mut [u8],
 ) -> Result<usize> {
     encoder.bitrate_bps = settings.bitrate as i32;
-    if settings.gain != 1.0 {
-        for sample in samples.iter_mut() {
-            *sample = (*sample * settings.gain).clamp(-1.0, 1.0);
-        }
+    for sample in samples.iter_mut() {
+        *sample = (*sample * settings.gain).clamp(-1.0, 1.0);
     }
     Ok(encoder.encode(samples, 960, encoded)?)
 }
@@ -610,104 +407,6 @@ mod tests {
         ] {
             assert!(settings.validate().is_err());
         }
-        Ok(())
-    }
-
-    #[cfg(target_os = "windows")]
-    #[tokio::test]
-    async fn audio_replacement_joins_its_lease_and_keeps_the_video_clock() -> Result<()> {
-        let frames = crate::capture::Frames::new(crate::capture::FrameTiming::Capture)?;
-        let video = Uuid::new_v4();
-        let epoch = Instant::now();
-        let clock = SystemInstant::now(epoch);
-        let (retire, mut retired) = watch::channel(false);
-        let previous = AudioLeaseControl {
-            capture: None,
-            cancelled: retire,
-            settings: watch::channel(crate::peer::SourceAudioSettings::default()).0,
-        };
-        let (joined, finished) = oneshot::channel();
-        let task = tokio::spawn(async move {
-            let _ = retired.changed().await;
-            let _ = joined.send(());
-        });
-        let settings = Settings {
-            width: 1280,
-            height: 720,
-            fps: 30,
-            bitrate: 2_000_000,
-        };
-        let mut producer = Producer {
-            video,
-            audio: Some(Uuid::new_v4()),
-            epoch,
-            clock,
-            control: Control {
-                video: frames.control(),
-                video_settings: watch::channel(settings).0,
-                video_requests: mpsc::channel(1).0,
-                audio_settings: previous.settings.clone(),
-                audio: Arc::new(Mutex::new(Some(previous.clone()))),
-            },
-            task: Some(tokio::spawn(async { None })),
-            demands: watch::channel(vec![]).0,
-            audio_lease: Some(AudioLease {
-                control: previous.clone(),
-                task,
-            }),
-        };
-        let target = Target {
-            kind: crate::capture::TargetKind::Display,
-            source_id: "1".into(),
-            title: "Fixture display".into(),
-            pid: 0,
-            creation_time: None,
-        };
-        let (sources, _) = mpsc::channel(1);
-        let (events, _) = mpsc::channel(1);
-        let relay = Relay::default();
-        let cancel = watch::channel(false).1;
-        let (pending, ready, _) = producer
-            .prepare_audio(
-                Uuid::new_v4(),
-                target.clone(),
-                false,
-                None,
-                sources.clone(),
-                events.clone(),
-                relay.clone(),
-                cancel.clone(),
-            )
-            .await?;
-        ready.await??;
-        finished.await?;
-        assert!(previous.is_stopped());
-        assert!(!producer.control.is_stopped());
-        assert_eq!(
-            (producer.video, producer.epoch, producer.clock),
-            (video, epoch, clock)
-        );
-        // An exclusion activation rejection must leave this same video alive
-        // with the previous source audio retired, rather than restore that mix.
-        assert!(producer
-            .prepare_audio(
-                Uuid::new_v4(),
-                target.clone(),
-                true,
-                Some(target),
-                sources,
-                events,
-                relay,
-                cancel
-            )
-            .await
-            .is_err());
-        assert!(pending.is_stopped());
-        assert!(producer.audio.is_none());
-        assert!(!producer.control.is_stopped());
-        producer.control.stop();
-        producer.stop_audio().await;
-        producer.close().await;
         Ok(())
     }
 

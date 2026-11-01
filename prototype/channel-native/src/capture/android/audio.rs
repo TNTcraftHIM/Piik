@@ -74,6 +74,9 @@ impl AudioCapture {
             thread: Some(thread),
         })
     }
+    pub fn microphone(device_id: String) -> Result<Self> {
+        Self::start(Platform::microphone(device_id)?, Clock::new()?)
+    }
     pub fn control(&self) -> AudioControl {
         self.control.clone()
     }
@@ -124,6 +127,15 @@ fn run(
                 &[],
             )?
             .l()?;
+        let channels = env
+            .call_method(
+                &record,
+                jni_str!("getChannelCount"),
+                jni_sig!(() -> int),
+                &[],
+            )?
+            .i()? as usize;
+        ensure!(matches!(channels, 1 | 2), "expected mono or stereo PCM");
         let timestamp = env.new_object(
             jni_str!("android/media/AudioTimestamp"),
             jni_sig!(() -> void),
@@ -132,7 +144,7 @@ fn run(
         if let Some(ready) = ready.take() {
             let _ = ready.send(Ok(()));
         }
-        let mut samples = vec![0.0f32; 960 * 2];
+        let mut samples = vec![0.0f32; 960 * channels];
         let mut filled = 0usize;
         let mut position = 0i64;
         while !control.is_stopped() {
@@ -161,11 +173,11 @@ fn run(
                 break;
             }
             ensure!(
-                count > 0 && count % 8 == 0,
+                count > 0 && count as usize % (channels * 4) == 0,
                 "AudioRecord read failed: {count}"
             );
             filled += count as usize / 4;
-            position += i64::from(count) / 8;
+            position += i64::from(count) / (channels * 4) as i64;
             if filled < samples.len() {
                 continue;
             }
@@ -187,7 +199,14 @@ fn run(
                 let first = nanos + (position - 960 - capture_position) * 1_000_000_000 / 48_000;
                 // Source timestamps advance even when the existing bounded PCM queue is full.
                 let _ = frames.try_send(AudioFrame {
-                    samples: samples.clone(),
+                    samples: if channels == 1 {
+                        samples
+                            .iter()
+                            .flat_map(|sample| [*sample, *sample])
+                            .collect()
+                    } else {
+                        samples.clone()
+                    },
                     presentation_time: clock.project(first),
                 });
             }

@@ -12,7 +12,7 @@ import android.util.DisplayMetrics;
 import android.view.*;
 
 /** OS permission and callback facts for one Rust-owned Capture. No codec or media queue. */
-public final class CapturePlatform implements AutoCloseable {
+public final class CapturePlatform implements CaptureRequest {
   private final Context context;
   private final SurfaceTexture texture = new SurfaceTexture(false);
   private final Surface surface = new Surface(texture);
@@ -49,11 +49,11 @@ public final class CapturePlatform implements AutoCloseable {
   }
   public SurfaceTexture texture() { return texture; }
   public synchronized boolean isClosed() { return closed; }
-  synchronized boolean needsAudioPermission() {
+  public synchronized boolean needsAudioPermission() {
     return audioRequested && !audioDenied && context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED;
   }
-  synchronized void audioPermission(boolean granted) { audioDenied = !granted; notifyAll(); }
-  synchronized void presented(MainActivity activity) { permissionActivity = new java.lang.ref.WeakReference<>(activity); }
+  public synchronized void audioPermission(boolean granted) { audioDenied = !granted; notifyAll(); }
+  public synchronized void presented(MainActivity activity) { permissionActivity = new java.lang.ref.WeakReference<>(activity); }
   void grant(int result, Intent data) {
     synchronized (this) { permissionActivity = null; }
     if (result != Activity.RESULT_OK || data == null) { close(); return; }

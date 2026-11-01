@@ -11,6 +11,9 @@ use std::{
 };
 use tokio::sync::{mpsc, oneshot, Notify};
 
+mod microphone;
+pub use microphone::microphones;
+
 pub fn audio_capabilities() -> AudioCapabilities {
     AudioCapabilities {
         process_audio: true,
@@ -68,8 +71,18 @@ pub struct AudioCapture {
     completion: Option<oneshot::Receiver<Result<()>>>,
     thread: Option<thread::JoinHandle<()>>,
 }
+enum Input {
+    System(Target),
+    Microphone(String),
+}
 impl AudioCapture {
     pub fn start(target: Target) -> Result<Self> {
+        Self::spawn(Input::System(target))
+    }
+    pub fn microphone(device_id: String) -> Result<Self> {
+        Self::spawn(Input::Microphone(device_id))
+    }
+    fn spawn(input: Input) -> Result<Self> {
         let runtime = tokio::runtime::Handle::try_current()?;
         let control = AudioControl(Arc::new(Shared::default()));
         let worker = control.clone();
@@ -82,7 +95,14 @@ impl AudioCapture {
                 let mut ready = Some(ready);
                 let mut result = Ok(());
                 objc::ar_pool(|| {
-                    result = runtime.block_on(run(target, &worker, frames, &mut ready));
+                    result = runtime.block_on(async {
+                        match input {
+                            Input::System(target) => run(target, &worker, frames, &mut ready).await,
+                            Input::Microphone(device) => {
+                                microphone::run(device, &worker, frames, &mut ready).await
+                            }
+                        }
+                    });
                 });
                 if let Some(ready) = ready {
                     let error = result

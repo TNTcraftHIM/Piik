@@ -5,8 +5,8 @@ pub use preview::{preview, MAX_PREVIEW_BYTES};
 mod android;
 #[cfg(all(feature = "capture", target_os = "android"))]
 pub use android::{
-    audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
-    EncodingControl,
+    audio_capabilities, microphones, targets, AudioCapture, AudioControl, Capture, Control,
+    Encoding, EncodingControl,
 };
 
 /// Foreground handoff supplied by the installed App, separate from capture consent.
@@ -50,7 +50,7 @@ mod windows;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod worker;
 #[cfg(all(feature = "capture", target_os = "windows"))]
-pub use audio::{audio_capabilities, AudioCapture, AudioControl};
+pub use audio::{audio_capabilities, microphones, AudioCapture, AudioControl};
 #[cfg(all(feature = "capture", target_os = "windows"))]
 pub(crate) use decoder::Decoder;
 #[cfg(all(feature = "capture", target_os = "windows"))]
@@ -59,15 +59,15 @@ pub use frames::Control;
 pub(crate) use frames::Frames;
 #[cfg(all(feature = "capture", target_os = "linux"))]
 pub use linux::{
-    audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
-    EncodingControl,
+    audio_capabilities, microphones, targets, AudioCapture, AudioControl, Capture, Control,
+    Encoding, EncodingControl,
 };
 #[cfg(all(feature = "capture", target_os = "linux"))]
 pub(crate) use linux::{decoder, Frames};
 #[cfg(all(feature = "capture", target_os = "macos"))]
 pub use macos::{
-    audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
-    EncodingControl,
+    audio_capabilities, microphones, targets, AudioCapture, AudioControl, Capture, Control,
+    Encoding, EncodingControl,
 };
 #[cfg(all(feature = "capture", target_os = "macos"))]
 pub(crate) use macos::{Decoder, Frames};
@@ -108,6 +108,17 @@ pub struct AudioCapabilities {
     pub process_audio: bool,
     pub process_audio_exclusion: bool,
     pub system_audio: bool,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct MicrophoneDevice {
+    pub id: String,
+    pub label: String,
+}
+
+#[cfg(not(feature = "capture"))]
+pub fn microphones() -> anyhow::Result<Vec<MicrophoneDevice>> {
+    anyhow::bail!("microphone_unavailable")
 }
 
 #[cfg(not(feature = "capture"))]

@@ -1,5 +1,5 @@
 //! Event-driven WASAPI loopback. This worker owns PCM only, not its video's lifetime.
-use super::{AudioCapabilities, AudioFrame, CaptureClock, Target, TargetKind};
+use super::{AudioCapabilities, AudioFrame, CaptureClock, MicrophoneDevice, Target, TargetKind};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
@@ -42,7 +42,48 @@ pub struct AudioCapture {
     completion: Option<oneshot::Receiver<Result<()>>>,
     thread: Option<thread::JoinHandle<()>>,
 }
+enum Input {
+    System(Target, bool),
+    Microphone(String),
+}
 impl AudioCapture {
+    #[cfg(test)]
+    pub(crate) fn fixture(
+        ready_now: bool,
+    ) -> Result<(Self, mpsc::Sender<AudioFrame>, oneshot::Receiver<()>)> {
+        let event = unsafe { CreateEventW(None, true, false, None)? };
+        let control = AudioControl(Arc::new(unsafe { OwnedHandle::from_raw_handle(event.0) }));
+        let worker = control.clone();
+        let (frames, receiver) = mpsc::channel(2);
+        let (ready, started) = oneshot::channel();
+        let (complete, completion) = oneshot::channel();
+        let (joined, finished) = oneshot::channel();
+        let thread = thread::spawn(move || {
+            let mut ready = Some(ready);
+            if ready_now {
+                let _ = ready.take().unwrap().send(Ok(()));
+            }
+            unsafe {
+                WaitForSingleObject(worker.handle(), INFINITE);
+            }
+            if let Some(ready) = ready {
+                let _ = ready.send(Err(anyhow!("candidate cancelled")));
+            }
+            let _ = complete.send(Ok(()));
+            let _ = joined.send(());
+        });
+        Ok((
+            Self {
+                control,
+                ready: Some(started),
+                frames: receiver,
+                completion: Some(completion),
+                thread: Some(thread),
+            },
+            frames,
+            finished,
+        ))
+    }
     pub fn start(target: Target) -> Result<Self> {
         Self::start_with_exclusion(target, None)
     }
@@ -56,6 +97,12 @@ impl AudioCapture {
         );
         let include_tree = exclude.is_none();
         let target = exclude.unwrap_or(target);
+        Self::spawn(Input::System(target, include_tree))
+    }
+    pub fn microphone(device_id: String) -> Result<Self> {
+        Self::spawn(Input::Microphone(device_id))
+    }
+    fn spawn(input: Input) -> Result<Self> {
         let event = unsafe { CreateEventW(None, true, false, None)? };
         let control = AudioControl(Arc::new(unsafe { OwnedHandle::from_raw_handle(event.0) }));
         let worker = control.clone();
@@ -67,7 +114,7 @@ impl AudioCapture {
             .name("piik-audio".into())
             .spawn(move || {
                 let mut ready = Some(ready);
-                let result = run(target, include_tree, &worker, frames, &mut ready);
+                let result = run(input, &worker, frames, &mut ready);
                 if let Some(ready) = ready {
                     let error = result
                         .as_ref()
@@ -146,7 +193,7 @@ impl Drop for Com {
 }
 
 fn client(process: Option<(u32, bool)>) -> Result<AudioClient> {
-    let mut client = match process {
+    let client = match process {
         Some((pid, include_tree)) => {
             AudioClient::new_application_loopback_client(pid, include_tree)?
         }
@@ -154,6 +201,10 @@ fn client(process: Option<(u32, bool)>) -> Result<AudioClient> {
             .get_default_device(&Direction::Render)?
             .get_iaudioclient()?,
     };
+    initialize(client)
+}
+
+fn initialize(mut client: AudioClient) -> Result<AudioClient> {
     client.initialize_client(
         &WaveFormat::new(32, 32, &SampleType::Float, 48_000, 2, None),
         &Direction::Capture,
@@ -163,6 +214,21 @@ fn client(process: Option<(u32, bool)>) -> Result<AudioClient> {
         },
     )?;
     Ok(client)
+}
+
+pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
+    let _com = Com::start()?;
+    DeviceEnumerator::new()?
+        .get_device_collection(&Direction::Capture)?
+        .into_iter()
+        .map(|device| {
+            let device = device?;
+            Ok(MicrophoneDevice {
+                id: device.get_id()?,
+                label: device.get_friendlyname()?,
+            })
+        })
+        .collect()
 }
 
 /// Probe the actual APIs without starting a stream or reading any audio.
@@ -228,15 +294,28 @@ fn process(target: &Target) -> Result<Option<OwnedHandle>> {
 }
 
 fn run(
-    target: Target,
-    include_tree: bool,
+    input: Input,
     control: &AudioControl,
     frames: mpsc::Sender<AudioFrame>,
     ready: &mut Option<oneshot::Sender<Result<()>>>,
 ) -> Result<()> {
     let _com = Com::start()?;
-    let process = process(&target)?;
-    let client = client(process.as_ref().map(|_| (target.pid, include_tree)))?;
+    let (process, client) = match input {
+        Input::System(target, include_tree) => {
+            let process = process(&target)?;
+            let client = client(process.as_ref().map(|_| (target.pid, include_tree)))?;
+            (process, client)
+        }
+        Input::Microphone(id) => {
+            let devices = DeviceEnumerator::new()?;
+            let device = if id.is_empty() {
+                devices.get_default_device(&Direction::Capture)?
+            } else {
+                devices.get_device(&id)?
+            };
+            (None, initialize(device.get_iaudioclient()?)?)
+        }
+    };
     let event = client.set_get_eventhandle()?;
     // wasapi 0.26's slice reader dereferences the buffer even when SILENT is set.
     // GetBuffer's flags and timestamp belong to the original buffer, so handle it here.

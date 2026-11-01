@@ -38,6 +38,12 @@ pub(super) struct Platform {
 }
 impl Platform {
     pub fn new(audio: bool) -> Result<Self> {
+        Self::create(audio, None)
+    }
+    pub fn microphone(device_id: String) -> Result<Self> {
+        Self::create(false, Some(device_id))
+    }
+    fn create(audio: bool, microphone: Option<String>) -> Result<Self> {
         let context = ndk_context::android_context();
         // Application global reference and VM are installed before app::serve starts.
         let vm = Arc::new(unsafe { JavaVM::from_raw(context.vm().cast()) });
@@ -52,7 +58,14 @@ impl Platform {
                     &[],
                 )?
                 .l()?;
-            let name = JString::from_str(env, "tv.piik.android.CapturePlatform")?;
+            let name = JString::from_str(
+                env,
+                if microphone.is_some() {
+                    "tv.piik.android.MicrophonePlatform"
+                } else {
+                    "tv.piik.android.CapturePlatform"
+                },
+            )?;
             let class = env
                 .call_method(
                     &loader,
@@ -62,11 +75,20 @@ impl Platform {
                 )?
                 .l()?;
             let class = jni::objects::JClass::cast_local(env, class)?;
-            let instance = env.new_object(
-                class,
-                jni_sig!((android.content.Context, boolean) -> void),
-                &[(&*app).into(), audio.into()],
-            )?;
+            let instance = if let Some(device_id) = microphone {
+                let device = JString::from_str(env, device_id)?;
+                env.new_object(
+                    class,
+                    jni_sig!((android.content.Context, java.lang.String) -> void),
+                    &[(&*app).into(), (&device).into()],
+                )?
+            } else {
+                env.new_object(
+                    class,
+                    jni_sig!((android.content.Context, boolean) -> void),
+                    &[(&*app).into(), audio.into()],
+                )?
+            };
             Ok(env.new_global_ref(instance)?)
         })?;
         Ok(Self {

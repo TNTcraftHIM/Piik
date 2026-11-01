@@ -6,10 +6,11 @@ mod graphics;
 mod platform;
 mod source;
 
-use crate::capture::{AudioCapabilities, Target, TargetKind};
+use crate::capture::{AudioCapabilities, MicrophoneDevice, Target, TargetKind};
 use anyhow::Result;
 pub use audio::{AudioCapture, AudioControl};
 pub use encoding::{Encoding, EncodingControl};
+use jni::{jni_sig, jni_str, objects::JString};
 pub use source::{Capture, Control};
 
 pub fn targets() -> Result<Vec<Target>> {
@@ -30,4 +31,21 @@ pub fn audio_capabilities() -> AudioCapabilities {
 }
 pub(super) fn activation_url() -> Result<String> {
     platform::activation_url()
+}
+
+pub fn microphones() -> Result<Vec<MicrophoneDevice>> {
+    platform::Platform::microphone(String::new())?.with(|env, object| {
+        let list = env
+            .call_method(
+                object,
+                jni_str!("devices"),
+                jni_sig!(() -> java.lang.String),
+                &[],
+            )?
+            .l()?;
+        let list = JString::cast_local(env, list)?
+            .mutf8_chars(env)?
+            .to_string();
+        Ok(serde_json::from_str(&list)?)
+    })
 }
