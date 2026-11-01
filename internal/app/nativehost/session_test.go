@@ -30,7 +30,13 @@ func TestMain(tests *testing.M) {
 				writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameLayerUnavailable, Layer: value, Data: []byte("fixture")})
 			}
 		}
-		if os.Getenv("PIIK_CAPTURE_LIVE_FAILURE") == "1" {
+		if failure := os.Getenv("PIIK_CAPTURE_LIVE_FAILURE"); failure != "" {
+			if failure == "control" {
+				_ = os.Stdin.Close()
+				writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: time.Second, Duration: time.Second / 30})
+				// A final buffered frame can reach the reader before process exit is joined.
+				time.Sleep(50 * time.Millisecond)
+			}
 			_, _ = io.WriteString(os.Stderr, "stage=windows-runtime\nhresult=0x887a0005\ndetail=private capture detail\n")
 			os.Exit(2)
 		}
@@ -337,39 +343,50 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 }
 
 func TestCaptureFailurePreservesProcessCause(t *testing.T) {
-	t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
-	t.Setenv("PIIK_CAPTURE_LIVE_FAILURE", "1")
-	t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
-		`{"state":"starting","codec":"vp8","adapterIndex":0,"adapterName":"Fixture","adapterIdentity":"0:0","encoderName":"VP8","encoderIdentity":"vp8"}`)))
-	t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
-	executable, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	options := nativecapture.VideoOptions{Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
-		Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}, OutputGroups: 4}
-	stream, err := nativecapture.StartVideo(t.Context(), executable, options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer stream.Close()
-	engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer engine.Close()
-	session := &Session{ctx: t.Context(), engine: engine, stream: stream, videoOptions: options,
-		edgeCapacity: 4, ready: make(chan error, 1), events: func(context.Context, Event) {}}
-	err = session.runVideo()
-	if session.source != nil {
-		defer session.source.Close()
-	}
-	if err == nil || !strings.Contains(err.Error(), "windows-runtime") || !strings.Contains(err.Error(), "0x887a0005") || !errors.Is(err, io.EOF) {
-		t.Fatalf("live capture lost its read/process failure: %v", err)
-	}
-	var exit *exec.ExitError
-	if !errors.As(err, &exit) || exit.ExitCode() != 2 || strings.Contains(err.Error(), "private") {
-		t.Fatalf("live capture changed or exposed its process failure: %v", err)
+	for _, mode := range []string{"read", "control"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
+			t.Setenv("PIIK_CAPTURE_LIVE_FAILURE", mode)
+			t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+				`{"state":"starting","codec":"vp8","adapterIndex":0,"adapterName":"Fixture","adapterIdentity":"0:0","encoderName":"VP8","encoderIdentity":"vp8"}`)))
+			t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := nativecapture.VideoOptions{Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
+				Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}, OutputGroups: 4}
+			stream, err := nativecapture.StartVideo(t.Context(), executable, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer engine.Close()
+			session := &Session{ctx: t.Context(), engine: engine, stream: stream, videoOptions: options,
+				edgeCapacity: 4, ready: make(chan error, 1), events: func(context.Context, Event) {}}
+			err = session.runVideo()
+			if session.source != nil {
+				defer session.source.Close()
+			}
+			if err == nil || !strings.Contains(err.Error(), "windows-runtime") || !strings.Contains(err.Error(), "0x887a0005") || (mode == "read" && !errors.Is(err, io.EOF)) {
+				t.Fatalf("live capture lost its read/process failure: %v", err)
+			}
+			if mode == "control" && errors.Is(err, io.EOF) {
+				t.Fatal("control fixture ended through the reader instead of its closed input pipe")
+			}
+			failure := nativecapture.FailureDetails(err)
+			if failure == nil || failure.Stage != "windows-runtime" || failure.HRESULT != "0x887a0005" || failure.ExitCode != 2 {
+				t.Fatalf("failure event lost its typed helper codes: %+v", failure)
+			}
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() != 2 || strings.Contains(err.Error(), "private") {
+				t.Fatalf("live capture changed or exposed its process failure: %v", err)
+			}
+		})
 	}
 }
 

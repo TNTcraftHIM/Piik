@@ -1007,13 +1007,18 @@ func (session *Session) runVideo() error {
 		}
 		activeSeen = true
 	}
+	current := session.currentStream()
 	fail := func(err error) error {
+		// A final frame/control error can arrive before the process waiter joins.
+		// Preserve that read/validation error and the selected helper's exit cause.
+		if current != nil {
+			err = errors.Join(err, current.Close())
+		}
 		if !ready {
 			session.ready <- err
 		}
 		return err
 	}
-	current := session.currentStream()
 	changeStream := func(next CaptureStream) error {
 		if err := session.installCapture(next); err != nil {
 			return err
@@ -1028,7 +1033,7 @@ func (session *Session) runVideo() error {
 		if err != nil {
 			// Retirement joins the helper's exit and its sanitized failure codes.
 			// Recheck ownership afterward: a replacement can commit during Close.
-			captureErr := current.Close()
+			_ = current.Close()
 			next := session.currentStream()
 			if next != nil && next != current {
 				if err = changeStream(next); err != nil {
@@ -1041,7 +1046,7 @@ func (session *Session) runVideo() error {
 			if errors.Is(err, nativecapture.ErrSourceCanceled) {
 				return fail(err)
 			}
-			return fail(errors.Join(errors.New("native capture stopped unexpectedly"), err, captureErr))
+			return fail(errors.Join(errors.New("native capture stopped unexpectedly"), err))
 		}
 		if next := session.currentStream(); next != current {
 			if next != nil {
