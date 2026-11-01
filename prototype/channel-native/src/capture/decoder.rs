@@ -60,7 +60,11 @@ impl Decoder {
     pub fn decode(
         &mut self,
         frame: &EncodedFrame,
-        consume: &mut impl FnMut(ID3D11Texture2D, Instant, Format) -> Result<()>,
+        consume: &mut impl FnMut(
+            (ID3D11Texture2D, DXGI_COLOR_SPACE_TYPE),
+            Instant,
+            Format,
+        ) -> Result<()>,
     ) -> Result<()> {
         match self {
             Self::H264(decoder) => decoder.decode(frame, consume),
@@ -101,6 +105,7 @@ pub(crate) struct H264 {
     configured: bool,
     _com: Com,
     nominal_fps: u32,
+    color_space: DXGI_COLOR_SPACE_TYPE,
     epoch: Instant,
 }
 impl H264 {
@@ -133,6 +138,7 @@ impl H264 {
                 configured: false,
                 _com: com,
                 nominal_fps: 30,
+                color_space: super::converter::SDR_VIDEO_COLOR,
                 epoch,
             })
         }
@@ -217,6 +223,19 @@ impl H264 {
                 );
                 self.area = area;
                 self.transform.SetOutputType(0, &media, 0)?;
+                let matrix = media
+                    .GetUINT32(&MF_MT_YUV_MATRIX)
+                    .unwrap_or(MFVideoTransferMatrix_BT601.0 as u32);
+                let full = media
+                    .GetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE)
+                    .unwrap_or(MFNominalRange_16_235.0 as u32)
+                    == MFNominalRange_0_255.0 as u32;
+                self.color_space = match (matrix == MFVideoTransferMatrix_BT709.0 as u32, full) {
+                    (true, true) => DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P709,
+                    (true, false) => DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709,
+                    (false, true) => DXGI_COLOR_SPACE_YCBCR_FULL_G22_LEFT_P601,
+                    (false, false) => super::converter::SDR_VIDEO_COLOR,
+                };
                 return Ok(());
             }
             Err(anyhow!("no NV12 decoder output"))
@@ -225,7 +244,11 @@ impl H264 {
     pub fn decode(
         &mut self,
         frame: &EncodedFrame,
-        consume: &mut impl FnMut(ID3D11Texture2D, Instant, Format) -> Result<()>,
+        consume: &mut impl FnMut(
+            (ID3D11Texture2D, DXGI_COLOR_SPACE_TYPE),
+            Instant,
+            Format,
+        ) -> Result<()>,
     ) -> Result<()> {
         let bytes = &frame.bytes;
         let pts = (frame
@@ -261,7 +284,11 @@ impl H264 {
     }
     fn drain(
         &mut self,
-        consume: &mut impl FnMut(ID3D11Texture2D, Instant, Format) -> Result<()>,
+        consume: &mut impl FnMut(
+            (ID3D11Texture2D, DXGI_COLOR_SPACE_TYPE),
+            Instant,
+            Format,
+        ) -> Result<()>,
     ) -> Result<()> {
         unsafe {
             for _ in 0..64 {
@@ -348,7 +375,7 @@ impl H264 {
                     }),
                 );
                 consume(
-                    owned,
+                    (owned, self.color_space),
                     self.epoch + Duration::from_nanos(pts as u64 * 100),
                     Format {
                         width: self.area.Area.cx as u32,

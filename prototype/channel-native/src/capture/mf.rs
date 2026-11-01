@@ -96,9 +96,9 @@ fn media_type(subtype: &windows::core::GUID, settings: Settings) -> Result<IMFMe
         media.SetUINT64(&MF_MT_FRAME_RATE, ((settings.fps as u64) << 32) | 1)?;
         media.SetUINT64(&MF_MT_PIXEL_ASPECT_RATIO, (1u64 << 32) | 1)?;
         media.SetUINT32(&MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive.0 as u32)?;
-        media.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_BT709.0 as u32)?;
+        media.SetUINT32(&MF_MT_VIDEO_PRIMARIES, MFVideoPrimaries_SMPTE170M.0 as u32)?;
         media.SetUINT32(&MF_MT_TRANSFER_FUNCTION, MFVideoTransFunc_709.0 as u32)?;
-        media.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT709.0 as u32)?;
+        media.SetUINT32(&MF_MT_YUV_MATRIX, MFVideoTransferMatrix_BT601.0 as u32)?;
         media.SetUINT32(&MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_16_235.0 as u32)?;
         Ok(media)
     }
@@ -502,7 +502,7 @@ impl Encoder {
                             }
                         }
                     }
-                    let texture = converter.convert(&frame.texture)?;
+                    let texture = converter.convert(&frame.texture, frame.color_space)?;
                     encoder.input(&texture, pts, duration, force, discontinuity)?;
                     discontinuity = false;
                     need_input -= 1;

@@ -12,13 +12,14 @@ use std::{
 use tokio::sync::Notify;
 use windows::Win32::{
     Foundation::{HANDLE, WAIT_FAILED},
-    Graphics::Direct3D11::ID3D11Texture2D,
+    Graphics::{Direct3D11::ID3D11Texture2D, Dxgi::Common::DXGI_COLOR_SPACE_TYPE},
     System::Threading::{CreateEventW, SetEvent, WaitForMultipleObjects, INFINITE},
 };
 
 #[derive(Clone)]
 pub(super) struct RawFrame {
     pub texture: ID3D11Texture2D,
+    pub color_space: DXGI_COLOR_SPACE_TYPE,
     pub qpc: i64,
 }
 #[derive(Default)]
@@ -129,9 +130,14 @@ impl Frames {
     pub fn control(&self) -> Control {
         Control(self.shared.clone())
     }
-    pub fn publish(&self, texture: ID3D11Texture2D, time: Instant) {
+    pub fn publish(
+        &self,
+        (texture, color_space): (ID3D11Texture2D, DXGI_COLOR_SPACE_TYPE),
+        time: Instant,
+    ) {
         self.shared.publish(RawFrame {
             texture,
+            color_space,
             qpc: self.clock.presentation_qpc(time),
         });
     }

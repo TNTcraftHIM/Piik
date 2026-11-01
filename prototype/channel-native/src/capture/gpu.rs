@@ -46,6 +46,7 @@ pub(super) struct Frame {
     pub low: u32,
     pub high: i32,
     pub qpc: i64,
+    pub color_space: i32,
 }
 fn device(luid: LUID) -> Result<(ID3D11Device, ID3D11DeviceContext)> {
     unsafe {
@@ -162,6 +163,7 @@ pub(super) fn send(frame: RawFrame, process: RawHandle) -> Result<Frame> {
             low: adapter.LowPart,
             high: adapter.HighPart,
             qpc: frame.qpc,
+            color_space: frame.color_space.0,
         })
     }
 }
@@ -206,6 +208,7 @@ impl Receiver {
             Ok(RawFrame {
                 texture: private,
                 qpc: frame.qpc,
+                color_space: DXGI_COLOR_SPACE_TYPE(frame.color_space),
             })
         }
     }

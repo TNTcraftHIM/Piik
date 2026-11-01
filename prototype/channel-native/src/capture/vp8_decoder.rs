@@ -34,7 +34,11 @@ impl Decoder {
     pub fn decode(
         &mut self,
         frame: &EncodedFrame,
-        consume: &mut impl FnMut(ID3D11Texture2D, Instant, Format) -> Result<()>,
+        consume: &mut impl FnMut(
+            (ID3D11Texture2D, DXGI_COLOR_SPACE_TYPE),
+            Instant,
+            Format,
+        ) -> Result<()>,
     ) -> Result<()> {
         unsafe {
             check(vpx_codec_decode(
@@ -115,7 +119,7 @@ impl Decoder {
                     Some(&mut texture),
                 )?;
                 consume(
-                    texture.unwrap(),
+                    (texture.unwrap(), super::converter::SDR_VIDEO_COLOR),
                     frame.presentation_time,
                     Format {
                         width,

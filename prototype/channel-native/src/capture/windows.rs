@@ -358,7 +358,11 @@ impl Wgc {
                     ..Default::default()
                 }),
             );
-            Ok(RawFrame { texture, qpc })
+            Ok(RawFrame {
+                texture,
+                qpc,
+                color_space: DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
+            })
         }
     }
 }

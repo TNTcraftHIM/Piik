@@ -309,7 +309,7 @@ pub(super) fn run(
             staging = None;
             force = true;
         }
-        let texture = converter.convert(&frame.texture)?;
+        let texture = converter.convert(&frame.texture, frame.color_space)?;
         if staging.is_none() {
             let mut desc = D3D11_TEXTURE2D_DESC::default();
             unsafe {
