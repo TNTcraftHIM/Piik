@@ -355,6 +355,7 @@ export class NativeClient {
         ...(this.health.nativeMedia.remoteInput ? { remoteInput: true } : {}),
         ...(this.health.nativeMedia.captureBorderControl ? { showCaptureBorder } : {}),
         ...(this.health.nativeMedia.sourceCancellation ? { reportSourceCancellation: true } : {}),
+        ...(this.health.nativeMedia.captureFailureDetails ? { reportCaptureFailure: true } : {}),
       },
       shareStartedResponseSchema,
       input.source.kind === "picker" ? null : REQUEST_TIMEOUT_MS,

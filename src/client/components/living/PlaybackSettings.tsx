@@ -7,6 +7,7 @@ import { Glyph } from "../../ui/icons";
 import { Btn, Cap, Chip, FieldCap, Pill, RowGroup, SwitchItem } from "./primitives";
 import { NumberControl } from "./NumberControl";
 import { Tooltip } from "./Tooltip";
+import "./playback-controls.css";
 
 export interface PlaybackSettingsProps {
   pictureFit: VideoFit;
@@ -56,8 +57,8 @@ export function PlaybackPictureControls({ settings, captions = false }: {
       hintVars={{ current: t(`playback.fit.${settings.pictureFit}`), next: t(`playback.fit.${nextFit}`) }}
       onClick={() => settings.setPictureFit(nextFit)} />
     <Btn icon="rotatePicture" title="playback.rotation" cap={captions ? "playback.rotation" : undefined}
-      hint="hint-picture-rotation" hintText="playback.rotationHint" pressed={settings.pictureRotation !== 0}
-      onClick={() => settings.setPictureRotation(settings.pictureRotation === 0 ? 90 : 0)} />
+      hint="hint-picture-rotation" hintText="playback.rotationHint"
+      onClick={() => settings.setPictureRotation((settings.pictureRotation + 90) % 360 as VideoRotation)} />
   </>;
 }
 

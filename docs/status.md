@@ -38,10 +38,12 @@ Release artifacts and operator records own delivery completion.
 ## Current Work
 
 The maintenance candidate preserves published protocols, compatibility and route
-ownership. Its routing, media recovery and input-lifecycle audit is complete;
-confirmed defects are repaired and cross-reviewed. Publication awaits the owner's
-instruction. Isolated 3.0 work proceeds from the accepted semantic model rather
-than a mechanical translation of the current implementation.
+ownership. New release feedback has reopened Windows capture termination and
+Browser motion-sharing cadence investigations. Device-loss recovery now retains
+the active media session; the original termination triggers remain under
+investigation. Isolated 3.0 work
+proceeds from the accepted semantic model rather than a mechanical translation
+of the current implementation.
 [TODO](./todo.md) is the only unfinished-work ledger; Git and PRs own
 completed fixes. [Verification status](./verification-status.md) owns material
 acceptance and platform boundaries.

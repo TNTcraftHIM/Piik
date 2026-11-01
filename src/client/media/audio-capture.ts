@@ -5,6 +5,7 @@ type DisplayMediaAudioHints = DisplayMediaStreamOptions & {
 
 type BrowserAudioConstraints = MediaTrackConstraints & {
   voiceIsolation?: ConstrainBoolean;
+  restrictOwnAudio?: ConstrainBoolean;
 };
 
 export function audioInputConstraints(voiceProcessing: boolean): BrowserAudioConstraints {
@@ -23,7 +24,8 @@ export function displayMediaOptions(
   // Chromium web display capture otherwise defaults to speech processing.
   return {
     video,
-    audio: audioInputConstraints(false),
+    // Avoid recapturing this page's room voice where the Browser supports it.
+    audio: { ...audioInputConstraints(false), restrictOwnAudio: true } as BrowserAudioConstraints,
     systemAudio: "include",
     windowAudio: "window",
   } as DisplayMediaAudioHints;

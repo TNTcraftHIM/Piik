@@ -275,7 +275,71 @@ func runQuietCaptureFixture(directory string) {
 	}
 	state.State = "active"
 	status()
+	if os.Getenv("PIIK_CAPTURE_LIVE_FAILURE") == "1" {
+		for {
+			select {
+			case <-closed:
+				return
+			case <-time.After(20 * time.Millisecond):
+				if _, err := os.Stat(filepath.Join(directory, "failure")); err == nil {
+					_, _ = io.WriteString(os.Stderr, "stage=windows-runtime\nhresult=0x80004005\ndetail=private fixture title and path\n")
+					os.Exit(2)
+				}
+			}
+		}
+	}
 	<-closed
+}
+
+func TestLiveCaptureFailureDetailsRequireOptIn(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, report := range []bool{false, true} {
+		t.Run(strconv.FormatBool(report), func(t *testing.T) {
+			directory := t.TempDir()
+			t.Setenv("PIIK_QUIET_CAPTURE_FIXTURE", directory)
+			t.Setenv("PIIK_CAPTURE_LIVE_FAILURE", "1")
+			session := New(executable, nativecapture.Capabilities{SoftwareVP8: true}, false, nil)
+			defer session.Close()
+			request := startShareRequest{Version: 10, ID: "request_start", Type: "start-share", ShareID: "share_123456",
+				Source:               nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"},
+				ReportCaptureFailure: report, EdgeCapacity: 1, Codec: "vp8",
+				Profile: qualitySettings{Resolution: protocol.QualityResolution{Width: 1920, Height: 1080}, MaxFramerate: 30, MaxBitrate: 5_000_000, DegradationPreference: "balanced"}}
+			payload, _ := json.Marshal(request)
+			if _, err := awaitControlResponse(t, session, payload); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "failure"), nil, 0600); err != nil {
+				t.Fatal(err)
+			}
+			deadline := time.NewTimer(5 * time.Second)
+			defer deadline.Stop()
+			for {
+				select {
+				case value := <-session.Events():
+					ended, ok := deliveredControlValue(value).(shareEndedEvent)
+					if !ok {
+						continue
+					}
+					if !ended.Failed || session.current(request.ShareID) != nil || (ended.Failure != nil) != report {
+						t.Fatalf("capture failure changed retirement or legacy payload: %#v", ended)
+					}
+					if report && *ended.Failure != (nativecapture.Failure{Stage: "windows-runtime", HRESULT: "0x80004005", ExitCode: 2}) {
+						t.Fatalf("capture failure lost structured codes: %#v", ended.Failure)
+					}
+					encoded, _ := json.Marshal(ended)
+					if strings.Contains(string(encoded), "private") || strings.Contains(string(encoded), "detail") {
+						t.Fatalf("capture failure exposed helper detail: %s", encoded)
+					}
+					return
+				case <-deadline.C:
+					t.Fatal("live capture failure lost its event")
+				}
+			}
+		})
+	}
 }
 
 func TestMicrophoneOptInPreservesLegacyAndOrdersStateBeforeCompletion(t *testing.T) {

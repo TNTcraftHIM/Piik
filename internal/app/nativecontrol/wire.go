@@ -40,6 +40,7 @@ type qualitySettings = protocol.QualitySettings
 
 type startShareRequest struct {
 	ReportSourceCancellation bool                         `json:"reportSourceCancellation,omitempty"`
+	ReportCaptureFailure     bool                         `json:"reportCaptureFailure,omitempty"`
 	Version                  int                          `json:"version"`
 	ID                       string                       `json:"id"`
 	Type                     string                       `json:"type"`
@@ -387,8 +388,9 @@ type edgeQualityEvent struct {
 }
 
 type shareEndedEvent struct {
-	Version int    `json:"version"`
-	Type    string `json:"type"`
-	ShareID string `json:"shareId"`
-	Failed  bool   `json:"failed"`
+	Version int                    `json:"version"`
+	Type    string                 `json:"type"`
+	ShareID string                 `json:"shareId"`
+	Failed  bool                   `json:"failed"`
+	Failure *nativecapture.Failure `json:"failure,omitempty"`
 }

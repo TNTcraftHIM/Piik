@@ -99,6 +99,9 @@ Piik does not automatically mute either microphone or switch between them.
   default. Missing audio is reported clearly but does not block video-only
   sharing. Native screen capture can include system playback audio and native
   window capture can include selected-process audio when the platform exposes it.
+- Shared Browser encoders normalize capture orientation into pixels before
+  reusing encoded frames across receivers. Ordinary senders retain Browser-owned
+  orientation handling; missing normalization APIs select that existing path.
 - Authoritative Browser pause disables the current source and sender-owned tracks
   while retaining the room and established routes. The connection owns its
   encoded-output pause even when shared encoding is unavailable; the pool pauses
@@ -122,7 +125,10 @@ Piik does not automatically mute either microphone or switch between them.
   Applied settings change only after the replacement is ready and installed;
   required-output failure preserves the previous capture and profile. Failed lower
   outputs stay unavailable across preparation and installation without rejecting
-  a healthy original output. Platform quality preference uses the hardware
+  a healthy original output. A reported Windows capture-device loss prepares and
+  installs a fresh video generation through that same owner, retaining the source,
+  media connections and source audio. Source closure and permission cancellation
+  still end capture. Platform quality preference uses the hardware
   encoder's standard quality-versus-speed hint. Pion owns Native WebRTC
   transport; the shared media adapter uses LiveKit media components for bandwidth
   estimation, forwarding allocation, pacing and recovery.

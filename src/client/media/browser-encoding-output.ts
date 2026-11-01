@@ -1,10 +1,11 @@
 import { debugError, debugEvent } from "../lib/debug";
+import { supportsFrameOrientationNormalization } from "./sender-video-track";
 
 // One codec-sized macroblock; transport timing is not a quality layer.
 export const BROWSER_CARRIER_SIZE = 16;
 
 export function supportsBrowserEncoding(): boolean {
-  return typeof RTCRtpSender !== "undefined" && typeof RTCEncodedVideoFrame === "function" &&
+  return supportsFrameOrientationNormalization() && typeof RTCRtpSender !== "undefined" && typeof RTCEncodedVideoFrame === "function" &&
     typeof HTMLCanvasElement !== "undefined" && typeof HTMLCanvasElement.prototype.captureStream === "function" &&
     typeof (RTCRtpSender.prototype as RTCRtpSender & { createEncodedStreams?: unknown }).createEncodedStreams === "function";
 }

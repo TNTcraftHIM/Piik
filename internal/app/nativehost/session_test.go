@@ -8,16 +8,19 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/TNTcraftHIM/Piik/internal/app/mediaedge"
 	"github.com/TNTcraftHIM/Piik/internal/app/nativecapture"
+	"github.com/pion/webrtc/v4"
 )
 
 func TestMain(tests *testing.M) {
@@ -28,6 +31,16 @@ func TestMain(tests *testing.M) {
 				value, _ := strconv.Atoi(layer)
 				writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameLayerUnavailable, Layer: value, Data: []byte("fixture")})
 			}
+		}
+		if failure := os.Getenv("PIIK_CAPTURE_LIVE_FAILURE"); failure != "" {
+			if failure == "control" {
+				_ = os.Stdin.Close()
+				writeCaptureFixtureFrame(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: time.Second, Duration: time.Second / 30})
+				// A final buffered frame can reach the reader before process exit is joined.
+				time.Sleep(50 * time.Millisecond)
+			}
+			_, _ = io.WriteString(os.Stderr, "stage=windows-runtime\nhresult=0x887a0005\ndetail=private capture detail\n")
+			os.Exit(2)
 		}
 		_, _ = io.Copy(io.Discard, os.Stdin)
 		os.Exit(0)
@@ -50,6 +63,15 @@ func TestMain(tests *testing.M) {
 type retiringCapture struct {
 	processCapture
 	entered, release chan struct{}
+}
+
+type videoCaptureFunc struct {
+	processCapture
+	video func(context.Context, nativecapture.VideoOptions) (CaptureStream, error)
+}
+
+func (capture videoCaptureFunc) Video(ctx context.Context, options nativecapture.VideoOptions) (CaptureStream, error) {
+	return capture.video(ctx, options)
 }
 
 func (capture retiringCapture) Video(ctx context.Context, options nativecapture.VideoOptions) (CaptureStream, error) {
@@ -325,6 +347,304 @@ func TestCaptureCommitWaitsForReaderMetadataOrTermination(t *testing.T) {
 					}
 				case <-time.After(5 * time.Second):
 					t.Fatal("reader death did not end the share")
+				}
+			}
+		})
+	}
+}
+
+func TestCaptureFailurePreservesProcessCause(t *testing.T) {
+	for _, mode := range []string{"read", "control"} {
+		t.Run(mode, func(t *testing.T) {
+			t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "backend")
+			t.Setenv("PIIK_CAPTURE_LIVE_FAILURE", mode)
+			t.Setenv("PIIK_CAPTURE_STARTING", string(captureStatePayload(t,
+				`{"state":"starting","codec":"vp8","adapterIndex":0,"adapterName":"Fixture","adapterIdentity":"0:0","encoderName":"VP8","encoderIdentity":"vp8"}`)))
+			t.Setenv("PIIK_CAPTURE_ACTIVE", string(captureStatePayload(t, `{"state":"active","codec":"vp8","width":1280,"height":720,"fps":30}`)))
+			executable, err := os.Executable()
+			if err != nil {
+				t.Fatal(err)
+			}
+			options := nativecapture.VideoOptions{Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Fixture"}, Codec: "vp8",
+				Profile: nativecapture.VideoProfile{Width: 1280, Height: 720, Framerate: 30, Bitrate: 3_000_000, Preference: "balanced"}, OutputGroups: 4}
+			stream, err := nativecapture.StartVideo(t.Context(), executable, options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer stream.Close()
+			engine, err := mediaedge.NewEngine(mediaedge.EngineOptions{BindAddress: "127.0.0.1:0", IncludeLoopback: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer engine.Close()
+			preparationFailed := errors.New("replacement could not start")
+			session := &Session{ctx: t.Context(), engine: engine, stream: stream, videoOptions: options,
+				capture: videoCaptureFunc{video: func(context.Context, nativecapture.VideoOptions) (CaptureStream, error) {
+					return nil, preparationFailed
+				}}, edgeCapacity: 4, ready: make(chan error, 1), events: func(context.Context, Event) {}}
+			err = session.runVideo()
+			if session.source != nil {
+				defer session.source.Close()
+			}
+			if err == nil || !strings.Contains(err.Error(), "windows-runtime") || !strings.Contains(err.Error(), "0x887a0005") || (mode == "read" && !errors.Is(err, io.EOF)) {
+				t.Fatalf("live capture lost its read/process failure: %v", err)
+			}
+			if mode == "control" && errors.Is(err, io.EOF) {
+				t.Fatal("control fixture ended through the reader instead of its closed input pipe")
+			}
+			failure := nativecapture.FailureDetails(err)
+			if failure == nil || failure.Stage != "windows-runtime" || failure.HRESULT != "0x887a0005" || failure.ExitCode != 2 {
+				t.Fatalf("failure event lost its typed helper codes: %+v", failure)
+			}
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() != 2 || strings.Contains(err.Error(), "private") {
+				t.Fatalf("live capture changed or exposed its process failure: %v", err)
+			}
+		})
+	}
+}
+
+func TestDeviceLossRecoversWithRetainedMedia(t *testing.T) {
+	for _, mode := range []string{"read", "control"} {
+		t.Run(mode, func(t *testing.T) {
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+			failure := filepath.Join(t.TempDir(), "device-failure")
+			t.Setenv("PIIK_VIDEO_DEVICE_FAILURE", failure)
+			if mode == "control" {
+				t.Setenv("PIIK_VIDEO_DEVICE_CONTROL", "1")
+			}
+			executable, err := os.Executable()
+			check(err)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			events := make(chan Event, 64)
+			var active atomic.Uint32
+			video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+				Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Device fixture"}}
+			session, err := Start(ctx, Options{ShareID: "device-recovery", CaptureProcess: executable,
+				Video: video, Profile: QualityProfile{Video: video.Profile, AudioBitrate: 64_000},
+				AudioEnabled: true, EdgeCapacity: 1, BindAddress: "127.0.0.1:0", Events: func(_ context.Context, event Event) {
+					if event.Type == "capture-state" && event.State == "active" {
+						active.Add(1)
+					}
+					select {
+					case events <- event:
+					case <-ctx.Done():
+					}
+				}})
+			check(err)
+			defer session.Close()
+			settings := webrtc.SettingEngine{}
+			settings.SetIncludeLoopbackCandidate(true)
+			settings.SetNetworkTypes([]webrtc.NetworkType{webrtc.NetworkTypeUDP4})
+			receiver, err := webrtc.NewAPI(webrtc.WithSettingEngine(settings)).NewPeerConnection(webrtc.Configuration{})
+			check(err)
+			defer receiver.Close()
+			var audioPackets, videoPackets, videoTracks atomic.Uint32
+			var clockBroken atomic.Bool
+			receiver.OnTrack(func(track *webrtc.TrackRemote, _ *webrtc.RTPReceiver) {
+				videoTrack := track.Kind() == webrtc.RTPCodecTypeVideo
+				if videoTrack {
+					videoTracks.Add(1)
+				}
+				var previous uint32
+				for {
+					packet, _, err := track.ReadRTP()
+					if err != nil {
+						return
+					}
+					if videoTrack {
+						if previous != 0 && int32(packet.Timestamp-previous) <= 0 {
+							clockBroken.Store(true)
+						}
+						previous = packet.Timestamp
+						videoPackets.Add(1)
+					} else {
+						audioPackets.Add(1)
+					}
+				}
+			})
+			offer, err := session.PrepareLocalEdge("device-edge", "device-offer", false)
+			check(err)
+			check(receiver.SetRemoteDescription(offer))
+			for _, transceiver := range receiver.GetTransceivers() {
+				if transceiver.Kind() != webrtc.RTPCodecTypeAudio {
+					continue
+				}
+				for _, codec := range transceiver.Receiver().GetParameters().Codecs {
+					if codec.MimeType == webrtc.MimeTypeOpus {
+						codec.SDPFmtpLine = "stereo=1;maxaveragebitrate=510000"
+						check(transceiver.SetCodecPreferences([]webrtc.RTPCodecParameters{codec}))
+						break
+					}
+				}
+			}
+			go func() {
+				for {
+					select {
+					case event := <-events:
+						if event.Type == "edge-candidate" && event.Candidate != nil {
+							_ = receiver.AddICECandidate(*event.Candidate)
+						}
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
+			gathered := webrtc.GatheringCompletePromise(receiver)
+			answer, err := receiver.CreateAnswer(nil)
+			check(err)
+			check(receiver.SetLocalDescription(answer))
+			select {
+			case <-gathered:
+			case <-ctx.Done():
+				t.Fatal("receiver gathering timed out")
+			}
+			check(session.SetAnswer("device-edge", *receiver.LocalDescription(), "device-offer"))
+			wait := func(condition func() bool, label string) {
+				t.Helper()
+				for !condition() {
+					select {
+					case <-ctx.Done():
+						t.Fatal(label)
+					case <-session.Done():
+						t.Fatal("share ended during", label)
+					case <-time.After(10 * time.Millisecond):
+					}
+				}
+			}
+			wait(func() bool { return audioPackets.Load() >= 3 && videoPackets.Load() >= 3 }, "initial media")
+			stream, audioStream := session.currentStream(), session.currentAudioStream()
+			source, audioSource, edge := session.source, session.audioSource, session.edge("device-edge")
+			session.mu.Lock()
+			selectedOptions := session.videoOptions
+			session.mu.Unlock()
+			beforeAudio := audioPackets.Load()
+			check(os.WriteFile(failure, nil, 0600))
+			wait(func() bool { return active.Load() >= 2 }, "replacement installation")
+			afterVideo := videoPackets.Load()
+			wait(func() bool { return audioPackets.Load() >= beforeAudio+5 && videoPackets.Load() >= afterVideo+5 }, "media after device recovery")
+			if session.currentStream() == stream || session.currentAudioStream() != audioStream || session.source != source ||
+				session.audioSource != audioSource || session.edge("device-edge") != edge || videoTracks.Load() != 1 || clockBroken.Load() {
+				t.Fatal("device recovery replaced media owners or reset the receiver clock")
+			}
+			session.mu.Lock()
+			actualOptions := session.videoOptions
+			session.mu.Unlock()
+			if actualOptions != selectedOptions {
+				t.Fatal("recovery changed capture source/profile/backend")
+			}
+		})
+	}
+}
+
+func TestDeviceLossRecoveryYieldsToCaptureOperations(t *testing.T) {
+	for _, mode := range []string{"profile", "stop"} {
+		t.Run(mode, func(t *testing.T) {
+			check := func(err error) {
+				t.Helper()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			t.Setenv("PIIK_NATIVEHOST_PIPE_FIXTURE", "audio-recovery")
+			failure := filepath.Join(t.TempDir(), "device-failure")
+			t.Setenv("PIIK_VIDEO_DEVICE_FAILURE", failure)
+			executable, err := os.Executable()
+			check(err)
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			entered, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			unblock := sync.OnceFunc(func() { close(release) })
+			defer unblock()
+			var starts atomic.Uint32
+			capture := videoCaptureFunc{processCapture: processCapture{executable}}
+			capture.video = func(ctx context.Context, options nativecapture.VideoOptions) (CaptureStream, error) {
+				if starts.Add(1) == 2 {
+					close(entered)
+					defer close(finished)
+					select {
+					case <-release:
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+				return capture.processCapture.Video(ctx, options)
+			}
+			recovering := make(chan struct{}, 1)
+			previousLog := slog.Default()
+			defer slog.SetDefault(previousLog)
+			slog.SetDefault(slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelDebug,
+				ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+					if attr.Key == "event" && attr.Value.String() == "capture-device-recovering" {
+						select {
+						case recovering <- struct{}{}:
+						default:
+						}
+					}
+					return attr
+				}})))
+			video := nativecapture.VideoOptions{Codec: "vp8", Profile: audioRecoveryProfile(),
+				Target: nativecapture.CaptureTarget{Kind: "display", SourceID: "1", Title: "Operation fixture"}}
+			session, err := Start(ctx, Options{ShareID: "device-operation", Capture: capture,
+				Video: video, Profile: QualityProfile{Video: video.Profile, AudioBitrate: 64_000}, EdgeCapacity: 1, BindAddress: "127.0.0.1:0"})
+			check(err)
+			defer session.Close()
+			completed := make(chan error, 1)
+			next := QualityProfile{Video: video.Profile, AudioBitrate: 64_000}
+			next.Video.Width, next.Video.Height = 640, 360
+			if mode == "profile" {
+				go func() { completed <- session.UpdateProfile(next) }()
+				select {
+				case <-entered:
+				case <-ctx.Done():
+					t.Fatal("profile preparation did not start")
+				}
+			}
+			check(os.WriteFile(failure, nil, 0600))
+			select {
+			case <-recovering:
+			case <-ctx.Done():
+				t.Fatal("reader did not identify device loss")
+			}
+			if mode == "stop" {
+				select {
+				case <-entered:
+				case <-ctx.Done():
+					t.Fatal("recovery preparation did not start")
+				}
+				go func() { completed <- session.Close() }()
+			} else {
+				unblock()
+			}
+			select {
+			case err := <-completed:
+				check(err)
+			case <-ctx.Done():
+				t.Fatal("capture operation deadlocked with its reader")
+			}
+			select {
+			case <-finished:
+			default:
+				t.Fatal("capture operation returned before preparation retired")
+			}
+			if starts.Load() != 2 {
+				t.Fatal("recovery replaced a newer user operation")
+			}
+			if mode == "profile" {
+				if session.profile != next || session.videoOptions.Profile != next.Video {
+					t.Fatal("recovery overwrote the user's profile")
+				}
+				select {
+				case <-session.Done():
+					t.Fatal("profile update ended the share")
+				default:
 				}
 			}
 		})

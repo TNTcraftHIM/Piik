@@ -135,8 +135,8 @@ export const zh = {
   "playback.windowControls": "播放器窗口",
   "playback.changeFit": "切换画面适配",
   "playback.fitCycle": "当前：{current}。点击切换为{next}，只影响自己的画面。",
-  "playback.rotation": "横竖切换",
-  "playback.rotationHint": "旋转当前画面的显示方向，不影响分享来源。",
+  "playback.rotation": "旋转画面",
+  "playback.rotationHint": "将本机观看的画面顺时针旋转 90°。",
   "playback.connection": "连接",
   "playback.relayVolunteer": "帮助更多观众转发",
   "playback.relayVolunteerHint": "仅本次观看生效，会使用更多上行带宽。",
@@ -794,6 +794,7 @@ export const zh = {
 
   "mode.language": "界面语言",
   "mode.more": "更多语言",
+  "header.more": "更多选项",
   "mode.vis": "纯视觉",
   "theme.dark": "切换到暗色模式",
   "theme.light": "切换到浅色模式",

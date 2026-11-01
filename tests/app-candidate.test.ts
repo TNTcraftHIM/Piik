@@ -47,7 +47,7 @@ vi.mock("../scripts/archive-tool.mjs", () => ({
   tarExecutable: () => "fixture-tar",
 }));
 
-it.each(["archive-failure", "existing", "output-created", "dirty"] as const)(
+it.each(["archive-failure", "existing", "output-created", "dirty", "raw-asset", "raw-digest-mismatch"] as const)(
   "cleans only this App candidate's incomplete output (%s)", async (scenario) => {
     const root = mkdtempSync(join(tmpdir(), "piik-app-candidate-"));
     const server = join(root, "server");
@@ -66,17 +66,25 @@ it.each(["archive-failure", "existing", "output-created", "dirty"] as const)(
         writeFileSync(join(output, "user.txt"), "keep");
       }
       process.argv = [process.execPath, "package-app-candidate.mjs", server, "fixture", output];
+      const rawAsset = scenario === "raw-asset" || scenario === "raw-digest-mismatch";
+      if (rawAsset) {
+        const asset = join(root, "raw-release-asset");
+        writeFileSync(asset, scenario === "raw-asset" ? "fixture tunnel" : "wrong bytes");
+        process.argv.push("--tunnel-asset", asset);
+      }
       vi.resetModules();
       const candidate = import("../scripts/package-app-candidate.mjs");
       const expected = { "archive-failure": "archive interrupted", existing: "must not already exist",
-        "output-created": "EEXIST", dirty: "clean Git checkout" }[scenario];
+        "output-created": "EEXIST", dirty: "clean Git checkout", "raw-asset": "archive interrupted",
+        "raw-digest-mismatch": "digest does not match the pinned release" }[scenario];
       await expect(candidate).rejects.toThrow(expected);
       if (scenario === "existing" || scenario === "output-created") {
         expect(readFileSync(join(output, "user.txt"), "utf8")).toBe("keep");
       } else {
         expect(existsSync(output)).toBe(false);
       }
-      expect(source.assembled).toBe(scenario === "archive-failure" || scenario === "output-created");
+      expect(source.assembled).toBe(scenario === "archive-failure" || scenario === "output-created" || scenario === "raw-asset");
+      if (rawAsset) expect(fetch).not.toHaveBeenCalled();
       expect(existsSync(source.workspace)).toBe(false);
     } finally {
       process.argv = previousArguments;

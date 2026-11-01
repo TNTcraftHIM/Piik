@@ -162,7 +162,9 @@ async function main(): Promise<void> {
     server.stderr.on("data", (data: Buffer) => { serverError = (serverError + data.toString()).slice(-16000); });
     await waitForSample((deadline) => fetchJsonBefore<{ status: string }>(`${backend}/healthz`, deadline),
       () => true, 15_000);
-    vite = await createViteServer({ root: ROOT, configFile: false, appType: "custom", logLevel: "silent",
+    vite = await createViteServer({ root: ROOT, cacheDir: join(BUILD_ROOT, ".vite"),
+      configFile: false, appType: "custom", logLevel: "silent",
+      optimizeDeps: { entries: ["scripts/embedded-sfu-page.ts"] },
       server: { host: "127.0.0.1", port: vitePort, strictPort: true, watch: null,
         proxy: { "/api": { target: backend }, "/signal": { target: backend, ws: true } } },
       plugins: [{ name: "embedded-sfu-gate", configureServer(instance) {

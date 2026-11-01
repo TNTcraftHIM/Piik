@@ -9,6 +9,8 @@ const server = "http://127.0.0.1:8788";
 
 export default defineConfig({
   plugins: [react()],
+  // Local build output includes Browser profiles, not application entries.
+  optimizeDeps: { entries: ["index.html", "site/**/*.html"] },
   build: {
     outDir: "internal/server/webassets/dist",
     emptyOutDir: false,

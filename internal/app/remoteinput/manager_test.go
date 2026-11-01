@@ -1,6 +1,7 @@
 package remoteinput
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -9,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"sync/atomic"
@@ -21,6 +23,114 @@ import (
 	"github.com/TNTcraftHIM/Piik/internal/server/protocol"
 	"github.com/pion/webrtc/v4"
 )
+
+func TestInputDiagnosticsDistinguishStagesWithoutInputValues(t *testing.T) {
+	sink := &recordedInput{events: make(chan inputEvent, 32), resets: make(chan struct{}, 16), focused: true}
+	m := &Manager{sink: sink, gamepads: &recordedGamepads{}, connections: map[endpointKey]*connection{}}
+	s, peers := coPlaySession(t, m, true)
+	c := peers[0]
+	packet := func(plain []byte) {
+		header := make([]byte, 20)
+		binary.BigEndian.PutUint64(header, c.cipher.received+1)
+		_, _ = rand.Read(header[8:])
+		data := c.cipher.aead.Seal(header, header[8:], plain, inputAAD(0, header[:8], c.epoch))
+		s.receivePacket(c.edgeID, inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: base64.StdEncoding.EncodeToString(data)}, nil)
+	}
+	input := func(event inputEvent) {
+		if event.Grant == "" {
+			event.Grant = c.grant
+		}
+		data, _ := json.Marshal(event)
+		packet(data)
+	}
+	before := m.Diagnostics()
+	s.receivePacket(c.edgeID, inputroute.Packet{ID: c.id, Epoch: c.epoch, Data: "not-base64"}, nil)
+	packet([]byte("not-json"))
+	input(inputEvent{Type: "request", Intent: strings.Repeat("f", 32)})
+	input(inputEvent{Type: "move", Grant: "wrong-grant", X: .37, Y: .29})
+	sink.focused = false
+	input(inputEvent{Type: "move", X: .37, Y: .29})
+	suspended := m.Diagnostics()
+	if suspended.ActiveGrants != 0 || suspended.SuspendedGrants != 1 || len(sink.events) != 0 ||
+		suspended.Counters.Mouse != (DiagnosticFamilyCounters{Parsed: 2, Authorized: 1}) {
+		t.Fatalf("quiet target suspension lost its stage: %+v", suspended)
+	}
+	sink.focused = true
+	input(inputEvent{Type: "move", X: .37, Y: .29})
+	sink.applyErr = errors.New("test sink rejection")
+	input(inputEvent{Type: "button", Down: true})
+	sink.applyErr = nil
+	input(inputEvent{Type: "button", Down: true})
+	input(inputEvent{Type: "button", Down: true}) // Held deduplication is not another API acceptance.
+	input(inputEvent{Type: "key", Code: "KeyZ", Down: true})
+	accepted := m.Diagnostics()
+	if accepted.Counters.ReceivedPackets-before.Counters.ReceivedPackets != 10 ||
+		accepted.Counters.DecryptedPackets-before.Counters.DecryptedPackets != 9 ||
+		accepted.Counters.ParsedEvents-before.Counters.ParsedEvents != 8 ||
+		accepted.Counters.Mouse != (DiagnosticFamilyCounters{Parsed: 6, Authorized: 5, TargetReady: 4, APIAttempts: 3, APIAccepted: 2, APIRejected: 1}) ||
+		accepted.Counters.Keyboard != (DiagnosticFamilyCounters{Parsed: 1, Authorized: 1, TargetReady: 1, APIAttempts: 1, APIAccepted: 1}) ||
+		accepted.ActiveGrants != 1 || accepted.SuspendedGrants != 0 {
+		t.Fatalf("ingress, authorization and sink API results were conflated: %+v", accepted)
+	}
+	sink.applyErr = errors.New("test release rejection")
+	input(inputEvent{Type: "key", Code: "KeyZ"})
+	input(inputEvent{Type: "button"})
+	pending := m.Diagnostics()
+	if pending.PendingKeyReleases != 1 || pending.PendingButtonReleases != 1 {
+		t.Fatalf("release counts missing: %+v", pending)
+	}
+	// Export the actual bounded report context. The snapshot must not retry the
+	// rejected cleanup or expose the held input, credentials, or connection IDs.
+	events, grant := len(sink.events), c.grant
+	recorder, err := diagnostics.Open(t.TempDir(), "client", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = recorder.Close() })
+	recorder.Context("remoteInput", m.Diagnostics())
+	path, err := recorder.Export()
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer archive.Close()
+	var content []byte
+	for _, file := range archive.File {
+		if file.Name == "context.json" {
+			reader, err := file.Open()
+			if err != nil {
+				t.Fatal(err)
+			}
+			content, err = io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var context struct {
+		RemoteInput DiagnosticSnapshot `json:"remoteInput"`
+	}
+	if err := json.Unmarshal(content, &context); err != nil || context.RemoteInput != pending {
+		t.Fatalf("ZIP omitted the current input counts: %s, %v", content, err)
+	}
+	for _, private := range []string{grant, c.secret, c.id, c.peerID, "KeyZ", `"x":`, `"y":`, `"text":`, `"code":`} {
+		if strings.Contains(string(content), private) {
+			t.Fatalf("diagnostic context contains input values or identity: %q", private)
+		}
+	}
+	t.Logf("exported input diagnostic context: %s", content)
+	if m.Diagnostics() != pending || len(sink.events) != events || c.grant != grant {
+		t.Fatal("observing/exporting diagnostics changed input or cleanup state")
+	}
+	sink.applyErr = nil
+	if err := m.retryReleases(); err != nil {
+		t.Fatal(err)
+	}
+}
 
 type recordedInput struct {
 	authorize func() error

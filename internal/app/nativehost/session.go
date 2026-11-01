@@ -106,6 +106,7 @@ type Session struct {
 	publications map[publicationKey]*mediaedge.Publication
 
 	captureApplied     chan struct{}
+	captureChanged     chan struct{}
 	captureUnavailable []int
 
 	audioChanged chan struct{}
@@ -150,22 +151,23 @@ func Start(parent context.Context, options Options) (*Session, error) {
 	defer func() { capturePreparationDone(preparing) }()
 	ctx, cancel := context.WithCancel(parent)
 	session := &Session{
-		shareID:      options.ShareID,
-		capture:      capture,
-		videoOptions: options.Video,
-		profile:      options.Profile,
-		edgeCapacity: options.EdgeCapacity,
-		stream:       stream,
-		engine:       engine,
-		events:       options.Events,
-		ctx:          ctx,
-		cancel:       cancel,
-		done:         make(chan error, 1),
-		ready:        make(chan error, 1),
-		videoActive:  make(chan struct{}),
-		edges:        make(map[string]*mediaedge.Edge),
-		audioChanged: make(chan struct{}, 1),
-		remoteInput:  options.RemoteInput.NewSession(),
+		shareID:        options.ShareID,
+		capture:        capture,
+		videoOptions:   options.Video,
+		profile:        options.Profile,
+		edgeCapacity:   options.EdgeCapacity,
+		stream:         stream,
+		engine:         engine,
+		events:         options.Events,
+		ctx:            ctx,
+		cancel:         cancel,
+		done:           make(chan error, 1),
+		ready:          make(chan error, 1),
+		videoActive:    make(chan struct{}),
+		edges:          make(map[string]*mediaedge.Edge),
+		audioChanged:   make(chan struct{}, 1),
+		captureChanged: make(chan struct{}, 1),
+		remoteInput:    options.RemoteInput.NewSession(),
 	}
 	session.syncRemoteInputSource(nil)
 	// Drain video while the optional audio process initializes. Otherwise a full
@@ -795,6 +797,10 @@ func (session *Session) commitCapture(
 		session.captureUnavailable = state.unavailableLayers
 		session.videoOptions = options
 		session.profile = profile
+		select {
+		case session.captureChanged <- struct{}{}:
+		default:
+		}
 	}
 	if replaceAudio {
 		session.audioStream = replacementAudio
@@ -835,6 +841,28 @@ func (session *Session) commitCapture(
 		return err
 	}
 	return nil
+}
+
+func (session *Session) prepareCaptureRecovery(failed CaptureStream) error {
+	session.updateMu.Lock()
+	defer session.updateMu.Unlock()
+	session.mu.Lock()
+	if session.closed || session.ctx.Err() != nil {
+		session.mu.Unlock()
+		return errors.New("native share is unavailable")
+	}
+	if session.stream != failed {
+		session.mu.Unlock()
+		return nil
+	}
+	options, profile := session.videoOptions, session.profile
+	session.mu.Unlock()
+	replacement, state, err := session.prepareVideo(session.ctx, options, false, false)
+	if err != nil {
+		return err
+	}
+	defer capturePreparationDone(replacement)
+	return session.commitCapture(options, profile, replacement, state, nil, false, nil)
 }
 
 // Only the video reader installs source metadata, after leaving the old input.
@@ -1007,13 +1035,18 @@ func (session *Session) runVideo() error {
 		}
 		activeSeen = true
 	}
+	current := session.currentStream()
 	fail := func(err error) error {
+		// A final frame/control error can arrive before the process waiter joins.
+		// Preserve that read/validation error and the selected helper's exit cause.
+		if current != nil {
+			err = errors.Join(err, current.Close())
+		}
 		if !ready {
 			session.ready <- err
 		}
 		return err
 	}
-	current := session.currentStream()
 	changeStream := func(next CaptureStream) error {
 		if err := session.installCapture(next); err != nil {
 			return err
@@ -1023,148 +1056,194 @@ func (session *Session) runVideo() error {
 		markActive()
 		return nil
 	}
-	for current != nil {
-		frame, err := current.Read()
-		if err != nil {
-			next := session.currentStream()
-			if next != nil && next != current {
-				if err = changeStream(next); err != nil {
-					return fail(err)
-				}
-				continue
-			}
-			slog.DebugContext(session.ctx, "piik-client", "event", "capture-video-read-ended",
-				"share", diagnostics.ID(session.shareID), "canceled", session.ctx.Err() != nil, "eof", errors.Is(err, io.EOF), diagnostics.Error(err))
-			if errors.Is(err, nativecapture.ErrSourceCanceled) {
-				return fail(err)
-			}
-			return fail(errors.New("native capture stopped unexpectedly"))
-		}
-		if next := session.currentStream(); next != current {
-			if next != nil {
-				if err = changeStream(next); err != nil {
-					return fail(err)
-				}
-			}
-			continue
-		}
-		switch frame.Kind {
-		case nativecapture.FrameStatus:
-			status, statusErr := decodeCaptureState(frame.Data)
-			if statusErr != nil {
-				return fail(statusErr)
-			}
-			if !slices.Equal(status.Outputs, current.Outputs()) {
-				return fail(errors.New("native capture outputs were not applied"))
-			}
-			session.mu.Lock()
-			if session.closed {
-				session.mu.Unlock()
-				return fail(errors.New("native share stopped"))
-			}
-			if session.stream != current {
-				session.mu.Unlock()
-				continue
-			}
-			if session.source == nil {
-				if session.videoOptions.Codec != "auto" && session.videoOptions.Codec != status.Codec {
-					session.mu.Unlock()
-					return fail(errors.New("native capture codec was not applied"))
-				}
-				source, sourceErr := session.engine.NewSource(status.Codec, mediaedge.PhysicalSourceCapacity(session.edgeCapacity), min(2, len(status.Outputs)), func(layers []int) {
-					if stream := session.currentStream(); stream != nil {
-						for _, layer := range layers {
-							_ = stream.RequestKeyFrame(layer)
-						}
+	readFrames := func() error {
+		for current != nil {
+			frame, err := current.Read()
+			if err != nil {
+				// Retirement joins the helper's exit and its sanitized failure codes.
+				// Recheck ownership afterward: a replacement can commit during Close.
+				_ = current.Close()
+				next := session.currentStream()
+				if next != nil && next != current {
+					if err = changeStream(next); err != nil {
+						return fail(err)
 					}
-				})
-				if sourceErr != nil {
-					session.mu.Unlock()
-					return fail(sourceErr)
+					continue
 				}
-				if sourceErr = configureCaptureOutputs(source, status.Outputs); sourceErr != nil {
-					session.mu.Unlock()
-					_ = source.Close()
-					return fail(sourceErr)
+				slog.DebugContext(session.ctx, "piik-client", "event", "capture-video-read-ended",
+					"share", diagnostics.ID(session.shareID), "canceled", session.ctx.Err() != nil, "eof", errors.Is(err, io.EOF), diagnostics.Error(err))
+				if errors.Is(err, nativecapture.ErrSourceCanceled) {
+					return fail(err)
 				}
-				session.source = source
-				session.videoOptions.Codec = status.Codec
-			} else if session.source.Codec() != status.Codec {
+				return fail(errors.Join(errors.New("native capture stopped unexpectedly"), err))
+			}
+			if next := session.currentStream(); next != current {
+				if next != nil {
+					if err = changeStream(next); err != nil {
+						return fail(err)
+					}
+				}
+				continue
+			}
+			switch frame.Kind {
+			case nativecapture.FrameStatus:
+				status, statusErr := decodeCaptureState(frame.Data)
+				if statusErr != nil {
+					return fail(statusErr)
+				}
+				if !slices.Equal(status.Outputs, current.Outputs()) {
+					return fail(errors.New("native capture outputs were not applied"))
+				}
+				session.mu.Lock()
+				if session.closed {
+					session.mu.Unlock()
+					return fail(errors.New("native share stopped"))
+				}
+				if session.stream != current {
+					session.mu.Unlock()
+					continue
+				}
+				if session.source == nil {
+					if session.videoOptions.Codec != "auto" && session.videoOptions.Codec != status.Codec {
+						session.mu.Unlock()
+						return fail(errors.New("native capture codec was not applied"))
+					}
+					source, sourceErr := session.engine.NewSource(status.Codec, mediaedge.PhysicalSourceCapacity(session.edgeCapacity), min(2, len(status.Outputs)), func(layers []int) {
+						if stream := session.currentStream(); stream != nil {
+							for _, layer := range layers {
+								_ = stream.RequestKeyFrame(layer)
+							}
+						}
+					})
+					if sourceErr != nil {
+						session.mu.Unlock()
+						return fail(sourceErr)
+					}
+					if sourceErr = configureCaptureOutputs(source, status.Outputs); sourceErr != nil {
+						session.mu.Unlock()
+						_ = source.Close()
+						return fail(sourceErr)
+					}
+					session.source = source
+					session.videoOptions.Codec = status.Codec
+				} else if session.source.Codec() != status.Codec {
+					session.mu.Unlock()
+					return fail(errors.New("native capture codec changed within a share"))
+				}
+				if status.State == "active" {
+					markActive()
+					if status.RestoreToken != "" {
+						session.videoOptions.RestoreToken = status.RestoreToken
+					}
+				}
+				status.applyBackend(&session.videoOptions)
 				session.mu.Unlock()
-				return fail(errors.New("native capture codec changed within a share"))
-			}
-			if status.State == "active" {
-				markActive()
-				if status.RestoreToken != "" {
-					session.videoOptions.RestoreToken = status.RestoreToken
+				slog.Debug("piik-client", "event", "capture-state", "state", status.State, "codec", status.Codec,
+					"share", diagnostics.ID(session.shareID), "width", status.Width, "height", status.Height, "fps", status.FPS,
+					"hardware", status.HardwareOnly, "adapterIndex", status.AdapterIndex, "encoderIndex", status.EncoderIndex,
+					"adapterName", diagnostics.SafeText(status.AdapterName), "encoderName", diagnostics.SafeText(status.EncoderName),
+					"profileLevelId", status.ProfileLevelID, "outputs", status.Outputs)
+				session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
+				if !ready {
+					ready = true
+					session.ready <- nil
 				}
-			}
-			status.applyBackend(&session.videoOptions)
-			session.mu.Unlock()
-			slog.Debug("piik-client", "event", "capture-state", "state", status.State, "codec", status.Codec,
-				"share", diagnostics.ID(session.shareID), "width", status.Width, "height", status.Height, "fps", status.FPS,
-				"hardware", status.HardwareOnly, "adapterIndex", status.AdapterIndex, "encoderIndex", status.EncoderIndex,
-				"adapterName", diagnostics.SafeText(status.AdapterName), "encoderName", diagnostics.SafeText(status.EncoderName),
-				"profileLevelId", status.ProfileLevelID, "outputs", status.Outputs)
-			session.emit(Event{Type: "capture-state", ShareID: session.shareID, State: status.State})
-			if !ready {
-				ready = true
-				session.ready <- nil
-			}
-		case nativecapture.FrameBegin:
-			if session.source == nil {
-				return fail(errors.New("native capture input arrived before its state"))
-			}
-			plan, beginErr := session.source.BeginFrame(frame.Timestamp)
-			if beginErr != nil {
-				return fail(beginErr)
-			}
-			session.mu.Lock()
-			paused := session.paused
-			session.mu.Unlock()
-			if paused {
-				clear(plan.Active)
-			}
-			controlErr := applyOutputPlan(current, plan, activeSeen)
-			if controlErr != nil && session.currentStream() == current {
-				return fail(controlErr)
-			}
-		case nativecapture.FrameH264, nativecapture.FrameVP8:
-			if session.source == nil ||
-				(frame.Kind == nativecapture.FrameH264) != (session.source.Codec() == "h264") {
-				return fail(errors.New("native video frame does not match its source codec"))
-			}
-			if formatErr := session.source.SetFormat(frame.Layer, frame.Width, frame.Height); formatErr != nil {
-				return fail(formatErr)
-			}
-			// Edge state owns write failures; one retired edge cannot stop siblings.
-			session.mu.Lock()
-			paused := session.paused
-			session.mu.Unlock()
-			if !paused {
-				writeErr := session.source.WriteVideo(frame.Layer, encoded.Frame{
-					Data: frame.Data, PTS: frame.Timestamp, Duration: frame.Duration, Recovery: frame.KeyFrame,
-				})
-				if errors.Is(writeErr, encoded.ErrInvalidTimestamp) {
-					return fail(writeErr)
+			case nativecapture.FrameBegin:
+				if session.source == nil {
+					return fail(errors.New("native capture input arrived before its state"))
 				}
+				plan, beginErr := session.source.BeginFrame(frame.Timestamp)
+				if beginErr != nil {
+					return fail(beginErr)
+				}
+				session.mu.Lock()
+				paused := session.paused
+				session.mu.Unlock()
+				if paused {
+					clear(plan.Active)
+				}
+				controlErr := applyOutputPlan(current, plan, activeSeen)
+				if controlErr != nil && session.currentStream() == current {
+					return fail(controlErr)
+				}
+			case nativecapture.FrameH264, nativecapture.FrameVP8:
+				if session.source == nil ||
+					(frame.Kind == nativecapture.FrameH264) != (session.source.Codec() == "h264") {
+					return fail(errors.New("native video frame does not match its source codec"))
+				}
+				if formatErr := session.source.SetFormat(frame.Layer, frame.Width, frame.Height); formatErr != nil {
+					return fail(formatErr)
+				}
+				// Edge state owns write failures; one retired edge cannot stop siblings.
+				session.mu.Lock()
+				paused := session.paused
+				session.mu.Unlock()
+				if !paused {
+					writeErr := session.source.WriteVideo(frame.Layer, encoded.Frame{
+						Data: frame.Data, PTS: frame.Timestamp, Duration: frame.Duration, Recovery: frame.KeyFrame,
+					})
+					if errors.Is(writeErr, encoded.ErrInvalidTimestamp) {
+						return fail(writeErr)
+					}
+				}
+			case nativecapture.FrameLayerUnavailable:
+				slog.DebugContext(session.ctx, "piik-client", "event", "capture-output-unavailable",
+					"share", diagnostics.ID(session.shareID), "layer", frame.Layer, "detail", diagnostics.SafeText(string(frame.Data)))
+				if session.source == nil {
+					return fail(errors.New("native output ended before its source state"))
+				}
+				if err = session.disableCaptureLayer(current, frame.Layer); err != nil {
+					return fail(err)
+				}
+			case nativecapture.FramePCM:
+				return fail(errors.New("native video process emitted audio"))
+			default:
+				return fail(errors.New("native video process emitted an unknown frame"))
 			}
-		case nativecapture.FrameLayerUnavailable:
-			slog.DebugContext(session.ctx, "piik-client", "event", "capture-output-unavailable",
-				"share", diagnostics.ID(session.shareID), "layer", frame.Layer, "detail", diagnostics.SafeText(string(frame.Data)))
-			if session.source == nil {
-				return fail(errors.New("native output ended before its source state"))
-			}
-			if err = session.disableCaptureLayer(current, frame.Layer); err != nil {
-				return fail(err)
-			}
-		case nativecapture.FramePCM:
-			return fail(errors.New("native video process emitted audio"))
+		}
+		return fail(errors.New("native capture stopped unexpectedly"))
+	}
+	for {
+		err := readFrames()
+		failure := nativecapture.FailureDetails(err)
+		if !activeSeen || session.ctx.Err() != nil || errors.Is(err, nativecapture.ErrSourceCanceled) || failure == nil {
+			return err
+		}
+		switch failure.HRESULT {
+		case "0x887a0005", "0x887a0006", "0x887a0007", "0x887a0020": // DXGI device removed, hung, reset, driver internal error.
 		default:
-			return fail(errors.New("native video process emitted an unknown frame"))
+			return err
+		}
+		slog.DebugContext(session.ctx, "piik-client", "event", "capture-device-recovering",
+			"share", diagnostics.ID(session.shareID), "stage", failure.Stage, "hresult", failure.HRESULT, diagnostics.Error(err))
+		recovered := make(chan error, 1)
+		go func(failed CaptureStream) { recovered <- session.prepareCaptureRecovery(failed) }(current)
+		// Updates retain the operation lock until this reader installs their
+		// metadata. Keep serving that handoff while recovery waits for the lock.
+		var recoveryErr error
+	waiting:
+		for {
+			select {
+			case recoveryErr = <-recovered:
+				break waiting
+			case <-session.captureChanged:
+				if next := session.currentStream(); next != nil && next != current {
+					if recoveryErr = changeStream(next); recoveryErr != nil {
+						session.cancel()
+						<-recovered
+						break waiting
+					}
+				}
+			case <-session.ctx.Done():
+				recoveryErr = session.ctx.Err()
+				<-recovered
+				break waiting
+			}
+		}
+		if recoveryErr != nil {
+			return errors.Join(err, recoveryErr)
 		}
 	}
-	return fail(errors.New("native capture stopped unexpectedly"))
 }
 
 func configureCaptureOutputs(source *mediaedge.Source, outputs []nativecapture.OutputProfile) error {

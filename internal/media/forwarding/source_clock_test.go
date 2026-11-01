@@ -72,7 +72,7 @@ func TestEncodedSourceClockIgnoresEncoderDelay(t *testing.T) {
 	}
 	write := func(layer int, pts time.Duration) {
 		t.Helper()
-		check(input.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30}))
+		check(input.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30, Recovery: true}))
 	}
 	// The first low output took 500 ms; the high output is current. Both carry
 	// their correct capture PTS, and later low output catches up completely.
@@ -132,7 +132,7 @@ func TestDerivedSourceSharesRemoteClock(t *testing.T) {
 					t.Fatal("original reference is absent")
 				}
 				check(derived.BeginFrame(pts, captured))
-				check(derived.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30}))
+				check(derived.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: time.Second / 30, Recovery: true}))
 				high := projectedSourceClock(t, original, 1, &stats[1])
 				low := projectedSourceClock(t, derived.Source, 0, &stats[0])
 				if mismatch := low - high; mismatch.Abs() > time.Millisecond {

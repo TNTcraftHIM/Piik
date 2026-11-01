@@ -620,12 +620,14 @@ describe("native App private wire", () => {
   it.each([undefined, false, true])("gates optional capture commands on advertised support: %s", async (supported) => {
     const requests: Record<string, unknown>[] = [];
     class CaptureSocket extends EventTarget {
+      static current: CaptureSocket;
       static readonly OPEN = 1;
       static readonly CLOSING = 2;
       readyState = CaptureSocket.OPEN;
       protocol = `piik-client-v10.${health.instanceToken}`;
       constructor() {
         super();
+        CaptureSocket.current = this;
         queueMicrotask(() => this.dispatchEvent(new Event("open")));
       }
       close() { this.readyState = CaptureSocket.CLOSING; }
@@ -647,7 +649,7 @@ describe("native App private wire", () => {
     vi.stubGlobal("WebSocket", CaptureSocket);
     vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("https://piik.example/") });
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
-      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported, sourceCancellation: supported },
+      ...health, nativeMedia: { ...health.nativeMedia, captureBorderControl: supported, remoteInput: supported, sourceCancellation: supported, captureFailureDetails: supported },
     }))));
     const client = await NativeClient.connect();
     expect(client).not.toBeNull();
@@ -670,6 +672,7 @@ describe("native App private wire", () => {
         const extension = supported ? { showCaptureBorder: showCaptureBorder ?? false, reportSourceCancellation: true } : {};
         expect(requests.at(-2)).toEqual({
           version: NATIVE_CLIENT_PROTOCOL, id: expect.any(String), type: "start-share", ...input, ...extension,
+          ...(supported ? { reportCaptureFailure: true } : {}),
           ...(supported ? { remoteInput: true } : {}),
         });
         expect(requests.at(-1)).toEqual({
@@ -677,6 +680,14 @@ describe("native App private wire", () => {
           shareId: input.shareId, source: input.source, audio: true, adapterIndex: 0, encoderIndex: 0, ...extension,
         });
       }
+      const onEvent = vi.fn(), onClose = vi.fn();
+      client!.onEvent(onEvent);
+      client!.onClose(onClose);
+      const ended = { version: NATIVE_CLIENT_PROTOCOL, type: "share-ended", shareId: input.shareId, failed: true,
+        ...(supported ? { failure: { stage: "windows-runtime", hresult: "0x887a0005", exitCode: 2 } } : {}) };
+      CaptureSocket.current.dispatchEvent(new MessageEvent("message", { data: JSON.stringify(ended) }));
+      expect(onEvent).toHaveBeenCalledWith(ended);
+      expect(onClose).not.toHaveBeenCalled();
       const unsent = vi.fn();
       vi.spyOn(CaptureSocket.prototype, "send").mockImplementationOnce(() => { throw new Error("send failed"); });
       await expect(client!.startShare(input, unsent)).rejects.toMatchObject({ reason: "send-failed" });

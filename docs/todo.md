@@ -1,12 +1,24 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-29
+Last reviewed: 2026-11-01
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Browser sharing falls to low source FPS during motion.** Trace raw
+  capture, sender-owned track input and encoding on Windows Chrome with mixed
+  direct/SFU delivery. The observed source fell to roughly 2 fps during video
+  or game playback; reproduce with real window/display capture. Keep the
+  separate SFU packet-loss stage distinct from source-frame production.
+- [ ] **Windows App sharing ends unexpectedly.** Identify WGC/source, device or
+  encoder termination in the supplied release feedback using the native stage
+  and HRESULT, and reproduce the unexpected termination.
+- [ ] **Native screen sound recaptures room voice.** Exclude Piik voice while
+  retaining intended source audio. Verify Browser own-document exclusion and
+  Native process exclusion; keep acoustic echo and duplicate commentary with
+  their separate microphone owners.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -24,12 +36,13 @@ own behavior; research and Git/PRs own evidence and completed history.
   report concerns missing screen thumbnails in the source picker. The macOS
   helper now implements the existing preview command; verify its build and
   display/window thumbnails on a physical Mac before closing the issue.
-- [ ] **Control loss when the Host browser is minimized (#502).** Follow
+- [ ] **Mouse input stops when Host Chrome is minimized (#502).** Follow
   [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
-  host with the Windows input-recovery candidate. The v2.5.0 report shows
-  rejected input followed by failed release cleanup. The candidate repairs a
-  reproduced thread-desktop mismatch and records the native rejection context;
-  confirm the original host's trigger before closing the issue.
+  host: the v2.5.1 follow-up retains the grant, but mouse movement and left/right
+  clicks stop until Chrome is restored. The diagnostic candidate adds aggregate
+  input-stage and sink-API counts without recording input values. Obtain App ZIPs
+  during the minimized failure and after restoration; the local controlled
+  Chrome trial did not reproduce the original machine's trigger.
 - [ ] **Return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -55,10 +68,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
-  implementation on `feat/ios-client`, outside the Android release candidate.
-  Apple SDK builds pass; signed-device acceptance still needs continued-session
-  admission/expiry, recording consent, background capture and hosted-site linkage.
+- [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
+  implementation on `feat/ios-client`; native development and publication stay
+  outside the current phase.
 - [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
   Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the

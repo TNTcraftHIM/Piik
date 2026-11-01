@@ -84,6 +84,9 @@ func TestCaptureStopHelper(t *testing.T) {
 	if mode == "" {
 		return
 	}
+	if mode == "startup-exit" {
+		os.Exit(3)
+	}
 	if mode == "startup-stage" {
 		_, _ = io.WriteString(os.Stderr, "result=window-capture-failed\nstage=mft-output-timeout\nhresult=0x80004005\ndetail=private window title C:\\private\\capture.exe\n")
 		os.Exit(2)
@@ -128,6 +131,13 @@ func TestCaptureFailureSurvivesProcessRetirementWithoutDebugLogging(t *testing.T
 		t.Fatal("failed process produced a ready frame")
 	}
 	err = stream.Close()
+	details := FailureDetails(errors.Join(errors.New("capture read ended"), err))
+	if details == nil || *details != (Failure{Stage: "mft-output-timeout", HRESULT: "0x80004005", ExitCode: 2}) {
+		t.Fatalf("process failure lost structured codes: %#v", details)
+	}
+	if FailureDetails(errors.New("stage=forged hresult=0x80004005")) != nil || FailureDetails(nil) != nil {
+		t.Fatal("failure metadata was inferred from an untyped error")
+	}
 	if err == nil || !strings.Contains(err.Error(), "mft-output-timeout") || !strings.Contains(err.Error(), "0x80004005") {
 		t.Fatalf("process retirement lost native failure stage: %v", err)
 	}
@@ -137,6 +147,17 @@ func TestCaptureFailureSurvivesProcessRetirementWithoutDebugLogging(t *testing.T
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) || exit.ExitCode() != 2 {
 		t.Fatalf("native failure lost its process exit cause: %v", err)
+	}
+	stream, err = startStreamWithEnvironment(t.Context(), executable,
+		[]string{"-test.run=^TestCaptureStopHelper$"}, []string{"PIIK_CAPTURE_STOP_FIXTURE=startup-exit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := stream.Read(); err == nil {
+		t.Fatal("uncoded process failure produced a frame")
+	}
+	if details = FailureDetails(stream.Close()); details == nil || *details != (Failure{ExitCode: 3}) {
+		t.Fatalf("uncoded process failure lost its exit status: %#v", details)
 	}
 }
 

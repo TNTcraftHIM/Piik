@@ -762,7 +762,7 @@ func (session *Session) startShare(
 	codec := host.Codec()
 	slog.Debug("piik-client", "event", "native-profile-applied", "requestId", envelope.ID,
 		"share", diagnostics.ID(request.ShareID), "profile", profile, "codec", codec, "audio", host.HasAudio())
-	go func() { defer cancel(); session.watchHost(host) }()
+	go func() { defer cancel(); session.watchHost(host, request.ReportCaptureFailure) }()
 	return shareStartedResponse{
 		responseEnvelope: response(envelope, "share-started"),
 		ShareID:          request.ShareID,
@@ -999,7 +999,7 @@ func (session *Session) stopViewer(shareID string) {
 	_ = viewer.Close()
 }
 
-func (session *Session) watchHost(host *nativehost.Session) {
+func (session *Session) watchHost(host *nativehost.Session, reportFailure bool) {
 	for {
 		select {
 		case <-host.RemoteInputChanges():
@@ -1017,12 +1017,16 @@ func (session *Session) watchHost(host *nativehost.Session) {
 			}
 			session.mu.Unlock()
 			if open {
-				session.emit(shareEndedEvent{
+				ended := shareEndedEvent{
 					Version: loopback.ProtocolVersion,
 					Type:    "share-ended",
 					ShareID: host.ShareID(),
 					Failed:  err != nil,
-				})
+				}
+				if reportFailure && err != nil {
+					ended.Failure = nativecapture.FailureDetails(err)
+				}
+				session.emit(ended)
 			}
 			return
 		}

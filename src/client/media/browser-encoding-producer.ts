@@ -57,7 +57,7 @@ export class BrowserEncodingProducer {
     this.budget = initialBudget;
     try {
       if (this.source.readyState !== "live") throw new Error("Browser encoding source ended");
-      const track = this.input = cloneSenderVideoTrack(this.source, () => this.fail());
+      const track = this.input = cloneSenderVideoTrack(this.source, () => this.fail(), { normalizeOrientation: true });
       track.enabled = !this.paused;
       this.source.addEventListener("ended", this.fail);
       track.addEventListener("ended", this.fail);
@@ -122,7 +122,7 @@ export class BrowserEncodingProducer {
       await receive.setRemoteDescription({ type: "offer", sdp: normalizeVideoOfferSdp(send.localDescription!.sdp) });
       await flushReceive();
       this.checkAlive();
-      await receive.setLocalDescription(this.seedLocalAnswer(await receive.createAnswer()));
+      await receive.setLocalDescription(this.prepareLocalAnswer(await receive.createAnswer()));
       this.checkAlive();
       await send.setRemoteDescription(receive.localDescription!);
       await flushSend();
@@ -222,13 +222,18 @@ export class BrowserEncodingProducer {
     return this.videoSender;
   }
 
-  private seedLocalAnswer(answer: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
+  private prepareLocalAnswer(answer: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
     const kbps = Math.floor(Math.min(this.budget, this.desiredProfile.maxBitrate) / 1_000);
-    if (!Number.isFinite(kbps) || kbps <= 0 || !answer.sdp) return answer;
+    if (!answer.sdp) return answer;
     const session = parse(answer.sdp);
     const media = session.media.find((section) => section.type === "video" && section.port !== 0);
-    const codec = media?.rtp.find((entry) => `video/${entry.codec}`.toLowerCase() === this.codec.mimeType.toLowerCase());
-    if (!media || !codec) return answer;
+    if (!media) return answer;
+    // Shared frames already have normalized pixels and also feed peers without
+    // CVO; do not leave orientation in a local-only RTP extension.
+    const cvo = media.ext?.some(extension => extension.uri === "urn:3gpp:video-orientation");
+    if (cvo) media.ext = media.ext?.filter(extension => extension.uri !== "urn:3gpp:video-orientation");
+    const codec = media.rtp.find((entry) => `video/${entry.codec}`.toLowerCase() === this.codec.mimeType.toLowerCase());
+    if (!Number.isFinite(kbps) || kbps <= 0 || !codec) return cvo ? { ...answer, sdp: write(session) } : answer;
     const format = media.fmtp.find((entry) => entry.payload === codec.payload);
     const parameters = (format?.config ?? "").split(";").map((part) => part.trim())
       .filter((part) => part && !/^x-google-start-bitrate\s*=/i.test(part));

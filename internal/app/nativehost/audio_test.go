@@ -59,6 +59,14 @@ func runAudioRecoveryCapture() {
 		}
 	}
 	audio := microphone || (len(os.Args) > 1 && os.Args[1] == "--capture-audio")
+	var deviceFailure string
+	if marker := os.Getenv("PIIK_VIDEO_DEVICE_FAILURE"); !audio && marker != "" {
+		// Only the first video process fails; a replacement uses the same fixture.
+		if owner, err := os.OpenFile(marker+".owner", os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600); err == nil {
+			_ = owner.Close()
+			deviceFailure = marker
+		}
+	}
 	startupGate := os.Getenv("PIIK_VIDEO_START_GATE")
 	if audio && !microphone && startupGate != "" {
 		if _, err := os.Stat(startupGate + ".active"); err != nil {
@@ -180,6 +188,17 @@ func runAudioRecoveryCapture() {
 			write(nativecapture.Frame{Kind: nativecapture.FramePCM, Timestamp: pts,
 				Duration: period, Data: make([]byte, nativeaudio.FrameBytes)})
 			continue
+		}
+		if deviceFailure != "" {
+			if _, err := os.Stat(deviceFailure); err == nil {
+				if os.Getenv("PIIK_VIDEO_DEVICE_CONTROL") == "1" {
+					_ = os.Stdin.Close()
+					write(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: pts, Duration: period})
+					time.Sleep(50 * time.Millisecond)
+				}
+				_, _ = io.WriteString(os.Stderr, "stage=capture-device-lost\nhresult=0x887a0005\n")
+				os.Exit(2)
+			}
 		}
 		write(nativecapture.Frame{Kind: nativecapture.FrameBegin, Timestamp: pts, Duration: period})
 		for layer := range 2 {

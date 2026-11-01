@@ -58,12 +58,15 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 		name        string
 		left, right vnet.NATType
 		skew        time.Duration
+		dropLate    bool
 	}{
-		{"sequential", sequentialPunchNAT, sequentialPunchNAT, 0},
-		{"sequential-delayed", sequentialPunchNAT, sequentialPunchNAT, 250 * time.Millisecond},
-		{"stable-sender", stable, sequentialPunchNAT, 250 * time.Millisecond},
-		{"stable-receiver", sequentialPunchNAT, stable, 250 * time.Millisecond},
-		{"both-stable", stable, stable, 0},
+		{"sequential", sequentialPunchNAT, sequentialPunchNAT, 0, false},
+		{"sequential-delayed", sequentialPunchNAT, sequentialPunchNAT, 250 * time.Millisecond, false},
+		{"sequential-late", sequentialPunchNAT, sequentialPunchNAT, 900 * time.Millisecond, false},
+		{"stable-sender", stable, sequentialPunchNAT, 250 * time.Millisecond, false},
+		{"stable-sender-late-loss", stable, sequentialPunchNAT, 900 * time.Millisecond, true},
+		{"stable-receiver", sequentialPunchNAT, stable, 250 * time.Millisecond, false},
+		{"both-stable", stable, stable, 0, false},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			network := newPunchLab(t, scenario.left, scenario.right)
@@ -81,15 +84,56 @@ func TestPunchAdoptsProvedTupleIntoMediaAndFeedback(t *testing.T) {
 			t.Cleanup(func() { _ = source.Close() })
 			left, leftPrediction := preparePunch(t, engines[0], source, "connection", strings.Repeat("42", 32))
 			right, rightPrediction := preparePunch(t, engines[1], nil, "connection", strings.Repeat("42", 32))
+			var observing, late atomic.Bool
+			var checks, replies [2]atomic.Int32
+			var lateChecks, dropped atomic.Int32
+			observing.Store(true)
+			network.wan.AddChunkFilter(func(chunk vnet.Chunk) bool {
+				if !observing.Load() || chunk.Network() != "udp" {
+					return true
+				}
+				message := &stun.Message{Raw: chunk.UserData()}
+				if message.Decode() != nil {
+					return true
+				}
+				for side := range 2 {
+					if chunk.SourceAddr().(*net.UDPAddr).IP.String() != network.public[side] ||
+						chunk.DestinationAddr().(*net.UDPAddr).IP.String() != network.public[1-side] {
+						continue
+					}
+					switch message.Type {
+					case stun.BindingRequest:
+						checks[side].Add(1)
+						if side == 0 && late.Load() && lateChecks.Add(1) == 1 && scenario.dropLate {
+							dropped.Add(1)
+							return false
+						}
+					case stun.BindingSuccess:
+						replies[side].Add(1)
+					}
+				}
+				return true
+			})
 			results := make(chan bool, 2)
 			go func() { results <- left.Run(*rightPrediction) }()
 			time.Sleep(scenario.skew)
+			late.Store(true)
 			go func() { results <- right.Run(*leftPrediction) }()
 			for range 2 {
 				if !<-results {
 					t.Fatal("authenticated preparation failed")
 				}
 			}
+			observing.Store(false)
+			for side := range 2 {
+				if checks[side].Load() > 64 || replies[side].Load() > 64 {
+					t.Fatalf("preparation packet budget exceeded: requests=%d replies=%d", checks[side].Load(), replies[side].Load())
+				}
+			}
+			if scenario.dropLate && (dropped.Load() != 1 || lateChecks.Load() < 2) {
+				t.Fatalf("missing first triggered-check loss/retry: dropped=%d late=%d", dropped.Load(), lateChecks.Load())
+			}
+			t.Logf("preparation requests=%d/%d replies=%d/%d late-checks=%d dropped=%d", checks[0].Load(), checks[1].Load(), replies[0].Load(), replies[1].Load(), lateChecks.Load(), dropped.Load())
 			// No fresh STUN mapping can replace the endpoint that proved this path.
 			socket := engines[1].TakePunchedSocket("connection", nil)
 			if socket == nil {

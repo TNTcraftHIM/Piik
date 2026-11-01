@@ -52,7 +52,7 @@ func TestSourceRegistrationRetainsCurrentClock(t *testing.T) {
 				t.Cleanup(input.Close)
 				check(input.BeginFrame(0, at))
 				for layer := 0; layer < 2; layer++ {
-					check(input.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, Duration: time.Second / 30}))
+					check(input.WriteFrame(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, Duration: time.Second / 30, Recovery: true}))
 				}
 				return input
 			}
@@ -104,7 +104,7 @@ func TestSourceRegistrationRetainsCurrentClock(t *testing.T) {
 					updated <- err
 					return
 				}
-				updated <- input.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: 33 * time.Millisecond, Duration: time.Second / 30})
+				updated <- input.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: 33 * time.Millisecond, Duration: time.Second / 30, Recovery: true})
 			}()
 			wait(held.live)
 			unblock()
