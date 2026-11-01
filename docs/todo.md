@@ -12,16 +12,15 @@ own behavior; research and Git/PRs own evidence and completed history.
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Integrate the selected released str0m transport through public APIs, preserving
-  source timing, A/V alignment, shared UDP ownership and bounded queues through
-  the existing room runtime. Replace the retired async-peer test fixtures and
-  complete the local-encoder/healthy-video recovery check before promotion.
-  Promote the
+  Keep the selected public-API str0m transport private while resolving the
+  inconsistent Original-quality restoration after a sustained bandwidth drop.
+  Preserve the existing SDK controller; the probe-clock experiment did not
+  demonstrate a recovery benefit. Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
-  after the held dependency decision. Keep the first version's accepted scope
-  and the prototype isolated. Before main integration, switch normal CI and Web
-  builds to the selected Rust runtime and shared WASM frontend, replacing the
-  Go validation and obsolete acceptance callers rather than retaining two backends.
+  after that acceptance and the held dependency decision. Complete the current
+  Android build/device check, then retire the unused Go backend and its
+  acceptance callers from this branch. Keep the first version's accepted scope
+  and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

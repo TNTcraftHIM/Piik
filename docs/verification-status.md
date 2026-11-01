@@ -117,11 +117,15 @@ existing ALR probe requests when actual sending becomes supply-limited.
 
 The selected str0m replacement passes real Browser-to-Native-to-Browser VP8
 constrain/restore with a separate healthy voice pair, shared A/V source-time
-mapping, warm-output handover and fixed/prepared UDP ownership. Its STUN and
-authenticated coturn checks use the same public socket adapter. These receipts
-retain their exact source identities in the
-[Native candidate index](../prototype/channel-native/README.md#rtc-dependency);
-the forwarded VP8 result is separate from local H264 encoder/sibling acceptance.
+mapping, warm-output handover and fixed/prepared UDP ownership. Normal room
+acceptance also carries stereo sound, confirmed history and file data through
+the Native operator. Its STUN and authenticated coturn checks use the same public
+socket adapter. Actual local WGC/H264 constrain/restore preserves the healthy
+video branch and receiver identities. Original quality returned after 5.1 seconds
+in a diagnostic stock-SDK run; another stock run did not restore it within
+20 seconds. This recovery inconsistency remains in [TODO](./todo.md).
+Receipts retain their exact source identities in the
+[Native candidate index](../prototype/channel-native/README.md#rtc-dependency).
 
 ## Interpretation
 

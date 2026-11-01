@@ -57,8 +57,9 @@ The isolated Android shell starts the same Rust App through JNI and opens the
 system Browser, using Android certificate trust for site connections. Its system
 picker supplies screen capture and optional playback sound to the same Native
 producer; permission and first-frame waits retain the page's capture lease.
-The shared distribution entry points package the Rust App/Server and Browser
-bundle. Android packages ARM64/x64 JNI and the system-browser shell.
+Normal Web development, checks and distribution use the shared Rust/WASM
+frontend and Rust App/Server. Android packages ARM64/x64 JNI and the
+system-browser shell.
 [TODO](./todo.md) owns remaining Native media/input and platform work.
 Both prototype surfaces share URL bookmarks; automatic address discovery is not planned.
 The functional domain and room editors share preset and bounded raster icons
