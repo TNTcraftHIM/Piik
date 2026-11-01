@@ -8,12 +8,34 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **3.0 Native platforms and integration.** Complete capture/input on the
-  remaining platforms and packaging over the shared UI and Native participant,
+  remaining platforms and Linux/macOS App packaging, plus refreshed static Linux
+  Server acceptance over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Finish platform acceptance of the integrated str0m transport and incoming-source
-  adapter, then verify App and Server packages. Keep the SDK's transport controller,
-  the first version's accepted scope and the prototype isolated.
+  Finish the packaged Windows/Android main-flow acceptance at the internal-test
+  checkpoint. Keep the SDK's transport controller, the first version's accepted
+  scope and the prototype isolated.
+- [ ] **3.0 controlled network acceptance.** Connect the current Rust endpoints
+  to the existing [network laboratory](./research/network-lab.md). Exercise real
+  calibrated kernel NAT, coordinated preparation and failure/recovery through
+  current room and transport owners, then the Browser/Native endpoint combinations.
+  Retained Go/Pion process results do not verify the new transport.
+- [ ] **3.0 portable domain and room backups.** Implement export/import under the
+  [data ownership and recovery model](./research/channel-storage-and-identity.md#persistence-and-recovery):
+  domain authority and directory stay separate from each room's policy, confirmed
+  history, retry identities and locally retained content. Restore at the actual
+  storage owner, without restoring live sessions or borrowing another owner's
+  credentials. On a fresh host binding, reconcile the authoritative reading
+  window so restoring older history does not retain newer cached messages.
+- [ ] **3.0 retained attachment copies.** Add the accepted participant-owned,
+  bounded [content store](./research/channel-storage-and-identity.md#retained-files-and-images)
+  over OPFS/local files and the existing attachment source index. Keep verified
+  copies readable across runtime restart; withdraw availability on reclamation.
+  Current session-held sources and temporary downloads do not provide this store.
+- [ ] **3.0 media configuration.** Connect room-voice bitrate and source-audio
+  profile/output gain to the current producers and shared controls. Reuse the
+  numeric media contracts and existing settings owners; preserve separate voice,
+  source sound and local listening responsibilities.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
