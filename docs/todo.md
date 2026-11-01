@@ -7,6 +7,11 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Browser sharing falls to low source FPS during motion.** Trace raw
+  capture, sender-owned track input and encoding on Windows Chrome with mixed
+  direct/SFU delivery. The observed source fell to roughly 2 fps during video
+  or game playback; reproduce with real window/display capture. Keep the
+  separate SFU packet-loss stage distinct from source-frame production.
 - [ ] **Windows App sharing ends unexpectedly.** Identify WGC/source, device or
   encoder termination in the supplied release feedback using the native stage
   and HRESULT; implement recovery for the identified recoverable cause.
