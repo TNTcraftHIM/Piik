@@ -28,7 +28,7 @@ interface MicrophoneRequest {
   promise?: Promise<MicrophoneInput>;
 }
 
-interface ScreenShare { id: string; profile: QualityProfile; selection?: object }
+interface ScreenShare { id: string; profile: QualityProfile; selection?: object; native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget } }
 
 function stored(key: string, value?: string): string | null {
   try {
@@ -913,13 +913,15 @@ export class ChannelSession {
   nativePreview = (target: NativeCaptureTarget, signal?: AbortSignal): Promise<string | null> =>
     this.app?.preview(target, signal) ?? Promise.resolve(null);
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
-  startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false): Promise<void> => this.action(`screen:${roomId}`, async () => {
+  nativeCaptureSelection = (roomId: string) => this.screenShares.get(roomId)?.native;
+  startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, current } = this.selectScreen(roomId);
+    share.native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
     let app: ChannelApp | undefined;
     try {
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile);
+      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, audio ? share.native.excludeAudio : undefined);
       this.patch({});
       const prepared = await preparing;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");

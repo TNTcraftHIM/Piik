@@ -15,11 +15,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
   checkpoint. Keep the SDK's transport controller, the first version's accepted
   scope and the prototype isolated.
-- [ ] **3.0 controlled network acceptance.** Connect the current Rust endpoints
-  to the existing [network laboratory](./research/network-lab.md) for the
-  Browser/Native decoded-media combinations. Exercise calibrated NAT and
-  failure/recovery through current
-  room and transport owners.
+- [ ] **3.0 controlled network acceptance.** Complete the remaining
+  Browser/Native decoded-media combinations and prepared media forwarding in the
+  existing [network laboratory](./research/network-lab.md), exercising calibrated
+  NAT and failure/recovery through current room and transport owners.
 - [ ] **3.0 portable domain and room backups.** Implement export/import under the
   [data ownership and recovery model](./research/channel-storage-and-identity.md#persistence-and-recovery):
   domain authority and directory stay separate from each room's policy, confirmed
@@ -35,9 +34,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 - [ ] **3.0 media configuration.** Connect room-voice bitrate and source-audio
   profile/output gain to the current producers and shared controls. Reuse the
   numeric media contracts and existing settings owners; preserve separate voice,
-  source sound and local listening responsibilities. Restore the shared picker's
-  process-audio exclusion through the Native capability and audio lease, retaining
-  video when exclusion fails and silencing audio when its excluded process exits.
+  source sound and local listening responsibilities.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

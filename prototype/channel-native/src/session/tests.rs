@@ -70,7 +70,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 // the real Session's pending room-authority acknowledgement.
                 session.pending_captures.insert(request_id.clone(), PendingCapture::Commit(CommitCapture {
                     scope: CaptureScope { publication_id, room_id: id.into(), binding_id: binding },
-                    capture_id: Uuid::new_v4(), replacing: false, result,
+                    capture_id: Uuid::new_v4(), replacing: false, retaining: false, result,
                 }));
                 requests.push((
                     publication_id,

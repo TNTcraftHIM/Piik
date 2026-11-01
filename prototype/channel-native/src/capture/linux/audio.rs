@@ -13,6 +13,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 pub fn audio_capabilities() -> AudioCapabilities {
     AudioCapabilities {
         process_audio: false,
+        process_audio_exclusion: false,
         system_audio: gst::init().is_ok() && gst::ElementFactory::find("pulsesrc").is_some(),
     }
 }

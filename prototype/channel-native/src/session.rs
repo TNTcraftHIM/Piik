@@ -281,6 +281,7 @@ pub struct PrepareCapture {
     pub target: Target,
     pub settings: Settings,
     pub audio: bool,
+    pub exclude_audio: Option<Target>,
     pub replaces: Option<Uuid>,
     pub result: oneshot::Sender<Result<CaptureLease, String>>,
 }
@@ -289,6 +290,7 @@ pub struct CommitCapture {
     pub scope: CaptureScope,
     pub capture_id: Uuid,
     pub replacing: bool,
+    pub retaining: bool,
     pub result: oneshot::Sender<Result<CaptureInput, String>>,
 }
 pub struct TransferSource {
@@ -907,6 +909,7 @@ impl Session {
                 request.target,
                 request.settings,
                 request.audio,
+                request.exclude_audio,
             ),
             &mut live.commands,
             &live.pairs,
@@ -951,6 +954,9 @@ impl Session {
         if !current {
             let _ = request.result.send(Err("capture_unavailable".into()));
             return Ok(());
+        }
+        if request.retaining {
+            return self.finish_capture(request, socket).await;
         }
         // The room acknowledgement orders the local commit after authority, even
         // when Browser transfer and App control arrive over different sockets.

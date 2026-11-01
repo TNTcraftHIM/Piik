@@ -626,6 +626,8 @@ enum Operation {
         settings: Settings,
         #[serde(default)]
         audio: bool,
+        #[serde(default)]
+        exclude_audio: Option<Target>,
     },
     CommitCapture {
         publication_id: Uuid,
@@ -731,12 +733,12 @@ async fn connection(
                         }
                         continue;
                     }
-                    Some((publication_id, capture_id, changed, state)) = input_states.next(), if !input_states.is_empty() => {
+                    Some((publication_id, producer_id, changed, state)) = input_states.next(), if !input_states.is_empty() => {
                         let state: Option<SourceView> = state;
-                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.id == capture_id)) {
+                        if let Some(state) = state.filter(|_| captures.get(&publication_id).and_then(Capture::lease).is_some_and(|lease| lease.producer_id() == producer_id)) {
                             let event = json!({"type":"input_state","publicationId":publication_id,"state":state});
                             timeout(IO_TIMEOUT, writer.send(Message::Text(event.to_string().into()))).await??;
-                            input_states.push(next_input_state(publication_id, capture_id, changed));
+                            input_states.push(next_input_state(publication_id, producer_id, changed));
                         }
                         continue;
                     }
@@ -774,15 +776,17 @@ async fn connection(
                                     Ok(value)
                                 }
                                 Ok(CaptureResult::Committed(mut lease)) => {
+                                    let retained = lease.retains_video();
+                                    let capture = captures.entry(publication_id).or_default();
+                                    if let Some(previous) = capture.active.as_mut() { lease.adopt_previous(previous); }
                                     let capture_id = lease.id;
                                     if let Some(error) = lease.audio_error.take() {
                                         audio_errors.push(async move { (publication_id, capture_id, error.await.ok()) });
                                     }
                                     if let Some(state) = &lease.input_state {
                                         initial_input = Some(state.borrow().clone());
-                                        input_states.push(next_input_state(publication_id, capture_id, state.clone()));
+                                        if !retained { input_states.push(next_input_state(publication_id, lease.producer_id(), state.clone())); }
                                     }
-                                    let capture = captures.entry(publication_id).or_default();
                                     capture.pending = None;
                                     capture.active = Some(lease);
                                     Ok(Value::Null)
@@ -883,13 +887,15 @@ async fn connection(
                                 target,
                                 settings,
                                 audio,
+                                exclude_audio,
                             } => match &host {
                                 Some(commands) => {
                                     let capture = captures.entry(publication_id).or_default();
                                     if capture.pending.is_some() {
                                         Err(anyhow!("capture_pending"))
                                     } else {
-                                        let replaces = capture.lease().map(|lease| lease.id);
+                                        let replaces =
+                                            capture.lease().map(CaptureLease::producer_id);
                                         let (cancel, registration) = AbortHandle::new_pair();
                                         capture.pending = Some(PendingCapture {
                                             request: cancel.clone(),
@@ -906,6 +912,7 @@ async fn connection(
                                                         target,
                                                         settings,
                                                         audio,
+                                                        exclude_audio,
                                                         replaces,
                                                     ),
                                                     registration,
@@ -982,6 +989,7 @@ async fn connection(
                                 if let (Some(commands), Some(lease)) = (&host, lease) {
                                     let commands = commands.clone();
                                     let scope = lease.scope.clone();
+                                    let capture_id = lease.producer_id();
                                     input_policies.push(async move {
                                         let result = transfer_source(&commands, scope, capture_id, to_session_id).await;
                                         match result {
@@ -1100,7 +1108,7 @@ async fn connection(
 }
 async fn next_input_state(
     publication: Uuid,
-    capture: Uuid,
+    producer: Uuid,
     mut changed: watch::Receiver<SourceView>,
 ) -> (Uuid, Uuid, watch::Receiver<SourceView>, Option<SourceView>) {
     let state = changed
@@ -1108,7 +1116,7 @@ async fn next_input_state(
         .await
         .ok()
         .map(|_| changed.borrow_and_update().clone());
-    (publication, capture, changed, state)
+    (publication, producer, changed, state)
 }
 async fn open(commands: &mpsc::Sender<HostCommand>, policy: &str) -> Result<Value> {
     let policy: RoomState = serde_json::from_str(policy)?;
@@ -1131,7 +1139,7 @@ async fn capture_targets() -> Result<Value> {
         tokio::task::spawn_blocking(|| {
             let sources = piik_channel_native::capture::targets()?;
             let audio = piik_channel_native::capture::audio_capabilities();
-            let mut result = json!({"sources": sources, "processAudio": audio.process_audio, "systemAudio": audio.system_audio});
+            let mut result = json!({"sources": sources, "processAudio": audio.process_audio, "processAudioExclusion": audio.process_audio_exclusion, "systemAudio": audio.system_audio});
             if let Some(activation) = piik_channel_native::capture::activation_url()? {
                 result["activationURL"] = json!(activation);
             }
@@ -1140,7 +1148,9 @@ async fn capture_targets() -> Result<Value> {
     }
     #[cfg(not(feature = "capture"))]
     {
-        Ok(json!({"sources": [], "processAudio": false, "systemAudio": false}))
+        Ok(
+            json!({"sources": [], "processAudio": false, "processAudioExclusion": false, "systemAudio": false}),
+        )
     }
 }
 
@@ -1151,6 +1161,7 @@ async fn prepare_capture(
     target: Target,
     settings: Settings,
     audio: bool,
+    exclude_audio: Option<Target>,
     replaces: Option<Uuid>,
 ) -> Result<CaptureLease> {
     if !cfg!(feature = "capture") {
@@ -1165,6 +1176,7 @@ async fn prepare_capture(
             target,
             settings,
             audio,
+            exclude_audio,
             replaces,
             result,
         }))
@@ -1195,6 +1207,7 @@ async fn commit_capture(
             scope: lease.scope.clone(),
             capture_id: lease.id,
             replacing,
+            retaining: lease.retains_video(),
             result,
         }))
         .await
@@ -1241,7 +1254,8 @@ mod tests {
             "publicationId": Uuid::new_v4(),
             "target": {"kind": "display", "sourceId": "1", "title": "Test display"},
             "settings": {"width": 1280, "height": 720, "fps": 24, "bitrate": 2_500_000},
-            "audio": true
+            "audio": true,
+            "excludeAudio": {"kind":"window","sourceId":"2","title":"Excluded app","pid":42,"creationTime":"1234"}
         });
         let request: Request = serde_json::from_value(wire.clone()).unwrap();
         let Operation::PrepareCapture {
@@ -1250,6 +1264,7 @@ mod tests {
             target,
             settings,
             audio,
+            exclude_audio,
         } = request.operation
         else {
             panic!("expected capture request");
@@ -1263,6 +1278,7 @@ mod tests {
             target.clone(),
             settings,
             audio,
+            exclude_audio,
             None,
         );
         let host = async {
@@ -1272,6 +1288,10 @@ mod tests {
             assert_eq!(request.publication_id, publication);
             assert_eq!(request.room_id, "room");
             assert!(request.audio);
+            assert_eq!(
+                serde_json::to_value(request.exclude_audio).unwrap(),
+                wire["excludeAudio"]
+            );
             assert_eq!(
                 serde_json::to_value(request.settings).unwrap(),
                 wire["settings"]
@@ -1293,6 +1313,7 @@ mod tests {
             target,
             invalid,
             false,
+            None,
             None,
         )
         .await

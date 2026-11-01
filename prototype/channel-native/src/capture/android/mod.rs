@@ -24,6 +24,7 @@ pub fn targets() -> Result<Vec<Target>> {
 pub fn audio_capabilities() -> AudioCapabilities {
     AudioCapabilities {
         process_audio: false,
+        process_audio_exclusion: false,
         system_audio: true,
     }
 }

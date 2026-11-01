@@ -14,6 +14,7 @@ use tokio::sync::{mpsc, oneshot, Notify};
 pub fn audio_capabilities() -> AudioCapabilities {
     AudioCapabilities {
         process_audio: true,
+        process_audio_exclusion: false,
         system_audio: true,
     }
 }

@@ -63,11 +63,18 @@ pub struct CaptureLease {
     pub session_id: Uuid,
     pub scope: CaptureScope,
     ready: oneshot::Receiver<Result<()>>,
+    required_audio: Option<oneshot::Receiver<Result<()>>>,
     pub audio_error: Option<oneshot::Receiver<String>>,
     pub remote: Option<crate::input::Source>,
     pub input_state: Option<watch::Receiver<crate::input::SourceView>>,
     #[cfg(feature = "capture")]
-    control: crate::media::local::Control,
+    control: Option<CaptureLeaseControl>,
+    producer: Uuid,
+}
+#[cfg(feature = "capture")]
+enum CaptureLeaseControl {
+    Capture(crate::media::local::Control),
+    Audio(crate::media::local::AudioLeaseControl),
 }
 #[derive(Clone)]
 pub struct CaptureScope {
@@ -88,8 +95,12 @@ struct Capture {
     producer: crate::media::local::Producer,
     selected: bool,
     prepared: Vec<SourceReady>,
+    pending_audio: Option<Uuid>,
 }
 impl CaptureLease {
+    pub fn producer_id(&self) -> Uuid {
+        self.producer
+    }
     pub fn set_input_policy(
         &self,
         mode: crate::input::Mode,
@@ -98,7 +109,13 @@ impl CaptureLease {
     ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
         let source = self.remote.as_ref().context("input_source_unavailable")?;
         #[cfg(all(feature = "capture", target_os = "linux"))]
-        let (control, selected) = (self.control.clone(), source.clone());
+        let (control, selected) = (
+            match self.control.as_ref() {
+                Some(CaptureLeaseControl::Capture(control)) => control.clone(),
+                _ => anyhow::bail!("input_source_unavailable"),
+            },
+            source.clone(),
+        );
         source.configure(mode, password, simultaneous, move |request| async move {
             #[cfg(all(feature = "capture", target_os = "linux"))]
             return control.authorize(selected, request).await;
@@ -114,12 +131,22 @@ impl CaptureLease {
     pub async fn ready(&mut self) -> Result<()> {
         (&mut self.ready)
             .await
-            .context("capture stopped before its first frame")?
+            .context("capture stopped before its first frame")??;
+        if let Some(audio) = self.required_audio.take() {
+            audio
+                .await
+                .context("excluded audio stopped before startup")??;
+        }
+        Ok(())
     }
     pub fn is_stopped(&self) -> bool {
         #[cfg(feature = "capture")]
         {
-            self.control.is_stopped()
+            match self.control.as_ref() {
+                Some(CaptureLeaseControl::Capture(control)) => control.is_stopped(),
+                Some(CaptureLeaseControl::Audio(control)) => control.is_stopped(),
+                None => true,
+            }
         }
         #[cfg(not(feature = "capture"))]
         {
@@ -131,7 +158,33 @@ impl CaptureLease {
             source.close();
         }
         #[cfg(feature = "capture")]
-        self.control.stop();
+        match self.control.as_ref() {
+            Some(CaptureLeaseControl::Capture(control)) => control.stop(),
+            Some(CaptureLeaseControl::Audio(control)) => control.stop(),
+            None => {}
+        }
+    }
+    /// Transfer the retained producer's lifetime; dropping the old page lease
+    /// must not stop its video or revoke its unchanged input source.
+    pub fn adopt_previous(&mut self, previous: &mut Self) {
+        if self.producer == previous.producer {
+            #[cfg(feature = "capture")]
+            {
+                self.control = previous.control.take();
+            }
+            self.remote = previous.remote.take();
+            self.input_state = previous.input_state.take();
+        }
+    }
+    pub fn retains_video(&self) -> bool {
+        #[cfg(feature = "capture")]
+        {
+            matches!(self.control, Some(CaptureLeaseControl::Audio(_)))
+        }
+        #[cfg(not(feature = "capture"))]
+        {
+            false
+        }
     }
 }
 impl Drop for CaptureLease {
@@ -157,6 +210,7 @@ enum Input {
         crate::capture::Target,
         crate::capture::Settings,
         bool,
+        Option<crate::capture::Target>,
         oneshot::Sender<Result<CaptureLease>>,
     ),
     CommitCapture(Uuid, oneshot::Sender<Result<CaptureInput>>),
@@ -493,10 +547,20 @@ impl NativePeers {
                             target,
                             settings,
                             audio,
+                            exclude_audio,
                             done,
                         )) => {
-                            let _ = done
-                                .send(d.prepare_capture(scope, replaces, target, settings, audio));
+                            let _ = done.send(
+                                d.prepare_capture(
+                                    scope,
+                                    replaces,
+                                    target,
+                                    settings,
+                                    audio,
+                                    exclude_audio,
+                                )
+                                .await,
+                            );
                         }
                         Turn::Input(Input::CommitCapture(id, done)) => {
                             let _ = done.send(d.commit_capture(id).await);
@@ -558,6 +622,8 @@ impl NativePeers {
                         }
                     }
                     d.reconcile_encodings().await;
+                    #[cfg(feature = "capture")]
+                    d.cancelled_audio().await;
                     if refresh_keyframes {
                         d.request_pending_keyframes();
                     }
@@ -577,8 +643,8 @@ impl NativePeers {
                 for capture in d.captures.values() {
                     capture.producer.control.stop();
                 }
-                for (_, capture) in d.captures.drain() {
-                    let _ = capture.producer.task.await;
+                for (_, mut capture) in d.captures.drain() {
+                    capture.producer.close().await;
                 }
             }
             for (_, pair) in d.pairs.drain() {
@@ -685,20 +751,27 @@ impl NativePeers {
         target: crate::capture::Target,
         settings: crate::capture::Settings,
         audio: bool,
+        exclude_audio: Option<crate::capture::Target>,
     ) -> Result<CaptureLease> {
         #[cfg(feature = "capture")]
         {
             let (tx, rx) = oneshot::channel();
             self.input
                 .send(Input::PrepareCapture(
-                    scope, replaces, target, settings, audio, tx,
+                    scope,
+                    replaces,
+                    target,
+                    settings,
+                    audio,
+                    exclude_audio,
+                    tx,
                 ))
                 .await?;
             rx.await?
         }
         #[cfg(not(feature = "capture"))]
         {
-            let _ = (scope, replaces, target, settings, audio);
+            let _ = (scope, replaces, target, settings, audio, exclude_audio);
             anyhow::bail!("capture_unavailable")
         }
     }
@@ -857,15 +930,17 @@ impl Driver {
     }
 
     #[cfg(feature = "capture")]
-    fn prepare_capture(
+    async fn prepare_capture(
         &mut self,
         scope: CaptureScope,
         replaces: Option<Uuid>,
         target: crate::capture::Target,
         settings: crate::capture::Settings,
         audio: bool,
+        exclude_audio: Option<crate::capture::Target>,
     ) -> Result<CaptureLease> {
         let publication = scope.publication_id;
+        self.cancelled_audio().await;
         anyhow::ensure!(
             !self
                 .captures
@@ -886,19 +961,90 @@ impl Driver {
             .map(|(id, _)| *id);
         anyhow::ensure!(existing == replaces, "capture_not_owned");
         anyhow::ensure!(
+            exclude_audio
+                .as_ref()
+                .is_none_or(|excluded| cfg!(target_os = "windows")
+                    && audio
+                    && target.kind == crate::capture::TargetKind::Display
+                    && excluded.kind == crate::capture::TargetKind::Window),
+            "audio exclusion unavailable"
+        );
+        anyhow::ensure!(
             !self
                 .captures
                 .values()
                 .any(|c| c.scope.publication_id == publication
-                    && !c.selected
+                    && (!c.selected || c.pending_audio.is_some())
                     && !c.producer.control.is_stopped()),
             "capture_pending"
         );
-        let (producer, ready, audio_error) = crate::media::local::Producer::start(
+        #[cfg(target_os = "windows")]
+        if let Some(video) = self
+            .captures
+            .iter()
+            .find(|(_, capture)| {
+                capture.scope.publication_id == publication
+                    && capture.selected
+                    && capture.target.same_source(&target)
+                    && capture.producer.settings == settings
+            })
+            .map(|(id, _)| *id)
+        {
+            let old = self.captures[&video].producer.audio;
+            if let Some(old) = old {
+                self.sources.remove(&old);
+                self.relay.remove(old);
+                self.refresh_media(false).await?;
+            }
+            let capture = self.captures.get_mut(&video).unwrap();
+            let (control, ready, audio_error) = capture
+                .producer
+                .prepare_audio(
+                    publication,
+                    target,
+                    audio,
+                    exclude_audio,
+                    self.ready_sources.clone(),
+                    self.events.clone(),
+                    self.relay.clone(),
+                    self.cancel.clone(),
+                )
+                .await?;
+            let id = Uuid::new_v4();
+            capture.pending_audio = Some(id);
+            return Ok(CaptureLease {
+                id,
+                session_id: self.session,
+                scope,
+                ready,
+                required_audio: None,
+                audio_error,
+                remote: None,
+                input_state: None,
+                producer: video,
+                control: Some(CaptureLeaseControl::Audio(control)),
+            });
+        }
+        if exclude_audio.is_some() {
+            for capture in self
+                .captures
+                .values_mut()
+                .filter(|capture| capture.selected && capture.scope.publication_id == publication)
+            {
+                if let Some(audio) = capture.producer.audio {
+                    self.sources.remove(&audio);
+                    self.relay.remove(audio);
+                }
+                capture.producer.stop_audio().await;
+            }
+            self.refresh_media(false).await?;
+        }
+        let (producer, ready, audio_error, required_audio) = crate::media::local::Producer::start(
             publication,
             target.clone(),
             settings,
             audio,
+            exclude_audio,
             self.ready_sources.clone(),
             self.events.clone(),
             self.relay.clone(),
@@ -910,10 +1056,12 @@ impl Driver {
             session_id: self.session,
             scope: scope.clone(),
             ready,
+            required_audio,
             audio_error,
             remote: None,
             input_state: None,
-            control: producer.control.clone(),
+            control: Some(CaptureLeaseControl::Capture(producer.control.clone())),
+            producer: id,
         };
         self.captures.insert(
             id,
@@ -923,6 +1071,7 @@ impl Driver {
                 producer,
                 selected: false,
                 prepared: Vec::new(),
+                pending_audio: None,
             },
         );
         Ok(lease)
@@ -930,10 +1079,11 @@ impl Driver {
 
     fn capture_current(&self, id: Uuid, selected: bool) -> bool {
         #[cfg(feature = "capture")]
-        return self
-            .captures
-            .get(&id)
-            .is_some_and(|c| c.selected == selected && !c.producer.control.is_stopped());
+        return self.captures.iter().any(|(video, c)| {
+            !c.producer.control.is_stopped()
+                && ((*video == id && c.selected == selected)
+                    || (!selected && c.pending_audio == Some(id) && !c.producer.audio_is_stopped()))
+        });
         #[cfg(not(feature = "capture"))]
         {
             let _ = (id, selected);
@@ -950,6 +1100,23 @@ impl Driver {
         #[cfg(feature = "capture")]
         {
             anyhow::ensure!(self.capture_current(id, false), "capture_unavailable");
+            if let Some(video) = self
+                .captures
+                .iter()
+                .find(|(_, capture)| capture.pending_audio == Some(id))
+                .map(|(video, _)| *video)
+            {
+                let capture = self.captures.get_mut(&video).unwrap();
+                capture.pending_audio = None;
+                let prepared = std::mem::take(&mut capture.prepared);
+                for source in prepared {
+                    self.source_ready(source).await?;
+                }
+                return Ok(CaptureInput {
+                    remote: None,
+                    state: None,
+                });
+            }
             let capture = &self.captures[&id];
             let publication = capture.scope.publication_id;
             anyhow::ensure!(
@@ -1002,20 +1169,18 @@ impl Driver {
 
     #[cfg(feature = "capture")]
     async fn capture_ended(&mut self, publication: Uuid, source_id: Uuid) -> Result<()> {
-        let Some(capture) = self.captures.remove(&source_id) else {
+        let Some(capture) = self.captures.get_mut(&source_id) else {
             return Ok(());
         };
-        let producer = capture.producer;
         if capture.selected {
             self.inputs.end_source(publication);
         }
-        let error = match producer.task.await {
-            Ok(error) => error,
-            Err(error) => Some(error.to_string()),
-        };
+        let audio = capture.producer.audio;
+        let error = capture.producer.close().await;
+        self.captures.remove(&source_id);
         self.sources.remove(&source_id);
         self.relay.remove(source_id);
-        if let Some(audio) = producer.audio {
+        if let Some(audio) = audio {
             self.sources.remove(&audio);
             self.relay.remove(audio);
         }
@@ -1052,6 +1217,32 @@ impl Driver {
             self.refresh_media(false).await?;
         }
         Ok(())
+    }
+
+    #[cfg(feature = "capture")]
+    async fn cancelled_audio(&mut self) {
+        let cancelled: Vec<_> = self
+            .captures
+            .iter()
+            .filter(|(_, capture)| capture.producer.audio_is_stopped())
+            .map(|(video, _)| *video)
+            .collect();
+        let changed = !cancelled.is_empty();
+        for video in cancelled {
+            let capture = self.captures.get_mut(&video).unwrap();
+            capture.pending_audio = None;
+            if let Some(audio) = capture.producer.audio {
+                capture.prepared.retain(|ready| ready.source.id != audio);
+                self.sources.remove(&audio);
+                self.relay.remove(audio);
+            }
+            capture.producer.stop_audio().await;
+        }
+        if changed {
+            if let Err(error) = self.refresh_media(false).await {
+                eprintln!("Native retired audio unavailable: {error}");
+            }
+        }
     }
 
     async fn send(&self, command: Command) {
@@ -2366,7 +2557,15 @@ impl Driver {
             if capture.producer.control.is_stopped() {
                 return Ok(());
             }
-            if !capture.selected {
+            if capture.producer.audio == Some(ready.source.id)
+                && capture.producer.audio_is_stopped()
+            {
+                return Ok(());
+            }
+            if !capture.selected
+                || (capture.pending_audio.is_some()
+                    && capture.producer.audio == Some(ready.source.id))
+            {
                 capture.prepared.push(ready);
                 return Ok(());
             }

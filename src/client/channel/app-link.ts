@@ -10,7 +10,7 @@ const identitySchema = z.object({ service: z.literal("piik-channel-app"), protoc
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
 type AppHealth = z.infer<typeof healthSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
-  processAudio: z.boolean(), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
+  processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
 const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid() }).strict();
@@ -63,6 +63,7 @@ export class ChannelApp {
   private captures = new Map<string, string>();
   private prepared = new Set<string>();
   private activationURL?: string;
+  private processAudioExclusion = false;
   private previewTail: Promise<unknown> = Promise.resolve();
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
@@ -135,6 +136,7 @@ export class ChannelApp {
     await this.ready;
     const sources = captureSourcesSchema.parse(await this.request({ type: "targets" }));
     this.activationURL = sources.activationURL;
+    this.processAudioExclusion = sources.processAudioExclusion;
     return sources;
   }
 
@@ -156,13 +158,14 @@ export class ChannelApp {
     return preview;
   }
 
-  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile): Promise<PreparedNativeCapture> {
+  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, excludeAudio?: NativeCaptureTarget): Promise<PreparedNativeCapture> {
     const settings = { width: profile.resolution.width, height: profile.resolution.height,
       fps: profile.maxFramerate, bitrate: profile.maxBitrate };
     if (!this.connected) throw new Error("app_disconnected");
+    if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
     this.prepared.add(publicationId);
     try {
-      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings });
+      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, ...(excludeAudio ? { excludeAudio } : {}) });
       activateNativePicker(this.activationURL);
       const capture = preparedCaptureSchema.parse(await pending);
       if (!this.prepared.has(publicationId)) throw new DOMException("Capture cancelled", "AbortError");

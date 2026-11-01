@@ -106,6 +106,7 @@ impl Drop for Runtime {
 #[serde(rename_all = "camelCase")]
 pub struct AudioCapabilities {
     pub process_audio: bool,
+    pub process_audio_exclusion: bool,
     pub system_audio: bool,
 }
 
@@ -180,7 +181,7 @@ impl CaptureClock {
     }
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum TargetKind {
     Window,
@@ -200,11 +201,19 @@ pub struct Target {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub creation_time: Option<String>,
 }
+impl Target {
+    pub(crate) fn same_source(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.source_id == other.source_id
+            && self.pid == other.pid
+            && self.creation_time == other.creation_time
+    }
+}
 fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Settings {
     pub width: u32,
     pub height: u32,

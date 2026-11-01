@@ -28,6 +28,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const cameraSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
   const busy = channel.pending.has(`screen:${roomId}`);
   const captureRequest = channel.nativeCaptureRequest(roomId);
+  const selectedNative = channel.nativeCaptureSelection(roomId);
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
   const sharing = channel.state?.publications.some(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
@@ -93,9 +94,10 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
       {open && <CaptureSourcePicker nativeSources={sources} browserSupported={browserSupported} cameraSupported={cameraSupported}
         loadCameras={channel.cameraPreviews}
         initialTab="window" selectionDisabled={disabled || busy}
+        initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio}
         onBrowser={() => start(() => startScreen(roomId))}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
-        onNative={(target, audio) => start(() => startNativeScreen(roomId, target, audio))}
+        onNative={(target, audio, _border, excludeAudio) => start(() => startNativeScreen(roomId, target, audio, excludeAudio))}
         onPreview={channel.nativePreview} onRefresh={refresh} onCancel={() => {
           close(); trigger.current?.querySelector("button")?.focus({ preventScroll: true });
         }} />}

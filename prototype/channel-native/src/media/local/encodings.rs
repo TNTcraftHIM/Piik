@@ -34,7 +34,6 @@ pub(super) async fn run(
     source_id: Uuid,
     time: SourceTime,
     control: Control,
-    audio: Option<JoinHandle<()>>,
     ready: oneshot::Sender<Result<()>>,
     ready_sources: mpsc::Sender<SourceReady>,
     events: mpsc::Sender<Event>,
@@ -125,11 +124,6 @@ pub(super) async fn run(
         .await
         .map_err(anyhow::Error::from)
         .and_then(|result| result);
-    if let Some(audio) = audio {
-        if let Err(error) = audio.await {
-            eprintln!("Native audio task failed: {error}");
-        }
-    }
     let result = result.and(joined);
     let error = result.as_ref().err().map(|error| format!("{error:#}"));
     if let Some(ready) = ready {

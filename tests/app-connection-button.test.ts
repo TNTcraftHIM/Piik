@@ -47,7 +47,7 @@ describe("shared App connection entry", () => {
       ...(entry.camera ? { getUserMedia: vi.fn() } : {}),
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
     } });
-    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined } as unknown as ChannelController;
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
     const button = html.match(/<button\b[^>]*>/)![0];
     expect(button.includes("disabled")).toBe(!entry.available);
@@ -57,7 +57,7 @@ describe("shared App connection entry", () => {
   });
   it("reuses the sharing entry as Switch source only for this page's active room share", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
-    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined,
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
       ownedScreens: new Set(["mine"]), state: { publications: [{ id: "mine", roomId: "room" }] },
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));

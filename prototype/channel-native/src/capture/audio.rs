@@ -44,6 +44,18 @@ pub struct AudioCapture {
 }
 impl AudioCapture {
     pub fn start(target: Target) -> Result<Self> {
+        Self::start_with_exclusion(target, None)
+    }
+    pub(crate) fn start_with_exclusion(target: Target, exclude: Option<Target>) -> Result<Self> {
+        ensure!(
+            exclude
+                .as_ref()
+                .is_none_or(|excluded| target.kind == TargetKind::Display
+                    && excluded.kind == TargetKind::Window),
+            "audio exclusion requires a display and a window process"
+        );
+        let include_tree = exclude.is_none();
+        let target = exclude.unwrap_or(target);
         let event = unsafe { CreateEventW(None, true, false, None)? };
         let control = AudioControl(Arc::new(unsafe { OwnedHandle::from_raw_handle(event.0) }));
         let worker = control.clone();
@@ -55,7 +67,7 @@ impl AudioCapture {
             .name("piik-audio".into())
             .spawn(move || {
                 let mut ready = Some(ready);
-                let result = run(target, &worker, frames, &mut ready);
+                let result = run(target, include_tree, &worker, frames, &mut ready);
                 if let Some(ready) = ready {
                     let error = result
                         .as_ref()
@@ -133,9 +145,11 @@ impl Drop for Com {
     }
 }
 
-fn client(process: Option<u32>) -> Result<AudioClient> {
+fn client(process: Option<(u32, bool)>) -> Result<AudioClient> {
     let mut client = match process {
-        Some(pid) => AudioClient::new_application_loopback_client(pid, true)?,
+        Some((pid, include_tree)) => {
+            AudioClient::new_application_loopback_client(pid, include_tree)?
+        }
         None => DeviceEnumerator::new()?
             .get_default_device(&Direction::Render)?
             .get_iaudioclient()?,
@@ -159,7 +173,8 @@ pub fn audio_capabilities() -> AudioCapabilities {
             return AudioCapabilities::default();
         };
         AudioCapabilities {
-            process_audio: client(Some(std::process::id())).is_ok(),
+            process_audio: client(Some((std::process::id(), true))).is_ok(),
+            process_audio_exclusion: client(Some((std::process::id(), false))).is_ok(),
             system_audio: client(None).is_ok(),
         }
     })
@@ -214,13 +229,14 @@ fn process(target: &Target) -> Result<Option<OwnedHandle>> {
 
 fn run(
     target: Target,
+    include_tree: bool,
     control: &AudioControl,
     frames: mpsc::Sender<AudioFrame>,
     ready: &mut Option<oneshot::Sender<Result<()>>>,
 ) -> Result<()> {
     let _com = Com::start()?;
     let process = process(&target)?;
-    let client = client(process.as_ref().map(|_| target.pid))?;
+    let client = client(process.as_ref().map(|_| (target.pid, include_tree)))?;
     let event = client.set_get_eventhandle()?;
     // wasapi 0.26's slice reader dereferences the buffer even when SILENT is set.
     // GetBuffer's flags and timestamp belong to the original buffer, so handle it here.
@@ -317,4 +333,27 @@ fn run(
         }
     })();
     result.and(client.stop_stream().map_err(Into::into))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires a running Windows audio service"]
+    fn actual_process_loopback_supports_include_and_exclude_modes() -> Result<()> {
+        let _com = Com::start()?;
+        let pid = std::process::id();
+        client(Some((pid, true)))?;
+        client(Some((pid, false)))?;
+        let capability = audio_capabilities();
+        ensure!(
+            capability.process_audio && capability.process_audio_exclusion,
+            "independent process-loopback activation probes disagree"
+        );
+        eprintln!(
+            "WASAPI process loopback: include=true exclude=true; no stream started or PCM read"
+        );
+        Ok(())
+    }
 }
