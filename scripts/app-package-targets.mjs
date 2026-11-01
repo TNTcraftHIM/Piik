@@ -27,7 +27,6 @@ export const APP_PACKAGE_TARGETS = [
     goos: "windows",
     goarch: "amd64",
     rustTarget: "x86_64-pc-windows-msvc",
-    cgo: false,
     appName: "piik-app.exe",
     tunnelName: "cloudflared.exe",
     tunnelAsset: "cloudflared-windows-amd64.exe",
@@ -41,7 +40,6 @@ export const APP_PACKAGE_TARGETS = [
     goos: "linux",
     goarch: "amd64",
     rustTarget: "x86_64-unknown-linux-gnu",
-    cgo: false,
     appName: "piik-app",
     tunnelName: "cloudflared",
     tunnelAsset: "cloudflared-linux-amd64",
@@ -55,7 +53,6 @@ export const APP_PACKAGE_TARGETS = [
     goos: "linux",
     goarch: "arm64",
     rustTarget: "aarch64-unknown-linux-gnu",
-    cgo: false,
     appName: "piik-app",
     tunnelName: "cloudflared",
     tunnelAsset: "cloudflared-linux-arm64",
@@ -69,7 +66,6 @@ export const APP_PACKAGE_TARGETS = [
     goos: "darwin",
     goarch: "arm64",
     rustTarget: "aarch64-apple-darwin",
-    cgo: true,
     appName: "piik-app",
     tunnelName: "cloudflared",
     tunnelAsset: "cloudflared-darwin-arm64.tgz",
@@ -83,7 +79,6 @@ export const APP_PACKAGE_TARGETS = [
     goos: "darwin",
     goarch: "amd64",
     rustTarget: "x86_64-apple-darwin",
-    cgo: true,
     appName: "piik-app",
     tunnelName: "cloudflared",
     tunnelAsset: "cloudflared-darwin-amd64.tgz",
@@ -100,13 +95,4 @@ export function appPackageTarget(id) {
 // Keep the executable and its existing relative runtime paths inside the bundle.
 export function appPackageDirectory(target) {
   return target.goos === "darwin" ? "Piik App.app/Contents/MacOS" : "";
-}
-
-export function goBuildEnvironment(target) {
-  return {
-    ...process.env,
-    GOOS: target.goos,
-    GOARCH: target.goarch,
-    CGO_ENABLED: target.cgo ? "1" : "0",
-  };
 }

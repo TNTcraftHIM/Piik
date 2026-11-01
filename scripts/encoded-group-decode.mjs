@@ -7,13 +7,13 @@ import { resolve } from "node:path";
 const customInput = process.env.PIIK_ENCODED_OUTPUT;
 const codec = process.env.PIIK_ENCODED_CODEC ?? "vp8";
 assert.ok(["vp8", "avc1.42c033", "avc1.42c034"].includes(codec), "Expected VP8 or constrained-baseline H264");
-const inputPath = customInput ? resolve(customInput) : new URL("../build/embedded-media/encoded-group.received.json", import.meta.url);
+assert.ok(customInput, "Set PIIK_ENCODED_OUTPUT to the producing fixture's exported frame arrays");
+const inputPath = resolve(customInput);
 const input = await readFile(inputPath);
 const streams = JSON.parse(input);
 assert.equal(streams.length, 2);
 for (const frames of streams) {
-  if (customInput) assert.ok(frames.length > 0 && frames.length <= 1200);
-  else assert.equal(frames.length, 40);
+  assert.ok(frames.length > 0 && frames.length <= 1200);
 }
 const expectedCounts = streams.map((frames) => frames.length);
 const page = `<!doctype html><meta charset="utf-8"><title>Shared encoded output decode</title>
@@ -59,17 +59,8 @@ const server = createServer(async (request, response) => {
     result.receivedSha256 = createHash("sha256").update(input).digest("hex");
     result.codec = codec;
     result.scope = "Encoded input -> two Chrome WebCodecs decoders; input provenance is owned by its producing fixture, not proof of Browser WebRTC transport, jitter-buffer or hardware acceptance";
-    result.sources = {};
-    for (const path of ["go.mod", "go.sum", "internal/media/encoded/packetizer.go",
-      "internal/media/forwarding/source.go", "internal/media/forwarding/encoded_source.go",
-      "internal/media/forwarding/output.go", "internal/media/forwarding/transport.go",
-      "internal/app/mediaedge/engine.go", "internal/app/mediaedge/source.go",
-      "internal/app/mediaedge/edge.go", "internal/app/mediaedge/group_fixture_test.go",
-      "internal/app/mediaedge/relay_network_fixture_test.go", "internal/app/mediaedge/relay_derivation.go",
-      "native/capture/windows/encoded_group.fixture.cpp"]) {
-      result.sources[path] = createHash("sha256").update(await readFile(new URL(`../${path}`, import.meta.url))).digest("hex");
-    }
-    const resultPath = customInput ? `${inputPath}.decode-result.json` : new URL("../build/embedded-media/encoded-group.decode-result.json", import.meta.url);
+    result.decoderSha256 = createHash("sha256").update(await readFile(new URL(import.meta.url))).digest("hex");
+    const resultPath = `${inputPath}.decode-result.json`;
     await writeFile(resultPath, `${JSON.stringify(result, null, 2)}\n`);
     response.end("passed");
     console.log(`Passed: receivers decoded ${expectedCounts.join(" and ")} received frames`);

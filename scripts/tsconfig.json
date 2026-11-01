@@ -24,20 +24,7 @@
     "../site/film/ui/main.tsx",
     "update-guide-diagrams.tsx",
     "../src/client/ui/icons.tsx",
-    "access-privacy-gate.ts",
     "browser-local-pool-probe.ts",
-    "network-lab.ts",
-    "media-lifecycle-gate.ts",
-    "app-browser-fanout-gate.ts",
-    "app-media-gate.ts",
-    "app-native-host-gate.ts",
-    "embedded-sfu-gate.ts",
-    "room-voice-gate.ts",
-    "embedded-sfu-page.ts",
-    "app-loopback-gate.ts",
-    "app-local-gate.ts",
-    "app-link-gate.ts",
-    "peer-assisted-benchmark.ts",
     "../tests"
   ]
 }

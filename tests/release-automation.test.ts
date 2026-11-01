@@ -173,8 +173,8 @@ describe("release automation", () => {
         "site/docs/.vitepress/config.mjs", "docs/guide/troubleshooting.md", "docs/deployment.md", "README.zh-CN.md",
         "scripts/build-website.mjs", "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/release-notes.mjs",
         "scripts/publish-container.mjs",
-        "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
-        "scripts/network-lab.ts", "scripts/network-lab/endpoint.ts", "scripts/network-lab/stun/main.go",
+        "scripts/browser-gate-harness.ts", "scripts/browser-local-pool-probe.ts",
+        "scripts/network-lab/network.ts", "scripts/network-lab/udp.ts", "scripts/network-lab/packets.ts",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml",
         ".github/workflows/gitee-mirror.yml", "scripts/release-mirror-source.mjs"]) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
@@ -214,10 +214,10 @@ describe("release automation", () => {
       git("add", ".");
       git("commit", "-m", "feat: launch");
       git("tag", "v1.0.0");
-      for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "internal/server/app/app.go",
+      for (const path of ["src/client/styles.css", "src/shared/protocol.ts", "prototype/channel-server/src/domain.rs",
         "cmd/piik-app/piik.ico", "native/capture/windows/build.ps1", "public/guide.md",
-        "licenses/NOTICE.md", "LICENSE", "package-lock.json", "go.mod",
-        "scripts/check-go.mjs", "scripts/app-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
+        "licenses/NOTICE.md", "LICENSE", "package-lock.json", ".go-version",
+        "scripts/check-rust.mjs", "scripts/app-package-targets.mjs", ".github/workflows/repository-hygiene.yml",
         "new-product-input.json"]) {
         git("checkout", "--quiet", "--detach", "v1.0.0");
         mkdirSync(dirname(join(root, path)), { recursive: true });

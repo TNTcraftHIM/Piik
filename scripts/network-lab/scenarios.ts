@@ -1,5 +1,4 @@
 import type { Fault, NatMode } from "./network";
-import type { MediaSample } from "./page";
 import type { ProbeResult } from "./udp";
 
 export interface Scenario {
@@ -214,4 +213,26 @@ export function checkMapping(probe: ProbeResult, mode: NatMode): void {
       throw new Error("Sequential SNAT did not allocate consecutive ports across three destinations");
     }
   }
+}
+
+export interface MediaSample {
+  at: number;
+  width: number;
+  height: number;
+  frames: number;
+  pictureHash: number | null;
+  playbackPeerId: number;
+  route: string | null;
+  natPrediction: boolean | null;
+  stats: Array<Record<string, string | number>>;
+  events: Array<{ at: number; type: string; scope?: string; state?: string; reason?: string; phase?: string; route?: string;
+    connectionId?: string; [key: string]: string | number | undefined }>;
+  errors: string[];
+  controls: Array<{ type: string; connectionId?: string }>;
+  sharing: boolean;
+  controlOpen: boolean;
+  controlOrigins: string[];
+  playbackProgress: { renderedFrames: number; lastFrameAt: number; maxFrameGapMs: number };
+  peerStates: string[];
+  text: string;
 }

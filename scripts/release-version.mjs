@@ -13,11 +13,11 @@ export function stableTags(root, ...filter) {
 
 // Known standalone surfaces do not change the shipped App/Server. Everything
 // else stays eligible, including shared UI, public assets, licenses and build
-// inputs. In particular, check-go.mjs builds the bundled capture runtime.
+// inputs, including Rust runtime checks and native capture packaging.
 const nonProductPaths = [
   "site/**", "docs/**", "tests/**", ".agents/**", ".codex/**", ".githooks/**",
   "*.md", ".gitignore", ".env.example", "vitest.config.ts",
-  "cmd/**/*.md", "internal/**/*.md", "native/**/*.md", "src/**/*.md",
+  "cmd/**/*.md", "native/**/*.md", "src/**/*.md",
   ".github/ISSUE_TEMPLATE/**", ".github/pull_request_template.md",
   ".github/workflows/website.yml", ".github/workflows/gitee-mirror.yml",
   "scripts/build-website.mjs", "scripts/update-website-hero.mjs", "scripts/build-film-controls.mjs",
@@ -26,9 +26,7 @@ const nonProductPaths = [
   "scripts/required-project-paths.txt", "scripts/tsconfig.json",
   "scripts/release-*.mjs", "scripts/publish-release.mjs", "scripts/publish-container.mjs", "scripts/mirror-release.mjs",
   "scripts/*-gate.*", "scripts/*-probe.*", "scripts/browser-*", "scripts/encoded-*",
-  "scripts/*-gate-endpoint.ts", "scripts/embedded-sfu-page.ts", "scripts/peer-assisted-benchmark.ts",
-  "scripts/network-lab.ts", "scripts/network-lab/**",
-  "cmd/piik-peer-gate/**",
+  "scripts/network-lab/**",
 ].map((path) => `:(top,glob,exclude)${path}`);
 
 export function hasProductChanges(root, base, head) {

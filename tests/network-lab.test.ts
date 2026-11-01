@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, checkQualityRecovery, hasPicture, selectScenarios, summarizeTrials } from "../scripts/network-lab/scenarios";
+import { checkAppPath, checkCalibration, checkContinuity, checkFaultHit, checkMapping, checkQualityRecovery, hasPicture, selectScenarios, summarizeTrials, type MediaSample } from "../scripts/network-lab/scenarios";
 import { checkMediaFeedback, checkMediaPath, packetFlows, type PacketFlow } from "../scripts/network-lab/packets";
-import type { MediaSample } from "../scripts/network-lab/page";
 import type { ProbeResult } from "../scripts/network-lab/udp";
 
 const baseline: ProbeResult = { sent: 12, received: 12, receivedBytes: 14400, durationMs: 850, sendDurationMs: 250,
