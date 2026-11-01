@@ -766,6 +766,39 @@ mod tests {
     }
 
     #[test]
+    fn failed_screen_shortcut_is_not_a_new_base_candidate() {
+        let id = Uuid::from_u128;
+        let (mut room, endpoints) = screen_on_room_base();
+        for flow in room.flows().collect::<Vec<_>>() {
+            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 0)
+                .unwrap();
+        }
+        room.reconcile(&endpoints, 0);
+        assert!(room
+            .flows()
+            .any(|flow| { flow.sender == id(3) && flow.receiver == id(2) && !flow.selected }));
+        let base = room
+            .base_links()
+            .map(|link| (link.parent, link.child))
+            .collect::<Vec<_>>();
+        room.failed_pair(id(3), id(2));
+        room.reconcile(&endpoints, 1);
+        assert_eq!(
+            room.base_links()
+                .map(|link| (link.parent, link.child))
+                .collect::<Vec<_>>(),
+            base
+        );
+        room.failed_pair(id(2), id(4));
+        room.reconcile(&endpoints, 2);
+        room.failed_pair(id(1), id(2));
+        room.reconcile(&endpoints, 3);
+        assert!(!room
+            .base_links()
+            .any(|link| link.parent == id(3) && link.child == id(2)));
+    }
+
+    #[test]
     fn required_routes_recover_without_replacing_healthy_flows_or_endpoint_authority() {
         let id = Uuid::from_u128;
         for count in [2, 3] {

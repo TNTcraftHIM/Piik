@@ -285,7 +285,7 @@ impl Publication {
         }) {
             self.operation = None;
         }
-        self.plan.failed(first, second);
+        self.plan.failed_pair(first, second);
     }
 
     pub fn flow_state(

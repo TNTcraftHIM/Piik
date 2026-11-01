@@ -313,6 +313,17 @@ impl Plan {
         }
     }
 
+    pub fn failed_pair(&mut self, first: Uuid, second: Uuid) {
+        // Physical failure also applies to candidates used by another tree or
+        // a prepared branch. Only this plan's current nodes consume that fact.
+        for (child, parent) in [(first, second), (second, first)] {
+            if self.parents.contains_key(&child) {
+                self.failed_parents.entry(child).or_default().insert(parent);
+            }
+        }
+        self.failed(first, second);
+    }
+
     fn detach(&mut self, child: Uuid) {
         let mut pending = vec![child];
         while let Some(current) = pending.pop() {
@@ -391,6 +402,9 @@ impl BaseTree {
             }
         }
         self.plan.reconcile(demand, available, connected, None);
+        self.plan
+            .failed_parents
+            .retain(|child, _| demand.contains(child) || self.plan.parents.contains_key(child));
         self.prune_proofs();
     }
     fn prune_proofs(&mut self) {
@@ -419,7 +433,7 @@ impl BaseTree {
         changed
     }
     pub fn failed(&mut self, first: Uuid, second: Uuid) {
-        self.plan.failed(first, second);
+        self.plan.failed_pair(first, second);
         self.prune_proofs();
     }
 
@@ -681,6 +695,26 @@ mod tests {
         assert_eq!(plan.parents[&id(3)], id(2));
         assert!(!plan.can_shortcut(id(3)));
         assert!(!plan.needs_repair(&requested, &available));
+    }
+
+    #[test]
+    fn unrelated_failure_memory_does_not_cancel_pending_base_admission() {
+        let available = set(&[1, 2, 3, 4, 5]);
+        let mut base = BaseTree::new(id(1));
+        base.reconcile(&set(&[2, 3]), &available, &available);
+        base.state(id(1), id(2), true);
+        base.state(id(2), id(1), true);
+        // A different source's physical trial failed between these members.
+        base.failed(id(2), id(3));
+        base.reconcile(&set(&[3, 4, 5]), &available, &available);
+        assert_eq!(
+            base.plan.parents,
+            BTreeMap::from([(id(3), id(1)), (id(4), id(1))])
+        );
+        assert!(!base.needs_repair(&set(&[3, 4, 5]), &available));
+        let pending = base.plan.parents.clone();
+        base.retry_required(&set(&[3, 4, 5]), &available);
+        assert_eq!(base.plan.parents, pending);
     }
 
     #[test]
