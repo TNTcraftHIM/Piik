@@ -14,7 +14,8 @@ import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
-export type SourceMicrophoneSettings = Partial<CommentaryInput> & { enabled?: boolean };
+export type SourceMicrophoneConfiguration = Omit<CommentaryInput, "voiceProcessing"> & { enabled: boolean; voiceProcessing?: boolean };
+export type SourceMicrophoneSettings = Partial<SourceMicrophoneConfiguration>;
 
 export interface ChannelScreenInput {
   flowId: string;
@@ -53,11 +54,12 @@ export interface ChannelActions {
   setQuality(profile: QualityProfile): void;
   setVideoCodecMode(mode: BrowserVideoCodecMode): void;
   screenQuality(publicationId: string): { applied: QualityProfile; requested: QualityProfile } | undefined;
+  screenCodecMode(publicationId: string): BrowserVideoCodecMode | undefined;
   setScreenQuality(publicationId: string, profile: QualityProfile): Promise<void>;
   setScreenPaused(publicationId: string, paused: boolean): Promise<void>;
   sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; available: boolean } | undefined;
   setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;
-  sourceMicrophone(publicationId: string): { browser: boolean; available: boolean; enabled: boolean; deviceId: string; volume: number; voiceProcessing?: boolean } | undefined;
+  sourceMicrophone(publicationId: string): SourceMicrophoneConfiguration & { browser: boolean; available: boolean; requested: SourceMicrophoneConfiguration } | undefined;
   setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;
   sourceMicrophones(publicationId: string): Promise<CaptureDevice[]>;
   activateApp(): Promise<void>;

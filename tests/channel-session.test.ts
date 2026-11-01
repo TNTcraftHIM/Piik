@@ -700,6 +700,9 @@ test("camera and display shares use independent picture publications and the sam
     const firstId = (first.publication as { id: string }).id, secondId = (second.publication as { id: string }).id;
     expect(second.publication).toEqual({ id: secondId, roomId: "second", kind: "screen", muted: false });
     expect(secondId).not.toBe(firstId);
+    session.setVideoCodecMode("vp8");
+    expect(session.screenCodecMode(firstId)).toBe("auto");
+    expect(session.screenCodecMode(secondId)).toBe("auto");
     expect(getUserMedia).toHaveBeenCalledWith({ audio: false, video: {
       resizeMode: { exact: "none" }, deviceId: { exact: "rear" }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 30 },
     } });
@@ -794,7 +797,9 @@ test("screen commentary owns a separate microphone and keeps its mixed track acr
       deviceId: { exact: "commentary-device" }, echoCancellation: false,
     }), video: false });
     expect(session.getSnapshot().voiceInput.deviceId).not.toBe("commentary-device");
-    await session.setSourceMicrophone(publication.id, { volume: .4 });
+    const changingGain = session.setSourceMicrophone(publication.id, { volume: .3 });
+    expect(session.setSourceMicrophone(publication.id, { volume: .4 })).toBe(changingGain);
+    await changingGain;
     expect(getUserMedia).toHaveBeenCalledTimes(2);
     expect(session.sourceMicrophone(publication.id)).toMatchObject({ enabled: true, volume: .4 });
     await session.setSourceMicrophone(publication.id, { enabled: false });
@@ -1265,6 +1270,38 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     expect(session.getSnapshot().ownedScreens.has(publicationId)).toBe(true);
     expect(session.getSnapshot().state?.subscriptions).toEqual([publicationId]);
 
+    const microphone = { enabled: false, deviceId: "", volume: 1 };
+    app.receive({ type: "capture_microphone_state", publicationId, state: microphone });
+    expect(session.sourceMicrophone(publicationId)).toMatchObject({ browser: false, available: true, ...microphone });
+    const devices = session.sourceMicrophones(publicationId);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("microphones"));
+    app.receive({ id: app.sent.at(-1)!.id, result: [{ id: "native-device", label: "Native microphone" }] });
+    await expect(devices).resolves.toEqual([{ id: "native-device", label: "Native microphone" }]);
+    const enablingMicrophone = session.setSourceMicrophone(publicationId, { enabled: true, deviceId: "native-device" });
+    expect(app.sent.at(-1)).toMatchObject({ type: "capture_microphone", publicationId, roomId: "first", captureId,
+      settings: { enabled: true, deviceId: "native-device", volume: 1 } });
+    expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: false, requested: { enabled: true } });
+    const enabledMicrophone = { ...microphone, enabled: true, deviceId: "native-device" };
+    const revision = session.getSnapshot();
+    app.receive({ type: "capture_microphone_state", publicationId, state: enabledMicrophone });
+    expect(session.getSnapshot()).not.toBe(revision);
+    expect(session.sourceMicrophone(publicationId)?.enabled).toBe(true);
+    app.receive({ id: app.sent.at(-1)!.id, result: enabledMicrophone }); await enablingMicrophone;
+    const failedDevice = session.setSourceMicrophone(publicationId, { deviceId: "missing" });
+    app.receive({ id: app.sent.at(-1)!.id, error: "microphone_unavailable" });
+    await expect(failedDevice).rejects.toThrow("microphone_unavailable");
+    expect(session.sourceMicrophone(publicationId)).toMatchObject({ ...enabledMicrophone, requested: enabledMicrophone });
+    const disablingMicrophone = session.setSourceMicrophone(publicationId, { enabled: false });
+    const closingRequest = app.sent.at(-1)!;
+    expect(session.setSourceMicrophone(publicationId, { volume: .6 })).toBe(disablingMicrophone);
+    expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: true, requested: { enabled: false, volume: .6 } });
+    app.receive({ id: closingRequest.id, result: { ...enabledMicrophone, enabled: false } });
+    await vi.waitFor(() => expect(app.sent.at(-1)!.id).not.toBe(closingRequest.id));
+    expect(app.sent.at(-1)).toMatchObject({ type: "capture_microphone", settings: { enabled: false, deviceId: "native-device", volume: .6 } });
+    app.receive({ id: app.sent.at(-1)!.id, result: { ...enabledMicrophone, enabled: false, volume: .6 } });
+    await disablingMicrophone;
+    expect(session.sourceMicrophone(publicationId)).toMatchObject({ enabled: false, volume: .6, requested: { enabled: false, volume: .6 } });
+
     // Starting media did not wait for a cancelled thumbnail's stop/join reply.
     app.receive({ id: previewId, result: null });
     await expect(cancelledPreview).resolves.toBeNull();
@@ -1375,9 +1412,14 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     app.receive({ type: "input_state", publicationId, state: { ...remote, requests: [] } });
     expect(session.getSnapshot().remoteControls.get(publicationId)?.requests).toEqual([]);
 
+    const pendingMicrophone = session.setSourceMicrophone(publicationId, { enabled: true });
+    const interruptedMicrophone = expect(pendingMicrophone).rejects.toMatchObject({ name: "AbortError" });
+    const microphoneRequest = app.sent.at(-1)!;
     const stopping = session.stopScreen(publicationId);
     expect(app.sent.at(-1)).toMatchObject({ type: "stop_capture", publicationId });
     app.receive({ id: app.sent.at(-1)!.id, result: null });
+    app.receive({ id: microphoneRequest.id, result: enabledMicrophone });
+    await interruptedMicrophone;
     socket.receive({ type: "state", state });
     await stopping;
     expect(session.getSnapshot().ownedScreens.size).toBe(0);

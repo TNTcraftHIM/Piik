@@ -4,7 +4,7 @@ import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { eventSchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
-import type { ChannelView, ScreenPresentation, SourceMicrophoneSettings } from "./types";
+import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources } from "./app-link";
 import { isClientActivated } from "../lib/session";
@@ -42,6 +42,8 @@ interface ScreenShare {
   codec?: BrowserVideoCodecPreference;
   volume: { level: number; muted: boolean };
   microphone: CommentaryInput;
+  requestedMicrophone?: SourceMicrophoneConfiguration;
+  microphoneChange?: Promise<void>;
   audioChange?: Promise<void>;
   requestedProfile?: QualityProfile;
   qualityChange?: Promise<void>;
@@ -578,6 +580,8 @@ export class ChannelSession {
           if (this.app === app) this.patch({ error: "capture_audio_failed" });
         }, (id, state) => {
           if (this.app === app) this.patch({ remoteControls: new Map(this.view.remoteControls).set(id, state) });
+        }, () => {
+          if (this.app === app) this.patch({});
         });
         this.app = app;
       }
@@ -1257,31 +1261,64 @@ export class ChannelSession {
   sourceMicrophone = (publicationId: string) => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
     if (!share) return undefined;
-    const audio = this.local.get(publicationId)?.audio;
-    return { ...share.microphone, browser: this.local.has(publicationId), available: !!audio?.commentaryAvailable, enabled: !!audio?.microphoneEnabled,
-      voiceProcessing: audio ? share.microphone.voiceProcessing : undefined };
+    const local = this.local.get(publicationId);
+    const browser = local?.kind === "screen";
+    const actual = browser ? { ...share.microphone, enabled: !!local.audio?.microphoneEnabled }
+      : this.app?.sourceMicrophone(publicationId) ?? { enabled: false, deviceId: "", volume: 1 };
+    return { ...actual, browser, available: browser ? !!local.audio?.commentaryAvailable : !!this.app?.screens.has(publicationId),
+      requested: share.requestedMicrophone ?? actual };
   };
 
-  sourceMicrophones = (publicationId: string) => this.local.has(publicationId)
-    ? browserCaptureDevices("audioinput") : Promise.resolve([]);
+  sourceMicrophones = (publicationId: string) => this.local.get(publicationId)?.kind === "screen"
+    ? browserCaptureDevices("audioinput") : this.app?.screens.has(publicationId) ? this.app.sourceMicrophones() : Promise.resolve([]);
 
   setSourceMicrophone = (publicationId: string, settings: SourceMicrophoneSettings): Promise<void> => {
-    const share = [...this.screenShares.values()].find(share => share.id === publicationId);
-    const local = this.local.get(publicationId), audio = local?.audio;
-    if (!share || share.selection || !audio?.commentaryAvailable) return Promise.reject(new Error("microphone_unavailable"));
-    const next: CommentaryInput = { deviceId: settings.deviceId ?? share.microphone.deviceId,
-      volume: settings.volume ?? share.microphone.volume, voiceProcessing: settings.voiceProcessing ?? share.microphone.voiceProcessing };
+    const owner = [...this.screenShares].find(([, share]) => share.id === publicationId);
+    const share = owner?.[1];
+    const actual = this.sourceMicrophone(publicationId);
+    if (!share || share.selection || !actual?.available) return Promise.reject(new Error("microphone_unavailable"));
+    const next = { ...actual.requested, ...settings };
     if (!Number.isFinite(next.volume) || next.volume < 0 || next.volume > 2) return Promise.reject(new Error("invalid_audio_settings"));
-    return this.action(`source-microphone:${publicationId}`, async () => {
-      const enabled = settings.enabled ?? audio.microphoneEnabled;
-      if (enabled !== audio.microphoneEnabled || enabled && (next.deviceId !== share.microphone.deviceId
-        || next.voiceProcessing !== share.microphone.voiceProcessing)) await audio.setMicrophone(enabled, next);
-      else audio.microphoneVolume(next.volume);
-      if (this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
-      share.microphone = next;
-      this.patch({});
-    });
+    share.requestedMicrophone = next;
+    this.patch({});
+    if (share.microphoneChange) return share.microphoneChange;
+    const local = this.local.get(publicationId), app = this.app;
+    const current = () => [...this.screenShares.values()].includes(share)
+      && (local ? this.local.get(publicationId) === local : this.app === app && !!app?.screens.has(publicationId));
+    share.microphoneChange = this.action(`source-microphone:${publicationId}`, async () => {
+      do {
+        const wanted = share.requestedMicrophone!;
+        try {
+          if (local?.kind === "screen" && local.audio) {
+            const input = { deviceId: wanted.deviceId, volume: wanted.volume,
+              voiceProcessing: wanted.voiceProcessing ?? share.microphone.voiceProcessing };
+            if (wanted.enabled !== local.audio.microphoneEnabled || wanted.enabled && (input.deviceId !== share.microphone.deviceId
+              || input.voiceProcessing !== share.microphone.voiceProcessing)) await local.audio.setMicrophone(wanted.enabled, input);
+            else {
+              local.audio.microphoneVolume(input.volume);
+              await Promise.resolve(); // Gain edits share the same latest-wanted operation.
+            }
+            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+            share.microphone = input;
+          } else {
+            await app!.setSourceMicrophone(publicationId, owner![0], {
+              enabled: wanted.enabled, deviceId: wanted.deviceId, volume: wanted.volume,
+            });
+            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+          }
+        } catch (error) {
+          if (current() && wanted !== share.requestedMicrophone) continue;
+          throw error;
+        }
+        this.patch({});
+        if (wanted === share.requestedMicrophone) return;
+      } while (current());
+      throw new DOMException("Capture cancelled", "AbortError");
+    }).finally(() => { share.microphoneChange = undefined; share.requestedMicrophone = undefined; this.patch({}); });
+    return share.microphoneChange;
   };
+
+  screenCodecMode = (publicationId: string) => [...this.screenShares.values()].find(share => share.id === publicationId)?.codecMode;
 
   screenQuality = (publicationId: string) => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);

@@ -29,6 +29,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     setQuality: session.setQuality,
     setVideoCodecMode: session.setVideoCodecMode,
     screenQuality: session.screenQuality, setScreenQuality: session.setScreenQuality,
+    screenCodecMode: session.screenCodecMode,
     setScreenPaused: session.setScreenPaused,
     sourceAudio: session.sourceAudio, setSourceAudio: session.setSourceAudio,
     sourceMicrophone: session.sourceMicrophone, setSourceMicrophone: session.setSourceMicrophone,
