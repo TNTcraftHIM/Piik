@@ -169,7 +169,7 @@ try {
   const appName = target.appName;
   const appPath = join(runtimeRoot, appName);
   const cargoTarget = resolve(repositoryRoot, process.env.CARGO_TARGET_DIR || "prototype/channel-server/target");
-  const captureEnvironment = target.goos === "windows" ? windowsCaptureEnvironment(repositoryRoot) : {};
+  const captureEnvironment = target.goos === "windows" && !process.env.VPX_LIB_DIR ? windowsCaptureEnvironment(repositoryRoot) : {};
   run("cargo", ["+1.91.0", "build", "--locked", "--release",
     "--manifest-path", "prototype/channel-server/Cargo.toml", "--target-dir", cargoTarget,
     "--target", target.rustTarget, "--features", "capture", "--bin", "piik-channel-app"],
