@@ -10,6 +10,7 @@ android {
  }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
  packaging { jniLibs { useLegacyPackaging = true } }
+ androidResources { ignoreAssetsPatterns.add('*.gz') }
  signingConfigs {
   release {
    def keystore = System.getenv('PIIK_ANDROID_KEYSTORE')
