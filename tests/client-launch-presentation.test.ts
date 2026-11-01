@@ -131,7 +131,7 @@ describe("App presentation handoff authority", () => {
     expect(readViewerRoute()).toEqual({ roomId: "9527", viewerGrant: grant });
   });
 
-  it.each(["39720", "39731", "NaN", "39721.5"])("ignores out-of-contract runtime ports: %s", async port => {
+  it.each(["0", "65536", "NaN", "39721.5"])("ignores invalid runtime ports: %s", async port => {
     const env = browser();
     env.page.location = new URL(`https://site.example/?piik-client-port=${port}#piik-client=1`);
     const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
@@ -141,16 +141,16 @@ describe("App presentation handoff authority", () => {
     expect(env.values.get("piik:client-launch:v1")).toBe("1");
   });
 
-  it("keeps an inline App selection when browser storage is unavailable", async () => {
+  it("keeps an explicit App port outside discovery range when storage is unavailable", async () => {
     const env = browser([], true);
     Object.assign(env.page, { sessionStorage: {
       getItem: () => { throw new Error("blocked"); },
       setItem: () => { throw new Error("blocked"); },
     } });
-    env.page.location = new URL("https://site.example/?piik-client-port=39730#piik-client=1");
+    env.page.location = new URL("https://site.example/?piik-client-port=49152#piik-client=1");
     const { takeClientLaunchBootstrap, clientRuntimePort, isClientActivated } = await import("../src/client/lib/session");
     takeClientLaunchBootstrap();
-    expect(clientRuntimePort()).toBe(39730);
+    expect(clientRuntimePort()).toBe(49152);
     expect(isClientActivated()).toBe(true);
     expect(env.page.location.href).toBe("https://site.example/");
   });
