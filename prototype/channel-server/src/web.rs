@@ -13,7 +13,10 @@ use serde::Serialize;
 use std::net::{IpAddr, SocketAddr};
 use std::path::{Path, PathBuf};
 use tokio::net::TcpListener;
-use tower_http::services::{ServeDir, ServeFile};
+use tower_http::{
+    services::{ServeDir, ServeFile},
+    set_header::SetResponseHeader,
+};
 
 #[derive(Serialize)]
 pub struct LanAddress {
@@ -98,7 +101,17 @@ pub fn frontend(directory: &Path) -> anyhow::Result<Router> {
         .route("/", document(index.clone()))
         .route("/__channel-preview", document(index.clone()))
         .route("/index.html", document(index))
-        .fallback_service(ServeDir::new(directory).append_index_html_on_directories(false)))
+        .fallback_service(static_files(
+            ServeDir::new(directory).append_index_html_on_directories(false),
+        )))
+}
+
+pub(crate) fn static_files<F>(files: ServeDir<F>) -> SetResponseHeader<ServeDir<F>, HeaderValue> {
+    SetResponseHeader::appending(
+        files.precompressed_br().precompressed_gzip(),
+        header::VARY,
+        HeaderValue::from_static("Accept-Encoding"),
+    )
 }
 
 pub(crate) fn document<S: Clone + Send + Sync + 'static>(index: PathBuf) -> MethodRouter<S> {
@@ -131,18 +144,38 @@ mod tests {
         path: &str,
         modified: Option<&str>,
     ) -> (u16, BTreeMap<String, String>, String) {
-        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
         let conditional = modified
             .map(|date| format!("If-Modified-Since: {date}\r\n"))
             .unwrap_or_default();
-        stream.write_all(format!("GET {path} HTTP/1.1\r\nHost: {address}\r\n{conditional}Connection: close\r\n\r\n").as_bytes()).await.unwrap();
+        let (status, headers, body) = request_bytes(address, path, &conditional).await;
+        (status, headers, String::from_utf8(body).unwrap())
+    }
+
+    async fn request_bytes(
+        address: SocketAddr,
+        path: &str,
+        headers: &str,
+    ) -> (u16, BTreeMap<String, String>, Vec<u8>) {
+        let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+        stream
+            .write_all(
+                format!(
+                    "GET {path} HTTP/1.1\r\nHost: {address}\r\n{headers}Connection: close\r\n\r\n"
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
         let mut bytes = Vec::new();
         tokio::time::timeout(Duration::from_secs(5), stream.read_to_end(&mut bytes))
             .await
             .unwrap()
             .unwrap();
-        let response = String::from_utf8(bytes).unwrap();
-        let (head, body) = response.split_once("\r\n\r\n").unwrap();
+        let separator = bytes
+            .windows(4)
+            .position(|part| part == b"\r\n\r\n")
+            .unwrap();
+        let head = std::str::from_utf8(&bytes[..separator]).unwrap();
         let status = head.split_whitespace().nth(1).unwrap().parse().unwrap();
         let headers = head
             .lines()
@@ -150,7 +183,82 @@ mod tests {
             .filter_map(|line| line.split_once(':'))
             .map(|(key, value)| (key.to_ascii_lowercase(), value.trim().to_owned()))
             .collect();
-        (status, headers, body.into())
+        (status, headers, bytes[separator + 4..].to_vec())
+    }
+
+    #[tokio::test]
+    async fn shared_static_files_negotiate_precompressed_assets() {
+        let directory =
+            std::env::temp_dir().join(format!("piik-web-encoding-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(directory.join("assets")).unwrap();
+        let index = directory.join("index.html");
+        fs::write(&index, "frontend").unwrap();
+        // A minimal WASM module and its valid precompressed representations.
+        let identity = [0, 97, 115, 109, 1, 0, 0, 0];
+        let brotli = [139, 3, 128, 0, 97, 115, 109, 1, 0, 0, 0, 3];
+        let gzip = [
+            31, 139, 8, 0, 0, 0, 0, 0, 2, 10, 99, 72, 44, 206, 101, 100, 96, 96, 0, 0, 206, 51, 75,
+            28, 8, 0, 0, 0,
+        ];
+        fs::write(directory.join("assets/adapter.wasm"), identity).unwrap();
+        fs::write(directory.join("assets/adapter.wasm.br"), brotli).unwrap();
+        fs::write(directory.join("assets/adapter.wasm.gz"), gzip).unwrap();
+        let routes = frontend(&directory).unwrap().nest(
+            "/app",
+            Router::new().fallback_service(static_files(
+                ServeDir::new(&directory).fallback(document(index)),
+            )),
+        );
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, routes)
+                .with_graceful_shutdown(async {
+                    let _ = stopped.await;
+                })
+                .await
+                .unwrap();
+        });
+        let mut responses = Vec::new();
+        for path in ["/assets/adapter.wasm", "/app/assets/adapter.wasm"] {
+            for (encoding, expected) in [
+                ("br, gzip", Some("br")),
+                ("gzip", Some("gzip")),
+                ("identity", None),
+            ] {
+                responses.push((
+                    expected,
+                    request_bytes(address, path, &format!("Accept-Encoding: {encoding}\r\n")).await,
+                ));
+            }
+        }
+        stop.send(()).unwrap();
+        server.await.unwrap();
+        fs::remove_dir_all(directory).unwrap();
+        for (encoding, response) in responses {
+            assert_eq!(response.0, 200);
+            assert_eq!(
+                response.1.get("content-type").map(String::as_str),
+                Some("application/wasm")
+            );
+            assert_eq!(
+                response.1.get("content-encoding").map(String::as_str),
+                encoding
+            );
+            assert_eq!(
+                response.1.get("vary").map(String::as_str),
+                Some("Accept-Encoding")
+            );
+            assert_eq!(
+                response.2,
+                match encoding {
+                    Some("br") => brotli.as_slice(),
+                    Some("gzip") => gzip.as_slice(),
+                    _ => identity.as_slice(),
+                }
+            );
+        }
     }
 
     #[tokio::test]
@@ -174,7 +282,9 @@ mod tests {
         let (stop, stopped) = tokio::sync::oneshot::channel();
         let routes = frontend(&directory).unwrap().nest(
             "/spa",
-            Router::new().fallback_service(document(index.clone())),
+            Router::new().fallback_service(static_files(
+                ServeDir::new(&directory).fallback(document(index.clone())),
+            )),
         );
         let server = tokio::spawn(async move {
             axum::serve(listener, routes)

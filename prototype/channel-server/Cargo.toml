@@ -26,7 +26,7 @@ anyhow = "1"
 futures-util = "0.3"
 axum = { version = "0.8", features = ["ws"] }
 axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
-tower-http = { version = "0.6.6", features = ["fs"] }
+tower-http = { version = "0.6.6", features = ["fs", "set-header"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time", "process", "io-util"] }
 serde_json = "1"
 serde = { version = "1", features = ["derive"] }

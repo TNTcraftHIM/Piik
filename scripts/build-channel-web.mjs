@@ -1,6 +1,8 @@
 import { execFileSync, spawnSync } from 'node:child_process';
+import { readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { brotliCompressSync, constants, gzipSync } from 'node:zlib';
 import { writeChannelWebLicenseNotices } from './package-licenses.mjs';
 import { buildVersion } from './release-version.mjs';
 
@@ -17,7 +19,17 @@ export function buildChannelWeb(root, { version, revision, cargoTarget }) {
     if (result.error) throw result.error;
     if (result.status !== 0) throw new Error(`Shared frontend build failed with exit code ${result.status}`);
   }
-  return join(root, 'build', 'channel-web');
+  const output = join(root, 'build', 'channel-web');
+  for (const entry of readdirSync(output, { recursive: true, withFileTypes: true })) {
+    if (!entry.isFile() || !/\.(js|css|wasm)$/.test(entry.name)) continue;
+    const path = join(entry.parentPath, entry.name);
+    const bytes = readFileSync(path);
+    writeFileSync(`${path}.br`, brotliCompressSync(bytes, {
+      params: { [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY },
+    }));
+    writeFileSync(`${path}.gz`, gzipSync(bytes, { level: 9 }));
+  }
+  return output;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

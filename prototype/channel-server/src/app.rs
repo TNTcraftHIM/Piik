@@ -301,7 +301,9 @@ pub async fn serve(
         .map(|(site, id)| (site, Arc::new(Permission::new(id))))
         .collect();
     let index = config.assets.join("index.html");
-    let assets = ServeDir::new(&config.assets).fallback(web::document(index.clone()));
+    let assets = web::static_files(
+        ServeDir::new(&config.assets).fallback(web::document(index.clone())),
+    );
     let app = Arc::new(App {
         desktop: Desktop::new()?,
         config,
