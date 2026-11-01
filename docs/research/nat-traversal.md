@@ -229,7 +229,7 @@ That proves the same-socket ICE mechanism, not rescue through a physical NAT.
 
 ### Gateway And Survey Limits
 
-The root module uses [scoped local repairs](../../internal/thirdparty/README.md)
+The published 2.x root module used [scoped local repairs](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md)
 for `go-nat` and its NAT-PMP client. The unmodified upstream revisions discard
 gateway-assigned ports, send no deletion and ignore context cancellation.
 The repaired adapter retains `MappedExternalPort` on creation and renewal,
@@ -588,9 +588,7 @@ bounded recovery and failure, not a physical-network success-rate benefit.
 The Windows Browser-to-App fanout gate also exercises the actual room retry,
 both Native control preparations and ordinary ICE continuation when the mapping
 is ineligible. Two Viewers decode about 30 fps; live quality, pause/resume, source
-audio changes and App-exit fallback remain usable. Run the existing
-`gate:app-browser-fanout` entry with `PIIK_CLIENT_BROWSER_FANOUT_GATE=true`,
-`PIIK_CLIENT_PUNCH_GATE=true` and `CHROME_PATH` set. This arm uses loopback STUN
+audio changes and App-exit fallback remain usable. The archived 2.x [Browser fanout runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/app-browser-fanout-gate.ts) owns those recorded inputs. This arm uses loopback STUN
 listeners on UDP 3478/3479/3480 and injects one candidate rejection; it does not
 contact public STUN services.
 

@@ -1,6 +1,7 @@
 # Linux Capture Process
 
-The Linux sidecar keeps the shared Native App contract while delegating
+This retained standalone helper is separate from the current
+[Rust capture owner](../../../prototype/channel-native/src/capture). It delegates
 desktop integration to the standard Linux media stack. XDG Desktop Portal owns
 the screen/window choice, PipeWire supplies the selected stream, and GStreamer
 selects an installed element classified as a hardware H.264 video encoder.
@@ -19,12 +20,9 @@ Build on a Linux desktop with development packages for libportal and GStreamer:
 sh native/capture/linux/build.sh /outside/repository/build
 ```
 
-Run `npm run check:native` on Linux to compile the sidecar, run the headless
-output-profile, source-geometry, segment-timestamp and retirement regressions,
-and validate its probe/source list.
-The same check runs when the Linux CI job packages an App candidate. For the
-native build and regression alone, add `--check` to the command above. The test
-uses synthetic input and GStreamer's core/base elements and needs no display, Portal session,
+Add `--check` to the command above to run the headless output-profile,
+source-geometry, segment-timestamp and retirement regressions. The test uses
+synthetic input and GStreamer's core/base elements and needs no display, Portal session,
 capture device or hardware encoder; physical capture remains a separate check.
 
 Input ticks, output activation and encoded frames use GStreamer running time,

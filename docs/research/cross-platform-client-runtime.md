@@ -1,5 +1,9 @@
 # Cross-Platform App Runtime Research
 
+The Go/Pion implementation and measured results below describe 2.x development.
+The [current Rust source map](../standards/engineering.md#module-map) identifies
+the private 3.x owners; these results do not establish its acceptance.
+
 - Reviewed: 2026-09-04
 - Scope: loopback control and self-contained packaging boundary
 - Status: App and Local composition implemented; Windows native Host video
@@ -67,12 +71,7 @@ A local page completed discovery and the full control exchange in Chromium
 its `loopback-network` permission; without that permission the cross-origin
 request was blocked. The gate checks both expected outcomes.
 
-Run `npm run probe:app-loopback` with `PIIK_CLIENT_LOOPBACK_GATE=true`,
-`CHROME_PATH`, `PIIK_CLIENT_EXE`, and `PIIK_CLIENT_GATE_SITE_URL` pointing to
-the reachable HTTPS Site being tested. Use `PIIK_CLIENT_GATE_GRANT_LOOPBACK=true`
-for the permission-granted run; omit it for the permission-blocked run. The gate
-uses an isolated App configuration and Browser profile, and rejects navigation
-failures or redirects to another origin as acceptance evidence.
+The archived 2.x [loopback runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/app-loopback-gate.ts) records the granted and blocked permission inputs. It used an isolated App configuration and Browser profile and rejected navigation failures or redirects as acceptance evidence.
 
 A self-contained LAN room uses a localhost Host URL and a selected LAN IPv4
 Viewer URL backed by the same local App process. The App persists an

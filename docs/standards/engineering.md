@@ -12,88 +12,83 @@ discipline, not a second copy of the product contracts or wire fields.
 Keep conventional project entry points and tool-discovered configuration at the
 root. Scope-specific configuration belongs with its owner: `src/tsconfig.json`
 checks the Browser, `scripts/tsconfig.json` checks tooling/tests, and root
-`tsconfig.json` only connects those projects.
+`tsconfig.json` connects them. Cargo manifests and locks stay with each Rust crate.
 
 | Location | What belongs here |
 | --- | --- |
 | Root README, contribution and agent files | Project introduction and shared working constraints; detailed documents live in `docs/` |
-| Root manifests, lockfiles, Vite/Vitest config, `index.html` | Go/npm entry points and Browser build/test startup; root `LICENSE` is authoritative |
-| `src/client`, `src/shared` | Browser UI/media orchestration and its shared wire types; the same UI serves Hosted and App modes |
+| Root npm manifests, Vite/Vitest config, `index.html` | Shared Browser build/test startup; root `LICENSE` is authoritative |
+| `src/client`, `src/shared` | Shared UI, media helpers and Browser orchestration; `src/client/channel` owns the 3.0 frontend adapter |
 | `public/` | Static assets shipped with that Browser application |
-| `cmd/`, `internal/` | Go executable composition and private application, server, media and diagnostics packages |
-| `internal/thirdparty/` | Scoped Go dependency repairs with pinned upstream provenance, licenses and tests; removal criteria live beside the source |
-| `native/capture`, `native/fixtures`, `native/probes` | Platform capture implementations, synthetic workloads and standalone capability probes |
-| `site/` | Independently published static introduction; its assets do not implement product behavior |
-| `mobile/` | Android system-browser shell, platform consent and tunnel adapter; the isolated runtime enters through `prototype/channel-android` |
-| `prototype/channel-*` | Isolated 3.0 Rust core, domain/runtime composition, Native media and Browser/WASM adapters |
-| `scripts/` | Development checks, browser/media gates, dependency assembly and release packaging/publishing tools |
-| `tests/` | TypeScript/tooling tests and cross-language fixtures; Go tests stay beside their packages |
+| `prototype/channel-core` | Shared Rust domain/room authority, wire, storage, routing and file rules |
+| `prototype/channel-browser` | WASM binding and IndexedDB room adapter over that core |
+| `prototype/channel-native` | Native room participant, RTC/media, capture and input adapters |
+| `prototype/channel-server` | Domain HTTP/WebSocket I/O, Server composition, App approval/launcher and static Web delivery |
+| `prototype/channel-android`, `mobile/android` | JNI entry, Android service/consent shell and shared Rust App lifetime |
+| `mobile/cloudflared`, root `.go-version` | Independent upstream tunnel helper's Android overlay and build toolchain |
+| `cmd/piik-app` | Retained App guides and shared icon/Windows resource inputs |
+| `native/capture`, `native/fixtures`, `native/probes`, `native/third_party` | Standalone platform helpers, synthetic workloads, probes and retained upstream provenance |
+| `site/` | Independently published introduction, film and reader documentation |
+| `scripts/` | Development checks, shared builds, probes and release packaging/publishing tools |
+| `tests/` | TypeScript/tooling tests and retained Browser fixtures; Rust tests stay with their crates |
 | `deploy/` | Operator scripts and container, proxy, service and certificate templates |
-| `docs/` | User guides, contracts, decisions and operations; [documentation ownership](./documentation.md) defines each owner |
-| `licenses/` | Third-party license texts, pinned notice sources and their redistribution reference |
+| `docs/`, `licenses/` | Documentation owners, dependency notices and pinned source attribution |
 | `.github/`, `.githooks/`, `.agents/`, `.codex/` | Platform automation and scoped agent/tool integration |
-| `build/`, `node_modules/`, `coverage/` | Ignored local output and dependencies; never current product truth |
+| `build/`, Cargo `target/`, generated WASM `pkg/`, `node_modules/`, `coverage/` | Ignored output and dependencies; never current product truth |
 
-`site/` introduces Piik; `src/client/` is Piik's interactive application.
-`internal/app/nativecapture` owns the desktop helper process and frame contract;
-`native/capture/` implements its platform APIs. `nativehost` consumes a capture
-stream. The isolated Android shell delegates runtime and capture ownership to
-`prototype/channel-android` and the shared Rust Native adapter.
-`scripts/` prepares and verifies artifacts;
-`deploy/` operates them. Move files with their actual consumers, and update paths
-and checks together; a smaller root alone does not justify another abstraction.
+This map describes the current Rust 3.0 source. Published compatibility remains
+owned by [versioning](./versioning.md). Standalone native helpers retain their
+own fixtures and provenance; the Rust App's capture owner is
+`prototype/channel-native/src/capture`.
+`site/` introduces Piik; the shared Web bundle is Piik's interactive application.
+Node, Vite and WASM tools prepare assets; deployed App/Server runtimes serve their
+sibling `web/` tree without Node.
 
 ## Module Map
 
 | Owner | Responsibility and dependency boundary |
 | --- | --- |
-| `cmd/piik-server`, `cmd/piik-app` | Thin entry points: defaults, startup and shutdown; compose the same Go room service |
-| `internal/server/app` | HTTP, site access, runtime capabilities, static assets and listener lifecycle; room mutations go through `signal` |
-| `internal/server/signal` | Authenticated command/effect owner; serializes room, session and route mutations and executes controller decisions |
-| `internal/server/room` | Room authority, credentials and persistence; caller holds the signaling lock, durable writes precede in-memory changes |
-| `internal/server/route` | Synchronous room graph and single-operation decisions; returns resource effects to `signal`, owns no locks or timers, and calls its optional diagnostic sink synchronously |
-| `internal/server/sfu`, `internal/app/mediaedge` | Server forwarding and native peer adapters over the shared `internal/media/forwarding`; Pion/LiveKit own transport and adaptation |
-| `internal/app` | Local/public-link/Site composition, loopback service, native sessions and App lifecycle; never a second room backend |
-| `internal/app/nativecapture`, `native/capture/*` | Desktop capture process, frame contract and platform capture/encoding adapters |
-| `prototype/channel-android`, `prototype/channel-native/src/capture/android`, `mobile/android` | Android JNI runtime, Rust capture/codec owners and system consent; reuse the shared App, source and media routes |
-| `src/client/pages`, `lib`, `media`, `native` | Browser orchestration and endpoint adapters; bind current media and retire owned resources |
-| `src/client/media/viewer-presentation.ts`, `ui/media-status.ts` | Playback facts and their derived status projection; UI indicators do not create recovery or quality policy |
-| `src/client/components`, `locales`, `ui` | Shared interaction, visual primitives and localized copy; same product interface for Server and App |
-| `src/client/room-voice` | Room voice session and Browser endpoint; membership and audio resources outlive the interaction window independently of picture sharing |
-| `src/client/remote-control` | Attended input sessions and forwarding over the committed media route; native input authority stays in `internal/app/remoteinput` |
-| `internal/server/webassets` | One built Browser bundle embedded by both binaries; Node/Vite are development tooling |
+| `prototype/channel-core` | Domain admission, room authority, signed conversation/history, activity/publication plans and transport leases; no Browser/Native/Server adapter dependency |
+| `prototype/channel-browser/src` | WASM calls, IndexedDB transactions and participant-owned file storage |
+| `src/client/channel` | Browser session, peer carrier, media, room hosting, conversation, voice, files and attended input over core-owned plans |
+| `prototype/channel-native/src/session.rs`, `hosted_room.rs` | Authenticated Native participant, SQLite-backed rooms and admitted peer resources |
+| `prototype/channel-native/src/peer.rs`, `media` | RTC connections, encoded media forwarding and demand; the media library owns network adaptation |
+| `prototype/channel-native/src/capture`, `input` | Platform source/encoder/input resources under the selecting page's lease |
+| `prototype/channel-server/src/domain.rs` | Domain HTTP/WebSocket admission and directory effects over the shared core |
+| `prototype/channel-server/src/lib.rs` | Explicit Server-owned Native hosting and service shutdown |
+| `prototype/channel-server/src/app*.rs` | Local approval, site namespaces, App-owned domains, launcher and public-link lifetime |
+| `prototype/channel-server/src/web.rs` | Shared static delivery, document cache policy and network entries; build-time compression belongs to `scripts/build-channel-web.mjs` |
+| `src/client/components`, `locales`, `ui`, shared media/control helpers | Product controls, presentation and localized copy reused by App, Server and previews |
+| `prototype/channel-android`, `mobile/android` | JNI runtime and Android permission/service ownership; reuse Native capture and shared App composition |
+| `mobile/cloudflared` | Overlay against its separately pinned upstream Go module; no Piik business core |
 
-Names follow [naming](./naming.md). Architecture decisions explain why these
-boundaries exist: [shared core](../adr/0012-shared-go-backend-core.md),
-[embedded media](../adr/0013-embedded-node-local-media.md) and
-[Browser pooling](../adr/0014-browser-node-local-encoding-pool.md).
-Directory names are a map, not a requirement to introduce another layer.
+The [channel/network model](../research/channel-network-design.md) and
+[room-data model](../research/channel-storage-and-identity.md) own the 3.0 design.
+Directory names locate responsibilities; they do not require another layer.
 
-The official website and public Demo are optional entry points, not runtime
-dependencies of App or self-hosted rooms. Ship the Web assets with the binaries.
-Help and download navigation may prefer the reachable website, with direct
-GitHub destinations while its bounded, page-scoped check is pending or fails.
-Keep this check outside room startup, authorization and media lifecycles.
+The website and public Demo are optional entry points, not runtime dependencies
+of App or self-hosted rooms. Ship the shared Web assets with the binaries.
+Keep optional help/download reachability checks outside room startup,
+authorization and media lifecycles.
 
 ## Contract Map
 
 | Boundary | Schema/validation owners |
 | --- | --- |
-| Room HTTP and Browser/Server signaling | `src/shared/protocol.ts` and `internal/server/protocol`; HTTP dispatch in `internal/server/app`, WS dispatch in `signal` |
-| Site access HTTP | `src/client/lib/api.ts` and `internal/server/app/json.go`; cookies and access behavior belong to [rooms/access](./rooms-access.md) |
-| Browser/App discovery and control | `src/client/native/wire.ts`, `internal/app/loopback/protocol.go`, `internal/app/nativecontrol/wire.go` |
-| Remote input data channel | [Browser input protocol](../../src/client/remote-control/protocol.ts), [native input validation](../../internal/app/remoteinput/manager.go) and [channel routing](../../internal/media/inputroute); admission remains with the existing room and native control owners |
-| App/capture sidecar | `internal/app/nativecapture` and each platform capture adapter; probe/commands and encoded-frame envelope are distinct formats |
-| In-process capture producer | `internal/app/nativehost/capture.go`; the platform supplies frames and retires its own resources, without another control or routing protocol |
-| Configuration and persistence | `internal/server/config`, `internal/app/config`, `internal/server/room/database.go`; operator semantics in [configuration](./configuration.md) |
-| Release and update metadata | Existing packaging scripts, `src/client/lib/release-update.ts`, `cmd/piik-server/release.go`; identity/compatibility in [versioning](./versioning.md), operations in [deployment](../deployment.md) |
+| Domain admission and signaling | `prototype/channel-core/src/wire.rs`, `src/client/channel/protocol.ts`; I/O dispatch in `prototype/channel-server/src/domain.rs` |
+| Room commands, confirmations and history | Core `host.rs`, `conversation.rs`, `history.rs` and storage adapters; Browser/Native deliver replies after the owned transaction commits |
+| Browser/App discovery and approval | `src/client/channel/app-link.ts`, shared discovery/picker schemas, Server `app.rs` and `app_sites.rs` |
+| Encoded capture/media | Native `capture`, `media` and `peer.rs`; platform producers retain their source clock and resource ownership |
+| Attended input | Core `input.rs`, Browser `channel/input.ts` and Native `input`; consent follows the current publication/page lease |
+| Files | Core `attachment.rs`/`file_delivery.rs`, Browser attachment/storage adapters and Native `file.rs` |
+| Configuration and persistence | Rust startup/App composition and Core storage owners; runtime setup in the [Server/App guide](../../prototype/channel-server/README.md) |
+| Release/update metadata | Existing packaging scripts and Rust `release.rs`; identity/compatibility in [versioning](./versioning.md) and operations in [deployment](../deployment.md) |
 
-The shared `tests/fixtures/wire-samples.json` is consumed by TypeScript and Go
-fixture tests. It covers room requests and signaling; it is not a universal
-schema for all HTTP, Native or capture traffic. Change the actual two ends and
-the relevant existing fixture/check together. Do not create another handwritten
-field list in documentation, parallel DTO hierarchy or schema generator without
-a demonstrated reduction in ownership or drift.
+`tests/fixtures/wire-samples.json` remains a retained 2.x Browser fixture.
+It does not define the 3.0 domain, room, Native or capture interfaces. Change the
+actual producer, consumer and relevant existing check together; do not create
+another handwritten field list, DTO hierarchy or schema generator without a
+demonstrated reduction in ownership or drift.
 
 Keep UI presets, requested values, runtime capabilities, observations and hard
 resource limits distinct. Every bound needs an owner and a reason: wire/codec
@@ -137,18 +132,15 @@ Presentation derives from the committed fact instead of mirroring it.
 
 | Runtime | Acquire | Commit | Retire |
 | --- | --- | --- | --- |
-| Browser Host share | `pages/HostPage.tsx` captures one source and creates its peers and route | current generation plus the owning identity: local-offer epoch, publisher slot revision, source-switch and quality-change tokens | `disposeResources` stops owned tracks, disposes peers and sends `stop-sharing`; a replaced source retires through `retiringStreamRef` |
-| Browser Viewer route | `pages/ViewerPage.tsx` binds one parent peer (Browser or Native) and its relay children | parent, connection and message identity, then playback facts | a new viewer generation retires the old binding; relay children follow `activateChildren` revisions |
-| Browser relay fanout | `webrtc/viewer-relay.ts` prepares a child before it is needed | `activateChildren(revision, childPeerIds)` commits the prepared set | replaced or emptied sets disconnect the child peers they own |
-| Browser local encoding pool | `webrtc/host-peer.ts` attaches a pool carrier when capture and APIs support it ([ADR-0014](../adr/0014-browser-node-local-encoding-pool.md)) | the carrier binding owns its pooled producer while attached | source change or disposal releases the carrier; unsupported APIs keep ordinary senders |
-| Browser/App control connection | `native/client-connection.ts` discovers lazily when the page requests App capability | one acquisition and exact `NativeClient` instance; the page owns eligibility and failure policy | explicit release, page/session retirement or App disconnect; late discovery closes only its own result |
-| Room voice | `room-voice/session.ts` binds the admitted room session and its Browser endpoint | authoritative membership and the current publication/connection identity under [room media](./routing-transport.md#room-media) | leave, room retirement or session close releases owned audio; closing the interaction window does not leave voice |
-| Floating room tool | `FloatingPanel.tsx` presents the tool; `ui/panel-window.ts` opens a supported detached window | the current window request and document own presentation, not the room session | close returns the tool to the page; opener/session retirement closes even a late open under [presentation lifecycle](./presentation-lifecycle.md) |
-| App native session | the loopback service admits native control sessions and the Web UI selects the native path | session identity plus the explicit media-path choice | session end, share end or process exit retires that edge and its capture sidecar |
-| Android runtime | the user starts `AppRuntimeService`, which creates the shared Go core | one service/runtime instance; pending OS results retain their original media request | user Stop or service retirement joins startup and closes its own runtime; Activity navigation does not stop it |
-| Native ICE gathering | one gathering observes addresses on its connection's retained socket | candidates retain their source ICE generation; one collector joins Pion, STUN and gateway completion | ICE restart retires previous observations and excludes stale queued output; connection close retires the socket |
-| Server room authority | `signal` authenticates one Host or Viewer command | `room` writes durably before the in-memory commit; the signaling lock serializes mutations | explicit replacement or deletion, grant rotation or revocation, or process exit for memory-mode rooms |
-| Server route and SFU | `signal` feeds `route` one serial child operation; `sfu/admission.go` accepts one bounded publication | one committed graph per controller and the forwarding publication | superseded assignments retire inside the same operation; deactivate retires the publication |
+| Browser domain session | `channel/session.ts` opens the authenticated domain connection | current welcome/session and room bindings | page or admitted-session retirement ends that session's personal activities and peer resources |
+| Browser room host | the Browser adapter opens IndexedDB and claims the room binding | Core-prepared confirmation/history after transaction commit | page/binding retirement releases hosting; another binding cannot be overwritten by stale work |
+| Native room host | Native opens the admitted SQLite-backed room | durable Core transaction before confirmed reply | room/session/process retirement closes resources while retaining saved room data |
+| Screen/camera publication | the selecting page acquires capture and publication leases | current source, plan and decoded-delivery proof | stop/replacement/page loss retires its captures and affected media/input leases |
+| Room voice | Browser capture and explicit room participation | current voice publication and playback ownership | leave/page retirement releases the relevant voice resources; a floating tool's closure does not leave voice |
+| Floating room tool | `ChannelRoomTool` presents existing conversation/couch/voice controls | current window/document owns presentation | closure returns the tool to the page; session retirement closes its detached surface |
+| App hosting and capture | App service admits a site and starts Native hosting; the page separately selects capture | exact approved origin, room namespace and page capture lease | App shutdown ends its hosts; page loss stops its own captures without ending independent App hosting |
+| Android runtime | service starts the Rust App through JNI; system consent supplies capture capability | current runtime and original pending permission/capture request | Stop/service retirement closes that runtime; Activity navigation does not replace it |
+| Native physical peer | admitted transport lease creates RTC/socket/media resources | current physical pair and library-owned connection state | lease replacement or shutdown retires only those resources |
 
 ## Source Index
 
@@ -159,29 +151,22 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 
 | Change | Start at |
 | --- | --- |
-| Host workflow, share lifecycle, notices | [src/client/pages/HostPage.tsx](../../src/client/pages/HostPage.tsx), [src/client/pages/host-page-notices.ts](../../src/client/pages/host-page-notices.ts) |
-| Viewer workflow, playback, status projection | [src/client/pages/ViewerPage.tsx](../../src/client/pages/ViewerPage.tsx), [src/client/media/viewer-presentation.ts](../../src/client/media/viewer-presentation.ts), [src/client/ui/media-status.ts](../../src/client/ui/media-status.ts) |
-| Received viewer metrics and expiry | [src/client/media/viewer-quality-evidence.ts](../../src/client/media/viewer-quality-evidence.ts) owns evidence rules; [src/client/media/viewer-quality-evidence-store.ts](../../src/client/media/viewer-quality-evidence-store.ts) owns received entries and timers for Host and relay views |
-| Browser peer and route mechanics | [src/client/webrtc/host-peer.ts](../../src/client/webrtc/host-peer.ts), [src/client/webrtc/viewer-peer.ts](../../src/client/webrtc/viewer-peer.ts), [src/client/webrtc/viewer-relay.ts](../../src/client/webrtc/viewer-relay.ts), [src/client/media/host-sfu-route.ts](../../src/client/media/host-sfu-route.ts), [src/client/media/viewer-sfu-route.ts](../../src/client/media/viewer-sfu-route.ts), [src/client/media/route-transition.ts](../../src/client/media/route-transition.ts) |
-| Capture, profiles and sender parameters | [src/client/media/quality.ts](../../src/client/media/quality.ts), [src/client/media/browser-encoding-pool.ts](../../src/client/media/browser-encoding-pool.ts), [src/client/media/browser-encoding-output.ts](../../src/client/media/browser-encoding-output.ts) |
-| SFU endpoints | [src/client/sfu/publisher.ts](../../src/client/sfu/publisher.ts), [src/client/sfu/subscriber.ts](../../src/client/sfu/subscriber.ts), [src/client/sfu/peer.ts](../../src/client/sfu/peer.ts), [internal/server/sfu](../../internal/server/sfu) |
-| Localized copy and failure facts | [src/client/locales](../../src/client/locales), [src/client/ui/copy.ts](../../src/client/ui/copy.ts), [src/client/ui/media-failure.ts](../../src/client/ui/media-failure.ts) |
-| Native control connection and media adapters | [src/client/native/client-connection.ts](../../src/client/native/client-connection.ts), [src/client/native](../../src/client/native), [internal/app/loopback](../../internal/app/loopback), [internal/app/nativecontrol](../../internal/app/nativecontrol), [internal/app/nativehost](../../internal/app/nativehost), [internal/app/nativeviewer](../../internal/app/nativeviewer), [internal/app/nativecapture](../../internal/app/nativecapture) |
-| Android App and platform lifecycle | [mobile/README.md](../../mobile/README.md), [prototype/channel-android](../../prototype/channel-android), [prototype/channel-native/src/capture/android](../../prototype/channel-native/src/capture/android), [mobile/android/app/src/main](../../mobile/android/app/src/main) |
-| Room authority, persistence and graph | [internal/server/signal](../../internal/server/signal), [internal/server/room](../../internal/server/room), [internal/server/route](../../internal/server/route) |
-| Room signaling intent and interaction delivery | [src/client/lib/signaling.ts](../../src/client/lib/signaling.ts), [src/client/lib/room-interactions.ts](../../src/client/lib/room-interactions.ts); admission and transient delivery follow [rooms and access](./rooms-access.md) |
-| Shared wire contract | [src/shared/protocol.ts](../../src/shared/protocol.ts), [internal/server/protocol](../../internal/server/protocol), [tests/fixtures/wire-samples.json](../../tests/fixtures/wire-samples.json) |
-| Diagnostics and logging | [src/client/lib/debug.ts](../../src/client/lib/debug.ts), [internal/diagnostics](../../internal/diagnostics), [configuration](./configuration.md#diagnostics) |
-| Configuration and deployment | [internal/server/config](../../internal/server/config), [internal/app/config](../../internal/app/config), [configuration](./configuration.md), [deployment](../deployment.md) |
-| ICE sockets, gateway mapping and candidate gathering | [internal/app/mediaedge/ice_socket.go](../../internal/app/mediaedge/ice_socket.go), [internal/app/mediaedge/candidate_gathering.go](../../internal/app/mediaedge/candidate_gathering.go), [internal/app/mediaedge/stun.go](../../internal/app/mediaedge/stun.go), [internal/app/portmapping](../../internal/app/portmapping) |
-| NAT evidence and App punch preparation | [src/client/webrtc/nat-prediction.ts](../../src/client/webrtc/nat-prediction.ts), [src/shared/nat-candidate.ts](../../src/shared/nat-candidate.ts), [src/client/native/native-punch.ts](../../src/client/native/native-punch.ts), [internal/app/mediaedge/punch.go](../../internal/app/mediaedge/punch.go), [internal/server/stun/server.go](../../internal/server/stun/server.go); controls and execution belong to the [network laboratory](../research/network-lab.md) |
-| Route scheduling, retry opportunities and deadlines | [internal/server/route/operation.go](../../internal/server/route/operation.go), [internal/server/route/opportunities.go](../../internal/server/route/opportunities.go), [internal/server/route/candidates.go](../../internal/server/route/candidates.go); routing decisions stay under [ADR-0005](../adr/0005-automatic-hybrid-media-routing.md) |
-| Picture attachment and retained room edges | [internal/server/route/publication.go](../../internal/server/route/publication.go), [internal/server/route/graph.go](../../internal/server/route/graph.go); separate picture and voice lifetimes follow [room media](./routing-transport.md#room-media) |
-| Room voice session, endpoint and roster | [src/client/room-voice/session.ts](../../src/client/room-voice/session.ts), [src/client/room-voice/browser-endpoint.ts](../../src/client/room-voice/browser-endpoint.ts), [src/client/room-voice/participant-presentation.ts](../../src/client/room-voice/participant-presentation.ts), [src/client/room-voice/RoomVoicePanel.tsx](../../src/client/room-voice/RoomVoicePanel.tsx) |
-| Remote input and committed-route forwarding | [src/client/remote-control/input-session.ts](../../src/client/remote-control/input-session.ts), [src/client/remote-control/input-route.ts](../../src/client/remote-control/input-route.ts), [src/client/remote-control/protocol.ts](../../src/client/remote-control/protocol.ts), [internal/app/remoteinput](../../internal/app/remoteinput) |
-| Interaction window and detached presentation | [src/client/components/living/RoomInteractions.tsx](../../src/client/components/living/RoomInteractions.tsx), [src/client/components/living/FloatingPanel.tsx](../../src/client/components/living/FloatingPanel.tsx), [src/client/ui/panel-window.ts](../../src/client/ui/panel-window.ts), [src/client/components/living/use-anchored-popover.ts](../../src/client/components/living/use-anchored-popover.ts) |
-| Visual primitives, guidance and preview | [src/client/ui/palette.css](../../src/client/ui/palette.css), [src/client/ui/theme.ts](../../src/client/ui/theme.ts), [src/client/ui/icons.tsx](../../src/client/ui/icons.tsx), [src/client/components/living/primitives.tsx](../../src/client/components/living/primitives.tsx), [src/client/components/living/Tooltip.tsx](../../src/client/components/living/Tooltip.tsx), [src/client/pages/ControlsPreview.tsx](../../src/client/pages/ControlsPreview.tsx) |
-| Public website and film presentation | [site/index.html](../../site/index.html), [site/main.js](../../site/main.js), [site/styles.css](../../site/styles.css), [site/films](../../site/films), [scripts/build-website.mjs](../../scripts/build-website.mjs) |
+| Room UI, share/watch workflow and page lifecycle | [ChannelPreviewPage](../../src/client/pages/ChannelPreviewPage.tsx), [Browser session](../../src/client/channel/session.ts) |
+| Browser peer/media, playback proof and quality | [Channel media](../../src/client/channel/media.ts), [transport](../../src/client/channel/transport.ts), [decoded-frame proof](../../src/client/media/decoded-frame-proof.ts), [shared capture profiles](../../src/client/media/quality.ts) |
+| Domain admission, room authority and route plans | [Core](../../prototype/channel-core/src), [Domain I/O](../../prototype/channel-server/src/domain.rs) |
+| Confirmed conversation, history and storage | [Core host](../../prototype/channel-core/src/host.rs), [Browser room adapter](../../prototype/channel-browser/src/room-host.ts), [Native hosted room](../../prototype/channel-native/src/hosted_room.rs) |
+| Files and selected copies | [Core delivery](../../prototype/channel-core/src/file_delivery.rs), [Browser attachments](../../src/client/channel/attachments.ts), [Native file owner](../../prototype/channel-native/src/file.rs) |
+| App discovery, approval and hosting | [Browser App link](../../src/client/channel/app-link.ts), [App composition](../../prototype/channel-server/src/app.rs), [site namespaces](../../prototype/channel-server/src/app_sites.rs), [local domain](../../prototype/channel-server/src/app_domain.rs) |
+| Native RTC/media and gateway mapping | [Native peer](../../prototype/channel-native/src/peer.rs), [mapping](../../prototype/channel-native/src/peer/mapping.rs), [media](../../prototype/channel-native/src/media.rs), [dependency provenance](../../prototype/channel-native/README.md#rtc-dependency) |
+| Platform source capture and encoding | [Rust capture](../../prototype/channel-native/src/capture), [standalone helper/fixture source](../../native) |
+| Attended input and committed-route forwarding | [Core input](../../prototype/channel-core/src/input.rs), [Browser input](../../src/client/channel/input.ts), [Native executor](../../prototype/channel-native/src/input) |
+| Android App and platform lifecycle | [Android guide](../../mobile/README.md), [JNI](../../prototype/channel-android), [Native capture](../../prototype/channel-native/src/capture/android), [system shell](../../mobile/android/app/src/main) |
+| Voice, room tool and detached presentation | [Channel components](../../src/client/channel/components), [panel window](../../src/client/ui/panel-window.ts) |
+| Shared UI, copy and previews | [components](../../src/client/components), [locales](../../src/client/locales), [UI primitives](../../src/client/ui), [catalogue](../../src/client/pages/TooltipPreviewPage.tsx) |
+| Web build, compression and delivery | [shared builder](../../scripts/build-channel-web.mjs), [Rust static service](../../prototype/channel-server/src/web.rs), [frontend entry](../../src/client/main.tsx) |
+| Configuration, updates and packaging | [Server/App guide](../../prototype/channel-server/README.md), [Rust release checks](../../prototype/channel-server/src/release.rs), [deployment](../deployment.md) |
+| Independent Android tunnel helper | [Cloudflared owner](../../mobile/cloudflared/README.md), [builder](../../scripts/build-android.mjs) |
+| Public website, film and guides | [site](../../site), [website builder](../../scripts/build-website.mjs), [documentation ownership](./documentation.md) |
 
 ## Implementation Rules
 

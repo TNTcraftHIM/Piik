@@ -139,9 +139,9 @@ duplicating private internals into an adapter does not remove maintenance cost.
 Evaluate larger feature additions as dependency choices, rather than treating
 them as small fixes.
 
-The [Go provenance](./internal/thirdparty/README.md) and
-[Native provenance](./prototype/channel-native/README.md#rtc-dependency) own
-official baselines, retained patches and removal criteria. Review upstream when
+The [Native provenance](./prototype/channel-native/README.md#rtc-dependency) and
+[independent Cloudflared owner](./mobile/cloudflared/README.md) record official
+baselines, retained patches and removal criteria. Review upstream when
 changing a patched dependency and before phase acceptance. Do not create a second
 patch inventory or edit shared package caches.
 

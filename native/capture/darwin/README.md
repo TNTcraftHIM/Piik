@@ -1,12 +1,13 @@
 # macOS Capture Process
 
-This process keeps the native App media boundary used on Windows while
-replacing only the platform implementation. It lists current ScreenCaptureKit
+This retained standalone helper uses the 2.x capture-process boundary. The current
+Rust App uses its [Rust capture owner](../../../prototype/channel-native/src/capture).
+This helper lists current ScreenCaptureKit
 displays and windows, captures one exact source with the current product profile,
 requires a VideoToolbox hardware H.264 encoder, and writes Annex-B Baseline H.264
 through the bounded `SMED` protocol. ScreenCaptureKit application or display
-audio is converted to stereo PCM16 for the existing Go Opus boundary. The Go
-session applies live profile changes by replacing that capture generation behind
+audio is converted to stereo PCM16 for the recorded Go Opus boundary. The 2.x Go
+session applied live profile changes by replacing that capture generation behind
 the same Pion source.
 
 Build on Apple silicon or Intel macOS 13 or newer; the helper uses the build
@@ -22,7 +23,7 @@ sh native/capture/darwin/build.sh /outside/repository/build
 
 `--geometry-self-test` checks content cropping, Retina scaling and rejection of
 invalid frame geometry, plus H.264 format/aperture admission, without requiring
-a hardware encoder. Go validates every raw SPS's coded size and reference budget
+a hardware encoder. The 2.x Go reader validated every raw SPS's coded size and reference budget
 before sending encoded input to the helper; CoreMedia can normalize SPS cropping
 in its format description. `--self-test`
 encodes successive landscape, portrait, ultrawide and small 420v buffers through

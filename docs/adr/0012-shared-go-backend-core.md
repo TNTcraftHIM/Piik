@@ -1,5 +1,8 @@
 # ADR-0012: Shared Go Backend Core
 
+This accepted decision records the published 2.x backend. Its [source snapshot](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal) remains public; the [current Rust source map](../standards/engineering.md#module-map) identifies
+the private 3.x owners.
+
 - Status: accepted
 - Date: 2026-09-06
 

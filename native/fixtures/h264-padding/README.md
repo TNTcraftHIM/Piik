@@ -7,8 +7,7 @@ is red; the right/bottom padding is blue. It contains no screen recording or use
 The Windows output-worker test decodes it through Media Foundation and verifies
 the dimensions and NV12 pixels handed to downstream encoders. The macOS geometry
 self-test uses its SPS/PPS to check CoreMedia's format interpretation without
-allocating a hardware decoder. Both run through `npm run check:native` on their
-respective platforms.
+allocating a hardware decoder. Use the retained [Windows helper](../../capture/windows/README.md) build checks or [macOS helper](../../capture/darwin/README.md) geometry self-test on the respective platform.
 
 To regenerate with FFmpeg and libx264:
 

@@ -185,7 +185,7 @@ are ready; an open candidate DataChannel alone does not retire active media work
 | File bytes | Use the existing base paths; the [room-data model](./channel-storage-and-identity.md#shared-delivery-on-existing-room-paths) develops shared range delivery and cached-source selection without another topology planner. |
 | Screen picture and source audio | One distribution plan per publication: start on usable existing paths, then improve affected branches while preserving selected viewers and necessary relays. |
 
-Current 2.x [projectVoiceFlows](../../internal/server/signal/voice_plan.go) already
+Published 2.x [projectVoiceFlows](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/server/signal/voice_plan.go) already
 builds bidirectional adjacency from the committed room tree, finds paths from
 each speaker and avoids repeated copies on shared edges. Reuse that principle;
 its current Host/listening constraints are not automatically the 3.0 contract.

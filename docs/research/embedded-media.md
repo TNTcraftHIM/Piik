@@ -1,5 +1,8 @@
 # Embedded Media Evaluation
 
+This is the recorded 2.x Go media evaluation. The [current Rust source map](../standards/engineering.md#module-map) identifies
+the private 3.x owners; this evaluation does not establish its acceptance.
+
 Reviewed: 2026-09-07. Status: evaluation, not a deployed transport decision.
 Baseline: `3da8ecd22a3499e660f498e527ad4ffbaef08c82`.
 

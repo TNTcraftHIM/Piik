@@ -40,7 +40,7 @@ personal content. You can send a suggestion without setting up development tools
 | Welcome lines, waiting captions and changing browser-tab titles | The `enPlayful` / `zhPlayful` pools and title-frame catalogs in those same files; website welcome lines reuse these pools |
 | Website | [Page markup](../../site/index.html) and [interactive labels](../../site/main.js); text is paired by `en` and `zh-CN` |
 | Introduction film | [Film sources](../../site/film/README.md); captions, artwork and playback labels have their own bilingual text |
-| App console window | `consoleCopy` in [console.go](../../internal/app/console.go); entries are ordered English, Chinese, visual; retain the third slot even when empty |
+| 3.0 domain/room-specific wording | Paired Chinese/English text in [channel components](../../src/client/channel/components) and the [room page](../../src/client/pages/ChannelPreviewPage.tsx); shared controls still use the catalogs above |
 | README and entry guides | [README pair](../../README.md), [documentation home](./README.md), [getting started](./getting-started.md), [troubleshooting](./troubleshooting.md) and [self-hosting](../operations/self-hosting.md), each with a `.zh-CN.md` counterpart |
 
 Edit the source, then rebuild the surface that serves it:
@@ -63,8 +63,8 @@ claims. A cultural reference should still make sense to someone unfamiliar with 
 Machine-assisted drafts need proofreading by someone who understands the language
 and the screen; raise unclear source text in the PR instead of guessing.
 
-For App startup failures, translate the launcher and console explanations
-together. Keep their shared reason codes and raw technical details unchanged.
+For App startup failures, update the shared launcher and error explanations
+together. Preserve Rust runtime reason codes and raw technical diagnostics.
 
 Locale files are TypeScript objects. These are existing examples:
 
@@ -82,7 +82,7 @@ composition, describe the needed change in the PR so the caller and formatter
 can be updated together.
 
 Keep quotes, escapes and commas valid. Preserve commands, config keys, URLs,
-download filenames and format markers such as `%s` in Go console text. Translate
+download filenames and formatting placeholders. Translate
 link labels and image descriptions; repair internal anchors when translating
 Markdown headings. Keep legal license text and third-party notices intact.
 
@@ -113,10 +113,10 @@ layout questions, so contributors can coordinate work and review.
    Extra languages appear in a shared dropdown after visual mode. Check language
    selection, saved preferences and App handoff against the
    [system-language policy](../standards/presentation-lifecycle.md#visual-language).
-3. Check complete screens and the launch flow. New UI languages use English in
-   the App console until its own translation is added. Console additions also
-   require updating the launcher and loopback accepted-language checks together;
-   use the [App module map](../standards/engineering.md#module-map).
+3. Check complete screens and the launch flow, including launcher, room and error
+   states. Paired page-specific text does not automatically inherit a new catalog
+   language; state its coverage in the PR and use the
+   [module map](../standards/engineering.md#module-map).
 4. State coverage in the PR. Website, film and documentation translations can be
    contributed separately; update their language controls when adding a language.
    For right-to-left scripts, implement and check text direction and layout.

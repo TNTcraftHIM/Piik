@@ -1,8 +1,7 @@
 # Media Foundation H.264 Hardware Fixture
 
 This is an offline Windows-only decision fixture. Its build compiles the same
-Media Foundation encoder source used by Piik App's Windows capture
-process, under a
+Media Foundation encoder source used by the retained [Windows capture helper](../../capture/windows/README.md), under a
 fixture-only macro for synthetic input and telemetry. The generated fixture is
 not linked into the sender and does not contact a room, signaling service,
 Viewer, or production endpoint.
@@ -41,8 +40,8 @@ The fixture prints bounded key/value evidence to stdout and never writes the
 encoded bitstream. A nonzero exit is a measured no-go at the reported stage;
 it must not be worked around by adding a software retry.
 
-Pion transport and browser decode remain separate from this offline fixture;
-the product path reuses its exact `42c01f`, Annex-B, adapter-bound hardware
+Transport and browser decode remain separate from this offline fixture;
+the recorded 2.x product path reused its exact `42c01f`, Annex-B, adapter-bound hardware
 contract without adding those network concerns to this executable.
 
 Primary API references, accessed 2026-08-20:

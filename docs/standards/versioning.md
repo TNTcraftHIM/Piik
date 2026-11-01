@@ -13,9 +13,9 @@ state; automatic publication follows the product-change boundary below.
 | Full Git SHA / `REVISION` | Exact source revision | Changes with the source commit; never use SHA inequality as release ordering or compatibility proof |
 | Artifact SHA-256 | Exact packaged bytes in the release descriptor | Each artifact; one source SHA can produce different platform/toolchain binaries |
 | Platform application version fields | Generated package metadata | Product version in the platform's numeric format; source SHA stays separate. XML/desktop-format versions remain specification values |
-| Browser/Server signaling identifier | WS contract in `src/shared/protocol.ts` and Go protocol constants | Change for an incompatible wire contract, not UI edits or every release |
-| Browser/App control identifier | `src/client/native/wire.ts` and App loopback/control | Independent compatibility boundary; installed App and Site can update separately |
-| Capture probe and encoded-frame envelope | `internal/app/nativecapture` and platform adapters | Internal matched bundle; change only the affected format |
+| Browser/Server signaling identifier | Owning wire types: Core `wire.rs`/Browser channel protocol for 3.0; published 2.x remains in `src/shared/protocol.ts` and [immutable protocol constants](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/server/protocol) | Change for an incompatible wire contract, not UI edits or every release |
+| Browser/App control identifier | Current App discovery/approval: Browser `channel/app-link.ts` and Server `app.rs`; published 2.x: `src/client/native/wire.ts` and its matched App loopback/control | Independent compatibility boundary; installed App and Site can update separately |
+| Capture probe and encoded-frame envelope | Rust Native capture/media owners; retained standalone helpers own their matched private formats | Internal matched bundle; change only the affected format |
 | SQLite schema, App config format, Browser storage-key format | Their storage/parser owners | Change with the actual stored representation; preserve accepted authority across a compatible upgrade |
 | Release descriptor schema | Packager and descriptor readers | Describes metadata format, not the product release |
 | Room authorization generation, share/route/publication/media generations, connection IDs | Current authority and resource owners | Runtime identity/freshness only; never reset or align them with release numbers |

@@ -89,7 +89,7 @@ the 16.7 ms frame budget. In these short runs, stock bandwidth adaptation and
 startup ramp, not a slow per-frame encoder call, coincided with the reduced
 cadence/resolution. Web VP8 still competes materially with a game for CPU.
 
-Reproduction uses `npx tsx scripts/peer-assisted-benchmark.ts`; retained commit
+The archived [peer-assisted runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/peer-assisted-benchmark.ts) owns reproduction; retained commit
 and environment details remain in Git history rather than this current evidence
 summary.
 
@@ -372,7 +372,7 @@ device reported no contemporaneous resource or drop pressure. The deployed
 LiveKit Server 1.13.5 also predates the upstream simulcast RTX pairing repair:
 under the affected Pion integration, repair streams were not paired and
 retransmissions were silently dropped. LiveKit Server 1.13.6 established the
-RTX-repair baseline; `go.mod` owns the current dependency pin. This repairs loss
+RTX-repair baseline; the [published 2.x module](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/go.mod) records that dependency pin. This repairs loss
 recovery; it does not claim to prevent loss on the Host-to-SFU UDP path.
 
 The same later room also contained a separate interval in which the native

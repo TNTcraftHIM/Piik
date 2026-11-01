@@ -21,9 +21,7 @@ The embedded SFU browser gate sends 500 Hz left and 1500 Hz right, and measures
 decoded channel separation. On local Chrome 154, both the default fallback and
 SFU-only arms retained more than 77 dB separation in both channels at the 64 kbps
 ceiling, including normal video reception. Source changes and subscription
-recovery retain the existing audio gate. Run `npm run gate:embedded-sfu` with `PIIK_EMBEDDED_SFU_GATE=true`,
-`CHROME_PATH`, and optional `PIIK_EMBEDDED_SFU_ONLY=true`; it cleans up its own
-processes and ports. This is synthetic local evidence, not an acoustic or
+recovery retain the existing audio gate. The archived 2.x [SFU runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/embedded-sfu-gate.ts) records those inputs and cleanup. This is synthetic local evidence, not an acoustic or
 public-network measurement.
 
 A local Chrome 154 check through the production Host/Viewer peers retained more

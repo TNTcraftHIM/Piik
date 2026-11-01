@@ -78,22 +78,10 @@ that bitstream, not two Pion transports or weak-budget/resource adaptation.
 
 ## Healthy Relay Chain
 
-Export the first 180 real AUs from sender A for the opt-in Go forwarding check:
-
-```powershell
-& ./build/encoder-pool/probe/Release/encoder-pool-probe.exe `
-  --pooled --group-adjuster --healthy-only --export build/encoder-pool/chain-input.jsonl
-go test -c -o build/embedded-media/mediaedge.test.exe ./internal/app/mediaedge
-$env:PIIK_POOL_CHAIN_FIXTURE = "$PWD/build/encoder-pool/chain-input.jsonl"
-$env:PIIK_NATIVE_CAPTURE = "$PWD/build/go-check/piik-capture.exe"
-$env:PIIK_POOL_CHAIN_OUTPUT = "$PWD/build/encoder-pool/chain-result.json"
-& ./build/embedded-media/mediaedge.test.exe `
-  '-test.run=^TestRelayChainEncodedFixture$' '-test.v' '-test.timeout=30s'
-```
-
-The real capture executable must already be built, so Native relay capability
-remains enabled while checking that healthy forwarding does not start it. This
-replays encoded video through two Native receivers and three leaves, checking
-recovery-first, contiguous, hash-identical AUs and closure. No frame payload is
-committed. Optional output contains only the synthetic trace's summary. It is
-not a live encoder/BWE integration or an internet/NAT test.
+The archived 2.x [Go forwarding fixture](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/app/mediaedge/relay_chain_fixture_test.go) and [original instructions](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/native/probes/encoder-pool/README.md#healthy-relay-chain)
+recorded a replay of exported AUs through two Native receivers and three leaves.
+It checked recovery-first, contiguous, hash-identical AUs and closure with the matching
+capture helper available.
+No frame payload was committed; optional output contained only the synthetic trace summary.
+That result was not a live encoder/BWE integration or an internet/NAT
+test, and does not establish Rust 3.x acceptance.

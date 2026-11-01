@@ -1,6 +1,8 @@
 # Windows Capture Process
 
-This isolated Windows process provides native capture for Piik App. It
+This retained standalone Windows helper implements the 2.x capture-process
+boundary. The current Rust App uses its
+[Rust capture owner](../../../prototype/channel-native/src/capture). This helper
 enumerates local displays and visible top-level windows, binds each window to
 its PID and process creation time, and has independent modes for:
 
@@ -13,8 +15,8 @@ its PID and process creation time, and has independent modes for:
   over the local control connection rather than the media route.
 
 The video command receives the current product resolution, frame-rate, bitrate,
-and quality preference. A replacement process applies live changes while the Go
-session retains its Pion source and connections.
+and quality preference. In 2.x, a replacement process applied live changes while
+the Go session retained its Pion source and connections.
 
 Sharing and source previews request borderless access by default when Windows
 exposes `IsBorderRequired` and `GraphicsCaptureAccess` (build 20348+, including
@@ -45,13 +47,11 @@ pipeline within a four-second selection budget; H.264 that sustains the target
 needs no software comparison. The selected codec remains fixed across profile
 and source changes. VP8 reads the existing
 NV12 surface through one staging texture and uses the same encoded-frame
-boundary. The process has no network fallback. The App
-consumes the selected process or system-audio stream through its native media
-edge when the capability probe reports support. Build to the stable project
-`build/go-check` directory for a bounded capability run:
+boundary. The process has no network fallback. Build to a stable project directory
+for a bounded capability run:
 
 ```powershell
-npm run check:native
+powershell -NoProfile -File native/capture/windows/build.ps1 -OutputDirectory build/native-check -Check
 ```
 
 The checks include synthetic output-worker replacement and failure cases using

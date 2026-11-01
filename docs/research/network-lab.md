@@ -1,5 +1,7 @@
 # Controlled Network Laboratory
 
+The Go/Pion process runners and results below are retained 2.x evidence. The [current Rust source map](../standards/engineering.md#module-map) owns the private 3.x implementation. Generic network-model and namespace helpers remain reusable; the retired process runners are not current validation entrypoints.
+
 This document owns the laboratory's method and evidence limits. Product routing
 remains in [routing and transport](../standards/routing-transport.md); pending
 work remains in [TODO](../todo.md). The laboratory does not authorize NAT or
@@ -65,8 +67,10 @@ The laboratory is complete only when the following are executable and verified:
 
 ## Boundaries
 
-The fast layer already uses Pion vnet in `internal/app/mediaedge` and
-`internal/media/forwarding`. It exercises production transport with synthetic
+The recorded 2.x fast layer used Pion vnet in the
+[Native media edge](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/app/mediaedge)
+and [forwarding core](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/media/forwarding).
+It exercised that transport with synthetic
 media, not every Browser/OS behavior. The process layer uses Linux namespaces,
 kernel NAT/firewall rules and traffic shaping. Neither layer establishes
 Windows/macOS driver behavior, physical radio scheduling, mobile suspension or
@@ -98,15 +102,7 @@ the runner's distribution package lacks that option. Namespace administration
 requires root. Windows/macOS can run the model/unit layer; they need a Linux VM
 for this process layer. Root on a production host is not an equivalent setup.
 
-```sh
-npm ci
-npm run build:web
-mkdir -p build/network-lab/bin
-CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-server ./cmd/piik-server
-CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/piik-app ./cmd/piik-app
-CGO_ENABLED=0 go build -trimpath -o build/network-lab/bin/stun ./scripts/network-lab/stun
-sudo --preserve-env=PATH,CHROME_PATH "$(command -v node)" --import tsx scripts/network-lab.ts --suite smoke
-```
+The archived 2.x [process runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/network-lab.ts) and [original instructions](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/research/network-lab.md#running-the-process-layer) record the Go build and launch commands. Those commands require that snapshot's matching Go backend and Web assets.
 
 Set `CHROME_PATH` to the installed Chrome executable before running. `--list`
 lists scenarios without root; `--suite full`, `--cases browser-browser,app-app`,
@@ -235,12 +231,7 @@ times, not exact first-packet timestamps or one-way media latency.
 
 ## Local Media Lifecycle Gate
 
-`npm run gate:media-lifecycle -- --repeat 2` reuses the process layer's endpoint,
-synthetic picture/tone, stats and cleanup on loopback, without Linux namespaces
-or administrator permissions. Set `CHROME_PATH`, run `npm run build:web`, and
-build the current binaries with
-`go build -o build/network-lab/bin/ ./cmd/piik-server ./cmd/piik-app` first.
-`--list` lists cases; `--cases browser-browser,app-app` selects a subset.
+The archived 2.x [media lifecycle runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/media-lifecycle-gate.ts) reused the process layer's endpoint, synthetic picture/tone, stats and cleanup on loopback without Linux namespaces or administrator permissions. Its build and selection inputs belong to that snapshot.
 
 The four Browser/App directions exercise initial playback, a quiet source and
 repainting, stop/reshare, either page reloading, joining before sharing, and
@@ -305,17 +296,7 @@ The CPU-only `TestPublicationConstrainedRecovery` gate complements the Browser
 cases below. It runs the actual Native publication allocator and Pion transport
 through healthy, brief, periodic and sustained constraints, then pause/resume
 and source replacement. It checks recent frame arrival and sustained payload,
-not decoded picture quality. Run it explicitly in a stable executable path:
-
-```powershell
-go test -c -o build/go-tests/publication-recovery.test.exe ./internal/media/forwarding
-$env:PIIK_TRANSPORT_RECOVERY = '1'
-& build/go-tests/publication-recovery.test.exe '-test.run=^TestPublicationConstrainedRecovery$' '-test.v' '-test.timeout=8m'
-Remove-Item Env:PIIK_TRANSPORT_RECOVERY
-```
-
-On other systems, use the same Go command and environment variable with the
-platform executable name. The [publication comparison](./node-local-media-design.md#send-queue-recovery)
+not decoded picture quality. The archived 2.x [publication recovery fixture](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/media/forwarding/publication_recovery_test.go) and [original instructions](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/docs/research/network-lab.md#sustained-quality-recovery) retain the matching inputs. The [publication comparison](./node-local-media-design.md#send-queue-recovery)
 owns measured results and the distinction between encoder demand and capacity.
 
 The [2026-10-14 comparison](https://github.com/TNTcraftHIM/Piik/actions/runs/38446966925)

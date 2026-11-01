@@ -1,5 +1,9 @@
 # Native App Media Evidence
 
+The Go/Pion implementation and measured results below describe 2.x development.
+The [current Rust source map](../standards/engineering.md#module-map) identifies
+the private 3.x owners; these results do not establish its acceptance.
+
 - Reviewed: 2026-10-11
 - Scope: platform capture, shared encoded sources, Pion transport and Browser
   decode; current behavior belongs to [media quality](../standards/media-quality.md)
@@ -97,7 +101,7 @@ LiveKit Viewer received the default 1080p source, then 15 consecutive 854x480
 frames after one live Native/SFU profile change. The direct native P2P path,
 Browser, App, LiveKit process, ports, and profiles all cleaned up.
 
-The opt-in `gate:app-media` run proved, in order:
+The archived 2.x [App media runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/app-media-gate.ts) proved, in order:
 
 - WGC capture and adapter-bound Media Foundation H.264 became active;
 - 30+ encoded 1280x720 frames crossed the bounded process protocol;
@@ -128,7 +132,7 @@ The audio adapter uses `github.com/thesyncim/gopus` behind the private
 `nativeaudio` boundary. It accepts fixed 48 kHz stereo PCM16/20 ms frames,
 encodes into a caller-owned Opus buffer, and can be replaced without changing
 the media edge or control wire. The dependency is BSD-3-Clause licensed;
-App CI follows the toolchain declared in [go.mod](../../go.mod).
+the recorded 2.x App CI used the toolchain declared in [go.mod](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/go.mod).
 
 ## macOS Audio Startup
 
@@ -628,7 +632,7 @@ case: `42c01f` plus VP8 still selected VP8 against the local `42e0` registration
 The fixed Pion dependency now compares RFC-equivalent subprofiles at the matcher,
 preserving H.264 preference without rewriting remote SDP. Actual receiver
 negotiation, retained-receiver renegotiation and encoded forwarding pass with
-the repair. [Dependency provenance](../../internal/thirdparty/README.md#pion-h264-profile-matching)
+the repair. [Dependency provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#pion-h264-profile-matching)
 owns its upstream submission and removal boundary.
 
 Firefox-generated SDP also reproduced audio omission for a valid `bundle-only`
@@ -803,17 +807,11 @@ changes, source replacement and ordinary recovery after producer failure.
 A synthetic 2160x3840 Browser relay delivered fresh pictures to two children,
 including a late connection. Separate 3840x2160 and 2160x3840 Browser-to-Native
 fanout checks delivered about 30 fps to both Viewers and passed live reduction,
-pause/resume, source-audio changes and App-exit recovery. Reproduce with
-`PIIK_CLIENT_BROWSER_FANOUT_GATE=true`, `PIIK_CLIENT_GATE_VIDEO_SIZE=WIDTHxHEIGHT`
-and `CHROME_PATH` set, then run `npm run gate:app-browser-fanout`.
+pause/resume, source-audio changes and App-exit recovery. The archived 2.x [Browser fanout runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/app-browser-fanout-gate.ts) owns those recorded inputs.
 These local checks do not establish 4K60, physical 4K/game
 capture, sustained device performance, all Browser decoders or all route changes.
 
-The existing SFU gate accepts `PIIK_EMBEDDED_SFU_VIDEO_SIZE=WIDTHxHEIGHT` for a
-bounded 60 fps / 50 Mbps source; its default 720p15 control remains unchanged. Run
-`npm run gate:embedded-sfu` with `PIIK_EMBEDDED_SFU_GATE=true`,
-`PIIK_EMBEDDED_SFU_CODEC=h264` and `CHROME_PATH`; add
-`PIIK_EMBEDDED_SFU_DISPLAY=true` for actual tab capture. Synthetic 2160x3840 and
+The archived 2.x [SFU runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/embedded-sfu-gate.ts) owns the bounded 60 fps / 50 Mbps source and actual-tab-capture inputs; its default control was 720p15. Synthetic 2160x3840 and
 real 3440x1440 tab sources passed decoded-picture delivery, aspect-preserving
 reduction, numeric audio updates, subscription/page recovery and retirement.
 The tab control also passed background capture, lower-layer demand, pause/resume

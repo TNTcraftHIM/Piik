@@ -1,5 +1,9 @@
 # Server Consolidation
 
+The Go/Pion implementation and measured results below describe 2.x development.
+The [current Rust source map](../standards/engineering.md#module-map) identifies
+the private 3.x owners; these results do not establish its acceptance.
+
 - Reviewed: 2026-10-07
 - Status: published; current physical limits are in
   [verification status](../verification-status.md). The before/after measurements

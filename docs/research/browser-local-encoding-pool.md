@@ -767,10 +767,9 @@ observations establish frame progress, not barcode-based glass-to-glass latency
 or audiovisual offset. The summary suppresses those unmeasured timing values.
 `--quiet-start` requires a decoded frame before the source animation starts.
 
-For real tab capture through the shared forwarding path, set `CHROME_PATH`,
-`PIIK_EMBEDDED_SFU_GATE=true`, `PIIK_EMBEDDED_SFU_DISPLAY=true` and
-`PIIK_EMBEDDED_SFU_CODEC=h264` or `vp8`, then run `npm run gate:embedded-sfu`.
-This separate arm verifies a hidden Host, decoded original/half-size layers,
+Real tab capture through the 2.x shared forwarding path used the H.264 or VP8
+arm of the archived [SFU runner](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/scripts/embedded-sfu-gate.ts).
+This separate arm verified a hidden Host, decoded original/half-size layers,
 resumed delivery, video-track replacement, profile changes and retirement.
 Track replacement uses a clone of the same visual source; it does not establish
 different-device switching or audio/video synchronization.

@@ -480,7 +480,7 @@ input driver.
 
 The logical owners are App coordination/authority, native capture/encoding, and
 native input. These are module boundaries, not three required executables.
-`internal/app/remoteinput` owns permission, grants and release; its platform
+The [2.x input adapter](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/app/remoteinput) owned permission, grants and release; its platform
 adapter only resolves the target and executes input. Windows uses `SendInput`;
 macOS uses public Quartz events and requests Accessibility permission only when
 the Host enables control. macOS window input also verifies the process incarnation
@@ -514,7 +514,7 @@ a newly approved channel. The Browser requires Web Crypto in a secure context
 This uses [WebRTC data channels](https://www.rfc-editor.org/rfc/rfc8831.html)
 and the platform [AES-GCM API](https://developer.mozilla.org/en-US/docs/Web/API/AesGcmParams).
 
-`internal/app/remoteinput` owns one process-wide source because the App's native
+The [2.x input adapter](https://github.com/TNTcraftHIM/Piik/tree/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/app/remoteinput) owned one process-wide source because the App's native
 sessions share the same physical keyboard and pointer. The co-play candidate
 adds concurrent capability-negotiated grants under that same owner and existing
 Host authorization, retaining exclusivity for older published clients,

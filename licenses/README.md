@@ -1,52 +1,46 @@
 # Third-Party Licenses
 
 Piik-owned code uses the root [MIT license](../LICENSE). Dependencies retain
-their own licenses; MIT does not replace their copyright notices or terms.
+their own copyright, license and notice requirements.
 
-The [pinned source index](./upstream.json) records exact upstream commits and
-SHA-256 values for Cloudflared, the WebRTC SDK, and npm packages that omit license
-files.
-The retained text normalizes line endings and incidental whitespace only.
-The Cloudflared text includes its root and dependency LICENSE, COPYING, and
-NOTICE files, including platform variants. Generate its dependency inventory
-with `go mod vendor` at the pinned upstream revision. The protobuf
-text also preserves Google's BSD-licensed varint attribution.
-The Windows capture adapter statically links the pinned WebRTC SDK, including
-its libvpx encoder. The App's native notices retain the SDK's collected
-third-party license texts; these dependencies do not become MIT-licensed merely
-because Piik's adapter is MIT-licensed.
-Linux packages that include the native capture binary include
-`linux-system-dependencies.txt`, the full LGPL-3.0-only text for libportal, and
-the full GPL-3.0 text referenced by that license. The system shared libraries
-and services are not bundled; the package still carries the license texts for
-the linked capture path. Packages without native capture do not include these
-capture-specific notices.
+## Current Packages
 
-`npm run dev` and `npm run build:web` generate `/third-party-licenses.txt`
-offline from installed, lockfile-matched Web runtime dependencies.
-The application release and App assembly each add the Go toolchain notice
-and the license files of the modules actually compiled into that binary; the
-App package also carries the pinned Cloudflared notices. Missing license
-texts or changed pinned contents stop packaging.
+The shared Web builder collects installed, lockfile-matched JavaScript notices
+and the Browser Rust/WASM adapter's notices into `third-party-licenses.txt`.
+Rust App, Server and Android notices use the existing
+[cargo-about configuration](./rust-about.toml) and each owning Cargo manifest/lock.
+Missing license text or changed pinned contents stops packaging.
+The [Native dependency owner](../prototype/channel-native/README.md#rtc-dependency)
+records retained Rust repairs and their removal criteria.
 
-LiveKit media-core packages are version-pinned under Apache-2.0. The
-[scoped dependency repairs](../internal/thirdparty/README.md) record the retained
-estimator corrections and temporary allocator input. Original Piik adapters remain MIT; adapted upstream
-probe orchestration retains its Apache-2.0 attribution in the source. Redistribution retains
-the module's license and applicable notices through the same Go notice collector.
-Any later copied or modified upstream file must retain its attribution and mark
-the modification. Prefer public API composition over a maintained source fork.
+App and Android notices also retain the WebRTC FrameDropper's
+[LICENSE and PATENTS provenance](../native/third_party/webrtc-frame-dropper/README.md).
+Android includes its Kotlin/platform-verifier notices. Linux App notices describe
+its unbundled GStreamer, Portal, PipeWire and encoder services through
+[system dependency attribution](./linux-system-dependencies.txt).
 
-Dependency updates are explicit rebuilds, not live updates in a running binary.
-Review relevant upstream advisories and actual reachable dependencies at release;
-an affected serious vulnerability warrants an earlier update. Mature media code
-is not exempt from vulnerability checks or focused upgrade verification.
+## Independent Tunnel And Native Fixtures
 
-The Linux license texts come from the GNU license pages:
-`https://www.gnu.org/licenses/lgpl-3.0.txt` and
-`https://www.gnu.org/licenses/gpl-3.0.txt`.
+The [pinned source index](./upstream.json) records exact commits and SHA-256
+values for Cloudflared, the retained WebRTC SDK and npm packages missing license
+files. Retained texts normalize line endings and incidental whitespace only.
+Cloudflared's text includes its root and dependency LICENSE, COPYING and NOTICE
+files, including platform variants; regenerate its inventory with `go mod vendor`
+at the pinned upstream revision. The protobuf text retains Google's BSD varint
+attribution. The [Android Cloudflared owner](../mobile/cloudflared/README.md)
+describes its independent Go module/toolchain and local overlays.
 
-Update the corresponding source text and index when a pinned runtime changes.
-The two [scoped NAT dependency repairs](../internal/thirdparty/README.md) retain
-upstream source and Apache-2.0 attribution; their license files enter App notices
-through the same Go module collector. No license-scanning dependency is needed.
+The retained standalone Windows C++ capture helpers and encoder-pool probe link
+the pinned WebRTC SDK, including libvpx. Their collected SDK texts retain the
+upstream licenses. The standalone Linux helper's libportal license references
+remain with its source; retained LGPL/GPL texts do not make those system libraries
+part of the Rust App package. See each [native helper/probe owner](../native).
+
+Published 2.x Go dependency repairs and attribution are recorded in the
+[immutable public provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md)
+and matching release artifacts.
+
+Dependency changes require explicit rebuilds and review of reachable advisories.
+Copied or modified upstream files retain attribution and mark their changes;
+public API composition is preferred to maintained source forks. Update the
+corresponding pinned text/index when a retained runtime or fixture SDK changes.

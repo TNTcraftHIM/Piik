@@ -1,5 +1,9 @@
 # Node-Local Media Design Evidence
 
+The Go/Pion implementation and measured results below describe 2.x development.
+The [current Rust source map](../standards/engineering.md#module-map) identifies
+the private 3.x owners; these results do not establish its acceptance.
+
 The initial experiments date from 2026-09-07. This document records their
 tradeoffs, the shared Native/SFU implementation boundaries and subsequent
 recovery evidence. [ADR-0013](../adr/0013-embedded-node-local-media.md) owns the
@@ -111,7 +115,7 @@ an explicitly controlled input-frame boundary is required. In particular,
 | --- | --- | --- |
 | Piik `mediaedge.Source`, `Edge`, Native capture generations | Encoded-source ownership and existing share/route identity | The shared forwarding adapter owns transport integration; capture does not own routing |
 | Pion PeerConnections and RTP/RTCP interceptors | ICE, encryption, packetization and feedback | Each connection retains its packet and feedback identity |
-| [LiveKit media components](https://github.com/livekit/livekit/tree/v1.13.6/pkg/sfu) | Bandwidth estimation, allocation, layer selection, RTP projection and recovery probing | Narrow adapter; scoped upstream repairs and their removal gates live in [dependency provenance](../../internal/thirdparty/README.md) |
+| [LiveKit media components](https://github.com/livekit/livekit/tree/v1.13.6/pkg/sfu) | Bandwidth estimation, allocation, layer selection, RTP projection and recovery probing | Narrow adapter; scoped upstream repairs and their removal gates live in [dependency provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md) |
 | [libwebrtc encoder pipeline](./webrtc-encoder-pool.md) | Rate/resource adaptation for each shared local output | A complete pipeline owns its codec lifetime; a codec cache alone cannot provide equivalent adaptation |
 | MFT/VideoToolbox/GStreamer/libvpx capture adapters and [libyuv](https://chromium.googlesource.com/libyuv/libyuv/+/refs/heads/main/README.md) | Platform capture, conversion/scaling and encoding | Received-source decoding and GPU surface sharing remain real work; physical cost is platform-dependent |
 | [GStreamer tee](https://gstreamer.freedesktop.org/documentation/coreelements/tee.html) / [queue](https://gstreamer.freedesktop.org/documentation/coreelements/queue.html) | Shared frame ownership with branch isolation on Linux | Default queue sizes are not accepted latency budgets |
@@ -129,7 +133,7 @@ ICE, crypto and reports; LiveKit media components own send-side BWE,
 allocation primitives, RTP projection and video retransmission. A bounded pacing
 adapter owns packet admission/retirement; a single-video event driver adapts the
 upstream probe lifecycle without another congestion formula or application timer.
-The [dependency repair notes](../../internal/thirdparty/README.md) identify the
+The [dependency repair notes](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md) identify the
 scoped upstream corrections. There is no mirrored counter summing unused layers.
 
 Source subscription must retain layer discovery that happens during registration.
@@ -325,7 +329,7 @@ Browser WebRTC playout or an improvement percentage for public networks.
 
 ### Native Feedback Probe
 
-The explicit [GCC/TWCC probe](../../internal/app/mediaedge/testdata/gcc_feedback_probe.go)
+The explicit [GCC/TWCC probe](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/app/mediaedge/testdata/gcc_feedback_probe.go)
 and [recorded traces](./data/node-local-feedback.json)
 use the pinned Pion interceptor v0.1.47, with its thresholds unchanged. Two
 40-second memory-transport traces use a 6 Mbps -> 500 kbps -> 6 Mbps link,
@@ -380,7 +384,7 @@ Keep the dependency behind a shared media package. For one video per connection,
 use the public provisional allocation primitives, with exact typed child state
 read by its parent; do not parse DebugInfo or run a second multi-track allocator.
 The adapter uses LiveKit SendSideBWE and Prober through their public APIs,
-with the [scoped measurement repair](../../internal/thirdparty/README.md#livekit-send-side-bandwidth-estimation).
+with the [scoped measurement repair](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#livekit-send-side-bandwidth-estimation).
 Packet timing uses the existing LiveKit SDK leaky-bucket pacer; the SFU writer
 retains RTP extensions, TWCC identity, probe accounting and packet-pool ownership.
 Native encoders emit whole access units, whereas the SFU's `NoQueue` path assumes
@@ -532,7 +536,7 @@ the last demand stops its active padding probe; deficient tracks still retain
 theirs. Regression controls reproduce both omissions while preserving the
 pause, idle, probe-mode and capacity gates. Resetting BWE does not itself raise
 the encoder budget; measured probe feedback remains necessary.
-[Provenance and removal](../../internal/thirdparty/README.md#local-encoder-probe-demand)
+[Provenance and removal](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#local-encoder-probe-demand)
 own the temporary pin. Piik does not copy the complete allocator or add a probe
 owner. `SetChannelCapacity` is not a substitute: it overrides capacity and
 disables probing. A minimum-capacity setting would not prove measured recovery.
@@ -713,7 +717,7 @@ original plus a half-size output at the same FPS, with lower bitrate bounded by
 the source ceiling. Derived NV12 dimensions round down to even values. The
 group's bounded output slots do not add product presets.
 
-The current [capture reader](../../internal/app/nativecapture/protocol.go) owns
+The recorded 2.x [capture reader](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/app/nativecapture/protocol.go) owns
 frame layout, kind-specific validation and allocation limits; [status](../status.md)
 owns the matched bundle's protocol versions. Both pipe directions use that framed
 boundary. Input-frame events precede per-output results, including when no output
