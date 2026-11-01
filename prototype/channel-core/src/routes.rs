@@ -46,6 +46,22 @@ impl Plan {
         for child in remove {
             self.detach(child);
         }
+        self.failed_parents.retain(|child, parents| {
+            parents.retain(|parent| available.contains(parent));
+            available.contains(child)
+        });
+        if connected.contains(&self.source) {
+            let base_parents: BTreeMap<_, _> = base
+                .into_iter()
+                .flat_map(|base| base.project(self.source, requested))
+                .map(|(parent, child)| (child, parent))
+                .collect();
+            for child in requested {
+                if *child != self.source && !self.ready.contains_key(child) {
+                    self.graft_base(*child, &base_parents, available, connected);
+                }
+            }
+        }
         // Consumption owns demand; the ancestors still needed to deliver it
         // retain their transport and proof even when they stop watching locally.
         let mut needed = requested.clone();
@@ -62,26 +78,14 @@ impl Plan {
         self.parents.retain(|child, _| needed.contains(child));
         self.ready
             .retain(|child, _| self.parents.contains_key(child));
-        self.failed_parents.retain(|child, parents| {
-            parents.retain(|parent| available.contains(parent));
-            available.contains(child)
-        });
         if !connected.contains(&self.source) {
             return;
         }
-        let base_parents: BTreeMap<_, _> = base
-            .into_iter()
-            .flat_map(|base| base.project(self.source, requested))
-            .map(|(parent, child)| (child, parent))
-            .collect();
         for child in requested {
             if *child == self.source
                 || self.parents.contains_key(child)
                 || !connected.contains(child)
             {
-                continue;
-            }
-            if self.graft_base(*child, &base_parents, available, connected) {
                 continue;
             }
             let failed = self.failed_parents.entry(*child).or_default();
@@ -115,7 +119,7 @@ impl Plan {
     ) -> bool {
         let mut suffix = Vec::new();
         let mut child = receiver;
-        while child != self.source && !self.parents.contains_key(&child) {
+        while child != self.source && !self.ready.contains_key(&child) {
             let Some(parent) = base_parents.get(&child).copied() else {
                 return false;
             };
@@ -132,6 +136,13 @@ impl Plan {
             }
             suffix.push((child, parent));
             child = parent;
+        }
+        if child != self.source
+            && suffix
+                .iter()
+                .any(|(node, _)| self.subtree(*node).contains(&child))
+        {
+            return false;
         }
         for (child, parent) in suffix {
             self.parents.insert(child, parent);
@@ -326,7 +337,6 @@ impl BaseTree {
         self.plan
             .parents
             .retain(|child, _| self.plan.ready.contains_key(child));
-        self.prune_proofs();
         self.plan.retry_required(demand, connected);
     }
     pub fn links(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
@@ -345,6 +355,11 @@ impl BaseTree {
         available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
     ) {
+        // Rebuild reservations against the ready tree. Identical edges retain
+        // their physical leases and partial endpoint ACKs.
+        self.plan
+            .parents
+            .retain(|child, _| self.plan.ready.contains_key(child));
         self.plan.reconcile(demand, available, connected, None);
         self.prune_proofs();
     }
@@ -459,6 +474,89 @@ mod tests {
     }
     fn set(values: &[u128]) -> BTreeSet<Uuid> {
         values.iter().map(|value| id(*value)).collect()
+    }
+
+    #[test]
+    fn recovered_base_replaces_an_unproved_screen_fallback() {
+        let connected = set(&[1, 2, 3, 4]);
+        let demand = set(&[2, 3, 4]);
+        let watching = set(&[4]);
+        let mut base = BaseTree::new(id(1));
+        for _ in 0..2 {
+            base.reconcile(&demand, &connected, &connected);
+            for (parent, child) in base.links().collect::<Vec<_>>() {
+                base.state(parent, child, true);
+                base.state(child, parent, true);
+            }
+        }
+        let mut screen = Plan::new(id(3));
+        screen.reconcile(&watching, &connected, &connected, Some(&base));
+        for (child, parent) in screen.parents.clone() {
+            screen.mark_ready(child, parent, Readiness::Decoded);
+        }
+        // H=1, R=2, S=3, V=4. The two relay edges and later shortcut
+        // attempts fail independently while H-S stays ready.
+        for (first, second) in [(2, 4), (1, 2), (3, 4), (3, 2)] {
+            base.failed(id(first), id(second));
+            screen.failed(id(first), id(second));
+            base.reconcile(&demand, &connected, &connected);
+            screen.reconcile(&watching, &connected, &connected, Some(&base));
+        }
+        base.retry_required(&demand, &connected);
+        screen.retry_required(&watching, &connected);
+        base.reconcile(&demand, &connected, &connected);
+        screen.reconcile(&watching, &connected, &connected, Some(&base));
+        let pending: Vec<_> = base.links().collect();
+        base.state(id(1), id(2), true);
+        base.reconcile(&demand, &connected, &connected);
+        assert_eq!(base.links().collect::<Vec<_>>(), pending);
+        base.state(id(2), id(1), true);
+        base.reconcile(&demand, &connected, &connected);
+        assert!(base.plan.ready.contains_key(&id(2)));
+        assert!(base.plan.ready.contains_key(&id(3)));
+        assert_eq!(screen.parents[&id(4)], id(3));
+        assert_eq!(base.plan.parents[&id(4)], id(2));
+        base.state(id(2), id(4), true);
+        base.state(id(4), id(2), true);
+        screen.reconcile(&watching, &connected, &connected, Some(&base));
+        assert_eq!(
+            screen.parents,
+            BTreeMap::from([(id(1), id(3)), (id(2), id(1)), (id(4), id(2))]),
+            "a complete base path must be reusable before an unproved shortcut times out"
+        );
+    }
+
+    #[test]
+    fn base_graft_preserves_pending_media_when_the_existing_anchor_would_cycle() {
+        let available = set(&[1, 2, 3, 4]);
+        let mut screen = Plan::new(id(1));
+        screen.reconcile(&set(&[2, 3, 4]), &available, &available, None);
+        screen.mark_ready(id(2), id(1), Readiness::Forwardable);
+        screen.reconcile(&set(&[2, 3, 4]), &available, &available, None);
+        screen.mark_ready(id(4), id(2), Readiness::Decoded);
+        screen.forget_ready(id(2));
+        let before = screen.parents.clone();
+
+        let mut base = BaseTree::new(id(4));
+        for _ in 0..2 {
+            base.reconcile(&set(&[1, 2, 3]), &available, &available);
+            for (parent, child) in base.links().collect::<Vec<_>>() {
+                base.state(parent, child, true);
+                base.state(child, parent, true);
+            }
+        }
+        base.failed(id(1), id(3));
+        base.reconcile(&set(&[1, 2, 3]), &available, &available);
+        assert_eq!(base.plan.parents[&id(3)], id(2));
+        base.state(id(2), id(3), true);
+        base.state(id(3), id(2), true);
+        let parents = base
+            .project(id(1), &set(&[3]))
+            .into_iter()
+            .map(|(parent, child)| (child, parent))
+            .collect();
+        assert!(!screen.graft_base(id(3), &parents, &available, &available));
+        assert_eq!(screen.parents, before);
     }
 
     #[test]
