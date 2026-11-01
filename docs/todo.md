@@ -12,9 +12,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Compare the released str0m transport with the current adapter before retaining
-  more dependency patches, preserving source timing, A/V alignment, shared UDP
-  ownership and bounded queues through the existing room runtime.
+  Integrate the selected released str0m transport through public APIs, preserving
+  source timing, A/V alignment, shared UDP ownership and bounded queues through
+  the existing room runtime. Replace the retired async-peer test fixtures and
+  complete the local-encoder/healthy-video recovery check before promotion.
   Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
   after the held dependency decision. Keep the first version's accepted scope
@@ -66,12 +67,12 @@ own behavior; research and Git/PRs own evidence and completed history.
   awaits approval for an upstream issue and patch. The
   [network design](./research/channel-network-design.md#implementation-boundary)
   owns its cause and isolated validation; Piik does not bundle a compositor fork.
-- [ ] **RTC and GoogCc upstream submissions.** The prepared DTLS-role,
-  transport/GoogCc accounting, PC initialization cancellation and last-owner Drop
-  cleanup, H264 parser and complete-sample changes await external-publication approval.
-  The prebound-UDP capability addition also awaits approval.
-  Submit the approved scope and verify the combined Native adapter before
-  updating its fixed dependency. Local implementation and verification continue.
+- [ ] **3.0 media-library submissions.** The retained H264 parser, complete samples
+  and packet metadata repairs await external-publication approval. The selected
+  str0m transport replaces the proposed controller, async-runtime and socket
+  extensions; do not publish that superseded batch as Piik requirements. Submit
+  only the approved retained scope and verify the integrated Native adapter
+  before updating its fixed dependency. Local implementation continues.
 - [ ] **Portmapper gateway scheduling.** The verified async gateway-lookup
   repair awaits upstream-submission and patched-dependency approval. The
   [Native dependency owner](../prototype/channel-native/README.md#rtc-dependency)

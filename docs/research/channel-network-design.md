@@ -584,12 +584,20 @@ inside every module. The [versioning standard](../standards/versioning.md) still
 separates build identity, wire compatibility, stored schema and live generations.
 A published cutover needs its own handshake and data-upgrade decision.
 
-The Native transport's [async adapter](https://github.com/webrtc-rs/webrtc/blob/d658b5a803dd8dc389547450e245877310c9cbed/src/peer_connection/mod.rs)
-owns sockets, candidate gathering and protocol deadlines. Its
-[interceptor registry](https://github.com/webrtc-rs/rtc/blob/2a732df55ca4bcf26b80914fa0f570cfaf74cfcb/src/peer_connection/configuration/interceptor_registry.rs)
-provides RTCP, GCC/TWCC and pacing; congestion control needs explicit configuration.
-Piik owns encoder demand, bounded queued work and the source's RTP timeline;
-the transport library owns congestion control and pacing.
+The selected Native replacement uses published
+[str0m 0.24.1](https://github.com/algesten/str0m/tree/8c4c5284cb11b1e3c82962639cda5b3e95af73e8)
+through public APIs. Its library owns ICE, DTLS/SRTP, SCTP, congestion control,
+probing, pacing and retransmission. One Native pump supplies socket input and
+deadlines; room and flow authority stay in the existing Driver and shared Core.
+Mature STUN/TURN clients supply discovery and relay protocols through that same
+socket owner. Fixed listeners remain service-owned; prepared and relay endpoints
+retain their pair lifetimes. The [Native dependency owner](../../prototype/channel-native/README.md#rtc-dependency)
+distinguishes this private replacement from the formal pin.
+
+Piik owns encoder demand, complete-access-unit admission and source-time mapping.
+An output's unsent payload and retransmission state end when its flow retires,
+independently of a later SDP exchange. The replacement retains the existing media
+assembly and H264 helpers; switching transport does not remove their patches.
 
 The SDK's GCC target is one physical connection's budget, not an allocation for
 each outbound track. Consume it once for that connection's active media. As in
@@ -597,24 +605,10 @@ each outbound track. Consume it once for that connection's active media. As in
 allocate before passing demand to encoders. Independently constrained branches
 need actual independently rate-controlled outputs; copying the same encoded
 packets or applying a minimum/maximum to one shared encoder cannot provide that.
-The pinned SDK's stock GCC and pacer lack active probing and application-limited
-recovery. An isolated candidate keeps the community
-[Rust port of GoogCc](https://github.com/kixelated/goog_cc) adapter in Piik and uses
-algorithm-independent transport commands. The existing SDK history, Pacer and
-RTX owner retain packet accounting and mechanical probe execution; the async
-adapter retains sockets and candidate gathering. The public estimator interface
-alone lacks departure, queue, flight and probe control, so generic transport
-extensions are still required. This separation removes the SDK's concrete
-controller dependency without duplicating its transport owners. Feedback retention
-is selected through the existing builder by the Piik adapter, not by changing
-the SDK-wide default.
-Its small executor follows [WebRTC's BitrateProber](https://webrtc.googlesource.com/src/+/main/modules/pacing/bitrate_prober.cc).
-Probe padding reuses real cached RTX media; internal controller messages finish
-inside the interceptor chain without depending on an application event.
-
-The candidate drives the Native allocator and hardware encoders from actual
-transport estimates. Probing begins with the first media departure rather than
-PeerConnection construction. Each connection aggregates known local media
+The library's [built-in BWE](https://github.com/algesten/str0m/blob/8c4c5284cb11b1e3c82962639cda5b3e95af73e8/docs/BWE.md)
+replaces the private GoogCc/controller and probe-executor integration. Piik
+consumes its transport estimates through the existing Native allocator, without
+another congestion controller. Each connection aggregates known local media
 configuration ceilings independently of actual usage and current allocation.
 Received sources without a known ceiling retain unbounded demand; their measured
 source cost informs allocation, not a fabricated configuration limit.
@@ -622,15 +616,6 @@ The [Native candidate index](../../prototype/channel-native/README.md#rtc-depend
 owns the exact source and controlled results. Publisher and relay recovery
 require separate evidence; [verification status](../verification-status.md#adaptation-boundaries)
 owns their current acceptance boundaries.
-
-Feedback history and active flight have separate lifetimes. The existing History
-owner retains late reports for 60 seconds while releasing bytes already passed
-by the receiver's feedback frontier, following
-[libwebrtc's feedback adapter](https://webrtc.googlesource.com/src/+/b04056a3987cb956322641331b0f6052e02c9ca5/modules/congestion_controller/rtp/transport_feedback_adapter.cc).
-TWCC uses its transport sequence space; RFC 8888 uses the reported stream's
-sequence space, including repeated transmissions. An omitted outcome remains
-unknown until explicitly reported; it must not keep occupying the flight window.
-Payload demand and encrypted wire capacity retain their distinct overhead.
 
 The runtime's shared physical-socket wrapper requests a bounded 1 MiB receive
 buffer through its existing Quinn UDP adapter, preserving larger caller values.

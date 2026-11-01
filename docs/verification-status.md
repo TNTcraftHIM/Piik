@@ -110,10 +110,18 @@ one real FRP UDP entry alongside IPv6. Peers retire independently; closing them
 and the shared transport releases both address families' ports.
 Its funded H264 encoding handoff survives an ignored first refresh request;
 the old encoding keeps playing until the new keyframe is adopted.
-In the Browser-to-Native H264 recovery control, the constrained encoding follows
+In the earlier RTC/GoogCc Browser-to-Native H264 control, the constrained encoding follows
 GoogCc's budget and ordinary AIMD growth; Original quality is not restored within
 the observed 20 seconds. A bounded check of the same controller exercises its
 existing ALR probe requests when actual sending becomes supply-limited.
+
+The selected str0m replacement passes real Browser-to-Native-to-Browser VP8
+constrain/restore with a separate healthy voice pair, shared A/V source-time
+mapping, warm-output handover and fixed/prepared UDP ownership. Its STUN and
+authenticated coturn checks use the same public socket adapter. These receipts
+retain their exact source identities in the
+[Native candidate index](../prototype/channel-native/README.md#rtc-dependency);
+the forwarded VP8 result is separate from local H264 encoder/sibling acceptance.
 
 ## Interpretation
 

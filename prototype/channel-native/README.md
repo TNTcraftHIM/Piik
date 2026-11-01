@@ -172,14 +172,19 @@ public API or mapping protocols. Its
 [official baseline](https://github.com/n0-computer/net-tools/tree/80b449c74d38c564c598ae286de13032276f3515/portmapper)
 and the Piik worker remain separate owners; [TODO](../../docs/todo.md) tracks adoption.
 
-The unpublished combination includes the application GoogCc adapter, complete
-H264 access units, shared encoding ownership, coordinated UDP socket handoff and
-service-owned fixed Server UDP listeners.
-Its current-source patch, frozen dependencies and Windows/Linux evidence are
-indexed by `build/native-current-assembly/receipt.json`; the adjacent README
-describes the local acceptance candidate. Remaining platform and network
-acceptance, and promotion, stay in [TODO](../../docs/todo.md), alongside the
-dependency-publication hold.
+The selected private replacement uses released str0m 0.24.1 through public
+APIs, replacing the application GoogCc integration and async transport wrapper.
+Piik retains complete H264 access units, shared encoding ownership, coordinated
+UDP socket handoff and service-owned fixed Server UDP listeners. Media assembly,
+H264 parsing and profile helpers still use the RTC fork; it is not a fork-free
+replacement. The `rust-crypto` provider also requires AWS-LC through its published
+dependency graph.
+
+`build/native-current-assembly/receipt.json` indexes the previous combined source
+and the replacement under `development.transportAlternative`, with separately
+frozen source and runtime evidence. The adjacent README describes these local
+candidates. Remaining integration, platform acceptance and dependency-publication
+approval stay in [TODO](../../docs/todo.md). Formal dependency pins are unchanged.
 That index also owns the separately frozen Linux and macOS incoming-H264
 extensions, which reuse the same derived producer, source clock and independent
 encoding owners. Each candidate's receipt records its platform checks.
