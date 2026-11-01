@@ -115,7 +115,7 @@ export type ChannelCommand =
   | { type: "set_reaction"; roomId: string; messageSeq: number; reaction: string; active: boolean }
   | { type: "history"; roomId: string; before?: number }
   | { type: "chat"; roomId: string; text: string; nonce: string; attachments: ChannelAttachment[] }
-  | ({ type: "file_offer"; available: boolean } & ChannelFileKey)
+  | ({ type: "file_offer"; sha256: string; available: boolean } & ChannelFileKey)
   | ({ type: "file_receive"; enabled: boolean } & ChannelFileKey)
   | ({ type: "update_room"; roomId: string } & RoomSettings)
   | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }

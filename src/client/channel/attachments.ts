@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { downloadBlob } from "../lib/download";
-import { FileStore, type FileScope, type FileRetentionLimits } from "./file-store";
+import { FileStore, type FileScope, type FileRetentionLimits, type RetainedFile } from "./file-store";
 import { loadRoomHosting, type AttachmentHash, type FileDelivery } from "./hosting";
 import { attachmentSchema, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom } from "./protocol";
 
@@ -101,7 +101,7 @@ export class ChannelAttachments {
     const key = source.key;
     if (this.sources.get(keyOf(key)) !== source) return;
     this.sources.delete(keyOf(key));
-    void this.command({ type: "file_offer", ...key, available: false }).catch(() => {});
+    void this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: false }).catch(() => {});
     if (removeStored) void this.store?.remove(key).catch(() => {});
   }
   private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File): Promise<File | null> {
@@ -119,6 +119,33 @@ export class ChannelAttachments {
       return retained.file;
     } catch { return null; } // Optional retention cannot fail a confirmed send/download.
   }
+  async retained(roomId: string): Promise<RetainedFile[]> {
+    const store = this.store, lifetime = this.lifetime;
+    if (!store || !this.rooms.some(room => room.id === roomId && room.authorized)) return [];
+    const files = await store.list();
+    return this.store === store && this.lifetime === lifetime && !lifetime.signal.aborted
+      && this.rooms.some(room => room.id === roomId && room.authorized)
+      ? files.filter(file => file.key.roomId === roomId) : [];
+  }
+  /** Called after authority commit with archive-verified bytes; cache failure keeps live sources. */
+  async restoreRetained(roomId: string, files: RetainedFile[]): Promise<boolean> {
+    const store = this.store, lifetime = this.lifetime;
+    const current = () => this.store === store && this.lifetime === lifetime && !lifetime.signal.aborted
+      && this.rooms.some(room => room.id === roomId && room.authorized);
+    if (!store || !current() || files.some(file => file.key.roomId !== roomId)) return false;
+    let saved = true;
+    for (const { key, attachment, file } of files) {
+      if (!current()) return false;
+      const source: Source = { key, attachment, file, status: idle, retained: false };
+      this.sources.set(keyOf(key), source); this.reofferKey(key);
+      const retained = await this.retain(key, attachment, file);
+      if (!current()) return false;
+      if (this.sources.get(keyOf(key)) !== source) { saved = false; continue; }
+      if (retained) { source.file = retained; source.retained = true; }
+      else saved = false;
+    }
+    return saved;
+  }
   resume(roomId?: string): void {
     for (const source of this.sources.values()) if (!roomId || source.key.roomId === roomId) this.reofferKey(source.key);
     for (const plan of this.plans) {
@@ -135,7 +162,7 @@ export class ChannelAttachments {
     const source = this.sources.get(keyOf(key));
     if (source && !this.matchesPlan(source)) { this.withdraw(source, true); return; }
     if (source && this.rooms.some(room => room.id === key.roomId && room.available && room.authorized)) {
-      void this.command({ type: "file_offer", ...key, available: true }).then(() => {
+      void this.command({ type: "file_offer", ...key, sha256: source.attachment.sha256, available: true }).then(() => {
         if (this.sources.get(keyOf(key)) === source) { source.status = idle; this.changed(); }
       }).catch(() => { if (this.sources.get(keyOf(key)) === source) { source.status = { busy: false, error: "file_offer_failed" }; this.changed(); } });
     }

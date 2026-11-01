@@ -1588,7 +1588,7 @@ test("a confirmed file becomes a session source while its sender reads an older 
     expect(request).toMatchObject({ type: "chat", attachments: [attachment] });
     peer.reply(request, { type: "confirmed", message: { ...message(3), attachments: [{ ...attachment, sha256: attachment.sha256.toUpperCase() }] }, inserted: true });
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
-    expect(socket.sent.at(-1)).toMatchObject({ type: "file_offer", roomId: "first", messageSeq: 3, attachmentId: id, available: true });
+    expect(socket.sent.at(-1)).toMatchObject({ type: "file_offer", roomId: "first", messageSeq: 3, attachmentId: id, sha256: attachment.sha256.toUpperCase(), available: true });
     await expect(session.attachments.content({ roomId: "first", messageSeq: 3, attachmentId: id }, attachment, new AbortController().signal)).resolves.toBe(file);
     await sending;
     await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
@@ -1623,9 +1623,10 @@ test("retained files offer only authorized rooms and eviction withdraws cache so
 test("an old identity's retained-file restore cannot publish into the next identity", async () => {
   let finish!: (files: Awaited<ReturnType<FileStore["list"]>>) => void;
   const old = new Promise<Awaited<ReturnType<FileStore["list"]>>>(resolve => { finish = resolve; });
-  vi.spyOn(FileStore.prototype, "list").mockReturnValueOnce(old).mockResolvedValue([]);
+  vi.spyOn(FileStore.prototype, "list").mockReturnValueOnce(old).mockReturnValueOnce(old).mockResolvedValue([]);
   const { session, socket } = await setup();
   try {
+    const exporting = session.attachments.retained("first");
     const state = structuredClone(session.getSnapshot().state!);
     state.sessions[0].userId = "new-user";
     state.users = [{ ...state.users[0], id: "new-user" }];
@@ -1634,8 +1635,42 @@ test("an old identity's retained-file restore cannot publish into the next ident
     finish([{ key: { roomId: "first", messageSeq: 1, attachmentId: id }, file,
       attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) } }]);
     await old; await Promise.resolve();
+    await expect(exporting).resolves.toEqual([]);
     session.attachments.resume();
     expect(socket.sent.some(command => command.type === "file_offer" && command.attachmentId === id)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("restored file bytes retain their digest and remain readable when optional caching fails", async () => {
+  const file = new File(["restored"], "restored.txt"), id = crypto.randomUUID();
+  const key = { roomId: "first", messageSeq: 1, attachmentId: id };
+  const attachment = { id, name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "b".repeat(64) };
+  const entry = { key, attachment, file };
+  const list = vi.spyOn(FileStore.prototype, "list").mockResolvedValue([entry, { ...entry, key: { ...key, roomId: "second" } }]);
+  const retain = vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new DOMException("Full", "QuotaExceededError"));
+  const { session, socket } = await setup();
+  const limits = vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+  try {
+    await expect(session.attachments.retained("first")).resolves.toEqual([entry]);
+    const calls = list.mock.calls.length;
+    await expect(session.attachments.retained("unreadable")).resolves.toEqual([]);
+    expect(list).toHaveBeenCalledTimes(calls);
+    await expect(session.attachments.restoreRetained("first", [entry])).resolves.toBe(false);
+    await expect(session.attachments.content(key, attachment, new AbortController().signal)).resolves.toBe(file);
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, sha256: attachment.sha256, available: true }));
+    retain.mockResolvedValue({ file, evicted: [] });
+    await expect(session.attachments.restoreRetained("first", [entry])).resolves.toBe(true);
+
+    let ready!: (value: Awaited<ReturnType<ChannelAttachments["limits"]>>) => void;
+    limits.mockReturnValueOnce(new Promise(resolve => { ready = resolve; }));
+    const restoring = session.attachments.restoreRetained("first", [entry]);
+    const before = retain.mock.calls.length;
+    const state = structuredClone(session.getSnapshot().state!);
+    state.sessions[0].userId = "new-user"; state.users = [{ ...state.users[0], id: "new-user" }];
+    socket.receive({ type: "state", state });
+    ready({ maxFileBytes: 100, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+    await expect(restoring).resolves.toBe(false);
+    expect(retain).toHaveBeenCalledTimes(before);
   } finally { session.close(); }
 });
 
@@ -1653,8 +1688,8 @@ test("retained source content and availability follow the current authenticated 
     const state = structuredClone(session.getSnapshot().state!);
     state.files = [{ ...changedKey, attachment: { ...attachment, id: changedId, size: file.size + 1 }, sourceId: "endpoint", upstream: null, downstream: [], receiving: false }];
     socket.receive({ type: "state", state });
-    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, available: false }));
-    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, available: false }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, sha256: attachment.sha256, available: false }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, sha256: attachment.sha256, available: false }));
     expect(remove).toHaveBeenCalledWith(key); expect(remove).toHaveBeenCalledWith(changedKey);
   } finally { session.close(); }
 });
@@ -2572,7 +2607,7 @@ test.each([true, false])("a verified download survives optional retention (store
     await expect(receiving).resolves.toBe(stored ? durable : temporary);
     expect(close).toHaveBeenCalledOnce(); expect(retain).toHaveBeenCalledOnce();
     expect(removeEntry).toHaveBeenCalledTimes(stored ? 1 : 0);
-    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, available: true });
+    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, sha256: attachment.sha256, available: true });
   } finally { files.reset(); }
 });
 
