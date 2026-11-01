@@ -25,9 +25,10 @@ interface Sink {
 }
 interface PendingSink { ready: Promise<Sink>; consumers: Set<symbol> }
 interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null } }
-interface Source { key: ChannelFileKey; file: File; status: typeof idle; retained: boolean }
+interface Source { key: ChannelFileKey; attachment: ChannelAttachment; file: File; status: typeof idle; retained: boolean }
 const idle: { busy: boolean; error: string | null } = { busy: false, error: null };
 const keyOf = (key: ChannelFileKey) => JSON.stringify([key.roomId, key.messageSeq, key.attachmentId]);
+const sameContent = (a: ChannelAttachment, b: ChannelAttachment) => a.size === b.size && a.sha256.toLowerCase() === b.sha256.toLowerCase();
 const errorOf = (error: unknown) => error instanceof Error ? error : new Error(String(error));
 const aborted = () => new DOMException("Cancelled", "AbortError");
 
@@ -77,29 +78,43 @@ export class ChannelAttachments {
     const store = this.store ??= new FileStore(scope);
     const previous = this.rooms;
     this.rooms = rooms; this.plans = plans;
-    for (const [id, source] of this.sources) if (!rooms.some(room => room.id === source.key.roomId && room.authorized)) this.sources.delete(id);
+    for (const [id, source] of this.sources) {
+      if (!rooms.some(room => room.id === source.key.roomId && room.authorized)) this.sources.delete(id);
+      else if (!this.matchesPlan(source)) this.withdraw(source, true);
+    }
     if (opening || rooms.some(room => room.authorized && !previous.some(old => old.id === room.id && old.authorized))) {
       void store.list().then(files => {
         if (this.store !== store) return;
-        for (const { key, file } of files) if (this.rooms.some(room => room.id === key.roomId && room.authorized) && !this.sources.has(keyOf(key))) {
-          this.sources.set(keyOf(key), { key, file, status: idle, retained: true }); this.reofferKey(key);
+        for (const { key, attachment, file } of files) if (this.rooms.some(room => room.id === key.roomId && room.authorized) && !this.sources.has(keyOf(key))) {
+          this.sources.set(keyOf(key), { key, attachment, file, status: idle, retained: true }); this.reofferKey(key);
         }
       }).catch(() => {});
     }
     if (plans.length || this.runtime) void this.ensure().then(runtime => this.invoke(runtime, () => runtime.delivery.update(JSON.stringify(this.plans)))).catch(() => {});
     for (const room of rooms) if (room.available && previous.some(old => old.id === room.id && !old.available)) this.resume(room.id);
   }
+  private matchesPlan(source: Pick<Source, "key" | "attachment">): boolean {
+    const plan = this.plans.find(plan => keyOf({ roomId: plan.roomId, messageSeq: plan.messageSeq, attachmentId: plan.attachment.id }) === keyOf(source.key));
+    return !plan || sameContent(source.attachment, plan.attachment);
+  }
+  private withdraw(source: Source, removeStored = source.retained): void {
+    const key = source.key;
+    if (this.sources.get(keyOf(key)) !== source) return;
+    this.sources.delete(keyOf(key));
+    void this.command({ type: "file_offer", ...key, available: false }).catch(() => {});
+    if (removeStored) void this.store?.remove(key).catch(() => {});
+  }
   private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File): Promise<File | null> {
     const store = this.store;
     if (!store) return null;
     try {
       const limits: FileRetentionLimits = await this.limits();
-      if (this.store !== store) return null;
+      if (this.store !== store || !this.matchesPlan({ key, attachment })) return null;
       const retained = await store.retain({ key, attachment, file }, limits);
       if (this.store !== store) return null;
-      for (const key of retained.evicted) if (this.sources.get(keyOf(key))?.retained) {
-        this.sources.delete(keyOf(key));
-        void this.command({ type: "file_offer", ...key, available: false }).catch(() => {});
+      for (const key of retained.evicted) {
+        const source = this.sources.get(keyOf(key));
+        if (source?.retained) this.withdraw(source, false);
       }
       return retained.file;
     } catch { return null; } // Optional retention cannot fail a confirmed send/download.
@@ -118,6 +133,7 @@ export class ChannelAttachments {
   }
   private reofferKey(key: ChannelFileKey) {
     const source = this.sources.get(keyOf(key));
+    if (source && !this.matchesPlan(source)) { this.withdraw(source, true); return; }
     if (source && this.rooms.some(room => room.id === key.roomId && room.available && room.authorized)) {
       void this.command({ type: "file_offer", ...key, available: true }).then(() => {
         if (this.sources.get(keyOf(key)) === source) { source.status = idle; this.changed(); }
@@ -151,10 +167,10 @@ export class ChannelAttachments {
   }
   confirmed(roomId: string, message: ChannelMessage, files: PreparedFile[]): void {
     for (const attachment of message.attachments) {
-      const selected = files.find(file => file.attachment.id === attachment.id && file.attachment.sha256 === attachment.sha256 && file.attachment.size === attachment.size);
+      const selected = files.find(file => file.attachment.id === attachment.id && sameContent(file.attachment, attachment));
       if (!selected) continue;
       const key = { roomId, messageSeq: message.seq, attachmentId: attachment.id };
-      this.sources.set(keyOf(key), { key, file: selected.file, status: idle, retained: false }); this.reofferKey(key);
+      this.sources.set(keyOf(key), { key, attachment, file: selected.file, status: idle, retained: false }); this.reofferKey(key);
       void this.retain(key, attachment, selected.file);
     }
   }
@@ -186,7 +202,10 @@ export class ChannelAttachments {
   async content(key: ChannelFileKey, attachment: ChannelAttachment, signal: AbortSignal): Promise<File> {
     signal.throwIfAborted();
     const source = this.sources.get(keyOf(key));
-    if (source) return source.file;
+    if (source) {
+      if (!sameContent(source.attachment, attachment)) { this.withdraw(source, true); throw new Error("attachment_unavailable"); }
+      return source.file;
+    }
     const id = keyOf(key), runtime = await this.ensure();
     signal.throwIfAborted();
     let entry = this.sinks.get(id);
@@ -260,10 +279,7 @@ export class ChannelAttachments {
         const source = this.sources.get(keyOf(key));
         if (!source) { failed(new Error("file_unavailable")); continue; }
         void source.file.slice(effect.offset, effect.offset + effect.length).arrayBuffer().then(bytes => this.invoke(runtime, () => runtime.delivery.read_result(JSON.stringify(key), BigInt(effect.offset), new Uint8Array(bytes)))).catch(error => {
-          if (this.sources.get(keyOf(key)) === source) {
-            this.sources.delete(keyOf(key)); void this.command({ type: "file_offer", ...key, available: false }).catch(() => {});
-            if (source.retained) void this.store?.remove(key).catch(() => {});
-          } failed(error);
+          this.withdraw(source); failed(error);
         });
       } else {
         const entry = this.sinks.get(keyOf(key));
@@ -292,7 +308,7 @@ export class ChannelAttachments {
               sink.lifetime.signal.throwIfAborted();
               if (!this.current(runtime) || this.sinks.get(keyOf(key)) !== entry) return;
               const readable = retained ?? file;
-              this.sources.set(keyOf(key), { key, file: readable, status: idle, retained: Boolean(retained) }); this.reofferKey(key);
+              this.sources.set(keyOf(key), { key, attachment: sink.attachment, file: readable, status: idle, retained: Boolean(retained) }); this.reofferKey(key);
               void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {}); sink.resolve(readable);
               if (retained) {
                 try {

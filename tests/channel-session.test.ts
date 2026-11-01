@@ -1586,12 +1586,13 @@ test("a confirmed file becomes a session source while its sender reads an older 
     const sending = session.sendMessage("first", "file", [{ id, file }]);
     const request = await peer.next();
     expect(request).toMatchObject({ type: "chat", attachments: [attachment] });
-    peer.reply(request, { type: "confirmed", message: { ...message(3), attachments: [attachment] }, inserted: true });
+    peer.reply(request, { type: "confirmed", message: { ...message(3), attachments: [{ ...attachment, sha256: attachment.sha256.toUpperCase() }] }, inserted: true });
     expect(session.getSnapshot().messagesByRoom.first).toEqual([message(1)]);
     expect(socket.sent.at(-1)).toMatchObject({ type: "file_offer", roomId: "first", messageSeq: 3, attachmentId: id, available: true });
     await expect(session.attachments.content({ roomId: "first", messageSeq: 3, attachmentId: id }, attachment, new AbortController().signal)).resolves.toBe(file);
     await sending;
     await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
+    await expect(session.attachments.content({ roomId: "first", messageSeq: 3, attachmentId: id }, { ...attachment, sha256: "b".repeat(64) }, new AbortController().signal)).rejects.toThrow("attachment_unavailable");
   } finally { session.close(); }
 });
 
@@ -1635,6 +1636,26 @@ test("an old identity's retained-file restore cannot publish into the next ident
     await old; await Promise.resolve();
     session.attachments.resume();
     expect(socket.sent.some(command => command.type === "file_offer" && command.attachmentId === id)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("retained source content and availability follow the current authenticated descriptor", async () => {
+  const file = new File(["cached"], "cached.txt"), id = crypto.randomUUID(), changedId = crypto.randomUUID();
+  const attachment = { id, name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  const key = { roomId: "first", messageSeq: 1, attachmentId: id }, changedKey = { ...key, messageSeq: 2, attachmentId: changedId };
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([{ key, file, attachment }, { key: changedKey, file, attachment: { ...attachment, id: changedId } }]);
+  const remove = vi.spyOn(FileStore.prototype, "remove").mockResolvedValue();
+  const { session, socket } = await setup();
+  try {
+    await vi.waitFor(() => expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, available: true })));
+    await expect(session.attachments.content(key, { ...attachment, sha256: attachment.sha256.toUpperCase() }, new AbortController().signal)).resolves.toBe(file);
+    await expect(session.attachments.content(key, { ...attachment, sha256: "b".repeat(64) }, new AbortController().signal)).rejects.toThrow("attachment_unavailable");
+    const state = structuredClone(session.getSnapshot().state!);
+    state.files = [{ ...changedKey, attachment: { ...attachment, id: changedId, size: file.size + 1 }, sourceId: "endpoint", upstream: null, downstream: [], receiving: false }];
+    socket.receive({ type: "state", state });
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, available: false }));
+    expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...changedKey, available: false }));
+    expect(remove).toHaveBeenCalledWith(key); expect(remove).toHaveBeenCalledWith(changedKey);
   } finally { session.close(); }
 });
 
