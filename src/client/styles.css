@@ -91,7 +91,7 @@ ul { margin: 0; padding: 0; list-style: none; }
 
 .lr-top {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px 12px;
@@ -116,7 +116,15 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-home-arrow { transform: rotate(90deg); color: var(--muted); }
 
 .lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
-.lr-top > .lr-top-right { margin-left: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.lr-top > .lr-top-right { margin-left: auto; min-width: 0; flex: none; justify-content: flex-end; }
+.lr-header-controls { flex: none; }
+.lr-header-options:not([popover]), .lr-header-options:not([popover]) > .lr-header-settings { display: contents; }
+.lr-header-more { display: inline-flex; }
+.lr-header-options:is(:popover-open, .\:popover-open) { display: grid; gap: 16px; }
+.lr-header-settings { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lr-header-options .lr-help-content { padding-top: 14px; border-top: 1px solid var(--control-edge); }
+.lr-top:has(.lr-header-controls.is-overflow) .lr-leds { width: 44px; height: 44px; padding: 0; justify-content: center; }
+.lr-top:has(.lr-header-controls.is-overflow) .lr-leds-label { display: none; }
 
 /* Discrete signaling state, independent of picture quality. */
 .lr-leds {
@@ -935,14 +943,14 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 .lr-app-connect-help .lr-app-connect-optional { color: var(--muted); font-size: 12px; margin-bottom: 0; }
 @media (prefers-reduced-motion: reduce) { .lr-anchored-card:is(:popover-open, .\:popover-open) { animation: none; } }
 .lr-help-menu { width: min(260px, calc(100vw - 16px)); }
-.lr-help-menu header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 2px 14px; }
-.lr-help-menu header strong { font-size: 14px; }
-.lr-help-menu header :is(a, span) { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-.lr-help-menu header a { text-underline-offset: 3px; }
-.lr-help-menu nav { display: grid; gap: 4px; }
-.lr-help-menu nav .lr-btn { width: 100%; justify-content: flex-start; }
-.lr-help-menu.is-visual nav { display: flex; justify-content: center; gap: 12px; }
-.lr-help-menu.is-visual nav .lr-btn { width: var(--control-compact-size); justify-content: center; }
+.lr-help-content header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 0 2px 14px; }
+.lr-help-content header strong { font-size: 14px; }
+.lr-help-content header :is(a, span) { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.lr-help-content header a { text-underline-offset: 3px; }
+.lr-help-content nav { display: grid; gap: 4px; }
+.lr-help-content nav .lr-btn { width: 100%; justify-content: flex-start; }
+.lr-help-content.is-visual nav { display: flex; justify-content: center; gap: 12px; }
+.lr-help-content.is-visual nav .lr-btn { width: var(--control-compact-size); justify-content: center; }
 .lr-cap { font-size: var(--control-label-size); font-weight: 600; color: inherit; white-space: nowrap; }
 
 .lr-chip {
@@ -1800,6 +1808,10 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-leds { gap: 4px; padding: 6px; }
   .lr-top .lr-btn.is-compact { width: var(--control-compact-size); padding: 0; }
   .lr-top .lr-btn.is-compact .lr-cap { display: none; }
+  .lr-top .lr-header-options[popover] .lr-btn.is-compact { width: auto; padding-inline: 12px; }
+  .lr-top .lr-header-options[popover] .lr-cap { display: inline; }
+  .lr-top .lr-header-options[popover] .lr-help-content nav .lr-btn { width: 100%; }
+  .lr-top .lr-header-options[popover] .lr-help-content.is-visual nav .lr-btn { width: var(--control-compact-size); padding: 0; }
 }
 
 @media (orientation: landscape) and (max-height: 500px) {
@@ -1942,12 +1954,6 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 /* Theatre keeps ordinary feedback with the surrounding room controls.
    Missing pictures and required playback actions retain their stage overlay. */
 .lr-room.is-theater .lr-stage-notices { display: none; }
-@media (max-width: 480px) {
-  .lr-top:has(.lr-leds) { display: grid; grid-template-columns: auto minmax(0, 1fr); row-gap: 8px; }
-  .lr-top:has(.lr-leds) > .lr-top-right { display: contents; }
-  .lr-top:has(.lr-leds) > .lr-top-right > [role="status"] { justify-self: end; }
-  .lr-top:has(.lr-leds) .lr-header-controls { grid-column: 1 / -1; justify-self: end; }
-}
 @media (max-width: 360px) {
   .lr-client-modes { grid-template-columns: 1fr; }
   .lr-lcd { gap: 4px; padding-inline: 6px; font-size: 18px; }

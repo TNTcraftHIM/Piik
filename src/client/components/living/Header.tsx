@@ -1,5 +1,5 @@
 // App header: brand mark, LED connection state, language selection and theme.
-import { useId, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import { createPortal } from "react-dom";
 import { browserDebugEnabled, debugError, downloadBrowserDebug, withBrowserDebug } from "../../lib/debug";
 import { BrandMark } from "./BrandMark";
@@ -85,15 +85,35 @@ const webVersion = import.meta.env.VITE_PIIK_VERSION ?? "development";
 const webRelease = /^v\d+\.\d+\.\d+$/.test(webVersion)
   ? `https://github.com/TNTcraftHIM/Piik/releases/tag/${webVersion}` : null;
 
-function BrowserHelpMenu() {
+function BrowserHelpContent({ active }: { active: boolean }) {
   const { lang, vis, t } = useCopy();
+  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
+    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, active);
+  return <div className={`lr-help-content${vis ? " is-visual" : ""}`}>
+    <header><strong>Piik Web</strong>
+      {webRelease ? <a href={webRelease} target="_blank" rel="noopener noreferrer"
+        aria-label={`Piik Web ${webVersion}`}>{webVersion}</a> : <span>{webVersion}</span>}
+    </header>
+    <nav aria-label={t("help.title")}>
+      {active && <>
+        <Tooltip kind="hint-help" text={vis ? undefined : t("shareHelp.guide")} place="below" align="end">
+          <a className="lr-btn is-compact is-quiet" href={guide} target="_blank" rel="noopener noreferrer" aria-label={t("shareHelp.guide")}>
+            <Glyph name="book" size={16} />{!vis && <span className="lr-cap">{t("help.troubleshooting")}</span>}
+          </a>
+        </Tooltip>
+        <BrowserDiagnosticsButton size="compact" quiet />
+      </>}
+    </nav>
+  </div>;
+}
+
+function BrowserHelpMenu() {
+  const { vis, t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   useAnchoredPopover(trigger, panel);
-  const guide = useProjectLink(`/docs/${lang === "zh" ? "zh/" : ""}troubleshooting.html`,
-    `https://github.com/TNTcraftHIM/Piik/blob/main/docs/guide/troubleshooting${lang === "zh" ? ".zh-CN" : ""}.md`, open);
   return <>
     <Tooltip kind="hint-help" text={vis ? undefined : t("help.hint")} disabled={open} place="below" align="end">
       <button ref={trigger} type="button" className="lr-btn is-compact is-quiet"
@@ -102,29 +122,44 @@ function BrowserHelpMenu() {
       </button>
     </Tooltip>
     {createPortal(<div ref={panel} id={id} popover="auto" role="dialog" aria-label={t("help.title")}
-      className={`lr-anchored-card lr-help-menu${vis ? " is-visual" : ""}`} onToggle={event => {
+      className="lr-anchored-card lr-help-menu" onToggle={event => {
         if (event.target === event.currentTarget) setOpen(event.newState === "open");
       }}>
-      <header><strong>Piik Web</strong>
-        {webRelease ? <a href={webRelease} target="_blank" rel="noopener noreferrer"
-          aria-label={`Piik Web ${webVersion}`}>{webVersion}</a> : <span>{webVersion}</span>}
-      </header>
-      <nav aria-label={t("help.title")}>
-        {open && <>
-          <Tooltip kind="hint-help" text={vis ? undefined : t("shareHelp.guide")} place="below" align="end">
-            <a className="lr-btn is-compact is-quiet" href={guide} target="_blank" rel="noopener noreferrer" aria-label={t("shareHelp.guide")}>
-              <Glyph name="book" size={16} />{!vis && <span className="lr-cap">{t("help.troubleshooting")}</span>}
-            </a>
-          </Tooltip>
-          <BrowserDiagnosticsButton size="compact" quiet />
-        </>}
-      </nav>
+      <BrowserHelpContent active={open} />
     </div>, document.body)}
   </>;
 }
 
 export function HeaderControls({ diagnosticControl, appControl }: { diagnosticControl?: React.ReactNode; appControl?: React.ReactNode } = {}) {
   const { vis, t } = useCopy();
+  const controls = useRef<HTMLDivElement>(null), trigger = useRef<HTMLSpanElement>(null), options = useRef<HTMLDivElement>(null);
+  const focusInline = useRef(false);
+  const id = useId();
+  const [compact, setCompact] = useState(false), [open, setOpen] = useState(false);
+  useAnchoredPopover(trigger, options, { enabled: compact });
+  useLayoutEffect(() => {
+    const header = controls.current?.closest(".lr-top") ?? controls.current;
+    if (!header) return;
+    const resize = () => {
+      const narrow = header.clientWidth <= 600;
+      if (!narrow && options.current?.hasAttribute("popover")) {
+        const focused = header.ownerDocument.activeElement;
+        focusInline.current = options.current.contains(focused) || Boolean(trigger.current?.contains(focused));
+        if (options.current.matches(":popover-open")) options.current.hidePopover();
+      }
+      if (!narrow) options.current?.removeAttribute("style");
+      setCompact(narrow);
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(header); resize();
+    return () => observer.disconnect();
+  }, []);
+  useLayoutEffect(() => {
+    if (!compact && focusInline.current) {
+      focusInline.current = false;
+      (options.current?.querySelector<HTMLElement>('[aria-pressed="true"]') ?? options.current?.querySelector<HTMLElement>("button, a"))?.focus();
+    }
+  }, [compact]);
   const theme = useSyncExternalStore(subscribeTheme, currentTheme);
   const themeTitle = t(theme === "dark" ? "theme.light" : "theme.dark");
   const themeButton = (
@@ -147,14 +182,25 @@ export function HeaderControls({ diagnosticControl, appControl }: { diagnosticCo
     </button>
   );
   return (
-    <span className="lr-top-right lr-header-controls">
+    <div ref={controls} className={`lr-top-right lr-header-controls${compact ? " is-overflow" : ""}`}>
       {appControl}
-      <LanguageControl />
-      <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
-        {themeButton}
-      </Tooltip>
-      {diagnosticControl === undefined ? <BrowserHelpMenu /> : diagnosticControl}
-    </span>
+      {compact && <span ref={trigger} className="lr-header-more">
+        <Btn icon="sliders" title="header.more" hint="hint-advanced" size="compact" popoverTarget={id} controls={id} expanded={open} />
+      </span>}
+      <div ref={options} id={id} popover={compact ? "auto" : undefined} role={compact ? "dialog" : undefined}
+        aria-label={compact ? t("header.more") : undefined}
+        className={`lr-header-options${compact ? " lr-anchored-card" : ""}`} onToggle={event => {
+          if (event.target === event.currentTarget) setOpen(event.newState === "open");
+        }}>
+        <div className="lr-header-settings">
+          <LanguageControl />
+          <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
+            {themeButton}
+          </Tooltip>
+        </div>
+        {diagnosticControl === undefined ? compact ? <BrowserHelpContent active={open} /> : <BrowserHelpMenu /> : diagnosticControl}
+      </div>
+    </div>
   );
 }
 
@@ -183,11 +229,11 @@ export function AppHeader({
         {!atHome && <Glyph name="chevron" size={14} className="lr-home-arrow" />}
         <BrandMark size={34} motion="once" />
       </a>}
-      <span className="lr-top-right">
+      <div className="lr-top-right">
         {led}
         <HeaderControls diagnosticControl={diagnosticControl}
           appControl={homeHref !== "/client" ? <AppConnectionButton onConnected={onAppConnected} /> : undefined} />
-      </span>
+      </div>
     </header>
   );
 }

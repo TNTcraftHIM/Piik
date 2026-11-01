@@ -101,8 +101,9 @@ of a circle. Header utilities share compact alignment and icon scale with the
 language track. Low-frequency help stays unframed and quiet; it need not carry
 the outline or shadow of direct settings. Narrow layouts shorten captions or
 spacing before changing that hierarchy.
-Keep App, language, theme and help together; narrow room headers place connection
-status beside the brand above this utility group instead of wrapping each action.
+Keep desktop App, language, theme and help together on the right. Narrow headers
+retain one row with the brand/back action, signaling dots, App and More; language,
+theme and help share that attached disclosure without duplicating their controls.
 `segmented-control.css` owns the sliding treatment for language, mode selection,
 tabs and native radio groups. Consumers supply selection and layout; they must
 not duplicate the selected colours or press animation. Language choices keep

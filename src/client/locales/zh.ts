@@ -794,6 +794,7 @@ export const zh = {
 
   "mode.language": "界面语言",
   "mode.more": "更多语言",
+  "header.more": "更多选项",
   "mode.vis": "纯视觉",
   "theme.dark": "切换到暗色模式",
   "theme.light": "切换到浅色模式",

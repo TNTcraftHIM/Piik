@@ -794,6 +794,7 @@ export const en: Record<CopyKey, string> = {
 
   "mode.language": "Interface language",
   "mode.more": "More languages",
+  "header.more": "More options",
   "mode.vis": "Visual only",
   "theme.dark": "Switch to dark mode",
   "theme.light": "Switch to light mode",
