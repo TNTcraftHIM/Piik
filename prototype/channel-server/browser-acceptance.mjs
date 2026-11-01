@@ -179,14 +179,21 @@ function captureProbe(name) {
       source.disconnect = (...args) => { owner.connected = false; return disconnect(...args); };
       return source;
     };
-    const microphone = () => {
-      const context = new AudioContext(), oscillator = context.createOscillator();
+    const microphone = (stereo = false) => {
+      const context = new AudioContext();
       contexts.push(context);
-      oscillator.frequency.value = ${330 + name.charCodeAt(0)};
+      const frequencies = stereo ? [500, 1500] : [${330 + name.charCodeAt(0)}];
+      const channels = context.createChannelMerger(frequencies.length);
+      const oscillators = frequencies.map((frequency, channel) => {
+        const oscillator = context.createOscillator();
+        oscillator.frequency.value = frequency;
+        oscillator.connect(channels, 0, channel); oscillator.start();
+        return oscillator;
+      });
       const gain = context.createGain(), destination = context.createMediaStreamDestination();
-      gain.gain.value = .05; oscillator.connect(gain); gain.connect(destination); oscillator.start();
+      gain.gain.value = .05; channels.connect(gain); gain.connect(destination);
       const track = destination.stream.getAudioTracks()[0], stop = track.stop.bind(track);
-      track.stop = () => { stop(); oscillator.stop(); void context.close(); };
+      track.stop = () => { stop(); oscillators.forEach(oscillator => oscillator.stop()); void context.close(); };
       void context.resume(); captures.push(destination.stream); return destination.stream;
     };
     navigator.mediaDevices.getUserMedia = async options => {
@@ -203,11 +210,37 @@ function captureProbe(name) {
       const stream = canvas.captureStream(10); captures.push(stream);
       const track = stream.getVideoTracks()[0], stop = track.stop.bind(track);
       track.stop = () => { clearInterval(timer); stop(); };
-      if (captureAudio) for (const audio of microphone().getAudioTracks()) stream.addTrack(audio);
+      if (captureAudio) for (const audio of microphone(true).getAudioTracks()) stream.addTrack(audio);
       return stream;
     };
     window.__channelProbe = { peers, sockets, captures, contexts,
       captureAudio(enabled) { captureAudio = enabled; },
+      async screenAudioSeparation(publicationId) {
+        const stream = window.__channelGate.snapshot().streams.get(publicationId);
+        if (!stream?.getAudioTracks().length) throw new Error('No received screen sound');
+        const context = new AudioContext();
+        try {
+          const input = context.createMediaStreamSource(stream);
+          const splitter = context.createChannelSplitter(2), sink = context.createGain();
+          sink.gain.value = 0; sink.connect(context.destination); input.connect(splitter);
+          const analyzers = [0, 1].map(channel => {
+            const analyzer = context.createAnalyser();
+            analyzer.fftSize = 8192; analyzer.smoothingTimeConstant = 0;
+            splitter.connect(analyzer, channel); analyzer.connect(sink); return analyzer;
+          });
+          await context.resume();
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return analyzers.map((analyzer, channel) => {
+            const bins = new Float32Array(analyzer.frequencyBinCount);
+            analyzer.getFloatFrequencyData(bins);
+            const level = frequency => {
+              const bin = Math.round(frequency * analyzer.fftSize / context.sampleRate);
+              return Math.max(-120, ...bins.slice(bin - 1, bin + 2));
+            };
+            return level(channel === 0 ? 500 : 1500) - level(channel === 0 ? 1500 : 500);
+          });
+        } finally { await context.close(); }
+      },
       async observeQuality() {
         if (qualityInstalled) return;
         const { P2pQualityProbe } = await import('/src/client/media/candidate-quality-probe.ts');
@@ -366,9 +399,9 @@ async function capturedScreen(index, roomId) {
   return current.state.publications.find(publication => publication.sessionId === current.sessionId && publication.roomId === roomId && publication.kind === "screen").id;
 }
 const sample = index => evaluate(index, "window.__channelProbe.sample()");
-async function voiceProgressing(index, publicationId) {
+async function audioProgressing(index, publicationId) {
   let previous = null;
-  return until(`browser ${index} receives advancing voice ${publicationId}`, () => evaluate(index, `(async () => {
+  return until(`browser ${index} receives advancing audio ${publicationId}`, () => evaluate(index, `(async () => {
     const current = () => ${hook}.snapshot().streams.get(${JSON.stringify(publicationId)});
     const track = current()?.getAudioTracks().find(track => track.readyState === 'live');
     if (!track) return null;
@@ -544,7 +577,7 @@ async function branchShortcut(initial) {
   for (const index of [viewer, source]) await action(index, `joinVoice(${JSON.stringify(room)})`);
   const viewerVoice = (await view(viewer)).state.publications.find(publication => publication.sessionId === initial[viewer].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
   const sourceVoice = (await view(source)).state.publications.find(publication => publication.sessionId === initial[source].sessionId && publication.kind === 'voice' && publication.roomId === room).id;
-  await voiceProgressing(viewer, sourceVoice); await voiceProgressing(source, viewerVoice);
+  await audioProgressing(viewer, sourceVoice); await audioProgressing(source, viewerVoice);
   const base = await Promise.all([host, relay, source, viewer].map(async index => ({ index,
     pairs: (await view(index)).state.pairs.filter(pair => pair.rooms.includes(room)).map(pair => pair.id).sort() })));
   const inspect = (index, publication) => evaluate(index, `window.__channelProbe.screen(${JSON.stringify(publication)})`);
@@ -683,7 +716,7 @@ async function branchShortcut(initial) {
         assert((await view(host)).state.pairs.some(pair => pair.id === hostInput.pairId
           && pair.incoming.some(flow => flow.id === hostInput.flowId && flow.selected)), 'the host keeps its original source input');
         await progressing(host, publication);
-        await voiceProgressing(viewer, sourceVoice); await voiceProgressing(source, viewerVoice);
+        await audioProgressing(viewer, sourceVoice); await audioProgressing(source, viewerVoice);
         await writeFile(join(output, 'base-branch-shortcut.json'), JSON.stringify({ passed: true, records }, null, 2));
       } finally {
         await Promise.all([source, relay].map(index => evaluate(index, 'window.__channelProbe.restoreVideo()')));
@@ -802,8 +835,8 @@ async function roomBase(initial) {
     assert(retainedBase,
       "a media prepare timeout preserves the original room/voice pair");
     assert.deepEqual(voiceFlows(retainedBase), voiceFlows(originalBase), "video timeout does not replace the shared pair's voice flows");
-    await voiceProgressing(1, dVoice);
-    await voiceProgressing(3, bVoice);
+    await audioProgressing(1, dVoice);
+    await audioProgressing(3, bVoice);
     const replacement = repaired.state.pairs.flatMap(pair => pair.incoming.filter(flow => flow.publicationId === stalledPicture)
       .map(flow => ({ pairId: pair.id, peerId: pair.peerId, flowId: flow.id })));
     mediaPrepare = { retiredFlow: fault.flowId, retainedBasePair: fault.pairId, replacement,
@@ -820,7 +853,7 @@ async function roomBase(initial) {
   await evaluate(2, "window.__channelProbe.closeDataChannels()");
   await until("D repairs through A after its transit DataChannel closes", () => view(3), value =>
     value.state.pairs.some(pair => pair.rooms.includes(room) && pair.peerId === initial[0].sessionId), 30_000);
-  await voiceProgressing(1, dVoice);
+  await audioProgressing(1, dVoice);
   await progressing(0, source);
   await progressing(2, source);
   assert((await view(2)).state.pairs.some(pair => pair.id === originalPair && pair.incoming.some(flow => flow.publicationId === source)), "a failed DataChannel must not close the same pair's healthy picture");
@@ -1291,7 +1324,7 @@ try {
       capturedScreen, playing, progressing, hook, output });
     console.log(`Linked App room acceptance passed; evidence: ${output}`);
   } else if (nativeOnly) {
-    await nativeRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,
+    await nativeRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample, audioProgressing,
       capturedScreen, playing, progressing, assertNoError, hook, output });
     console.log(`Native room acceptance passed; evidence: ${output}`);
   } else if (baseOnly) {

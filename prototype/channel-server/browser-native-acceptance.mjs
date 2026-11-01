@@ -265,7 +265,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
 
 // Exercise the normal interface against an actual Native room operator. The
 // Browser harness replaces only capture, retaining real Opus and WebRTC peers.
-export async function nativeRoom({ initial, serverRoom, browser, action, view, evaluate, until, sample,
+export async function nativeRoom({ initial, serverRoom, browser, action, view, evaluate, until, sample, audioProgressing,
   capturedScreen, playing, progressing, assertNoError, hook, output }) {
   const directory = await mkdtemp(join(tmpdir(), "piik-native-room-check-"));
   const database = join(directory, "room.sqlite");
@@ -337,9 +337,16 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     for (const index of [1, 2]) assert((await view(index)).state.pairs.filter(pair =>
       pair.incoming.some(flow => voiceIds.includes(flow.publicationId))).every(pair => pair.peerId === pairs[0].peerId));
 
+    await evaluate(1, "window.__channelProbe.captureAudio(true)");
     const nativePicture = await capturedScreen(1, room);
+    await evaluate(1, "window.__channelProbe.captureAudio(false)");
     await action(2, `watch(${JSON.stringify(nativePicture)})`);
     await playing(2, nativePicture);
+    await audioProgressing(2, nativePicture);
+    const audioSeparationDb = await evaluate(2,
+      `window.__channelProbe.screenAudioSeparation(${JSON.stringify(nativePicture)})`);
+    assert(audioSeparationDb.every(db => db > 20),
+      `Native screen sound lost stereo separation: ${JSON.stringify(audioSeparationDb)}`);
     assert((await view(2)).state.pairs.some(pair => pair.id === pairs[1].id && pair.incoming.some(flow => flow.publicationId === nativePicture)),
       "picture startup must reuse the established Native base path");
 
@@ -429,7 +436,7 @@ export async function nativeRoom({ initial, serverRoom, browser, action, view, e
     assert(!(await view(2)).state.voice.some(member => member.roomId === room), "saved data must not revive a call");
     await progressing(2, picture);
     await browser(2, "screenshot", join(output, "native-room.png"), "--full");
-    await writeFile(join(output, "native-result.json"), JSON.stringify({ passed: true,
+    await writeFile(join(output, "native-result.json"), JSON.stringify({ passed: true, audioSeparationDb,
       scenarios: ["Native admitted root", "room SQLite owns confirmed history", "lost offer recovery on an existing pair", "bidirectional encoded Opus forwarding",
         "picture startup through Native base", "simultaneous picture voice and file forwarding", "picture stop preserves voice",
         "peer file through Native with final digest", "signaling reconnect and view switch preserve file and voice", "no domain or Native file-byte store",
