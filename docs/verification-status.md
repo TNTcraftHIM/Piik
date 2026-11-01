@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-10-31
+Last updated: 2026-11-01
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -34,7 +34,7 @@ phases, including NAT and Auto codec behavior.
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
-  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41046117248),
+  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41282552930),
   including ScreenCaptureKit, VideoToolbox, source sound and Quartz input.
   Native test programs also compile and link. System permission, capture,
   sound and input acceptance on a Mac remain open.
