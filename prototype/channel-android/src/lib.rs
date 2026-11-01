@@ -12,6 +12,9 @@ use piik_channel_prototype::app::{self, Config};
 use std::{path::PathBuf, sync::OnceLock, thread::JoinHandle};
 use tokio::sync::oneshot;
 
+#[cfg(target_os = "android")]
+mod stderr;
+
 // Application Context, unlike Activity or Service, lives for the process lifetime.
 static CONTEXT: OnceLock<Global<JObject<'static>>> = OnceLock::new();
 
@@ -39,6 +42,8 @@ pub fn nativeStart<'local>(
     assets: JString<'local>,
     helper: JString<'local>,
 ) -> jlong {
+    #[cfg(target_os = "android")]
+    stderr::init();
     unowned
         .with_env(|env| {
             let result = (|| -> Result<jlong> {
