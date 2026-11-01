@@ -71,10 +71,11 @@ controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
   pending-page cancellation and capture stop preserve the running room.
   Notification Stop joins the runtime and closes its listeners. Opening the App
   again restores its launcher without resuming capture.
-  An earlier str0m package passed this App flow on the emulator. The refreshed
-  package reproduces delayed first-picture delivery: its first observation
-  times out before an automatic route replacement delivers video. This remains
-  an Android acceptance defect in [TODO](./todo.md#now).
+  The refreshed App also passes its first public-link share to a desktop Browser
+  through Chromium on the emulator, including source sound, picker cancellation,
+  stop and launcher reentry. An earlier Firefox-mediated route timed out before
+  automatic replacement delivered video; its trigger remains under investigation
+  in [TODO](./todo.md#now). The newer direct-path result does not close that case.
   Its Rust encoder components also pass independent bitrate updates, keyframe
   requests, source-clock preservation and sibling isolation on the emulator's
   software codec.
