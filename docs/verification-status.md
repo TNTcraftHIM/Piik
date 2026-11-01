@@ -112,7 +112,7 @@ and the shared transport releases both address families' ports.
 Its funded H264 encoding handoff survives an ignored first refresh request;
 the old encoding keeps playing until the new keyframe is adopted.
 In the earlier RTC/GoogCc Browser-to-Native H264 control, the constrained encoding follows
-GoogCc's budget and ordinary AIMD growth; Original quality is not restored within
+GoogCc's budget and ordinary AIMD growth; the supplied Original encoding is not reused within
 the observed 20 seconds. A bounded check of the same controller exercises its
 existing ALR probe requests when actual sending becomes supply-limited.
 
@@ -121,12 +121,14 @@ constrain/restore with a separate healthy voice pair, shared A/V source-time
 mapping, warm-output handover and fixed/prepared UDP ownership. Normal room
 acceptance also carries stereo sound, confirmed history and file data through
 the Native operator. Its STUN and authenticated coturn checks use the same public
-socket adapter. Actual local WGC/H264 constrain/restore preserves the healthy
-video branch and receiver identities. The supplied Original feed was reused after
-5.1 seconds in a diagnostic stock-SDK run; another stock run still used an
-independent encoder after 20 seconds. The latter recovered picture dimensions
-and cadence at a lower payload bitrate. Its delivered detail and frame age remain
-the visual-recovery work in [TODO](./todo.md); feed selection alone does not measure them.
+socket adapter. The current WGC/H264 8 Mbps → 600 kbps → 8 Mbps observation
+uses the SDK controller and corrected local deadline handling. During restoration,
+the lower encoding continues decoding while the higher encoding waits for its
+budget. Both supplied feeds resume between 5.1 and 6.1 seconds after restoration.
+The final ten seconds deliver about 16.2 fps on all four receiver/encoding paths;
+matched high-encoding snapshots are byte-identical between receivers. The observer
+now follows the production per-SSRC AU path, removing its obsolete shared replay
+filter. Earlier failed observations retain their original source and results.
 Receipts retain their exact source identities in the
 [Native candidate index](../prototype/channel-native/README.md#rtc-dependency).
 

@@ -19,14 +19,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
   after adapter/platform acceptance. Keep the first
   version's accepted scope and the prototype isolated.
-- [ ] **Native H264 visual recovery.** Trace the observed unshaped startup budget
-  shortfall and complete the healthy/constrained decoded-picture comparison.
-  The latest observation stopped before its network profile. The saved slow run
-  recovered picture dimensions and cadence while retaining a lower-bitrate
-  independent encoder; image detail and frame age still need comparison.
-  Evaluate delivered media and budget-funded handoff rather than treating the
-  internal `Original` feed label as a quality deadline. Keep the earlier result
-  and the stock controller; do not add another probe-policy matrix.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
