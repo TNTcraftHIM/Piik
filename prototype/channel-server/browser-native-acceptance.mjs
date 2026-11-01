@@ -204,7 +204,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     otherServer.stdout.on("data", collectOther); otherServer.stderr.on("data", collectOther);
     otherServer.on("error", error => collectOther(String(error)));
     otherWeb = spawn(process.execPath, ["node_modules/vite/bin/vite.js", "--config", "prototype/channel-server/vite.config.ts"], {
-      env: { ...process.env, PIIK_CHANNEL_PORT: String(otherCorePort), PIIK_CHANNEL_UI_PORT: String(otherPort) },
+      env: { ...process.env, PIIK_CHANNEL_PORT: String(otherCorePort), PIIK_CHANNEL_UI_PORT: String(otherPort),
+        PIIK_CHANNEL_VITE_CACHE_DIR: join(directory, "other-vite-cache") },
       windowsHide: true, stdio: ["ignore", "pipe", "pipe"],
     });
     otherWeb.stdout.on("data", collectOther); otherWeb.stderr.on("data", collectOther);

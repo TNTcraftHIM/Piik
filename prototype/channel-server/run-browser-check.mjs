@@ -19,6 +19,7 @@ const origin = `http://127.0.0.1:${uiPort}`;
 const protocolOnly = process.argv.includes("--protocol");
 const directory = await mkdtemp(join(tmpdir(), "piik-room-host-check-"));
 const env = { ...process.env, PIIK_CHANNEL_PORT: String(corePort), PIIK_CHANNEL_UI_PORT: String(uiPort),
+  PIIK_CHANNEL_VITE_CACHE_DIR: join(directory, "vite-cache"),
   PIIK_CHANNEL_ICE_SERVERS: "[]",
   PIIK_CHANNEL_WEB_ORIGIN: origin, CHANNEL_UI_ORIGIN: origin, PIIK_CHANNEL_DATA_DIR: directory,
   CHANNEL_WS_URL: `ws://127.0.0.1:${corePort}/prototype/channel`,
