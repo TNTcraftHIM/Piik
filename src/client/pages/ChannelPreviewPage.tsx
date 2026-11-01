@@ -83,6 +83,10 @@ export function ChannelPreviewPage() {
       ? copy("未能开始分享，请重新选择窗口或屏幕。", "Could not start sharing. Choose a window or screen again.")
     : channel.error === "capture_audio_failed"
       ? copy("无法分享声音，画面分享仍在继续。", "Could not share sound. Screen sharing continues.")
+    : channel.error === "capture_codec_unsupported"
+      ? copy("App 不支持所选视频编码。请在分享前选择自动，或更换选源。", "The App does not support this video codec. Choose Auto before sharing, or select another source.")
+    : channel.error === "video_codec_unsupported"
+      ? copy("浏览器不支持所选视频编码。请在分享前选择自动或另一种编码。", "The browser does not support this video codec. Choose Auto or another codec before sharing.")
     : channel.error === "owner_mismatch"
       ? copy("App 中的房间数据属于另一个域或账号。请确认当前站点和登录账号。", "The App room data belongs to another domain or account. Check the current site and signed-in account.")
     : /room_host_conflict|room_storage_in_use/.test(channel.error)
@@ -240,6 +244,12 @@ export function ChannelPreviewPage() {
               const sound = channel.sourceAudio(publication.id);
               return sound && { ...sound, busy: busy("screen", publication.roomId),
                 onChange: (settings: { level?: number; muted?: boolean }) => run(channel.setSourceAudio(publication.id, settings)) };
+            })(),
+            sourceMicrophone: (() => {
+              const microphone = channel.sourceMicrophone(publication.id);
+              return microphone?.available ? { enabled: microphone.enabled, busy: busy("source-microphone", publication.id),
+                disabled: !connected || busy("screen", publication.roomId),
+                onEnabled: (enabled: boolean) => run(channel.setSourceMicrophone(publication.id, { enabled })) } : undefined;
             })(),
             remoteControl: (() => {
               const remote = channel.remoteControls.get(publication.id);

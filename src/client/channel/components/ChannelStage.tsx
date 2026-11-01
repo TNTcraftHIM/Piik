@@ -10,6 +10,7 @@ import type { RemoteControlMode } from "../../remote-control/protocol";
 import type { ChannelRemoteControlState, ChannelStopShortcut } from "../app-link";
 import { HostRemoteControl } from "../../components/living/HostRemoteControl";
 import { useCallback } from "react";
+import { VoiceMicrophoneButton } from "../../room-voice/VoiceAudioButtons";
 
 export interface ChannelStageSource {
   id: string;
@@ -22,6 +23,7 @@ export interface ChannelStageSource {
   paused: boolean;
   stream?: MediaStream;
   sourceAudio?: SourceAudioControl;
+  sourceMicrophone?: { enabled: boolean; busy?: boolean; disabled?: boolean; onEnabled: (enabled: boolean) => void };
   inputs?: readonly ChannelScreenInput[];
   input?: InputTransport;
   remoteControl?: Omit<ChannelRemoteControlState, "requests"> & { requests: (ChannelRemoteControlState["requests"][number] & { name: string })[] };
@@ -97,6 +99,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
         {active.map(source => {
           const isFocused = source.id === focused?.id;
           const focusable = active.length > 1 && !isFocused;
+          const microphone = source.sourceMicrophone;
           return <article key={source.id} className={`c3-monitor-tile${isFocused ? " is-focused" : ""}`}
             data-publication-id={source.id} data-focusable={focusable || undefined}
             aria-label={`${source.name} — ${source.roomName}`}
@@ -121,6 +124,10 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
                 {active.length > 1 && <ChannelAction icon={isFocused ? "contract" : "expand"} quiet iconOnly
                   label={isFocused ? copy("返回平铺", "Return to grid") : copy(`聚焦 ${source.name}`, `Focus ${source.name}`)}
                   pressed={isFocused} onClick={() => onFocus(isFocused ? null : source.id)} />}
+                {source.owned && microphone && <VoiceMicrophoneButton active={microphone.enabled}
+                  quiet busy={microphone.busy} disabled={microphone.disabled || microphone.busy}
+                  hint={microphone.enabled ? "hint-microphone-off" : "hint-microphone-on"}
+                  onClick={() => microphone.onEnabled(!microphone.enabled)} />}
                 {source.owned && <ChannelAction icon={source.paused ? "play" : "pause"} quiet iconOnly
                   label={t(source.paused ? "host.resume" : "host.pause")} pressed={source.paused}
                   hint={source.paused ? "hint-resume" : "hint-pause"} busy={source.pausePending}

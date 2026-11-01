@@ -21,7 +21,7 @@ import { LauncherForm, type AppMode } from "../components/living/LauncherForm";
 import { AppReleaseNotice } from "../components/living/AppReleaseNotice";
 import { useTheaterMode } from "../components/living/use-theater-mode";
 
-import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls } from "../components/living/QualityPresets";
+import { AudioBitrateControl, PicturePreferenceControl, PictureSettingsSummary, QualityPresets, ResolutionControl, VideoRateControls, VideoCodecControl } from "../components/living/QualityPresets";
 import { RoomCodeInput } from "../components/living/RoomCodeInput";
 import { MAX_AUDIO_SEND_BITRATE, VIDEO_CAPTURE_LIMITS, QUALITY_PROFILES, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
@@ -161,15 +161,7 @@ export function ControlsPreview() {
               onChange={change => setQuality(current => ({ ...current, ...change }))} />
             <PicturePreferenceControl value={quality.degradationPreference} disabled={false}
               onChange={degradationPreference => setQuality(current => ({ ...current, degradationPreference }))} />
-            <div className="lr-door-group">
-              <span className="lr-door-glyph"><Glyph name="puzzle" size={19} /><span>{vis ? null : t("host.advanced.codec")}</span></span>
-              <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
-                {(["vp8", "auto", "h264"] as const).map(mode => <Chip key={mode} name="videoCodec" value={mode} selected={mode === "auto"} disabled
-                  title={mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase()} hint="hint-codec">
-                  {mode === "auto" && !vis ? t("host.advanced.codec.auto") : mode.toUpperCase()}
-                </Chip>)}
-              </div>
-            </div>
+            <VideoCodecControl value="auto" disabled onChange={() => {}} />
           </>}
           audio={<>
           <div className="lr-door-group lr-source-audio-settings">

@@ -12,6 +12,7 @@ import { Cap, Chip } from "./primitives";
 import { QualityTileGlyph } from "./QualityTileGlyph";
 import { NumberControl } from "./NumberControl";
 import { Tooltip } from "./Tooltip";
+import type { BrowserVideoCodecMode } from "../../webrtc/video-codec";
 
 const PRESET_LABELS: Record<QualityProfileId, CopyKey> = {
   "720p30": "host.quality.light",
@@ -23,6 +24,25 @@ const RESOLUTION_HINTS: Partial<Record<keyof typeof QUALITY_RESOLUTIONS, CopyKey
   "1440p": "host.video.resolution1440p",
   "2160p": "host.video.resolution2160p",
 };
+
+export function VideoCodecControl({ value, disabled, onChange }: {
+  value: BrowserVideoCodecMode; disabled?: boolean; onChange: (mode: BrowserVideoCodecMode) => void;
+}) {
+  const { t, vis } = useCopy();
+  const id = useId();
+  return <div className="lr-door-group">
+    <span className="lr-door-glyph"><Glyph name="puzzle" size={19} />{vis ? null : t("host.advanced.codec")}</span>
+    <div className="lr-row-group" role="group" aria-label={t("host.advanced.codec")}>
+      {(["vp8", "auto", "h264"] as const).map(mode => {
+        const label = mode === "auto" ? t("host.advanced.codec.auto") : mode.toUpperCase();
+        return <Chip key={mode} name={`${id}-codec`} value={mode} selected={mode === value} disabled={disabled}
+          title={label} hint="hint-codec" hintText={t(`host.advanced.codec.${mode}Hint`)} onClick={() => onChange(mode)}>
+          {label}
+        </Chip>;
+      })}
+    </div>
+  </div>;
+}
 
 export function QualityPresets({ selected, limits = VIDEO_CAPTURE_LIMITS, disabled = false, busy = false, onSelect }: {
   selected: QualityProfileId | null;

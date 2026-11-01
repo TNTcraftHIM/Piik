@@ -4,7 +4,8 @@ import { Btn } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { SharingSettings } from "../../components/living/SharingSettings";
-import { AudioBitrateControl, QualityPresets, PictureSettingsSummary, ResolutionControl, VideoRateControls } from "../../components/living/QualityPresets";
+import { AudioBitrateControl, QualityPresets, PictureSettingsSummary, ResolutionControl, VideoRateControls, VideoCodecControl } from "../../components/living/QualityPresets";
+import { ShareMicrophoneSettings } from "../../components/living/ShareMicrophoneSettings";
 import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId, type QualityProfile } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
 import type { ChannelController } from "../types";
@@ -39,6 +40,13 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   };
   const qualityPending = !!sharing && channel.pending.has(`quality:${sharing.id}`);
   const sourceAudio = sharing ? channel.sourceAudio(sharing.id) : undefined;
+  const microphone = sharing ? channel.sourceMicrophone(sharing.id) : undefined;
+  const microphoneSettings = microphone?.requested ?? microphone;
+  const microphonePending = !!sharing && channel.pending.has(`source-microphone:${sharing.id}`);
+  const { sourceMicrophones } = channel;
+  const publicationId = sharing?.id;
+  const loadMicrophones = useCallback(() => publicationId ? sourceMicrophones(publicationId) : Promise.resolve([]), [publicationId, sourceMicrophones]);
+  const roomMicrophone = channel.state?.voice.some(voice => voice.sessionId === channel.sessionId && !voice.muted);
   const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const label = t(sharing ? "host.switchSource" : "host.start");
   useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
@@ -75,7 +83,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
           onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
       </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"
         hint={available ? "hint-share-start" : "hint-no-sources"} hintText={available ? undefined : "host.capture.noSource"}
-        disabled={disabled || busy || qualityPending || !available} busy={busy || qualityPending} expanded={pickerAvailable || open ? open : undefined}
+        disabled={disabled || busy || qualityPending || microphonePending || !available} busy={busy || qualityPending} expanded={pickerAvailable || open ? open : undefined}
         controls={pickerAvailable || open ? id : undefined} popoverTarget={pickerAvailable ? id : undefined}
         onClick={() => { if (!pickerAvailable) start(() => startScreen(roomId)); }} />}
     </span>
@@ -85,7 +93,7 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
     </span>
     <div ref={settingsPanel} id={`${id}-settings`} popover="auto" className="lr-anchored-card c3-quality-picker"
       onToggle={event => setSettingsOpen(event.newState === "open")}>
-      <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending}
+      <SharingSettings id={`${id}-quality`} open={settingsOpen} busy={qualityPending || microphonePending}
         presets={<>{!vis && <div className="c3-quality-heading"><h3>{t("host.advanced")}</h3></div>}
           <QualityPresets selected={matchingQualityProfileId(quality)} disabled={busy} busy={qualityPending}
             onSelect={preset => setQuality({ ...QUALITY_PROFILES[preset], maxAudioBitrate: quality.maxAudioBitrate })} /></>}
@@ -94,19 +102,30 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
           onChange={resolution => setQuality({ ...quality, resolution,
             maxFramerate: Math.min(quality.maxFramerate, captureFramerateCeiling(resolution, VIDEO_CAPTURE_LIMITS)) })} />
           <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
-            onChange={next => setQuality({ ...quality, ...next })} /></>}
-        audio={<AudioBitrateControl value={sourceAudio?.bitrate ?? quality.maxAudioBitrate ?? 128_000} max={MAX_AUDIO_SEND_BITRATE}
+            onChange={next => setQuality({ ...quality, ...next })} />
+          <VideoCodecControl value={(sharing ? channel.screenCodecMode(sharing.id) : undefined) ?? channel.videoCodecMode}
+            disabled={disabled || busy || !!sharing || !!captureRequest} onChange={channel.setVideoCodecMode} /></>}
+        audio={<>
+          {sharing && microphone && microphoneSettings && <ShareMicrophoneSettings available={microphone.available}
+            enabled={microphone.enabled} disabled={disabled || busy} busy={microphonePending} browser={microphone.browser}
+            roomMicrophone={roomMicrophone} volume={microphoneSettings.volume} deviceId={microphoneSettings.deviceId}
+            voiceProcessing={microphoneSettings.voiceProcessing} loadDevices={loadMicrophones}
+            onEnabled={enabled => { void channel.setSourceMicrophone(sharing.id, { enabled }).catch(() => {}); }}
+            onVolume={volume => { void channel.setSourceMicrophone(sharing.id, { volume }).catch(() => {}); }}
+            onDevice={deviceId => { void channel.setSourceMicrophone(sharing.id, { deviceId }).catch(() => {}); }}
+            onVoiceProcessing={voiceProcessing => { void channel.setSourceMicrophone(sharing.id, { voiceProcessing }).catch(() => {}); }} />}
+          <AudioBitrateControl value={sourceAudio?.bitrate ?? quality.maxAudioBitrate ?? 128_000} max={MAX_AUDIO_SEND_BITRATE}
           disabled={busy || qualityPending}
           onChange={bitrate => {
             if (sharing) void channel.setSourceAudio(sharing.id, { bitrate }).catch(() => {});
             else setQuality({ ...quality, maxAudioBitrate: bitrate });
-          }} />} />
+          }} /></>} />
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => setOpen(event.newState === "open")}>
       {open && <CaptureSourcePicker nativeSources={sources} browserSupported={browserSupported} cameraSupported={cameraSupported}
         loadCameras={channel.cameraPreviews}
-        initialTab="window" selectionDisabled={disabled || busy || qualityPending}
+        initialTab="window" selectionDisabled={disabled || busy || qualityPending || microphonePending}
         initialAudio={selectedNative?.audio} initialExcludeAudio={selectedNative?.excludeAudio}
         onBrowser={() => start(() => startScreen(roomId))}
         onCamera={deviceId => start(() => startScreen(roomId, "camera", deviceId))}
