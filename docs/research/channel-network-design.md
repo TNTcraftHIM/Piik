@@ -384,9 +384,9 @@ schedules missing paths while retaining healthy branches, their failed-shortcut
 history and running screen-operation deadlines. Required leases on a retired
 physical pair receive a new pair identity.
 Base reconciliation retains proved edges and re-evaluates unproved reservations
-against the ready tree. Unchanged edges keep their physical leases and endpoint
-acknowledgements. A complete ready base path can replace an unproved screen
-fallback; proved media branches remain installed.
+against the ready tree, preferring shallower ready parents. Unchanged edges keep
+their physical leases and endpoint acknowledgements. A complete ready base path
+can replace an unproved screen fallback; proved media branches remain installed.
 
 App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to
