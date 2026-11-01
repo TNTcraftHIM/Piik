@@ -19,6 +19,12 @@ checks also passed. Exact results stay with their measured artifacts and revisio
 The owner accepted the earlier scoped interaction, Native and Browser media
 phases, including NAT and Auto codec behavior.
 
+Isolated 3.0 Native processes pass calibrated Linux kernel-NAT controls for
+ordinary and prepared UDP connections, short-interruption continuity and
+replacement after a lost NAT mapping. These controls observe DataChannel
+readiness and bidirectional transport traffic. The current Rust Browser/Native
+decoded-media matrix remains in [TODO](./todo.md).
+
 ## Device Evidence Boundary
 
 - The isolated 3.0 Windows desktop archive serves its bundled Web/WASM and build

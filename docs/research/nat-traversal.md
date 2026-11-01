@@ -425,6 +425,41 @@ No new transport or universal success-rate claim is accepted by this review.
 The [retired Go experiment](#integration-cost-and-recovery-controls) establishes
 reuse feasibility and its cost, not a Browser-compatible reachability gain.
 
+### Rust Integration
+
+Reviewed 2026-11-01. Rust gives the Native adapter direct ownership of the UDP
+socket and its retirement. NAT mapping/filtering and Browser socket access
+remain network/platform properties. The
+[3.0 transport owner](./channel-network-design.md#reachability-and-repair)
+keeps released str0m for ICE/DTLS/SCTP and transfers the actual prepared socket
+into that transport; it does not wrap WebRTC in a second VPN or QUIC network.
+
+The current Rust ecosystem offers useful methods with different integration costs:
+
+| Reference | Reusable part and boundary |
+| --- | --- |
+| [libp2p DCUtR](https://github.com/libp2p/specs/blob/master/relay/DCUtR.md#the-protocol) | Measure a signaling round trip and synchronize outbound attempts using relative time. A preparation handshake must measure after both STUN surveys; including a peer's survey duration is not a network RTT. The full Swarm/relay protocol would duplicate Piik's existing signaling and transport owners. |
+| [netwatch's public monitor](https://github.com/TNTcraftHIM/net-tools/blob/0a61bb64facc469d015f5ba537dda57c94cdcb17/netwatch/src/netmon.rs) | The already-pinned module exposes interface snapshots and network-change notifications. This fits event-driven candidate refresh and existing pair replacement; no separate peer-address database or polling controller is needed. |
+| [iroh 1.4.1](https://github.com/n0-computer/iroh/blob/v1.4.1/iroh/src/endpoint.rs) and [noq](https://github.com/n0-computer/noq/blob/main/noq/src/connection.rs) | Their traversal APIs belong to QUIC connections. They do not supply a drop-in Browser-compatible WebRTC socket. Piik already reuses the lower-level `noq-udp` socket module. |
+
+The [2026 DCUtR measurement](https://arxiv.org/abs/2604.12484) covers 4.4 million
+attempts and finds 97.6% of successful punches complete on the first attempt.
+Its population and prerequisite relay/address-discovery conditions differ from
+Piik. The useful implication is to test synchronization and address freshness
+before adding retries. Tailscale's
+[port-search analysis](https://tailscale.com/blog/how-nat-traversal-works)
+also distinguishes one hard NAT from two: a large socket/probe budget for the
+former does not establish practical traversal of the latter.
+
+Native recovery must translate the selected SDK's actual terminal boundary.
+Released [is 0.11.1](https://docs.rs/crate/is/0.11.1/source/src/agent.rs) emits
+`Disconnected` when no candidate remains nominated or viable, and has no later
+`Failed` event. Its default unanswered-check budget is approximately 21.5 seconds.
+The str0m adapter sends that exhaustion into the existing physical-pair failure
+and replacement path. Browser disconnection events retain Browser semantics.
+Short interruptions remain inside the SDK's existing checks; no second recovery
+timer is added.
+
 ### External Forwarding And Participant Relays
 
 The October 19 review and isolated Linux check of

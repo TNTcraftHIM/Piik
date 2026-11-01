@@ -391,7 +391,9 @@ discovery configuration. Public invitations and approved external sites retain
 their domain's configured ICE servers. An individual rejected ICE candidate
 does not retire the connection or its other candidate paths.
 Ordinary Native peers gather IPv4 and IPv6 through the same RTC transport owner;
-an unavailable address family does not disable the other.
+an unavailable address family does not disable the other. Wildcard listeners
+exclude loopback interfaces from ICE/STUN discovery. Explicit loopback listeners
+remain available for a configured local forwarding backend.
 
 The coordinated UDP candidate keeps preparation inside one authorized physical
 pair attempt. The domain's existing transport book issues its replacement UUID;

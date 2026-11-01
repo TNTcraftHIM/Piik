@@ -450,6 +450,7 @@ impl Runtime {
                     .filter(|ip| {
                         ip.is_ipv4() == local.is_ipv4()
                             && !ip.is_unspecified()
+                            && !ip.is_loopback()
                             && !matches!(ip,std::net::IpAddr::V6(ip) if ip.is_unicast_link_local())
                     })
                     .collect()
@@ -1293,13 +1294,13 @@ impl Engine {
         match event {
             RtcEvent::IceConnectionStateChange(state) => {
                 if state.is_disconnected() {
-                    self.state.store(
-                        RTCPeerConnectionState::Disconnected as u8,
-                        Ordering::Release,
-                    );
+                    // str0m has exhausted its current candidate pairs and has no
+                    // later Failed state. Reuse the owned pair replacement.
+                    self.state
+                        .store(RTCPeerConnectionState::Failed as u8, Ordering::Release);
                     self.emit(Event::State(
                         self.handle.pair,
-                        RTCPeerConnectionState::Disconnected,
+                        RTCPeerConnectionState::Failed,
                     ));
                 } else if state.is_connected() && self.rtc.is_connected() {
                     self.state
