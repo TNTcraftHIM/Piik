@@ -595,8 +595,8 @@ Reapplying exact dimensions to the original track did not unblock it.
 
 The Piik sender boundary now forwards bounded raw display frames using
 [Chromium's track streams](https://developer.chrome.com/docs/capabilities/web-apis/mediastreamtrack-insertable-media-processing),
-without resizing, re-encoding or generated cadence. Camera/received tracks and
-unsupported Browsers keep ordinary clones. In the textured-tab comparison,
+without resizing, re-encoding or generated cadence. Ordinary camera/received
+senders and unsupported Browsers keep ordinary clones. In the textured-tab comparison,
 all but the initial source frame stayed 1904x1048; output escaped 192p through
 262/390p to 524p. It still remained 524p after 125 recovery seconds. This removes
 the reproduced capture lock, not content-dependent encoder hysteresis or every

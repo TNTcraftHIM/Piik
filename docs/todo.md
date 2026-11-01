@@ -68,10 +68,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
-  implementation on `feat/ios-client`, outside the Android release candidate.
-  Apple SDK builds pass; signed-device acceptance still needs continued-session
-  admission/expiry, recording consent, background capture and hosted-site linkage.
+- [ ] **iOS native App.** Paused in favor of Browser use. Preserve the isolated
+  implementation on `feat/ios-client`; native development and publication stay
+  outside the current phase.
 - [ ] **QR invitations.** Deferred from the maintenance release on 2026-10-24.
   Keep the local QR implementation on `archive/deferred-prototypes` for later acceptance.
 - [ ] **Additional collaboration cursors.** Deferred by the owner. Keep the
