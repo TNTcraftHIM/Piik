@@ -14,7 +14,7 @@ This page indexes developer and maintainer references.
 | Find a module, interface, lifecycle or source entry point | [Engineering maps and source index](./standards/engineering.md#repository-layout) |
 | Find the shared product, design and lifecycle rules | [Standards index](./standards/README.md) |
 | Deploy or configure a service | [Self-hosting](./operations/self-hosting.md) · [Configuration](./standards/configuration.md) · [Service management](./operations/service-management.md) |
-| Build App packages and native capture | [App development](../cmd/piik-app/DEVELOPMENT.md) |
+| Build App packages and native capture | [Rust App](../prototype/channel-server/README.md#local-app-link) · [Packaging](./deployment.md#build-host) |
 | Build, publish or recover a maintained release | [Maintainer release tooling](./deployment.md) |
 | Send a useful bug report | [Diagnostics and export](./standards/configuration.md#diagnostics) |
 | Translate Piik or improve wording | [Translation guide](./guide/translating.md) · [中文翻译教程](./guide/translating.zh-CN.md) |
@@ -25,52 +25,42 @@ Technical references keep one shared version.
 
 ## Run from source
 
-You can try the Browser application locally with Node from
-[.node-version](../.node-version), npm from
-[package.json](../package.json), and Go from [go.mod](../go.mod).
-Run these commands from the repository root.
-
-Start the web UI:
+This branch uses the shared Rust 3.0 runtime and Browser/WASM frontend. Install
+Node from [.node-version](../.node-version), npm from
+[package.json](../package.json), Rust 1.91.0 with the `wasm32-unknown-unknown`
+target, wasm-bindgen CLI 0.2.129 and cargo-about 0.9.3. The
+[Browser build owner](../prototype/channel-browser/README.md) describes these tools
+and their path overrides. From the repository root:
 
 ```sh
 npm ci
+npm run build:web
 npm run dev
 ```
 
-In a second terminal, start the server. For a POSIX shell:
+In a second terminal, follow [Rust Server startup](../prototype/channel-server/README.md#run)
+with `PIIK_CHANNEL_WEB_ORIGIN=http://127.0.0.1:8787` for this development UI.
+It describes the private startup keys and listener configuration;
+[saved data and files](../prototype/channel-server/README.md#saved-data-and-files)
+covers storage.
+Open [127.0.0.1:8787](http://127.0.0.1:8787), using its owner-entry and **Invite**
+instructions. Vite serves the UI and proxies signaling to the Rust domain.
+Browser capture requires loopback or HTTPS.
 
-```sh
-PORT=8788 PUBLIC_BASE_URL=http://localhost:8787 go run ./cmd/piik-server
-```
-
-Or in PowerShell:
-
-```powershell
-$env:PORT = '8788'
-$env:PUBLIC_BASE_URL = 'http://localhost:8787'
-go build -o build/dev/piik-server.exe ./cmd/piik-server
-./build/dev/piik-server.exe
-```
-
-The fixed Windows executable path avoids repeated firewall prompts from `go run`.
-Open [localhost:8787](http://localhost:8787), start sharing, and open the invitation
-in another browser tab to try watching. This localhost invitation stays on your
-computer; remote invitations need a reachable origin as described in
-[configuration](./standards/configuration.md).
-Browser capture requires `localhost` or HTTPS.
-
-For the self-contained App, follow [App development](../cmd/piik-app/DEVELOPMENT.md#run-from-source)
-and [packaging](../cmd/piik-app/DEVELOPMENT.md#packaging), including the platform's
-native capture requirements.
+On Windows, keep network executables at stable source-build paths, such as
+`prototype/channel-server/target/debug/piik-channel-prototype.exe`, or under your
+fixed `CARGO_TARGET_DIR`.
+For the self-contained App and platform capture requirements, follow the
+[Rust App owner](../prototype/channel-server/README.md#local-app-link) and
+[packaging](./deployment.md#build-host).
 
 ## Work on Piik
 
 [Contributing](../CONTRIBUTING.md) covers the workflow and choosing focused checks.
-The main verification commands are:
+The main verification command is:
 
 ```sh
 npm run check
-npm run check:go
 ```
 
 Use the [naming and copy guide](./standards/naming.md) for product names,

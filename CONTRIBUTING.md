@@ -168,53 +168,30 @@ Every retained test must be collected by a documented verification entry point.
 Confirm runner inclusion when adding or moving a test; a file's presence alone
 does not establish coverage.
 
-- `npm run check` owns deterministic Web type-check, unit, and build acceptance.
-- `npm run check:go` owns Go formatting, unit tests, vet, Windows/Linux
-  builds, Darwin builds on macOS, and the current platform's capture compile/probe.
-  The server core is Go, so its acceptance runs here. It builds the Web UI first when
-  that output is missing, because both binaries embed it. CI invokes these same
-  package commands rather than rebuilding their steps in YAML.
-- `npm run check:go-race` checks port mapping, media forwarding, media-edge and native-control
-  ownership, loopback delivery, service storage shutdown and scoped NAT dependencies with Go's race detector. It
-  requires a supported cgo toolchain; CI runs it on Linux.
-- `npm run check:go-vuln` checks the App and Server entry points and their
-  dependencies against the Go vulnerability database. CI uses the Go version
-  declared in `go.mod`; update that owner for required toolchain security fixes.
-- `npm run check:native` runs only the current platform's capture compile/probe
-  and deterministic native regressions. The Linux App packaging job includes
-  its headless GStreamer output-profile and retirement test; this does not
-  establish physical screen/audio capture on that runner.
-  The macOS frame self-test additionally needs an available hardware H.264
-  encoder. A runner without one reports that check as skipped and still checks
-  compilation, capability/source responses and the packaged App's startup.
+- `npm run check` runs the shared Rust/WASM checks, Web type-check and unit tests.
+  CI uses this same command. Install the tools listed in
+  [Run from source](./docs/README.md#run-from-source) first.
+- `npm run check:rust` owns the shared runtime, frontend build and protocol checks
+  described by the [Rust verification owner](./prototype/channel-server/README.md#checks).
+  Capture is disabled here; desktop SDK compilation and physical capture/input
+  acceptance belong to the platform checks.
+- `npm run typecheck` generates WASM before checking the shared UI, tooling/tests
+  and Browser adapter. `npm test` runs the unit tests. `npm run build:web` uses the
+  [shared frontend builder](./prototype/channel-browser/README.md) consumed by App
+  and Server packaging.
 - `npm run check:container -- <local-image> <full-SHA>` checks the Compose recipe
-  against a packaged native Linux image (amd64 or arm64): embedded Web, P2P/STUN, optional SFU
-  startup, room persistence across recreation, diagnostics and clean shutdown.
+  against a packaged Linux image (amd64 or arm64): shared Web identity,
+  authenticated Native-hosted rooms, persistence across recreation and clean shutdown.
   It requires Docker Compose v2 and available recipe ports on an isolated runner;
   its temporary project and volumes are removed after the check.
-- `gate:*` commands are explicit physical or network acceptance. They must use
-  isolated profiles, bounded deadlines, shared cleanup helpers, and a structured
-  result. A manual diagnostic may locate a failure, but is not retained as pass
-  evidence. Existing `PIIK_CLIENT_*` gate environment names retain their current
-  contract; renaming the tools does not change those overrides.
-- `gate:room-voice` exercises normal Host/Viewer pages against a local production
-  server with real fake-device capture. Set `PIIK_ROOM_VOICE_GATE=true`,
-  `CHROME_PATH` and `PIIK_SERVER_EXE`; repeat with `PIIK_ROOM_VOICE_SFU=true`
-  for embedded SFU. Requires `agent-browser` (or `AGENT_BROWSER_PATH`). Reports
-  and screenshots stay under ignored `build/voice-integration`.
-- `gate:network-lab` runs the opt-in [controlled network laboratory](./docs/research/network-lab.md).
-  It requires a disposable Linux runner with namespace administration. Its own
-  routers contain all firewall and traffic-shaping changes; do not run it on a
-  production service or treat its model results as a public success rate.
-- `gate:media-lifecycle` reuses that laboratory's real Browser/App endpoints on
-  loopback for restart, replacement and P2P/SFU continuity. It needs Chrome and
-  current App/Server binaries, without namespace or firewall changes. Synthetic
-  capture keeps it separate from physical-device and real-NAT acceptance.
-- On Windows, execute App/Server and Go test binaries only from stable
-  project build paths. Go's temporary compiler/cache files are not firewall
-  identities; do not run network tests with a changing temporary executable
-  path. Keep browser profiles isolated and consider the active firewall when
-  diagnosing connection failures rather than changing global firewall rules.
+- Browser/media acceptance uses the finite [Browser runner](./prototype/channel-server/README.md#checks)
+  and [Native checks](./prototype/channel-native/README.md#checks). Keep profiles,
+  services and temporary data isolated, with bounded deadlines and cleanup.
+  Synthetic capture does not establish physical-device or real-NAT acceptance.
+- On Windows, execute App, Server and Native test programs from stable project
+  build paths. `check:rust` uses `CARGO_TARGET_DIR`, defaulting to `build/rust-check`,
+  and supplies its built executables to the integration tests. Keep browser
+  profiles isolated and diagnose the active firewall without changing global rules.
 - CI, versioning and release automation belong to complete, accepted squash
   merges into `main`; ordinary branch pushes stay quiet. PRs run only the
   lightweight public release-note check before merge. The
