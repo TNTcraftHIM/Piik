@@ -12,11 +12,13 @@ services:
     environment:
       PIIK_CHANNEL_BIND_ADDRESS: 0.0.0.0
       PIIK_CHANNEL_PORT: 8787
+      PIIK_CHANNEL_UDP_PORT: ${PIIK_CHANNEL_UDP_PORT:-8787}
       PIIK_CHANNEL_DATA_DIR: /home/nonroot
       PIIK_CHANNEL_OWNER_KEY: ${PIIK_CHANNEL_OWNER_KEY:?Set a private stable owner key}
       PIIK_CHANNEL_INVITE_KEY: ${PIIK_CHANNEL_INVITE_KEY:?Set a separate stable invitation key}
     ports:
       - "127.0.0.1:8787:8787/tcp"
+      - "${PIIK_CHANNEL_UDP_PORT:-8787}:${PIIK_CHANNEL_UDP_PORT:-8787}/udp"
     volumes:
       - piik-data:/home/nonroot
 
