@@ -14,7 +14,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   separate SFU packet-loss stage distinct from source-frame production.
 - [ ] **Windows App sharing ends unexpectedly.** Identify WGC/source, device or
   encoder termination in the supplied release feedback using the native stage
-  and HRESULT; implement recovery for the identified recoverable cause.
+  and HRESULT, and reproduce the unexpected termination.
 - [ ] **Native screen sound recaptures room voice.** Exclude Piik voice while
   retaining intended source audio. Verify Browser own-document exclusion and
   Native process exclusion; keep acoustic echo and duplicate commentary with

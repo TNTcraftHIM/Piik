@@ -122,7 +122,10 @@ Piik does not automatically mute either microphone or switch between them.
   Applied settings change only after the replacement is ready and installed;
   required-output failure preserves the previous capture and profile. Failed lower
   outputs stay unavailable across preparation and installation without rejecting
-  a healthy original output. Platform quality preference uses the hardware
+  a healthy original output. A reported Windows capture-device loss prepares and
+  installs a fresh video generation through that same owner, retaining the source,
+  media connections and source audio. Source closure and permission cancellation
+  still end capture. Platform quality preference uses the hardware
   encoder's standard quality-versus-speed hint. Pion owns Native WebRTC
   transport; the shared media adapter uses LiveKit media components for bandwidth
   estimation, forwarding allocation, pacing and recovery.

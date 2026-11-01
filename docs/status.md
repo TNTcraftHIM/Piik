@@ -39,8 +39,9 @@ Release artifacts and operator records own delivery completion.
 
 The maintenance candidate preserves published protocols, compatibility and route
 ownership. New release feedback has reopened Windows capture termination and
-Browser motion-sharing cadence investigations; the current capture changes
-preserve failure causes but do not resolve those reports. Isolated 3.0 work
+Browser motion-sharing cadence investigations. Device-loss recovery now retains
+the active media session; the original termination triggers remain under
+investigation. Isolated 3.0 work
 proceeds from the accepted semantic model rather than a mechanical translation
 of the current implementation.
 [TODO](./todo.md) is the only unfinished-work ledger; Git and PRs own
