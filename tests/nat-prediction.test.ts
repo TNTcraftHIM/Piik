@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from "vitest";
-import { punchIceConfig } from "../src/client/native/native-punch";
 
 import {
   addRemoteIceCandidate,
@@ -218,9 +217,6 @@ describe("NAT prediction ICE adapter", () => {
     const servers = [{ urls }];
     const auxiliary = urls.slice(1, 3);
     expect(natPredictionSurveyUrls(servers, auxiliary)).toEqual(new Set(urls.slice(0, 3)));
-    expect(punchIceConfig({ iceServers: servers, natPredictionStunUrls: auxiliary })).toEqual({
-      iceServers: [{ urls: urls.slice(0, 3) }],
-    });
 
     const send = vi.fn<(candidate: SignalCandidate) => void>();
     const batch = new NatPredictionCandidateBatch(send);

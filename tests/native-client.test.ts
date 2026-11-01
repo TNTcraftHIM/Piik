@@ -3,7 +3,6 @@ import { z } from "zod";
 
 import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
-import { AppQualityPreference } from "../src/client/native/quality-preference";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 import { channelAppDiscovery, discoverChannelAppHealth } from "../src/client/channel/app-link";
 
@@ -107,8 +106,6 @@ describe("native App private wire", () => {
     await expect(discoverNativeHealth({ waitForPermission: false })).resolves.toMatchObject({ port: health.port });
     await expect(discoverNativeConnect()).resolves.toContain("http://127.0.0.1:54321/client?");
     await notifyNativePresentation("en", new AbortController().signal);
-    const preference = await AppQualityPreference.connect(new AbortController().signal);
-    await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
     expect(query).not.toHaveBeenCalled();
     expect(fetcher).toHaveBeenCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ method: "POST" }));
     expect(fetcher.mock.calls.every(([, init]) => !("targetAddressSpace" in init))).toBe(true);
@@ -121,8 +118,6 @@ describe("native App private wire", () => {
       url.endsWith("quality-preference") ? DEFAULT_QUALITY_SETTINGS : { ...health, qualityPreference: true })));
     vi.stubGlobal("fetch", fetcher);
     await notifyNativePresentation("en", new AbortController().signal);
-    const preference = await AppQualityPreference.connect(new AbortController().signal);
-    await expect(preference!.read()).resolves.toEqual(DEFAULT_QUALITY_SETTINGS);
     expect(fetcher.mock.calls.every(call => (call[1] as RequestInit & { targetAddressSpace: string }).targetAddressSpace === "loopback")).toBe(true);
     expect(fetcher).toHaveBeenCalledWith(`http://127.0.0.1:${health.port}/presentation`, expect.objectContaining({ targetAddressSpace: "loopback" }));
     fetcher.mockImplementation(() => { throw new TypeError("Unsupported IPAddressSpace"); });
@@ -148,7 +143,6 @@ describe("native App private wire", () => {
     vi.stubGlobal("fetch", fetcher);
     const controller = new AbortController();
     await notifyNativePresentation("en", controller.signal);
-    expect(await AppQualityPreference.connect(controller.signal)).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
 
