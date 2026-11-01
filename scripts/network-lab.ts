@@ -16,7 +16,7 @@ const cases = {
   ordinary: "preserve NAT: Browser → real Native room → Browser; history/file/audio/decoded video",
   prepared: "sequential NAT: real Core-required preparation → Native DataChannel",
   recovery: "established Native pair: 50s UDP loss + remap → replacement DataChannel within 30s",
-  media: "calibrated prepared Native transit: Browser → Native root → Native probe → Browser decoded media",
+  media: "calibrated prepared Native transit: decoded media, 50s UDP loss and recovery through Native root → Native probe",
   "browser-relay": "Browser source → Native room → Browser relay → decoded viewer; 50s UDP loss and recovery",
 };
 const { values } = parseArgs({ options: {

@@ -139,8 +139,10 @@ node --import tsx scripts/network-lab.ts --case ordinary --output build/network-
 `ordinary` covers the real Native room's history, file and Browser media path;
 `prepared` covers the prepared Native DataChannel; `recovery` covers its established
 UDP loss and remapping; `media` covers decoded media through a prepared Native
-transit probe. `browser-relay` checks decoded picture and source sound after a
-50-second UDP outage around a Browser relay, retaining the healthy source.
+transit probe, followed by a 50-second outage and decoded recovery through that
+transit while the original source stays active. `browser-relay` checks decoded
+picture and source sound after a 50-second UDP outage around a Browser relay,
+retaining the healthy source.
 Each run requires a new output directory. The runner follows
 `CARGO_TARGET_DIR`, or accepts `--executable` for the matching example binary.
 Use root in the isolated host, the repository's Node/Rust toolchains, the normal

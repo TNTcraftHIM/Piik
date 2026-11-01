@@ -167,24 +167,25 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     assert(result.mediaAfter.frames > result.mediaBefore.frames && result.mediaAfter.time > result.mediaBefore.time);
     assert.notDeepEqual(result.mediaAfter.pixels, result.mediaBefore.pixels, 'actual decoded pixels must change');
     await selectedPath(result.mediaAfter);
-    if (relayed) {
-      const node = browserRelay! + 1;
+    if (relayed || prepared) {
+      const node = relayed ? browserRelay! + 1 : 1;
+      const route = relayed ? 'Browser relay' : 'prepared Native transit';
       result.sourceBeforeOutage = await f.sample(sourceBrowser);
       result.recovery = { blockedAt: Date.now() };
-      result.phase = 'relay UDP blackout';
+      result.phase = `${route} UDP blackout`;
       network.setFault(node, 'udp-block', 1);
       await delay(50_000, undefined, { signal });
       result.blocked = network.counters(node);
-      assert(result.blocked.faultDrops > 0, 'Relay blackout must drop actual traffic');
+      assert(result.blocked.faultDrops > 0, `${route} blackout must drop actual traffic`);
       let previous = await mediaSample();
       recoveryCapture = start('recovery-capture', network.wan, 'tcpdump', ['-i', 'internet', '-n', '-s', '96', '-U', '-w', join(output, 'recovery.pcap'), '-c', '10000', 'udp']);
       await recoveryCapture.wait(() => recoveryCapture!.stderr.includes('listening on'), signal);
       result.recovery.restoredAt = Date.now(); network.setFault(node, 'none', 1);
-      result.phase = 'relay decoded picture and source audio recovery';
+      result.phase = `${route} decoded picture and source audio recovery`;
       for (const [from, to] of result.blockedShortcuts.filter(([from]: number[]) => from === node)) network.exec(network.router(from), 'nft', [
         `add rule inet lab_filter faults ip daddr ${network.publicIP(to)} meta l4proto udp counter drop`,
       ]);
-      const recovered = await f.until('Browser relay decoded picture and source sound recover', mediaSample, (value: any) => {
+      const recovered = await f.until(`${route} decoded picture and source sound recover`, mediaSample, (value: any) => {
         const advanced = value && previous && value.frames > previous.frames && value.time > previous.time && value.audio.some((row: any) =>
           previous.audio.some((before: any) => row.id === before.id && row.samples > before.samples && row.energy > before.energy));
         previous = value; return advanced;
@@ -196,6 +197,8 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       await selectedPath(result.recovery.after);
       result.sourceAfterOutage = await f.sample(sourceBrowser);
       assert.deepEqual(result.sourceAfterOutage.captures, result.sourceBeforeOutage.captures, 'The original capture must stay live through transport recovery');
+      if (relay) result.recovery.nativePlans = relay.records.filter(row => row.atMs >= result.recovery.blockedAt && row.event?.type === 'plan')
+        .flatMap(row => row.event.pairs);
     }
     await browser(viewerBrowser, 'screenshot', join(output, 'decoded-native-transit.png'));
     result.ice = await Promise.all(indices.map(index => f.evaluate(index, `(async()=>{const rows=[];for(const pc of window.__channelProbe.peers){const stats=await pc.getStats();for(const row of stats.values())if(row.type==='candidate-pair'&&row.state==='succeeded'&&row.nominated)rows.push({pair:row,local:stats.get(row.localCandidateId),remote:stats.get(row.remoteCandidateId)});}return rows;})()`)));
