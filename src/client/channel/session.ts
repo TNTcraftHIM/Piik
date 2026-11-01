@@ -1,10 +1,11 @@
+import { z } from "zod";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
-import { eventSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
+import { eventSchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation } from "./types";
-import { loadRoomHosting, roomDatabaseName, type HostedRoom } from "./hosting";
+import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources } from "./app-link";
 import { isClientActivated } from "../lib/session";
 import type { NativeCaptureTarget } from "../native/wire";
@@ -18,6 +19,9 @@ import { RoomInteractionSession } from "../lib/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
+import { readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
+import { NativeRoomHosting } from "./hosting-api";
+import type { RetainedFile } from "./file-store";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -142,7 +146,7 @@ export class ChannelSession {
     this.connect();
   };
 
-  private connect(): void {
+  private connect(acceptWelcome?: (event: Extract<ChannelEvent, { type: "welcome" }>) => string | undefined): void {
     if (this.closed) return;
     const url = new URL("/prototype/channel", location.href);
     url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
@@ -166,7 +170,9 @@ export class ChannelSession {
       try {
         const result = eventSchema.safeParse(JSON.parse(String(data)));
         if (!result.success) { console.warn("Invalid channel event", result.error); this.patch({ error: "invalid_response" }); return; }
-        this.receive(result.data);
+        const skipRoom = result.data.type === "welcome" ? acceptWelcome?.(result.data) : undefined;
+        if (result.data.type === "welcome") acceptWelcome = undefined;
+        this.receive(result.data, skipRoom);
       } catch { this.patch({ error: "invalid_response" }); }
     };
     socket.onclose = () => {
@@ -175,12 +181,12 @@ export class ChannelSession {
       this.rejectRequests("disconnected");
       this.patch({ connection: "reconnecting" });
       this.beginRecovery();
-      this.retry = setTimeout(() => { this.retry = null; this.connect(); }, 1000);
+      this.retry = setTimeout(() => { this.retry = null; this.connect(acceptWelcome); }, 1000);
     };
     socket.onerror = () => { /* The close event owns retry. */ };
   }
 
-  private receive(event: ChannelEvent): void {
+  private receive(event: ChannelEvent, skipRestoreRoom?: string): void {
     if (event.type === "welcome") {
       this.endRecovery();
       const resumed = this.view.sessionId === event.sessionId;
@@ -195,7 +201,7 @@ export class ChannelSession {
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
       this.applyState(event.state);
       if (isClientActivated()) void this.connectApp().catch(() => {});
-      void this.restoreHosts(event.sessionId).catch(error => {
+      void this.restoreHosts(event.sessionId, skipRestoreRoom).catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
       if (resumed) {
@@ -600,7 +606,7 @@ export class ChannelSession {
     };
   }
 
-  private async restoreHosts(sessionId: string): Promise<void> {
+  private async restoreHosts(sessionId: string, skipRoom?: string): Promise<void> {
     if (typeof indexedDB === "undefined") return;
     await this.hostCleanup;
     if (this.view.sessionId !== sessionId || this.closed) return;
@@ -611,6 +617,7 @@ export class ChannelSession {
     if (this.view.sessionId !== sessionId || this.closed) return;
     for (const policy of policies) {
       const id = (JSON.parse(policy) as { id: string }).id;
+      if (id === skipRoom) continue;
       let hosted = this.hostedRooms.get(id);
       if (!hosted) {
         const host = await storage.open(policy);
@@ -624,13 +631,13 @@ export class ChannelSession {
     }
   }
 
-  private async action<T>(key: string, work: () => Promise<T>): Promise<T> {
+  private async action<T>(key: string, work: () => Promise<T>, reportError = true): Promise<T> {
     if (this.view.pending.has(key)) throw new Error("operation_pending");
     this.patch({ pending: new Set([...this.view.pending, key]), error: null });
     try { return await work(); }
     catch (error) {
       const code = error instanceof DOMException ? error.name : error instanceof Error ? error.message : "operation_failed";
-      if (code !== "AbortError") this.patch({ error: code });
+      if (reportError && code !== "AbortError") this.patch({ error: code });
       throw error;
     } finally {
       const pending = new Set(this.view.pending);
@@ -775,6 +782,222 @@ export class ChannelSession {
     await this.request({ type: "browse", roomId, active: true });
     return roomId;
   });
+  private backupContext(): () => void {
+    const { sessionId, self, state } = this.view, socket = this.socket;
+    if (!sessionId || !self || !state || this.view.connection !== "connected") throw new Error("disconnected");
+    return () => {
+      if (this.closed || this.socket !== socket || this.view.connection !== "connected"
+        || this.view.sessionId !== sessionId || this.view.self?.id !== self.id || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
+    };
+  }
+
+  private async backupOwner(roomId: string) {
+    const check = this.backupContext(), state = this.view.state!, self = this.view.self!;
+    const room = state.channel.rooms.find(room => room.id === roomId), delivery = room?.delivery;
+    if (!room?.available || !delivery) throw new Error("room_unavailable");
+    const current = () => {
+      check();
+      const next = this.view.state?.channel.rooms.find(room => room.id === roomId)?.delivery;
+      if (next?.bindingId !== delivery.bindingId || next.hostSessionId !== delivery.hostSessionId) throw new Error("room_host_conflict");
+    };
+    const hosted = this.hostedRooms.get(roomId);
+    if (hosted && delivery.hostSessionId === this.view.sessionId && hosted.bindingId === delivery.bindingId) {
+      return { current, snapshot: () => hosted.host.snapshot() };
+    }
+    const app = this.app?.connected ? this.app : undefined;
+    if (app) {
+      const description = await app.describeHosting().catch(() => undefined); current();
+      if (description && this.app === app && app.connected && description.sessionId === delivery.hostSessionId && description.roomIds.includes(roomId)) {
+        return { current: () => { current(); if (this.app !== app || !app.connected) throw new Error("app_disconnected"); },
+          native: { snapshot: () => app.snapshotRoom(roomId), restore: (blob: Blob) => app.restoreRoom(blob) } };
+      }
+    }
+    if (state.channel.ownerId === self.id && this.credential) {
+      const native = new NativeRoomHosting("/prototype/channel/rooms", { Authorization: `Bearer ${this.credential}` }, "/prototype/channel/hosting");
+      const description = await native.describe().catch(() => undefined); current();
+      if (description && description.sessionId === delivery.hostSessionId && description.roomIds.includes(roomId)) {
+        return { current, native: { snapshot: () => native.snapshot(roomId), restore: (blob: Blob) => native.restore(blob) } };
+      }
+    }
+    throw new Error("room_host_unavailable");
+  }
+
+  roomBackupAvailable = async (roomId: string): Promise<boolean> => {
+    try { await this.backupOwner(roomId); return true; } catch { return false; }
+  };
+
+  private async writeRoomSnapshot(snapshot: BrowserRoomSnapshot, metadata: Extract<BackupMetadata, { kind: "room" }>, retained: RetainedFile[], check: () => void): Promise<Blob> {
+    const files = new Map<string, File>(), inventory: RetainedBackupFile[] = [];
+    const byKey = new Map(retained.map(file => [JSON.stringify([file.key.messageSeq, file.key.attachmentId]), file]));
+    for await (const row of snapshot.rows) {
+      check();
+      for (const attachment of row.attachments) {
+        const entry = byKey.get(JSON.stringify([row.seq, attachment.id]));
+        if (entry && entry.attachment.sha256.toLowerCase() === attachment.sha256.toLowerCase()
+          && entry.attachment.id === attachment.id && entry.attachment.name === attachment.name && entry.attachment.mediaType === attachment.mediaType && entry.attachment.size === attachment.size && entry.file.size === attachment.size) {
+          inventory.push({ messageSeq: row.seq, attachment }); files.set(attachment.sha256.toLowerCase(), entry.file);
+        }
+      }
+    }
+    const archive = await writeBackup({ ...metadata, retainedFiles: inventory }, snapshot.rows,
+      async entry => { check(); return files.get(entry.attachment.sha256.toLowerCase())!; });
+    check(); return archive;
+  }
+
+  exportRoomBackup = (roomId: string): Promise<Blob> => this.action("room-backup", async () => {
+    const owner = await this.backupOwner(roomId), retained = await this.attachments.retained(roomId); owner.current();
+    let snapshot: BrowserRoomSnapshot | undefined;
+    try {
+      let metadata: Extract<BackupMetadata, { kind: "room" }>;
+      if (owner.native) {
+        const archive = await owner.native.snapshot(); owner.current();
+        if (!retained.length) return archive;
+        let stage: BrowserRoomStage | undefined;
+        try {
+          const value = await readBackup(archive, {
+            metadata: async value => {
+              owner.current();
+              if (value.kind !== "room" || value.policy.id !== roomId || value.domainId !== this.view.state!.channel.id) throw new Error("invalid_backup");
+              stage = await (await loadRoomHosting()).BrowserRoomHost.stage(roomDatabaseName(value.domainId, this.view.self!.id), JSON.stringify(value.policy));
+            }, row: row => stage!.append(row), content() {},
+          });
+          if (value.kind !== "room") throw new Error("invalid_backup");
+          snapshot = stage; metadata = value;
+        } catch (error) { await stage?.close(); throw error; }
+      } else {
+        snapshot = await owner.snapshot!(); owner.current();
+        metadata = { kind: "room", version: 1, domainId: this.view.state!.channel.id,
+          policy: JSON.parse(snapshot.policy), retainedFiles: [] };
+      }
+      if (metadata.policy.creatorId === this.view.self!.id && this.credential) metadata.ownCredential = { userId: this.view.self!.id, credential: this.credential };
+      return await this.writeRoomSnapshot(snapshot!, metadata, retained, owner.current);
+    } finally { await snapshot?.close(); }
+  }, false);
+
+  private waitForState(ready: () => boolean): Promise<void> {
+    if (ready()) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const finish = (error?: Error) => { clearTimeout(timer); unsubscribe(); error ? reject(error) : resolve(); };
+      const unsubscribe = this.subscribe(() => {
+        if (ready()) finish(); else if (this.closed) finish(new Error("disconnected"));
+      });
+      const timer = setTimeout(() => finish(new Error("request_timeout")), 10000);
+    });
+  }
+
+  private async retireRoom(roomId: string): Promise<void> {
+    const own = this.view.state?.publications.filter(value => value.roomId === roomId && value.userId === this.view.self?.id && this.view.ownedScreens.has(value.id)) ?? [];
+    for (const publication of own) await this.stopScreen(publication.id);
+    for (const publication of this.view.state?.publications.filter(value => value.roomId === roomId && this.watching.has(value.id)) ?? []) await this.unwatch(publication.id);
+    if (this.voiceCaptures.has(roomId)) await this.leaveVoice(roomId);
+    if (this.reading?.roomId === roomId) { this.closeInteractions(); this.reading = null; }
+  }
+
+  private async admitBackupIdentity(metadata: Extract<BackupMetadata, { kind: "room" }>): Promise<(() => Promise<void>) | undefined> {
+    if (metadata.policy.creatorId === this.view.self?.id) return;
+    const check = this.backupContext(), archived = metadata.ownCredential;
+    if (!archived || archived.userId !== metadata.policy.creatorId) throw new Error("backup_identity_required");
+    const response = await fetch("/prototype/channel/identity", { headers: { Authorization: `Bearer ${archived.credential}` }, cache: "no-store" });
+    if (!response.ok) throw new Error("backup_identity_required");
+    const identity = z.object({ domainId: z.string(), user: userSchema }).parse(await response.json()); check();
+    if (identity.domainId !== metadata.domainId || identity.user.id !== archived.userId) throw new Error("backup_identity_required");
+    const previous = { credential: this.credential, key: this.key, invitedRoom: this.invitedRoom, roomId: this.roomId,
+      hash: location.hash };
+    const connect = async (credential: string | undefined, domainId: string, userId: string, skipRoom?: string) => {
+      this.close(); this.credential = credential; this.key = undefined; this.invitedRoom = undefined; this.roomId = null;
+      this.closed = false;
+      await new Promise<void>((resolve, reject) => {
+        let waiting = true;
+        const timer = setTimeout(() => { waiting = false; reject(new Error("request_timeout")); }, 10000);
+        this.connect(event => {
+          if (!waiting) throw new Error("backup_identity_required");
+          const actual = event.state.sessions.find(value => value.id === event.sessionId)?.userId;
+          if (event.state.channel.id !== domainId || actual !== userId) { clearTimeout(timer); reject(new Error("backup_identity_required")); throw new Error("backup_identity_required"); }
+          waiting = false; clearTimeout(timer); resolve(); return skipRoom;
+        });
+      });
+    };
+    const rollback = async () => {
+      this.close(); this.credential = previous.credential;
+      if (previous.credential) stored(credentialKey, previous.credential);
+      this.key = previous.key; this.invitedRoom = previous.invitedRoom; this.roomId = previous.roomId;
+      if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search + previous.hash);
+      this.start();
+    };
+    try { await connect(archived.credential, metadata.domainId, archived.userId, metadata.policy.id); }
+    catch (error) { await rollback(); throw error; }
+    if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
+    return rollback;
+  }
+
+  restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
+    const initial = this.backupContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;
+    let stage: BrowserRoomStage | undefined, rollback: (() => Promise<void>) | undefined, committed = false;
+    const contents = new Map<string, File>();
+    try {
+      const metadata = await readBackup(archive, {
+        metadata: async value => {
+          initial();
+          if (value.kind !== "room" || value.domainId !== this.view.state!.channel.id || (roomId && value.policy.id !== roomId)) throw new Error("backup_room_mismatch");
+          const runtime = await loadRoomHosting(); initial();
+          stage = await runtime.BrowserRoomHost.stage(roomDatabaseName(value.domainId, value.policy.creatorId), JSON.stringify(value.policy));
+        }, row: row => stage!.append(row), content: (digest, file) => { contents.set(digest, file); },
+      });
+      initial(); owner?.current();
+      if (metadata.kind !== "room" || !stage) throw new Error("invalid_backup");
+      if (!roomId && this.view.state!.channel.rooms.some(room => room.id === metadata.policy.id && room.available)) throw new Error("room_host_conflict");
+      if (roomId && metadata.policy.creatorId !== this.view.self!.id) throw new Error("backup_identity_required");
+      rollback = await this.admitBackupIdentity(metadata);
+      const check = this.backupContext(), target = metadata.policy.id;
+      const app = this.app?.connected ? this.app : undefined;
+      const native = owner?.native ?? (!roomId && app ? { restore: (blob: Blob) => app.restoreRoom(blob) } : undefined);
+      const previousDelivery = this.view.state?.channel.rooms.find(room => room.id === target)?.delivery;
+      const oldBinding = previousDelivery?.bindingId;
+      let expectedHost = owner?.native ? previousDelivery?.hostSessionId : this.view.sessionId;
+      await this.retireRoom(target); check(); owner?.current();
+      if (native) {
+        if (!owner && this.app !== app) throw new Error("app_disconnected");
+        const restored = await native.restore(archive); committed = true; check();
+        if (restored.id !== target) throw new Error("backup_room_mismatch");
+        if (!owner && app) {
+          const description = await app.describeHosting(); check();
+          if (this.app !== app || !app.connected || !description.roomIds.includes(target)) throw new Error("app_disconnected");
+          expectedHost = description.sessionId;
+        }
+      }
+      else {
+        const hosted = this.hostedRooms.get(target);
+        // The transaction retires the durable writer. Keep the old host alive
+        // until commit so a storage rollback needs no competing registration.
+        const cancel = new AbortController();
+        const unsubscribe = this.subscribe(() => { try { check(); } catch { cancel.abort(); } });
+        try { check(); await stage.replace(cancel.signal); committed = true; }
+        finally { unsubscribe(); }
+        if (hosted && this.hostedRooms.get(target) === hosted) {
+          this.hostedRooms.delete(target);
+          if (hosted.bindingId) this.write({ type: "host_stop", roomId: target, bindingId: hosted.bindingId });
+          await hosted.host.close();
+        }
+        const host = await (await this.browserStorage(metadata.domainId, metadata.policy.creatorId)).open(stage.policy);
+        try { check(); } catch (error) { await host.close(); throw error; }
+        this.hostedRooms.set(target, { host });
+        await this.request({ type: "host_register", room: await host.summary() });
+      }
+      await this.waitForState(() => {
+        const room = this.view.state?.channel.rooms.find(room => room.id === target);
+        return !!room?.available && !!room.delivery && room.delivery.hostSessionId === expectedHost && room.delivery.bindingId !== oldBinding;
+      });
+      check();
+      this.browse(target);
+      await this.reading?.ready; check();
+      const entries = metadata.retainedFiles.map(value => ({ key: { roomId: target, messageSeq: value.messageSeq, attachmentId: value.attachment.id },
+        attachment: value.attachment, file: contents.get(value.attachment.sha256.toLowerCase())! }));
+      const cached = await this.attachments.restoreRetained(target, entries);
+      return { roomId: target, cached };
+    } catch (error) { if (!committed) await rollback?.(); throw error; }
+    finally { await stage?.close(); }
+  }, false);
+
   updateRoom = (roomId: string, settings: RoomSettings): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }));
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }));
   createRoomInvite = (roomId: string): Promise<string> => this.action(`invite:${roomId}`, async () => {

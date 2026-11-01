@@ -8,6 +8,7 @@ import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelMedia";
 import { ChannelIdentityFields } from "./ChannelIdentity";
 import "./channel-room-controls.css";
+import { BackupControls } from "./BackupControls";
 
 function RoomForm({ room, appHosted, disabled, busy, onSave, onCancel }: {
   room?: ChannelRoom; appHosted: boolean; disabled: boolean; busy: boolean;
@@ -70,12 +71,23 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
   const [open, setOpen] = useState(false);
   const [invite, setInvite] = useState("");
   const [copied, setCopied] = useState(false);
+  const [backupAvailable, setBackupAvailable] = useState(false);
   const id = room ? "c3-room-settings" : "c3-create-room";
   const title = room ? (zh ? "房间设置" : "Room settings") : (zh ? "创建房间" : "Create room");
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
-  useEffect(() => { setInvite(""); setCopied(false); panel.current?.hidePopover(); }, [room?.id, room?.access]);
+  useEffect(() => { panel.current?.hidePopover(); }, [room?.id]);
+  useEffect(() => {
+    setInvite(""); setCopied(false);
+    if (!channel.pending.has("room-backup")) panel.current?.hidePopover();
+  }, [room?.id, room?.access]);
+  useEffect(() => {
+    let current = true; setBackupAvailable(false);
+    if (open && room) void channel.roomBackupAvailable(room.id).then(value => { if (current) setBackupAvailable(value); });
+    return () => { current = false; };
+  }, [open, room?.id, room?.delivery?.bindingId, channel.sessionId, channel.appConnected, channel.connection, channel.roomBackupAvailable]);
   const available = channel.connection === "connected" && (!room || room.available);
   const busy = channel.pending.has(room ? `room:${room.id}` : "create-room");
+  const backupBusy = channel.pending.has("room-backup");
   const members = room?.members?.filter(userId => userId !== room.creatorId && userId !== channel.state?.channel.ownerId) ?? [];
   const run = (work: Promise<unknown>) => { void work.catch(() => {}); };
   return <>
@@ -88,11 +100,19 @@ export function ChannelRoomControls({ channel, room, onCreated }: {
     </Tooltip>
     <div ref={panel} id={id} popover="auto" role="dialog" aria-label={title}
       className="lr-anchored-card c3-room-panel" onToggle={event => setOpen(event.newState === "open")}>
-      {open && <><h3>{title}</h3><RoomForm key={room?.id ?? "create"} room={room} appHosted={channel.appConnected} disabled={!available || busy} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
+      {open && <><h3>{title}</h3><RoomForm key={room?.delivery?.bindingId ?? room?.id ?? "create"} room={room} appHosted={channel.appConnected} disabled={!available || busy || backupBusy} busy={busy} onCancel={() => panel.current?.hidePopover()} onSave={async settings => {
         if (room) await channel.updateRoom(room.id, settings);
         else onCreated?.(await channel.createRoom(settings));
         panel.current?.hidePopover();
       }} />
+      <BackupControls key={room?.id ?? "import"} available={!room || backupAvailable} disabled={!available || (!!room && !backupAvailable)}
+        busy={backupBusy} replacing={!!room}
+        onExport={room ? () => channel.exportRoomBackup(room.id) : undefined}
+        onRestore={async file => {
+          const result = await channel.restoreRoomBackup(file, room?.id);
+          if (!room) onCreated?.(result.roomId);
+          return result;
+        }} />
       {room?.access === "private" && <section className="c3-room-invitation">
         <ChannelAction icon="link" label={invite ? (zh ? "更换邀请链接" : "Replace invitation") : (zh ? "创建房间邀请" : "Create room invitation")}
           busy={channel.pending.has(`invite:${room.id}`)} disabled={!available} hint="hint-copy-invite"

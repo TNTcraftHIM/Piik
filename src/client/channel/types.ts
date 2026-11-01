@@ -57,6 +57,9 @@ export interface ChannelActions {
   updateDomain(settings: DomainSettings): Promise<void>;
   createRoom(settings: RoomSettings): Promise<string>;
   updateRoom(roomId: string, settings: RoomSettings): Promise<void>;
+  roomBackupAvailable(roomId: string): Promise<boolean>;
+  exportRoomBackup(roomId: string): Promise<Blob>;
+  restoreRoomBackup(archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }>;
   enterRoom(roomId: string, password: string): Promise<void>;
   createRoomInvite(roomId: string): Promise<string>;
   revokeRoomAccess(roomId: string, userId: string): Promise<void>;

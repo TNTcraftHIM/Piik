@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { ChannelConversation } from "../src/client/channel/conversation";
 import { ChannelSession } from "../src/client/channel/session";
 import * as hosting from "../src/client/channel/hosting";
+import * as backupArchive from "../src/client/channel/backup-archive";
 import * as appLink from "../src/client/channel/app-link";
 import * as nativeActivation from "../src/client/native/activation";
 import * as launchSession from "../src/client/lib/session";
@@ -3277,5 +3278,235 @@ test("browse waits for the current room path and reconnect cancels unsent histor
     expect(await peer.next()).toMatchObject({ type: "history", roomId: "second" });
     expect(peer.sent).toHaveLength(3);
     expect(resumed.sent.some(command => command.type === "history")).toBe(false);
+  } finally { session.close(); }
+});
+
+async function setupRoomBackup() {
+  const policy = JSON.stringify({ id: "first", creatorId: "self", name: "First", icon: "couch", access: "public", hidden: false });
+  const row = { ...message(1), nonce: "sent-once" };
+  const rows = () => (async function* () { yield row; })();
+  const snapshot = { policy, get rows() { return rows(); }, close: vi.fn(async () => {}) };
+  const stage = { policy, get rows() { return rows(); }, append: vi.fn(async () => {}), replace: vi.fn(async () => {}), close: vi.fn(async () => {}) };
+  const host = {
+    roomId: "first", summary: () => ({ id: "first", name: "First", icon: "couch", creatorId: "self", access: "public", hidden: false, hasPassword: false }),
+    bind: vi.fn(async () => {}), close: vi.fn(async () => {}), snapshot: vi.fn(async () => snapshot),
+  };
+  const nextHost = { ...host, close: vi.fn(async () => {}), bind: vi.fn(async () => {}) };
+  const open = vi.fn().mockResolvedValueOnce(host).mockResolvedValue(nextHost);
+  vi.stubGlobal("indexedDB", {});
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { storedPolicies: async () => [policy], open, stage: vi.fn(async () => stage) } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const context = await setup();
+  await vi.waitFor(() => expect(context.socket.sent.some(command => command.type === "host_register")).toBe(true));
+  const register = context.socket.sent.find(command => command.type === "host_register")!;
+  const state = structuredClone(context.session.getSnapshot().state!);
+  state.channel.rooms[0].delivery = { hostSessionId: "endpoint", bindingId: "binding", nextHops: {} };
+  context.socket.receive({ type: "state", state });
+  context.socket.receive({ type: "host_bound", roomId: "first", bindingId: "binding" });
+  context.socket.receive({ type: "ack", requestId: register.requestId });
+  const metadata = { kind: "room" as const, version: 1 as const, domainId: "domain", policy: JSON.parse(policy), retainedFiles: [] };
+  const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
+    await visitor.metadata(metadata); await visitor.row(row); return metadata;
+  });
+  return { ...context, host, nextHost, snapshot, stage, row, state, metadata, open, read };
+}
+
+test("room backup exports its actual Browser host snapshot, full nonce/reactions and only matching retained copies", async () => {
+  const { session, host, snapshot, row } = await setupRoomBackup();
+  const attachment = { id: "file", name: "pixel.png", size: 3, mediaType: "image/png" as const, sha256: "a".repeat(64) };
+  row.attachments.push(attachment as never);
+  row.reactions = { revision: 2, choices: { wave: ["self"] } };
+  const file = new File([new Uint8Array([1, 2, 3])], attachment.name);
+  vi.spyOn(session.attachments, "retained").mockResolvedValue([
+    { key: { roomId: "first", messageSeq: 1, attachmentId: attachment.id }, attachment, file },
+    { key: { roomId: "first", messageSeq: 77, attachmentId: "stale" }, attachment: { ...attachment, id: "stale" }, file },
+  ]);
+  let exported: unknown[] = [];
+  const write = vi.spyOn(backupArchive, "writeBackup").mockImplementation(async (metadata, history, open) => {
+    for await (const value of history!) exported.push(value);
+    expect(metadata).toMatchObject({ ownCredential: { userId: "self", credential: "credential" }, retainedFiles: [{ messageSeq: 1, attachment }] });
+    expect(await open!({ messageSeq: 1, attachment })).toBe(file);
+    return new Blob(["archive"]);
+  });
+  try {
+    expect(await session.roomBackupAvailable("first")).toBe(true);
+    expect(await session.roomBackupAvailable("second")).toBe(false);
+    await expect(session.exportRoomBackup("first")).resolves.toBeInstanceOf(Blob);
+    expect(exported).toEqual([row]); expect(write).toHaveBeenCalledOnce();
+    expect(snapshot.close).toHaveBeenCalledOnce(); expect(host.close).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test("invalid archives and failed atomic replacements keep the existing Browser host and authority", async () => {
+  const { session, socket, host, stage, read } = await setupRoomBackup();
+  try {
+    read.mockRejectedValueOnce(new Error("backup_content_mismatch"));
+    await expect(session.restoreRoomBackup(new Blob(), "first")).rejects.toThrow("backup_content_mismatch");
+    expect(stage.replace).not.toHaveBeenCalled(); expect(host.close).not.toHaveBeenCalled();
+    stage.replace.mockRejectedValueOnce(new Error("storage_failed"));
+    await expect(session.restoreRoomBackup(new Blob(), "first")).rejects.toThrow("storage_failed");
+    expect(stage.append).toHaveBeenCalledOnce(); expect(host.close).not.toHaveBeenCalled();
+    expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+  } finally { session.close(); }
+});
+
+test("room restore rebinds before installing file copies, and optional cache failure preserves committed success", async () => {
+  const { session, socket, host, nextHost, stage, state, metadata, read, row } = await setupRoomBackup();
+  const attachment = { id: "restored-file", name: "data", size: 2, mediaType: "application/octet-stream" as const, sha256: "b".repeat(64) };
+  const file = new File([new Uint8Array([4, 5])], "data");
+  metadata.retainedFiles = [{ messageSeq: 1, attachment }] as never;
+  read.mockImplementationOnce(async (_blob, visitor) => {
+    await visitor.metadata(metadata); await visitor.row({ ...row, attachments: [attachment] }); await visitor.content(attachment.sha256, file); return metadata;
+  });
+  const cache = vi.spyOn(session.attachments, "restoreRetained").mockImplementation(async (roomId, files) => {
+    expect(session.getSnapshot().state!.channel.rooms[0].delivery?.bindingId).toBe("restored-binding");
+    expect(roomId).toBe("first"); expect(files).toEqual([{ key: { roomId: "first", messageSeq: 1, attachmentId: attachment.id }, attachment, file }]);
+    return false;
+  });
+  try {
+    const restoring = session.restoreRoomBackup(new Blob(), "first");
+    await vi.waitFor(() => expect(stage.replace).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "host_register")).toHaveLength(2));
+    expect(host.close).toHaveBeenCalledOnce(); expect(cache).not.toHaveBeenCalled();
+    const register = socket.sent.findLast(command => command.type === "host_register")!;
+    socket.receive({ type: "host_bound", roomId: "first", bindingId: "restored-binding" });
+    socket.receive({ type: "ack", requestId: register.requestId });
+    expect(cache).not.toHaveBeenCalled();
+    const fresh = structuredClone(state); fresh.channel.rooms[0].delivery!.bindingId = "restored-binding";
+    socket.receive({ type: "state", state: fresh });
+    await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "browse" && command.active)).toHaveLength(2));
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    await expect(restoring).resolves.toEqual({ roomId: "first", cached: false });
+    expect(nextHost.bind).toHaveBeenCalledWith("restored-binding");
+    expect(stage.close).toHaveBeenCalledOnce(); expect(cache).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("Native backup is selected by its described live host identity, with no Browser fallback", async () => {
+  const { session, socket } = await setup();
+  const hostId = crypto.randomUUID(), archive = new Blob(["native-snapshot"]);
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: hostId, roomIds: ["first"] })))
+    .mockResolvedValueOnce(new Response(archive));
+  vi.stubGlobal("fetch", fetch);
+  vi.spyOn(session.attachments, "retained").mockResolvedValue([]);
+  const open = vi.fn();
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ BrowserRoomHost: { open } } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  const state = structuredClone(session.getSnapshot().state!); state.channel.rooms[0].delivery!.hostSessionId = hostId;
+  socket.receive({ type: "state", state });
+  try {
+    const result = await session.exportRoomBackup("first"); expect(await result.text()).toBe("native-snapshot");
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(["/prototype/channel/hosting", "/prototype/channel/rooms/first/backup"]);
+    expect(open).not.toHaveBeenCalled();
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: crypto.randomUUID(), roomIds: ["first"] })));
+    await expect(session.exportRoomBackup("first")).rejects.toThrow("room_host_unavailable");
+    expect(fetch).toHaveBeenCalledTimes(3);
+  } finally { session.close(); }
+});
+
+test("a late Native ownership description cannot export a replaced room binding", async () => {
+  const { session, socket } = await setup();
+  let answer!: (value: Response) => void;
+  const fetch = vi.fn().mockImplementation(() => new Promise<Response>(resolve => { answer = resolve; }));
+  vi.stubGlobal("fetch", fetch);
+  try {
+    const exporting = session.exportRoomBackup("first"), failed = expect(exporting).rejects.toThrow("room_host_conflict");
+    await vi.waitFor(() => expect(answer).toBeTypeOf("function"));
+    const state = structuredClone(session.getSnapshot().state!); state.channel.rooms[0].delivery!.bindingId = "another-binding";
+    socket.receive({ type: "state", state }); answer(new Response(JSON.stringify({ sessionId: crypto.randomUUID(), roomIds: ["first"] })));
+    await failed; expect(fetch).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("portable import validates the full archive before switching accounts and rejects an unrelated Welcome without persisting it", async () => {
+  const { session, stage, metadata, read } = await setupRoomBackup();
+  metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" };
+  Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
+  const persist = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: persist });
+  const original = structuredClone(session.getSnapshot().state!);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", roles: [] } }))));
+  try {
+    read.mockRejectedValueOnce(new Error("backup_content_mismatch"));
+    await expect(session.restoreRoomBackup(new Blob())).rejects.toThrow("backup_content_mismatch");
+    expect(ChannelSocket.current.sent.some(command => command.credential === "archived-credential")).toBe(false);
+    const importing = session.restoreRoomBackup(new Blob()), failed = expect(importing).rejects.toThrow("backup_identity_required");
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBeUndefined());
+    await vi.waitFor(() => expect(session.getSnapshot().connection).toBe("connecting"));
+    const admission = ChannelSocket.current; await admission.onopen?.();
+    expect(admission.sent.find(command => command.type === "join")).toMatchObject({ credential: "archived-credential" });
+    expect(admission.sent.find(command => command.type === "join")).not.toHaveProperty("sessionId");
+    admission.receive({ type: "welcome", credential: "wrong-credential", sessionId: "endpoint", state: original });
+    await failed;
+    expect(persist.mock.calls.some(call => call[1] === "wrong-credential")).toBe(false);
+    const restored = ChannelSocket.current; expect(restored).not.toBe(admission); await restored.onopen?.();
+    expect(restored.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+    expect(stage.replace).not.toHaveBeenCalled();
+  } finally { session.close(); }
+});
+
+test("an approved App exports only rooms positively matched to its Native session", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const { session, socket } = await setup(); const appSocket = ChannelSocket.current;
+  const nativeId = crypto.randomUUID();
+  const fetch = vi.fn().mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["first"] })))
+    .mockResolvedValueOnce(new Response(new Blob(["app-snapshot"])));
+  vi.stubGlobal("fetch", fetch); vi.spyOn(session.attachments, "retained").mockResolvedValue([]);
+  try {
+    await appSocket.onopen?.(); appSocket.receive({ id: appSocket.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const state = structuredClone(session.getSnapshot().state!); state.channel.ownerId = null;
+    state.channel.rooms[0].delivery!.hostSessionId = nativeId; socket.receive({ type: "state", state });
+    expect(await (await session.exportRoomBackup("first")).text()).toBe("app-snapshot");
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(["http://127.0.0.1:8793/rooms/domain/self/hosting", "http://127.0.0.1:8793/rooms/domain/self/first/backup"]);
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["second"] })));
+    expect(await session.roomBackupAvailable("first")).toBe(false);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    state.channel.ownerId = "self"; socket.receive({ type: "state", state });
+    fetch.mockResolvedValueOnce(new Response(JSON.stringify({ error: "hosting_unavailable" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ sessionId: nativeId, roomIds: ["first"] })))
+      .mockResolvedValueOnce(new Response(new Blob(["server-snapshot"])));
+    expect(await (await session.exportRoomBackup("first")).text()).toBe("server-snapshot");
+    expect(fetch.mock.calls.slice(-3).map(call => call[0])).toEqual([
+      "http://127.0.0.1:8793/rooms/domain/self/hosting", "/prototype/channel/hosting", "/prototype/channel/rooms/first/backup",
+    ]);
+  } finally { session.close(); }
+});
+
+test("portable import admits the archived identity through Welcome before committing and omits old owner/resume context", async () => {
+  const { session, stage, metadata, nextHost, read } = await setupRoomBackup();
+  metadata.policy = { ...metadata.policy, id: "imported", creatorId: "archived-user" }; stage.policy = JSON.stringify(metadata.policy);
+  Object.assign(metadata, { ownCredential: { userId: "archived-user", credential: "archived-credential" } });
+  const runtime = await hosting.loadRoomHosting(); vi.spyOn(runtime.BrowserRoomHost, "storedPolicies").mockResolvedValue([]);
+  nextHost.summary = () => ({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false });
+  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId: "domain", user: { id: "archived-user", name: "Archived", roles: [] } }))));
+  const cache = vi.spyOn(session.attachments, "restoreRetained").mockResolvedValue(true);
+  const state = structuredClone(session.getSnapshot().state!);
+  state.channel.rooms = []; state.channel.ownerId = null; state.users = [{ id: "archived-user", name: "Archived", roles: [] }];
+  state.sessions = [{ id: "new-endpoint", userId: "archived-user", online: true, signingKey: testSigningKey }];
+  try {
+    const importing = session.restoreRoomBackup(new Blob());
+    await vi.waitFor(() => expect(session.getSnapshot().connection).toBe("connecting"));
+    const admission = ChannelSocket.current; await admission.onopen?.();
+    const join = admission.sent.find(command => command.type === "join")!;
+    expect(join).toMatchObject({ credential: "archived-credential" });
+    expect(join).not.toHaveProperty("key"); expect(join).not.toHaveProperty("roomId"); expect(join).not.toHaveProperty("sessionId");
+    expect(stage.replace).not.toHaveBeenCalled(); expect(saved).not.toHaveBeenCalled();
+    admission.receive({ type: "welcome", credential: "accepted-credential", sessionId: "new-endpoint", state });
+    await vi.waitFor(() => expect(admission.sent.some(command => command.type === "host_register")).toBe(true));
+    expect(read).toHaveBeenCalledOnce(); expect(stage.replace).toHaveBeenCalledOnce(); expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "accepted-credential");
+    const registration = admission.sent.find(command => command.type === "host_register")!;
+    admission.receive({ type: "host_bound", roomId: "imported", bindingId: "imported-binding" });
+    admission.receive({ type: "ack", requestId: registration.requestId });
+    const restored = structuredClone(state);
+    restored.channel.rooms.push({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
+      authorized: true, canManage: true, participantSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
+      delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } });
+    admission.receive({ type: "state", state: restored });
+    await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));
+    const browse = admission.sent.find(command => command.type === "browse" && command.roomId === "imported")!;
+    admission.receive({ type: "ack", requestId: browse.requestId });
+    await expect(importing).resolves.toEqual({ roomId: "imported", cached: true }); expect(cache).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });

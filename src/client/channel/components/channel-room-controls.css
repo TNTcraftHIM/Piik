@@ -19,3 +19,9 @@
 .c3-locked-room h3 { font-size: 20px; }
 .c3-locked-room form { display: flex; gap: 8px; flex-wrap: wrap; max-width: 400px; justify-content: center; }
 .c3-locked-room form .c3-input { flex: 1 1 150px; }
+
+.c3-backup-controls { display: grid; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
+.c3-backup-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.c3-backup-confirm { display: grid; gap: 10px; min-width: 0; }
+.c3-backup-confirm > p { overflow-wrap: anywhere; }
+.c3-room-panel .c3-backup-error { color: var(--danger); }
