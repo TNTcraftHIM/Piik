@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { displayMediaOptions } from "../src/client/media/audio-capture.ts";
+import { audioInputConstraints, displayMediaOptions } from "../src/client/media/audio-capture.ts";
 
 describe("browser display audio capture", () => {
   it("keeps screen audio free of speech processing and prefers stereo", () => {
@@ -13,9 +13,12 @@ describe("browser display audio capture", () => {
         autoGainControl: false,
         voiceIsolation: false,
         channelCount: { ideal: 2 },
+        restrictOwnAudio: true,
       },
       systemAudio: "include",
       windowAudio: "window",
     });
+    expect(audioInputConstraints(true)).not.toHaveProperty("restrictOwnAudio");
+    expect(audioInputConstraints(false)).not.toHaveProperty("restrictOwnAudio");
   });
 });
