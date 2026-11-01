@@ -12,7 +12,6 @@ import { buildVersion } from './release-version.mjs';
 import { assertCleanRevision } from './build-workspace.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const goEnv = { ...process.env, GOTOOLCHAIN: `go${readFileSync(join(root, '.go-version'), 'utf8').trim()}` };
 const android = join(root, 'mobile', 'android');
 const gradleHome = process.env.GRADLE_HOME;
 const targets = [
@@ -77,12 +76,12 @@ writeFileSync(overlay, JSON.stringify({ Replace: {
   [join(source, 'supervisor', 'piik_fallback_test.go')]: join(adapter, 'fallback_test.go'),
 } }, null, 2));
 const [hostOS, hostArch] = execFileSync('go', ['env', 'GOHOSTOS', 'GOHOSTARCH'], {
-  cwd: root, env: goEnv, encoding: 'utf8', windowsHide: true,
+  cwd: root, encoding: 'utf8', windowsHide: true,
 }).trim().split(/\r?\n/);
 const fallbackTest = join(cache, `fallback.test${hostOS === 'windows' ? '.exe' : ''}`);
 run('go', ['test', '-c', '-mod=readonly', `-overlay=${overlay}`, '-tags=piik_cloudflared',
   '-o', fallbackTest, './supervisor'], { cwd: source,
-  env: { ...goEnv, GOOS: hostOS, GOARCH: hostArch, CGO_ENABLED: '0', GOWORK: 'off' } });
+  env: { ...process.env, GOOS: hostOS, GOARCH: hostArch, CGO_ENABLED: '0', GOWORK: 'off' } });
 run(fallbackTest, ['-test.run=^TestPiikExhaustedQuicHandshakeFallsBack$', '-test.count=1']);
 const host = { win32: 'windows-x86_64', linux: 'linux-x86_64', darwin: 'darwin-x86_64' }[process.platform];
 if (!host) throw new Error('Unsupported NDK build host.');
@@ -92,7 +91,7 @@ const clang = join(tools, `clang${exe}`);
 for (const { abi, goarch, rust, machine } of targets) {
   const output = join(android, 'app', 'src', 'main', 'jniLibs', abi, 'libcloudflared.so');
   mkdirSync(dirname(output), { recursive: true });
-  const env = { ...goEnv, GOOS: 'android', GOARCH: goarch, CGO_ENABLED: '1',
+  const env = { ...process.env, GOOS: 'android', GOARCH: goarch, CGO_ENABLED: '1',
     CC: `"${clang}" --target=${rust}29`, GOWORK: 'off' };
   run('go', ['build', '-mod=readonly', `-overlay=${overlay}`, '-tags=piik_cloudflared', '-trimpath', '-buildvcs=false', '-buildmode=pie',
     `-ldflags=-s -w -X main.Version=${CLOUDFLARED_VERSION} -X main.BuildTime=source-pinned -linkmode=external -extldflags=-Wl,-z,max-page-size=16384`,
