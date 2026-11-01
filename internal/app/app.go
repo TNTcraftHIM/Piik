@@ -158,6 +158,11 @@ func Run(ctx context.Context, options Options) (returnedErr error) {
 			"localAccessProtected": config.LocalAccessPassword != ""})
 		recorder.Context("capture", nativeMedia.capture)
 		recorder.Binary("captureExecutable", nativeMedia.captureProcess)
+		options.console.send(consoleDebug{logPath: recorder.LogPath(), export: func() (string, error) {
+			snapshot := input.Diagnostics()
+			recorder.Context("remoteInput", snapshot)
+			return recorder.Export()
+		}})
 		slog.Debug("piik-client", "event", "native-capabilities",
 			"video", nativeMedia.capabilities.Video, "processAudio", nativeMedia.capabilities.ProcessAudio,
 			"systemAudio", nativeMedia.capabilities.SystemAudio, "hardwareH264", nativeMedia.capabilities.HardwareH264,

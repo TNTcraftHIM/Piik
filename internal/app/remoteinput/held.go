@@ -47,7 +47,7 @@ func (m *Manager) resetHeld(s *Session) error {
 // Failed releases outlive their departing controller. Only releases are retried;
 // pointer movement, presses and committed text are never replayed.
 func (m *Manager) releaseKey(code string) error {
-	err := m.sink.Apply(bounds{}, inputEvent{Type: "key", Code: code})
+	err := m.applyInput(bounds{}, inputEvent{Type: "key", Code: code})
 	if err != nil {
 		if m.pendingKeys == nil {
 			m.pendingKeys = make(map[string]bool)
@@ -60,7 +60,7 @@ func (m *Manager) releaseKey(code string) error {
 }
 
 func (m *Manager) releaseButton(button int) error {
-	err := m.sink.Apply(bounds{}, inputEvent{Type: "button", Button: button})
+	err := m.applyInput(bounds{}, inputEvent{Type: "button", Button: button})
 	if err != nil {
 		if m.pendingButtons == nil {
 			m.pendingButtons = make(map[int]bool)
@@ -109,7 +109,7 @@ func (m *Manager) applyHeld(c *connection, b bounds, event inputEvent) error {
 		if event.Down {
 			// A repeat from this holder is input; another holder shares the press.
 			if c.keys[event.Code] || !m.keyHeld(event.Code) {
-				if err := m.sink.Apply(b, event); err != nil {
+				if err := m.applyInput(b, event); err != nil {
 					return err
 				}
 			}
@@ -132,7 +132,7 @@ func (m *Manager) applyHeld(c *connection, b bounds, event inputEvent) error {
 		}
 		if event.Down {
 			if !m.buttonHeld(event.Button) {
-				if err := m.sink.Apply(b, event); err != nil {
+				if err := m.applyInput(b, event); err != nil {
 					return err
 				}
 			}
@@ -147,7 +147,7 @@ func (m *Manager) applyHeld(c *connection, b bounds, event inputEvent) error {
 			}
 		}
 	default:
-		return m.sink.Apply(b, event)
+		return m.applyInput(b, event)
 	}
 	return nil
 }

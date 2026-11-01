@@ -69,6 +69,7 @@ type Manager struct {
 	gamepads       gamepadBackend
 	gamepadOpening bool
 	connections    map[endpointKey]*connection
+	diagnostics    DiagnosticCounters
 	sessions       map[*Session]struct{}
 	owner          *Session // The one source allowed to inject into the desktop.
 	closed         bool
@@ -320,10 +321,12 @@ func (s *Session) receivePacket(edgeID string, packet inputroute.Packet, current
 	if current != nil && !current() {
 		return
 	}
+	m.diagnostics.ReceivedPackets++
 	plain, err := c.cipher.open(packet.Data, packet.Epoch)
 	if err != nil {
 		return
 	}
+	m.diagnostics.DecryptedPackets++
 	if c.edgeID != "" && (c.edgeID != edgeID || c.epoch != packet.Epoch) {
 		m.revoke(c)
 	}
@@ -555,6 +558,11 @@ func (m *Manager) receiveLocked(c *connection, plain []byte) {
 	if decoder.Decode(&event) != nil || decoder.Decode(&struct{}{}) != io.EOF {
 		return
 	}
+	m.diagnostics.ParsedEvents++
+	family := m.inputFamily(event.Type)
+	if family != nil {
+		family.Parsed++
+	}
 	switch event.Type {
 	case "sync":
 		m.send(c, m.state(c))
@@ -601,6 +609,9 @@ func (m *Manager) receiveLocked(c *connection, plain []byte) {
 		if c.grant == "" || event.Grant != c.grant || !c.owner.available() {
 			return
 		}
+		if family != nil {
+			family.Authorized++
+		}
 		if event.Type == "gamepad" || event.Type == "gamepad-reset" || event.Type == "gamepad-stop" {
 			m.receiveGamepad(c, event)
 			return
@@ -620,6 +631,9 @@ func (m *Manager) receiveLocked(c *connection, plain []byte) {
 		b, focused := m.refreshActive()
 		if !focused {
 			return
+		}
+		if family != nil {
+			family.TargetReady++
 		}
 		var err error
 		if event.Type == "text" {
