@@ -19,6 +19,13 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 const MANIFEST: &str = "manifest.json";
 const HISTORY: &str = "history.ndjson";
 
+/// The SQLite handle closes before its disposable directory is removed, even
+/// when an HTTP caller disappears while the owning actor consumes the snapshot.
+pub struct RoomSnapshot {
+    pub room: RoomBackup,
+    pub directory: tempfile::TempDir,
+}
+
 pub enum StagedBackup {
     Domain(DomainMetadata),
     Room {

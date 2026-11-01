@@ -158,6 +158,18 @@ fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_stat
         },
     )
     .unwrap();
+    // A failed new snapshot must not leave a broken .sqlite discovery target.
+    let locked = rusqlite::Connection::open(folder.join("live.sqlite")).unwrap();
+    locked.execute_batch("BEGIN EXCLUSIVE").unwrap();
+    let failed_snapshot = folder.join("failed-snapshot.sqlite");
+    assert!(host.snapshot(&failed_snapshot, domain, None).is_err());
+    assert!(!failed_snapshot.exists());
+    locked.execute_batch("ROLLBACK").unwrap();
+    drop(locked);
+    let existing = folder.join("existing.sqlite");
+    std::fs::write(&existing, b"existing owner data").unwrap();
+    assert!(host.snapshot(&existing, domain, None).is_err());
+    assert_eq!(std::fs::read(&existing).unwrap(), b"existing owner data");
     let backup = host
         .snapshot(&folder.join("snapshot.sqlite"), domain, None)
         .unwrap();

@@ -112,6 +112,11 @@ impl Authority {
         &self.channel.identity.owner_key
     }
 
+    pub fn is_owner_credential(&self, credential: &str) -> bool {
+        self.channel.identity.user_for_credential(credential)
+            == Some(self.channel.identity.owner_id)
+    }
+
     /// Host history/activity never rewrites the domain checkpoint. Only public
     /// directory changes and completed domain admission belong in that store.
     pub fn changes_metadata(&self, request: &Request) -> bool {

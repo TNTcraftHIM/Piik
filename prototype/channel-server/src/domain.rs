@@ -1,4 +1,6 @@
 use anyhow::Context;
+#[path = "domain_backup.rs"]
+mod backup;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -6,7 +8,7 @@ use axum::{
     },
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, put},
     Router,
 };
 use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
@@ -136,6 +138,7 @@ pub struct Domain {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
     origin: String,
+    room_commands: Option<mpsc::Sender<piik_channel_native::session::HostCommand>>,
 }
 
 async fn upgrade(
@@ -328,12 +331,21 @@ impl Domain {
             })),
             sockets: Arc::new(Semaphore::new(40)),
             origin,
+            room_commands: None,
         })
     }
 
     /// The channel and its owner's user ID; neither carries admission secrets.
     pub fn identity(&self) -> (Uuid, Uuid) {
         self.hub.lock().unwrap().authority.identity()
+    }
+
+    pub(crate) fn with_room_commands(
+        mut self,
+        commands: mpsc::Sender<piik_channel_native::session::HostCommand>,
+    ) -> Self {
+        self.room_commands = Some(commands);
+        self
     }
 
     pub fn origin(&self) -> &str {
@@ -379,6 +391,12 @@ impl Domain {
         let app = Router::new()
             .route("/healthz", get(|| async { "piik-channel-prototype" }))
             .route("/prototype/channel", get(upgrade))
+            .route(
+                "/prototype/channel/rooms/{room}/backup",
+                get(backup::export),
+            )
+            .route("/prototype/channel/rooms/backup", put(backup::restore))
+            .route("/prototype/channel/hosting", get(backup::describe))
             .route(
                 "/prototype/channel/limits",
                 get(|| async { axum::Json(piik_channel_core::ATTACHMENT_LIMITS) }),

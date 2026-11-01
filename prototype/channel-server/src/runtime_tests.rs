@@ -665,6 +665,14 @@ async fn send_request(socket: &mut Socket, mut value: Value) {
         .unwrap();
 }
 async fn connect(address: std::net::SocketAddr, key: &str, name: &str) -> (Socket, Uuid, Snapshot) {
+    let (socket, session, state, _) = connect_with_credential(address, key, name).await;
+    (socket, session, state)
+}
+async fn connect_with_credential(
+    address: std::net::SocketAddr,
+    key: &str,
+    name: &str,
+) -> (Socket, Uuid, Snapshot, String) {
     let mut request = format!("ws://{address}/prototype/channel")
         .into_client_request()
         .unwrap();
@@ -674,12 +682,50 @@ async fn connect(address: std::net::SocketAddr, key: &str, name: &str) -> (Socke
     let (mut socket, _) = connect_async(request).await.unwrap();
     send_request(&mut socket, json!({"type":"join", "key":key, "name":name})).await;
     let Event::Welcome {
-        session_id, state, ..
+        session_id,
+        state,
+        credential,
+        ..
     } = event(&mut socket).await
     else {
         panic!("authenticated welcome")
     };
-    (socket, session_id, state)
+    (socket, session_id, state, credential)
+}
+
+async fn room_backup_http(
+    address: std::net::SocketAddr,
+    path: &str,
+    credential: &str,
+    upload: Option<Vec<u8>>,
+) -> (u16, Vec<u8>) {
+    let (path, credential) = (path.to_owned(), credential.to_owned());
+    tokio::task::spawn_blocking(move || {
+        use std::io::Read;
+        let agent = ureq::Agent::config_builder()
+            .http_status_as_error(false)
+            .timeout_global(Some(Duration::from_secs(10)))
+            .build()
+            .new_agent();
+        let request = ureq::http::Request::builder()
+            .method(if upload.is_some() { "PUT" } else { "GET" })
+            .uri(format!("http://{address}{path}"))
+            .header("Authorization", format!("Bearer {credential}"))
+            .header("Content-Type", "application/zip")
+            .body(upload.unwrap_or_default())
+            .unwrap();
+        let mut response = agent.run(request).unwrap();
+        let status = response.status().as_u16();
+        let mut bytes = vec![];
+        response
+            .body_mut()
+            .as_reader()
+            .read_to_end(&mut bytes)
+            .unwrap();
+        (status, bytes)
+    })
+    .await
+    .unwrap()
 }
 async fn start_server(
     folder: &Path,
@@ -1216,4 +1262,246 @@ async fn native_hosting_failure_stops_the_http_service() {
     drop(lock);
     drop(hub);
     std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[tokio::test]
+async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
+    use piik_channel_core::{backup::HistoryRow, history::StoredMessage, RoomBackup};
+    use piik_channel_native::backup::{self, StagedBackup};
+    use std::io::Cursor;
+    let folder = tempfile::tempdir().unwrap();
+    let (address, stop, task, hub) = start_server(folder.path()).await;
+    let (mut owner, _, mut state, credential) =
+        connect_with_credential(address, "owner", "Owner").await;
+    if !state.channel.rooms.iter().all(|room| room.available) || state.channel.rooms.len() != 3 {
+        state = state_when(&mut owner, |state| {
+            state.channel.rooms.len() == 3 && state.channel.rooms.iter().all(|room| room.available)
+        })
+        .await;
+    }
+    let previous = state
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == "living")
+        .unwrap()
+        .delivery
+        .as_ref()
+        .unwrap()
+        .binding_id;
+    let (status, bytes) =
+        room_backup_http(address, "/prototype/channel/hosting", &credential, None).await;
+    assert_eq!(status, 200);
+    let description: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        description["sessionId"],
+        state.channel.rooms[0]
+            .delivery
+            .as_ref()
+            .unwrap()
+            .host_session_id
+            .to_string()
+    );
+    assert_eq!(description["roomIds"], json!(["living", "quiet", "studio"]));
+    assert_eq!(
+        room_backup_http(
+            address,
+            "/prototype/channel/rooms/living/backup",
+            "not-owner",
+            None
+        )
+        .await
+        .0,
+        403
+    );
+    let (status, bytes) = room_backup_http(
+        address,
+        "/prototype/channel/rooms/living/backup",
+        &credential,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let download = tempfile::tempdir().unwrap();
+    let StagedBackup::Room { snapshot, content } =
+        backup::stage(Cursor::new(bytes), download.path()).unwrap()
+    else {
+        panic!("room");
+    };
+    assert!(content.is_empty() && snapshot.metadata().retained_files.is_empty());
+    assert_eq!(
+        snapshot
+            .metadata()
+            .own_credential
+            .as_ref()
+            .unwrap()
+            .credential,
+        credential
+    );
+    let mut metadata = snapshot.metadata().clone();
+    metadata.policy.name = "Restored living".into();
+    let rows = (1..=55)
+        .map(|seq| HistoryRow {
+            nonce: format!("retained-{seq}"),
+            message: StoredMessage {
+                message: piik_channel_core::wire::ChatMessage {
+                    id: Uuid::new_v4(),
+                    seq,
+                    user_id: metadata.policy.creator_id,
+                    text: format!("Saved {seq}"),
+                    time: seq,
+                    attachments: vec![],
+                },
+                reactions: Default::default(),
+            },
+        })
+        .collect::<Vec<_>>();
+    let make = |metadata, path: &str| {
+        let room = RoomBackup::stage(
+            &folder.path().join(path),
+            metadata,
+            rows.iter().cloned().map(Ok),
+        )
+        .unwrap();
+        let mut bytes = vec![];
+        backup::write_room(
+            &room,
+            &[],
+            &mut bytes,
+            |_| -> anyhow::Result<std::fs::File> { unreachable!() },
+        )
+        .unwrap();
+        bytes
+    };
+    send_request(
+        &mut owner,
+        json!({"type":"browse","roomId":"living","active":true}),
+    )
+    .await;
+    state_when(&mut owner, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|room| room.id == "living" && room.reading)
+    })
+    .await;
+    let (status, _) = room_backup_http(
+        address,
+        "/prototype/channel/rooms/backup",
+        &credential,
+        Some(make(metadata.clone(), "restore.sqlite")),
+    )
+    .await;
+    assert_eq!(status, 200);
+    let state = state_when(&mut owner, |state| {
+        state.channel.rooms.iter().any(|room| {
+            room.id == "living"
+                && room.name == "Restored living"
+                && room.available
+                && !room.reading
+                && room
+                    .delivery
+                    .as_ref()
+                    .is_some_and(|delivery| delivery.binding_id != previous)
+        })
+    })
+    .await;
+    assert!(state.publications.is_empty() && state.voice.is_empty());
+    assert_eq!(
+        room_backup_http(
+            address,
+            "/prototype/channel/rooms/backup",
+            &credential,
+            Some(b"not a zip".to_vec())
+        )
+        .await
+        .0,
+        400
+    );
+    let (status, bytes) = room_backup_http(
+        address,
+        "/prototype/channel/rooms/living/backup",
+        &credential,
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    let restored = tempfile::tempdir().unwrap();
+    let StagedBackup::Room {
+        snapshot: restored_room,
+        ..
+    } = backup::stage(Cursor::new(bytes), restored.path()).unwrap()
+    else {
+        panic!("room");
+    };
+    let mut actual = vec![];
+    restored_room
+        .for_each_row(|row| {
+            actual.push(row);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(actual).unwrap(),
+        serde_json::to_value(&rows).unwrap()
+    );
+    metadata.policy.id = "imported-room".into();
+    assert_eq!(
+        room_backup_http(
+            address,
+            "/prototype/channel/rooms/backup",
+            &credential,
+            Some(make(metadata, "named.sqlite"))
+        )
+        .await
+        .0,
+        200
+    );
+    state_when(&mut owner, |state| {
+        state
+            .channel
+            .rooms
+            .iter()
+            .any(|room| room.id == "imported-room" && room.available)
+    })
+    .await;
+    assert!(
+        !folder.path().join("rooms/imported-room.sqlite").exists(),
+        "room ID never chooses a filesystem path"
+    );
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+    drop((owner, hub));
+    let (address, stop, task, hub) = start_server(folder.path()).await;
+    let (mut owner, _, state) = connect(address, "owner", "Owner").await;
+    if !state
+        .channel
+        .rooms
+        .iter()
+        .any(|room| room.id == "imported-room" && room.available)
+    {
+        state_when(&mut owner, |state| {
+            state
+                .channel
+                .rooms
+                .iter()
+                .any(|room| room.id == "imported-room" && room.available)
+        })
+        .await;
+    }
+    assert_eq!(
+        room_backup_http(
+            address,
+            "/prototype/channel/rooms/imported-room/backup",
+            &credential,
+            None
+        )
+        .await
+        .0,
+        200
+    );
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+    drop((owner, hub, snapshot, restored_room));
 }

@@ -1,6 +1,7 @@
 //! One explicit hosting session owns its signaling connection and native peers.
 //! Room policy and route decisions remain in the shared core.
 use crate::{
+    backup::RoomSnapshot,
     capture::{Settings, Target},
     hosted_room::HostedRoom,
     peer::{CaptureInput, CaptureLease, CaptureScope, NativeEvent, NativePeers},
@@ -8,6 +9,7 @@ use crate::{
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
 use piik_channel_core::{
+    backup::OwnCredential,
     conversation::{
         self, ConversationRecord, ConversationReply, ConversationResult, SessionSigner,
         SignedPacket,
@@ -248,6 +250,8 @@ pub struct Config {
 pub struct RoomFile {
     pub path: PathBuf,
     pub id: String,
+    // Creation defaults for explicitly configured files; discoveries leave this
+    // empty so a missing saved database is never recreated without its history.
     pub name: String,
 }
 
@@ -266,13 +270,37 @@ struct Session {
     recovery: Option<Instant>,
     signer: Arc<SessionSigner>,
     hosting: Option<Hosting>,
-    opening: BTreeMap<String, Vec<oneshot::Sender<Result<RoomSummary, String>>>>,
+    opening: BTreeMap<String, OpeningRoom>,
     pending_captures: BTreeMap<String, PendingCapture>,
 }
 
 pub struct OpenRoom {
     pub policy: RoomState,
     pub result: oneshot::Sender<Result<RoomSummary, String>>,
+}
+
+struct OpeningRoom {
+    request_id: String,
+    previous_binding: Option<Uuid>,
+    replies: Vec<oneshot::Sender<Result<RoomSummary, String>>>,
+}
+
+pub struct SnapshotRoom {
+    pub room_id: String,
+    pub own_credential: Option<OwnCredential>,
+    pub result: oneshot::Sender<Result<RoomSnapshot, String>>,
+}
+
+pub struct RestoreRoom {
+    pub snapshot: RoomSnapshot,
+    pub result: oneshot::Sender<Result<RoomSummary, String>>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HostingDescription {
+    pub session_id: Uuid,
+    pub room_ids: Vec<String>,
 }
 
 pub struct PrepareCapture {
@@ -339,7 +367,10 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
 }
 
 pub enum HostCommand {
+    Describe(oneshot::Sender<Result<HostingDescription, String>>),
     Open(OpenRoom),
+    Snapshot(SnapshotRoom),
+    Restore(RestoreRoom),
     PrepareCapture(PrepareCapture),
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
@@ -347,7 +378,16 @@ pub enum HostCommand {
 impl HostCommand {
     fn unavailable(self) {
         match self {
+            Self::Describe(result) => {
+                let _ = result.send(Err("hosting_unavailable".into()));
+            }
             Self::Open(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::Snapshot(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::Restore(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::PrepareCapture(request) => {
@@ -410,8 +450,8 @@ pub async fn run_host(
             hosting.ready.send_replace(Some(Err(error.clone())));
         }
     }
-    for replies in session.opening.into_values() {
-        for reply in replies {
+    for opening in session.opening.into_values() {
+        for reply in opening.replies {
             let _ = reply.send(Err(error.clone()));
         }
     }
@@ -552,7 +592,15 @@ impl Session {
                             let request = request.ok_or_else(|| anyhow!("hosting_control_closed"))?;
                             if !admitted { request.unavailable(); }
                             else { match request {
+                                HostCommand::Describe(result) => {
+                                    let description = self.live.as_ref().map(|live| HostingDescription {
+                                        session_id: live.session, room_ids: live.room.rooms.keys().cloned().collect(),
+                                    }).ok_or_else(|| "hosting_unavailable".into());
+                                    let _ = result.send(description);
+                                },
                                 HostCommand::Open(request) => self.open_room(request, socket).await?,
+                                HostCommand::Snapshot(request) => self.snapshot_room(request),
+                                HostCommand::Restore(request) => self.restore_room(request, socket).await?,
                                 HostCommand::PrepareCapture(request) => self.prepare_capture(request, socket).await?,
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
@@ -634,27 +682,9 @@ impl Session {
                     }
                     // No local room is opened until the actual domain admission agrees.
                     std::fs::create_dir_all(&hosting.directory)?;
-                    if self.files.is_empty() {
-                        let mut paths = std::fs::read_dir(&hosting.directory)?
-                            .map(|entry| entry.map(|entry| entry.path()))
-                            .collect::<std::io::Result<Vec<_>>>()?;
-                        paths.sort();
-                        for path in paths {
-                            if path.extension().and_then(|value| value.to_str()) != Some("sqlite") {
-                                continue;
-                            }
-                            let Some(id) = path
-                                .file_stem()
-                                .and_then(|value| value.to_str())
-                                .and_then(|value| Uuid::parse_str(value).ok())
-                            else {
-                                continue;
-                            };
-                            self.files.push(RoomFile {
-                                path,
-                                id: id.to_string(),
-                                name: String::new(),
-                            });
+                    for file in stored_rooms(&hosting.directory)? {
+                        if !self.files.iter().any(|known| known.path == file.path) {
+                            self.files.push(file);
                         }
                     }
                 }
@@ -671,7 +701,7 @@ impl Session {
                             Ok(_) => HostedRoom::open(&file.path, &file.id, user),
                             Err(error)
                                 if error.kind() == std::io::ErrorKind::NotFound
-                                    && self.hosting.is_none() =>
+                                    && !file.name.is_empty() =>
                             {
                                 let policy = RoomState::new(
                                     file.id.clone(),
@@ -743,7 +773,11 @@ impl Session {
                             room: hosted.summary(),
                             resume_binding: hosted.binding(),
                         },
-                        Some(id),
+                        Some(
+                            self.opening
+                                .get(id)
+                                .map_or(id.as_str(), |opening| opening.request_id.as_str()),
+                        ),
                     )
                     .await?;
                 }
@@ -771,20 +805,41 @@ impl Session {
                 room_id,
                 binding_id,
             } => {
+                if self
+                    .opening
+                    .get(&room_id)
+                    .is_some_and(|opening| opening.previous_binding == Some(binding_id))
+                {
+                    return Ok(());
+                }
                 if let Some(hosted) = self
                     .live
                     .as_mut()
                     .and_then(|live| live.room.rooms.get_mut(&room_id))
                 {
                     hosted.bind(binding_id)?;
-                    if let Some(replies) = self.opening.remove(&room_id) {
-                        for reply in replies {
-                            let _ = reply.send(Ok(hosted.summary()));
-                        }
-                    }
                     eprintln!("Native room bound: {room_id}");
                 }
                 self.hosting_ready();
+            }
+            Event::Ack { request_id: id } => {
+                if let Some(room_id) = self
+                    .opening
+                    .iter()
+                    .find_map(|(room, opening)| (opening.request_id == id).then(|| room.clone()))
+                {
+                    let opening = self.opening.remove(&room_id).unwrap();
+                    let summary = self
+                        .live
+                        .as_ref()
+                        .and_then(|live| live.room.rooms.get(&room_id))
+                        .filter(|host| host.binding().is_some())
+                        .map(HostedRoom::summary);
+                    for reply in opening.replies {
+                        let _ =
+                            reply.send(summary.clone().ok_or_else(|| "room_unavailable".into()));
+                    }
+                }
             }
             Event::HostInput { room_id, input } => {
                 if let Some(live) = &mut self.live {
@@ -848,6 +903,14 @@ impl Session {
                     request.fail(code);
                     return Ok(());
                 }
+                let request_id = request_id.map(|id| {
+                    self.opening
+                        .iter()
+                        .find_map(|(room, opening)| {
+                            (opening.request_id == id).then(|| room.clone())
+                        })
+                        .unwrap_or(id)
+                });
                 if request_id.as_ref().is_some_and(|id| {
                     self.live
                         .as_ref()
@@ -859,8 +922,8 @@ impl Session {
                     let id = request_id.as_ref().unwrap();
                     self.live.as_mut().unwrap().room.rooms.remove(id);
                     self.files.retain(|file| &file.id != id);
-                    if let Some(replies) = self.opening.remove(id) {
-                        for reply in replies {
+                    if let Some(opening) = self.opening.remove(id) {
+                        for reply in opening.replies {
                             let _ = reply.send(Err(code.clone()));
                         }
                     }
@@ -1072,14 +1135,14 @@ impl Session {
             if request.policy.creator_id != hosting.identity.1 {
                 bail!("owner_mismatch");
             }
-            if Uuid::parse_str(&id)?.to_string() != id {
-                bail!("invalid_room_id");
-            }
             let live = self
                 .live
                 .as_mut()
                 .ok_or_else(|| anyhow!("hosting_unavailable"))?;
             if !live.room.rooms.contains_key(&id) {
+                if Uuid::parse_str(&id)?.to_string() != id {
+                    bail!("invalid_room_id");
+                }
                 let path = hosting.directory.join(format!("{id}.sqlite"));
                 let host = if path.try_exists()? {
                     HostedRoom::open(&path, &id, hosting.identity.1)?
@@ -1109,16 +1172,123 @@ impl Session {
             let _ = request.result.send(Ok(summary));
             return Ok(());
         }
-        let replies = self.opening.entry(id.clone()).or_default();
-        replies.push(request.result);
-        if replies.len() == 1 {
+        self.register_room(summary, None, request.result, socket)
+            .await
+    }
+
+    fn snapshot_room(&self, request: SnapshotRoom) {
+        if request.result.is_closed() {
+            return;
+        }
+        let result = (|| -> Result<RoomSnapshot> {
+            let hosting = self
+                .hosting
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            let host = self
+                .live
+                .as_ref()
+                .and_then(|live| live.room.rooms.get(&request.room_id))
+                .ok_or_else(|| anyhow!("room_unavailable"))?;
+            let directory = tempfile::Builder::new().prefix("piik-backup-").tempdir()?;
+            let room = host.snapshot(
+                &directory.path().join("room.sqlite"),
+                hosting.identity.0,
+                request.own_credential,
+            )?;
+            Ok(RoomSnapshot { room, directory })
+        })();
+        let _ = request
+            .result
+            .send(result.map_err(|error| error.to_string()));
+    }
+
+    async fn restore_room(&mut self, request: RestoreRoom, socket: &mut Socket) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
+        }
+        let id = request.snapshot.room.metadata().policy.id.clone();
+        let restored = (|| -> Result<(RoomSummary, Option<Uuid>)> {
+            let hosting = self
+                .hosting
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            if self.opening.contains_key(&id) {
+                bail!("room_busy");
+            }
+            let live = self
+                .live
+                .as_mut()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+            let previous = if let Some(host) = live.room.rooms.get_mut(&id) {
+                let previous = host.binding().ok_or_else(|| anyhow!("room_unavailable"))?;
+                host.replace(&request.snapshot.room, hosting.identity)?;
+                Some(previous)
+            } else {
+                let existing = stored_rooms(&hosting.directory)?
+                    .into_iter()
+                    .find(|file| file.id == id);
+                let (path, host) = if let Some(file) = existing {
+                    let mut host = HostedRoom::open(&file.path, &id, hosting.identity.1)?;
+                    host.replace(&request.snapshot.room, hosting.identity)?;
+                    (file.path, host)
+                } else {
+                    let path = hosting.directory.join(format!("{}.sqlite", Uuid::new_v4()));
+                    let host =
+                        HostedRoom::from_backup(&path, &request.snapshot.room, hosting.identity)?;
+                    (path, host)
+                };
+                if !self.files.iter().any(|file| file.path == path) {
+                    self.files.push(RoomFile {
+                        path,
+                        id: id.clone(),
+                        name: String::new(),
+                    });
+                }
+                live.room.rooms.insert(id.clone(), host);
+                None
+            };
+            Ok((live.room.rooms[&id].summary(), previous))
+        })();
+        // RoomSnapshot closes its SQLite handle before deleting staging files.
+        drop(request.snapshot);
+        match restored {
+            Ok((summary, previous)) => {
+                self.register_room(summary, previous, request.result, socket)
+                    .await
+            }
+            Err(error) => {
+                let _ = request.result.send(Err(error.to_string()));
+                Ok(())
+            }
+        }
+    }
+
+    async fn register_room(
+        &mut self,
+        summary: RoomSummary,
+        previous_binding: Option<Uuid>,
+        result: oneshot::Sender<Result<RoomSummary, String>>,
+        socket: &mut Socket,
+    ) -> Result<()> {
+        let id = summary.id.clone();
+        let opening = self
+            .opening
+            .entry(id.clone())
+            .or_insert_with(|| OpeningRoom {
+                request_id: Uuid::new_v4().to_string(),
+                previous_binding,
+                replies: vec![],
+            });
+        opening.replies.push(result);
+        if opening.replies.len() == 1 {
             write(
                 socket,
                 &Command::HostRegister {
                     room: summary,
                     resume_binding: None,
                 },
-                Some(&id),
+                Some(&opening.request_id),
             )
             .await?;
         }
@@ -1196,6 +1366,35 @@ impl Session {
         }
         Ok(())
     }
+}
+
+/// Physical names are local storage, not room identities. Imported named rooms
+/// use random filenames; the durable policy remains their one identity owner.
+fn stored_rooms(directory: &std::path::Path) -> Result<Vec<RoomFile>> {
+    let mut paths = std::fs::read_dir(directory)?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    paths.sort();
+    let mut files = vec![];
+    for path in paths {
+        if path.extension().and_then(|value| value.to_str()) != Some("sqlite") {
+            continue;
+        }
+        let store =
+            piik_channel_core::storage::Storage::open(&path).map_err(anyhow::Error::from_boxed)?;
+        let policy: RoomState = serde_json::from_value(
+            store
+                .load()
+                .map_err(anyhow::Error::from_boxed)?
+                .ok_or_else(|| anyhow!("room_not_found"))?,
+        )?;
+        files.push(RoomFile {
+            path,
+            id: policy.id,
+            name: String::new(),
+        });
+    }
+    Ok(files)
 }
 
 async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<HostCommand> {

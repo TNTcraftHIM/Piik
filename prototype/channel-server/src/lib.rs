@@ -1,13 +1,14 @@
 //! Domain I/O and explicit App/Server hosting composition.
 pub mod app;
+mod backup;
 pub mod domain;
 pub mod web;
 
 use domain::Domain;
 use piik_channel_native::peer::server_udp::ServerUdp;
-use piik_channel_native::session::{self as native, Config, RoomFile};
+use piik_channel_native::session::{self as native, Config, Hosting, RoomFile};
 use std::{future::Future, path::PathBuf, sync::Arc};
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 pub fn ice_servers_from_environment() -> anyhow::Result<Vec<serde_json::Value>> {
     match std::env::var("PIIK_CHANNEL_ICE_SERVERS") {
@@ -51,7 +52,16 @@ pub async fn serve_server(
     .collect();
     let (stop_native, mut native_stopped) = watch::channel(false);
     let (stop_domain, mut domain_stopped) = watch::channel(false);
-    let hosting = native::run(config, rooms, async {
+    let (commands, requests) = mpsc::channel(64);
+    let management = Hosting {
+        directory: directory.join("rooms"),
+        identity: domain.identity(),
+        commands: requests,
+        ready: watch::channel(None).0,
+        desktop: None,
+    };
+    let domain = domain.with_room_commands(commands);
+    let hosting = native::run_host(config, rooms, Some(management), async {
         let _ = native_stopped.changed().await;
     });
     let mut service = tokio::spawn(domain.serve(listener, routes, async move {

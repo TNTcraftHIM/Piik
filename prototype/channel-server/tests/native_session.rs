@@ -580,6 +580,125 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     assert_eq!(sites.len(), 1);
     Uuid::parse_str(sites[0].file_name().unwrap().to_str().unwrap()).unwrap();
     let room_directory = sites[0].join(channel.to_string()).join(user.to_string());
+    for (suffix, method) in [("hosting", "GET"), ("backup", "PUT")] {
+        for allowed in [true, false] {
+            let site = if allowed {
+                origin.clone()
+            } else {
+                "https://unapproved.example".into()
+            };
+            let url = format!("http://{address}/rooms/{channel}/{user}/{suffix}");
+            let (status, headers) = tokio::task::spawn_blocking(move || {
+                let agent = ureq::Agent::config_builder()
+                    .http_status_as_error(false)
+                    .timeout_global(Some(Duration::from_secs(5)))
+                    .build()
+                    .new_agent();
+                let request = ureq::http::Request::builder()
+                    .method("OPTIONS")
+                    .uri(url)
+                    .header("Origin", site)
+                    .header("Access-Control-Request-Method", method)
+                    .header(
+                        "Access-Control-Request-Headers",
+                        "authorization,content-type,x-piik-credential",
+                    )
+                    .body(Vec::<u8>::new())
+                    .unwrap();
+                let response = agent.run(request).unwrap();
+                (response.status().as_u16(), response.headers().clone())
+            })
+            .await
+            .unwrap();
+            assert_eq!(status, if allowed { 204 } else { 403 });
+            if allowed {
+                assert_eq!(headers["access-control-allow-origin"], origin);
+                assert!(headers["access-control-allow-methods"]
+                    .to_str()
+                    .unwrap()
+                    .contains(method));
+                let names = headers["access-control-allow-headers"]
+                    .to_str()
+                    .unwrap()
+                    .to_ascii_lowercase();
+                for name in ["authorization", "content-type", "x-piik-credential"] {
+                    assert!(names.contains(name));
+                }
+            } else {
+                assert!(!headers.contains_key("access-control-allow-origin"));
+            }
+        }
+    }
+    for (request_origin, current_credential, expected) in [
+        (origin.clone(), credential.clone(), 200),
+        (origin.clone(), guest_credential.clone(), 403),
+        ("https://unapproved.example".into(), credential.clone(), 403),
+    ] {
+        let token = token.to_owned();
+        let url = format!("http://{address}/rooms/{channel}/{user}/{room}/backup");
+        let description_url = format!("http://{address}/rooms/{channel}/{user}/hosting");
+        let (status, bytes, description) = tokio::task::spawn_blocking(move || {
+            use std::io::Read;
+            let agent = ureq::Agent::config_builder()
+                .http_status_as_error(false)
+                .timeout_global(Some(Duration::from_secs(5)))
+                .build()
+                .new_agent();
+            let mut response = agent
+                .get(url)
+                .header("Origin", &request_origin)
+                .header("Authorization", format!("Bearer {token}"))
+                .header("X-Piik-Credential", &current_credential)
+                .call()
+                .unwrap();
+            let status = response.status().as_u16();
+            let mut bytes = vec![];
+            response
+                .body_mut()
+                .as_reader()
+                .read_to_end(&mut bytes)
+                .unwrap();
+            let description: Option<Value> = if status == 200 {
+                let mut response = agent
+                    .get(description_url)
+                    .header("Origin", request_origin)
+                    .header("Authorization", format!("Bearer {token}"))
+                    .header("X-Piik-Credential", current_credential)
+                    .call()
+                    .unwrap();
+                assert_eq!(response.status().as_u16(), 200);
+                Some(serde_json::from_str(&response.body_mut().read_to_string().unwrap()).unwrap())
+            } else {
+                None
+            };
+            (status, bytes, description)
+        })
+        .await
+        .unwrap();
+        assert_eq!(status, expected);
+        if status == 200 {
+            let description = description.unwrap();
+            assert_eq!(description["sessionId"], native.to_string());
+            assert_eq!(description["roomIds"], json!([room]));
+            let directory = tempfile::tempdir().unwrap();
+            let piik_channel_native::backup::StagedBackup::Room { snapshot, .. } =
+                piik_channel_native::backup::stage(std::io::Cursor::new(bytes), directory.path())
+                    .unwrap()
+            else {
+                panic!("room backup");
+            };
+            assert_eq!(snapshot.metadata().policy.id, room);
+            assert_eq!(
+                snapshot
+                    .metadata()
+                    .own_credential
+                    .as_ref()
+                    .unwrap()
+                    .credential,
+                credential
+            );
+        }
+    }
     let duplicate = TcpListener::bind("127.0.0.1:0").await.unwrap();
     assert!(
         tokio::time::timeout(
@@ -717,7 +836,13 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     )
     .unwrap();
     page.send(Message::Text(json!({"id":"room-limit","type":"open","policy":serde_json::to_string(&refused_policy).unwrap()}).to_string().into())).await.unwrap();
-    domain.until(|_, event| matches!(event, Event::Error {code,request_id:Some(id)} if code == "room_limit" && id == &refused_room)).await;
+    let native_connection = domain.connection;
+    domain
+        .until(|connection, event| {
+            connection == native_connection
+                && matches!(event, Event::Error {code,request_id:Some(_)} if code == "room_limit")
+        })
+        .await;
     let refused: Value =
         serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
     assert_eq!(refused["error"], "room_limit");

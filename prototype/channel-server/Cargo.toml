@@ -41,6 +41,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 ring = "0.17"
 semver = "1"
 ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
+tokio-util = { version = "0.7", features = ["io-util"] }
+tempfile = "=3.27.0"
 
 [dev-dependencies]
 netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }

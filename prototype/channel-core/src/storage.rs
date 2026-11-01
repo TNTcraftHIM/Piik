@@ -58,7 +58,11 @@ impl Storage {
     /// disposable destination and keeps it until its streaming reader finishes.
     pub fn snapshot(&self, path: &Path) -> StoreResult<Self> {
         let mut snapshot = Self::create_staging(path)?;
-        snapshot.replace_from(self)?;
+        if let Err(error) = snapshot.replace_from(self) {
+            drop(snapshot);
+            std::fs::remove_file(path)?;
+            return Err(error);
+        }
         Ok(snapshot)
     }
 
@@ -67,7 +71,11 @@ impl Storage {
             .write(true)
             .create_new(true)
             .open(path)?;
-        Self::open(path)
+        let result = Self::open(path);
+        if result.is_err() {
+            std::fs::remove_file(path)?;
+        }
+        result
     }
 
     /// The owner pauses its writer for this call. SQLite commits the replacement

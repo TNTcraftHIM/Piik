@@ -1,4 +1,6 @@
 //! Local approval owns site access; the App owns each admitted site's room hosts.
+#[path = "app_backup.rs"]
+mod backup;
 #[path = "app_domain.rs"]
 mod hosted;
 #[path = "app_sites.rs"]
@@ -16,7 +18,7 @@ use axum::{
     http::{header, HeaderMap, Request as HttpRequest, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use futures_util::{
@@ -317,6 +319,9 @@ pub async fn serve(
         .route("/connect-discovery", get(discovery))
         .route("/health", get(health))
         .route("/rooms", get(upgrade))
+        .route("/rooms/{domain}/{user}/{room}/backup", get(backup::export))
+        .route("/rooms/{domain}/{user}/backup", put(backup::restore))
+        .route("/rooms/{domain}/{user}/hosting", get(backup::describe))
         .route("/api/client-launcher", get(launcher))
         .route("/api/client-launcher/launch", post(hosted::launch))
         .route("/api/client-launcher/site", post(approve))
@@ -382,6 +387,7 @@ async fn access(
     let path = request.uri().path();
     let discovery = path == "/connect-discovery";
     let health = path == "/health";
+    let backup = path.starts_with("/rooms/");
     let allowed = match &origin {
         Some(site) => app.registry.lock().await.permission(site).is_some(),
         None => false,
@@ -403,18 +409,19 @@ async fn access(
             return StatusCode::FORBIDDEN.into_response();
         }
     }
-    if health && !allowed {
+    if (health || backup) && !allowed {
         return StatusCode::FORBIDDEN.into_response();
     }
-    let cors = origin.filter(|_| discovery || (health && allowed));
+    let cors = origin.filter(|_| discovery || ((health || backup) && allowed));
     let private_network = headers
         .get("access-control-request-private-network")
         .is_some_and(|value| value == "true");
-    let mut response = if request.method() == axum::http::Method::OPTIONS && (discovery || health) {
-        StatusCode::NO_CONTENT.into_response()
-    } else {
-        next.run(request).await
-    };
+    let mut response =
+        if request.method() == axum::http::Method::OPTIONS && (discovery || health || backup) {
+            StatusCode::NO_CONTENT.into_response()
+        } else {
+            next.run(request).await
+        };
     if let Some(origin) = cors {
         response
             .headers_mut()
@@ -422,9 +429,20 @@ async fn access(
         response
             .headers_mut()
             .insert(header::VARY, "Origin".parse().unwrap());
-        response
-            .headers_mut()
-            .insert(header::ACCESS_CONTROL_ALLOW_METHODS, "GET".parse().unwrap());
+        response.headers_mut().insert(
+            header::ACCESS_CONTROL_ALLOW_METHODS,
+            if backup { "GET, PUT, OPTIONS" } else { "GET" }
+                .parse()
+                .unwrap(),
+        );
+        if backup {
+            response.headers_mut().insert(
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "Authorization, Content-Type, X-Piik-Credential"
+                    .parse()
+                    .unwrap(),
+            );
+        }
         if private_network {
             response.headers_mut().insert(
                 "access-control-allow-private-network",
