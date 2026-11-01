@@ -1,6 +1,7 @@
 //! The local Server experiment's metadata and confirmed room history.
 //! Media sessions and routes never enter this database.
 use crate::{
+    backup::HistoryRow,
     history::{ConfirmationInput, HistoryRequest, HistoryResult, StoredMessage, HISTORY_PAGE},
     wire::ChatMessage,
 };
@@ -50,6 +51,92 @@ impl Storage {
     pub fn save(&mut self, state: &Value) -> StoreResult<()> {
         let body = serde_json::to_string(state)?;
         self.connection.execute("INSERT INTO checkpoint(id,body) VALUES(1,?1) ON CONFLICT(id) DO UPDATE SET body=excluded.body", [body])?;
+        Ok(())
+    }
+
+    /// Freeze this database with SQLite's online backup API. The caller owns the
+    /// disposable destination and keeps it until its streaming reader finishes.
+    pub fn snapshot(&self, path: &Path) -> StoreResult<Self> {
+        let mut snapshot = Self::create_staging(path)?;
+        snapshot.replace_from(self)?;
+        Ok(snapshot)
+    }
+
+    pub(crate) fn create_staging(path: &Path) -> StoreResult<Self> {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)?;
+        Self::open(path)
+    }
+
+    /// The owner pauses its writer for this call. SQLite commits the replacement
+    /// atomically; a failed copy leaves the previous database intact.
+    pub(crate) fn replace_from(&mut self, snapshot: &Self) -> StoreResult<()> {
+        let copy = rusqlite::backup::Backup::new(&snapshot.connection, &mut self.connection)?;
+        match copy.step(-1)? {
+            rusqlite::backup::StepResult::Done => Ok(()),
+            _ => Err("storage_busy".into()),
+        }
+    }
+
+    pub(crate) fn for_each_history_row(
+        &self,
+        room_id: &str,
+        mut visit: impl FnMut(HistoryRow) -> StoreResult<()>,
+    ) -> StoreResult<()> {
+        let mut statement = self.connection.prepare(
+            "SELECT seq,id,user_id,text,time,attachments,reactions,nonce FROM message
+             WHERE room_id=?1 ORDER BY seq",
+        )?;
+        let rows = statement.query_map([room_id], |row| {
+            Ok(HistoryRow {
+                message: read_message(row)?,
+                nonce: row.get(7)?,
+            })
+        })?;
+        for row in rows {
+            visit(row?)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn stage_room(
+        &mut self,
+        policy: &crate::RoomState,
+        rows: impl IntoIterator<Item = StoreResult<HistoryRow>>,
+    ) -> StoreResult<()> {
+        let transaction = self.connection.transaction()?;
+        transaction.execute(
+            "INSERT INTO checkpoint(id,body) VALUES(1,?1)",
+            [serde_json::to_string(policy)?],
+        )?;
+        let mut previous = 0;
+        for row in rows {
+            let row = row?;
+            row.validate()?;
+            let message = row.message.message;
+            if message.seq <= previous {
+                return Err("invalid_backup_history_order".into());
+            }
+            transaction.execute(
+                "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![
+                    policy.id,
+                    message.seq,
+                    message.id.to_string(),
+                    message.user_id.to_string(),
+                    row.nonce,
+                    message.text,
+                    message.time,
+                    serde_json::to_string(&message.attachments)?,
+                    serde_json::to_string(&row.message.reactions)?,
+                ],
+            )?;
+            previous = message.seq;
+        }
+        transaction.commit()?;
         Ok(())
     }
 

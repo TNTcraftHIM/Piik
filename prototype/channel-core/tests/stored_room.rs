@@ -110,6 +110,157 @@ fn sent(
 }
 
 #[test]
+fn portable_snapshot_restores_complete_rows_and_retry_identity_without_live_state() {
+    use piik_channel_core::{backup::Metadata, storage::Storage, RoomBackup};
+    let folder = std::env::temp_dir().join(format!("piik-room-backup-{}", Uuid::new_v4()));
+    std::fs::create_dir(&folder).unwrap();
+    let owner = Uuid::new_v4();
+    let domain = Uuid::new_v4();
+    let mut room = policy("retained", owner, RoomAccess::Private);
+    room.update(
+        room.name.clone(),
+        room.icon.clone(),
+        RoomAccess::Private,
+        true,
+        Some(Some("private-room".into())),
+    )
+    .unwrap();
+    let invitation = room.invite().unwrap();
+    let original_policy = serde_json::to_value(&room).unwrap();
+    let mut host = StoredRoomHost::create(&folder.join("live.sqlite"), room).unwrap();
+    let attachment = piik_channel_core::AttachmentDescriptor {
+        id: Uuid::new_v4(),
+        name: "retained.bin".into(),
+        size: 3,
+        media_type: "application/octet-stream".into(),
+        sha256: piik_channel_core::attachment::sha256_hex(b"abc"),
+    };
+    for seq in 1..=55 {
+        sent(peer(
+            &mut host,
+            owner,
+            owner,
+            ConversationCommand::Chat {
+                nonce: format!("send-{seq}"),
+                text: format!("Message {seq}"),
+                attachments: vec![attachment.clone()],
+            },
+        ));
+    }
+    peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::SetReaction {
+            message_seq: 1,
+            reaction: "wave".into(),
+            active: true,
+        },
+    )
+    .unwrap();
+    let backup = host
+        .snapshot(&folder.join("snapshot.sqlite"), domain, None)
+        .unwrap();
+    let mut rows = Vec::new();
+    backup
+        .for_each_row(|row| {
+            rows.push(row);
+            Ok(())
+        })
+        .unwrap();
+    assert_eq!(rows.len(), 55);
+    assert_eq!(rows[0].nonce, "send-1");
+    assert_eq!(rows[0].message.message.attachments, vec![attachment]);
+    assert_eq!(rows[0].message.reactions.revision, 1);
+    let manifest = serde_json::to_value(Metadata::Room(backup.metadata().clone())).unwrap();
+    assert_eq!(manifest["kind"], "room");
+    assert!(manifest.get("ownCredential").is_none());
+    assert!(manifest.get("ownerKey").is_none());
+    assert!(manifest.get("users").is_none());
+    serde_json::from_value::<Metadata>(manifest)
+        .unwrap()
+        .validate()
+        .unwrap();
+
+    // The live owner can advance while the frozen rows keep their original head.
+    sent(peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::Chat {
+            nonce: "later".into(),
+            text: "After the backup".into(),
+            attachments: vec![],
+        },
+    ));
+    let staged = RoomBackup::stage(
+        &folder.join("import.sqlite"),
+        backup.metadata().clone(),
+        rows.iter().cloned().map(Ok),
+    )
+    .unwrap();
+    host.replace(&staged).unwrap();
+    assert!(host.current_readers().is_empty());
+    assert_eq!(
+        serde_json::to_value(host.policy()).unwrap(),
+        original_policy
+    );
+    assert!(host.policy().accepts_invite(&invitation));
+    let retry = sent(peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::Chat {
+            nonce: "send-1".into(),
+            text: "A changed retry must not replace retained content".into(),
+            attachments: vec![],
+        },
+    ));
+    assert!(!retry.inserted);
+    assert_eq!(
+        serde_json::to_value(&retry.message).unwrap(),
+        serde_json::to_value(&rows[0].message).unwrap()
+    );
+    let HistoryResult::Page { messages, .. } = peer(
+        &mut host,
+        owner,
+        owner,
+        ConversationCommand::History { before: None },
+    )
+    .unwrap() else {
+        panic!("history expected");
+    };
+    assert_eq!(messages.last().unwrap().message.seq, 55);
+
+    // A malformed stream rolls back its staging transaction, never the live room.
+    let mut duplicate = rows[0].clone();
+    duplicate.message.message.seq = 2;
+    duplicate.message.message.id = Uuid::new_v4();
+    let rejected_path = folder.join("rejected.sqlite");
+    assert!(RoomBackup::stage(
+        &rejected_path,
+        backup.metadata().clone(),
+        [Ok(rows[0].clone()), Ok(duplicate)],
+    )
+    .is_err());
+    let rejected = Storage::open(&rejected_path).unwrap();
+    assert!(rejected.load().unwrap().is_none());
+    let empty = RoomBackup::stage(
+        &folder.join("empty.sqlite"),
+        backup.metadata().clone(),
+        std::iter::empty(),
+    )
+    .unwrap();
+    host.replace(&empty).unwrap();
+    assert!(matches!(
+        peer(&mut host, owner, owner, ConversationCommand::History { before: None }).unwrap(),
+        HistoryResult::Page { messages, .. } if messages.is_empty()
+    ));
+    drop((host, backup, staged, rejected, empty));
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
 fn message_reactions_commit_explicit_user_choices_and_recover_with_the_original_message() {
     let path =
         std::env::temp_dir().join(format!("piik-message-reactions-{}.sqlite", Uuid::new_v4()));

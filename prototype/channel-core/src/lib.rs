@@ -7,6 +7,7 @@
 
 mod access;
 pub mod attachment;
+pub mod backup;
 mod channel;
 pub mod conversation;
 pub mod file_delivery;
@@ -33,7 +34,7 @@ pub use channel::DurableState;
 pub use identity::{Endpoint, Member, User, RECOVERY_MS};
 pub use room::{RoomRuntime, RoomSnapshot};
 #[cfg(feature = "sqlite")]
-pub use stored_room::StoredRoomHost;
+pub use stored_room::{RoomBackup, StoredRoomHost};
 
 use channel::Channel;
 use host::{HostAction, HostOutput, RequestContext, RoomReply, RoomResult};

@@ -1,9 +1,10 @@
 //! One native room's storage and exclusive runtime ownership.
 use anyhow::{anyhow, bail, Result};
 use piik_channel_core::{
+    backup::OwnCredential,
     conversation::{ConversationOutcome, SignedPacket},
     host::{HostInput, HostOutput, RoomSummary},
-    RoomState, StoredRoomHost,
+    RoomBackup, RoomState, StoredRoomHost,
 };
 use std::{
     fs::File,
@@ -21,6 +22,40 @@ pub struct HostedRoom {
 }
 
 impl HostedRoom {
+    pub fn snapshot(
+        &self,
+        path: &Path,
+        domain_id: Uuid,
+        own_credential: Option<OwnCredential>,
+    ) -> Result<RoomBackup> {
+        self.host
+            .snapshot(path, domain_id, own_credential)
+            .map_err(anyhow::Error::from_boxed)
+    }
+
+    pub fn from_backup(path: &Path, backup: &RoomBackup, identity: (Uuid, Uuid)) -> Result<Self> {
+        backup_identity(backup, identity)?;
+        let file_owner = lock(path, &backup.metadata().policy.id)?;
+        let host = StoredRoomHost::from_backup(path, backup).map_err(anyhow::Error::from_boxed)?;
+        Ok(Self {
+            path: path.into(),
+            host,
+            binding: None,
+            _file_owner: file_owner,
+        })
+    }
+
+    /// The session serializes this operation and registers the room again with
+    /// resume_binding=None. Its file lock remains held throughout replacement.
+    pub fn replace(&mut self, backup: &RoomBackup, identity: (Uuid, Uuid)) -> Result<()> {
+        backup_identity(backup, identity)?;
+        self.host
+            .replace(backup)
+            .map_err(anyhow::Error::from_boxed)?;
+        self.binding = None;
+        Ok(())
+    }
+
     pub fn open(path: &Path, room_id: &str, creator: Uuid) -> Result<Self> {
         let file_owner = lock(path, room_id)?;
         let host = StoredRoomHost::open(path).map_err(|error| anyhow!(error.to_string()))?;
@@ -87,6 +122,13 @@ impl HostedRoom {
     }
 }
 
+fn backup_identity(backup: &RoomBackup, (domain, owner): (Uuid, Uuid)) -> Result<()> {
+    if backup.metadata().domain_id != domain || backup.metadata().policy.creator_id != owner {
+        bail!("backup_owner_mismatch");
+    }
+    Ok(())
+}
+
 /// The caller keeps the file open for the lifetime of its exclusive ownership.
 pub fn try_lock_file(file: &File) -> io::Result<()> {
     // std's Unix implementation omits Android on the pinned Rust toolchain.
@@ -118,6 +160,65 @@ fn lock(path: &Path, room_id: &str) -> Result<File> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backup_replacement_keeps_exclusive_ownership_and_requires_a_fresh_binding() -> Result<()> {
+        use piik_channel_core::{backup::RoomMetadata, host::HostAction, wire::RoomAccess};
+        let folder = std::env::temp_dir().join(format!("piik-native-backup-{}", Uuid::new_v4()));
+        std::fs::create_dir(&folder)?;
+        let (domain, owner, old_binding) = (Uuid::new_v4(), Uuid::new_v4(), Uuid::new_v4());
+        let room = RoomState::new(
+            "room".into(),
+            "Restored".into(),
+            Default::default(),
+            owner,
+            RoomAccess::Public,
+            false,
+            None,
+        )
+        .map_err(anyhow::Error::msg)?;
+        let backup = RoomBackup::stage(
+            &folder.join("staged.sqlite"),
+            RoomMetadata {
+                version: 1,
+                domain_id: domain,
+                policy: room.clone(),
+                own_credential: None,
+            },
+            std::iter::empty(),
+        )
+        .map_err(anyhow::Error::from_boxed)?;
+        let path = folder.join("live.sqlite");
+        let mut host = HostedRoom::create(&path, room)?;
+        host.bind(old_binding)?;
+        assert!(host.replace(&backup, (Uuid::new_v4(), owner)).is_err());
+        assert_eq!(host.binding(), Some(old_binding));
+        host.replace(&backup, (domain, owner))?;
+        assert_eq!(host.binding(), None);
+        assert!(HostedRoom::open(&path, "room", owner).is_err());
+        let stale = || HostInput {
+            now: 1,
+            binding_id: old_binding,
+            host_session_id: owner,
+            revision: 1,
+            endpoints: Default::default(),
+            action: HostAction::Sync,
+        };
+        assert!(matches!(host.dispatch(stale()), Err("stale_room_host")));
+        let fresh = Uuid::new_v4();
+        host.bind(fresh)?;
+        assert_eq!(host.binding(), Some(fresh));
+        assert!(matches!(host.dispatch(stale()), Err("stale_room_host")));
+        let imported = folder.join("imported.sqlite");
+        assert!(HostedRoom::from_backup(&imported, &backup, (domain, Uuid::new_v4())).is_err());
+        assert!(!imported.exists());
+        let restored = HostedRoom::from_backup(&imported, &backup, (domain, owner))?;
+        assert_eq!(restored.summary().id, "room");
+        assert!(restored.binding().is_none());
+        drop((host, restored, backup));
+        std::fs::remove_dir_all(folder)?;
+        Ok(())
+    }
 
     #[test]
     fn signed_interactions_use_read_access_and_the_current_native_binding_without_history(

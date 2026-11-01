@@ -34,6 +34,24 @@ pub fn digest(secret: &str) -> [u8; 32] {
 }
 
 impl RoomState {
+    /// Validate retained policy without changing its password or invitation.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !crate::wire::valid_id(&self.id)
+            || self.creator_id.is_nil()
+            || crate::wire::title(&self.name).as_deref() != Some(self.name.as_str())
+            || self.grants.iter().any(Uuid::is_nil)
+            || (self.access == RoomAccess::Public
+                && (self.hidden || self.password_hash.is_some() || self.invite_hash.is_some()))
+            || self
+                .password_hash
+                .as_ref()
+                .is_some_and(|hash| PasswordHash::new(hash).is_err())
+        {
+            return Err("invalid_room_policy");
+        }
+        Ok(())
+    }
+
     pub fn new(
         id: String,
         name: String,
