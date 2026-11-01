@@ -557,8 +557,10 @@ than replacing it with a later, destination-dependent STUN mapping. Other
 controls cover early/late cancellation, source/Engine retirement, premature
 commit, resource limits, stale signaling and Browser decline. These establish
 bounded composition, not a physical difficult-network success-rate improvement.
-The candidate's send window is 800 ms within a 1.1-second hard bound; the earlier
-isolated experiment's shorter window is not its product timing.
+The candidate's initial send window is 800 ms; readers serve the full existing
+1.1-second check bound. Initial fanout reserves capacity for authenticated
+peer-triggered checks within the same 64-request budget. The earlier isolated
+experiment's shorter window is not its product timing.
 
 Stable observations now use the exact survey socket in that same preparation;
 reopening a socket would invalidate the observed address. Mixed stable/sequential
