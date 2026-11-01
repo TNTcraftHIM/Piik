@@ -199,6 +199,15 @@ export class ChannelApp {
     if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }
 
+  async setCaptureQuality(publicationId: string, profile: QualityProfile): Promise<void> {
+    const captureId = this.captures.get(publicationId);
+    if (!captureId) throw new Error("capture_unavailable");
+    await this.request({ type: "capture_video_settings", publicationId, captureId, settings: {
+      width: profile.resolution.width, height: profile.resolution.height, fps: profile.maxFramerate, bitrate: profile.maxBitrate,
+    } });
+    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+  }
+
   async commitCapture(publicationId: string, captureId: string): Promise<void> {
     await this.request({ type: "commit_capture", publicationId, captureId });
     if (!this.prepared.delete(publicationId)) throw new DOMException("Capture cancelled", "AbortError");

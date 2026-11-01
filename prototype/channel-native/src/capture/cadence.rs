@@ -10,6 +10,13 @@ impl Cadence {
             next: None,
         }
     }
+    pub fn set_fps(&mut self, fps: u32) {
+        let interval = 10_000_000 / fps as i64;
+        if self.interval != interval {
+            self.interval = interval;
+            self.next = None;
+        }
+    }
     pub fn accept(&mut self, timestamp: i64) -> bool {
         // Accumulate deadlines rather than measuring from the last selected frame.
         // The half-period phase and idle reset follow libwebrtc's cadence policy:
@@ -80,5 +87,28 @@ mod tests {
             .filter(|timestamp| cadence.accept(*timestamp))
             .count();
         assert!((300..=301).contains(&kept), "kept {kept} of 600 frames");
+    }
+
+    #[test]
+    fn profile_changes_select_from_the_same_capture_clock() {
+        let mut cadence = Cadence::new(15);
+        let mut last = None;
+        for (second, fps) in [15, 60, 30].into_iter().enumerate() {
+            cadence.set_fps(fps);
+            let mut count = 0;
+            for frame in 0..60 {
+                let timestamp = 10_000_000 + (second as i64 * 60 + frame) * 10_000_000 / 60;
+                cadence.set_fps(fps); // Re-reading an unchanged setting keeps its phase.
+                if cadence.accept(timestamp) {
+                    assert!(last.is_none_or(|last| timestamp > last));
+                    last = Some(timestamp);
+                    count += 1;
+                }
+            }
+            assert!(
+                (fps..=fps + 1).contains(&count),
+                "kept {count} at {fps} FPS"
+            );
+        }
     }
 }

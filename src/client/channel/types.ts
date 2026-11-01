@@ -46,6 +46,8 @@ export interface ChannelView {
 
 export interface ChannelActions {
   setQuality(profile: QualityProfile): void;
+  screenQuality(publicationId: string): { applied: QualityProfile; requested: QualityProfile } | undefined;
+  setScreenQuality(publicationId: string, profile: QualityProfile): Promise<void>;
   setScreenPaused(publicationId: string, paused: boolean): Promise<void>;
   sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; available: boolean } | undefined;
   setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;

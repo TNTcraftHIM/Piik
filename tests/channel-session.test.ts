@@ -1053,6 +1053,32 @@ test("Browser source output gain and bitrate survive replacement and close with 
     expect(session.getSnapshot().streams.get(publication.id)!.getTracks().every(track => !track.enabled)).toBe(true);
     expect(session.sourceAudio(publication.id)).toMatchObject({ level: 0.5, muted: false });
     expect(contexts[0].gain).toHaveBeenLastCalledWith(0.5, 0, 0.01);
+    const originalProfile = session.screenQuality(publication.id)!.applied;
+    let applied!: () => void;
+    const constraints = vi.fn(async (_value: MediaTrackConstraints) => {});
+    constraints.mockImplementationOnce(() => new Promise<void>(resolve => { applied = resolve; }));
+    first.getVideoTracks()[0].applyConstraints = constraints;
+    const changingQuality = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+    expect(session.getSnapshot().pending.has(`quality:${publication.id}`)).toBe(true);
+    expect(session.screenQuality(publication.id)?.applied).toEqual(originalProfile);
+    expect(session.setScreenQuality(publication.id, QUALITY_PROFILES["1080p30"])).toBe(changingQuality);
+    expect(session.setScreenQuality(publication.id, QUALITY_PROFILES["1080p60"])).toBe(changingQuality);
+    expect(session.screenQuality(publication.id)?.requested.maxFramerate).toBe(60);
+    applied(); await changingQuality;
+    expect(constraints).toHaveBeenCalledTimes(2);
+    expect(constraints).toHaveBeenLastCalledWith({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
+    const liveProfile = { ...QUALITY_PROFILES["1080p60"], maxAudioBitrate: 192_000 };
+    expect(session.screenQuality(publication.id)).toEqual({ applied: liveProfile, requested: liveProfile });
+    expect(session.getSnapshot().quality).toEqual(liveProfile);
+    expect(session.sourceAudio(publication.id)).toMatchObject({ level: 0.5, muted: false, bitrate: 192_000 });
+    expect(first.getTracks().every(track => !track.enabled)).toBe(true);
+    constraints.mockRejectedValueOnce(new Error("unsupported profile"));
+    await expect(session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"])).rejects.toThrow("unsupported profile");
+    expect(session.screenQuality(publication.id)).toEqual({ applied: liveProfile, requested: liveProfile });
+    expect(session.getSnapshot().quality).toEqual(liveProfile);
+    expect(session.getSnapshot().pending.has(`quality:${publication.id}`)).toBe(false);
+    session.setQuality(QUALITY_PROFILES["720p30"]);
+    expect(session.screenQuality(publication.id)?.applied).toEqual(liveProfile);
     await session.setSourceAudio(publication.id, { muted: true });
     expect(contexts[0].gain).toHaveBeenLastCalledWith(0, 0, 0.01);
     expect(first.getVideoTracks()[0].stop).not.toHaveBeenCalled();
@@ -1075,8 +1101,8 @@ test("Browser source output gain and bitrate survive replacement and close with 
   } finally {
     session.close();
     expect(contexts.every(context => context.close.mock.calls.length === 1)).toBe(true);
-    expect(next.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
   }
+  expect(next.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
 });
 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
@@ -1184,6 +1210,32 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
       socket.receive({ type: "state", state: { ...published, publications: published.publications.map(publication => ({ ...publication, paused })) } });
       expect(session.getSnapshot().remoteControls.get(publicationId)).toBe(inputState);
     }
+
+    const originalProfile = session.screenQuality(publicationId)!.applied;
+    const changingQuality = session.setScreenQuality(publicationId, QUALITY_PROFILES["720p30"]);
+    expect(app.sent.at(-1)).toMatchObject({ type: "capture_video_settings", publicationId, captureId,
+      settings: { width: 1280, height: 720, fps: 30, bitrate: QUALITY_PROFILES["720p30"].maxBitrate } });
+    const firstChange = app.sent.at(-1)!;
+    expect(session.setScreenQuality(publicationId, QUALITY_PROFILES["1080p30"])).toBe(changingQuality);
+    expect(session.setScreenQuality(publicationId, QUALITY_PROFILES["1080p60"])).toBe(changingQuality);
+    expect(session.screenQuality(publicationId)?.applied).toEqual(originalProfile);
+    app.receive({ id: firstChange.id, result: null });
+    await vi.waitFor(() => expect(app.sent.filter(command => command.type === "capture_video_settings")).toHaveLength(2));
+    expect(app.sent.at(-1)).toMatchObject({ type: "capture_video_settings", publicationId, captureId,
+      settings: { width: 1920, height: 1080, fps: 60, bitrate: QUALITY_PROFILES["1080p60"].maxBitrate } });
+    app.receive({ id: app.sent.at(-1)!.id, result: null }); await changingQuality;
+    const liveProfile = session.screenQuality(publicationId)!.applied;
+    expect(liveProfile).toMatchObject({ ...QUALITY_PROFILES["1080p60"], degradationPreference: originalProfile.degradationPreference });
+    expect(session.getSnapshot().quality).toEqual(liveProfile);
+    const rejectedQuality = session.setScreenQuality(publicationId, QUALITY_PROFILES["720p30"]);
+    app.receive({ id: app.sent.at(-1)!.id, error: "encoder unavailable" });
+    await expect(rejectedQuality).rejects.toThrow("encoder unavailable");
+    expect(session.screenQuality(publicationId)).toEqual({ applied: liveProfile, requested: liveProfile });
+    expect(session.getSnapshot().quality).toEqual(liveProfile);
+    expect(session.getSnapshot().remoteControls.get(publicationId)).toBe(inputState);
+    expect(app.sent.filter(command => command.type === "prepare_capture")).toHaveLength(1);
+    expect(app.sent.filter(command => command.type === "commit_capture")).toHaveLength(1);
+    session.clearError();
 
     app.receive({ type: "capture_audio_failed", publicationId });
     expect(session.getSnapshot().error).toBe("capture_audio_failed");

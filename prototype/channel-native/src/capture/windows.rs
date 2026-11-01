@@ -9,7 +9,10 @@ use super::{
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{
     os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
     thread,
 };
 use windows::{
@@ -40,6 +43,7 @@ use windows_capture::{
 
 pub struct Capture {
     frames: Frames,
+    fps: Arc<AtomicU32>,
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {
@@ -51,15 +55,18 @@ impl Capture {
         ensure!(fps > 0, "capture fps must be positive");
         let frames = Frames::new(FrameTiming::Capture)?;
         let worker = frames.shared.clone();
+        let fps = Arc::new(AtomicU32::new(fps));
+        let rate = fps.clone();
         let thread = thread::Builder::new()
             .name("piik-capture".into())
             .spawn(move || {
-                let result = run(target, fps, worker.clone());
+                let result = run(target, rate, worker.clone());
                 worker.stop(result.as_ref().err().map(|error| format!("{error:#}")));
                 result
             })?;
         Ok(Self {
             frames,
+            fps,
             thread: Some(thread),
         })
     }
@@ -68,6 +75,14 @@ impl Capture {
     }
     pub fn control(&self) -> Control {
         self.frames.control()
+    }
+    pub async fn set_fps(&self, fps: u32) -> Result<()> {
+        ensure!(
+            fps > 0 && !self.control().is_stopped(),
+            "capture unavailable"
+        );
+        self.fps.store(fps, Ordering::Relaxed);
+        Ok(())
     }
     /// Call from a blocking owner. Stop all outputs and join WGC; each Encoding
     /// remains responsible for joining its own converter/MFT worker.
@@ -186,7 +201,7 @@ impl TryInto<windows_capture::settings::GraphicsCaptureItemType> for Target {
         }
     }
 }
-fn run(target: Target, fps: u32, shared: Arc<Shared>) -> Result<()> {
+fn run(target: Target, fps: Arc<AtomicU32>, shared: Arc<Shared>) -> Result<()> {
     let mut recovering = None;
     while !shared.state.lock().unwrap().stop {
         let capture = match Wgc::start_free_threaded(WgcSettings::new(
@@ -197,7 +212,7 @@ fn run(target: Target, fps: u32, shared: Arc<Shared>) -> Result<()> {
             MinimumUpdateIntervalSettings::Default,
             DirtyRegionSettings::Default,
             ColorFormat::Bgra8,
-            (shared.clone(), fps),
+            (shared.clone(), fps.clone()),
         )) {
             Ok(capture) => capture,
             Err(error) => return Err(recovering.unwrap_or_else(|| error.into())),
@@ -241,6 +256,7 @@ fn run(target: Target, fps: u32, shared: Arc<Shared>) -> Result<()> {
 struct Wgc {
     shared: Arc<Shared>,
     cadence: Cadence,
+    fps: Arc<AtomicU32>,
     device: ID3D11Device4,
     context: ID3D11DeviceContext,
     removed: OwnedHandle,
@@ -248,7 +264,7 @@ struct Wgc {
     delivered: bool,
 }
 impl GraphicsCaptureApiHandler for Wgc {
-    type Flags = (Arc<Shared>, u32);
+    type Flags = (Arc<Shared>, Arc<AtomicU32>);
     type Error = anyhow::Error;
     fn new(ctx: Context<Self::Flags>) -> Result<Self> {
         unsafe {
@@ -263,7 +279,8 @@ impl GraphicsCaptureApiHandler for Wgc {
         let cookie = unsafe { device.RegisterDeviceRemovedEvent(HANDLE(removed.as_raw_handle()))? };
         Ok(Self {
             shared: ctx.flags.0,
-            cadence: Cadence::new(ctx.flags.1),
+            cadence: Cadence::new(ctx.flags.1.load(Ordering::Relaxed)),
+            fps: ctx.flags.1,
             device,
             context: ctx.device_context,
             removed,
@@ -284,6 +301,7 @@ impl GraphicsCaptureApiHandler for Wgc {
                 return Ok(());
             }
         }
+        self.cadence.set_fps(self.fps.load(Ordering::Relaxed));
         if !self.cadence.accept(qpc) {
             return Ok(());
         }

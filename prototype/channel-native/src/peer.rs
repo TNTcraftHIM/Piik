@@ -136,6 +136,24 @@ struct Capture {
     pending_audio: Option<Uuid>,
 }
 impl CaptureLease {
+    pub fn configure_video(
+        &self,
+        settings: crate::capture::Settings,
+    ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
+        settings.validate()?;
+        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
+        #[cfg(feature = "capture")]
+        let control = match self.control.as_ref() {
+            Some(CaptureLeaseControl::Capture(control)) => control.clone(),
+            _ => anyhow::bail!("capture_unavailable"),
+        };
+        Ok(async move {
+            #[cfg(feature = "capture")]
+            return control.configure_video(settings).await;
+            #[cfg(not(feature = "capture"))]
+            anyhow::bail!("capture_unavailable")
+        })
+    }
     pub fn configure_audio(&self, settings: SourceAudioSettings) -> Result<()> {
         settings.validate()?;
         anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
@@ -1038,7 +1056,7 @@ impl Driver {
                 capture.scope.publication_id == publication
                     && capture.selected
                     && capture.target.same_source(&target)
-                    && capture.producer.settings == settings
+                    && capture.producer.settings() == settings
             })
             .map(|(id, _)| *id)
         {
@@ -1101,6 +1119,7 @@ impl Driver {
             self.events.clone(),
             self.relay.clone(),
             self.cancel.clone(),
+            self.bandwidth_changed.clone(),
         )?;
         let id = producer.video;
         let lease = CaptureLease {

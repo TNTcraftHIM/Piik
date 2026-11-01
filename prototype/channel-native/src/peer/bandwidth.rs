@@ -160,13 +160,13 @@ impl Driver {
                             .filter(|(_, video)| video.is_some())
                             .fold(0u32, |sum, (rid, _)| {
                                 sum.saturating_add(if rid == "q" {
-                                    producer.settings.lower_layer().bitrate
+                                    producer.settings().lower_layer().bitrate
                                 } else {
-                                    producer.settings.bitrate
+                                    producer.settings().bitrate
                                 })
                             })
                     } else {
-                        producer.settings.bitrate
+                        producer.settings().bitrate
                     },
                 )
             } else if producer.audio == Some(source.id) {

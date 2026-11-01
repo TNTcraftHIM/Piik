@@ -8,6 +8,41 @@ use futures_util::{future::Aborted, StreamExt};
 use std::sync::Arc;
 use tokio::sync::Notify;
 
+struct Prepared {
+    encoding: Encoding,
+    first: crate::EncodedFrame,
+}
+
+async fn prepare(
+    capture: &Capture,
+    control: &VideoControl,
+    mut request: VideoSettingsRequest,
+) -> (VideoSettingsRequest, Result<Prepared>) {
+    let mut encoding = match capture.encode(request.settings) {
+        Ok(encoding) => encoding,
+        Err(error) => return (request, Err(error)),
+    };
+    let result = tokio::select! {
+        biased;
+        _ = control.stopped() => Err(anyhow!("capture_unavailable")),
+        _ = request.result.closed() => Err(Aborted.into()),
+        frame = encoding.recv() => frame.unwrap_or_else(|| Err(anyhow!("capture encoding ended before its first frame"))),
+    }.and_then(|frame| {
+        anyhow::ensure!(frame.keyframe, "capture encoding did not start independently");
+        let mut sps = H264Sps::default();
+        sps.access_unit(&frame.bytes)?;
+        anyhow::ensure!(sps.last.is_some(), "capture first access unit has no SPS");
+        Ok(frame)
+    });
+    match result {
+        Ok(first) => (request, Ok(Prepared { encoding, first })),
+        Err(error) => {
+            let _ = stop(encoding).await;
+            (request, Err(error))
+        }
+    }
+}
+
 async fn report_failure(
     events: &mpsc::Sender<Event>,
     capture: &VideoControl,
@@ -29,7 +64,7 @@ async fn report_failure(
 pub(super) async fn run(
     capture: Capture,
     encoding: Encoding,
-    settings: Settings,
+    mut settings: Settings,
     publication_id: Uuid,
     source_id: Uuid,
     time: SourceTime,
@@ -39,6 +74,8 @@ pub(super) async fn run(
     events: mpsc::Sender<Event>,
     mut cancelled: watch::Receiver<bool>,
     mut demands: watch::Receiver<Vec<VideoDemand>>,
+    mut changes: mpsc::Receiver<VideoSettingsRequest>,
+    bandwidth_changed: Arc<Notify>,
 ) -> Option<String> {
     let changed = Arc::new(Notify::new());
     let frames = Video::new(time.clone(), changed.clone());
@@ -46,6 +83,7 @@ pub(super) async fn run(
     let mut initial = Some(encoding);
     let mut encodings = Encodings::new(time.clone(), changed.clone());
     let mut ready = Some(ready);
+    let mut preparing = None;
     let result = async {
         let frame = tokio::select! {
             _ = control.video.stopped() => return Ok(()),
@@ -90,6 +128,66 @@ pub(super) async fn run(
             tokio::select! {
                 _ = control.video.stopped() => break,
                 _ = cancelled.changed() => break,
+                request = changes.recv(), if preparing.is_none() => {
+                    let Some(request) = request else { break; };
+                    if request.result.is_closed() { continue; }
+                    if request.settings == settings {
+                        let _ = request.result.send(Ok(()));
+                    } else {
+                        preparing = Some(Box::pin(prepare(&capture, &control.video, request)));
+                    }
+                },
+                prepared = async { preparing.as_mut().unwrap().await }, if preparing.is_some() => {
+                    preparing = None;
+                    let (request, prepared) = prepared;
+                    let prepared = match prepared {
+                        Ok(prepared) => prepared,
+                        Err(error) => { let _ = request.result.send(Err(error)); continue; },
+                    };
+                    if request.result.is_closed() || control.video.is_stopped() {
+                        let _ = stop(prepared.encoding).await;
+                        continue;
+                    }
+                    if request.settings.fps != settings.fps {
+                        if let Err(error) = capture.set_fps(request.settings.fps).await {
+                            let _ = stop(prepared.encoding).await;
+                            let _ = request.result.send(Err(error));
+                            continue;
+                        }
+                    }
+                    let next = demands.borrow().clone();
+                    // Reuse the existing fresh-IDR admission boundary. A prepared
+                    // AU can precede the incumbent's last sent source timestamp.
+                    for demand in &next {
+                        if let Some(input) = demand.input.upgrade() { input.set_active(false); }
+                    }
+                    let previous = std::mem::replace(&mut encodings, Encodings::new(time.clone(), changed.clone()));
+                    previous.stop().await;
+                    settings = request.settings;
+                    encodings.baseline(prepared.encoding, frames.clone(), frames.requests());
+                    if let Some(layers) = &layers {
+                        match capture.encode(settings.lower_layer()) {
+                            Ok(encoding) => {
+                                layers.insert("q".into(), low.clone());
+                                encodings.supplied(encoding, low.clone());
+                            }
+                            Err(error) => {
+                                layers.remove("q");
+                                eprintln!("Native lower source encoding unavailable: {error:#}");
+                            }
+                        }
+                    }
+                    control.video_settings.send_replace(settings);
+                    let failed = encodings.reconcile(&next, None, |bitrate| {
+                        capture.encode(Settings { bitrate, ..settings })
+                    });
+                    frames.write(prepared.first);
+                    bandwidth_changed.notify_one();
+                    for video in failed {
+                        report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
+                    }
+                    let _ = request.result.send(Ok(()));
+                },
                 update = demands.changed() => {
                     if update.is_err() { break; }
                     let next = demands.borrow_and_update().clone();
@@ -114,6 +212,14 @@ pub(super) async fn run(
         Ok::<_, anyhow::Error>(())
     }.await;
     control.stop();
+    if let Some(preparing) = preparing.take() {
+        let (request, prepared) = preparing.await;
+        if let Ok(prepared) = prepared {
+            let _ = stop(prepared.encoding).await;
+        }
+        let _ = request.result.send(Err(anyhow!("capture_unavailable")));
+    }
+    drop(preparing);
     encodings.stop().await;
     let result = if let Some(encoding) = initial {
         result.and(stop(encoding).await)

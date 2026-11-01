@@ -9,7 +9,13 @@ use crate::capture::{cadence::Cadence, Settings, Target, TargetKind};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use jni::{jni_sig, jni_str};
 use ndk::surface_texture::SurfaceTexture;
-use std::thread;
+use std::{
+    sync::{
+        atomic::{AtomicU32, Ordering},
+        Arc,
+    },
+    thread,
+};
 
 #[derive(Clone)]
 pub struct Control {
@@ -31,6 +37,7 @@ impl Control {
 pub struct Capture {
     frames: Frames,
     platform: Platform,
+    fps: Arc<AtomicU32>,
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {
@@ -44,10 +51,12 @@ impl Capture {
         let platform = Platform::new(audio)?;
         let worker = frames.clone();
         let projection = platform.clone();
+        let fps = Arc::new(AtomicU32::new(fps));
+        let rate = fps.clone();
         let thread = thread::Builder::new()
             .name("piik-android-source".into())
             .spawn(move || {
-                let result = run(&projection, &worker, fps);
+                let result = run(&projection, &worker, &rate);
                 worker.stop(result.as_ref().err().map(|e| format!("{e:#}")));
                 projection.stop();
                 let disposed = projection.with(|env, object| {
@@ -59,6 +68,7 @@ impl Capture {
         Ok(Self {
             frames,
             platform,
+            fps,
             thread: Some(thread),
         })
     }
@@ -67,6 +77,14 @@ impl Capture {
     }
     pub fn encode(&self, settings: Settings) -> Result<Encoding> {
         Encoding::start(self.frames.clone(), settings)
+    }
+    pub async fn set_fps(&self, fps: u32) -> Result<()> {
+        ensure!(
+            fps > 0 && !self.control().is_stopped(),
+            "capture unavailable"
+        );
+        self.fps.store(fps, Ordering::Relaxed);
+        Ok(())
     }
     pub fn control(&self) -> Control {
         Control {
@@ -94,8 +112,8 @@ impl Drop for Capture {
     }
 }
 
-fn run(platform: &Platform, frames: &Frames, fps: u32) -> Result<()> {
-    let mut cadence = Cadence::new(fps);
+fn run(platform: &Platform, frames: &Frames, fps: &AtomicU32) -> Result<()> {
+    let mut cadence = Cadence::new(fps.load(Ordering::Relaxed));
     let graphics = Graphics::new(frames.display.clone(), None, true)?;
     let (texture, java_texture) = platform.with(|env, object| {
         let texture = env
@@ -130,6 +148,7 @@ fn run(platform: &Platform, frames: &Frames, fps: u32) -> Result<()> {
             }
             texture.update_tex_image()?;
             let nanos: i64 = texture.timestamp().as_nanos().try_into()?;
+            cadence.set_fps(fps.load(Ordering::Relaxed));
             if !cadence.accept(nanos / 100) {
                 continue;
             }

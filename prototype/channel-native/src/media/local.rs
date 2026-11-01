@@ -19,7 +19,7 @@ use std::{
     time::Instant,
 };
 use tokio::{
-    sync::{mpsc, oneshot, watch},
+    sync::{mpsc, oneshot, watch, Notify},
     task::JoinHandle,
 };
 use uuid::Uuid;
@@ -32,8 +32,14 @@ pub(crate) use super::encodings::VideoDemand;
 #[derive(Clone)]
 pub(crate) struct Control {
     video: VideoControl,
+    video_settings: watch::Sender<Settings>,
+    video_requests: mpsc::Sender<VideoSettingsRequest>,
     audio: Arc<Mutex<Option<AudioLeaseControl>>>,
     audio_settings: watch::Sender<crate::peer::SourceAudioSettings>,
+}
+struct VideoSettingsRequest {
+    settings: Settings,
+    result: oneshot::Sender<Result<()>>,
 }
 
 #[derive(Clone)]
@@ -69,6 +75,15 @@ impl AudioLease {
     }
 }
 impl Control {
+    pub async fn configure_video(&self, settings: Settings) -> Result<()> {
+        settings.validate()?;
+        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
+        let (result, applied) = oneshot::channel();
+        self.video_requests
+            .try_send(VideoSettingsRequest { settings, result })
+            .map_err(|_| anyhow!("capture_unavailable"))?;
+        applied.await.map_err(|_| anyhow!("capture_unavailable"))?
+    }
     pub fn set_audio_settings(&self, settings: crate::peer::SourceAudioSettings) {
         self.audio_settings.send_replace(settings);
     }
@@ -101,13 +116,15 @@ pub(crate) struct Producer {
     pub audio: Option<Uuid>,
     pub control: Control,
     task: Option<JoinHandle<Option<String>>>,
-    pub settings: Settings,
     demands: watch::Sender<Vec<VideoDemand>>,
     audio_lease: Option<AudioLease>,
     epoch: Instant,
     clock: SystemInstant,
 }
 impl Producer {
+    pub fn settings(&self) -> Settings {
+        *self.control.video_settings.borrow()
+    }
     pub fn set_demands(&self, next: Vec<VideoDemand>) {
         self.demands.send_if_modified(|current| {
             if *current == next {
@@ -127,6 +144,7 @@ impl Producer {
         events: mpsc::Sender<Event>,
         relay: Relay,
         cancelled: watch::Receiver<bool>,
+        bandwidth_changed: Arc<Notify>,
     ) -> Result<(
         Self,
         oneshot::Receiver<Result<()>>,
@@ -203,8 +221,12 @@ impl Producer {
             None
         };
         let audio_id = audio.as_ref().map(|(id, _)| *id);
+        let (video_settings, _) = watch::channel(settings);
+        let (video_requests, changes) = mpsc::channel(1);
         let control = Control {
             video: video_control,
+            video_settings,
+            video_requests,
             audio_settings,
             audio: Arc::new(Mutex::new(
                 audio.as_ref().map(|(_, lease)| lease.control.clone()),
@@ -226,6 +248,8 @@ impl Producer {
             events,
             cancelled,
             requests,
+            changes,
+            bandwidth_changed,
         ));
         Ok((
             Self {
@@ -233,7 +257,6 @@ impl Producer {
                 audio: audio_id,
                 control,
                 task: Some(task),
-                settings,
                 demands,
                 audio_lease: audio.map(|(_, lease)| lease),
                 epoch: now,
@@ -617,11 +640,12 @@ mod tests {
         let mut producer = Producer {
             video,
             audio: Some(Uuid::new_v4()),
-            settings,
             epoch,
             clock,
             control: Control {
                 video: frames.control(),
+                video_settings: watch::channel(settings).0,
+                video_requests: mpsc::channel(1).0,
                 audio_settings: previous.settings.clone(),
                 audio: Arc::new(Mutex::new(Some(previous.clone()))),
             },

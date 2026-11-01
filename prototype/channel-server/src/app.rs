@@ -659,6 +659,11 @@ enum Operation {
         capture_id: Uuid,
         settings: SourceAudioSettings,
     },
+    CaptureVideoSettings {
+        publication_id: Uuid,
+        capture_id: Uuid,
+        settings: Settings,
+    },
     CapturePaused {
         publication_id: Uuid,
         capture_id: Uuid,
@@ -745,7 +750,7 @@ async fn connection(
             > = FuturesUnordered::new();
             let mut audio_errors = FuturesUnordered::new();
             let mut input_states = FuturesUnordered::new();
-            let mut input_policies = FuturesUnordered::new();
+            let mut operations = FuturesUnordered::new();
             let mut previews = FuturesUnordered::new();
             let mut preview: Option<(String, Option<oneshot::Sender<()>>)> = None;
             loop {
@@ -779,7 +784,7 @@ async fn connection(
                         }
                         continue;
                     }
-                    Some(response) = input_policies.next(), if !input_policies.is_empty() => {
+                    Some(response) = operations.next(), if !operations.is_empty() => {
                         let response: Value = response;
                         timeout(IO_TIMEOUT, writer.send(Message::Text(response.to_string().into()))).await??;
                         continue;
@@ -1029,7 +1034,7 @@ async fn connection(
                                     let commands = commands.clone();
                                     let scope = lease.scope.clone();
                                     let capture_id = lease.producer_id();
-                                    input_policies.push(async move {
+                                    operations.push(async move {
                                         let result = transfer_source(&commands, scope, capture_id, to_session_id).await;
                                         match result {
                                             Ok(()) => json!({"id":request.id,"result":null}),
@@ -1056,6 +1061,30 @@ async fn connection(
                                 .ok_or_else(|| anyhow!("capture_unavailable"))
                                 .and_then(|lease| lease.configure_audio(settings))
                                 .map(|_| Value::Null),
+                            Operation::CaptureVideoSettings {
+                                publication_id,
+                                capture_id,
+                                settings,
+                            } => {
+                                let update = captures
+                                    .get(&publication_id)
+                                    .and_then(Capture::lease)
+                                    .filter(|lease| lease.id == capture_id)
+                                    .ok_or_else(|| anyhow!("capture_unavailable"))
+                                    .and_then(|lease| lease.configure_video(settings));
+                                match update {
+                                    Ok(update) => {
+                                        operations.push(async move {
+                                            match update.await {
+                                                Ok(()) => json!({"id":request.id,"result":null}),
+                                                Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                            }
+                                        }.boxed());
+                                        continue;
+                                    }
+                                    Err(error) => Err(error),
+                                }
+                            }
                             Operation::CapturePaused {
                                 publication_id,
                                 capture_id,
@@ -1069,7 +1098,7 @@ async fn connection(
                                     let commands = commands.clone();
                                     let scope = lease.scope.clone();
                                     let capture_id = lease.producer_id();
-                                    input_policies.push(async move {
+                                    operations.push(async move {
                                         let result = pause_capture(&commands, scope, capture_id, paused).await;
                                         match result {
                                             Ok(()) => json!({"id":request.id,"result":null}),
@@ -1096,7 +1125,7 @@ async fn connection(
                                     });
                                 match policy {
                                     Ok(policy) => {
-                                        input_policies.push(async move {
+                                        operations.push(async move {
                                             match policy.await {
                                                 Ok(()) => json!({"id":request.id,"result":null}),
                                                 Err(error) => json!({"id":request.id,"error":error.to_string()}),
@@ -1137,7 +1166,7 @@ async fn connection(
                                 match shortcut {
                                     Ok(shortcut) => {
                                         let desktop = app.desktop.clone();
-                                        input_policies.push(async move {
+                                        operations.push(async move {
                                             match shortcut.await {
                                                 Ok(()) => {
                                                     let label = desktop.shortcut_label();
@@ -1439,5 +1468,24 @@ mod tests {
         ));
         wire.as_object_mut().unwrap().remove("settings");
         assert!(serde_json::from_value::<Request>(wire).is_err());
+
+        let capture_id = Uuid::new_v4();
+        let update: Request = serde_json::from_value(json!({
+            "id":"live-profile", "type":"capture_video_settings",
+            "publicationId":publication, "captureId":capture_id, "settings":settings,
+        }))
+        .unwrap();
+        let Operation::CaptureVideoSettings {
+            publication_id,
+            capture_id: actual_capture,
+            settings: actual_settings,
+        } = update.operation
+        else {
+            panic!("expected live capture settings");
+        };
+        assert_eq!(
+            (publication_id, actual_capture, actual_settings),
+            (publication, capture_id, settings)
+        );
     }
 }

@@ -1,13 +1,15 @@
 use super::{checked, encoding::Encoding, Control, Frames, ImageCopy};
-use crate::capture::{FrameTiming, Settings, Target, TargetKind};
+use crate::capture::{FrameTiming, FramerateRequest, Settings, Target, TargetKind};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use cidre::sc::stream::{Delegate as _, Output as _};
 use cidre::{arc, cf, cg, cm, cv, define_obj_type, dispatch, ns, objc, sc};
 use objc2_core_graphics::{CGDisplayCopyDisplayMode, CGDisplayMode};
 use std::thread;
+use tokio::sync::{mpsc, oneshot};
 
 pub struct Capture {
     frames: Frames,
+    requests: mpsc::Sender<FramerateRequest>,
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {
@@ -20,16 +22,18 @@ impl Capture {
         let runtime = tokio::runtime::Handle::try_current()?;
         let frames = Frames::new(FrameTiming::Capture)?;
         let source = frames.clone();
+        let (requests, receiver) = mpsc::channel(1);
         let thread = thread::Builder::new()
             .name("piik-mac-source".into())
             .spawn(move || {
                 let mut result = Ok(());
-                objc::ar_pool(|| result = runtime.block_on(run(target, fps, &source)));
+                objc::ar_pool(|| result = runtime.block_on(run(target, fps, &source, receiver)));
                 source.finish(result.as_ref().err().map(|e| format!("{e:#}")));
                 result
             })?;
         Ok(Self {
             frames,
+            requests,
             thread: Some(thread),
         })
     }
@@ -41,6 +45,17 @@ impl Capture {
     }
     pub fn control(&self) -> Control {
         self.frames.control()
+    }
+    pub async fn set_fps(&self, fps: u32) -> Result<()> {
+        ensure!(fps > 0 && fps <= i32::MAX as u32, "invalid source FPS");
+        let (result, applied) = oneshot::channel();
+        self.requests
+            .send(FramerateRequest { fps, result })
+            .await
+            .map_err(|_| anyhow!("capture unavailable"))?;
+        applied
+            .await
+            .context("capture ended during frame-rate update")?
     }
     /// Join from a blocking owner, after cancellation and outside media locks.
     pub fn stop(mut self) -> Result<()> {
@@ -390,7 +405,12 @@ impl OutputState {
     }
 }
 
-async fn run(target: Target, fps: u32, frames: &Frames) -> Result<()> {
+async fn run(
+    target: Target,
+    fps: u32,
+    frames: &Frames,
+    mut requests: mpsc::Receiver<FramerateRequest>,
+) -> Result<()> {
     let control = frames.control();
     let selected = tokio::select! { _ = control.stopped() => return Ok(()), selected = select(&target) => selected? };
     let (width, height) = selected.size()?;
@@ -432,7 +452,18 @@ async fn run(target: Target, fps: u32, frames: &Frames) -> Result<()> {
                     checked(stream.update_cfg(&cfg).await)?;
                 }
             } else {
-                changed.await;
+                tokio::select! {
+                    _ = changed => {},
+                    request = requests.recv() => {
+                        let Some(request) = request else { break; };
+                        if request.result.is_closed() { continue; }
+                        let previous = cfg.minimum_frame_interval();
+                        cfg.set_minimum_frame_interval(cm::Time::new(1, request.fps as i32));
+                        let applied = checked(stream.update_cfg(&cfg).await);
+                        if applied.is_err() { cfg.set_minimum_frame_interval(previous); }
+                        let _ = request.result.send(applied);
+                    },
+                }
             }
         }
         Ok(())

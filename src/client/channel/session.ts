@@ -33,7 +33,7 @@ interface MicrophoneRequest {
   promise?: Promise<MicrophoneInput>;
 }
 
-interface ScreenShare { id: string; profile: QualityProfile; volume: { level: number; muted: boolean }; audioChange?: Promise<void>; selection?: object; native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget } }
+interface ScreenShare { id: string; profile: QualityProfile; volume: { level: number; muted: boolean }; audioChange?: Promise<void>; requestedProfile?: QualityProfile; qualityChange?: Promise<void>; selection?: object; native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget } }
 
 function stored(key: string, value?: string): string | null {
   try {
@@ -1111,7 +1111,7 @@ export class ChannelSession {
       share = { id: local?.[0] ?? crypto.randomUUID(), profile: local?.[1].profile ?? this.view.quality, volume: { level: 1, muted: false } };
       this.screenShares.set(roomId, share);
     }
-    if (this.view.pending.has(`source-audio:${share.id}`)) throw new Error("operation_pending");
+    if (share.audioChange || share.qualityChange) throw new Error("operation_pending");
     const selection = share.selection = {};
     const epoch = this.captureEpoch;
     const selected = share;
@@ -1222,6 +1222,50 @@ export class ChannelSession {
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
   nativeCaptureSelection = (roomId: string) => this.screenShares.get(roomId)?.native;
 
+  screenQuality = (publicationId: string) => {
+    const share = [...this.screenShares.values()].find(share => share.id === publicationId);
+    return share ? { applied: share.profile, requested: share.requestedProfile ?? share.profile } : undefined;
+  };
+
+  setScreenQuality = (publicationId: string, requested: QualityProfile): Promise<void> => {
+    const share = [...this.screenShares.values()].find(share => share.id === publicationId);
+    if (!share || share.selection || share.audioChange) return Promise.reject(new Error("capture_unavailable"));
+    const profile = { ...requested, maxAudioBitrate: share.profile.maxAudioBitrate,
+      degradationPreference: this.local.has(publicationId) ? requested.degradationPreference : share.profile.degradationPreference };
+    if (!supportsCaptureProfile(profile)) return Promise.reject(new Error("capture_quality_unsupported"));
+    share.requestedProfile = profile;
+    this.patch({});
+    if (share.qualityChange) return share.qualityChange;
+    const current = () => [...this.screenShares.values()].includes(share);
+    share.qualityChange = this.action(`quality:${publicationId}`, async () => {
+      do {
+        const profile = share.requestedProfile!;
+        try {
+          const local = this.local.get(publicationId);
+          if (local) {
+            await this.media.configureLocal(publicationId, profile);
+            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+            local.profile = profile;
+          } else {
+            const app = this.app;
+            if (!app?.screens.has(publicationId)) throw new Error("capture_unavailable");
+            await app.setCaptureQuality(publicationId, profile);
+            if (this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
+          }
+        } catch (error) {
+          if (current() && share.requestedProfile !== profile) continue;
+          throw error;
+        }
+        if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+        share.profile = profile;
+        this.patch({});
+        if (share.requestedProfile === profile) { this.setQuality(profile); return; }
+      } while (current());
+      throw new DOMException("Capture cancelled", "AbortError");
+    }).finally(() => { share.qualityChange = undefined; share.requestedProfile = undefined; this.patch({}); });
+    return share.qualityChange;
+  };
+
   sourceAudio = (publicationId: string) => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
     if (!share) return undefined;
@@ -1233,7 +1277,7 @@ export class ChannelSession {
 
   setSourceAudio = (publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void> => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
-    if (!share || share.selection) return Promise.reject(new Error("capture_unavailable"));
+    if (!share || share.selection || share.qualityChange) return Promise.reject(new Error("capture_unavailable"));
     const volume = { level: settings.level ?? share.volume.level, muted: settings.muted ?? share.volume.muted };
     const profile = { ...share.profile, maxAudioBitrate: settings.bitrate ?? share.profile.maxAudioBitrate ?? 128_000 };
     if (!supportsCaptureProfile(profile) || !Number.isFinite(volume.level) || volume.level < 0 || volume.level > 2) return Promise.reject(new Error("invalid_audio_settings"));

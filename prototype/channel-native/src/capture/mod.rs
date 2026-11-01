@@ -220,6 +220,11 @@ pub struct Settings {
     pub fps: u32,
     pub bitrate: u32,
 }
+#[cfg(all(feature = "capture", any(target_os = "linux", target_os = "macos")))]
+pub(super) struct FramerateRequest {
+    pub fps: u32,
+    pub result: tokio::sync::oneshot::Sender<anyhow::Result<()>>,
+}
 impl Settings {
     /// Match the shared screen profile's half-size, same-FPS simulcast encoding.
     #[cfg(any(feature = "capture", test))]

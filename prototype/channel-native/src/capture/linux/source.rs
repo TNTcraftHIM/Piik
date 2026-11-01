@@ -1,5 +1,5 @@
 use super::{frames, message_error, portal, Encoding, Frames, Pipeline, RawFrame};
-use crate::capture::{FrameTiming, Settings, Target, TargetKind};
+use crate::capture::{FrameTiming, FramerateRequest, Settings, Target, TargetKind};
 use crate::input::{linux::Connection as Eis, Source as InputSource};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use ashpd::desktop::{
@@ -50,7 +50,11 @@ pub struct Capture {
 #[derive(Clone)]
 pub struct Control {
     frames: frames::Control,
-    requests: mpsc::Sender<Authorization>,
+    requests: mpsc::Sender<SourceCommand>,
+}
+enum SourceCommand {
+    Authorize(Authorization),
+    Framerate(FramerateRequest),
 }
 struct Authorization {
     source: InputSource,
@@ -76,11 +80,11 @@ impl Control {
         }
         let (reply, completed) = oneshot::channel();
         self.requests
-            .try_send(Authorization {
+            .try_send(SourceCommand::Authorize(Authorization {
                 source,
                 request,
                 reply,
-            })
+            }))
             .map_err(|_| anyhow!("input_authorization_unavailable"))?;
         completed
             .await
@@ -131,6 +135,18 @@ impl Capture {
     }
     pub fn control(&self) -> Control {
         self.control.clone()
+    }
+    pub async fn set_fps(&self, fps: u32) -> Result<()> {
+        ensure!(fps > 0 && fps <= i32::MAX as u32, "invalid source FPS");
+        let (result, applied) = oneshot::channel();
+        self.control
+            .requests
+            .send(SourceCommand::Framerate(FramerateRequest { fps, result }))
+            .await
+            .map_err(|_| anyhow!("capture unavailable"))?;
+        applied
+            .await
+            .context("capture ended during frame-rate update")?
     }
     pub fn stop(mut self) -> Result<()> {
         self.control().stop();
@@ -193,6 +209,7 @@ struct Video {
     // Field order is also the partial-initialization/drop order.
     _pipeline: Pipeline,
     samples: gst_app::app_sink::AppSinkStream,
+    sink: gst_app::AppSink,
     messages: gst::bus::BusStream,
     _fd: OwnedFd,
 }
@@ -224,9 +241,27 @@ impl Video {
         Ok(Self {
             _pipeline: pipeline,
             samples,
+            sink,
             messages,
             _fd: fd,
         })
+    }
+    fn set_fps(&self, fps: u32) -> Result<()> {
+        let caps = gst::Caps::builder("video/x-raw")
+            .field("max-framerate", gst::Fraction::new(fps as i32, 1))
+            .build();
+        let previous = self.sink.caps();
+        self.sink.set_caps(Some(&caps));
+        let pad = self
+            .sink
+            .static_pad("sink")
+            .context("missing capture sink pad")?;
+        if !pad.push_event(gst::event::Reconfigure::new()) {
+            self.sink.set_caps(previous.as_ref());
+            pad.push_event(gst::event::Reconfigure::new());
+            anyhow::bail!("capture frame-rate update rejected");
+        }
+        Ok(())
     }
     async fn next(&mut self, frames: &Frames) -> Result<RawFrame> {
         loop {
@@ -535,7 +570,11 @@ async fn authorize(
     Ok(())
 }
 
-async fn run(frames: &Frames, fps: u32, mut requests: mpsc::Receiver<Authorization>) -> Result<()> {
+async fn run(
+    frames: &Frames,
+    mut fps: u32,
+    mut requests: mpsc::Receiver<SourceCommand>,
+) -> Result<()> {
     let Some((mut active, first)) = prepare(frames, fps, None).await? else {
         return Ok(());
     };
@@ -547,7 +586,13 @@ async fn run(frames: &Frames, fps: u32, mut requests: mpsc::Receiver<Authorizati
                 biased;
                 _ = control.stopped() => return Ok(()),
                 request = requests.recv() => match request {
-                    Some(request) => authorize(&mut active, frames, fps, request).await?,
+                    Some(SourceCommand::Authorize(request)) => authorize(&mut active, frames, fps, request).await?,
+                    Some(SourceCommand::Framerate(request)) => {
+                        if request.result.is_closed() { continue; }
+                        let applied = active.video.set_fps(request.fps);
+                        if applied.is_ok() { fps = request.fps; }
+                        let _ = request.result.send(applied);
+                    },
                     None => return Ok(()),
                 },
                 raw = active.next(frames) => frames.publish_frame(raw?),
