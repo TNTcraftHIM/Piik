@@ -340,7 +340,7 @@ fn domain_checkpoint_has_no_room_policy_and_preserves_the_saved_owner_name() {
     let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
     assert_eq!(core.owner_name(), None);
     let owner = Uuid::new_v4();
-    let (_, _, initial) = join(&mut core, owner, true, 0);
+    let (_, credential, initial) = join(&mut core, owner, true, 0);
     assert!(initial.channel.rooms.is_empty());
     apply(
         &mut core,
@@ -357,6 +357,15 @@ fn domain_checkpoint_has_no_room_policy_and_preserves_the_saved_owner_name() {
         .import_state(serde_json::from_value(checkpoint.clone()).unwrap())
         .unwrap();
     assert_eq!(restored.owner_name(), Some("Saved owner"));
+    for admission in [
+        json!({"type":"join","key":"owner","name":"Old owner page"}),
+        json!({"type":"join","credential":credential,"name":"Piik Native"}),
+    ] {
+        let connection = Uuid::new_v4();
+        let (_, _, state) = welcome(apply(&mut restored, connection, admission, 2), connection);
+        assert_eq!(state.users[0].name, "Saved owner");
+        assert_eq!(restored.owner_name(), Some("Saved owner"));
+    }
     let mut old = checkpoint;
     old["version"] = json!(2);
     assert_eq!(

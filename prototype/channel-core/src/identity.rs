@@ -178,7 +178,6 @@ impl Identity {
             roles: BTreeSet::from(["member".to_owned()]),
             credential: digest(&credential),
         });
-        user.name = name.to_owned();
         if owner {
             user.credential = digest(&credential);
         }
