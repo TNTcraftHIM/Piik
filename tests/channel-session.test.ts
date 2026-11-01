@@ -683,7 +683,7 @@ test("camera and display shares use independent picture publications and the sam
     expect(getDisplayMedia).toHaveBeenCalledWith({
       video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 30, max: 30 } },
       audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false,
-        voiceIsolation: false, channelCount: { ideal: 2 } },
+        voiceIsolation: false, channelCount: { ideal: 2 }, restrictOwnAudio: true },
       systemAudio: "include", windowAudio: "window",
     });
 
