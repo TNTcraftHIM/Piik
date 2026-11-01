@@ -3,7 +3,7 @@ use super::{
     frames::RawFrame,
     gpu,
     worker::{self, Command, Reply},
-    CaptureClock, FrameTiming, Settings,
+    CaptureClock, FrameTiming, Settings, VideoCodec,
 };
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context, Result};
@@ -152,6 +152,7 @@ pub struct Encoding {
 impl Encoding {
     pub(super) fn start(
         settings: Settings,
+        codec: VideoCodec,
         clock: CaptureClock,
         timing: FrameTiming,
         latest: Option<RawFrame>,
@@ -174,7 +175,14 @@ impl Encoding {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
                         .build()?;
-                    rt.block_on(supervise(worker.clone(), stopped, clock, timing, settings))
+                    rt.block_on(supervise(
+                        worker.clone(),
+                        stopped,
+                        clock,
+                        timing,
+                        settings,
+                        codec,
+                    ))
                 })();
                 worker.finish(&result);
                 result
@@ -252,6 +260,7 @@ async fn supervise(
     clock: CaptureClock,
     timing: FrameTiming,
     settings: Settings,
+    codec: VideoCodec,
 ) -> Result<()> {
     let mut recovering = None;
     loop {
@@ -259,7 +268,15 @@ async fn supervise(
             return Ok(());
         }
         shared.state.lock().unwrap().begin_child();
-        let result = child(shared.clone(), stopped.clone(), clock, timing, settings).await;
+        let result = child(
+            shared.clone(),
+            stopped.clone(),
+            clock,
+            timing,
+            settings,
+            codec,
+        )
+        .await;
         if shared.stopped() {
             return result;
         }
@@ -305,6 +322,7 @@ async fn child(
     clock: CaptureClock,
     timing: FrameTiming,
     mut settings: Settings,
+    codec: VideoCodec,
 ) -> Result<()> {
     let job = super::job::Job::new()?;
     let mut child = tokio::process::Command::new(std::env::current_exe()?)
@@ -336,7 +354,15 @@ async fn child(
                 .unwrap()
                 .bitrate
                 .unwrap_or(settings.bitrate);
-            worker::write_json(&mut input, &Command::Start { settings, timing }).await?;
+            worker::write_json(
+                &mut input,
+                &Command::Start {
+                    settings,
+                    timing,
+                    codec,
+                },
+            )
+            .await?;
             loop {
                 let changed = writer_shared.changed.notified();
                 tokio::pin!(changed);
@@ -412,17 +438,25 @@ async fn child(
                         reader_shared.changed.notify_one();
                     }
                     Reply::Au {
+                        codec: actual_codec,
                         qpc,
                         keyframe,
+                        non_reference,
                         length,
                     } => {
+                        ensure!(actual_codec == codec, "encoding worker changed codec");
                         ensure!(length <= worker::MAX_AU, "encoding IPC AU too large");
                         let mut bytes = vec![0; length];
                         output.read_exact(&mut bytes).await?;
                         reader_shared.output(
                             qpc,
                             EncodedFrame {
-                                vp8: None,
+                                vp8: (codec == VideoCodec::Vp8).then_some(
+                                    crate::media::vp8::Vp8FrameMetadata {
+                                        non_reference,
+                                        ..Default::default()
+                                    },
+                                ),
                                 bytes,
                                 presentation_time: clock.instant(qpc),
                                 keyframe,

@@ -1,11 +1,12 @@
 //! One encoder worker and its ordered access units, independent of other outputs.
-use super::{frames::RawFrame, mf::Encoder, CaptureClock, FrameTiming, Settings};
+use super::{frames::RawFrame, mf, vp8, CaptureClock, FrameTiming, Settings, VideoCodec};
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Result};
 use std::{
     collections::VecDeque,
-    sync::{Arc, Condvar, Mutex},
+    sync::{Arc, Condvar, Mutex, MutexGuard},
     thread,
+    time::Duration,
 };
 use tokio::sync::Notify;
 
@@ -30,6 +31,27 @@ pub(super) struct Shared {
 impl Shared {
     pub fn wake(&self) {
         self.changed.notify_all();
+    }
+    /// A WGC timestamp can slightly lead current QPC. Keep a forced repeat
+    /// pending until real capture time advances, without inventing its PTS.
+    pub fn defer_force<'a>(
+        &self,
+        state: MutexGuard<'a, State>,
+        clock: CaptureClock,
+        timing: FrameTiming,
+        qpc: i64,
+        last: Option<i64>,
+    ) -> Result<(MutexGuard<'a, State>, bool)> {
+        if state.force_keyframe && timing == FrameTiming::Capture {
+            if let Some(last) = last.filter(|last| qpc <= *last) {
+                let now = clock.now()?;
+                if now <= last {
+                    let wait = Duration::from_nanos((last - now + 1) as u64 * 100);
+                    return Ok((self.changed.wait_timeout(state, wait).unwrap().0, true));
+                }
+            }
+        }
+        Ok((state, false))
     }
     pub fn input(&self, frame: RawFrame) -> bool {
         let mut state = self.state.lock().unwrap();
@@ -111,6 +133,7 @@ pub struct Encoding {
 impl Encoding {
     pub(super) fn start(
         settings: Settings,
+        codec: VideoCodec,
         clock: CaptureClock,
         timing: FrameTiming,
         requests: tokio::sync::mpsc::Sender<Option<i64>>,
@@ -125,7 +148,10 @@ impl Encoding {
         let thread = thread::Builder::new()
             .name("piik-encoder".into())
             .spawn(move || {
-                let result = Encoder::run(&worker, settings, clock, timing);
+                let result = match codec {
+                    VideoCodec::H264 => mf::Encoder::run(&worker, settings, clock, timing),
+                    VideoCodec::Vp8 => vp8::run(&worker, settings, clock, timing),
+                };
                 let mut state = worker.state.lock().unwrap();
                 if let Err(error) = &result {
                     state.failure = Some(format!("{error:#}"));

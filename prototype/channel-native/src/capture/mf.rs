@@ -389,6 +389,17 @@ impl Encoder {
                                 }
                             } {
                                 let frame = raw.clone();
+                                let (next, deferred) = shared.defer_force(
+                                    state,
+                                    clock,
+                                    timing,
+                                    frame.qpc,
+                                    origin.map(|first| first + last_pts),
+                                )?;
+                                state = next;
+                                if deferred {
+                                    continue;
+                                }
                                 let force = std::mem::take(&mut state.force_keyframe);
                                 break Work::Frame(frame, force);
                             }

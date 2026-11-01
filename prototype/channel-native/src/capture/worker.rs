@@ -1,5 +1,5 @@
-//! One same-build child owns one existing MFT worker. No WGC or output map.
-use super::{gpu, output, CaptureClock, FrameTiming, Settings};
+//! One same-build child owns one encoding worker. No WGC or output map.
+use super::{gpu, output, CaptureClock, FrameTiming, Settings, VideoCodec};
 use anyhow::{anyhow, bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -16,6 +16,7 @@ pub(super) enum Command {
     Start {
         settings: Settings,
         timing: FrameTiming,
+        codec: VideoCodec,
     },
     Frame {
         frame: gpu::Frame,
@@ -34,8 +35,10 @@ pub(super) enum Reply {
         after: Option<i64>,
     },
     Au {
+        codec: VideoCodec,
         qpc: i64,
         keyframe: bool,
+        non_reference: bool,
         length: usize,
     },
     EncodingEnded {
@@ -122,15 +125,19 @@ async fn encode(
     receiver: &mut mpsc::Receiver<Command>,
     stdout: &mut tokio::io::Stdout,
 ) -> Result<()> {
-    let (settings, timing) = match receiver.recv().await {
-        Some(Command::Start { settings, timing }) => (settings, timing),
+    let (settings, timing, codec) = match receiver.recv().await {
+        Some(Command::Start {
+            settings,
+            timing,
+            codec,
+        }) => (settings, timing, codec),
         Some(Command::Stop) | None => return Ok(()),
         _ => bail!("expected encoding Start"),
     };
     settings.validate()?;
     let clock = CaptureClock::new()?;
     let (requests, mut frames) = mpsc::channel(1);
-    let mut encoding = output::Encoding::start(settings, clock, timing, requests)?;
+    let mut encoding = output::Encoding::start(settings, codec, clock, timing, requests)?;
     let control = encoding.control();
     let mut gpu = None;
     let mut read = false;
@@ -165,8 +172,10 @@ async fn encode(
                         write_json(
                             stdout,
                             &Reply::Au {
+                                codec,
                                 qpc: clock.presentation_qpc(frame.presentation_time),
                                 keyframe: frame.keyframe,
+                                non_reference: frame.vp8.is_some_and(|metadata| metadata.non_reference),
                                 length: frame.bytes.len(),
                             },
                         ).await?;

@@ -4,7 +4,7 @@ use super::{
     frames::{RawFrame, Shared},
     gpu,
     process::Encoding,
-    Control, FrameTiming, Frames, Settings, Target, TargetKind,
+    Control, FrameTiming, Frames, Settings, Target, TargetKind, VideoCodec,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{
@@ -70,8 +70,8 @@ impl Capture {
             thread: Some(thread),
         })
     }
-    pub fn encode(&self, settings: Settings) -> Result<Encoding> {
-        self.frames.encode(settings)
+    pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
+        self.frames.encode(settings, codec)
     }
     pub fn control(&self) -> Control {
         self.frames.control()

@@ -1,7 +1,7 @@
 //! One source clock and latest GPU frame shared by WGC or a decoder.
 use super::{
     process::{self, Encoding},
-    CaptureClock, FrameTiming, Settings,
+    CaptureClock, FrameTiming, Settings, VideoCodec,
 };
 use anyhow::{ensure, Result};
 use std::{
@@ -139,14 +139,20 @@ impl Frames {
         self.shared.stop(error);
     }
     /// Allocate one independent encoder. Initialization failures arrive through recv().
-    pub fn encode(&self, settings: Settings) -> Result<Encoding> {
+    pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
         settings.validate()?;
         let mut state = self.shared.state.lock().unwrap();
         ensure!(!state.stop, "capture stopped");
         state
             .encodings
             .retain(|weak| weak.upgrade().is_some_and(|encoding| !encoding.stopped()));
-        let encoding = Encoding::start(settings, self.clock, self.timing, state.latest.clone())?;
+        let encoding = Encoding::start(
+            settings,
+            codec,
+            self.clock,
+            self.timing,
+            state.latest.clone(),
+        )?;
         state.encodings.push(Arc::downgrade(&encoding.shared));
         Ok(encoding)
     }
