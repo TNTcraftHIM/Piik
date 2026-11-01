@@ -53,6 +53,7 @@ export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
       microphone: z.boolean().default(false),
       shareVolume: z.boolean().optional(),
       sourceCancellation: z.boolean().optional(),
+      captureFailureDetails: z.boolean().optional(),
       // API availability, not Windows approval or observed border visibility.
       captureBorderControl: z.boolean().default(false),
       hardwareH264: z.boolean().default(false),
@@ -443,8 +444,13 @@ export const nativeEventSchema = z.discriminatedUnion("type", [
       ...eventBase,
       type: z.literal("share-ended"),
       failed: z.boolean(),
+      failure: z.object({
+        stage: z.string().regex(/^[a-z][a-z0-9-]{0,63}$/).optional(),
+        hresult: z.string().regex(/^0x[0-9a-f]{8}$/).optional(),
+        exitCode: z.number().int().min(-0x80000000).max(0xffffffff),
+      }).strict().optional(),
     })
-    .strict(),
+    .strict().refine(value => value.failed || !value.failure),
 ]);
 export type NativeClientEvent = z.infer<typeof nativeEventSchema>;
 

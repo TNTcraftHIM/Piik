@@ -714,6 +714,7 @@ func discoverNativeMedia(ctx context.Context, configuredPath string) nativeRunti
 			ShareVolume:                  true,
 			ProcessAudio:                 summary.ProcessAudio,
 			ProcessAudioExclusion:        summary.ProcessAudioExclusion,
+			CaptureFailureDetails:        true,
 			SystemAudio:                  summary.SystemAudio,
 			HardwareH264:                 summary.HardwareH264,
 			SoftwareVP8:                  summary.SoftwareVP8,

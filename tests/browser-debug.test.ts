@@ -20,6 +20,23 @@ afterEach(() => {
 });
 
 describe("opt-in Browser diagnostics", () => {
+  it("exports validated Native capture failure codes through the existing event recorder", async () => {
+    browser();
+    const debug = await import("../src/client/lib/debug");
+    const { nativeEventSchema } = await import("../src/client/native/wire");
+    const ended = { version: 10, type: "share-ended", shareId: "share_123456", failed: true,
+      failure: { stage: "windows-runtime", hresult: "0x887a0005", exitCode: 2 } };
+    debug.debugEvent("native", "event", nativeEventSchema.parse(ended));
+    const report = JSON.parse(await debug.exportBrowserDebug());
+    expect(report.events).toContainEqual(expect.objectContaining({ scope: "native", event: "event", details: ended }));
+    for (const failure of [{ ...ended.failure, detail: "private" }, { ...ended.failure, stage: "private/path" },
+      { ...ended.failure, hresult: "private" }, { ...ended.failure, exitCode: 2.5 }]) {
+      expect(nativeEventSchema.safeParse({ ...ended, failure }).success).toBe(false);
+    }
+    expect(nativeEventSchema.safeParse({ ...ended, failed: false }).success).toBe(false);
+    expect(nativeEventSchema.safeParse({ ...ended, failed: false, failure: undefined }).success).toBe(true);
+  });
+
   it("distinguishes Host input failure from a local stalled queue without exporting input authority or text", async () => {
     browser();
     const debug = await import("../src/client/lib/debug");

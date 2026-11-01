@@ -40,6 +40,33 @@ var (
 	captureHRESULT   = regexp.MustCompile(`^0x[0-9a-fA-F]{8}$`)
 )
 
+// Failure contains only validated helper codes, never stderr detail or identity.
+type Failure struct {
+	Stage    string `json:"stage,omitempty"`
+	HRESULT  string `json:"hresult,omitempty"`
+	ExitCode int    `json:"exitCode"`
+}
+
+type processFailure struct {
+	details Failure
+	cause   error
+}
+
+func (failure *processFailure) Error() string {
+	return fmt.Sprintf("native capture failed (stage=%s, hresult=%s): %v", failure.details.Stage, failure.details.HRESULT, failure.cause)
+}
+
+func (failure *processFailure) Unwrap() error { return failure.cause }
+
+func FailureDetails(err error) *Failure {
+	var failure *processFailure
+	if !errors.As(err, &failure) {
+		return nil
+	}
+	details := failure.details
+	return &details
+}
+
 type audioCaptureState struct {
 	State string `json:"state"`
 	Audio bool   `json:"audio"`
@@ -532,10 +559,10 @@ func startStreamWithEnvironment(
 		stopParent()
 		_ = trace.Close()
 		stage, hresult := captureFailureCodes(stderr.Bytes())
-		if waitErr != nil && (stage != "" || hresult != "") {
+		if waitErr != nil && (stage != "" || hresult != "" || ctx.Err() == nil) {
 			// Preserve validated failure codes and the exit cause for diagnostics
 			// and errors.Is/As, never the helper's raw detail.
-			stream.failure = fmt.Errorf("native capture failed (stage=%s, hresult=%s): %w", stage, hresult, waitErr)
+			stream.failure = &processFailure{details: Failure{Stage: stage, HRESULT: hresult, ExitCode: command.ProcessState.ExitCode()}, cause: waitErr}
 		}
 		logCaptureFailure(ctx, waitErr, command.ProcessState.ExitCode(), stderr.Bytes())
 		logger.DebugContext(ctx, "piik-client", "event", "capture-process-ended", "mode", mode,
