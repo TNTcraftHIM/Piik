@@ -2,7 +2,7 @@
 use super::{checked, AudioControl, AudioFrame, Clock, Pcm};
 use crate::capture::MicrophoneDevice;
 use anyhow::{anyhow, ensure, Context as _, Result};
-use cidre::{arc, at, av, cf, cm, core_audio, define_obj_type, ns, objc};
+use cidre::{arc, at, av, blocks, cf, cm, core_audio, define_obj_type, ns, objc};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
@@ -67,7 +67,7 @@ pub(super) async fn run(
     }))?;
     let format = input.output_format_for_bus(0);
     ensure!(
-        format.sample_rate() > 0.0 && format.channel_count() > 0,
+        format.absd().sample_rate > 0.0 && format.channel_count() > 0,
         "microphone has no input format"
     );
     let output = av::AudioFormat::standard_with_sample_rate_and_channels(48_000.0, 2)
@@ -160,13 +160,14 @@ impl Converted {
             .clock
             .project(cm::Clock::make_host_time_from_sys_units(time.host_time()))?;
         self.next_sample.get_or_insert(time.sample_time() as f64);
-        let capacity =
-            (f64::from(buffer.frame_len()) * 48_000.0 / self.input.sample_rate()).ceil() as u32 + 1;
+        let capacity = (f64::from(buffer.frame_len()) * 48_000.0 / self.input.absd().sample_rate)
+            .ceil() as u32
+            + 1;
         let mut output = av::AudioPcmBuf::with_format(&self.output, capacity)
             .context("microphone PCM buffer")?;
         let retained = buffer.retained();
         let mut supplied = false;
-        let mut input = av::AudioConverterInputBlock::new2(
+        let mut input = av::AudioConverterInputBlock::<blocks::Esc>::new2(
             move |_, status: &mut av::AudioConverterInputStatus| {
                 if supplied {
                     *status = av::AudioConverterInputStatus::NoDataNow;
@@ -191,8 +192,8 @@ impl Converted {
                 .context("microphone Float32 right channel")?;
             // Project the converter's next sample through this capture buffer's
             // hardware sample/host-time pair, including buffered resampler input.
-            let delta =
-                (self.next_sample.unwrap() - time.sample_time() as f64) / self.input.sample_rate();
+            let delta = (self.next_sample.unwrap() - time.sample_time() as f64)
+                / self.input.absd().sample_rate;
             let offset = Duration::from_secs_f64(delta.abs());
             let start = if delta < 0.0 {
                 captured - offset
@@ -212,7 +213,7 @@ impl Converted {
             }
             self.next_sample = Some(
                 self.next_sample.unwrap()
-                    + f64::from(output.frame_len()) * self.input.sample_rate() / 48_000.0,
+                    + f64::from(output.frame_len()) * self.input.absd().sample_rate / 48_000.0,
             );
             if status != av::audio::ConverterOutputStatus::HaveData {
                 break;
