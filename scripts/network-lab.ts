@@ -17,6 +17,7 @@ const cases = {
   prepared: "sequential NAT: real Core-required preparation → Native DataChannel",
   recovery: "established Native pair: 50s UDP loss + remap → replacement DataChannel within 30s",
   media: "calibrated prepared Native transit: Browser → Native root → Native probe → Browser decoded media",
+  "browser-relay": "Browser source → Native room → Browser relay → decoded viewer; 50s UDP loss and recovery",
 };
 const { values } = parseArgs({ options: {
   list: { type: "boolean" }, case: { type: "string" }, output: { type: "string" },
@@ -29,7 +30,7 @@ else if (values.worker) {
   else if (values.worker === "filter") console.log(JSON.stringify(await filteringProbe()));
   else throw Error("Unknown LAB worker");
 } else {
-  assert(values.case && Object.hasOwn(cases, values.case), "Choose --case ordinary|prepared|recovery|media (or --list)");
+  assert(values.case && Object.hasOwn(cases, values.case), "Choose --case ordinary|prepared|recovery|media|browser-relay (or --list)");
   assert.equal(process.platform, "linux", "Kernel controls run only on Linux");
   assert.equal(process.getuid?.(), 0, "Kernel controls need root for owned namespaces");
   await run(values.case as keyof typeof cases);
@@ -54,8 +55,9 @@ async function run(name: keyof typeof cases): Promise<void> {
   // Reuse this entry's worker with the same TypeScript loader (or bundled JS).
   const worker = (label: string, ns: string, task: string) => start(label, ns, process.execPath,
     [...process.execArgv, process.argv[1]!, "--worker", task]);
-  const browserCase = name === "ordinary" || name === "media";
+  const browserCase = name === "ordinary" || name === "media" || name === "browser-relay";
   const modes: NatMode[] = name === "media" ? ["sequential", "sequential", "preserve", "preserve"]
+    : name === "browser-relay" ? ["preserve", "preserve", "preserve", "preserve"]
     : name === "ordinary" ? ["preserve", "preserve", "preserve"]
     : name === "prepared" ? ["sequential", "sequential"] : ["preserve", "preserve"];
   const result: any = { case: name, scope: cases[name], passed: false,
@@ -63,7 +65,8 @@ async function run(name: keyof typeof cases): Promise<void> {
   let capture: LabProcess | undefined;
   try {
     network.setup(modes);
-    if (name === "media") for (const index of [2, 3]) network.exec(network.router(index), "nft", [
+    const fullConeNodes = name === "media" ? [2, 3] : name === "browser-relay" ? [1, 2, 3] : [];
+    for (const index of fullConeNodes) network.exec(network.router(index), "nft", [
       "add chain ip lab_nat prerouting { type nat hook prerouting priority dstnat; policy accept; }\n"
       + `add rule ip lab_nat prerouting iifname \"wan0\" ip daddr ${network.publicIP(index)} meta l4proto udp dnat to 10.71.${index + 1}.2\n`
       + "add rule inet lab_filter forward iifname \"wan0\" meta l4proto udp counter accept",
@@ -76,7 +79,7 @@ async function run(name: keyof typeof cases): Promise<void> {
       checkMapping(probe.records[0], mode); checkCalibration(probe.records[0], probe.records[0], "none");
       const filter = worker(`filter-${index}`, network.endpoint(index), "filter");
       assert.equal((await filter.done).code, 0);
-      const value = filter.records[0], fullCone = name === "media" && index >= 2;
+      const value = filter.records[0], fullCone = fullConeNodes.includes(index);
       assert(value.sameEndpoint && value.changedPort === fullCone && value.changedAddress === fullCone, "NAT filtering calibration");
       return { mapping: probe.records[0], filtering: value };
     }));
@@ -94,7 +97,7 @@ async function run(name: keyof typeof cases): Promise<void> {
     const domain = start("domain", network.wan, executable, ["domain", join(output, "domain")],
       { ...process.env, PIIK_CHANNEL_PORT: browserCase ? "9001" : "9000" });
     await domain.wait(() => domain.records.some(row => row.event?.type === "domain-ready"), signal);
-    if (browserCase) await media({ source, output, executable, network, start, signal, result }, name === "media");
+    if (browserCase) await media({ source, output, executable, network, start, signal, result }, name as "ordinary" | "media" | "browser-relay");
     else {
       start("native-host", network.endpoint(0), executable, ["host", join(output, "host")]);
       const reader = start("native-reader", network.endpoint(1), executable, ["participant"]);
@@ -133,7 +136,7 @@ async function run(name: keyof typeof cases): Promise<void> {
         result.packetFlows = await readPacketFlows(join(output, "wan.pcap"));
         result.counters = modes.map((_, index) => network.counters(index));
         if (result.passed) {
-          const edges = name === "ordinary" ? [[0, 1], [0, 2]] : name === "media" ? [[0, 2], [0, 1], [1, 3]] : [[0, 1]];
+          const edges = result.mediaEdges ?? (name === "ordinary" ? [[0, 1], [0, 2]] : name === "media" ? [[0, 2], [0, 1], [1, 3]] : [[0, 1]]);
           for (const [a, b] of edges) for (const [from, to] of [[a!, b!], [b!, a!]]) assert(result.packetFlows.some((flow: any) =>
             flow.source === network.publicIP(from) && flow.destination === network.publicIP(to) && (browserCase ? flow.kind === "rtp" : flow.kind === "other")), "Actual peer wire traffic must cross every selected edge");
         }
