@@ -13,10 +13,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md).
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
   Preserve the selected public-API str0m transport and its SDK controller;
-  replace its feature-patched sample builder with the incoming-source adapter.
+  finish the incoming-source adapter's platform acceptance without the
+  feature-patched sample builder.
   The probe-clock experiment did not demonstrate a recovery benefit. Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
-  after adapter/platform acceptance and gateway-fix integration. Keep the first
+  after adapter/platform acceptance. Keep the first
   version's accepted scope and the prototype isolated.
 - [ ] **Native H264 visual recovery.** Trace the observed unshaped startup budget
   shortfall and complete the healthy/constrained decoded-picture comparison.
@@ -53,12 +54,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
   Once upstream provides those changes, verify the consumers and remove the fork.
   The separately offered API extension is not required by Piik's dependency pin.
-- [ ] **Portmapper gateway scheduling.** Integrate and verify the approved
-  async gateway-lookup repair, then return to an official release after
-  [upstream #266](https://github.com/n0-computer/net-tools/issues/266) is resolved.
+- [ ] **Return portmapper to an upstream release.** Follow
+  [upstream #266](https://github.com/n0-computer/net-tools/issues/266), submit the
+  repair when the maintainer marks it ready, then verify an official release.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
-  owns the fixed source. The upstream PR awaits the maintainer's discussion and
-  `ready-for-pr` label.
+  owns the temporary pin and removal procedure.
 - [ ] **2.x: return Pion to an upstream pin.** Follow
   [upstream #3668](https://github.com/pion/webrtc/pull/3668). Once upstream
   includes equivalent H.264 profile matching, verify the receiver and forwarding

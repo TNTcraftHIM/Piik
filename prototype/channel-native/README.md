@@ -194,15 +194,17 @@ existing mapping timer/lifecycle checks and package notice collection.
 The selected private replacement uses released str0m 0.24.1 through public
 APIs, replacing the application GoogCc integration and async transport wrapper.
 Piik retains complete H264 access units, shared encoding ownership, coordinated
-UDP socket handoff and service-owned fixed Server UDP listeners. Media assembly,
-H264 parsing and profile helpers still use the RTC fork; it is not a fork-free
+UDP socket handoff and service-owned fixed Server UDP listeners. Codec parsing
+and profile helpers still use the bug-fix RTC pin; it is not a fork-free
 replacement. The `rust-crypto` provider also requires AWS-LC through its published
 dependency graph.
 
-Its frozen SDK, Android and transport evidence used the earlier `5efc2df` source,
-including the offered sample-building API. Those receipts retain that identity.
-The prepared selected-source integration is held until the required feature
-mechanisms move into Piik's adapter; it is not validated against this bug-only pin.
+The replacement's incoming-source adapter now owns complete-AU ordering and
+first-packet metadata over the public RTP/depacketizer interfaces. Its existing
+peer and Browser interoperability checks use the bug-only pin. Earlier frozen
+SDK, Android and transport receipts used `5efc2df`, including the sample-building API;
+they retain that identity. Remaining platform acceptance precedes promotion
+of the replacement into the formal runtime.
 
 `build/native-current-assembly/receipt.json` indexes the previous combined source
 and the replacement under `development.transportAlternative`, with separately
