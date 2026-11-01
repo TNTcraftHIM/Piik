@@ -249,9 +249,17 @@ impl RoomRuntime {
         access: RoomAccess,
         hidden: bool,
         password: Option<Option<String>>,
+        voice_bitrate: Option<u32>,
     ) -> Result<(), &'static str> {
         self.authorize(member, RoomPermission::Manage)?;
-        self.policy.update(name, icon, access, hidden, password)
+        if voice_bitrate.is_some_and(|bitrate| !crate::access::valid_audio_bitrate(bitrate)) {
+            return Err("invalid_audio_bitrate");
+        }
+        self.policy.update(name, icon, access, hidden, password)?;
+        if let Some(bitrate) = voice_bitrate {
+            self.policy.voice_bitrate = bitrate;
+        }
+        Ok(())
     }
 
     pub fn invite(&mut self, member: Member) -> Result<String, &'static str> {
@@ -1528,6 +1536,7 @@ mod tests {
             Default::default(),
             RoomAccess::Private,
             true,
+            None,
             None,
         )
         .unwrap();

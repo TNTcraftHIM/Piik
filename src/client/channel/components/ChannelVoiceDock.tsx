@@ -55,7 +55,7 @@ export function ChannelVoiceDock({ channel, selected, onSelect, onBrowse }: {
         <VoiceListeningButton deafened={deafened} disabled={!available} busy={busy} quiet
           onClick={() => run(channel.setDeafened(roomId, !deafened))} />
       </AudioVolumeMenu>
-      <ChannelVoiceSettings channel={channel} available={available} />
+      <ChannelVoiceSettings channel={channel} roomId={roomId} available={available} />
       <span className="c3-control-divider" />
       <Btn icon="door" title="voice.leave" hint="hint-voice-leave" draw="voice-membership" size="compact" quiet
         busy={busy} disabled={busy} onClick={() => run(channel.leaveVoice(roomId))} />

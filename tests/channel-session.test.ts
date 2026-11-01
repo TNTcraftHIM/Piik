@@ -1364,6 +1364,51 @@ test("room replies settle only the request belonging to that room", async () => 
   } finally { session.close(); }
 });
 
+test("room voice settings use the managed room update without changing local input or listening", async () => {
+  const { session, socket } = await setup();
+  try {
+    const previous = session.getSnapshot();
+    const saving = session.setRoomVoiceBitrate("first", 96_000);
+    const request = socket.sent.at(-1)!;
+    expect(request).toMatchObject({ type: "update_room", roomId: "first", voiceBitrate: 96_000 });
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId, result: { type: "done" } });
+    await saving;
+    expect(session.getSnapshot().voiceInput).toEqual(previous.voiceInput);
+    expect(session.getSnapshot().listeningVolume).toBe(previous.listeningVolume);
+    await expect(session.setRoomVoiceBitrate("first", 320_001)).rejects.toThrow("invalid_audio_bitrate");
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].canManage = false;
+    socket.receive({ type: "state", state });
+    await expect(session.setRoomVoiceBitrate("first", 32_000)).rejects.toThrow("forbidden");
+    expect(socket.sent.filter(command => command.type === "update_room")).toHaveLength(1);
+  } finally { session.close(); }
+});
+
+test("room voice sender ceilings update in place independently of source sound", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const transport = new ChannelTransport({ polite: true, iceServers: [],
+    send() {}, receive() {}, connected() {}, base() {}, failed() {} });
+  const pc = RoomPeerConnection.instances[0];
+  const voice = remoteStream("voice", [remoteTrack("audio")]);
+  const screen = remoteStream("source", [remoteTrack("audio")]);
+  const update = (voiceBitrate: number) => transport.setOutgoing(new Map([
+    ["voice", { kind: "voice", stream: voice, voiceBitrate }],
+    ["screen", { kind: "screen", stream: screen, profile: { ...QUALITY_PROFILES["1080p30"], maxAudioBitrate: 192_000 } }],
+  ]));
+  try {
+    update(96_000);
+    await vi.waitFor(() => expect(pc.senders.map(sender => sender.getParameters().encodings[0].maxBitrate)).toEqual([96_000, 192_000]));
+    const senders = [...pc.senders];
+    update(32_000);
+    await vi.waitFor(() => expect(pc.senders[0].getParameters().encodings[0].maxBitrate).toBe(32_000));
+    expect(pc.senders).toEqual(senders);
+    expect(senders[0].replaceTrack).not.toHaveBeenCalled();
+    expect(senders[1].getParameters().encodings[0].maxBitrate).toBe(192_000);
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { transport.close(); }
+});
+
 test.each([
   ["missing record", [2]],
   ["duplicate sequence", [2, 2]],
@@ -3586,7 +3631,7 @@ test("portable import admits the archived identity through Welcome before commit
     admission.receive({ type: "ack", requestId: registration.requestId });
     const restored = structuredClone(state);
     restored.channel.rooms.push({ id: "imported", name: "First", creatorId: "archived-user", icon: "couch", access: "public", hidden: false, hasPassword: false,
-      authorized: true, canManage: true, participantSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
+      authorized: true, canManage: true, voiceBitrate: 64_000, participantSessionIds: [], available: true, reading: false, capabilities: { attachments: true },
       delivery: { hostSessionId: "new-endpoint", bindingId: "imported-binding", nextHops: {} } });
     admission.receive({ type: "state", state: restored });
     await vi.waitFor(() => expect(admission.sent.some(command => command.type === "browse" && command.roomId === "imported")).toBe(true));

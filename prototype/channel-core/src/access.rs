@@ -24,9 +24,19 @@ pub struct RoomState {
     pub creator_id: Uuid,
     pub access: RoomAccess,
     pub hidden: bool,
+    #[serde(default = "default_voice_bitrate")]
+    pub voice_bitrate: u32,
     password_hash: Option<String>,
     invite_hash: Option<[u8; 32]>,
     pub grants: BTreeSet<Uuid>,
+}
+
+pub(crate) fn default_voice_bitrate() -> u32 {
+    64_000
+}
+
+pub(crate) fn valid_audio_bitrate(bitrate: u32) -> bool {
+    (6_000..=320_000).contains(&bitrate)
 }
 
 pub fn digest(secret: &str) -> [u8; 32] {
@@ -37,6 +47,7 @@ impl RoomState {
     /// Validate retained policy without changing its password or invitation.
     pub fn validate(&self) -> Result<(), &'static str> {
         if !crate::wire::valid_id(&self.id)
+            || !valid_audio_bitrate(self.voice_bitrate)
             || self.creator_id.is_nil()
             || crate::wire::title(&self.name).as_deref() != Some(self.name.as_str())
             || self.grants.iter().any(Uuid::is_nil)
@@ -68,6 +79,7 @@ impl RoomState {
             creator_id,
             access,
             hidden,
+            voice_bitrate: default_voice_bitrate(),
             password_hash: None,
             invite_hash: None,
             grants: BTreeSet::new(),
@@ -184,6 +196,7 @@ impl RoomState {
             access: self.access,
             hidden: self.hidden,
             has_password: self.password_hash.is_some(),
+            voice_bitrate: self.voice_bitrate,
             authorized,
             can_manage,
             available: true,

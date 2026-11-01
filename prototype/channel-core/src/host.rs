@@ -22,6 +22,8 @@ pub struct RoomSummary {
     pub access: RoomAccess,
     pub hidden: bool,
     pub has_password: bool,
+    #[serde(default = "crate::access::default_voice_bitrate")]
+    pub voice_bitrate: u32,
 }
 
 impl RoomSummary {
@@ -35,6 +37,7 @@ impl RoomSummary {
             access: view.access,
             hidden: view.hidden,
             has_password: view.has_password,
+            voice_bitrate: view.voice_bitrate,
         }
     }
 }
@@ -202,9 +205,10 @@ impl RoomRuntime {
                 access,
                 hidden,
                 password,
+                voice_bitrate,
                 ..
             } => {
-                self.update(member, name, icon, access, hidden, password)?;
+                self.update(member, name, icon, access, hidden, password, voice_bitrate)?;
                 op.policy_changed = true;
             }
             Command::EnterRoom {
@@ -300,7 +304,7 @@ mod tests {
         );
         for (request, expected) in [
             (
-                r#"{"type":"update_room","icon":"couch","roomId":"private","name":"Renamed","access":"private","hidden":true}"#,
+                r#"{"type":"update_room","icon":"couch","roomId":"private","name":"Renamed","access":"private","hidden":true,"voiceBitrate":96000}"#,
                 true,
             ),
             (
@@ -336,6 +340,69 @@ mod tests {
             assert!(host.dispatch(input).unwrap().policy.is_some());
             let output = host.finish(None).unwrap();
             assert_eq!(output.projection.summary.has_password, expected);
+            assert_eq!(output.projection.summary.voice_bitrate, 96_000);
+            let restored: RoomState =
+                serde_json::from_str(&serde_json::to_string(host.policy()).unwrap()).unwrap();
+            assert_eq!(restored.voice_bitrate, 96_000);
+        }
+    }
+
+    #[test]
+    fn room_voice_bitrate_requires_manage_and_rejects_invalid_without_policy_changes() {
+        let owner = Member {
+            user_id: Uuid::new_v4(),
+            participates: true,
+            domain_owner: false,
+        };
+        let other = Member {
+            user_id: Uuid::new_v4(),
+            ..owner
+        };
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "voice".into(),
+                "Voice".into(),
+                Default::default(),
+                owner.user_id,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        assert_eq!(room.policy().voice_bitrate, 64_000);
+        for (member, bitrate, expected) in [
+            (other, 96_000, "forbidden"),
+            (owner, 5_999, "invalid_audio_bitrate"),
+            (owner, 320_001, "invalid_audio_bitrate"),
+        ] {
+            assert_eq!(
+                room.update(
+                    member,
+                    "Changed".into(),
+                    Default::default(),
+                    RoomAccess::Public,
+                    false,
+                    None,
+                    Some(bitrate)
+                ),
+                Err(expected)
+            );
+            assert_eq!(room.policy().name, "Voice");
+            assert_eq!(room.policy().voice_bitrate, 64_000);
+        }
+        for bitrate in [6_000, 320_000] {
+            room.update(
+                owner,
+                "Voice".into(),
+                Default::default(),
+                RoomAccess::Public,
+                false,
+                None,
+                Some(bitrate),
+            )
+            .unwrap();
+            assert_eq!(room.policy().voice_bitrate, bitrate);
         }
     }
 }

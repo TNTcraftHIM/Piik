@@ -33,6 +33,7 @@ export class ChannelMedia {
   private peers = new Map<string, Peer>();
   private publications: ChannelSnapshot["publications"] = [];
   private subscriptions: ChannelSnapshot["subscriptions"] = [];
+  private rooms: ChannelSnapshot["channel"]["rooms"] = [];
   private local = new Map<string, { stream: MediaStream; profile?: QualityProfile }>();
   private streams = new Map<string, MediaStream>();
   private screenInputs = new Map<string, ChannelScreenInput[]>();
@@ -59,6 +60,7 @@ export class ChannelMedia {
   }
 
   update(sessionId: string, state: ChannelSnapshot): void {
+    this.rooms = state.channel.rooms;
     this.publications = state.publications;
     this.subscriptions = state.subscriptions;
     const plans = new Map(state.pairs.map(plan => [plan.id, plan]));
@@ -348,7 +350,8 @@ export class ChannelMedia {
           if (input && !input.failed) stream = input.stream;
           break;
         }
-        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile });
+        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile,
+          voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
         if (stream && flow.inputFlowId !== null) {
           const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");
           if (tracks.length) relayAudio.set(flow.inputFlowId, tracks);

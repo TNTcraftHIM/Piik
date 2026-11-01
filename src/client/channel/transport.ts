@@ -14,6 +14,7 @@ export interface OutgoingMedia {
   kind: ChannelPublication["kind"];
   stream: MediaStream | null;
   profile?: QualityProfile;
+  voiceBitrate?: number;
 }
 
 interface OutgoingBinding {
@@ -21,6 +22,7 @@ interface OutgoingBinding {
   stream: MediaStream;
   senders: RTCRtpSender[];
   failed: boolean;
+  audioBitrate?: number;
   rejectedTracks?: MediaStreamTrack[];
   replacement?: MediaStreamTrack[];
 }
@@ -254,13 +256,21 @@ export class ChannelTransport {
       for (const track of previous.stream.getTracks()) previous.stream.removeTrack(track);
       this.sending.delete(id);
     }
-    for (const [id, { kind, stream, profile }] of streams) {
+    for (const [id, { kind, stream, profile, voiceBitrate }] of streams) {
       let output = this.sending.get(id);
       if (!output) {
         output = { kind, stream: new MediaStream(), senders: [], failed: false };
         this.sending.set(id, output);
       }
       if (output.failed) continue;
+      const bitrate = kind === "voice" ? voiceBitrate ?? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(profile?.maxAudioBitrate);
+      if (output.audioBitrate !== bitrate) {
+        output.audioBitrate = bitrate;
+        const owner = output;
+        for (const sender of owner.senders) if (sender.track?.kind === "audio") {
+          this.enqueue(() => this.applyAudioBitrate(id, owner, sender));
+        }
+      }
       const tracks = stream?.getTracks() ?? [];
       if (output.replacement || output.senders.some(sender => sender.track && tracks.some(track =>
         track.kind === sender.track!.kind && track !== sender.track))) {
@@ -290,8 +300,7 @@ export class ChannelTransport {
                 retained.push(added);
                 owner.senders.push(added);
                 if (track.kind === "audio") {
-                  try { await configureAudioSender(added, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(profile?.maxAudioBitrate)); }
-                  catch (error) { console.warn("Channel audio bitrate could not be applied", { flowId: id }, error); }
+                  await this.applyAudioBitrate(id, owner, added);
                 }
               }
             }
@@ -333,14 +342,7 @@ export class ChannelTransport {
             output.senders.push(sender);
             if (track.kind === "audio") {
               const owner = output;
-              this.enqueue(async () => {
-                if (this.sending.get(id) !== owner || !owner.senders.includes(sender)) return;
-                try {
-                  await configureAudioSender(sender, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(profile?.maxAudioBitrate));
-                } catch (error) {
-                  console.warn("Channel audio bitrate could not be applied", { flowId: id }, error);
-                }
-              });
+              this.enqueue(() => this.applyAudioBitrate(id, owner, sender));
             }
             if (video && profile) {
               const owner = output;
@@ -372,6 +374,12 @@ export class ChannelTransport {
       });
     }
     return released;
+  }
+
+  private async applyAudioBitrate(id: string, owner: OutgoingBinding, sender: RTCRtpSender): Promise<void> {
+    if (this.closed || this.sending.get(id) !== owner || !owner.senders.includes(sender)) return;
+    try { await configureAudioSender(sender, owner.audioBitrate!); }
+    catch (error) { console.warn("Channel audio bitrate could not be applied", { flowId: id }, error); }
   }
 
   private async applyVideoProfile(id: string, owner: OutgoingBinding, sender: RTCRtpSender, profile: QualityProfile): Promise<void> {

@@ -1,12 +1,14 @@
 import { useId, useRef, useState } from "react";
 import { MicrophoneSettings } from "../../components/living/MicrophoneSettings";
+import { AudioBitrateControl } from "../../components/living/QualityPresets";
+import { MAX_AUDIO_SEND_BITRATE } from "../../media/quality";
 import { Btn } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import "./channel-voice-settings.css";
 
-export function ChannelVoiceSettings({ channel, available }: { channel: ChannelController; available: boolean }) {
+export function ChannelVoiceSettings({ channel, roomId, available }: { channel: ChannelController; roomId: string; available: boolean }) {
   const { t } = useCopy();
   const id = useId();
   const trigger = useRef<HTMLSpanElement>(null), panel = useRef<HTMLDivElement>(null);
@@ -14,6 +16,7 @@ export function ChannelVoiceSettings({ channel, available }: { channel: ChannelC
   useAnchoredPopover(trigger, panel, { side: "above" });
   const busy = channel.pending.has("voice-input") || [...channel.pending].some(key => key.startsWith("voice:"));
   const enabled = channel.state?.publications.some(publication => publication.kind === "voice" && publication.sessionId === channel.sessionId) ?? false;
+  const room = channel.state?.channel.rooms.find(room => room.id === roomId);
   const configure = (settings: Parameters<ChannelController["configureVoiceInput"]>[0]) => { void channel.configureVoiceInput(settings).catch(() => {}); };
   return <>
     <span ref={trigger}>
@@ -27,6 +30,9 @@ export function ChannelVoiceSettings({ channel, available }: { channel: ChannelC
         loadDevices={channel.microphones} deviceId={channel.voiceInput.deviceId} onDevice={deviceId => configure({ deviceId })}
         volume={channel.voiceInput.volume} onVolume={channel.setInputVolume}
         voiceProcessing={channel.voiceInput.voiceProcessing} onVoiceProcessing={voiceProcessing => configure({ voiceProcessing })} />
+      {room?.canManage && <AudioBitrateControl purpose="voice" value={room.voiceBitrate} max={MAX_AUDIO_SEND_BITRATE}
+        disabled={!available || channel.pending.has(`room:${roomId}`)}
+        onChange={bitrate => { void channel.setRoomVoiceBitrate(roomId, bitrate).catch(() => {}); }} />}
     </div>
   </>;
 }

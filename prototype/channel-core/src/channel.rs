@@ -509,6 +509,9 @@ impl Channel {
         {
             return Err("invalid_room_name");
         }
+        if !crate::access::valid_audio_bitrate(summary.voice_bitrate) {
+            return Err("invalid_audio_bitrate");
+        }
         if !self.remote.contains_key(&summary.id) && self.remote.len() >= 32 {
             return Err("room_limit");
         }

@@ -12,6 +12,7 @@ export const userSchema = z.object({ id, name: z.string().max(40), roles: z.arra
 export const roomSchema = z.object({
   id, name: identityNameSchema, icon: identityIconSchema, creatorId: id, access: z.enum(["public", "private"]),
   hidden: z.boolean(), hasPassword: z.boolean(), authorized: z.boolean(), canManage: z.boolean(),
+  voiceBitrate: z.number().int().min(6_000).max(320_000).default(64_000),
   members: z.array(id).optional(),
   participantSessionIds: z.array(id),
   available: z.boolean(), reading: z.boolean(),
@@ -79,7 +80,7 @@ export type ChannelFileKey = z.infer<typeof fileKeySchema>;
 export type ChannelFilePlan = z.infer<typeof filePlanSchema>;
 export type ChannelUser = z.infer<typeof userSchema>;
 export type ChannelRoom = z.infer<typeof roomSchema>;
-export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true });
+export const roomSummarySchema = roomSchema.pick({ id: true, name: true, icon: true, creatorId: true, access: true, hidden: true, hasPassword: true, voiceBitrate: true });
 export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
@@ -100,6 +101,7 @@ export type ConversationReply = ConversationAddress & { record:
 export interface DomainSettings { name: string; icon: string }
 export interface RoomSettings extends DomainSettings {
   access: "public" | "private"; hidden: boolean; password?: string | null;
+  voiceBitrate?: number;
 }
 export type ChannelCommand =
   | { type: "join"; name: string; signingKey: number[]; credential?: string; key?: string; roomId?: string; sessionId?: string }

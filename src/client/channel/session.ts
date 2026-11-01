@@ -1042,6 +1042,13 @@ export class ChannelSession {
   }, false);
 
   updateRoom = (roomId: string, settings: RoomSettings): Promise<void> => this.action(`room:${roomId}`, () => this.request({ type: "update_room", roomId, ...settings }));
+
+  setRoomVoiceBitrate = (roomId: string, voiceBitrate: number): Promise<void> => {
+    const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
+    if (!room?.canManage) return Promise.reject(new Error("forbidden"));
+    if (!Number.isInteger(voiceBitrate) || voiceBitrate < 6_000 || voiceBitrate > 320_000) return Promise.reject(new Error("invalid_audio_bitrate"));
+    return this.updateRoom(roomId, { name: room.name, icon: room.icon, access: room.access, hidden: room.hidden, voiceBitrate });
+  };
   enterRoom = (roomId: string, password: string): Promise<void> => this.action(`enter:${roomId}`, () => this.request({ type: "enter_room", roomId, password }));
   createRoomInvite = (roomId: string): Promise<string> => this.action(`invite:${roomId}`, async () => {
     let key: string | undefined;

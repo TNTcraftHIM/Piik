@@ -66,6 +66,8 @@ pub enum Command {
         icon: IdentityIcon,
         access: RoomAccess,
         hidden: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        voice_bitrate: Option<u32>,
         #[serde(
             default,
             deserialize_with = "nullable_password",
@@ -392,6 +394,7 @@ pub struct Room {
     pub access: RoomAccess,
     pub hidden: bool,
     pub has_password: bool,
+    pub voice_bitrate: u32,
     pub authorized: bool,
     pub can_manage: bool,
     pub available: bool,
