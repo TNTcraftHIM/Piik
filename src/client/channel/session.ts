@@ -1157,8 +1157,9 @@ export class ChannelSession {
 
   cancelScreenSelection = async (roomId: string): Promise<void> => {
     const share = this.screenShares.get(roomId);
-    if (!share?.selection) return;
-    this.finishScreenSelection(roomId, share);
+    if (!share || !share.selection && (!share.microphoneChange || this.local.has(share.id))) return;
+    if (share.selection) this.finishScreenSelection(roomId, share);
+    else share.requestedMicrophone = undefined;
     await this.app?.cancelCapture(share.id);
     this.patch({});
   };
@@ -1277,6 +1278,7 @@ export class ChannelSession {
     const share = owner?.[1];
     const actual = this.sourceMicrophone(publicationId);
     if (!share || share.selection || !actual?.available) return Promise.reject(new Error("microphone_unavailable"));
+    if (share.microphoneChange && !share.requestedMicrophone) return share.microphoneChange;
     const next = { ...actual.requested, ...settings };
     if (!Number.isFinite(next.volume) || next.volume < 0 || next.volume > 2) return Promise.reject(new Error("invalid_audio_settings"));
     share.requestedMicrophone = next;
@@ -1287,7 +1289,8 @@ export class ChannelSession {
       && (local ? this.local.get(publicationId) === local : this.app === app && !!app?.screens.has(publicationId));
     share.microphoneChange = this.action(`source-microphone:${publicationId}`, async () => {
       do {
-        const wanted = share.requestedMicrophone!;
+        const wanted = share.requestedMicrophone;
+        if (!wanted) throw new DOMException("Capture cancelled", "AbortError");
         try {
           if (local?.kind === "screen" && local.audio) {
             const input = { deviceId: wanted.deviceId, volume: wanted.volume,
@@ -1307,7 +1310,7 @@ export class ChannelSession {
             if (!current()) throw new DOMException("Capture cancelled", "AbortError");
           }
         } catch (error) {
-          if (current() && wanted !== share.requestedMicrophone) continue;
+          if (current() && share.requestedMicrophone && wanted !== share.requestedMicrophone) continue;
           throw error;
         }
         this.patch({});
