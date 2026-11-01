@@ -20,10 +20,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   Browser/Native decoded-media combinations through the maintained Rust process runner
   in the existing [network laboratory](./research/network-lab.md), exercising calibrated
   NAT and failure/recovery through current room and transport owners.
-- [ ] **3.0 Room backup UI acceptance.** Verify the completed export/import
-  through the normal Room controls and real Browser storage: restore an older
-  archive and confirm that the renewed authoritative reading replaces newer
-  cached history. Domain UI acceptance and storage-owner controls are complete.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
