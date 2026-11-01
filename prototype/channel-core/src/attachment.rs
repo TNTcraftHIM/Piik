@@ -16,10 +16,14 @@ pub struct AttachmentDescriptor {
 pub struct AttachmentLimits {
     pub max_file_bytes: u64,
     pub max_attachments_per_message: usize,
+    pub max_retained_bytes: u64,
+    pub max_retained_files: usize,
 }
 pub const ATTACHMENT_LIMITS: AttachmentLimits = AttachmentLimits {
     max_file_bytes: 16 * 1024 * 1024,
     max_attachments_per_message: 8,
+    max_retained_bytes: 256 * 1024 * 1024,
+    max_retained_files: 256,
 };
 impl AttachmentDescriptor {
     pub fn validate(&self) -> Result<(), &'static str> {
