@@ -17,8 +17,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   scope and the prototype isolated.
 - [ ] **3.0 controlled network acceptance.** Connect the current Rust endpoints
   to the existing [network laboratory](./research/network-lab.md) for the
-  Browser/Native decoded-media combinations. Finish slow-signaling preparation
-  coordination and exercise calibrated NAT and failure/recovery through current
+  Browser/Native decoded-media combinations. Exercise calibrated NAT and
+  failure/recovery through current
   room and transport owners.
 - [ ] **3.0 portable domain and room backups.** Implement export/import under the
   [data ownership and recovery model](./research/channel-storage-and-identity.md#persistence-and-recovery):

@@ -460,6 +460,19 @@ and replacement path. Browser disconnection events retain Browser semantics.
 Short interruptions remain inside the SDK's existing checks; no second recovery
 timer is added.
 
+For delayed Native preparation, the adapter reuses the
+[triggered-check principle](https://www.rfc-editor.org/rfc/rfc8445.html#section-7.3.1.4):
+an authenticated incoming request can trigger the local check. One reader keeps
+answering until both matching responses and the existing mutual completion
+messages arrive. Initial sends and triggered retries share the existing
+64-request budget, with at most 64 replies and eight sockets, under the same
+five-second deadline. A calibrated one-second signaling delay and a dropped first
+triggered request now complete without a new handshake or SDK patch.
+Native clients and the App/domain HTTP and HTTPS listeners also disable Nagle
+through their existing public socket APIs. TCP-header controls isolated a
+Ping/ACK delay; the matched change removed approximately 0.94 seconds of extra
+probe-start skew while preserving the injected network delay.
+
 ### External Forwarding And Participant Relays
 
 The October 19 review and isolated Linux check of
