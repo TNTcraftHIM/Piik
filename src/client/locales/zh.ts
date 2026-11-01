@@ -314,6 +314,8 @@ export const zh = {
   "gate.malformed": "房间号格式不正确",
   "gate.malformedHint": "请输入 1000 至 9999 的四位房间号",
   "gate.unavailableRoute": "无法访问",
+  "startup.failed": "页面未能加载",
+  "startup.retry": "请刷新页面后重试。",
 
   "join.title": "加入房间",
   "join.hint": "输入 {site} 的房间号",

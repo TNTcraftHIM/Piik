@@ -314,6 +314,8 @@ export const en: Record<CopyKey, string> = {
   "gate.malformed": "Invalid room code format",
   "gate.malformedHint": "Enter a four-digit room code between 1000 and 9999",
   "gate.unavailableRoute": "Unavailable",
+  "startup.failed": "Page couldn’t load",
+  "startup.retry": "Refresh the page to try again.",
 
   "join.title": "Join a room",
   "join.hint": "Enter a room code for {site}",
