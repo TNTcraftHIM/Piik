@@ -1,3 +1,4 @@
+use anyhow::Context;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -10,6 +11,7 @@ use axum::{
 };
 use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
 use piik_channel_core::{
+    backup::DomainMetadata,
     storage,
     wire::{Event, Request},
     Authority, Effects,
@@ -69,7 +71,7 @@ impl Hub {
             .any(|(target, event)| *target == connection && matches!(event, Event::Error { .. }));
         if metadata && !failed {
             let checkpoint =
-                serde_json::to_value(self.authority.export_state()).expect("typed metadata");
+                serde_json::to_value(self.authority.export_backup()).expect("typed metadata");
             if self.storage.lock().unwrap().save(&checkpoint).is_err() {
                 if room_projection {
                     self.apply(effects);
@@ -287,8 +289,8 @@ fn now() -> u64 {
 impl Domain {
     pub fn open(
         directory: &Path,
-        owner: &str,
-        invite: &str,
+        owner_seed: &str,
+        invite_seed: &str,
         origin: String,
         invitation_origin: Option<String>,
         ice_servers: Vec<serde_json::Value>,
@@ -305,15 +307,17 @@ impl Domain {
         std::fs::create_dir_all(directory)?;
         let mut storage = storage::Storage::open(&directory.join("channel.sqlite"))
             .map_err(anyhow::Error::from_boxed)?;
-        let mut authority =
-            Authority::new(owner.into(), invite.into(), ice_servers).map_err(anyhow::Error::msg)?;
-        if let Some(checkpoint) = storage.load().map_err(anyhow::Error::from_boxed)? {
-            authority
-                .import_state(serde_json::from_value(checkpoint)?)
-                .map_err(anyhow::Error::msg)?;
-        }
+        let authority = match storage.load().map_err(anyhow::Error::from_boxed)? {
+            Some(checkpoint) => serde_json::from_value::<DomainMetadata>(checkpoint)
+                .context("unsupported_domain_checkpoint: preserve the existing data and use a supported backup or a fresh directory")?
+                .into_authority(ice_servers)
+                .map_err(anyhow::Error::msg)?,
+            None => Authority::new(owner_seed.into(), invite_seed.into(), ice_servers)
+                .map_err(anyhow::Error::msg)
+                .context("A new domain requires distinct owner and invitation seed keys")?,
+        };
         storage
-            .save(&serde_json::to_value(authority.export_state())?)
+            .save(&serde_json::to_value(authority.export_backup())?)
             .map_err(anyhow::Error::from_boxed)?;
         Ok(Domain {
             hub: Arc::new(Mutex::new(Hub {
@@ -343,6 +347,16 @@ impl Domain {
             .authority
             .owner_name()
             .map(str::to_owned)
+    }
+
+    /// Private local bootstrap only; this value never enters client state.
+    pub fn owner_key(&self) -> String {
+        self.hub
+            .lock()
+            .unwrap()
+            .authority
+            .owner_admission_key()
+            .to_owned()
     }
 
     pub async fn serve(

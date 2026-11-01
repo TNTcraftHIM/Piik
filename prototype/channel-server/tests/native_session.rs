@@ -831,6 +831,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
 #[tokio::test]
 async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() {
     use piik_channel_core::conversation::SessionSigner;
+    use piik_channel_core::{backup::DomainMetadata, storage::Storage};
     use piik_channel_prototype::{app, web};
     use rtc_stun::{
         fingerprint::FINGERPRINT,
@@ -949,7 +950,21 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         assert_eq!(target.scheme(), "http");
         assert_eq!(target.host_str(), Some("127.0.0.1"));
         let identity = saved_identity();
-        let owner = identity["owner"].as_str().unwrap();
+        let metadata: DomainMetadata = serde_json::from_value(
+            Storage::open(&folder.join("domain/channel.sqlite"))
+                .unwrap()
+                .load()
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        let owner = metadata.owner_key.as_str();
+        if attempt == 1 {
+            assert_ne!(
+                identity["owner"], owner,
+                "the original seed is no longer active"
+            );
+        }
         assert!(
             url::form_urlencoded::parse(target.fragment().unwrap().as_bytes())
                 .any(|(key, value)| key == "owner" && value == owner)
@@ -1012,7 +1027,7 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         let (mut guest, _) = connect_async(upgrade).await.unwrap();
         guest
             .send(Message::Text(
-                json!({"type":"join","name":"LAN guest", "key":identity["invite"],
+                json!({"type":"join","name":"LAN guest", "key":metadata.invite_key,
             "signingKey":SessionSigner::from_seed([31;32]).signing_key()})
                 .to_string()
                 .into(),
@@ -1115,6 +1130,18 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         retired_listeners.push(TcpListener::bind(lan_address).await.unwrap());
         retired_listeners.push(TcpListener::bind(address).await.unwrap());
         retired_stun.push(UdpSocket::bind(stun_address).await.unwrap());
+        if attempt == 0 {
+            // Emulate replacement of the stopped Domain's hosting record. The
+            // next launcher URL and real guest admission must use these keys,
+            // while App namespace and original creation seeds remain unchanged.
+            let mut restored = metadata;
+            restored.owner_key = Uuid::new_v4().to_string();
+            restored.invite_key = Uuid::new_v4().to_string();
+            Storage::open(&folder.join("domain/channel.sqlite"))
+                .unwrap()
+                .save(&serde_json::to_value(restored).unwrap())
+                .unwrap();
+        }
     }
     drop(retired_listeners);
     drop(retired_stun);

@@ -24,7 +24,6 @@ pub async fn serve_server(
     listener: tokio::net::TcpListener,
     domain: Domain,
     directory: PathBuf,
-    owner: String,
     routes: axum::Router,
     udp: Arc<ServerUdp>,
     stop: impl Future<Output = ()>,
@@ -34,7 +33,7 @@ pub async fn serve_server(
         url: format!("ws://{}/prototype/channel", listener.local_addr()?),
         origin: domain.origin().into(),
         name: domain.owner_name().unwrap_or_else(|| "Piik Server".into()),
-        key: Some(owner),
+        key: Some(domain.owner_key()),
         credential: None,
         server_udp: Some(udp),
     };

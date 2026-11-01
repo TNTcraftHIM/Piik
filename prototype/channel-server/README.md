@@ -35,17 +35,18 @@ first, and rebuild it after changing the shared Rust core. From the repository
 root, start Rust in one terminal:
 
 ```powershell
-$env:PIIK_CHANNEL_OWNER_KEY = "<private stable owner key>"
-$env:PIIK_CHANNEL_INVITE_KEY = "<different private invitation key>"
+$env:PIIK_CHANNEL_OWNER_KEY = "<private owner seed for a new domain>"
+$env:PIIK_CHANNEL_INVITE_KEY = "<different invitation seed for a new domain>"
 $env:PIIK_CHANNEL_WEB_DIR = (Resolve-Path build/channel-web).Path
 $env:PIIK_CHANNEL_WEB_ORIGIN = "http://127.0.0.1:8790"
 cargo +1.91.0 run --manifest-path prototype/channel-server/Cargo.toml
 ```
 
-The values above are placeholders. Supply independently generated keys through
-your local environment and keep them stable when reopening persistent data.
-Keep them out of committed files and saved logs. Server does not print key-bearing URLs or
-store the raw startup keys in SQLite.
+The values above are placeholders. Supply independently generated seeds through
+your local environment when creating a domain. Thereafter the domain database
+owns its admission keys; changing or removing these environment variables does
+not rotate them. Keep both the keys and hosting backups private and out of
+committed files and saved logs. Server does not print key-bearing URLs.
 
 In another terminal, start the development interface:
 
@@ -308,11 +309,11 @@ stop, unwatch and leave take effect locally and are reconciled on reconnect.
 Saved data belongs to its domain or room runtime. Server defaults to
 `data/channel.sqlite` beside its executable. `PIIK_CHANNEL_DATA_DIR` chooses a
 different real directory; point it at an existing source-run directory to reuse
-that data. The domain checkpoint stores catalog summaries and
-identities; `rooms/living.sqlite`, `rooms/studio.sqlite` and `rooms/quiet.sqlite`
+that data. The domain checkpoint stores catalog summaries, identities and its
+owner/invitation admission keys; `rooms/living.sqlite`, `rooms/studio.sqlite` and `rooms/quiet.sqlite`
 each store that room's policy, grants and confirmed history. Existing room names
 and policy are restored rather than overwritten by startup defaults. The Native
-endpoint authenticates with the configured owner key and restored owner identity;
+endpoint authenticates with that domain's saved owner key and restored owner identity;
 it does not create a new user on every service start.
 Browser-owned room policy and history stay in that Browser's IndexedDB; the
 domain retains only its directory summary. Messages
@@ -320,11 +321,12 @@ commit individually: their room order, send identity and attachment descriptions
 are saved in one transaction before confirmation or distribution. A retry returns
 the original confirmed message without rebroadcasting it, including after restart.
 Storage failure leaves the send unconfirmed and preserves existing records.
-User credentials/invitations are stored as digests and room passwords as password
-hashes. Sessions, captures and routes are not restored after a process restart.
+User credentials and room invitations are stored as digests, and room passwords
+as password hashes. The domain's bootstrap keys are private hosting data.
+Sessions, captures and routes are not restored after a process restart.
 
-This unpublished prototype uses domain checkpoint version 4 and room SQLite
-schema version 3. Older experimental
+This unpublished prototype uses hosting metadata version 1 around domain
+authority version 4, and room SQLite schema version 3. Older experimental
 checkpoints are rejected rather than silently discarding their history. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
 

@@ -34,12 +34,19 @@ pub struct DomainMetadata {
 
 impl DomainMetadata {
     pub fn validate(&self) -> Result<(), &'static str> {
+        self.clone().into_authority(vec![]).map(|_| ())
+    }
+
+    pub fn into_authority(
+        self,
+        ice_servers: Vec<serde_json::Value>,
+    ) -> Result<Authority, &'static str> {
         if self.version != 1 {
             return Err("unsupported_backup_version");
         }
-        let mut authority =
-            Authority::new(self.owner_key.clone(), self.invite_key.clone(), vec![])?;
-        authority.import_state(self.state.clone())
+        let mut authority = Authority::new(self.owner_key, self.invite_key, ice_servers)?;
+        authority.import_state(self.state)?;
+        Ok(authority)
     }
 }
 

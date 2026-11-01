@@ -222,13 +222,14 @@ async fn run(
     }
     let permission = Arc::new(Permission::new(identity.namespace));
     app.registry.lock().await.local = Some((origin.clone(), permission.clone()));
+    let owner_key = domain.owner_key();
     let (stop_domain, mut domain_stopped) = watch::channel(false);
     let mut service = tokio::spawn(domain.serve_with_https(http, https, routes, async move {
         let _ = domain_stopped.changed().await;
     }));
     progress.send_replace(Progress::Ready(format!(
         "{origin}/?piik-client-port={}#owner={}&piik-client=1",
-        app.port, identity.owner
+        app.port, owner_key
     )));
     let (result, finished_service) = tokio::select! {
         _ = stopped.changed() => (Ok(()), None),

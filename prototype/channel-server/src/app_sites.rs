@@ -14,6 +14,7 @@ const APPROVAL_SCOPE: i64 = 2;
 
 #[derive(Deserialize, Serialize)]
 pub(super) struct LocalIdentity {
+    // Seeds for first creation only. The opened Domain owns its active keys.
     pub owner: String,
     pub invite: String,
     pub namespace: Uuid,

@@ -97,6 +97,21 @@ impl Authority {
         state
     }
 
+    /// Private hosting data for the domain's storage owner, never a client event.
+    pub fn export_backup(&self) -> backup::DomainMetadata {
+        backup::DomainMetadata {
+            version: 1,
+            state: self.export_state(),
+            owner_key: self.channel.identity.owner_key.clone(),
+            invite_key: self.channel.identity.invite_key.clone(),
+        }
+    }
+
+    /// The local App/Server bootstrap uses the key owned by the opened domain.
+    pub fn owner_admission_key(&self) -> &str {
+        &self.channel.identity.owner_key
+    }
+
     /// Host history/activity never rewrites the domain checkpoint. Only public
     /// directory changes and completed domain admission belong in that store.
     pub fn changes_metadata(&self, request: &Request) -> bool {

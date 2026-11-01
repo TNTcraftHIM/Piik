@@ -63,6 +63,60 @@ impl Endpoint {
 }
 
 #[test]
+fn domain_keys_belong_to_its_data_and_old_checkpoints_remain_untouched() {
+    let folder = std::env::temp_dir().join(format!("piik-domain-keys-{}", Uuid::new_v4()));
+    let open = |owner, invite| {
+        Domain::open(
+            &folder,
+            owner,
+            invite,
+            "http://localhost".into(),
+            None,
+            vec![],
+        )
+    };
+    let domain = open("saved-owner", "saved-invite").unwrap();
+    let identity = domain.identity();
+    let old_checkpoint;
+    {
+        let mut hub = domain.hub.lock().unwrap();
+        let owner = Endpoint::join(&mut hub, "saved-owner");
+        assert_eq!(owner.user, identity.1);
+        old_checkpoint = serde_json::to_value(hub.authority.export_state()).unwrap();
+    }
+    drop(domain);
+    for (owner_seed, invite_seed) in [("different-owner", "different-invite"), ("", "")] {
+        let reopened = open(owner_seed, invite_seed).unwrap();
+        assert_eq!(reopened.identity(), identity);
+        assert_eq!(reopened.owner_key(), "saved-owner");
+        let mut hub = reopened.hub.lock().unwrap();
+        let owner = Endpoint::join(&mut hub, "saved-owner");
+        assert_eq!(owner.user, identity.1);
+        let mut rejected = Endpoint::connect(&mut hub);
+        rejected.request(
+            &mut hub,
+            json!({"type":"join", "name":"Wrong seed", "key":"different-owner"}),
+        );
+        assert!(rejected
+            .drain()
+            .iter()
+            .any(|event| event["type"] == "error"));
+    }
+    let mut store = storage::Storage::open(&folder.join("channel.sqlite")).unwrap();
+    store.save(&old_checkpoint).unwrap();
+    drop(store);
+    assert!(open("saved-owner", "saved-invite")
+        .err()
+        .unwrap()
+        .to_string()
+        .contains("unsupported_domain_checkpoint"));
+    let store = storage::Storage::open(&folder.join("channel.sqlite")).unwrap();
+    assert_eq!(store.load().unwrap().unwrap(), old_checkpoint);
+    drop(store);
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[test]
 fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     let path = std::env::temp_dir().join(format!("piik-domain-metadata-{}.sqlite", Uuid::new_v4()));
     let mut hub = Hub {
@@ -103,7 +157,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         original
     );
     assert_eq!(
-        hub.storage.lock().unwrap().load().unwrap().unwrap(),
+        hub.storage.lock().unwrap().load().unwrap().unwrap()["state"],
         original
     );
     database
@@ -121,9 +175,9 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         serde_json::from_value(state["state"].clone()).unwrap();
     drop(hub);
     let store = storage::Storage::open(&path).unwrap();
-    let mut restored = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
-    restored
-        .import_state(serde_json::from_value(store.load().unwrap().unwrap()).unwrap())
+    let restored = serde_json::from_value::<DomainMetadata>(store.load().unwrap().unwrap())
+        .unwrap()
+        .into_authority(vec![])
         .unwrap();
     let saved = serde_json::to_value(restored.export_state()).unwrap();
     assert_eq!(saved["name"], "Friends");
@@ -292,7 +346,8 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         "the real room store committed first"
     );
     assert_eq!(
-        hub.storage.lock().unwrap().load().unwrap().unwrap()["hostedRooms"]["hosted"]["access"],
+        hub.storage.lock().unwrap().load().unwrap().unwrap()["state"]["hostedRooms"]["hosted"]
+            ["access"],
         "public",
         "the directory checkpoint really failed"
     );
@@ -649,17 +704,9 @@ async fn start_server(
     let (stop, stopped) = oneshot::channel();
     let folder = folder.to_owned();
     let udp = piik_channel_native::peer::server_udp::ServerUdp::bind(&[(address, None)]).unwrap();
-    let task = tokio::spawn(serve(
-        listener,
-        state,
-        folder,
-        "owner".into(),
-        Router::new(),
-        udp,
-        async {
-            let _ = stopped.await;
-        },
-    ));
+    let task = tokio::spawn(serve(listener, state, folder, Router::new(), udp, async {
+        let _ = stopped.await;
+    }));
     (address, stop, task, hub)
 }
 

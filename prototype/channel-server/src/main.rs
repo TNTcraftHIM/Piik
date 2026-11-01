@@ -25,10 +25,9 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         .parse::<IpAddr>()
         .context("PIIK_CHANNEL_BIND_ADDRESS must be an IP address")?;
     let invitation_origin = std::env::var("PIIK_CHANNEL_INVITATION_ORIGIN").ok();
-    let owner = std::env::var("PIIK_CHANNEL_OWNER_KEY")
-        .context("Set PIIK_CHANNEL_OWNER_KEY to a private stable startup key")?;
-    let invite = std::env::var("PIIK_CHANNEL_INVITE_KEY")
-        .context("Set PIIK_CHANNEL_INVITE_KEY to a separate stable invitation key")?;
+    // Existing domain data owns its keys; environment values seed a new domain.
+    let owner = std::env::var("PIIK_CHANNEL_OWNER_KEY").unwrap_or_default();
+    let invite = std::env::var("PIIK_CHANNEL_INVITE_KEY").unwrap_or_default();
     let ice_servers = piik_channel_prototype::ice_servers_from_environment()?;
     let executable = std::env::current_exe().context("Locate the Server executable")?;
     let resources = executable.parent().context("Locate the Server directory")?;
@@ -95,9 +94,9 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     )?;
     println!("Piik Server: http://{bound}");
     println!(
-        "Web interface: {origin}/__channel-preview (use your configured owner or invitation key)"
+        "Web interface: {origin}/__channel-preview (use this domain's owner or invitation key)"
     );
     release::startup_notice();
-    serve_server(listener, state, directory, owner, routes, udp, stop).await?;
+    serve_server(listener, state, directory, routes, udp, stop).await?;
     Ok(std::process::ExitCode::SUCCESS)
 }
