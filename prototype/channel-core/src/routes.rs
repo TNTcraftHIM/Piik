@@ -50,14 +50,14 @@ impl Plan {
             parents.retain(|parent| available.contains(parent));
             available.contains(child)
         });
+        let base_parents: BTreeMap<_, _> = base
+            .into_iter()
+            .flat_map(|base| base.project(self.source, requested))
+            .map(|(parent, child)| (child, parent))
+            .collect();
         if connected.contains(&self.source) {
-            let base_parents: BTreeMap<_, _> = base
-                .into_iter()
-                .flat_map(|base| base.project(self.source, requested))
-                .map(|(parent, child)| (child, parent))
-                .collect();
             for child in requested {
-                if *child != self.source && !self.ready.contains_key(child) {
+                if self.parents.contains_key(child) && !self.ready.contains_key(child) {
                     self.graft_base(*child, &base_parents, available, connected);
                 }
             }
@@ -88,23 +88,38 @@ impl Plan {
             {
                 continue;
             }
-            let failed = self.failed_parents.entry(*child).or_default();
-            let candidates = std::iter::once(self.source).chain(self.ready.keys().copied());
-            let parent = candidates
-                .filter(|parent| {
-                    parent != child && connected.contains(parent) && !failed.contains(parent)
-                })
-                .find(|parent| {
-                    self.parents
-                        .values()
-                        .filter(|existing| *existing == parent)
-                        .count()
-                        < FANOUT
-                });
-            if let Some(parent) = parent {
+            if self.graft_base(*child, &base_parents, available, connected) {
+                continue;
+            }
+            self.failed_parents.entry(*child).or_default();
+            if let Some(parent) = self.candidate_parent(*child, connected) {
                 self.parents.insert(*child, parent);
             }
         }
+    }
+
+    fn candidate_parent(&self, child: Uuid, connected: &BTreeSet<Uuid>) -> Option<Uuid> {
+        if !connected.contains(&self.source) || !connected.contains(&child) {
+            return None;
+        }
+        self.subtree(self.source)
+            .into_iter()
+            .filter(|parent| *parent == self.source || self.ready.contains_key(parent))
+            .filter(|parent| {
+                *parent != child
+                    && connected.contains(parent)
+                    && !self
+                        .failed_parents
+                        .get(&child)
+                        .is_some_and(|failed| failed.contains(parent))
+            })
+            .find(|parent| {
+                self.parents
+                    .iter()
+                    .filter(|(receiver, upstream)| **receiver != child && *upstream == parent)
+                    .count()
+                    < FANOUT
+            })
     }
 
     /// Reuse the existing physical path without applying the policy used to
@@ -117,9 +132,15 @@ impl Plan {
         available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
     ) -> bool {
+        // New receivers may reuse an installed input prefix. Replacing a
+        // candidate instead requires a proved prefix or the complete base path.
+        let replacing = self.parents.contains_key(&receiver);
         let mut suffix = Vec::new();
         let mut child = receiver;
-        while child != self.source && !self.ready.contains_key(&child) {
+        while child != self.source
+            && !self.ready.contains_key(&child)
+            && (replacing || !self.parents.contains_key(&child))
+        {
             let Some(parent) = base_parents.get(&child).copied() else {
                 return false;
             };
@@ -355,11 +376,21 @@ impl BaseTree {
         available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
     ) {
-        // Rebuild reservations against the ready tree. Identical edges retain
-        // their physical leases and partial endpoint ACKs.
-        self.plan
+        self.plan.reconcile(demand, available, connected, None);
+        // Reconsider unproved edges without releasing their reserved capacity.
+        // Identical choices retain the physical lease and partial endpoint ACKs.
+        let pending: Vec<_> = self
+            .plan
             .parents
-            .retain(|child, _| self.plan.ready.contains_key(child));
+            .keys()
+            .filter(|child| !self.plan.ready.contains_key(child))
+            .copied()
+            .collect();
+        for child in pending {
+            if let Some(parent) = self.plan.candidate_parent(child, connected) {
+                self.plan.parents.insert(child, parent);
+            }
+        }
         self.plan.reconcile(demand, available, connected, None);
         self.prune_proofs();
     }
