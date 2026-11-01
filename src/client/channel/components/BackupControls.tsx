@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { downloadBlob } from "../../lib/download";
 import { useCopy } from "../../ui/copy";
 import { ChannelAction } from "./ChannelMedia";
 
@@ -31,9 +32,7 @@ export function BackupControls({ disabled, busy, onExport, onRestore, replacing 
     {available && !file && <div className="c3-backup-actions">
       {onExport && <ChannelAction icon="save" quiet label={zh ? "导出备份" : "Export backup"} busy={busy} disabled={disabled}
         onClick={() => { void run(async () => {
-          const blob = await onExport(), url = URL.createObjectURL(blob);
-          const link = document.createElement("a"); link.href = url; link.download = `piik-${kind}-backup.zip`; link.click();
-          setTimeout(() => URL.revokeObjectURL(url), 0);
+          downloadBlob(await onExport(), `piik-${kind}-backup.zip`);
         }); }} />}
       <ChannelAction icon="refresh" quiet label={replacing ? (zh ? "从备份恢复" : "Restore backup") : (zh ? "导入房间" : "Import room")}
         disabled={disabled || busy} onClick={() => input.current?.click()} />

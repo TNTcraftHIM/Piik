@@ -1,10 +1,10 @@
 // Local prototype acceptance: agent-browser drives real UI/session and WebRTC.
-// Only OS capture is substituted with moving canvas and oscillator tracks.
+// Media scenarios substitute only OS capture with moving canvas and oscillator tracks.
 import assert from "node:assert/strict";
 import { fixture } from "./browser-fixture.mjs";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rmdir, unlink, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, rmdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -32,10 +32,11 @@ const executable = process.env.AGENT_BROWSER_BIN ?? (process.platform === "win32
   : "agent-browser");
 const origin = process.env.CHANNEL_UI_ORIGIN ?? "http://127.0.0.1:8790";
 assert(["127.0.0.1", "localhost"].includes(new URL(origin).hostname), "Acceptance only targets loopback");
-const output = resolve("build/channel-acceptance");
+const output = resolve(process.env.CHANNEL_ACCEPTANCE_OUTPUT ?? "build/channel-acceptance");
 const ownerKey = process.env.PIIK_CHANNEL_OWNER_KEY;
 const inviteKey = process.env.PIIK_CHANNEL_INVITE_KEY;
-assert(ownerKey && inviteKey, "Set the local server's PIIK_CHANNEL_OWNER_KEY and PIIK_CHANNEL_INVITE_KEY");
+const backupOnly = process.argv.includes("--backup");
+assert(inviteKey && (backupOnly || ownerKey), "Set the local server's invitation key and, for owner scenarios, owner key");
 const sessionPrefix = `channel-acceptance-${randomUUID()}`;
 const sessions = ["a", "b", "c", "d", "e"].map(name => `${sessionPrefix}-${name}`);
 const lifecycleOnly = process.argv.includes("--lifecycle");
@@ -45,12 +46,12 @@ const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
 const appOnly = process.argv.includes("--app") || process.argv.includes("--previews");
-const active = identityOnly ? [0, 1] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const active = backupOnly ? [1] : identityOnly ? [0, 1] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   // Omitting launch options on later commands selects a different Browser context.
   const { stdout } = await run(executable, ["--session", sessions[index], "--json",
-    "--args", "--no-sandbox,--autoplay-policy=no-user-gesture-required",
-    "--init-script", join(temporary, `${index}.js`), ...args], {
+    ...(backupOnly ? ["--download-path", output] : ["--args", "--no-sandbox,--autoplay-policy=no-user-gesture-required",
+      "--init-script", join(temporary, `${index}.js`)]), ...args], {
     timeout: 35_000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
   });
   const result = JSON.parse(stdout);
@@ -820,6 +821,74 @@ async function identityControls(serverRoom) {
     browserRoom: true, reload: true, cancel: true, invalidImage: true, presetReplacement: true, narrowThemesAndLanguages: true }, null, 2));
 }
 
+async function roomBackupControls() {
+  const index = 1, name = "Browser backup room", first = "Room backup A", newer = "Room backup B";
+  const admitted = await view(index);
+  assert.notEqual(admitted.self.id, admitted.state.channel.ownerId, "backup uses an ordinary member");
+  assert.equal(await evaluate(index, `${hook}.snapshot().appConnected`), false);
+  assert.equal(await evaluate(index, "typeof window.__channelProbe"), "undefined", "no media fixture is installed");
+  await browser(index, "find", "role", "button", "click", "--name", "English", "--exact");
+  await browser(index, "find", "role", "button", "click", "--name", "Create room", "--exact");
+  await browser(index, "find", "label", "Room name", "fill", name);
+  await browser(index, "click", ".c3-room-form button[type=submit]");
+  const created = await until("member creates its Browser room", () => view(index), value =>
+    value.state.channel.rooms.some(room => room.name === name && room.available && room.delivery?.hostSessionId === value.sessionId));
+  const roomId = created.state.channel.rooms.find(room => room.name === name).id;
+  const current = () => evaluate(index, `(() => {
+    const value = ${hook}.snapshot(), room = value.state.channel.rooms.find(room => room.id === ${JSON.stringify(roomId)});
+    return { sessionId: value.sessionId, userId: value.self.id, domainId: value.state.channel.id, room,
+      messages: value.messagesByRoom[${JSON.stringify(roomId)}] ?? [], history: value.historyByRoom[${JSON.stringify(roomId)}],
+      pending: [...value.pending], error: value.error, text: document.querySelector('.c3-message-log')?.textContent };
+  })()`);
+  const send = async text => {
+    await browser(index, "fill", ".c3-composer textarea", text);
+    await browser(index, "click", ".c3-composer button[type=submit]");
+  };
+  const settings = () => browser(index, "find", "role", "button", "click", "--name", "Room settings", "--exact");
+  await send(first);
+  const before = await until("A is authoritative and visible", current, value => value.messages.length === 1 && value.messages[0].text === first && value.text.includes(first));
+  await settings();
+  const archive = join(output, "piik-room-backup.zip");
+  await rm(archive, { force: true });
+  await browser(index, "click", '.c3-backup-actions button[aria-label="Export backup"]');
+  const bytes = await until("normal export finishes its Browser download", () => readFile(archive).catch(() => undefined), value => value?.length > 0);
+  assert.equal(bytes.subarray(0, 2).toString(), "PK", "normal export downloads a ZIP");
+  await browser(index, "press", "Escape");
+  await send(newer);
+  const changed = await until("B is visible in the newer reading", current, value => value.messages.length === 2 && value.messages[1].text === newer && value.text.includes(newer));
+  await settings();
+  await browser(index, "click", '.c3-backup-actions button[aria-label="Restore backup"]');
+  await browser(index, "upload", '.c3-backup-controls input[type="file"]', archive);
+  assert((await browser(index, "get", "text", ".c3-backup-confirm")).text.includes("Restoring replaces this room"));
+  await browser(index, "screenshot", join(output, "room-backup-confirm.png"));
+  await browser(index, "click", '.c3-backup-confirm button[aria-label="Confirm"]');
+  const readingReady = value => value.messages.length === 1 && value.messages[0].text === first
+    && value.history?.atLatest && !value.pending.includes(`history:${roomId}`) && !value.pending.includes("room-backup")
+    && value.text.includes(first) && !value.text.includes(newer);
+  const restored = await until("fresh authority replaces B with the archived A reading", current, value =>
+    value.room?.delivery && value.room.delivery.bindingId !== changed.room.delivery.bindingId
+    && value.room.delivery.hostSessionId === changed.room.delivery.hostSessionId && readingReady(value));
+  assert.equal(restored.sessionId, changed.sessionId);
+  assert.equal(restored.messages[0].id, before.messages[0].id);
+  assert.equal(await evaluate(index, "document.querySelectorAll('#c3-room-settings .c3-room-form').length"), 1);
+  assert.deepEqual((await browser(index, "console")).messages.filter(message => message.type === "error"), []);
+  await browser(index, "screenshot", join(output, "room-backup-restored.png"));
+  await browser(index, "reload");
+  await until("ordinary member reconnects after reload", () => view(index), value => value.connection === "connected"
+    && value.state.channel.rooms.some(room => room.id === roomId && room.available));
+  await browser(index, "click", `.c3-room-link[aria-label="${name}"]`);
+  const reloaded = await until("real IndexedDB reopens the restored A history", current, readingReady);
+  assert.equal(reloaded.userId, before.userId); assert.equal(reloaded.domainId, before.domainId);
+  assert.equal(reloaded.room.delivery.hostSessionId, reloaded.sessionId);
+  assert.equal(reloaded.messages[0].id, before.messages[0].id);
+  assert.equal(reloaded.error, null);
+  assert.deepEqual((await browser(index, "errors")).errors, []);
+  await writeFile(join(output, "room-backup-result.json"), JSON.stringify({ passed: true, ordinaryMember: true,
+    mediaFixture: false, sessionMutations: false, indexedDbWritesByTest: false,
+    archive: { bytes: bytes.length, sha256: createHash("sha256").update(bytes).digest("hex") },
+    before, changed, restored, reloaded }, null, 2));
+}
+
 async function roomsAndFiles() {
   await browser(0, "find", "role", "button", "click", "--name", "Create room", "--exact");
   await browser(0, "fill", ".c3-room-form input:not([type])", "Movie night");
@@ -931,19 +1000,22 @@ const temporary = await mkdtemp(join(tmpdir(), "piik-channel-acceptance-"));
 try {
   for (const index of active) {
     const script = join(temporary, `${index}.js`);
-    await writeFile(script, captureProbe(String.fromCharCode(65 + index)));
+    if (!backupOnly) await writeFile(script, captureProbe(String.fromCharCode(65 + index)));
     await browser(index, "open", `${origin}/__channel-preview#${index === 0 ? "owner" : "invite"}=${encodeURIComponent(index === 0 ? ownerKey : inviteKey)}`);
   }
   const initial = [];
   for (const index of active) {
     await until(`browser ${index} authenticates`, () => evaluate(index,
       `${hook} ? ${hook}.snapshot().connection : 'no hook'`), value => value === "connected");
-    await action(index, `renameSelf(${JSON.stringify(String.fromCharCode(65 + index))})`);
+    if (!backupOnly) await action(index, `renameSelf(${JSON.stringify(String.fromCharCode(65 + index))})`);
     initial.push(await view(index));
   }
-  const roomId = initial[0].state.channel.rooms[0].id;
-  assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
-  if (identityOnly) {
+  const roomId = backupOnly ? undefined : initial[0].state.channel.rooms[0].id;
+  if (!backupOnly) assert.equal(initial[0].self.id, initial[0].state.channel.ownerId);
+  if (backupOnly) {
+    await roomBackupControls();
+    console.log(`Browser room backup UI acceptance passed; evidence: ${output}`);
+  } else if (identityOnly) {
     await identityControls(roomId);
     console.log(`Identity image acceptance passed; evidence: ${output}`);
   } else if (appOnly) {

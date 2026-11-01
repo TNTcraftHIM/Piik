@@ -418,6 +418,7 @@ capture-enabled App and select the executables when using a custom target direct
 cargo +1.91.0 build --manifest-path prototype/channel-server/Cargo.toml --features capture --bin piik-channel-app
 node prototype/channel-server/run-browser-check.mjs
 node prototype/channel-server/run-browser-check.mjs --rooms
+node prototype/channel-server/run-browser-check.mjs --backup
 node prototype/channel-server/run-browser-check.mjs --identity
 node prototype/channel-server/run-browser-check.mjs --previews
 node prototype/channel-server/run-browser-check.mjs --lifecycle
@@ -456,6 +457,8 @@ chooses free loopback ports and temporary test keys, starts its own Rust/Vite
 services, runs acceptance, and stops them on exit. It does not leave a preview
 service running or restart another instance. Default acceptance covers multiple
 real Browser peers and relay recovery; `--rooms` exercises room access and files;
+`--backup` uses an ordinary member's real UI to export and restore a Browser room's
+history, then reopen it from IndexedDB after reload, without media fixtures;
 `--lifecycle` focuses on capture, offline intent and expiry; `--hosts` exercises
 separate domain/Browser ownership, private admission, room recovery, cross-room
 media and actual IndexedDB/SQLite placement. `--base` blocks one direct negotiation
