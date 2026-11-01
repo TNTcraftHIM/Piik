@@ -232,6 +232,7 @@ export function ChannelPreviewPage() {
           <ChannelStage sources={[...visibleScreens, ...availableScreens].map(publication => ({
             id: publication.id, userId: publication.userId, name: nameOfUser(publication.userId),
             roomName: nameOfRoom(publication.roomId), owned: channel.ownedScreens.has(publication.id),
+            paused: publication.paused, pausePending: busy("pause", publication.id),
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
             input: channel.inputChannels.get(publication.id),
@@ -248,6 +249,7 @@ export function ChannelPreviewPage() {
             pending: busy(channel.ownedScreens.has(publication.id) ? "stop" : "watch", publication.id),
           }))} focusedId={focusedScreen} onFocus={setFocusedScreen} canSubscribe={connected && can("subscribe")}
             onWatch={id => run(channel.watch(id))} onUnwatch={id => run(channel.unwatch(id))}
+            onPause={(id, paused) => run(channel.setScreenPaused(id, paused))}
             onStop={id => run(channel.stopScreen(id))} onPresentation={channel.screenPresentation}
             onInputPolicy={channel.inputPolicy} onInputDecide={channel.inputDecide} onInputSimultaneous={channel.inputSimultaneous} onInputShortcut={channel.inputShortcut} />
           <div ref={conversationSlot} className="c3-room-slot" />

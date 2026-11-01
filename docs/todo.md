@@ -8,7 +8,7 @@ own behavior; research and Git/PRs own evidence and completed history.
 ## Now
 
 - [ ] **3.0 sharing-control parity.** Connect live picture-quality changes,
-  authoritative share pause/resume, optional source-commentary microphone and
+  optional source-commentary microphone and
   automatic/manual codec selection to the current sharing interface. Preserve
   publication, source-clock and route ownership; source commentary remains
   independent of room voice. Reuse current producers and supported capabilities

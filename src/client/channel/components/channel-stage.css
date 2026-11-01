@@ -20,11 +20,11 @@
 .c3-monitor-tile > :is(.c3-video, .c3-monitor-wait) { flex: 1; min-height: 100px; aspect-ratio: auto; }
 .c3-monitor-tile.is-focused { grid-column: 1 / -1; order: -1; border-color: var(--action); box-shadow: 0 0 0 1px var(--action); }
 .c3-monitor-tile[data-focusable] .c3-video { cursor: pointer; }
-.c3-monitor-tile > footer { display: flex; flex: none; align-items: center; gap: 8px; padding: 8px 10px; }
+.c3-monitor-tile > footer { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; }
 .c3-monitor-tile > footer > svg { width: 25px; height: 32px; flex: none; }
-.c3-monitor-source { min-width: 0; flex: 1; }
-.c3-monitor-tile-actions { display: flex; align-items: center; gap: 2px; flex: none; }
-.c3-monitor-tile-actions .lr-btn { width: var(--control-compact-size); padding-inline: 0; }
+.c3-monitor-source { min-width: 0; flex: 1 1 100px; }
+.c3-monitor-source :is(strong, small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.c3-monitor-tile-actions { display: flex; align-items: center; gap: 2px; flex: none; margin-inline: auto; }
 .c3-monitor-wait { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; aspect-ratio: 16 / 9; padding: 18px; border-radius: 14px 14px 0 0; background: var(--stage, var(--wall-2)); color: var(--muted); font-size: 12px; }
 @media (max-width: 700px) {
   .c3-monitor { padding: 12px; gap: 12px; overflow: visible; }
