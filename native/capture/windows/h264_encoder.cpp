@@ -506,6 +506,19 @@ std::vector<UINT8> ReadSample(IMFSample* sample) {
   }
   std::copy(raw, raw + current, bytes.begin());
   Check(buffer->Unlock(), "output-buffer-unlock");
+  // Some local MFTs encode Baseline Level 1b using level_idc 9. RFC 6184
+  // represents it as level_idc 11 with constraint_set3 for this profile.
+  for (auto start = FindStartCode(bytes, 0); start;) {
+    const size_t nal = start->first + start->second;
+    const auto next = FindStartCode(bytes, nal);
+    const size_t end = next ? next->first : bytes.size();
+    if (end - nal >= 4 && (bytes[nal] & 0x1f) == 7 &&
+        bytes[nal + 1] == 0x42 && bytes[nal + 3] == 9) {
+      bytes[nal + 2] |= 0x10;
+      bytes[nal + 3] = 11;
+    }
+    start = next;
+  }
   return bytes;
 }
 

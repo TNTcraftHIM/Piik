@@ -371,6 +371,37 @@ void CheckH264ProfileCompatibility() {
   CloseHandle(read);
 }
 
+void CheckLocalH264Level1b() {
+  Runtime runtime;
+  // Include both start-code lengths, ordinary Baseline, a different profile,
+  // non-SPS data and a truncated SPS: only the local Baseline 1b bytes change.
+  const std::vector<UINT8> input{
+      0, 0, 0, 1, 0x67, 0x42, 0xc0, 9, 0x80,
+      0, 0, 1, 0x67, 0x42, 0xe0, 9, 0x80,
+      0, 0, 1, 0x67, 0x42, 0xc0, 31, 0x80,
+      0, 0, 1, 0x67, 0x64, 0, 9, 0x80,
+      0, 0, 1, 0x65, 0x42, 0xc0, 9,
+      0, 0, 1, 0x67, 0x42, 0xc0};
+  auto expected = input;
+  expected[6] = 0xd0;
+  expected[7] = 11;
+  expected[14] = 0xf0;
+  expected[15] = 11;
+  ComPtr<IMFSample> sample;
+  Check(MFCreateSample(&sample), "fixture-sample");
+  ComPtr<IMFMediaBuffer> buffer;
+  Check(MFCreateMemoryBuffer(static_cast<DWORD>(input.size()), &buffer), "fixture-buffer");
+  BYTE* raw = nullptr;
+  Check(buffer->Lock(&raw, nullptr, nullptr), "fixture-lock");
+  std::copy(input.begin(), input.end(), raw);
+  Check(buffer->Unlock(), "fixture-unlock");
+  Check(buffer->SetCurrentLength(static_cast<DWORD>(input.size())), "fixture-length");
+  Check(sample->AddBuffer(buffer.Get()), "fixture-add-buffer");
+  assert(ReadSample(sample.Get()) == expected);
+  assert(SupportsH264ProfileLevelId("42d00b"));
+  assert(!SupportsH264ProfileLevelId("42c009"));
+}
+
 void CheckEncoderCandidates() {
   const std::vector<EncoderCandidate> candidates{{0, 0}, {1, 0}, {1, 1}, {2, 0}};
   const EncoderCandidate preferred{1, 0};
@@ -747,6 +778,7 @@ int main() {
   CheckEncoderCandidates();
   CheckQuietCaptureRefresh();
   CheckH264ProfileCompatibility();
+  CheckLocalH264Level1b();
   CheckPrimaryFailureDetails();
   CheckAudioCapabilityIsolation();
   CheckOutputSampleAlignment();
