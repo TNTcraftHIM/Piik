@@ -1,6 +1,9 @@
 # Controlled Network Laboratory
 
-The Go/Pion process runners and results below are retained 2.x evidence. The [current Rust source map](../standards/engineering.md#module-map) owns the private 3.x implementation. Generic network-model and namespace helpers remain reusable; the retired process runners are not current validation entrypoints.
+This document covers the shared laboratory method and current Rust process
+controls. The Go/Pion runner instructions and older results are retained 2.x
+evidence. The [current Rust source map](../standards/engineering.md#module-map)
+owns the private 3.x implementation; retired runners are not current entrypoints.
 
 This document owns the laboratory's method and evidence limits. Product routing
 remains in [routing and transport](../standards/routing-transport.md); pending
@@ -134,13 +137,32 @@ node --import tsx scripts/network-lab.ts --case ordinary --output build/network-
 ```
 
 `ordinary` covers the real Native room's history, file and Browser media path;
-`prepared` covers the prepared Native DataChannel; `recovery` covers established
+`prepared` covers the prepared Native DataChannel; `recovery` covers its established
 UDP loss and remapping; `media` covers decoded media through a prepared Native
-transit probe. Each run requires a new output directory. The runner follows
+transit probe. `browser-relay` checks decoded picture and source sound after a
+50-second UDP outage around a Browser relay, retaining the healthy source.
+Each run requires a new output directory. The runner follows
 `CARGO_TARGET_DIR`, or accepts `--executable` for the matching example binary.
 Use root in the isolated host, the repository's Node/Rust toolchains, the normal
 `agent-browser` and Chromium setup, and `iproute2`, `nftables`, `conntrack` and
-`tcpdump`.
+`tcpdump`. `AGENT_BROWSER_BIN` and `CHROMIUM_BIN` select their installed executables.
+
+The existing CI workflow can run one of those controls on a temporary Ubuntu
+24.04 runner:
+
+```sh
+gh workflow run repository-hygiene.yml --ref feat/channel-prototype -f channel_network_lab=browser-relay
+```
+
+`channel_network_lab` defaults to `none`; choosing one case enables the dedicated
+LAB job and skips normal validation, packaging and publication. LAB dispatches
+share one serial queue per ref, separate from ordinary CI. It builds the same
+Native example and Browser WASM, then uses the existing namespace, calibration
+and cleanup owners. These five controls use NAT and UDP filtering, not seeded
+netem delay/loss, so system `iproute2` is sufficient. Build identity, tool versions,
+logs, bounded packet captures and the existing result are retained for seven days,
+including failed runs. Passing a DataChannel control does not establish decoded
+media recovery; this job does not establish physical capture or Internet success rates.
 
 At `26857f21`, the maintained `ordinary` and `media` controls passed with their
 actual room/transport owners and clean teardown. Exact source closures and
@@ -151,10 +173,11 @@ Go runners below require their matching snapshot.
 
 ## Running The Process Layer
 
-Use an isolated Linux machine or VM with Node/Go from the repository toolchain,
+The remainder of this section describes the archived 2.x runner and its CI inputs.
+It used an isolated Linux machine or VM with Node/Go from the repository toolchain,
 Google Chrome, current `iproute2` with netem `seed` support, `nftables`,
-`conntrack` and `tcpdump`. CI builds a pinned iproute2 6.17 traffic-control binary locally because
-the runner's distribution package lacks that option. Namespace administration
+`conntrack` and `tcpdump`. Its CI built a pinned iproute2 6.17 traffic-control binary locally because
+the runner's distribution package lacked that option. Namespace administration
 requires root. Windows/macOS can run the model/unit layer; they need a Linux VM
 for this process layer. Root on a production host is not an equivalent setup.
 
@@ -178,9 +201,9 @@ Each fault phase replaces its owned qdisc completely: netem's in-place change
 retains some omitted attributes, including a previous rate limit. Restoration
 therefore checks the resulting rules and independent UDP reachability as well as
 the resumed media. Recovery has its own picture/audio/feedback observation window.
-The manual CI workflow's `network_lab` input runs this same entry point and never
-publishes. Reports and bounded synthetic-traffic captures are under ignored
-`build/network-lab/results/`; CI retains them for seven days.
+That archived workflow's `network_lab` input ran the matching Go entry point and
+never published. Reports and bounded synthetic-traffic captures were retained under
+ignored `build/network-lab/results/`, with CI artifacts available for seven days.
 
 The `quality-peer`, `quality-sfu-uplink` and `quality-sfu-downlink` cases use the
 same moving 720p Browser source. They establish 45 seconds of baseline, constrain

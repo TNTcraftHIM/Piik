@@ -13,6 +13,12 @@ on:
         required: false
         default: false
         type: boolean
+      channel_network_lab:
+        description: Run one isolated Rust kernel-NAT control (never publishes)
+        required: false
+        default: none
+        type: choice
+        options: [none, ordinary, prepared, recovery, media, browser-relay]
       app_checks:
         description: Build and verify App and Server candidates
         required: false
@@ -27,11 +33,69 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && inputs.channel_network_lab != 'none' && inputs.channel_network_lab != '' && '-network-lab' || '' }}
   cancel-in-progress: false
   queue: max
 
 jobs:
+  channel-network:
+    if: github.event_name == 'workflow_dispatch' && inputs.channel_network_lab != 'none' && inputs.channel_network_lab != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash --noprofile --norc -e -o pipefail {0}
+    env:
+      CARGO_BUILD_JOBS: '2'
+      CARGO_INCREMENTAL: '0'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+      - run: npm ci
+      - name: Install laboratory tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iproute2 nftables conntrack tcpdump
+          npm install --prefix "$RUNNER_TEMP/channel-network-tools" --no-save --package-lock=false agent-browser@0.36.0
+          rustup toolchain install 1.91.0 --profile minimal --target wasm32-unknown-unknown
+          cargo +1.91.0 install wasm-bindgen-cli --version 0.2.129 --locked
+          echo "CARGO_TARGET_DIR=$RUNNER_TEMP/channel-network-target" >> "$GITHUB_ENV"
+          echo "AGENT_BROWSER_BIN=$RUNNER_TEMP/channel-network-tools/node_modules/agent-browser/bin/agent-browser-linux-x64" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/channel-network"
+      - name: Build the matching Native process and Browser adapter
+        run: |
+          cargo +1.91.0 build --locked --manifest-path prototype/channel-server/Cargo.toml --example network_lab -j2 2>&1 | tee "$RUNNER_TEMP/channel-network/native-build.log"
+          node prototype/channel-browser/build.mjs 2>&1 | tee "$RUNNER_TEMP/channel-network/wasm-build.log"
+      - name: Run the selected kernel-NAT control
+        env:
+          CHANNEL_NETWORK_CASE: ${{ inputs.channel_network_lab }}
+          SOURCE_HEAD: ${{ github.sha }}
+          CHROMIUM_BIN: /usr/bin/google-chrome
+        run: |
+          {
+            echo "$SOURCE_HEAD"
+            rustc +1.91.0 --version
+            node --version
+            "$AGENT_BROWSER_BIN" --version
+            "$CHROMIUM_BIN" --version
+            sha256sum "$CARGO_TARGET_DIR/debug/examples/network_lab" prototype/channel-browser/pkg/piik_channel_browser_bg.wasm
+          } | tee "$RUNNER_TEMP/channel-network/identity.log"
+          sudo --preserve-env=PATH,CARGO_TARGET_DIR,AGENT_BROWSER_BIN,CHROMIUM_BIN,SOURCE_HEAD "$(command -v node)" --import tsx scripts/network-lab.ts \
+            --case "$CHANNEL_NETWORK_CASE" --output "$RUNNER_TEMP/channel-network/$CHANNEL_NETWORK_CASE" 2>&1 | tee "$RUNNER_TEMP/channel-network/run.log"
+      - name: Save kernel-NAT evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: channel-network-${{ inputs.channel_network_lab }}-${{ github.sha }}
+          path: ${{ runner.temp }}/channel-network/
+          if-no-files-found: warn
+          retention-days: 7
+
   channel-native:
     if: github.event_name == 'workflow_dispatch' && inputs.channel_native == true
     runs-on: xcode-27
@@ -82,7 +146,10 @@ jobs:
         run: node scripts/release-notes.mjs --pull-request
 
   validate:
-    if: github.event_name != 'pull_request' && !(github.event_name == 'workflow_dispatch' && inputs.channel_native == true)
+    if: >-
+      github.event_name != 'pull_request' &&
+      !(github.event_name == 'workflow_dispatch' &&
+        (inputs.channel_native == true || (inputs.channel_network_lab != 'none' && inputs.channel_network_lab != '')))
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.release.outputs.version }}
