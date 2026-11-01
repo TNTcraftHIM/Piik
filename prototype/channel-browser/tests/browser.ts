@@ -166,9 +166,9 @@ window.runBrowserRoomCheck = async () => {
     const [first, second] = await Promise.all([send("Original", "first", [file]), send("Second", "second")]);
     check(first.inserted && first.message.seq === 1 && second.message.seq === 2, "serialized room order");
     check(JSON.stringify(first.message.attachments) === JSON.stringify([file]), "description committed inside message");
-    const offered = await dispatch({ type: "file_offer", roomId: host.roomId, messageSeq: 1, attachmentId: file.id, available: true });
+    const offered = await dispatch({ type: "file_offer", roomId: host.roomId, messageSeq: 1, attachmentId: file.id, sha256: file.sha256, available: true });
     check(offered.reply?.result.type === "done", "complete copy offered through confirmed message");
-    const missing = await dispatch({ type: "file_offer", roomId: host.roomId, messageSeq: 2, attachmentId: file.id, available: true });
+    const missing = await dispatch({ type: "file_offer", roomId: host.roomId, messageSeq: 2, attachmentId: file.id, sha256: file.sha256, available: true });
     check(missing.reply?.result.code === "attachment_unavailable", "missing attachment aborts the shared turn");
     const retry = await send("Changed retry", "first", [{ ...file, sha256: "0".repeat(64) }]);
     check(!retry.inserted && JSON.stringify(retry.message) === JSON.stringify(first.message), "original confirmation");

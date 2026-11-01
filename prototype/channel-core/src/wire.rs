@@ -39,6 +39,7 @@ pub enum Command {
         room_id: String,
         message_seq: u64,
         attachment_id: Uuid,
+        sha256: String,
         available: bool,
     },
     FileReceive {

@@ -603,19 +603,46 @@ fn embedded_descriptions_commit_with_chat_and_lookup_requires_room_read() {
             original.message.attachments[0].sha256,
             attachment["sha256"].as_str().unwrap()
         );
-        let query = json!({"type":"file_offer", "roomId":"private", "messageSeq":original.message.seq, "attachmentId":attachment["id"], "available":true});
+        let mut query = json!({"type":"file_offer", "roomId":"private", "messageSeq":original.message.seq, "attachmentId":attachment["id"], "sha256":attachment["sha256"], "available":true});
         let denied = command(&mut host, owner, viewer, query.clone());
         assert!(matches!(
             denied.reply.unwrap().result,
             RoomResult::Error { .. }
         ));
-        let readable = command(&mut host, owner, owner, query);
+        let mut stale = query.clone();
+        stale["sha256"] = json!(piik_channel_core::attachment::sha256_hex(b"old copy"));
+        let rejected = command(&mut host, owner, owner, stale.clone());
+        assert!(
+            matches!(rejected.reply.unwrap().result, RoomResult::Error { code } if code == "attachment_content_mismatch")
+        );
+        query["sha256"] = json!(attachment["sha256"].as_str().unwrap().to_ascii_uppercase());
+        let readable = command(&mut host, owner, owner, query.clone());
         assert!(matches!(readable.reply.unwrap().result, RoomResult::Done));
+        stale["available"] = json!(false);
+        let rejected = command(&mut host, owner, owner, stale);
+        assert!(
+            matches!(rejected.reply.unwrap().result, RoomResult::Error { code } if code == "attachment_content_mismatch")
+        );
+        let receiving = command(
+            &mut host,
+            owner,
+            owner,
+            json!({"type":"file_receive", "roomId":"private", "messageSeq":original.message.seq, "attachmentId":attachment["id"], "enabled":true}),
+        );
+        assert!(matches!(receiving.reply.unwrap().result, RoomResult::Done));
+        assert_eq!(
+            receiving.projection.views[&owner].files[0].source_id,
+            Some(owner)
+        );
+        query["available"] = json!(false);
+        let withdrawn = command(&mut host, owner, owner, query);
+        assert!(matches!(withdrawn.reply.unwrap().result, RoomResult::Done));
+        assert_eq!(withdrawn.projection.views[&owner].files[0].source_id, None);
         let missing = command(
             &mut host,
             owner,
             owner,
-            json!({"type":"file_offer", "roomId":"private", "messageSeq":original.message.seq+1, "attachmentId":attachment["id"], "available":true}),
+            json!({"type":"file_offer", "roomId":"private", "messageSeq":original.message.seq+1, "attachmentId":attachment["id"], "sha256":attachment["sha256"], "available":true}),
         );
         assert!(
             matches!(missing.reply.unwrap().result, RoomResult::Error { code } if code == "attachment_unavailable")

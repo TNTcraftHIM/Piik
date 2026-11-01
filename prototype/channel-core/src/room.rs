@@ -134,7 +134,7 @@ impl RoomRuntime {
         if !self.attachments_available() {
             return Err("attachments_unavailable");
         }
-        if enabled {
+        if enabled || offer {
             Ok(Some(HistoryRequest::Attachment {
                 room_id: self.policy.id.clone(),
                 message_seq: seq,
@@ -151,8 +151,14 @@ impl RoomRuntime {
         seq: u64,
         attachment: crate::AttachmentDescriptor,
         offer: bool,
+        enabled: bool,
     ) -> Result<(), &'static str> {
-        self.files.install(session, seq, attachment, offer)
+        if enabled {
+            self.files.install(session, seq, attachment, offer)
+        } else {
+            self.files.remove(session, seq, attachment.id, offer);
+            Ok(())
+        }
     }
     pub fn reading(&self, session: Uuid) -> bool {
         self.activity

@@ -1076,7 +1076,7 @@ fn idle_file_copies_release_base_and_signaling_recovery_preserves_active_deliver
     command(
         &mut network,
         source,
-        json!({"type":"file_offer", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "available":true}),
+        json!({"type":"file_offer", "roomId":room, "messageSeq":1, "attachmentId":attachment["id"], "sha256":attachment["sha256"], "available":true}),
     );
     assert!(
         network.state(source).pairs.is_empty(),
@@ -1340,7 +1340,7 @@ fn sender_picture_preparation_failure_repairs_only_its_assigned_flow() {
     command(
         &mut network,
         source,
-        json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"available":true}),
+        json!({"type":"file_offer","roomId":room,"messageSeq":1,"attachmentId":attachment["id"],"sha256":attachment["sha256"],"available":true}),
     );
     command(
         &mut network,

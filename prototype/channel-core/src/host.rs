@@ -603,11 +603,29 @@ impl RoomHost {
             let HostAction::Command { context, command } = &pending.input.action else {
                 return Err("invalid_file_operation");
             };
-            let offer = matches!(command, Command::FileOffer { .. });
-            if let Err(code) =
-                self.room
-                    .finish_file(context.session_id, message_seq, attachment, offer)
-            {
+            let result = match command {
+                Command::FileOffer { sha256, .. }
+                    if !attachment.sha256.eq_ignore_ascii_case(sha256) =>
+                {
+                    Err("attachment_content_mismatch")
+                }
+                Command::FileOffer { available, .. } => self.room.finish_file(
+                    context.session_id,
+                    message_seq,
+                    attachment,
+                    true,
+                    *available,
+                ),
+                Command::FileReceive { enabled, .. } => self.room.finish_file(
+                    context.session_id,
+                    message_seq,
+                    attachment,
+                    false,
+                    *enabled,
+                ),
+                _ => Err("invalid_file_operation"),
+            };
+            if let Err(code) = result {
                 pending.reply.as_mut().unwrap().result = RoomResult::Error { code: code.into() };
             }
             self.room
