@@ -188,11 +188,11 @@ async function main(): Promise<void> {
     server.stdout.resume();
     server.stderr.on("data", (data: Buffer) => { serverLog = (serverLog + data.toString()).slice(-12000); });
     await waitForSample(deadline => fetchJsonBefore(`${backend}/healthz`, deadline), () => true, 15_000);
-    vite = await createViteServer({ root: ROOT, logLevel: "error", server: { host: "127.0.0.1", port: vitePort, watch: null,
+    vite = await createViteServer({ root: ROOT, cacheDir: join(OUTPUT, ".vite"), logLevel: "error", server: { host: "127.0.0.1", port: vitePort, watch: null,
       strictPort: true, proxy: { "/api": { target: backend }, "/healthz": { target: backend }, "/signal": { target: backend, ws: true } } } });
     await vite.listen();
     if (legacyRoot && legacyPort) {
-      legacyVite = await createViteServer({ root: legacyRoot, logLevel: "error", optimizeDeps: { entries: ["index.html"] }, server: { host: "127.0.0.1", port: legacyPort,
+      legacyVite = await createViteServer({ root: legacyRoot, cacheDir: join(OUTPUT, ".vite-legacy"), logLevel: "error", optimizeDeps: { entries: ["index.html"] }, server: { host: "127.0.0.1", port: legacyPort,
         watch: null, strictPort: true, proxy: { "/api": { target: backend }, "/healthz": { target: backend }, "/signal": { target: backend, ws: true } } } });
       await legacyVite.listen();
     }
