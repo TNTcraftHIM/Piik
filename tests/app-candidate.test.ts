@@ -52,7 +52,7 @@ vi.mock("../scripts/archive-tool.mjs", () => ({
   tarExecutable: () => "fixture-tar",
 }));
 
-it.each(["archive-failure", "existing", "output-created", "dirty"] as const)(
+it.each(["archive-failure", "existing", "output-created", "dirty", "local-asset", "local-asset-digest"] as const)(
   "cleans only this App candidate's incomplete output (%s)", async (scenario) => {
     const root = mkdtempSync(join(tmpdir(), "piik-app-candidate-"));
     const output = join(root, "output");
@@ -61,24 +61,35 @@ it.each(["archive-failure", "existing", "output-created", "dirty"] as const)(
     source.output = output;
     source.scenario = scenario;
     source.assembled = false;
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("fixture tunnel")));
+    const fetch = vi.fn(async () => new Response("fixture tunnel"));
+    vi.stubGlobal("fetch", fetch);
     try {
       if (scenario === "existing") {
         mkdirSync(output);
         writeFileSync(join(output, "user.txt"), "keep");
       }
       process.argv = [process.execPath, "package-app-candidate.mjs", "fixture", output];
+      const localAsset = join(root, "downloaded-tunnel");
+      if (scenario.startsWith("local-asset")) {
+        writeFileSync(localAsset, scenario === "local-asset-digest" ? "wrong release" : "fixture tunnel");
+        process.argv.push("--tunnel-asset", localAsset);
+      }
       vi.resetModules();
       const candidate = import("../scripts/package-app-candidate.mjs");
       const expected = { "archive-failure": "archive interrupted", existing: "must not already exist",
-        "output-created": "EEXIST", dirty: "clean Git checkout" }[scenario];
+        "output-created": "EEXIST", dirty: "clean Git checkout",
+        "local-asset": "archive interrupted", "local-asset-digest": "does not match the pinned release" }[scenario];
       await expect(candidate).rejects.toThrow(expected);
       if (scenario === "existing" || scenario === "output-created") {
         expect(readFileSync(join(output, "user.txt"), "utf8")).toBe("keep");
       } else {
         expect(existsSync(output)).toBe(false);
       }
-      expect(source.assembled).toBe(scenario === "archive-failure" || scenario === "output-created");
+      expect(source.assembled).toBe(["archive-failure", "output-created", "local-asset"].includes(scenario));
+      expect(fetch).toHaveBeenCalledTimes(["archive-failure", "output-created"].includes(scenario) ? 1 : 0);
+      if (scenario.startsWith("local-asset")) {
+        expect(readFileSync(localAsset, "utf8")).toBe(scenario === "local-asset-digest" ? "wrong release" : "fixture tunnel");
+      }
       expect(existsSync(source.workspace)).toBe(false);
     } finally {
       process.argv = previousArguments;

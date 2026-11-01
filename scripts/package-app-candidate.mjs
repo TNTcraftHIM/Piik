@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
+  copyFileSync,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -18,6 +19,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 import { appPackageTarget, appPackageDirectory, CLOUDFLARED_VERSION } from "./app-package-targets.mjs";
 import { createZip, extractZip, tarExecutable } from "./archive-tool.mjs";
@@ -287,15 +289,19 @@ function verifyPlatformAssets(root, target) {
   }
 }
 
-if (process.argv.length !== 4) {
+const { values, positionals } = parseArgs({
+  args: process.argv.slice(2), allowPositionals: true,
+  options: { "tunnel-asset": { type: "string" } },
+});
+if (positionals.length !== 2) {
   fail(
-    "Usage: node scripts/package-app-candidate.mjs <target> <new-output-directory>",
+    "Usage: node scripts/package-app-candidate.mjs <target> <new-output-directory> [--tunnel-asset <raw-release-asset>]",
   );
 }
 
 const repositoryRoot = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), ".."));
-const target = appPackageTarget(process.argv[2]);
-const outputRoot = resolve(process.cwd(), process.argv[3]);
+const target = appPackageTarget(positionals[0]);
+const outputRoot = resolve(process.cwd(), positionals[1]);
 if (!target) fail("App package target is invalid");
 if (process.platform !== target.nodePlatform || process.arch !== target.nodeArch) {
   fail(`App candidate ${target.id} requires its native runner`);
@@ -308,10 +314,14 @@ const temporaryRoot = resetBuildWorkspace(repositoryRoot, "app-package", target.
 let outputOwned = false;
 try {
   const tunnelDownload = join(temporaryRoot, target.tunnelAsset);
-  await download(
-    `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${target.tunnelAsset}`,
-    tunnelDownload,
-  );
+  if (values["tunnel-asset"] !== undefined) {
+    copyFileSync(realpathSync(resolve(values["tunnel-asset"])), tunnelDownload);
+  } else {
+    await download(
+      `https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/${target.tunnelAsset}`,
+      tunnelDownload,
+    );
+  }
   if (sha256(tunnelDownload) !== target.tunnelSha256) {
     fail("Public-link runtime digest does not match the pinned release");
   }
