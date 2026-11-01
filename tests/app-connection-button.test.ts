@@ -58,7 +58,9 @@ describe("shared App connection entry", () => {
   it("reuses the sharing entry as Switch source only for this page's active room share", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
     const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined, nativeCaptureSelection: () => undefined,
-      ownedScreens: new Set(["mine"]), state: { publications: [{ id: "mine", roomId: "room" }] },
+      screenQuality: () => undefined, screenCodecMode: () => undefined,
+      sourceAudio: () => undefined, sourceMicrophone: () => undefined,
+      ownedScreens: new Set(["mine"]), state: { publications: [{ id: "mine", roomId: "room" }], voice: [] },
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source|切换来源)"/);
