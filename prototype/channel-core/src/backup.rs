@@ -130,6 +130,52 @@ impl RoomMetadata {
     }
 }
 
+/// One streaming import. Database unique indexes retain nonce/message identity;
+/// only the bounded retained inventory and sequence floor belong here.
+pub struct HistoryImport {
+    previous: u64,
+    pending: BTreeMap<(u64, Uuid), RetainedFile>,
+}
+
+impl HistoryImport {
+    pub fn new(metadata: &RoomMetadata) -> Result<Self, &'static str> {
+        metadata.validate()?;
+        Ok(Self {
+            previous: 0,
+            pending: metadata
+                .retained_files
+                .iter()
+                .cloned()
+                .map(|file| ((file.message_seq, file.attachment.id), file))
+                .collect(),
+        })
+    }
+
+    pub fn accept(&mut self, row: &HistoryRow) -> Result<(), &'static str> {
+        row.validate()?;
+        let message = &row.message.message;
+        if message.seq <= self.previous {
+            return Err("invalid_backup_history_order");
+        }
+        self.previous = message.seq;
+        for attachment in &message.attachments {
+            if let Some(file) = self.pending.remove(&(message.seq, attachment.id)) {
+                if !file.matches(row) {
+                    return Err("backup_content_not_in_history");
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn finish(&self) -> Result<(), &'static str> {
+        if !self.pending.is_empty() {
+            return Err("backup_content_not_in_history");
+        }
+        Ok(())
+    }
+}
+
 /// A complete storage row, including the retry identity omitted from reading pages.
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -1,7 +1,7 @@
 //! Native room execution and SQLite persistence. Transport and session lifetime
 //! remain with the caller; this adapter executes one room input at a time.
 use crate::{
-    backup::{HistoryRow, OwnCredential, RoomMetadata},
+    backup::{HistoryImport, HistoryRow, OwnCredential, RoomMetadata},
     host::{HostInput, HostOutput, RoomHost, RoomSummary},
     storage::{Storage, StoreResult},
     RoomState,
@@ -28,9 +28,9 @@ impl RoomBackup {
         metadata: RoomMetadata,
         rows: impl IntoIterator<Item = StoreResult<HistoryRow>>,
     ) -> StoreResult<Self> {
-        metadata.validate()?;
+        let import = HistoryImport::new(&metadata)?;
         let mut store = Storage::create_staging(path)?;
-        store.stage_room(&metadata.policy, rows)?;
+        store.stage_room(&metadata.policy, rows, import)?;
         Ok(Self { metadata, store })
     }
 

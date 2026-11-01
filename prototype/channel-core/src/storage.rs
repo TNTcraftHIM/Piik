@@ -1,7 +1,7 @@
 //! The local Server experiment's metadata and confirmed room history.
 //! Media sessions and routes never enter this database.
 use crate::{
-    backup::HistoryRow,
+    backup::{HistoryImport, HistoryRow},
     history::{ConfirmationInput, HistoryRequest, HistoryResult, StoredMessage, HISTORY_PAGE},
     wire::ChatMessage,
 };
@@ -105,20 +105,17 @@ impl Storage {
         &mut self,
         policy: &crate::RoomState,
         rows: impl IntoIterator<Item = StoreResult<HistoryRow>>,
+        mut import: HistoryImport,
     ) -> StoreResult<()> {
         let transaction = self.connection.transaction()?;
         transaction.execute(
             "INSERT INTO checkpoint(id,body) VALUES(1,?1)",
             [serde_json::to_string(policy)?],
         )?;
-        let mut previous = 0;
         for row in rows {
             let row = row?;
-            row.validate()?;
+            import.accept(&row)?;
             let message = row.message.message;
-            if message.seq <= previous {
-                return Err("invalid_backup_history_order".into());
-            }
             transaction.execute(
                 "INSERT INTO message(room_id,seq,id,user_id,nonce,text,time,attachments,reactions)
                  VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
@@ -134,8 +131,8 @@ impl Storage {
                     serde_json::to_string(&row.message.reactions)?,
                 ],
             )?;
-            previous = message.seq;
         }
+        import.finish()?;
         transaction.commit()?;
         Ok(())
     }

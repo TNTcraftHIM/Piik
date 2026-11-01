@@ -3,7 +3,7 @@
 use anyhow::{bail, Result};
 use piik_channel_core::{
     attachment::AttachmentHash,
-    backup::{DomainMetadata, HistoryRow, Metadata, RetainedFile, RECORD_BYTES},
+    backup::{DomainMetadata, HistoryImport, HistoryRow, Metadata, RetainedFile, RECORD_BYTES},
     storage::StoreResult,
     AttachmentDescriptor, RoomBackup,
 };
@@ -49,23 +49,20 @@ pub fn write_room<R: Read>(
 ) -> Result<()> {
     let mut metadata = snapshot.metadata().clone();
     metadata.retained_files = inventory.to_vec();
-    metadata.validate().map_err(anyhow::Error::msg)?;
-    let mut pending = inventory_by_identity(inventory);
+    let mut import = HistoryImport::new(&metadata).map_err(anyhow::Error::msg)?;
     let mut zip = ZipWriter::new_stream(output);
     zip.start_file(MANIFEST, options())?;
     zip.write_all(&record(&Metadata::Room(metadata))?)?;
     zip.start_file(HISTORY, options().large_file(true))?;
     snapshot
         .for_each_row(|row| {
-            match_inventory(&row, &mut pending)?;
+            import.accept(&row)?;
             zip.write_all(&record(&row).map_err(anyhow::Error::into_boxed_dyn_error)?)?;
             zip.write_all(b"\n")?;
             Ok(())
         })
         .map_err(anyhow::Error::from_boxed)?;
-    if !pending.is_empty() {
-        bail!("backup_content_not_in_history");
-    }
+    import.finish().map_err(anyhow::Error::msg)?;
     let mut written = BTreeSet::new();
     for file in inventory {
         let hash = file.attachment.sha256.to_ascii_lowercase();
@@ -113,21 +110,13 @@ pub fn stage(input: impl Read + Seek, directory: &Path) -> Result<StagedBackup> 
     match metadata {
         Metadata::Domain(domain) => Ok(StagedBackup::Domain(domain)),
         Metadata::Room(room) => {
-            let mut pending = inventory_by_identity(&room.retained_files);
             let history = BufReader::new(zip.by_name(HISTORY)?);
             let snapshot = RoomBackup::stage(
                 &directory.join("room.sqlite"),
                 room.clone(),
-                history_rows(history).map(|row| {
-                    let row = row?;
-                    match_inventory(&row, &mut pending)?;
-                    Ok(row)
-                }),
+                history_rows(history),
             )
             .map_err(anyhow::Error::from_boxed)?;
-            if !pending.is_empty() {
-                bail!("backup_content_not_in_history");
-            }
             let mut content = BTreeMap::new();
             for file in &room.retained_files {
                 let hash = file.attachment.sha256.to_ascii_lowercase();
@@ -195,27 +184,6 @@ fn history_rows(mut input: impl BufRead) -> impl Iterator<Item = StoreResult<His
             }
         }
     })
-}
-
-fn inventory_by_identity(files: &[RetainedFile]) -> BTreeMap<(u64, uuid::Uuid), &RetainedFile> {
-    files
-        .iter()
-        .map(|file| ((file.message_seq, file.attachment.id), file))
-        .collect()
-}
-
-fn match_inventory(
-    row: &HistoryRow,
-    pending: &mut BTreeMap<(u64, uuid::Uuid), &RetainedFile>,
-) -> StoreResult<()> {
-    for attachment in &row.message.message.attachments {
-        if let Some(file) = pending.remove(&(row.message.message.seq, attachment.id)) {
-            if !file.matches(row) {
-                return Err("backup_content_not_in_history".into());
-            }
-        }
-    }
-    Ok(())
 }
 
 fn copy_verified(
@@ -446,6 +414,17 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("backup_record_too_large"));
+        let mut import = HistoryImport::new(&metadata).unwrap();
+        import.accept(&rows[1]).unwrap();
+        assert_eq!(import.accept(&rows[0]), Err("invalid_backup_history_order"));
+        assert_eq!(import.finish(), Err("backup_content_not_in_history"));
+        let missing = folder.join("missing.sqlite");
+        assert!(RoomBackup::stage(&missing, metadata.clone(), std::iter::empty()).is_err());
+        assert!(piik_channel_core::storage::Storage::open(&missing)
+            .map_err(anyhow::Error::from_boxed)?
+            .load()
+            .map_err(anyhow::Error::from_boxed)?
+            .is_none());
         metadata
             .retained_files
             .push(metadata.retained_files[0].clone());
