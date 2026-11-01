@@ -18,6 +18,6 @@ rustls-platform-verifier = "=0.7.1"
 piik-channel-prototype = { path = "../channel-server", features = ["capture"] }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "net"] }
 
-# Workspace-root patch; match channel-native and channel-server.
+# Workspace-root patch; match Native/Server and the Native README removal criteria.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "5efc2df76d116db86f41ad12b393dbf846c514a5" }

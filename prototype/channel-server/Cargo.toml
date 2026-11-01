@@ -46,6 +46,6 @@ ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 tokio-tungstenite = "0.29"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 
-# Cargo patches are workspace-root scoped; match channel-native/Cargo.toml.
+# Workspace-root patch; match Native/Android and the Native README removal criteria.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "32373f88e1d1e170b37f3725c8bb2ba57b251b5c" }
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "5efc2df76d116db86f41ad12b393dbf846c514a5" }

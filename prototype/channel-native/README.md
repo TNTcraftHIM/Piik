@@ -142,10 +142,11 @@ warm output, stream, SSRC, source clock and feedback owner.
 
 ## RTC Dependency
 
-Native and Server pin `rtc` to commit
-`32373f88e1d1e170b37f3725c8bb2ba57b251b5c` in the temporary
-[fork](https://github.com/TNTcraftHIM/rtc/tree/32373f88e1d1e170b37f3725c8bb2ba57b251b5c).
-It contains two submitted fixes on the published 0.21.1 baseline:
+Native, Server and Android pin `rtc` to commit
+`5efc2df76d116db86f41ad12b393dbf846c514a5` in the temporary
+[fork](https://github.com/TNTcraftHIM/rtc/tree/5efc2df76d116db86f41ad12b393dbf846c514a5).
+It retains two previously submitted fixes on the published 0.21.1 baseline and
+adds the H264 parser repair and sample-building API below:
 
 - [PR #296](https://github.com/webrtc-rs/rtc/pull/296) retires stale RTP extension
   mappings and preserves the active section's negotiated IDs. Changing voice and
@@ -155,12 +156,20 @@ It contains two submitted fixes on the published 0.21.1 baseline:
   directional levels. Piik uses those formats for each output and checks the
   actual encoded SPS at its input boundary. The [network design](../../docs/research/channel-network-design.md)
   owns the distinction between a Browser's SDP level and its actual decoder.
+- [PR #308](https://github.com/webrtc-rs/rtc/pull/308) starts a new FU-A assembly
+  without leftover fragments and rejects an incomplete STAP-A length field.
+- [PR #309](https://github.com/webrtc-rs/rtc/pull/309) adds opt-in complete-sample
+  delivery and owned metadata from the first media packet. It handles reordered
+  packets, expiry and padding within that assembly. This is an additive API;
+  the existing duration-oriented constructor remains available.
 
-Cargo's patch belongs to each workspace root, so both executable manifests carry
-the same pin. The fork retains upstream MIT/Apache-2.0 licensing; no build-time
-source patch or registry-cache edit is used. When an upstream release includes
-both fixes, update both pins, run the existing App and Native Browser checks, and
-remove both patch entries.
+The new delta is confined to H264 depacketization and SampleBuilder; this pin
+retains the existing Native transport implementation. Cargo's patch belongs to
+each workspace root, so all three consuming manifests and lockfiles carry the
+same Git revision. The fork retains upstream MIT/Apache-2.0 licensing; no
+build-time source patch or registry-cache edit is used. When an upstream release
+provides all four changes, update the three roots and their locks, run the
+existing media interoperability and platform checks, and remove the patch entries.
 
 Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
 to prepare and review updates without changing the current pin.
@@ -183,8 +192,9 @@ dependency graph.
 `build/native-current-assembly/receipt.json` indexes the previous combined source
 and the replacement under `development.transportAlternative`, with separately
 frozen source and runtime evidence. The adjacent README describes these local
-candidates. Remaining integration, platform acceptance and dependency-publication
-approval stay in [TODO](../../docs/todo.md). Formal dependency pins are unchanged.
+candidates. Adopting the private transport and the separate gateway scheduling
+repair remains in [TODO](../../docs/todo.md); publishing these RTC utilities does
+not adopt either candidate.
 That index also owns the separately frozen Linux and macOS incoming-H264
 extensions, which reuse the same derived producer, source clock and independent
 encoding owners. Each candidate's receipt records its platform checks.
