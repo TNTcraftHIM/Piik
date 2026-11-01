@@ -10,8 +10,8 @@ the [engineering map](./standards/engineering.md#source-index).
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
-Browser relay; desktop and mobile Browsers are Viewer targets, and camera-capable
-mobile Browsers can also host. It is not a
+Browser relay; desktop and mobile Browsers are Viewer targets. Browser hosting
+uses the capture capabilities available on the device. It is not a
 public broadcast service. Hosted and App run one shared Go core
 ([ADR-0012](./adr/0012-shared-go-backend-core.md)); Node and Vite build the
 Browser UI and are not a runtime. Desktop and Android Apps run
