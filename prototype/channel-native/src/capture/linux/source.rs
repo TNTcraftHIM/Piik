@@ -1,5 +1,5 @@
 use super::{frames, message_error, portal, Encoding, Frames, Pipeline, RawFrame};
-use crate::capture::{FrameTiming, FramerateRequest, Settings, Target, TargetKind};
+use crate::capture::{FrameTiming, FramerateRequest, Settings, Target, TargetKind, VideoCodec};
 use crate::input::{linux::Connection as Eis, Source as InputSource};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use ashpd::desktop::{
@@ -129,7 +129,8 @@ impl Capture {
             thread: Some(thread),
         })
     }
-    pub fn encode(&self, settings: Settings) -> Result<Encoding> {
+    pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
+        ensure!(codec.supported(), "capture_codec_unsupported");
         ensure!(!self.frames.control().is_stopped(), "capture stopped");
         Encoding::start(self.frames.clone(), settings)
     }

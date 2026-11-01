@@ -5,7 +5,7 @@ use super::{
     graphics::Graphics,
     platform::Platform,
 };
-use crate::capture::{cadence::Cadence, Settings, Target, TargetKind};
+use crate::capture::{cadence::Cadence, Settings, Target, TargetKind, VideoCodec};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use jni::{jni_sig, jni_str};
 use ndk::surface_texture::SurfaceTexture;
@@ -75,7 +75,8 @@ impl Capture {
     pub fn audio(&self, _target: Target) -> Result<AudioCapture> {
         AudioCapture::start(self.platform.clone(), self.frames.clock)
     }
-    pub fn encode(&self, settings: Settings) -> Result<Encoding> {
+    pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
+        ensure!(codec.supported(), "capture_codec_unsupported");
         Encoding::start(self.frames.clone(), settings)
     }
     pub async fn set_fps(&self, fps: u32) -> Result<()> {

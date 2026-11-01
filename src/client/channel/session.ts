@@ -1373,7 +1373,7 @@ export class ChannelSession {
     return { ...share.volume, bitrate: share.profile.maxAudioBitrate ?? 128_000,
       available: this.local.has(publicationId)
         ? !!this.local.get(publicationId)?.audio?.outputGainAvailable && !!this.local.get(publicationId)?.audio?.audioAvailable
-        : !!share.native?.audio && (this.app?.screens.has(publicationId) ?? false) };
+        : !!this.app?.screens.has(publicationId) && (!!share.native?.audio || !!this.app.sourceMicrophone(publicationId)?.enabled) };
   };
 
   setSourceAudio = (publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void> => {
@@ -1420,10 +1420,10 @@ export class ChannelSession {
     share.native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
     let app: ChannelApp | undefined;
     try {
-      if (share.codecMode === "vp8") throw new Error("capture_codec_unsupported");
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, audio ? share.native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
+      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, share.codec?.primary ?? share.codecMode,
+        audio ? share.native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
       this.patch({});
       const prepared = await preparing;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");
@@ -1431,6 +1431,7 @@ export class ChannelSession {
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       await app.commitCapture(share.id, prepared.captureId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      share.codec ??= share.codecMode === "auto" ? automaticVideoCodecPreference(prepared.codec) : manualVideoCodecPreference(prepared.codec);
       this.retireCapture(share.id);
       this.patch({});
       // Native owns the source; this page previews it through the ordinary route.

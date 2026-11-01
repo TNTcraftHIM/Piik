@@ -7,6 +7,7 @@ import type { QualityProfile } from "../media/quality";
 import { activateNativePicker } from "../native/activation";
 import { NativeRoomHosting } from "./hosting-api";
 import type { CaptureDevice } from "../media/capture-devices";
+import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
@@ -15,7 +16,7 @@ const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSche
   processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
 export type NativeCaptureRequest = { publicationId: string; activationURL: string };
-const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid() }).strict();
+const preparedCaptureSchema = z.object({ captureId: z.uuid(), sessionId: z.uuid(), codec: z.enum(["h264", "vp8"]) }).strict();
 export type PreparedNativeCapture = z.infer<typeof preparedCaptureSchema>;
 const previewSchema = z.string().max(23 + 4 * Math.ceil(64 * 1024 / 3))
   .regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).nullable();
@@ -182,14 +183,14 @@ export class ChannelApp {
     return preview;
   }
 
-  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, excludeAudio?: NativeCaptureTarget, gain = 1): Promise<PreparedNativeCapture> {
+  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, codecMode: BrowserVideoCodecMode, excludeAudio?: NativeCaptureTarget, gain = 1): Promise<PreparedNativeCapture> {
     const settings = { width: profile.resolution.width, height: profile.resolution.height,
       fps: profile.maxFramerate, bitrate: profile.maxBitrate };
     if (!this.connected) throw new Error("app_disconnected");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
     this.prepared.add(publicationId);
     try {
-      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings,
+      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, codecMode,
         audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) });
       activateNativePicker(this.activationURL);
       const capture = preparedCaptureSchema.parse(await pending);

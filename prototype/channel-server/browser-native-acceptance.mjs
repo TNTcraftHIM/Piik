@@ -259,6 +259,10 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     for (const child of [otherWeb, otherServer]) if (child?.exitCode === null && child.signalCode === null) {
       const exited = once(child, "exit"); child.kill(); await exited;
     }
+    for (const key of [process.env.PIIK_CHANNEL_OWNER_KEY, process.env.PIIK_CHANNEL_INVITE_KEY]) {
+      if (key) log = log.replaceAll(key, "[test key]");
+    }
+    await writeFile(join(output, "app-runtime.log"), log);
     if (relative(tmpdir(), directory).startsWith("..") || !basename(directory).startsWith("piik-app-room-check-")) throw new Error("Unexpected App acceptance directory");
     await rm(directory, { recursive: true, force: true });
   }

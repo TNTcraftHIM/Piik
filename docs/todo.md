@@ -7,11 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **3.0 sharing-control parity.** Connect the optional source-commentary
-  microphone and automatic/manual codec selection to the current sharing interface. Preserve
-  publication, source-clock and route ownership; source commentary remains
-  independent of room voice. Reuse current producers and supported capabilities
-  rather than transplanting the retired 2.x controllers.
+- [ ] **3.0 Native VP8 constrained outputs.** Complete received-VP8 decoding at
+  Native relays; forwarding alone does not supply lower encodings. Reuse the
+  existing decoder, resolved codec, source clock and output owners.
 - [ ] **3.0 Native platforms and integration.** Complete capture/input on the
   remaining platforms and Linux/macOS App packaging, plus refreshed static Linux
   Server acceptance over the shared UI and Native participant,

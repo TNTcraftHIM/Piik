@@ -650,6 +650,12 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
+Windows Auto selects from actual encoder startup: hardware H264 first, then
+software VP8 after a failed or timed-out first independent access unit. The
+failed encoder stops before replacement, and both retain the same capture and
+source clock. The admitted codec stays fixed for that publication's source
+changes and derived outputs. Manual selection either starts the requested codec
+or reports that it is unsupported before acquiring capture permission.
 The isolated macOS adapter keeps the same `Capture(Target, fps)` boundary through
 ScreenCaptureKit and typed Rust bindings. Source dimensions follow actual backing
 pixels and frame metadata, independently of encoder settings. Its original sample

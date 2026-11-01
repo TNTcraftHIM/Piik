@@ -18,8 +18,8 @@ from the Browser's personal activities. The App reuses the product's site approv
 and saved-site interface, and starts its own domain through the shared
 Local/public-invitation launcher. Windows WGC captures each source once in the
 parent; each encoding owns a separate same-executable child for D3D11 conversion,
-hardware H264, bitrate, keyframe requests and ordered output. Demand-driven GPU
-handoff preserves the source's presentation clock and copies the texture into
+hardware H264 or software VP8, bitrate, keyframe requests and ordered output.
+Demand-driven GPU handoff preserves the source's presentation clock and copies the texture into
 the child's private resource before encoding. An unread encoding rests on its
 bounded output queue without continuing GPU transfers. The Encoding owner stops
 and joins its child; a Windows Job also releases it when the App exits.

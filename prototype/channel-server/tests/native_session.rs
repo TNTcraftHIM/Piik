@@ -728,7 +728,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         let target = json!({"kind":"window","sourceId":"0","title":"Unopened test target","pid":0});
         let settings = json!({"width":1280,"height":720,"fps":24,"bitrate":2_000_000});
         page.send(Message::Text(
-            json!({"id":"missing-capture-room","type":"prepare_capture","publicationId":Uuid::new_v4(),
+            json!({"id":"missing-capture-room","type":"prepare_capture","publicationId":Uuid::new_v4(),"codecMode":"auto",
                 "roomId":"missing-capture-room","target":target,"settings":settings}).to_string().into(),
         )).await.unwrap();
         let denied: Value =
@@ -738,7 +738,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
 
         let publication = Uuid::new_v4();
         page.send(Message::Text(
-            json!({"id":"failed-prepare","type":"prepare_capture",
+            json!({"id":"failed-prepare","type":"prepare_capture","codecMode":"auto",
             "publicationId":publication,"roomId":room,"target":target,"settings":settings})
             .to_string()
             .into(),

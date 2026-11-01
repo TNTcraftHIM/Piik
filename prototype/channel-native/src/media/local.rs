@@ -8,12 +8,15 @@ use crate::capture::AudioCapture;
 use crate::media::MediaKind;
 use crate::media::RtpCodec;
 use crate::{
-    capture::{Capture, Control as VideoControl, Settings, Target},
+    capture::{Capture, Control as VideoControl, Settings, Target, VideoCodec, VideoCodecMode},
     peer::{Event, InitialMedia, SourceReady},
 };
 use anyhow::{anyhow, Result};
 use rtc_shared::time::SystemInstant;
-use std::{sync::Arc, time::Instant};
+use std::{
+    sync::{Arc, OnceLock},
+    time::Instant,
+};
 use tokio::{
     sync::{mpsc, oneshot, watch, Notify},
     task::JoinHandle,
@@ -30,6 +33,7 @@ pub(crate) use super::encodings::VideoDemand;
 #[derive(Clone)]
 pub(crate) struct Control {
     video: VideoControl,
+    pub(crate) codec: Arc<OnceLock<VideoCodec>>,
     video_settings: watch::Sender<Settings>,
     video_requests: mpsc::Sender<VideoSettingsRequest>,
     audio: audio::Control,
@@ -111,6 +115,7 @@ impl Producer {
         publication_id: Uuid,
         target: Target,
         settings: Settings,
+        mode: VideoCodecMode,
         audio: bool,
         exclude_audio: Option<Target>,
         ready_sources: mpsc::Sender<SourceReady>,
@@ -127,8 +132,8 @@ impl Producer {
         // Both source reports project original capture PTS through this one pair.
         let now = Instant::now();
         let clock = SystemInstant::now(now);
+        anyhow::ensure!(mode.initial().supported(), "capture_codec_unsupported");
         let capture = Capture::start(target.clone(), settings.fps, audio)?;
-        let encoding = capture.encode(settings)?;
         let video_control = capture.control();
         let (audio_control, audio_task) = audio::start(
             publication_id,
@@ -180,6 +185,7 @@ impl Producer {
         let (video_requests, changes) = mpsc::channel(1);
         let control = Control {
             video: video_control,
+            codec: Arc::new(OnceLock::new()),
             video_settings,
             video_requests,
             audio: audio_control,
@@ -189,8 +195,8 @@ impl Producer {
         let (demands, requests) = watch::channel(Vec::new());
         let task = tokio::spawn(encodings::run(
             capture,
-            encoding,
             settings,
+            mode,
             publication_id,
             video,
             SourceTime::local(now, clock),

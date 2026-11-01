@@ -6,6 +6,7 @@ use crate::{
 };
 use futures_util::{future::Aborted, StreamExt};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::Notify;
 
 struct Prepared {
@@ -13,12 +14,78 @@ struct Prepared {
     first: crate::EncodedFrame,
 }
 
+fn first_codec(codec: VideoCodec, frame: &crate::EncodedFrame) -> Result<RtpCodec> {
+    anyhow::ensure!(
+        frame.keyframe,
+        "capture encoding did not start independently"
+    );
+    let sdp_fmtp_line = match codec {
+        VideoCodec::H264 => {
+            let mut sps = H264Sps::default();
+            sps.access_unit(&frame.bytes)?;
+            let profile = sps
+                .last
+                .ok_or_else(|| anyhow!("capture first access unit has no SPS"))?;
+            format!(
+                "packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}",
+                profile[0], profile[1], profile[2]
+            )
+        }
+        VideoCodec::Vp8 => String::new(),
+    };
+    Ok(RtpCodec {
+        mime_type: match codec {
+            VideoCodec::H264 => "video/H264",
+            VideoCodec::Vp8 => "video/VP8",
+        }
+        .into(),
+        clock_rate: 90_000,
+        sdp_fmtp_line,
+        ..Default::default()
+    })
+}
+
+async fn initial(
+    capture: &Capture,
+    control: &VideoControl,
+    settings: Settings,
+    codec: VideoCodec,
+    deadline: Option<Duration>,
+    cancelled: &mut watch::Receiver<bool>,
+) -> Result<(Prepared, RtpCodec)> {
+    let mut encoding = capture.encode(settings, codec)?;
+    let frame = async {
+        if let Some(deadline) = deadline {
+            tokio::time::timeout(deadline, encoding.recv())
+                .await
+                .map_err(|_| anyhow!("H264 startup proof timed out"))?
+        } else {
+            encoding.recv().await
+        }
+        .unwrap_or_else(|| Err(anyhow!("capture encoding ended before its first frame")))
+    };
+    let result = tokio::select! {
+        biased;
+        _ = control.stopped() => Err(Aborted.into()),
+        _ = cancelled.wait_for(|value| *value) => Err(Aborted.into()),
+        frame = frame => frame.and_then(|frame| first_codec(codec, &frame).map(|rtp| (frame, rtp))),
+    };
+    match result {
+        Ok((first, rtp)) => Ok((Prepared { encoding, first }, rtp)),
+        Err(error) => {
+            let _ = stop(encoding).await;
+            Err(error)
+        }
+    }
+}
+
 async fn prepare(
     capture: &Capture,
     control: &VideoControl,
+    codec: VideoCodec,
     mut request: VideoSettingsRequest,
 ) -> (VideoSettingsRequest, Result<Prepared>) {
-    let mut encoding = match capture.encode(request.settings) {
+    let mut encoding = match capture.encode(request.settings, codec) {
         Ok(encoding) => encoding,
         Err(error) => return (request, Err(error)),
     };
@@ -28,10 +95,7 @@ async fn prepare(
         _ = request.result.closed() => Err(Aborted.into()),
         frame = encoding.recv() => frame.unwrap_or_else(|| Err(anyhow!("capture encoding ended before its first frame"))),
     }.and_then(|frame| {
-        anyhow::ensure!(frame.keyframe, "capture encoding did not start independently");
-        let mut sps = H264Sps::default();
-        sps.access_unit(&frame.bytes)?;
-        anyhow::ensure!(sps.last.is_some(), "capture first access unit has no SPS");
+        first_codec(codec, &frame)?;
         Ok(frame)
     });
     match result {
@@ -63,8 +127,8 @@ async fn report_failure(
 
 pub(super) async fn run(
     capture: Capture,
-    encoding: Encoding,
     mut settings: Settings,
+    mode: VideoCodecMode,
     publication_id: Uuid,
     source_id: Uuid,
     time: SourceTime,
@@ -80,24 +144,29 @@ pub(super) async fn run(
     let changed = Arc::new(Notify::new());
     let frames = Video::new(time.clone(), changed.clone());
     let requests = frames.requests();
-    let mut initial = Some(encoding);
-    let mut encodings = Encodings::new(time.clone(), changed.clone());
+    let mut encoding = None;
+    let mut encodings = None;
     let mut ready = Some(ready);
     let mut preparing = None;
     let result = async {
-        let frame = tokio::select! {
-            _ = control.video.stopped() => return Ok(()),
-            _ = cancelled.changed() => return Ok(()),
-            frame = initial.as_mut().unwrap().recv() => match frame {
-                Some(frame) => frame?,
-                None => return Ok(()),
-            },
+        let mut codec = mode.initial();
+        let fallback = mode == VideoCodecMode::Auto && VideoCodec::Vp8.supported();
+        let prepared = initial(&capture, &control.video, settings, codec,
+            fallback.then_some(Duration::from_secs(4)), &mut cancelled).await;
+        let (prepared, rtp) = match prepared {
+            Err(error) if fallback && !error.is::<Aborted>() && !control.video.is_stopped() && !*cancelled.borrow() => {
+                eprintln!("Native Auto H264 startup was not proved: {error:#}; trying VP8");
+                codec = VideoCodec::Vp8;
+                initial(&capture, &control.video, settings, codec, None, &mut cancelled).await?
+            }
+            result => result?,
         };
-        let mut sps = H264Sps::default();
-        sps.access_unit(&frame.bytes)?;
-        let profile = sps.last.ok_or_else(|| anyhow!("capture first access unit has no SPS"))?;
+        let _ = control.codec.set(codec);
+        let encodings = encodings.insert(Encodings::new(time.clone(), changed.clone(), codec));
+        encoding = Some(prepared.encoding);
+        let frame = prepared.first;
         let low = Video::new(time.clone(), changed.clone());
-        let layers = match capture.encode(settings.lower_layer()) {
+        let layers = match capture.encode(settings.lower_layer(), codec) {
             Ok(encoding) => {
                 let supply = crate::media::video::Layers::new(vec!["q".into(), "h".into()]);
                 supply.insert("q".into(), low.clone());
@@ -112,8 +181,7 @@ pub(super) async fn run(
         };
         let source = Source {
             id: source_id, publication_id, origin: SourceOrigin::Local, kind: MediaKind::Video,
-            codec: RtpCodec { mime_type: "video/H264".into(), clock_rate: 90_000,
-                sdp_fmtp_line: format!("packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}", profile[0], profile[1], profile[2]), ..Default::default() },
+            codec: rtp,
             layers: layers.clone(),
             feed: SourceFeed::Video(frames.clone()),
         };
@@ -123,7 +191,7 @@ pub(super) async fn run(
             sent = ready_sources.send(SourceReady { source, media: InitialMedia::Video(frame) }) => sent?,
         }
         let _ = ready.take().unwrap().send(Ok(()));
-        encodings.baseline(initial.take().unwrap(), frames.clone(), requests);
+        encodings.baseline(encoding.take().unwrap(), frames.clone(), requests);
         loop {
             tokio::select! {
                 _ = control.video.stopped() => break,
@@ -134,7 +202,7 @@ pub(super) async fn run(
                     if request.settings == settings {
                         let _ = request.result.send(Ok(()));
                     } else {
-                        preparing = Some(Box::pin(prepare(&capture, &control.video, request)));
+                        preparing = Some(Box::pin(prepare(&capture, &control.video, codec, request)));
                     }
                 },
                 prepared = async { preparing.as_mut().unwrap().await }, if preparing.is_some() => {
@@ -161,12 +229,12 @@ pub(super) async fn run(
                     for demand in &next {
                         if let Some(input) = demand.input.upgrade() { input.set_active(false); }
                     }
-                    let previous = std::mem::replace(&mut encodings, Encodings::new(time.clone(), changed.clone()));
+                    let previous = std::mem::replace(encodings, Encodings::new(time.clone(), changed.clone(), codec));
                     previous.stop().await;
                     settings = request.settings;
                     encodings.baseline(prepared.encoding, frames.clone(), frames.requests());
                     if let Some(layers) = &layers {
-                        match capture.encode(settings.lower_layer()) {
+                        match capture.encode(settings.lower_layer(), codec) {
                             Ok(encoding) => {
                                 layers.insert("q".into(), low.clone());
                                 encodings.supplied(encoding, low.clone());
@@ -179,7 +247,7 @@ pub(super) async fn run(
                     }
                     control.video_settings.send_replace(settings);
                     let failed = encodings.reconcile(&next, None, |bitrate| {
-                        capture.encode(Settings { bitrate, ..settings })
+                        capture.encode(Settings { bitrate, ..settings }, codec)
                     });
                     frames.write(prepared.first);
                     bandwidth_changed.notify_one();
@@ -192,7 +260,7 @@ pub(super) async fn run(
                     if update.is_err() { break; }
                     let next = demands.borrow_and_update().clone();
                     let failed = encodings.reconcile(&next, None, |bitrate| {
-                        capture.encode(Settings { bitrate, ..settings })
+                        capture.encode(Settings { bitrate, ..settings }, codec)
                     });
                     for video in failed {
                         report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
@@ -220,8 +288,10 @@ pub(super) async fn run(
         let _ = request.result.send(Err(anyhow!("capture_unavailable")));
     }
     drop(preparing);
-    encodings.stop().await;
-    let result = if let Some(encoding) = initial {
+    if let Some(encodings) = encodings {
+        encodings.stop().await;
+    }
+    let result = if let Some(encoding) = encoding {
         result.and(stop(encoding).await)
     } else {
         result

@@ -46,6 +46,8 @@ mod output;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod process;
 #[cfg(all(feature = "capture", target_os = "windows"))]
+mod vp8;
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod windows;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod worker;
@@ -198,6 +200,36 @@ pub enum TargetKind {
     Window,
     Display,
     Picker,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VideoCodec {
+    H264,
+    Vp8,
+}
+impl VideoCodec {
+    pub const fn supported(self) -> bool {
+        cfg!(feature = "capture") && (matches!(self, Self::H264) || cfg!(target_os = "windows"))
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum VideoCodecMode {
+    #[default]
+    Auto,
+    H264,
+    Vp8,
+}
+impl VideoCodecMode {
+    #[cfg(feature = "capture")]
+    pub(crate) fn initial(self) -> VideoCodec {
+        match self {
+            Self::Auto | Self::H264 => VideoCodec::H264,
+            Self::Vp8 => VideoCodec::Vp8,
+        }
+    }
 }
 
 /// The existing picker identity. Window handles are fenced by process creation.

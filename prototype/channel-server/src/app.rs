@@ -28,7 +28,7 @@ use futures_util::{
 };
 use piik_channel_core::RoomState;
 use piik_channel_native::{
-    capture::{Settings, Target},
+    capture::{Settings, Target, VideoCodec, VideoCodecMode},
     input::{Desktop, Mode, SourceView},
     peer::{CaptureLease, SourceAudioSettings, SourceMicrophoneSettings},
     session::{
@@ -644,6 +644,7 @@ enum Operation {
         room_id: String,
         target: Target,
         settings: Settings,
+        codec_mode: VideoCodecMode,
         #[serde(default)]
         audio_settings: SourceAudioSettings,
         #[serde(default)]
@@ -715,7 +716,10 @@ struct PendingCapture {
     lease: Option<CaptureLease>,
 }
 enum CaptureResult {
-    Prepared(CaptureLease),
+    Prepared {
+        lease: CaptureLease,
+        codec: VideoCodec,
+    },
     Committed(CaptureLease),
 }
 impl Capture {
@@ -828,8 +832,8 @@ async fn connection(
                             Err(anyhow!("capture_cancelled"))
                         } else {
                             match result {
-                                Ok(CaptureResult::Prepared(lease)) => {
-                                    let value = json!({"captureId":lease.id,"sessionId":lease.session_id});
+                                Ok(CaptureResult::Prepared { lease, codec }) => {
+                                    let value = json!({"captureId":lease.id,"sessionId":lease.session_id,"codec":codec});
                                     if let Some(pending) = captures.get_mut(&publication_id).and_then(|capture| capture.pending.as_mut()) {
                                         pending.lease = Some(lease);
                                     }
@@ -965,6 +969,7 @@ async fn connection(
                                 room_id,
                                 target,
                                 settings,
+                                codec_mode,
                                 audio_settings,
                                 audio,
                                 exclude_audio,
@@ -991,6 +996,7 @@ async fn connection(
                                                         room_id,
                                                         target,
                                                         settings,
+                                                        codec_mode,
                                                         audio_settings,
                                                         audio,
                                                         exclude_audio,
@@ -1001,8 +1007,7 @@ async fn connection(
                                                 .await
                                                 .unwrap_or_else(|_| {
                                                     Err(anyhow!("capture_cancelled"))
-                                                })
-                                                .map(CaptureResult::Prepared);
+                                                });
                                                 (request.id, publication_id, cancel, result)
                                             }
                                             .boxed(),
@@ -1366,11 +1371,12 @@ async fn prepare_capture(
     room_id: String,
     target: Target,
     settings: Settings,
+    codec_mode: VideoCodecMode,
     audio_settings: SourceAudioSettings,
     audio: bool,
     exclude_audio: Option<Target>,
     replaces: Option<Uuid>,
-) -> Result<CaptureLease> {
+) -> Result<CaptureResult> {
     if !cfg!(feature = "capture") {
         bail!("capture_unavailable");
     }
@@ -1383,6 +1389,7 @@ async fn prepare_capture(
             room_id,
             target,
             settings,
+            codec_mode,
             audio,
             exclude_audio,
             replaces,
@@ -1402,7 +1409,10 @@ async fn prepare_capture(
             anyhow!("capture_failed")
         }
     })?;
-    Ok(lease)
+    Ok(CaptureResult::Prepared {
+        codec: lease.video_codec()?,
+        lease,
+    })
 }
 
 async fn commit_capture(
@@ -1482,7 +1492,7 @@ mod tests {
     async fn selected_capture_settings_reach_the_host_command() {
         let mut wire = json!({
             "id": "selected-profile", "type": "prepare_capture", "roomId": "room",
-            "publicationId": Uuid::new_v4(),
+            "publicationId": Uuid::new_v4(), "codecMode": "vp8",
             "target": {"kind": "display", "sourceId": "1", "title": "Test display"},
             "settings": {"width": 1280, "height": 720, "fps": 24, "bitrate": 2_500_000},
             "audioSettings": {"bitrate":192000,"gain":0.5},
@@ -1495,6 +1505,7 @@ mod tests {
             room_id,
             target,
             settings,
+            codec_mode,
             audio_settings,
             audio,
             exclude_audio,
@@ -1517,6 +1528,7 @@ mod tests {
             room_id,
             target.clone(),
             settings,
+            codec_mode,
             audio_settings,
             audio,
             exclude_audio,
@@ -1529,6 +1541,7 @@ mod tests {
             assert_eq!(request.publication_id, publication);
             assert_eq!(request.room_id, "room");
             assert!(request.audio);
+            assert_eq!(request.codec_mode, VideoCodecMode::Vp8);
             assert_eq!(
                 serde_json::to_value(request.exclude_audio).unwrap(),
                 wire["excludeAudio"]
@@ -1553,6 +1566,7 @@ mod tests {
             "room".into(),
             target,
             invalid,
+            VideoCodecMode::H264,
             SourceAudioSettings::default(),
             false,
             None,

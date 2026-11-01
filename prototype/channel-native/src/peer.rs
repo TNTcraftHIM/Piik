@@ -127,6 +127,7 @@ pub struct CaptureLease {
     pub session_id: Uuid,
     pub scope: CaptureScope,
     ready: oneshot::Receiver<Result<()>>,
+    codec: Arc<std::sync::OnceLock<crate::capture::VideoCodec>>,
     required_audio: Option<oneshot::Receiver<Result<()>>>,
     pub audio_error: Option<oneshot::Receiver<String>>,
     pub remote: Option<crate::input::Source>,
@@ -162,6 +163,12 @@ struct Capture {
     pending_audio: Option<Uuid>,
 }
 impl CaptureLease {
+    pub fn video_codec(&self) -> Result<crate::capture::VideoCodec> {
+        self.codec
+            .get()
+            .copied()
+            .context("capture has no admitted video codec")
+    }
     pub fn microphone_state(&self) -> Option<watch::Receiver<SourceMicrophoneSettings>> {
         #[cfg(feature = "capture")]
         if let Some(CaptureLeaseControl::Capture(control)) = &self.control {
@@ -346,6 +353,7 @@ enum Input {
         Option<Uuid>,
         crate::capture::Target,
         crate::capture::Settings,
+        crate::capture::VideoCodecMode,
         bool,
         Option<crate::capture::Target>,
         oneshot::Sender<Result<CaptureLease>>,
@@ -683,6 +691,7 @@ impl NativePeers {
                             replaces,
                             target,
                             settings,
+                            mode,
                             audio,
                             exclude_audio,
                             done,
@@ -693,6 +702,7 @@ impl NativePeers {
                                     replaces,
                                     target,
                                     settings,
+                                    mode,
                                     audio,
                                     exclude_audio,
                                 )
@@ -887,6 +897,7 @@ impl NativePeers {
         replaces: Option<Uuid>,
         target: crate::capture::Target,
         settings: crate::capture::Settings,
+        mode: crate::capture::VideoCodecMode,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
     ) -> Result<CaptureLease> {
@@ -899,6 +910,7 @@ impl NativePeers {
                     replaces,
                     target,
                     settings,
+                    mode,
                     audio,
                     exclude_audio,
                     tx,
@@ -908,7 +920,15 @@ impl NativePeers {
         }
         #[cfg(not(feature = "capture"))]
         {
-            let _ = (scope, replaces, target, settings, audio, exclude_audio);
+            let _ = (
+                scope,
+                replaces,
+                target,
+                settings,
+                mode,
+                audio,
+                exclude_audio,
+            );
             anyhow::bail!("capture_unavailable")
         }
     }
@@ -1072,6 +1092,7 @@ impl Driver {
         replaces: Option<Uuid>,
         target: crate::capture::Target,
         settings: crate::capture::Settings,
+        mode: crate::capture::VideoCodecMode,
         audio: bool,
         exclude_audio: Option<crate::capture::Target>,
     ) -> Result<CaptureLease> {
@@ -1123,6 +1144,9 @@ impl Driver {
                     && capture.selected
                     && capture.target.same_source(&target)
                     && capture.producer.settings() == settings
+                    && capture.producer.control.codec.get().is_some_and(|codec| {
+                        mode == crate::capture::VideoCodecMode::Auto || *codec == mode.initial()
+                    })
             })
             .map(|(id, _)| *id)
         {
@@ -1138,6 +1162,7 @@ impl Driver {
                 session_id: self.session,
                 scope,
                 ready,
+                codec: capture.producer.control.codec.clone(),
                 required_audio: None,
                 audio_error,
                 remote: None,
@@ -1160,6 +1185,7 @@ impl Driver {
             publication,
             target.clone(),
             settings,
+            mode,
             audio,
             exclude_audio,
             self.ready_sources.clone(),
@@ -1175,6 +1201,7 @@ impl Driver {
             session_id: self.session,
             scope: scope.clone(),
             ready,
+            codec: producer.control.codec.clone(),
             required_audio,
             audio_error,
             remote: None,

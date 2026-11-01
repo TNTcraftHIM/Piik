@@ -129,7 +129,12 @@ impl Frames {
     pub(super) fn timing(&self) -> FrameTiming {
         self.timing
     }
-    pub(crate) fn encode(&self, settings: Settings) -> Result<super::Encoding> {
+    pub(crate) fn encode(
+        &self,
+        settings: Settings,
+        codec: crate::capture::VideoCodec,
+    ) -> Result<super::Encoding> {
+        anyhow::ensure!(codec.supported(), "capture_codec_unsupported");
         super::Encoding::start(self.clone(), settings)
     }
     pub fn finish(&self, error: Option<String>) {

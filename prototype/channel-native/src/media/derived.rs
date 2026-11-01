@@ -4,7 +4,7 @@ use super::{
     video::{EncodingDemand, Input, Video},
 };
 use crate::{
-    capture::{Format, FrameTiming, Frames, Settings},
+    capture::{Format, FrameTiming, Frames, Settings, VideoCodec},
     peer::Event,
 };
 use anyhow::Result;
@@ -102,7 +102,7 @@ impl Decoding {
             crate::capture::decoder::run(access_units, worker, format).await
         });
         Ok(Self {
-            encodings: Encodings::new(baseline.time(), baseline.changed()),
+            encodings: Encodings::new(baseline.time(), baseline.changed(), VideoCodec::H264),
             frames,
             input,
             format: formats,
@@ -153,12 +153,15 @@ fn apply(decoding: &mut Decoding, next: &[VideoDemand]) -> Vec<Video> {
     decoding
         .encodings
         .reconcile(next, Some(&decoding.input), |bitrate| {
-            decoding.frames.encode(Settings {
-                width: format.width,
-                height: format.height,
-                fps: format.fps,
-                bitrate,
-            })
+            decoding.frames.encode(
+                Settings {
+                    width: format.width,
+                    height: format.height,
+                    fps: format.fps,
+                    bitrate,
+                },
+                VideoCodec::H264,
+            )
         })
 }
 // Without an encoder owner, fail only Inputs requiring a derived encoding;
@@ -344,7 +347,7 @@ mod tests {
         let worker = frames.clone();
         let (format, formats) = watch::channel(None);
         let mut decoding = Decoding {
-            encodings: Encodings::new(baseline.time(), baseline.changed()),
+            encodings: Encodings::new(baseline.time(), baseline.changed(), VideoCodec::H264),
             frames,
             input: baseline.subscribe(),
             format: formats,

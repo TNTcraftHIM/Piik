@@ -4,7 +4,7 @@ use super::{
     video::{EncodingDemand, Input, Video},
     H264Sps, Source,
 };
-use crate::capture::{Encoding, EncodingControl};
+use crate::capture::{Encoding, EncodingControl, VideoCodec};
 use anyhow::Result;
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use std::{
@@ -155,10 +155,11 @@ pub(crate) struct Encodings {
     inputs: HashMap<(Uuid, String), Weak<Input>>,
     pub pumps: FuturesUnordered<Pump>,
     time: SourceTime,
+    codec: VideoCodec,
     pub changed: Arc<Notify>,
 }
 impl Encodings {
-    pub fn new(time: SourceTime, changed: Arc<Notify>) -> Self {
+    pub fn new(time: SourceTime, changed: Arc<Notify>, codec: VideoCodec) -> Self {
         Self {
             baseline: None,
             supplied: None,
@@ -166,6 +167,7 @@ impl Encodings {
             inputs: HashMap::new(),
             pumps: FuturesUnordered::new(),
             time,
+            codec,
             changed,
         }
     }
@@ -178,8 +180,13 @@ impl Encodings {
         external: Option<Arc<Input>>,
     ) -> Entry {
         let control = encoding.control();
-        self.pumps
-            .push(pump(encoding, video.clone(), requests, external));
+        self.pumps.push(pump(
+            encoding,
+            video.clone(),
+            requests,
+            external,
+            self.codec,
+        ));
         Entry {
             video,
             control,
@@ -354,6 +361,7 @@ fn pump(
     video: Video,
     mut requests: watch::Receiver<u64>,
     external: Option<Arc<Input>>,
+    codec: VideoCodec,
 ) -> Pump {
     Box::pin(async move {
         let control = encoding.control();
@@ -362,7 +370,11 @@ fn pump(
             while !control.is_stopped() {
                 tokio::select! {
                     frame = encoding.recv(), if video.needed() => match frame {
-                        Some(frame) => { let frame = frame?; sps.access_unit(&frame.bytes)?; video.write(frame); }
+                        Some(frame) => {
+                            let frame = frame?;
+                            if codec == VideoCodec::H264 { sps.access_unit(&frame.bytes)?; }
+                            video.write(frame);
+                        }
                         None => break,
                     },
                     changed = requests.changed() => {
@@ -377,7 +389,8 @@ fn pump(
                 }
             }
             Ok(())
-        }.await;
+        }
+        .await;
         (video, result.and(stop(encoding).await))
     })
 }

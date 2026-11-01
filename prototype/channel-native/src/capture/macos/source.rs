@@ -1,5 +1,5 @@
 use super::{checked, encoding::Encoding, Control, Frames, ImageCopy};
-use crate::capture::{FrameTiming, FramerateRequest, Settings, Target, TargetKind};
+use crate::capture::{FrameTiming, FramerateRequest, Settings, Target, TargetKind, VideoCodec};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use cidre::sc::stream::{Delegate as _, Output as _};
 use cidre::{arc, cf, cg, cm, cv, define_obj_type, dispatch, ns, objc, sc};
@@ -40,7 +40,8 @@ impl Capture {
     pub fn frames(&self) -> Frames {
         self.frames.clone()
     }
-    pub fn encode(&self, settings: Settings) -> Result<Encoding> {
+    pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
+        ensure!(codec.supported(), "capture_codec_unsupported");
         Encoding::start(self.frames(), settings)
     }
     pub fn control(&self) -> Control {

@@ -42,8 +42,8 @@ App discovery and site approval reuse the shared product controls, with one
 local data namespace per approved site. The shared launcher starts an App-owned
 domain through Local HTTPS or Cloudflare Quick Tunnel; its rooms retain their
 identity and storage across local-port and invitation-address changes.
-The shared source picker connects Windows hardware H264 capture to the same
-Native endpoint and routing model, preserving its original presentation clock.
+The shared source picker connects Windows H264/VP8 capture and Auto selection to
+the same Native endpoint and routing model, preserving its original presentation clock.
 Optional source sound uses WASAPI and a Rust Opus encoder, retaining independent
 stereo channels. The selecting page owns both captures independently of App room hosting.
 The macOS ScreenCaptureKit/VideoToolbox adapter uses that same producer and
@@ -74,6 +74,8 @@ conversation, couch and voice controls between the page and floating/PiP surface
 personal drafts, attachment selections and voice participation remain page-owned.
 Voice controls reuse one microphone capture across rooms, with device/processing
 updates, room-managed sender bitrate and individual local listening controls.
+Optional source commentary has its own microphone and mixes into the share's
+audio owner, independently of room voice.
 Source audio has separate bitrate and output gain; local previews stay muted,
 and Viewer volume changes only local listening. Browser cameras use the same
 visual publication and source picker as screen sharing.

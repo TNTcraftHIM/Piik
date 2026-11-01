@@ -22,14 +22,24 @@ $font = New-Object System.Drawing.Font('Segoe UI',28)
 $form.add_Paint({ param($sender,$paint)
   $paint.Graphics.DrawString('Piik native preview',$font,[System.Drawing.Brushes]::White,45,130)
 })
+$replacement = New-Object System.Windows.Forms.Form
+$replacement.Text = $Title + ' replacement'
+$replacement.ClientSize = New-Object System.Drawing.Size(640,360)
+$replacement.StartPosition = 'Manual'
+$replacement.Location = New-Object System.Drawing.Point(780,80)
+$replacement.ShowInTaskbar = $false
+$replacement.add_Paint({ param($sender,$paint)
+  $paint.Graphics.DrawString('Piik replacement source',$font,[System.Drawing.Brushes]::White,35,130)
+})
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 100
 $timer.add_Tick({
   $tick = [DateTime]::UtcNow.Millisecond
   $form.BackColor = [System.Drawing.Color]::FromArgb(30,80 + [int]($tick / 10),120)
+  $replacement.BackColor = [System.Drawing.Color]::FromArgb(100,40,80 + [int]($tick / 10))
 })
-try { $timer.Start(); [System.Windows.Forms.Application]::Run($form) }
-finally { $timer.Dispose(); $font.Dispose(); $form.Dispose() }
+try { $replacement.Show(); $timer.Start(); [System.Windows.Forms.Application]::Run($form) }
+finally { $timer.Dispose(); $font.Dispose(); $replacement.Dispose(); $form.Dispose() }
 `);
   const fixture = spawn("powershell.exe", ["-NoProfile", "-STA", "-ExecutionPolicy", "Bypass", "-File", script, title],
     { windowsHide: true, stdio: ["ignore", "ignore", "pipe"] });
@@ -42,6 +52,43 @@ finally { $timer.Dispose(); $font.Dispose(); $form.Dispose() }
       return sources.sources.find(source => source.title === title);
     }, Boolean);
     const source = JSON.stringify(target);
+    const codecSample = publication => evaluate(0, `(async () => {
+      const stream = ${hook}.snapshot().streams.get(${JSON.stringify(publication)});
+      const video = stream?.getVideoTracks().find(track => track.readyState === 'live');
+      const pc = window.__channelProbe.peers.find(pc => pc.connectionState === 'connected'
+        && pc.getReceivers().some(receiver => receiver.track === video));
+      const receiver = pc?.getReceivers().find(receiver => receiver.track === video);
+      if (!receiver) return null;
+      const stats = await receiver.getStats();
+      if (${hook}.snapshot().streams.get(${JSON.stringify(publication)}) !== stream) return null;
+      return { trackId: video.id, reports: [...stats.values()].filter(report => report.type === 'inbound-rtp'
+        && report.kind === 'video' && report.isRemote !== true).map(report => ({ id: report.id,
+          mimeType: stats.get(report.codecId)?.mimeType, frames: report.framesDecoded, bytes: report.bytesReceived,
+          width: report.frameWidth, height: report.frameHeight })) };
+    })()`);
+    const codecProgressing = async (publication, codec, size) => {
+      let before = null;
+      return until(`current Native ${codec} receiver decodes advancing frames`, () => codecSample(publication), current => {
+        const advancing = current && before?.trackId === current.trackId && current.reports.some(report => {
+          const previous = before.reports.find(previous => previous.id === report.id);
+          return report.mimeType?.toLowerCase() === `video/${codec}` && previous
+            && report.frames > previous.frames && report.bytes > previous.bytes
+            && (!size || report.width <= size.width && report.height <= size.height);
+        });
+        before = current;
+        return advancing;
+      });
+    };
+    await evaluate(1, `(() => {
+      const app = ${hook}.session.app, prepare = app.prepareCapture;
+      window.__previewCodecs = { acknowledgements: [], restore: () => { app.prepareCapture = prepare; } };
+      app.prepareCapture = async (...args) => {
+        const prepared = await prepare.apply(app, args);
+        window.__previewCodecs.acknowledgements.push({ mode: args[5], codec: prepared.codec });
+        return prepared;
+      };
+      return true;
+    })()`);
     const first = await evaluate(1, `(async () => {
       const started = performance.now();
       const data = await ${hook}.session.nativePreview(${source});
@@ -59,6 +106,9 @@ finally { $timer.Dispose(); $font.Dispose(); $form.Dispose() }
     await action(0, `browse(${JSON.stringify(room)})`);
     await action(0, `watch(${JSON.stringify(publication)})`);
     await playing(0, publication);
+    const automatic = await evaluate(1, 'window.__previewCodecs.acknowledgements.at(-1)');
+    assert.equal(automatic.mode, 'auto');
+    const autoRtp = await codecProgressing(publication, automatic.codec);
 
     const during = await evaluate(1, `(async () => {
       const before = ${hook}.snapshot().state.publications.map(source => source.id);
@@ -107,6 +157,33 @@ finally { $timer.Dispose(); $font.Dispose(); $form.Dispose() }
     await progressing(0, publication);
     await action(1, `stopScreen(${JSON.stringify(publication)})`);
     await until("explicit stop retires the Native publication", () => view(0), value => !value.state.publications.some(source => source.id === publication));
+
+    await action(1, "setVideoCodecMode('vp8')");
+    await action(1, `startNativeScreen(${JSON.stringify(room)}, ${source}, false)`);
+    const manual = await until("manual Native source is published", () => view(0), value => value.state.publications.some(source => source.roomId === room));
+    const manualId = manual.state.publications.find(source => source.roomId === room).id;
+    await action(0, `watch(${JSON.stringify(manualId)})`);
+    const vp8Rtp = await codecProgressing(manualId, 'vp8');
+    await evaluate(1, `(async () => {
+      const session = ${hook}.session;
+      await session.setScreenQuality(${JSON.stringify(manualId)}, {
+        ...session.screenQuality(${JSON.stringify(manualId)}).applied,
+        resolution: {width:320,height:180}, maxFramerate:15 });
+      return true;
+    })()`);
+    const qualityRtp = await codecProgressing(manualId, 'vp8', {width:320,height:180});
+    const replacement = (await action(1, 'nativeSources()')).sources.find(source => source.title === `${title} replacement`);
+    assert(replacement, 'the replacement is another window owned by this fixture');
+    await action(1, `startNativeScreen(${JSON.stringify(room)}, ${JSON.stringify(replacement)}, false)`);
+    assert.equal(await action(1, `screenCodecMode(${JSON.stringify(manualId)})`), 'vp8');
+    const replacementRtp = await codecProgressing(manualId, 'vp8', {width:320,height:180});
+    const acknowledgements = await evaluate(1, 'window.__previewCodecs.acknowledgements');
+    assert.deepEqual(acknowledgements.slice(-2), [{mode:'vp8',codec:'vp8'},{mode:'vp8',codec:'vp8'}]);
+    assert((await view(0)).state.publications.some(source => source.id === manualId), 'reselection keeps the publication');
+    await action(1, `stopScreen(${JSON.stringify(manualId)})`);
+    await until("explicit stop retires the manual Native publication", () => view(0), value => !value.state.publications.some(source => source.id === manualId));
+    await evaluate(1, '(() => { window.__previewCodecs.restore(); delete window.__previewCodecs; return true; })()');
+    await action(1, "setVideoCodecMode('auto')");
     await evaluate(1, `(async () => {
       const pending = ${hook}.session.nativePreview(${source});
       await new Promise(resolve => setTimeout(resolve,25)); ${hook}.session.close();
@@ -117,7 +194,8 @@ finally { $timer.Dispose(); $font.Dispose(); $form.Dispose() }
     assert(await action(1, `nativePreview(${source})`));
     await writeFile(join(output, "native-preview-result.json"), JSON.stringify({ passed:true,
       width:first.width,height:first.height,dataUrlBytes:first.data.length,firstFrameMs:Math.round(first.elapsed),
-      cancelled:true,pickerCancelled,invalidSource:true,activePublicationRetained:true,pageCloseAndReopen:true },null,2));
+      cancelled:true,pickerCancelled,invalidSource:true,activePublicationRetained:true,pageCloseAndReopen:true,
+      codec: { acknowledgements, autoRtp, vp8Rtp, qualityRtp, replacementRtp } },null,2));
   } finally {
     if (fixture.exitCode === null && fixture.signalCode === null) {
       const exited = once(fixture,"exit"); fixture.kill(); await exited;
