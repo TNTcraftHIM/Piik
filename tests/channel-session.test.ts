@@ -2120,7 +2120,7 @@ class RoomMediaStream {
   removeTrack(track: MediaStreamTrack) { this.tracks = this.tracks.filter(current => current !== track); }
 }
 
-async function setupRoomMedia() {
+async function setupRoomMedia(layered = false) {
   RoomPeerConnection.instances = [];
   RoomAudio.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
@@ -2131,7 +2131,7 @@ async function setupRoomMedia() {
   const sent: ChannelCommand[] = [];
   const changed = vi.fn<(streams: ReadonlyMap<string, MediaStream>, inputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void>();
   const media = new ChannelMedia(command => sent.push(command), changed);
-  state.pairs = [{ id: "pair", peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
+  state.pairs = [{ id: "pair", peerId: "z", canReceiveVideoLayers: layered, rooms: ["first"], incoming: [], outgoing: [] }];
   media.update("a", state);
   return { session, socket, media, state, sent, changed, pc: RoomPeerConnection.instances[0] };
 }
@@ -2523,6 +2523,45 @@ test("source tracks replace serially on the existing physical pair, senders and 
     expect(pc.close).not.toHaveBeenCalled();
     expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
     for (const track of [oldVideo, oldAudio, nextVideo, nextAudio, finalVideo, finalAudio]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
+test("live picture settings apply to the same capture and senders, and a refused sender restores the old profile", async () => {
+  const { session, media, state, sent, pc } = await setupRoomMedia(true);
+  const video = Object.assign(remoteTrack("video"), {
+    getCapabilities: () => ({ width: { min: 1, max: 3840 }, height: { min: 1, max: 2160 }, frameRate: { min: 1, max: 60 } }),
+    getSettings: () => ({ width: 1920, height: 1080 }),
+    applyConstraints: vi.fn(async (_constraints: MediaTrackConstraints) => {}),
+  });
+  const audio = remoteTrack("audio"), profile = QUALITY_PROFILES["1080p30"];
+  try {
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false }];
+    state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
+    media.setLocal("screen", remoteStream("source", [video, audio]), profile);
+    media.update("a", state);
+    const [sender, audioSender] = pc.senders;
+    await vi.waitFor(() => expect(sender.getParameters().degradationPreference).toBe(profile.degradationPreference));
+    const next = QUALITY_PROFILES["1080p60"];
+    await media.configureLocal("screen", next);
+    expect(video.applyConstraints).toHaveBeenLastCalledWith({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
+    expect(sender.getParameters().encodings.map(value => [value.maxBitrate, value.maxFramerate])).toEqual([[2_000_000, 60], [8_000_000, 60]]);
+    expect(pc.senders).toEqual([sender, audioSender]);
+    expect(sender.replaceTrack).not.toHaveBeenCalled();
+    const audioBefore = audioSender.getParameters();
+
+    vi.spyOn(sender, "setParameters").mockRejectedValueOnce(new DOMException("unsupported profile", "OperationError"));
+    await expect(media.configureLocal("screen", QUALITY_PROFILES["720p30"])).rejects.toThrow("unsupported profile");
+    expect(video.applyConstraints).toHaveBeenLastCalledWith({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
+    expect(sender.getParameters().encodings.map(value => [value.maxBitrate, value.maxFramerate])).toEqual([[2_000_000, 60], [8_000_000, 60]]);
+    expect(audioSender.getParameters()).toEqual(audioBefore);
+
+    vi.spyOn(sender, "setParameters").mockResolvedValueOnce();
+    await expect(media.configureLocal("screen", QUALITY_PROFILES["720p30"])).rejects.toThrow("capture_quality_unsupported");
+    expect(pc.senders).toEqual([sender, audioSender]);
+    expect(RoomPeerConnection.instances).toHaveLength(1);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(video.stop).not.toHaveBeenCalled(); expect(audio.stop).not.toHaveBeenCalled();
+    expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
   } finally { media.reset(); session.close(); }
 });
 

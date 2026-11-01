@@ -298,7 +298,7 @@ describe("realtime quality controls", () => {
     expect(setParameters).toHaveBeenCalledOnce();
   });
 
-  it("applies a profile to the highest-resolution simulcast encoding", async () => {
+  it("updates both supplied simulcast ceilings without changing their scale or identity", async () => {
     let applied = {
       encodings: [
         {
@@ -335,8 +335,8 @@ describe("realtime quality controls", () => {
     expect(applied.encodings).toEqual([
       {
         rid: "q",
-        maxBitrate: 1_250_000,
-        maxFramerate: 30,
+        maxBitrate: 2_000_000,
+        maxFramerate: 60,
         scaleResolutionDownBy: 2,
       },
       {

@@ -476,10 +476,15 @@ export async function configureVideoSender(
   const encodingIndex = parameters.encodings.length - 1;
   const encoding = parameters.encodings[encodingIndex]!;
   encoding.maxBitrate = profile.maxBitrate;
+  if (parameters.encodings.length === 2) {
+    parameters.encodings[0]!.maxBitrate = screenShareEncodings(profile, undefined, 2, 2)[0]!.maxBitrate;
+  }
   // The producer owns picture cadence. A second limit on its synthetic clock
   // can discard ticks and strand already-encoded frames when delivery is uneven.
-  if (carrierScale === undefined) encoding.maxFramerate = profile.maxFramerate;
-  else delete encoding.maxFramerate;
+  for (const layer of parameters.encodings) {
+    if (carrierScale === undefined) layer.maxFramerate = profile.maxFramerate;
+    else delete layer.maxFramerate;
+  }
   // Keep the existing spatial ratios when the source dimensions change.
   const previousScale = encoding.scaleResolutionDownBy ?? 1;
   const scale = carrierScale ?? requestedScaleResolutionDownBy(sender, profile);
@@ -491,14 +496,12 @@ export async function configureVideoSender(
   parameters.degradationPreference = carrierScale === undefined
     ? profile.degradationPreference : "maintain-framerate";
 
-  const requested = readVideoSenderParameters(parameters, false, encodingIndex);
+  const requestedLayers = parameters.encodings.map((_, index) => readVideoSenderParameters(parameters, false, index));
   await sender.setParameters(parameters);
-  const applied = readVideoSenderParameters(
-    sender.getParameters(),
-    true,
-    encodingIndex,
-  );
-  return senderParameterReadback(requested, applied);
+  const applied = sender.getParameters();
+  const readbacks = requestedLayers.map((requested, index) =>
+    senderParameterReadback(requested, readVideoSenderParameters(applied, true, index)));
+  return { ...readbacks[encodingIndex]!, mismatches: [...new Set(readbacks.flatMap(value => value.mismatches))] };
 }
 
 export function audioSenderCeiling(current: RTCRtpSendParameters, requestedMaxBitrate: number): number {

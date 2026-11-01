@@ -2,7 +2,7 @@ import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { decodedVideoFrameSamples } from "../webrtc/stats";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
-import { configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, type QualityProfile } from "../media/quality";
+import { configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, videoQualitySettingsEqual, type QualityProfile } from "../media/quality";
 
 const MAX_FILE_FRAME_BYTES = 8192;
 const MAX_CONTROL_FRAME_BYTES = 32768;
@@ -24,6 +24,7 @@ interface OutgoingBinding {
   senders: RTCRtpSender[];
   failed: boolean;
   paused: boolean;
+  profile?: QualityProfile;
   audioBitrate?: number;
   rejectedTracks?: MediaStreamTrack[];
   replacement?: MediaStreamTrack[];
@@ -266,6 +267,13 @@ export class ChannelTransport {
         this.sending.set(id, output);
       }
       if (output.failed) continue;
+      if (profile && (!output.profile || !videoQualitySettingsEqual(output.profile, profile))) {
+        output.profile = profile;
+        const owner = output;
+        for (const sender of owner.senders) if (sender.track?.kind === "video") {
+          this.enqueue(() => this.applyVideoProfile(id, owner, sender, profile));
+        }
+      }
       if (output.paused !== paused) {
         output.paused = paused;
         const owner = output;
@@ -418,6 +426,7 @@ export class ChannelTransport {
   private async applyVideoProfile(id: string, owner: OutgoingBinding, sender: RTCRtpSender, profile: QualityProfile): Promise<void> {
     const current = () => !this.closed && this.sending.get(id) === owner && owner.senders.includes(sender);
     if (!current()) return;
+    if (!sender.getParameters().encodings.length) return;
     try {
       const applied = await configureVideoSender(sender, profile);
       if (current() && applied.mismatches.length) {
@@ -426,6 +435,21 @@ export class ChannelTransport {
     } catch (error) {
       if (current()) console.warn("Channel source quality parameters could not be applied", { flowId: id }, error);
     }
+  }
+
+  /** An explicit source edit shares the negotiation queue, but cannot fail the pair. */
+  configureVideo(id: string, profile: QualityProfile): Promise<void> {
+    const owner = this.sending.get(id);
+    const work = this.operations.then(async () => {
+      if (this.closed || !owner || this.sending.get(id) !== owner || owner.failed) return;
+      for (const sender of owner.senders) if (sender.track?.kind === "video" && sender.getParameters().encodings.length) {
+        const applied = await configureVideoSender(sender, profile);
+        if (applied.mismatches.length) throw new Error("capture_quality_unsupported");
+      }
+      if (this.sending.get(id) === owner) owner.profile = profile;
+    });
+    this.operations = work.catch(() => {});
+    return work;
   }
 
   private removeSender(sender: RTCRtpSender): void {
@@ -488,6 +512,7 @@ export class ChannelTransport {
       .map(transceiver => [transceiver.sender, transceiver.sender.track]));
     for (const [id, owner] of this.sending) for (const sender of owner.senders) if (this.stableSenders.has(sender)) {
       if (sender.track?.kind === "audio") this.enqueue(() => this.applyAudioBitrate(id, owner, sender));
+      if (sender.track?.kind === "video" && owner.profile) this.enqueue(() => this.applyVideoProfile(id, owner, sender, owner.profile!));
       this.enqueue(() => this.applyPaused(id, owner, sender));
     }
   }
