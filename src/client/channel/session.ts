@@ -88,7 +88,7 @@ export class ChannelSession {
   private watching = new Set<string>();
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
-  private reading: { roomId: string; socket: WebSocket | null; ready: Promise<void>;
+  private reading: { roomId: string; bindingId: string; socket: WebSocket | null; ready: Promise<void>;
     interaction?: RoomInteractionSession; interactionBinding?: string } | null = null;
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
@@ -311,6 +311,8 @@ export class ChannelSession {
     if (!sameChannel) this.closeInteractions();
     this.historyChannel = state.channel.id;
     const canRead = (id: string) => sameChannel && state.channel.rooms.some(room => room.id === id && room.authorized);
+    const freshBindings = new Set(state.channel.rooms.filter(room => room.delivery
+      && previousRooms?.find(previous => previous.id === room.id)?.delivery?.bindingId !== room.delivery.bindingId).map(room => room.id));
     for (const [id, request] of this.requests) if (request.bindingId
       && !state.channel.rooms.some(room => room.id === request.roomId && room.authorized
         && room.available && room.delivery?.bindingId === request.bindingId)) {
@@ -321,10 +323,11 @@ export class ChannelSession {
     for (const id of this.outgoingMessages.keys()) if (!canRead(id)) this.outgoingMessages.delete(id);
     this.patch({ state: visible, self: state.users.find(user => user.id === userId) ?? null,
       voicePlaybackByUser: sameChannel ? new Map([...this.view.voicePlaybackByUser].filter(([id]) => state.users.some(user => user.id === id))) : new Map(),
-      messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id))),
-      historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id))),
+      messagesByRoom: Object.fromEntries(Object.entries(this.view.messagesByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
+      historyByRoom: Object.fromEntries(Object.entries(this.view.historyByRoom).filter(([id]) => canRead(id) && !freshBindings.has(id))),
     });
-    if (this.reading && !state.channel.rooms.some(room => room.id === this.reading!.roomId && room.authorized && room.available)) {
+    if (this.reading && (!sameChannel || !state.channel.rooms.some(room => room.id === this.reading!.roomId
+      && room.authorized && room.available && room.delivery?.bindingId === this.reading!.bindingId))) {
       this.closeInteractions(); this.reading = null;
     }
     if (this.view.connection === "connected") for (const room of state.channel.rooms) {
@@ -347,6 +350,7 @@ export class ChannelSession {
     this.input.update();
     this.attachments.update(sessionId, state.files, state.channel.rooms);
     this.sendConversations();
+    if (this.roomId && freshBindings.has(this.roomId)) this.browse(this.roomId);
     this.syncInteractions();
     this.releaseUnusedMicrophone();
   }
@@ -372,7 +376,8 @@ export class ChannelSession {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
-        ...(conversation ? { bindingId: delivery!.bindingId, pendingSend: command,
+        ...(delivery && (conversation || command.type === "browse") ? { bindingId: delivery.bindingId } : {}),
+        ...(conversation ? { pendingSend: command,
           ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) } : {}) });
       if (conversation) this.sendConversations();
       else this.write({ ...command, requestId });
@@ -645,9 +650,10 @@ export class ChannelSession {
         this.write({ type: "browse", roomId: room.id, active: false });
       }
     }
-    if (this.view.state?.channel.rooms.some(room => room.id === roomId && room.authorized && room.available)) {
+    const room = this.view.state?.channel.rooms.find(room => room.id === roomId && room.authorized && room.available);
+    if (room?.delivery) {
       if (this.reading) return;
-      const reading = { roomId, socket: this.socket, ready: this.request({ type: "browse", roomId, active: true }) };
+      const reading = { roomId, bindingId: room.delivery.bindingId, socket: this.socket, ready: this.request({ type: "browse", roomId, active: true }) };
       this.reading = reading;
       void reading.ready.then(async () => {
         if (this.reading !== reading || this.socket !== reading.socket || this.roomId !== roomId) return;

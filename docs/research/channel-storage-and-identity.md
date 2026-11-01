@@ -132,11 +132,13 @@ permanent change-replay service for the first local cache. Browser copies belong
 in bounded IndexedDB storage; localStorage remains for small preferences and
 bookmarks. Original author departure does not erase confirmed messages.
 
-The room owner supplies the current history generation and retention boundary.
-A higher timestamp or longer cached history is not proof of authority. Ordinary
-restart preserves that generation; restoring an older backup changes it and
-requires a fresh authoritative window. The shared room core owns synchronization
-identities and cursors; storage adapters supply atomic reads and writes.
+The current room-host binding scopes history requests and live replies. A fresh
+binding replaces the previous reading window with the owner's current result,
+even when its newest message is older or the history is empty. Only live arrivals
+from that binding can extend the refreshed window. Restore stops the previous
+writer and registers the same room identity with a fresh binding; no separate
+backup generation is needed. The shared room core owns synchronization identities
+and cursors; storage adapters supply atomic reads and writes.
 
 Do not silently evict the owner's confirmed history as if it were a participant
 cache. If storage cannot accept a message, report that failed send and preserve

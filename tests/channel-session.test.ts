@@ -64,24 +64,24 @@ async function setup(window = 1000, read = true, hash = "", readyInteractions = 
   const peer = {
     sent, interactions,
     async next() { await vi.waitFor(() => expect(pending.length).toBeGreaterThan(0)); return pending.shift()!; },
-    reply(request: PeerRequest | InteractionRequest, record: ConversationReply["record"]) {
-      const reply = { roomId: request.roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: request.requestId };
+    reply(request: PeerRequest | InteractionRequest, record: ConversationReply["record"], bindingId = "binding") {
+      const reply = { roomId: request.roomId, bindingId, sender: "host", recipient: "endpoint", requestId: request.requestId };
       deliver({ ...reply, record: "message" in record ? { ...record, message: messageSchema.parse(record.message) } : record });
       if (record.type === "confirmed") deliver({ ...reply, record: { type: "message_reactions", snapshot: {
         messageId: record.message.id, messageSeq: record.message.seq, ...(record.message.reactions ?? { revision: 0, choices: {} }),
       } } });
     },
-    page(request: PeerRequest, messages: ChannelMessage[], hasMore = false, oldestSeq: number | null = 1) {
+    page(request: PeerRequest, messages: ChannelMessage[], hasMore = false, oldestSeq: number | null = 1, bindingId = "binding") {
       for (const message of messages) {
-        peer.reply(request, { type: "history_message", message });
+        peer.reply(request, { type: "history_message", message }, bindingId);
         peer.reply(request, { type: "message_reactions", snapshot: {
           messageId: message.id, messageSeq: message.seq, ...(message.reactions ?? { revision: 0, choices: {} }),
-        } });
+        } }, bindingId);
       }
-      peer.reply(request, { type: "history_end", count: messages.length, hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null });
+      peer.reply(request, { type: "history_end", count: messages.length, hasMore, oldestSeq, before: "before" in request ? request.before ?? null : null }, bindingId);
     },
-    live(message: ChannelMessage, roomId = "first") {
-      deliver({ roomId, bindingId: "binding", sender: "host", recipient: "endpoint", requestId: "live", record: { type: "live_message", message: messageSchema.parse(message) } });
+    live(message: ChannelMessage, roomId = "first", bindingId = "binding") {
+      deliver({ roomId, bindingId, sender: "host", recipient: "endpoint", requestId: "live", record: { type: "live_message", message: messageSchema.parse(message) } });
     },
     async history(messages: ChannelMessage[], hasMore = false, older = false) {
       const loading = older ? session.loadHistory("first") : session.loadLatestHistory("first");
@@ -1461,6 +1461,61 @@ test.each([
     peer.page(request, [...messages], false, oldestSeq);
     await loading;
     expect(session.getSnapshot().messagesByRoom.first).toEqual([...messages, message(2)]);
+  } finally { session.close(); }
+});
+
+test.each([
+  ["older", [message(1)], message(2)],
+  ["empty", [], undefined],
+] as const)("a fresh host binding replaces cached history with its %s head", async (_head, messages, live) => {
+  const { session, socket, peer } = await setup();
+  try {
+    await peer.history([{ ...message(1), reactions: { revision: 7, choices: { heart: ["self"] } } }, message(8), message(9)], true);
+    peer.live(message(7), "second");
+    const loading = session.loadHistory("first");
+    const cancelled = expect(loading).rejects.toThrow("room_unavailable");
+    const oldRead = await peer.next();
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].delivery!.bindingId = "restored-binding";
+    socket.receive({ type: "state", state });
+    await cancelled;
+    expect(session.getSnapshot().messagesByRoom.first).toBeUndefined();
+    expect(session.getSnapshot().historyByRoom.first).toBeUndefined();
+    expect(session.getSnapshot().messagesByRoom.second).toEqual([message(7)]);
+    peer.page(oldRead, [message(5)], true);
+    expect(session.getSnapshot().messagesByRoom.first).toBeUndefined();
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    const refreshed = await peer.next();
+    expect(refreshed).toMatchObject({ type: "history", roomId: "first" });
+    expect(refreshed).not.toHaveProperty("before");
+    if (live) peer.live(live, "first", "restored-binding");
+    peer.page(refreshed, [...messages], false, messages[0]?.seq ?? null, "restored-binding");
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([...messages, ...(live ? [live] : [])]);
+    expect(session.getSnapshot().historyByRoom.first).toMatchObject({ atLatest: true, hasMore: false });
+  } finally { session.close(); }
+});
+
+test("a fresh binding retires a pending browse before its late acknowledgement", async () => {
+  const { session, socket, peer } = await setup(1000, false);
+  try {
+    const previous = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    const state = structuredClone(session.getSnapshot().state!);
+    state.channel.rooms[0].delivery!.bindingId = "replacement-binding";
+    socket.receive({ type: "state", state });
+    const current = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    expect(current.requestId).not.toBe(previous.requestId);
+    socket.receive({ type: "ack", requestId: previous.requestId });
+    await Promise.resolve();
+    expect(peer.sent).toEqual([]);
+    socket.receive({ type: "ack", requestId: current.requestId });
+    const refreshed = await peer.next();
+    peer.page(refreshed, [], false, null, "replacement-binding");
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    expect(peer.sent).toHaveLength(1);
+    expect(session.getSnapshot().messagesByRoom.first).toEqual([]);
+    expect(session.getSnapshot().error).toBeNull();
   } finally { session.close(); }
 });
 
