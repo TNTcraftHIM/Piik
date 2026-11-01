@@ -111,6 +111,37 @@ describe("sender display-frame ownership", () => {
     expect(p.processor).not.toHaveBeenCalled();
   });
 
+  it("normalizes only oriented shared frames and releases their snapshots", async () => {
+    const p = platform(), source = new Track();source.settings = { width: 640, height: 480 };
+    class Frame {
+      readonly close = vi.fn();
+      get rotation() { return 0; }
+      get flip() { return false; }
+      constructor(readonly bitmap: ImageBitmap, readonly init: VideoFrameInit) {}
+    }
+    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const snapshot = vi.fn(async () => bitmap);
+    vi.stubGlobal("VideoFrame", Frame);
+    vi.stubGlobal("createImageBitmap", snapshot);
+    const track = cloneSenderVideoTrack(asTrack(source), vi.fn(), { normalizeOrientation: true });owned.push(track);
+    const input = source.clone.mock.results[0]!.value;
+    expect(input.applyConstraints).toHaveBeenCalledWith(source.getConstraints());
+    const plain = { rotation: 0, flip: false, close: vi.fn() } as unknown as VideoFrame;
+    const oriented = { rotation: 90, flip: true, displayWidth: 480, displayHeight: 640, timestamp: 123, duration: 456, close: vi.fn() } as unknown as VideoFrame;
+    p.frames().enqueue(plain);p.frames().enqueue(oriented);
+    await flush();
+    expect(p.write.mock.calls[0]![0]).toBe(plain);
+    expect(snapshot).toHaveBeenCalledExactlyOnceWith(oriented, { resizeWidth: 480, resizeHeight: 640 });
+    expect(p.write.mock.calls[1]![0]).toMatchObject({ bitmap, init: { timestamp: 123, duration: 456 } });
+    expect(plain.close).toHaveBeenCalledOnce();
+    expect(oriented.close).toHaveBeenCalledOnce();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    expect((p.write.mock.calls[1]![0] as VideoFrame).close).toHaveBeenCalledOnce();
+    stopSenderVideoTrack(track);await flush();
+    expect(p.cancel).toHaveBeenCalledOnce();
+    expect(source.stop).not.toHaveBeenCalled();
+  });
+
   it("retires both ends if idle-refresh configuration fails before piping", async () => {
     const p = platform(), source = new Track(), input = new Track(), ended = vi.fn();
     source.clone.mockReturnValue(input);

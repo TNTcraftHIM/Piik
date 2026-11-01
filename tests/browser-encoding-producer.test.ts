@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserEncodingProducer } from "../src/client/media/browser-encoding-producer";
 import { applyVideoCaptureProfile, configureVideoSender, QUALITY_PROFILES } from "../src/client/media/quality";
+import { cloneSenderVideoTrack } from "../src/client/media/sender-video-track";
+
+vi.mock("../src/client/media/sender-video-track", async (original) => ({
+  ...await original<typeof import("../src/client/media/sender-video-track")>(),
+  cloneSenderVideoTrack: vi.fn((source: MediaStreamTrack) => source.clone()),
+}));
 
 vi.mock("../src/client/media/quality", async (original) => ({
   ...await original<typeof import("../src/client/media/quality")>(),
@@ -83,6 +89,7 @@ describe("Browser encoding producer startup", () => {
   const localAnswer = (codec: string, fmtp = "") => ({ type: "answer" as const, sdp: [
     "v=0", "o=- 1 1 IN IP4 127.0.0.1", "s=-", "t=0 0",
     "m=video 9 UDP/TLS/RTP/SAVPF 96", "c=IN IP4 0.0.0.0", "a=recvonly",
+    "a=extmap:3 urn:3gpp:video-orientation", "a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid",
     `a=rtpmap:96 ${codec}/90000`, ...(fmtp ? [`a=fmtp:96 ${fmtp}`] : []), "",
   ].join("\r\n") });
 
@@ -94,8 +101,11 @@ describe("Browser encoding producer startup", () => {
     vi.spyOn(Connection.prototype, "createAnswer").mockResolvedValue(localAnswer(name, fmtp));
     const { producer } = createProducer(codec);
     await producer.start(3_333_999);
+    expect(cloneSenderVideoTrack).toHaveBeenCalledWith(expect.anything(), expect.any(Function), { normalizeOrientation: true });
     const [send, receive] = Connection.instances;
     const answer = receive.localDescription!;
+    expect(answer.sdp).not.toContain("urn:3gpp:video-orientation");
+    expect(answer.sdp).toContain("a=extmap:4 urn:ietf:params:rtp-hdrext:sdes:mid");
     expect(answer.sdp).toContain("x-google-start-bitrate=3333");
     if (fmtp) expect(answer.sdp).toContain(fmtp);
     expect(send.remoteDescription).toBe(answer);
@@ -119,7 +129,8 @@ describe("Browser encoding producer startup", () => {
     vi.spyOn(Connection.prototype, "createAnswer").mockResolvedValue(answer);
     const { producer } = createProducer();
     await producer.start(budget);
-    expect(Connection.instances[1].localDescription).toBe(answer);
+    expect(Connection.instances[1].localDescription!.sdp).not.toContain("x-google-start-bitrate");
+    expect(Connection.instances[1].localDescription!.sdp).not.toContain("urn:3gpp:video-orientation");
   });
 
   it("bounds the start hint by the Host ceiling without duplicating an existing hint", async () => {
