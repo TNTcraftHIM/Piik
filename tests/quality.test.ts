@@ -175,6 +175,7 @@ describe("realtime quality controls", () => {
         autoGainControl: false,
         voiceIsolation: false,
         channelCount: { ideal: 2 },
+        restrictOwnAudio: true,
       },
       systemAudio: "include",
       windowAudio: "window",
