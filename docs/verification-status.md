@@ -45,8 +45,9 @@ controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
-  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41282552930),
-  including ScreenCaptureKit, VideoToolbox, source sound and Quartz input.
+  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41344422446)
+  at `19367895`, including ScreenCaptureKit, VideoToolbox, source sound, native
+  microphone capture/conversion and Quartz input.
   Native test programs also compile and link. System permission, capture,
   sound and input acceptance on a Mac remain open.
 - The isolated 3.0 Linux adapter passes Native/App/Server compilation and real
