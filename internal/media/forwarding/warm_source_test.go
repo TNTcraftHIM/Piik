@@ -56,7 +56,7 @@ func TestTransportBootstrapsWarmRawSource(t *testing.T) {
 					producerError <- err
 					return
 				}
-				if err := source.WriteFrame(0, encoded.Frame{Data: data, PTS: pts, Duration: time.Second / 30}); err != nil {
+				if err := source.WriteFrame(0, encoded.Frame{Data: data, PTS: pts, Duration: time.Second / 30, Recovery: true}); err != nil {
 					producerError <- err
 					return
 				}

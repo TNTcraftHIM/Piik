@@ -468,7 +468,7 @@ func TestLateOutputGroupKeepsSharedCaptureClock(t *testing.T) {
 		var timestamp uint32
 		for _, media := range []*forwarding.EncodedSource{source.media, group.media} {
 			if err := media.WriteFrame(0, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
-				PTS: pts, Duration: time.Second / 30}); err != nil {
+				PTS: pts, Duration: time.Second / 30, Recovery: true}); err != nil {
 				t.Fatal(err)
 			}
 			report := media.GetAllBuffers()[0].GetSenderReportData()
@@ -615,7 +615,7 @@ func TestRelayGroupSharesReceivedClockAcrossWrap(t *testing.T) {
 	}
 	write(3, 1544, 20*time.Millisecond)
 	check(source.WriteVideo(2, encoded.Frame{Data: sfu.VP8KeyFrame8x8,
-		PTS: 20 * time.Millisecond, Duration: time.Second / 30}))
+		PTS: 20 * time.Millisecond, Duration: time.Second / 30, Recovery: true}))
 	// A delayed older wire report is rejected by the original owner before
 	// either internal copy can adopt it.
 	check(source.SenderReport(earlier))

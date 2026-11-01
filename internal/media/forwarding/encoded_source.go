@@ -89,6 +89,11 @@ func (input *EncodedSource) WriteFrame(layer int, frame encoded.Frame) error {
 		frame.PTS < input.anchorPTS || frame.PTS > input.inputPTS {
 		return errors.New("encoded output has no matching source input")
 	}
+	// Buffers and packetizers survive input replacement, but each new encoder
+	// generation must supply an independently decodable frame for every layer.
+	if input.rtpBytes[layer] == 0 && !frame.Recovery {
+		return nil
+	}
 	sourceTime := input.anchorTime.Add(frame.PTS - input.anchorPTS)
 	packets, err := input.packetizers[layer].Packetize(frame.Data, sourceTime.Sub(input.originTime), frame.Duration)
 	if err != nil {

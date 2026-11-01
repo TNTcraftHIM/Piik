@@ -43,7 +43,7 @@ func TestCodecBudgetUsesActualSourceFraming(t *testing.T) {
 		for layer, size := range []int{80, 4000} {
 			data := make([]byte, size)
 			copy(data, sfu.VP8KeyFrame8x8)
-			if err = input.WriteFrame(layer, encoded.Frame{Data: data, PTS: pts, Duration: period}); err != nil {
+			if err = input.WriteFrame(layer, encoded.Frame{Data: data, PTS: pts, Duration: period, Recovery: true}); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -86,7 +86,7 @@ func TestEncodedSourceH264MetadataPreservesCorrelation(t *testing.T) {
 		if err := input.BeginFrame(pts, origin.Add(pts)); err != nil {
 			t.Fatal(err)
 		}
-		if err := input.WriteFrame(0, encoded.Frame{Data: data, PTS: pts, Duration: period}); err != nil {
+		if err := input.WriteFrame(0, encoded.Frame{Data: data, PTS: pts, Duration: period, Recovery: index == 0}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -128,5 +128,66 @@ func TestEncodedSourceH264MetadataPreservesCorrelation(t *testing.T) {
 	write(6, []byte{0x06, 0x05, 0x00, 0x80}) // SEI remains a normal RTP payload.
 	if input.packets[0] != packets+1 {
 		t.Fatal("SEI was incorrectly treated as packetless metadata")
+	}
+}
+
+func TestEncodedSourceGenerationStartsEachLayerWithRecovery(t *testing.T) {
+	input, err := NewEncodedSource(clockSourceOptions("generation-recovery"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer input.Close()
+	check := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	delta := append([]byte(nil), sfu.VP8KeyFrame8x8...)
+	delta[0] |= 1
+	const period = 40 * time.Millisecond
+	origin := time.Now()
+	for generation := range 2 {
+		if generation != 0 {
+			input.BeginGeneration()
+		}
+		at := origin.Add(time.Duration(generation) * 5 * time.Second)
+		packets := append([]uint32(nil), input.packets...)
+		reports := []proto.Message{input.GetAllBuffers()[0].GetSenderReportData(), input.GetAllBuffers()[1].GetSenderReportData()}
+		write := func(layer int, pts time.Duration, recovery bool) {
+			t.Helper()
+			data := delta
+			if recovery {
+				data = sfu.VP8KeyFrame8x8
+			}
+			check(input.WriteFrame(layer, encoded.Frame{Data: data, PTS: pts, Duration: period, Recovery: recovery}))
+		}
+		check(input.BeginFrame(0, at))
+		for layer := range 2 {
+			write(layer, 0, false)
+			if input.packets[layer] != packets[layer] || input.rtpBytes[layer] != 0 || input.codecBytes[layer] != 0 ||
+				!proto.Equal(reports[layer], input.GetAllBuffers()[layer].GetSenderReportData()) {
+				t.Fatal("delta crossed a fresh generation or advanced its clock/cost", generation, layer)
+			}
+		}
+		check(input.BeginFrame(period, at.Add(period)))
+		write(0, period, true)
+		write(1, period, false)
+		if input.packets[0] != packets[0]+1 || input.packets[1] != packets[1] {
+			t.Fatal("one layer's recovery admitted another layer's delta")
+		}
+		check(input.BeginFrame(2*period, at.Add(2*period)))
+		write(0, 2*period, false)
+		write(1, 2*period, true)
+		if input.packets[0] != packets[0]+2 || input.packets[1] != packets[1]+1 {
+			t.Fatal("recovered layer did not resume normal frames")
+		}
+		for layer := range 2 {
+			report := input.GetAllBuffers()[layer].GetSenderReportData()
+			captured, ok := input.ReferenceTime(layer, report.RtpTimestamp)
+			if !ok || captured.Sub(at.Add(2*period)).Abs() > time.Microsecond {
+				t.Fatal("recovery changed the source clock")
+			}
+		}
 	}
 }

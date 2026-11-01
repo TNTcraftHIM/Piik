@@ -351,7 +351,7 @@ func TestSourceFormatAdaptationPreservesLiveLayers(t *testing.T) {
 		// codec activation through the separate demand planner.
 		check(source.beginGroupFrame(pts, time.Now()))
 		for layer := range 2 {
-			check(source.WriteVideo(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: period}))
+			check(source.WriteVideo(layer, encoded.Frame{Data: sfu.VP8KeyFrame8x8, PTS: pts, Duration: period, Recovery: true}))
 		}
 		pts += period
 	}

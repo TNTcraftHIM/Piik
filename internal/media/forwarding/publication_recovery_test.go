@@ -193,7 +193,7 @@ func checkPublicationRecovery(t *testing.T, scenario string) {
 		data := make([]byte, max(len(sfu.VP8KeyFrame8x8)+8, int(bitrate/8/30)))
 		copy(data, sfu.VP8KeyFrame8x8)
 		binary.BigEndian.PutUint64(data[len(data)-8:], uint64(time.Now().UnixNano()))
-		check(source.WriteFrame(0, encoded.Frame{Data: data, PTS: pts, Duration: period}))
+		check(source.WriteFrame(0, encoded.Frame{Data: data, PTS: pts, Duration: period, Recovery: true}))
 		frame++
 		if now.Sub(lastSample) < time.Second {
 			continue

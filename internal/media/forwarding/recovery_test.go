@@ -268,7 +268,7 @@ func checkTransportRecovery(t *testing.T, scenario string) {
 			}
 			data := make([]byte, max(len(sfu.VP8KeyFrame8x8), int(source.CodecBudget(layer, bitrate)/8/30)))
 			copy(data, sfu.VP8KeyFrame8x8)
-			check(source.WriteFrame(layer, encoded.Frame{Data: data, PTS: pts, Duration: period}))
+			check(source.WriteFrame(layer, encoded.Frame{Data: data, PTS: pts, Duration: period, Recovery: true}))
 		}
 		frame++
 		if now.Sub(lastReport) >= time.Second {
