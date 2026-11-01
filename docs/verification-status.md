@@ -59,6 +59,7 @@ phases, including NAT and Auto codec behavior.
   pending-page cancellation and capture stop preserve the running room.
   Notification Stop joins the runtime and closes its listeners. Opening the App
   again restores its launcher without resuming capture.
+  The selected str0m candidate also passes this full App flow on the emulator.
   Its Rust encoder components also pass independent bitrate updates, keyframe
   requests, source-clock preservation and sibling isolation on the emulator's
   software codec.

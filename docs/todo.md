@@ -17,10 +17,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   Preserve the existing SDK controller; the probe-clock experiment did not
   demonstrate a recovery benefit. Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
-  after that acceptance and the held dependency decision. Complete the current
-  Android build/device check, then retire the unused Go backend and its
-  acceptance callers from this branch. Keep the first version's accepted scope
-  and the prototype isolated.
+  after that acceptance and the held dependency decision. Keep the first
+  version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -38,20 +36,20 @@ own behavior; research and Git/PRs own evidence and completed history.
   shows rejected input and failed release cleanup; the candidate repairs a
   reproduced thread-desktop mismatch and records the native rejection context.
   Confirm the original host's trigger before closing the issue.
-- [ ] **Return LiveKit to an upstream pin.** Follow
+- [ ] **2.x: return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
-  temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#local-encoder-probe-demand)
+  temporary replacement. [Dependency provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
 - [ ] **Return the 3.0 RTC dependency to an upstream release.** Follow
   [upstream #296](https://github.com/webrtc-rs/rtc/pull/296) and
   [#298](https://github.com/webrtc-rs/rtc/pull/298). Native and Server use
   the same fixed 0.21.1 fork; [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the repair and removal criteria.
-- [ ] **Return Pion to an upstream pin.** Follow
+- [ ] **2.x: return Pion to an upstream pin.** Follow
   [upstream #3668](https://github.com/pion/webrtc/pull/3668). Once upstream
   includes equivalent H.264 profile matching, verify the receiver and forwarding
-  controls and remove the temporary replacement. [Dependency provenance](../internal/thirdparty/README.md#pion-h264-profile-matching)
+  controls and remove the temporary replacement. [Dependency provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#pion-h264-profile-matching)
   owns the patch and removal boundary.
 
 ## Next

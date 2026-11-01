@@ -1,6 +1,12 @@
 # Project Memory
 
-Last updated: 2026-10-26
+Last updated: 2026-10-31
+
+The product notes below describe published 2.x. The isolated 3.0 branch uses
+Rust and the shared Web UI; [status](./status.md) indexes its implementation,
+and the [channel network design](./research/channel-network-design.md) owns its
+accepted responsibilities and lifecycles. Current source locations belong to
+the [engineering map](./standards/engineering.md#source-index).
 
 Piik is private, low-latency screen sharing for one Host and up to 20
 authenticated friends. The current product surface is Web Host, Web Viewer, and
