@@ -147,7 +147,7 @@ export function HeaderControls({ diagnosticControl, appControl }: { diagnosticCo
     </button>
   );
   return (
-    <span className="lr-header-controls">
+    <span className="lr-top-right lr-header-controls">
       {appControl}
       <LanguageControl />
       <Tooltip kind={theme === "dark" ? "hint-theme-light" : "hint-theme-dark"} text={vis ? undefined : themeTitle} place="below" align="end">
@@ -174,20 +174,20 @@ export function AppHeader({
   const { t } = useCopy();
   return (
     <header className="lr-top">
-      <span className="lr-header-context">
-        {homeHref !== "/client" && <a
-          className="lr-brand"
-          href={withBrowserDebug(homeHref)}
-          aria-label={t("brand.home")}
-          aria-current={atHome ? "page" : undefined}
-        >
-          {!atHome && <Glyph name="chevron" size={14} className="lr-home-arrow" />}
-          <BrandMark size={34} motion="once" />
-        </a>}
+      {homeHref !== "/client" && <a
+        className="lr-brand"
+        href={withBrowserDebug(homeHref)}
+        aria-label={t("brand.home")}
+        aria-current={atHome ? "page" : undefined}
+      >
+        {!atHome && <Glyph name="chevron" size={14} className="lr-home-arrow" />}
+        <BrandMark size={34} motion="once" />
+      </a>}
+      <span className="lr-top-right">
         {led}
+        <HeaderControls diagnosticControl={diagnosticControl}
+          appControl={homeHref !== "/client" ? <AppConnectionButton onConnected={onAppConnected} /> : undefined} />
       </span>
-      <HeaderControls diagnosticControl={diagnosticControl}
-        appControl={homeHref !== "/client" ? <AppConnectionButton onConnected={onAppConnected} /> : undefined} />
     </header>
   );
 }

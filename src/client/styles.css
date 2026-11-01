@@ -115,9 +115,8 @@ ul { margin: 0; padding: 0; list-style: none; }
 .lr-brand:active { transform: scale(.92); }
 .lr-home-arrow { transform: rotate(90deg); color: var(--muted); }
 
-.lr-header-context, .lr-header-controls { display: inline-flex; flex: none; gap: 10px; align-items: center; }
-.lr-header-context:empty { display: none; }
-.lr-header-controls { margin-inline-start: auto; }
+.lr-top-right { display: inline-flex; gap: 10px; align-items: center; }
+.lr-top > .lr-top-right { margin-left: auto; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
 
 /* Discrete signaling state, independent of picture quality. */
 .lr-leds {
@@ -1797,7 +1796,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   .lr-source-option { min-height: 58px; padding: 6px 8px; }
   .lr-source-option-preview { height: 90px; }
   .lr-source-option-icon { width: 34px; height: 34px; }
-  .lr-header-context, .lr-header-controls { gap: 8px; }
+  .lr-top-right { gap: 8px; }
   .lr-leds { gap: 4px; padding: 6px; }
   .lr-top .lr-btn.is-compact { width: var(--control-compact-size); padding: 0; }
   .lr-top .lr-btn.is-compact .lr-cap { display: none; }
@@ -1943,11 +1942,17 @@ details[open] > summary > .lr-sharing-chevron { transform: rotate(180deg); }
 /* Theatre keeps ordinary feedback with the surrounding room controls.
    Missing pictures and required playback actions retain their stage overlay. */
 .lr-room.is-theater .lr-stage-notices { display: none; }
+@media (max-width: 480px) {
+  .lr-top:has(.lr-leds) { display: grid; grid-template-columns: auto minmax(0, 1fr); row-gap: 8px; }
+  .lr-top:has(.lr-leds) > .lr-top-right { display: contents; }
+  .lr-top:has(.lr-leds) > .lr-top-right > [role="status"] { justify-self: end; }
+  .lr-top:has(.lr-leds) .lr-header-controls { grid-column: 1 / -1; justify-self: end; }
+}
 @media (max-width: 360px) {
   .lr-client-modes { grid-template-columns: 1fr; }
   .lr-lcd { gap: 4px; padding-inline: 6px; font-size: 18px; }
   .lr-top { column-gap: 4px; padding-inline: 10px; }
-  .lr-header-context, .lr-header-controls { gap: 4px; }
+  .lr-top-right { gap: 4px; }
   .lr-brand { gap: 0; padding-inline: 0; }
   .lr-home-arrow { width: 10px; }
   .lr-tiles .lr-tile { padding-inline: 4px; }
