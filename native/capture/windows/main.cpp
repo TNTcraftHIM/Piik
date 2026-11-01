@@ -2280,7 +2280,9 @@ void RunVideoCapture(ProductArguments arguments) {
       submit(input);
     }
   } catch (...) {
+    const HRESULT removed = device.device->GetDeviceRemovedReason();
     cleanup();
+    Check(removed, "capture-device-lost");
     throw;
   }
 }
