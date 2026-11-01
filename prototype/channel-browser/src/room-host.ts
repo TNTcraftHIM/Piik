@@ -10,7 +10,7 @@ export interface BrowserRoomSnapshot {
   readonly rows: AsyncIterable<BackupHistoryRow>;
   close(): Promise<void>;
 }
-export interface BrowserRoomStage {
+export interface BrowserRoomStage extends BrowserRoomSnapshot {
   append(row: BackupHistoryRow): Promise<void>;
   replace(signal?: AbortSignal): Promise<void>;
   close(): Promise<void>;
@@ -89,7 +89,7 @@ interface BackupMarker { seq: 0; stageId: string }
 class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
   readonly stageId = crypto.randomUUID();
   private closed: Promise<void> | undefined;
-  constructor(private db: IDBDatabase, readonly policy: string, readonly roomId: string) {}
+  constructor(private db: IDBDatabase, readonly policy: string, readonly roomId: string, private readonly storedBindingId?: string) {}
 
   private turn<T>(stores: string[], mode: IDBTransactionMode,
     start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
@@ -137,14 +137,17 @@ class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
 
   replace(signal?: AbortSignal): Promise<void> {
     return this.turn(["backup", "rooms", "messages"], "readwrite", (tx, abort) => {
-      const messages = tx.objectStore("messages");
-      messages.delete(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]));
-      // Retire the prior durable write binding in the same commit as the data.
-      tx.objectStore("rooms").put({ id: this.roomId, policy: this.policy } satisfies RoomRecord);
-      read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(0, true)), cursor => {
-        if (!cursor) { tx.objectStore("backup").clear(); return; }
-        messages.add({ ...cursor.value, roomId: this.roomId });
-        cursor.continue();
+      read<RoomRecord | undefined>(tx.objectStore("rooms").get(this.roomId), record => {
+        if (record?.bindingId !== this.storedBindingId) throw new Error("room_host_conflict");
+        const messages = tx.objectStore("messages");
+        messages.delete(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]));
+        // Retire the prior durable write binding in the same commit as the data.
+        tx.objectStore("rooms").put({ id: this.roomId, policy: this.policy } satisfies RoomRecord);
+        read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(0, true)), cursor => {
+          if (!cursor) { tx.objectStore("backup").clear(); return; }
+          messages.add({ ...cursor.value, roomId: this.roomId });
+          cursor.continue();
+        }, abort);
       }, abort);
     }, () => {}, signal);
   }
@@ -236,10 +239,15 @@ export class BrowserRoomHost {
   static async stage(databaseName: string, policy: string): Promise<BrowserRoomStage> {
     const roomId: string = JSON.parse(policy).id;
     const db = await openDatabase(databaseName);
-    const stage = new RoomBackup(db, policy, roomId);
+    let stage: RoomBackup | undefined;
     try {
-      await transaction(db, ["backup"], "readwrite", tx => stage.initialize(tx), () => {});
-      return stage;
+      await transaction(db, ["rooms", "backup"], "readwrite", (tx, abort) => {
+        read<RoomRecord | undefined>(tx.objectStore("rooms").get(roomId), record => {
+          stage = new RoomBackup(db, policy, roomId, record?.bindingId);
+          stage.initialize(tx);
+        }, abort);
+      }, () => {});
+      return stage!;
     } catch (error) { db.close(); throw error; }
   }
 

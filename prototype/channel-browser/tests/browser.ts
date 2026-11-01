@@ -400,6 +400,18 @@ window.runBrowserRoomCheck = async () => {
     check(restoreWriteSucceeded && JSON.stringify(await history()) === JSON.stringify(beforeImport), "aborted copy preserves all original data and its writer");
     check((await send("Still current", "after-abort")).message.seq === 114, "failed restore preserves the current write binding");
 
+    const staleRestore = await BrowserRoomHost.stage(database, savedPolicy);
+    const priorWriter = host, successor = await BrowserRoomHost.open(database, policy), successorBinding = crypto.randomUUID();
+    try {
+      for (const row of rows) await staleRestore.append(row);
+      await successor.bind(successorBinding);
+      try { await staleRestore.replace(); throw new Error("staged restore replaced a new writer"); }
+      catch (error) { check(String(error).includes("room_host_conflict"), "replace atomically checks the writer observed before staging"); }
+      host = successor; bindingId = successorBinding; await bindHost();
+      check((await send("New writer retained", "successor")).message.seq === 115,
+        "stale restoration neither overwrites nor steals its successor's authority/history");
+    } finally { await staleRestore.close(); await priorWriter.close(); if (host !== successor) await successor.close(); }
+
     const imported = await BrowserRoomHost.stage(database, savedPolicy);
     try { for (const row of rows) await imported.append(row); await imported.replace(); }
     finally { await imported.close(); }
