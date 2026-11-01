@@ -31,13 +31,12 @@ pub(super) fn capture(
         }
     });
     capture.stop()?;
-    result?
-        .map(|image| objc::ar_pool(|| encode(image)))
-        .transpose()
+    result?.map(encode).transpose()
 }
 
 fn encode(image: Image) -> Result<Vec<u8>> {
     use cg::image::destination::OptKey;
+    let _pool = objc::AutoreleasePoolPage::push();
     let image = vt::cg_image_from_cv_pixel_buf(image.pixels(), None)
         .map_err(|error| anyhow!("{error:?}"))?;
     let (width, height) = dimensions(image.width() as u32, image.height() as u32);
