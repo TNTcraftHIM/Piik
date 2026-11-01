@@ -52,7 +52,9 @@ impl Driver {
                     .outgoing
                     .iter()
                     .filter(|flow| {
-                        flow.selected || !pair.rejected_outputs.keys().any(|key| key.0 == flow.id)
+                        !self.publications[&flow.publication_id].paused
+                            && (flow.selected
+                                || !pair.rejected_outputs.keys().any(|key| key.0 == flow.id))
                     })
                     .map(|flow| {
                         let sources: Vec<_> = self
@@ -125,13 +127,16 @@ impl Driver {
                     *current = maximum;
                     true
                 });
-                (
-                    *id,
-                    allocate(
-                        pair.bandwidth.borrow().feedback().map(|bps| bps as u64),
-                        &requests,
-                    ),
-                )
+                let mut plan = allocate(
+                    pair.bandwidth.borrow().feedback().map(|bps| bps as u64),
+                    &requests,
+                );
+                for flow in &pair.plan.outgoing {
+                    if self.publications[&flow.publication_id].paused {
+                        plan.video.insert(flow.id, EncodingDemand::Paused);
+                    }
+                }
+                (*id, plan)
             })
             .collect()
     }

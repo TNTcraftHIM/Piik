@@ -110,6 +110,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                     user_id: channel.identity.sessions[session].user_id,
                     kind,
                     muted: false,
+                    paused: false,
                 })
             })
             .collect();

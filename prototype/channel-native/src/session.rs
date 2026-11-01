@@ -327,21 +327,30 @@ pub struct TransferSource {
     pub to_session_id: Uuid,
     pub result: oneshot::Sender<Result<(), String>>,
 }
+pub struct PauseCapture {
+    pub scope: CaptureScope,
+    pub capture_id: Uuid,
+    pub paused: bool,
+    pub result: oneshot::Sender<Result<(), String>>,
+}
 enum PendingCapture {
     Commit(CommitCapture),
     Transfer(TransferSource),
+    Pause(PauseCapture),
 }
 impl PendingCapture {
     fn scope(&self) -> &CaptureScope {
         match self {
             Self::Commit(r) => &r.scope,
             Self::Transfer(r) => &r.scope,
+            Self::Pause(r) => &r.scope,
         }
     }
     fn closed(&self) -> bool {
         match self {
             Self::Commit(r) => r.result.is_closed(),
             Self::Transfer(r) => r.result.is_closed(),
+            Self::Pause(r) => r.result.is_closed(),
         }
     }
     fn fail(self, code: String) {
@@ -350,6 +359,9 @@ impl PendingCapture {
                 let _ = r.result.send(Err(code));
             }
             Self::Transfer(r) => {
+                let _ = r.result.send(Err(code));
+            }
+            Self::Pause(r) => {
                 let _ = r.result.send(Err(code));
             }
         }
@@ -374,6 +386,7 @@ pub enum HostCommand {
     PrepareCapture(PrepareCapture),
     CommitCapture(CommitCapture),
     TransferSource(TransferSource),
+    PauseCapture(PauseCapture),
 }
 impl HostCommand {
     fn unavailable(self) {
@@ -397,6 +410,9 @@ impl HostCommand {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
             Self::TransferSource(request) => {
+                let _ = request.result.send(Err("hosting_unavailable".into()));
+            }
+            Self::PauseCapture(request) => {
                 let _ = request.result.send(Err("hosting_unavailable".into()));
             }
         }
@@ -604,6 +620,7 @@ impl Session {
                                 HostCommand::PrepareCapture(request) => self.prepare_capture(request, socket).await?,
                                 HostCommand::CommitCapture(request) => self.commit_capture(request, socket).await?,
                                 HostCommand::TransferSource(request) => self.transfer_source(request, socket).await?,
+                                HostCommand::PauseCapture(request) => self.pause_capture(request, socket).await?,
                             } }
                         },
                         command = next_command(&mut self.live), if admitted => {
@@ -889,6 +906,9 @@ impl Session {
                             PendingCapture::Transfer(request) => {
                                 let _ = request.result.send(Ok(()));
                             }
+                            PendingCapture::Pause(request) => {
+                                let _ = request.result.send(Ok(()));
+                            }
                         },
                         RoomResult::Error { code } => request.fail(code),
                         _ => request.fail("invalid_capture_reply".into()),
@@ -1076,6 +1096,45 @@ impl Session {
         let id = Uuid::new_v4().to_string();
         self.pending_captures
             .insert(id.clone(), PendingCapture::Transfer(request));
+        write(socket, &command, Some(&id)).await
+    }
+
+    async fn pause_capture(&mut self, request: PauseCapture, socket: &mut Socket) -> Result<()> {
+        if request.result.is_closed() {
+            return Ok(());
+        }
+        let Some(live) = self.live.as_mut() else {
+            let _ = request.result.send(Err("hosting_unavailable".into()));
+            return Ok(());
+        };
+        let current = await_peer(
+            live.peers.capture_current(request.capture_id, true),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await?;
+        if !current
+            || live
+                .room
+                .snapshot
+                .borrow()
+                .as_ref()
+                .and_then(|state| capture_binding(state, &request.scope.room_id))
+                != Some(request.scope.binding_id)
+        {
+            let _ = request.result.send(Err("capture_unavailable".into()));
+            return Ok(());
+        }
+        let command = Command::SetPaused {
+            publication_id: request.scope.publication_id,
+            paused: request.paused,
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures
+            .insert(id.clone(), PendingCapture::Pause(request));
         write(socket, &command, Some(&id)).await
     }
 

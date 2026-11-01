@@ -378,6 +378,7 @@ impl RoomRuntime {
                     user_id: member.user_id,
                     kind,
                     muted,
+                    paused: false,
                 }),
             );
         }
@@ -393,6 +394,26 @@ impl RoomRuntime {
         }
         self.publications.remove(&id);
         Ok(true)
+    }
+
+    pub fn set_paused(
+        &mut self,
+        session: Uuid,
+        id: Uuid,
+        paused: bool,
+    ) -> Result<(), &'static str> {
+        let publication = self
+            .publications
+            .get_mut(&id)
+            .ok_or("publication_unavailable")?;
+        if publication.info.session_id != session {
+            return Err("not_publication_owner");
+        }
+        if publication.info.kind != Kind::Screen {
+            return Err("invalid_screen_publication");
+        }
+        publication.set_paused(paused);
+        Ok(())
     }
 
     pub fn transfer_source(

@@ -2845,6 +2845,7 @@ impl Driver {
                             self.events.clone(),
                             p.reports.clone(),
                             p.plan.can_receive_video_layers,
+                            self.publications[publication].paused,
                         )
                         .await
                         {
@@ -2867,6 +2868,7 @@ impl Driver {
                             source.request_keyframe();
                         }
                     }
+                    p.outputs[&output_key].set_paused(self.publications[publication].paused);
                     targets.extend(p.outputs[&output_key].rtp_sink());
                 }
             }

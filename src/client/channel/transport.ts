@@ -15,6 +15,7 @@ export interface OutgoingMedia {
   stream: MediaStream | null;
   profile?: QualityProfile;
   voiceBitrate?: number;
+  paused?: boolean;
 }
 
 interface OutgoingBinding {
@@ -22,6 +23,7 @@ interface OutgoingBinding {
   stream: MediaStream;
   senders: RTCRtpSender[];
   failed: boolean;
+  paused: boolean;
   audioBitrate?: number;
   rejectedTracks?: MediaStreamTrack[];
   replacement?: MediaStreamTrack[];
@@ -48,6 +50,7 @@ interface TransportOptions {
 export class ChannelTransport {
   readonly pc: RTCPeerConnection;
   private sending = new Map<string, OutgoingBinding>();
+  private pausedEncodings = new WeakMap<RTCRtpSender, boolean[]>();
   private stableSenders: Map<RTCRtpSender, MediaStreamTrack | null> | null = null;
   private remoteIds = new Map<string, string>();
   private frameBaselines = new Map<string, ReadonlyMap<string, number> | null>();
@@ -256,13 +259,18 @@ export class ChannelTransport {
       for (const track of previous.stream.getTracks()) previous.stream.removeTrack(track);
       this.sending.delete(id);
     }
-    for (const [id, { kind, stream, profile, voiceBitrate }] of streams) {
+    for (const [id, { kind, stream, profile, voiceBitrate, paused = false }] of streams) {
       let output = this.sending.get(id);
       if (!output) {
-        output = { kind, stream: new MediaStream(), senders: [], failed: false };
+        output = { kind, stream: new MediaStream(), senders: [], failed: false, paused };
         this.sending.set(id, output);
       }
       if (output.failed) continue;
+      if (output.paused !== paused) {
+        output.paused = paused;
+        const owner = output;
+        for (const sender of owner.senders) this.enqueue(() => this.applyPaused(id, owner, sender));
+      }
       const bitrate = kind === "voice" ? voiceBitrate ?? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(profile?.maxAudioBitrate);
       if (output.audioBitrate !== bitrate) {
         output.audioBitrate = bitrate;
@@ -302,6 +310,7 @@ export class ChannelTransport {
                 if (track.kind === "audio") {
                   await this.applyAudioBitrate(id, owner, added);
                 }
+                if (owner.paused) await this.applyPaused(id, owner, added);
               }
             }
             for (const sender of owner.senders) if (!retained.includes(sender)) this.removeSender(sender);
@@ -348,6 +357,10 @@ export class ChannelTransport {
               const owner = output;
               this.enqueue(() => this.applyVideoProfile(id, owner, sender, profile));
             }
+            if (output.paused) {
+              const owner = output;
+              this.enqueue(() => this.applyPaused(id, owner, sender));
+            }
           } catch (error) {
             attached = false;
             const live = previous.filter(sender => sender.track?.readyState === "live");
@@ -378,8 +391,28 @@ export class ChannelTransport {
 
   private async applyAudioBitrate(id: string, owner: OutgoingBinding, sender: RTCRtpSender): Promise<void> {
     if (this.closed || this.sending.get(id) !== owner || !owner.senders.includes(sender)) return;
+    const parameters = sender.getParameters();
+    if (!parameters.encodings.length) return;
     try { await configureAudioSender(sender, owner.audioBitrate!); }
     catch (error) { console.warn("Channel audio bitrate could not be applied", { flowId: id }, error); }
+  }
+
+  private async applyPaused(id: string, owner: OutgoingBinding, sender: RTCRtpSender): Promise<void> {
+    if (this.closed || this.sending.get(id) !== owner || !owner.senders.includes(sender)) return;
+    const paused = owner.paused;
+    try {
+      const parameters = sender.getParameters();
+      if (!parameters.encodings.length) return;
+      let active = this.pausedEncodings.get(sender);
+      if (paused && !active) {
+        active = parameters.encodings.map(encoding => encoding.active ?? true);
+        this.pausedEncodings.set(sender, active);
+      }
+      if (!active) return;
+      parameters.encodings.forEach((encoding, index) => { encoding.active = !paused && (active![index] ?? true); });
+      await sender.setParameters(parameters);
+      if (!paused) this.pausedEncodings.delete(sender);
+    } catch (error) { console.warn("Channel sender pause could not be applied", { flowId: id }, error); }
   }
 
   private async applyVideoProfile(id: string, owner: OutgoingBinding, sender: RTCRtpSender, profile: QualityProfile): Promise<void> {
@@ -453,6 +486,10 @@ export class ChannelTransport {
       .filter(transceiver => ["sendonly", "sendrecv"].includes(transceiver.currentDirection ?? "")
         && senders.has(transceiver.sender) && senders.get(transceiver.sender) === transceiver.sender.track)
       .map(transceiver => [transceiver.sender, transceiver.sender.track]));
+    for (const [id, owner] of this.sending) for (const sender of owner.senders) if (this.stableSenders.has(sender)) {
+      if (sender.track?.kind === "audio") this.enqueue(() => this.applyAudioBitrate(id, owner, sender));
+      this.enqueue(() => this.applyPaused(id, owner, sender));
+    }
   }
 
   hasRemoteStream(flowId: string, stream: MediaStream): boolean {

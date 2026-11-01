@@ -79,6 +79,7 @@ impl Fixture {
             user_id: Uuid::new_v4(),
             kind: Kind::Screen,
             muted: false,
+            paused: false,
         };
         let mut f = Self {
             withheld: HashSet::new(),

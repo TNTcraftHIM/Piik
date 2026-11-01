@@ -121,6 +121,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     user_id: user,
                     kind: Kind::Screen,
                     muted: false,
+                    paused: false,
                 })
                 .collect();
             session.state(state, &mut socket).await.unwrap();

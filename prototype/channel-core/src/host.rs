@@ -235,6 +235,12 @@ impl RoomRuntime {
             Command::Unpublish { publication_id } => {
                 self.unpublish(session, publication_id)?;
             }
+            Command::SetPaused {
+                publication_id,
+                paused,
+            } => {
+                self.set_paused(session, publication_id, paused)?;
+            }
             Command::TransferSource {
                 publication_id,
                 to_session_id,

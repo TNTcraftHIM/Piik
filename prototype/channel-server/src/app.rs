@@ -32,7 +32,8 @@ use piik_channel_native::{
     input::{Desktop, Mode, SourceView},
     peer::{CaptureLease, SourceAudioSettings},
     session::{
-        self, CommitCapture, HostCommand, Hosting, OpenRoom, PrepareCapture, TransferSource,
+        self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
+        TransferSource,
     },
 };
 use serde::Deserialize;
@@ -658,6 +659,11 @@ enum Operation {
         capture_id: Uuid,
         settings: SourceAudioSettings,
     },
+    CapturePaused {
+        publication_id: Uuid,
+        capture_id: Uuid,
+        paused: bool,
+    },
     CancelCapture {
         publication_id: Uuid,
     },
@@ -1050,6 +1056,31 @@ async fn connection(
                                 .ok_or_else(|| anyhow!("capture_unavailable"))
                                 .and_then(|lease| lease.configure_audio(settings))
                                 .map(|_| Value::Null),
+                            Operation::CapturePaused {
+                                publication_id,
+                                capture_id,
+                                paused,
+                            } => {
+                                let lease = captures
+                                    .get(&publication_id)
+                                    .and_then(Capture::lease)
+                                    .filter(|lease| lease.id == capture_id);
+                                if let (Some(commands), Some(lease)) = (&host, lease) {
+                                    let commands = commands.clone();
+                                    let scope = lease.scope.clone();
+                                    let capture_id = lease.producer_id();
+                                    input_policies.push(async move {
+                                        let result = pause_capture(&commands, scope, capture_id, paused).await;
+                                        match result {
+                                            Ok(()) => json!({"id":request.id,"result":null}),
+                                            Err(error) => json!({"id":request.id,"error":error.to_string()}),
+                                        }
+                                    }.boxed());
+                                    continue;
+                                } else {
+                                    Err(anyhow!("capture_unavailable"))
+                                }
+                            }
                             Operation::InputPolicy {
                                 publication_id,
                                 mode,
@@ -1280,6 +1311,28 @@ async fn transfer_source(
             scope,
             capture_id,
             to_session_id,
+            result,
+        }))
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?;
+    response
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?
+        .map_err(anyhow::Error::msg)
+}
+
+async fn pause_capture(
+    commands: &mpsc::Sender<HostCommand>,
+    scope: piik_channel_native::peer::CaptureScope,
+    capture_id: Uuid,
+    paused: bool,
+) -> Result<()> {
+    let (result, response) = oneshot::channel();
+    commands
+        .send(HostCommand::PauseCapture(PauseCapture {
+            scope,
+            capture_id,
+            paused,
             result,
         }))
         .await

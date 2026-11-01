@@ -97,6 +97,10 @@ pub enum Command {
     Unpublish {
         publication_id: Uuid,
     },
+    SetPaused {
+        publication_id: Uuid,
+        paused: bool,
+    },
     TransferSource {
         publication_id: Uuid,
         to_session_id: Uuid,
@@ -431,6 +435,7 @@ pub struct PublicationInfo {
     pub user_id: Uuid,
     pub kind: Kind,
     pub muted: bool,
+    pub paused: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]

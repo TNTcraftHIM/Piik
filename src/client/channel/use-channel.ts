@@ -27,6 +27,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
   }, [session]);
   return { ...view,
     setQuality: session.setQuality,
+    setScreenPaused: session.setScreenPaused,
     sourceAudio: session.sourceAudio, setSourceAudio: session.setSourceAudio,
     activateApp: session.activateApp,
     browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf, updateDomain: session.updateDomain,

@@ -51,6 +51,7 @@ struct Writer {
     clock_rate: u32,
     output: Uuid,
     writable: Arc<tokio::sync::Notify>,
+    paused: watch::Receiver<bool>,
 }
 async fn write(
     mut reader: (u32, String, Reader),
@@ -59,11 +60,15 @@ async fn write(
     let Some(packets) = reader.2.recv().await else {
         return (reader, None);
     };
+    let mut paused = writer.paused.clone();
+    if *paused.borrow_and_update() {
+        return (reader, Some(Ok(())));
+    }
     let (ssrc, rid) = (reader.0, reader.1.clone());
     let (id, clock_rate) = (writer.output, writer.clock_rate);
     let (transport, output_reports, writable) =
         (&writer.transport, &writer.reports, &writer.writable);
-    let result = async {
+    let writing = async {
         let packets = packets?;
         let timestamp = packets.first().map(|p| p.header.timestamp).unwrap_or(0);
         let wallclock = {
@@ -108,8 +113,12 @@ async fn write(
             changed.await;
         }
         Ok(())
-    }
-    .await;
+    };
+    let result = tokio::select! {
+        biased;
+        _ = paused.changed() => Ok(()),
+        result = writing => result,
+    };
     (reader, Some(result))
 }
 
@@ -119,6 +128,7 @@ pub(crate) struct Output {
     pub stream: String,
 
     negotiated: watch::Sender<Option<RtpCodecParameters>>,
+    paused: watch::Sender<bool>,
     encodings: Vec<Encoding>,
     task: JoinHandle<()>,
     feedback: JoinHandle<()>,
@@ -134,6 +144,7 @@ impl Output {
         events: mpsc::Sender<crate::peer::Event>,
         reports: OutputStreams,
         preserve_layers: bool,
+        paused: bool,
     ) -> Result<Self> {
         let id = Uuid::new_v4();
         let ssrc = u32::from_be_bytes(id.as_bytes()[..4].try_into().unwrap());
@@ -211,7 +222,7 @@ impl Output {
                                 ))
                         }
                     };
-                    input.set_active(!adaptive);
+                    input.set_active(!adaptive && !paused);
                     (
                         Input::Video(input.clone()),
                         Reader::Video(input, packetizer),
@@ -250,12 +261,14 @@ impl Output {
                 }
             }
         });
+        let (paused, pause) = watch::channel(paused);
         let writer = Arc::new(Writer {
             transport: pc.clone(),
             reports: reports.clone(),
             clock_rate: source.codec.clock_rate,
             output: id,
             writable,
+            paused: pause,
         });
         let mut writes = readers
             .into_iter()
@@ -296,6 +309,7 @@ impl Output {
             source: source.id,
             stream,
             negotiated,
+            paused,
             encodings,
             task,
             feedback,
@@ -303,7 +317,7 @@ impl Output {
         })
     }
     pub fn rtp_sink(&self) -> Option<mpsc::Sender<rtp::Packet>> {
-        if self.negotiated.borrow().is_none() {
+        if self.negotiated.borrow().is_none() || *self.paused.borrow() {
             return None;
         }
         match &self.encodings.first()?.input {
@@ -379,6 +393,22 @@ impl Output {
     pub fn confirm(&self, codec: Option<RtpCodecParameters>) -> Result<()> {
         self.negotiated.send_replace(codec);
         Ok(())
+    }
+    pub fn set_paused(&self, paused: bool) {
+        if self.paused.send_if_modified(|current| {
+            if *current == paused {
+                return false;
+            }
+            *current = paused;
+            true
+        }) && paused
+        {
+            for encoding in &self.encodings {
+                if let Input::Video(input) = &encoding.input {
+                    input.set_active(false);
+                }
+            }
+        }
     }
     pub async fn close(self, pc: &Transport) {
         for encoding in &self.encodings {

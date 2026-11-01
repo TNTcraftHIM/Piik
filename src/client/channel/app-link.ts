@@ -192,6 +192,13 @@ export class ChannelApp {
     if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }
 
+  async setCapturePaused(publicationId: string, paused: boolean): Promise<void> {
+    const captureId = this.captures.get(publicationId);
+    if (!captureId) throw new Error("capture_unavailable");
+    await this.request({ type: "capture_paused", publicationId, captureId, paused });
+    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
+  }
+
   async commitCapture(publicationId: string, captureId: string): Promise<void> {
     await this.request({ type: "commit_capture", publicationId, captureId });
     if (!this.prepared.delete(publicationId)) throw new DOMException("Capture cancelled", "AbortError");

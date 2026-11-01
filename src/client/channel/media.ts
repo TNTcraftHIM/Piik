@@ -113,6 +113,12 @@ export class ChannelMedia {
         if (!plan.incoming.some(flow => flow.id === flowId)) {
           input.release?.();
           peer.inputs.delete(flowId);
+        } else {
+          const flow = plan.incoming.find(flow => flow.id === flowId)!;
+          if (this.publications.find(publication => publication.id === flow.publicationId)?.paused) {
+            input.stopProof?.(); input.stopProof = undefined;
+            input.stopQuality?.(); input.ready = false;
+          } else this.prove(peer, flowId, input.stream);
         }
       }
     }
@@ -172,7 +178,8 @@ export class ChannelMedia {
   private prove(peer: Peer, id: string, stream: MediaStream): void {
     if (!peer.transport.hasRemoteStream(id, stream)) return;
     const publicationId = peer.plan.incoming.find(flow => flow.id === id)?.publicationId;
-    const kind = this.publications.find(publication => publication.id === publicationId)?.kind;
+    const publication = this.publications.find(publication => publication.id === publicationId);
+    const kind = publication?.kind;
     if (!kind) return;
     const video = kind === "screen" ? stream.getVideoTracks().find(track => track.readyState !== "ended") : undefined;
     const receiver = video ? peer.transport.pc.getReceivers().find(candidate => candidate.track === video) : undefined;
@@ -203,7 +210,7 @@ export class ChannelMedia {
         this.send({ type: "flow_state", flowId: id, pairId: peer.plan.id, state: "failed" });
       }
     }
-    if (input.ready || input.stopProof || input.failed) return;
+    if (publication?.paused || input.ready || input.stopProof || input.failed) return;
     const owned = () => this.ownsInput(peer, id, input) && (kind !== "screen" || receiver !== undefined);
     const ready = () => {
       if (!owned()) return true;
@@ -350,7 +357,7 @@ export class ChannelMedia {
           if (input && !input.failed) stream = input.stream;
           break;
         }
-        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile,
+        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile, paused: publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
         if (stream && flow.inputFlowId !== null) {
           const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");
@@ -375,7 +382,7 @@ export class ChannelMedia {
       const values = screenInputs.get(flow.publicationId) ?? [];
       values.push({ flowId: flow.id, stream: input.stream, selected: flow.selected, switchReady: !!input.switchReady });
       screenInputs.set(flow.publicationId, values);
-      if (flow.selected) { input.stopQuality?.(); input.incumbent = undefined; }
+      if (flow.selected || this.publications.find(publication => publication.id === flow.publicationId)?.paused) { input.stopQuality?.(); input.incumbent = undefined; }
       else this.compareCandidate(peer, flow.id, flow.publicationId, input);
     }
     if (changed || screenInputs.size || this.screenInputs.size) this.changed(new Map(streams), screenInputs);

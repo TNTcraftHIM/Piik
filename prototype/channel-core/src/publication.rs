@@ -64,6 +64,14 @@ impl Publication {
             .retain(|child| endpoints.contains_key(child));
     }
 
+    pub fn set_paused(&mut self, paused: bool) {
+        self.info.paused = paused;
+        if paused {
+            // A deliberate pause withdraws an unproved change, not the live tree.
+            self.operation = None;
+        }
+    }
+
     pub fn needs_repair(&self, requested: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) -> bool {
         self.plan.needs_repair(requested, connected)
     }
@@ -110,7 +118,7 @@ impl Publication {
                 .collect()
         };
         self.reconcile_leases(&paths);
-        if self.info.kind != Kind::Screen {
+        if self.info.kind != Kind::Screen || self.info.paused {
             return;
         }
         if let Some(operation) = &self.operation {
@@ -288,6 +296,9 @@ impl Publication {
         state: FlowState,
         now: u64,
     ) -> bool {
+        if self.info.paused && state != FlowState::Failed {
+            return false;
+        }
         let expired = self.expire(now);
         if let Some(RouteOperation {
             kind: OperationKind::Switch { root, legs },

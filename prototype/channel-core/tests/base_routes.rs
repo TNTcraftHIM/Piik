@@ -63,6 +63,141 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
 }
 
 #[test]
+fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
+    use piik_channel_core::host::RoomResult;
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let (source, _) = join(&mut network, host, None);
+    let (receiver, _) = join(&mut network, viewer, None);
+    let room = network.create(host, RoomAccess::Public, false);
+    browse(&mut network, viewer, &room, true);
+    let transport = pair(&network, viewer, source, &room);
+    for connection in [host, viewer] {
+        command(
+            &mut network,
+            connection,
+            json!({"type":"link_state", "pairId":transport.id, "state":"connected"}),
+        );
+        command(
+            &mut network,
+            connection,
+            json!({"type":"base_state", "roomId":room, "pairId":transport.id, "ready":true}),
+        );
+        voice(&mut network, connection, &room, true);
+    }
+    let speech = publish(&mut network, host, &room, "voice");
+    let screen = publish(&mut network, host, &room, "screen");
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":screen, "enabled":true}),
+    );
+    let before = pair(&network, viewer, source, &room);
+    let flow = before
+        .incoming
+        .iter()
+        .find(|flow| flow.publication_id == screen)
+        .unwrap()
+        .id;
+    for (connection, publication, code) in [
+        (viewer, screen, "not_publication_owner"),
+        (host, speech, "invalid_screen_publication"),
+    ] {
+        let rejected = network.command(
+            connection,
+            json!({"type":"set_paused", "publicationId":publication, "paused":true}),
+        );
+        assert!(
+            rejected.events.iter().any(|(_, event)| matches!(event,
+            Event::RoomReply { result: RoomResult::Error { code: actual }, .. } if actual == code))
+        );
+    }
+    command(
+        &mut network,
+        host,
+        json!({"type":"set_paused", "publicationId":screen, "paused":true}),
+    );
+    let state = network.state(viewer);
+    assert!(
+        state
+            .publications
+            .iter()
+            .find(|p| p.id == screen)
+            .unwrap()
+            .paused
+    );
+    assert!(
+        !state
+            .publications
+            .iter()
+            .find(|p| p.id == speech)
+            .unwrap()
+            .paused
+    );
+    assert_eq!(state.voice.len(), 2);
+    assert!(state.voice.iter().all(|v| !v.muted && !v.deafened));
+    assert_eq!(pair(&network, viewer, source, &room).id, before.id);
+    assert!(
+        network.authority.expire(30_000).events.is_empty(),
+        "pause must not expire picture preparation"
+    );
+    assert_eq!(
+        pair(&network, viewer, source, &room)
+            .incoming
+            .iter()
+            .map(|f| f.id)
+            .collect::<Vec<_>>(),
+        before.incoming.iter().map(|f| f.id).collect::<Vec<_>>()
+    );
+
+    network.command_at(
+        host,
+        json!({"type":"set_paused", "publicationId":screen, "paused":false}),
+        30_001,
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"flow_state", "pairId":before.id, "flowId":flow, "state":"decoded"}),
+    );
+    assert_eq!(pair(&network, host, receiver, &room).id, before.id);
+    assert!(
+        !network
+            .state(viewer)
+            .publications
+            .iter()
+            .find(|p| p.id == screen)
+            .unwrap()
+            .paused
+    );
+
+    command(
+        &mut network,
+        host,
+        json!({"type":"set_paused", "publicationId":screen, "paused":true}),
+    );
+    network.command_at(
+        viewer,
+        json!({"type":"link_state", "pairId":before.id, "state":"failed"}),
+        31_000,
+    );
+    assert!(network.state(viewer).pairs.is_empty());
+    let repair = network.authority.expire(36_000);
+    network.deliver(repair);
+    assert_ne!(pair(&network, viewer, source, &room).id, before.id);
+    assert!(
+        network
+            .state(viewer)
+            .publications
+            .iter()
+            .find(|p| p.id == screen)
+            .unwrap()
+            .paused
+    );
+}
+
+#[test]
 fn required_repair_wakes_the_existing_host_and_renews_only_retired_transport() {
     use piik_channel_core::host::HostAction;
     for control_only in [false, true] {

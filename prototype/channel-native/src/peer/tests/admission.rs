@@ -124,6 +124,7 @@ pub async fn run() -> Result<serde_json::Value> {
         failures,
         OutputStreams::default(),
         true,
+        false,
     )
     .await?;
     let sibling_id = Uuid::new_v4();

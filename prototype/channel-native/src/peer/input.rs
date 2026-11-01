@@ -372,6 +372,7 @@ mod tests {
                 user_id: id(1),
                 kind: Kind::Screen,
                 muted: false,
+                paused: false,
             }],
             voice: vec![],
             subscriptions: vec![],
@@ -456,7 +457,7 @@ mod tests {
         let mut state = state();
         state.pairs.remove(0);
         state.pairs[0].outgoing[0].input_flow_id = None;
-        let (_snapshot, current) = watch::channel(Some(state));
+        let (snapshot, current) = watch::channel(Some(state));
         let desktop = Desktop::new().unwrap();
         let mut input = Inputs::new(id(1), current, Some(desktop));
         let mut registration = InputRegistration {
@@ -487,9 +488,19 @@ mod tests {
         assert_eq!(packet.ready, Some(true));
         assert_eq!(packet.flow_id, id(6));
         assert!(
-            input.registrations(vec![registration]).is_empty(),
+            input.registrations(vec![registration.clone()]).is_empty(),
             "unchanged registration has no retry loop"
         );
+        for paused in [true, false] {
+            snapshot.send_modify(|state| state.as_mut().unwrap().publications[0].paused = paused);
+            input.reconcile();
+            assert!(input.sources.contains_key(&id(4)));
+            assert!(input.registrations(vec![registration.clone()]).is_empty());
+            assert!(
+                source.set_mode(crate::input::Mode::Off).is_ok(),
+                "pause retired the input source"
+            );
+        }
         input.end_source(id(4));
         assert!(source.set_mode(crate::input::Mode::Off).is_err());
     }

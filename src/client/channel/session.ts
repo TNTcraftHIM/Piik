@@ -18,7 +18,7 @@ import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession } from "../lib/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
-import { captureBrowserSource, type BrowserCaptureSource } from "../media/quality";
+import { captureBrowserSource, setMediaPaused, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
 import { readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
 import { NativeDomainHosting, NativeRoomHosting } from "./hosting-api";
@@ -302,6 +302,13 @@ export class ChannelSession {
       if (!voice && !this.view.pending.has(`voice:${roomId}`)) {
         this.voiceCaptures.delete(roomId);
         if (publicationId) this.retireCapture(publicationId);
+      }
+    }
+    for (const publication of state.publications) if (publication.kind === "screen") {
+      const local = this.local.get(publication.id);
+      if (local) {
+        setMediaPaused(local.stream, publication.paused);
+        if (local.audio) setMediaPaused(local.audio.sourceStream, publication.paused);
       }
     }
     for (const id of this.watching) {
@@ -1174,6 +1181,9 @@ export class ChannelSession {
           }
           throw new Error("capture_unavailable");
         }
+        const paused = this.view.state?.publications.find(publication => publication.id === share.id)?.paused ?? false;
+        setMediaPaused(candidate, paused);
+        if (audio) setMediaPaused(audio.sourceStream, paused);
         this.local.set(share.id, { roomId, kind: "screen", stream: candidate, audio, profile: share.profile, camera: source === "camera" });
         this.admittedPublications.add(share.id);
         this.media.setLocal(share.id, candidate, share.profile);
@@ -1283,6 +1293,15 @@ export class ChannelSession {
       await app?.cancelCapture(share.id).catch(() => {});
       throw error;
     } finally { this.finishScreenSelection(roomId, share); }
+  });
+  setScreenPaused = (publicationId: string, paused: boolean): Promise<void> => this.action(`pause:${publicationId}`, async () => {
+    const publication = this.view.state?.publications.find(value => value.id === publicationId && value.kind === "screen");
+    if (!publication) throw new Error("publication_unavailable");
+    if (this.local.get(publicationId)?.kind === "screen" && publication.sessionId === this.view.sessionId) {
+      await this.request({ type: "set_paused", publicationId, paused }, undefined, publication.roomId);
+    } else if (this.app?.screens.has(publicationId)) {
+      await this.app.setCapturePaused(publicationId, paused);
+    } else throw new Error("not_publication_owner");
   });
   stopScreen = (publicationId: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
     for (const [roomId, share] of this.screenShares) if (share.id === publicationId) this.screenShares.delete(roomId);

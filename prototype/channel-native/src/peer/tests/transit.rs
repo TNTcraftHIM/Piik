@@ -1,6 +1,72 @@
 //! Still-applicable source/base lifetime assertions, through current real endpoints.
 use super::*;
 use support::{vp8, Fixture};
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn screen_pause_stops_both_outputs_and_resumes_the_same_source_clock() -> Result<()> {
+    let mut f = Fixture::new(vp8()).await?;
+    let sink = f.sink;
+    let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[0].id;
+    f.until(|f| {
+        [MediaKind::Audio, MediaKind::Video].iter().all(|kind| {
+            f.driver.pairs[&sink]
+                .outputs
+                .get(&(flow, *kind))
+                .is_some_and(|output| f.observed(&output.stream, *kind).is_some())
+        })
+    })
+    .await?;
+    let video = f.output(flow, MediaKind::Video);
+    let audio = f.output(flow, MediaKind::Audio);
+    let video_source = f.driver.pairs[&sink].outputs[&(flow, MediaKind::Video)].source;
+    let source = f.driver.sources[&video_source].video().unwrap().clone();
+    let before = f.observed(&video.1, MediaKind::Video).unwrap();
+    f.publication.paused = true;
+    f.driver
+        .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+        .await?;
+    f.driver.reconcile_encodings().await;
+    // Drain the already-transmitted AU; the upstream fixture keeps producing AV.
+    let drained = f.frame + 10;
+    f.until(|f| f.frame >= drained).await?;
+    let silent_video = f.observed(&video.1, MediaKind::Video).unwrap();
+    let silent_audio = f.observed(&audio.1, MediaKind::Audio).unwrap();
+    let paused = f.frame + 20;
+    f.until(|f| f.frame >= paused).await?;
+    ensure!(f.observed(&video.1, MediaKind::Video).unwrap() == silent_video);
+    ensure!(f.observed(&audio.1, MediaKind::Audio).unwrap() == silent_audio);
+    ensure!(source.same(f.driver.sources[&video_source].video().unwrap()));
+    ensure!(
+        source.time().epoch
+            == f.driver.sources[&video_source]
+                .video()
+                .unwrap()
+                .time()
+                .epoch
+    );
+    ensure!(f.driver.pairs[&sink].connected());
+    f.publication.paused = false;
+    f.driver
+        .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+        .await?;
+    f.driver.reconcile_encodings().await;
+    f.until(|f| {
+        f.observed(&video.1, MediaKind::Video)
+            .is_some_and(|p| p.2.wrapping_sub(silent_video.2) > 0)
+            && f.observed(&audio.1, MediaKind::Audio)
+                .is_some_and(|p| p.2.wrapping_sub(silent_audio.2) > 0)
+    })
+    .await?;
+    let resumed = f.observed(&video.1, MediaKind::Video).unwrap();
+    ensure!(f.output(flow, MediaKind::Video) == video && f.output(flow, MediaKind::Audio) == audio);
+    ensure!(
+        (resumed.0, resumed.1) == (before.0, before.1),
+        "pause replaced the receiver track/SSRC"
+    );
+    f.close().await;
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn physical_failure_retires_only_that_source_and_keeps_other_flow_leases() -> Result<()> {
     let mut f = Fixture::new(vp8()).await?;
