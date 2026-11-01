@@ -40,6 +40,7 @@ pub(super) enum Reply {
     },
     EncodingEnded {
         error: Option<String>,
+        device_removed: Option<i32>,
     },
 }
 pub(super) async fn write_json<W: AsyncWrite + Unpin, T: Serialize>(
@@ -101,6 +102,11 @@ async fn run() -> Result<()> {
         &mut stdout,
         &Reply::EncodingEnded {
             error: result.as_ref().err().map(|e| format!("{e:#}")),
+            device_removed: result
+                .as_ref()
+                .err()
+                .and_then(gpu::device_lost)
+                .map(|c| c.0),
         },
     )
     .await?;
@@ -178,5 +184,8 @@ async fn encode(
     .await;
     control.stop();
     let joined = tokio::task::spawn_blocking(move || encoding.stop()).await?;
-    result.and(joined)
+    result.and(joined).map_err(|error| match gpu {
+        Some(gpu) => gpu::failure(error, &gpu.device),
+        None => error,
+    })
 }

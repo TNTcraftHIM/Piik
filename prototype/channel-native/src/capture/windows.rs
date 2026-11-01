@@ -2,22 +2,32 @@
 use super::{
     cadence::Cadence,
     frames::{RawFrame, Shared},
+    gpu,
     process::Encoding,
     Control, FrameTiming, Frames, Settings, Target, TargetKind,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
-use std::{os::windows::io::AsRawHandle, sync::Arc, thread};
+use std::{
+    os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
+    sync::Arc,
+    thread,
+};
 use windows::{
     core::Interface,
     Win32::{
         Foundation::{CloseHandle, FILETIME, HANDLE, HWND},
         Graphics::{Direct3D11::*, Dxgi::Common::*},
-        System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
+        System::Threading::{
+            CreateEventW, GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+        },
         UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow},
     },
 };
 use windows_capture::{
-    capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
+    capture::{
+        CaptureControl, CaptureControlError, Context, GraphicsCaptureApiError,
+        GraphicsCaptureApiHandler,
+    },
     frame::Frame,
     graphics_capture_api::InternalCaptureControl,
     monitor::Monitor,
@@ -177,36 +187,65 @@ impl TryInto<windows_capture::settings::GraphicsCaptureItemType> for Target {
     }
 }
 fn run(target: Target, fps: u32, shared: Arc<Shared>) -> Result<()> {
-    let capture = Wgc::start_free_threaded(WgcSettings::new(
-        target,
-        CursorCaptureSettings::Default,
-        DrawBorderSettings::Default,
-        SecondaryWindowSettings::Default,
-        MinimumUpdateIntervalSettings::Default,
-        DirtyRegionSettings::Default,
-        ColorFormat::Bgra8,
-        (shared.clone(), fps),
-    ))?;
-    let halt = capture.halt_handle();
-    let callback = capture.callback();
-    let thread = capture.into_thread_handle();
-    // A handler error ends the library thread without setting our Stop flag.
-    // Observe both lifetimes, then let the library stop and join its own worker.
-    let waited = shared.wait_for_stop_or(HANDLE(thread.as_raw_handle()));
-    let capture = CaptureControl::new(thread, halt, callback);
-    let stopped = capture.stop().map_err(|error| anyhow!("stop WGC: {error}"));
-    waited?;
-    let failure = shared.state.lock().unwrap().failure.clone();
-    if let Some(failure) = failure {
-        return Err(anyhow!(failure));
+    let mut recovering = None;
+    while !shared.state.lock().unwrap().stop {
+        let capture = match Wgc::start_free_threaded(WgcSettings::new(
+            target.clone(),
+            CursorCaptureSettings::Default,
+            DrawBorderSettings::Default,
+            SecondaryWindowSettings::Default,
+            MinimumUpdateIntervalSettings::Default,
+            DirtyRegionSettings::Default,
+            ColorFormat::Bgra8,
+            (shared.clone(), fps),
+        )) {
+            Ok(capture) => capture,
+            Err(error) => return Err(recovering.unwrap_or_else(|| error.into())),
+        };
+        let halt = capture.halt_handle();
+        let callback = capture.callback();
+        let thread = capture.into_thread_handle();
+        let removed = HANDLE(callback.lock().removed.as_raw_handle());
+        // Completion includes handler failures; device removal can happen while
+        // WGC is idle and therefore needs the platform's event, not frame polling.
+        let waited = shared.wait_for_stop_or(&[HANDLE(thread.as_raw_handle()), removed]);
+        let reason = unsafe { callback.lock().device.GetDeviceRemovedReason() };
+        let capture = CaptureControl::new(thread, halt, callback.clone());
+        let stopped = capture.stop().map_err(|error| match error {
+            CaptureControlError::GraphicsCaptureApiError(
+                GraphicsCaptureApiError::FrameHandlerError(error),
+            ) => error,
+            error => error.into(),
+        });
+        waited?;
+        let delivered = callback.lock().delivered;
+        drop(callback);
+        let result = reason.map_err(anyhow::Error::from).and(stopped);
+        if shared.state.lock().unwrap().stop {
+            return result;
+        }
+        if delivered {
+            recovering = None;
+        }
+        match result {
+            Err(error) if recovering.is_none() && gpu::device_lost(&error).is_some() => {
+                shared.device_lost(gpu::device_lost(&error).unwrap());
+                recovering = Some(error);
+            }
+            Err(error) => return Err(recovering.unwrap_or(error)),
+            Ok(()) => return Ok(()),
+        }
     }
-    stopped
+    Ok(())
 }
 struct Wgc {
     shared: Arc<Shared>,
     cadence: Cadence,
-    device: ID3D11Device,
+    device: ID3D11Device4,
     context: ID3D11DeviceContext,
+    removed: OwnedHandle,
+    cookie: u32,
+    delivered: bool,
 }
 impl GraphicsCaptureApiHandler for Wgc {
     type Flags = (Arc<Shared>, u32);
@@ -218,11 +257,18 @@ impl GraphicsCaptureApiHandler for Wgc {
                 .cast::<ID3D11Multithread>()?
                 .SetMultithreadProtected(true);
         }
+        let device: ID3D11Device4 = ctx.device.cast()?;
+        let removed = unsafe { CreateEventW(None, true, false, None)? };
+        let removed = unsafe { OwnedHandle::from_raw_handle(removed.0) };
+        let cookie = unsafe { device.RegisterDeviceRemovedEvent(HANDLE(removed.as_raw_handle()))? };
         Ok(Self {
             shared: ctx.flags.0,
             cadence: Cadence::new(ctx.flags.1),
-            device: ctx.device,
+            device,
             context: ctx.device_context,
+            removed,
+            cookie,
+            delivered: false,
         })
     }
     fn on_frame_arrived(
@@ -241,18 +287,17 @@ impl GraphicsCaptureApiHandler for Wgc {
         if !self.cadence.accept(qpc) {
             return Ok(());
         }
-        match self.copy(frame, qpc) {
-            Ok(frame) => self.shared.publish(frame),
-            Err(error) => {
-                self.shared.stop(Some(format!("{error:#}")));
-                control.stop();
-            }
-        }
+        self.shared.publish(self.copy(frame, qpc)?);
+        self.delivered = true;
         Ok(())
     }
     fn on_closed(&mut self) -> Result<()> {
-        self.shared.stop(None);
         Ok(())
+    }
+}
+impl Drop for Wgc {
+    fn drop(&mut self) {
+        unsafe { self.device.UnregisterDeviceRemoved(self.cookie) };
     }
 }
 impl Wgc {

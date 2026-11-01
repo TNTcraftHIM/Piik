@@ -4,7 +4,7 @@ use anyhow::{bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
 use windows::{
-    core::Interface,
+    core::{Interface, HRESULT},
     Win32::{
         Foundation::{
             DuplicateHandle, DUPLICATE_SAME_ACCESS, HANDLE, HMODULE, LUID, WAIT_ABANDONED,
@@ -18,6 +18,28 @@ use windows::{
         System::Threading::GetCurrentProcess,
     },
 };
+
+pub(super) fn device_lost(error: &anyhow::Error) -> Option<HRESULT> {
+    error.chain().find_map(|cause| {
+        let code = cause.downcast_ref::<windows::core::Error>()?.code();
+        matches!(
+            code,
+            DXGI_ERROR_DEVICE_REMOVED
+                | DXGI_ERROR_DEVICE_RESET
+                | DXGI_ERROR_DEVICE_HUNG
+                | DXGI_ERROR_DRIVER_INTERNAL_ERROR
+        )
+        .then_some(code)
+    })
+}
+
+/// Retain the device's causal HRESULT before releasing its resources.
+pub(super) fn failure(error: anyhow::Error, device: &ID3D11Device) -> anyhow::Error {
+    match unsafe { device.GetDeviceRemovedReason() } {
+        Ok(()) => error,
+        Err(reason) => anyhow::Error::from(reason).context(format!("{error:#}")),
+    }
+}
 #[derive(Serialize, Deserialize)]
 pub(super) struct Frame {
     pub handle: usize,
@@ -144,7 +166,7 @@ pub(super) fn send(frame: RawFrame, process: RawHandle) -> Result<Frame> {
     }
 }
 pub(super) struct Receiver {
-    device: ID3D11Device,
+    pub device: ID3D11Device,
     context: ID3D11DeviceContext,
     luid: LUID,
 }
@@ -186,5 +208,27 @@ impl Receiver {
                 qpc: frame.qpc,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn only_device_loss_hresult_families_are_recoverable() {
+        for code in [
+            DXGI_ERROR_DEVICE_REMOVED,
+            DXGI_ERROR_DEVICE_RESET,
+            DXGI_ERROR_DEVICE_HUNG,
+            DXGI_ERROR_DRIVER_INTERNAL_ERROR,
+        ] {
+            let error = anyhow::Error::from(windows::core::Error::from_hresult(code))
+                .context("encoding ended");
+            assert_eq!(device_lost(&error), Some(code));
+        }
+        for code in [DXGI_ERROR_INVALID_CALL, windows::Win32::Foundation::E_FAIL] {
+            assert!(device_lost(&windows::core::Error::from_hresult(code).into()).is_none());
+        }
+        assert!(device_lost(&anyhow::anyhow!("unknown capture failure")).is_none());
     }
 }

@@ -42,12 +42,24 @@ impl Shared {
             stopped: Notify::new(),
         })
     }
-    pub fn wait_for_stop_or(&self, completion: HANDLE) -> Result<()> {
-        let handles = [HANDLE(self.stop_event.as_raw_handle()), completion];
+    pub fn wait_for_stop_or(&self, completion: &[HANDLE]) -> Result<()> {
+        let mut handles = Vec::with_capacity(completion.len() + 1);
+        handles.push(HANDLE(self.stop_event.as_raw_handle()));
+        handles.extend_from_slice(completion);
         if unsafe { WaitForMultipleObjects(&handles, false, INFINITE) } == WAIT_FAILED {
             return Err(windows::core::Error::from_thread().into());
         }
         Ok(())
+    }
+    pub fn device_lost(&self, reason: windows::core::HRESULT) {
+        let mut state = self.state.lock().unwrap();
+        state.latest = None;
+        state.encodings.retain(|weak| {
+            weak.upgrade().is_some_and(|encoding| {
+                encoding.device_lost(reason);
+                !encoding.stopped()
+            })
+        });
     }
     pub fn stop(&self, failure: Option<String>) {
         let mut state = self.state.lock().unwrap();
@@ -155,7 +167,7 @@ mod tests {
             ))
         });
         shared
-            .wait_for_stop_or(HANDLE(thread.as_raw_handle()))
+            .wait_for_stop_or(&[HANDLE(thread.as_raw_handle())])
             .unwrap();
         assert!(!shared.state.lock().unwrap().stop);
         assert!(matches!(
@@ -169,7 +181,7 @@ mod tests {
         let thread = thread::spawn(move || receiver.recv().unwrap());
         shared.stop(None);
         shared
-            .wait_for_stop_or(HANDLE(thread.as_raw_handle()))
+            .wait_for_stop_or(&[HANDLE(thread.as_raw_handle())])
             .unwrap();
         assert!(!thread.is_finished());
         release.send(()).unwrap();

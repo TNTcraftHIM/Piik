@@ -17,6 +17,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::{watch, Notify},
 };
+use windows::core::HRESULT;
 #[derive(Default)]
 struct State {
     done: bool,
@@ -27,6 +28,19 @@ struct State {
     frame: Option<EncodedFrame>,
     bitrate: Option<u32>,
     keyframe: bool,
+    restart: Option<HRESULT>,
+    independent: bool,
+    last_qpc: Option<i64>,
+}
+impl State {
+    fn begin_child(&mut self) {
+        self.credit = None;
+        self.read_sent = false;
+        self.frame = None;
+        self.independent = false;
+        self.keyframe = true;
+        self.restart = None;
+    }
 }
 pub(super) struct Shared {
     state: Mutex<State>,
@@ -35,6 +49,14 @@ pub(super) struct Shared {
     stop: watch::Sender<Option<Result<(), String>>>,
 }
 impl Shared {
+    pub fn device_lost(&self, reason: HRESULT) {
+        let mut s = self.state.lock().unwrap();
+        s.restart = Some(reason);
+        s.latest = None;
+        s.frame = None;
+        drop(s);
+        self.changed.notify_one();
+    }
     pub fn input(&self, frame: RawFrame) -> bool {
         let mut s = self.state.lock().unwrap();
         if self.stopped() {
@@ -68,6 +90,31 @@ impl Shared {
     }
     pub(super) fn stopped(&self) -> bool {
         self.stop.borrow().is_some()
+    }
+    fn output(&self, qpc: i64, frame: EncodedFrame) -> Result<()> {
+        let mut s = self.state.lock().unwrap();
+        if self.stopped() || s.restart.is_some() {
+            return Ok(());
+        }
+        ensure!(
+            s.read && s.read_sent && s.frame.is_none(),
+            "unsolicited encoding AU"
+        );
+        // A new child shares the logical feed's clock and consumers, so its
+        // first AU must be independently decodable and newer than the old child.
+        if !s.independent && (!frame.keyframe || s.last_qpc.is_some_and(|last| qpc <= last)) {
+            s.read_sent = false;
+            s.keyframe = true;
+            drop(s);
+            self.changed.notify_one();
+            return Ok(());
+        }
+        s.independent = true;
+        s.last_qpc = Some(qpc);
+        s.frame = Some(frame);
+        drop(s);
+        self.available.notify_one();
+        Ok(())
     }
 }
 #[derive(Clone)]
@@ -194,16 +241,70 @@ impl Drop for Encoding {
 }
 enum Work {
     Stop,
+    Restart(HRESULT),
     Command(Command),
     Frame(RawFrame),
     Wait,
 }
 async fn supervise(
     shared: Arc<Shared>,
-    mut stopped: watch::Receiver<Option<Result<(), String>>>,
+    stopped: watch::Receiver<Option<Result<(), String>>>,
     clock: CaptureClock,
     timing: FrameTiming,
     settings: Settings,
+) -> Result<()> {
+    let mut recovering = None;
+    loop {
+        if shared.stopped() {
+            return Ok(());
+        }
+        shared.state.lock().unwrap().begin_child();
+        let result = child(shared.clone(), stopped.clone(), clock, timing, settings).await;
+        if shared.stopped() {
+            return result;
+        }
+        if shared.state.lock().unwrap().independent {
+            recovering = None;
+        }
+        match result {
+            Err(error) if recovering.is_none() && gpu::device_lost(&error).is_some() => {
+                recovering = Some(error);
+                // A removed source device cannot provide another valid texture.
+                // A child-only loss can reuse the healthy source's latest frame.
+                let mut s = shared.state.lock().unwrap();
+                if s.latest.as_ref().is_some_and(|raw| unsafe {
+                    raw.texture
+                        .GetDevice()
+                        .and_then(|device| device.GetDeviceRemovedReason())
+                        .is_err()
+                }) {
+                    s.latest = None;
+                }
+            }
+            Err(error) => return Err(recovering.unwrap_or(error)),
+            Ok(()) => return Ok(()),
+        }
+        loop {
+            let changed = shared.changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if shared.stopped() {
+                return Ok(());
+            }
+            if shared.state.lock().unwrap().latest.is_some() {
+                break;
+            }
+            changed.await;
+        }
+    }
+}
+
+async fn child(
+    shared: Arc<Shared>,
+    mut stopped: watch::Receiver<Option<Result<(), String>>>,
+    clock: CaptureClock,
+    timing: FrameTiming,
+    mut settings: Settings,
 ) -> Result<()> {
     let job = super::job::Job::new()?;
     let mut child = tokio::process::Command::new(std::env::current_exe()?)
@@ -227,8 +328,14 @@ async fn supervise(
     let mut input = child.stdin.take().unwrap();
     let mut output = child.stdout.take().unwrap();
     let writer_shared = shared.clone();
-    let writer = tokio::spawn(async move {
+    let mut writer = tokio::spawn(async move {
         let result = async {
+            settings.bitrate = writer_shared
+                .state
+                .lock()
+                .unwrap()
+                .bitrate
+                .unwrap_or(settings.bitrate);
             worker::write_json(&mut input, &Command::Start { settings, timing }).await?;
             loop {
                 let changed = writer_shared.changed.notified();
@@ -238,7 +345,10 @@ async fn supervise(
                     let mut s = writer_shared.state.lock().unwrap();
                     if writer_shared.stopped() {
                         Work::Stop
-                    } else if let Some(bitrate) = s.bitrate.take() {
+                    } else if let Some(reason) = s.restart.take() {
+                        Work::Restart(reason)
+                    } else if let Some(bitrate) = s.bitrate.filter(|b| *b != settings.bitrate) {
+                        settings.bitrate = bitrate;
                         Work::Command(Command::Bitrate { bitrate })
                     } else if std::mem::take(&mut s.keyframe) {
                         Work::Command(Command::Keyframe)
@@ -267,9 +377,14 @@ async fn supervise(
                         input.shutdown().await?;
                         break;
                     }
+                    Work::Restart(reason) => {
+                        return Err(windows::core::Error::from_hresult(reason).into())
+                    }
                     Work::Command(command) => worker::write_json(&mut input, &command).await?,
                     Work::Frame(raw) => {
-                        let frame = gpu::send(raw, process as _)?;
+                        let device = unsafe { raw.texture.GetDevice()? };
+                        let frame = gpu::send(raw, process as _)
+                            .map_err(|error| gpu::failure(error, &device))?;
                         worker::write_json(&mut input, &Command::Frame { frame }).await?;
                     }
                     Work::Wait => {
@@ -282,13 +397,10 @@ async fn supervise(
             Ok::<_, anyhow::Error>(())
         }
         .await;
-        if let Err(e) = &result {
-            writer_shared.stop(Some(&format!("encoding write: {e:#}")));
-        }
-        result
+        result.context("encoding write")
     });
     let reader_shared = shared.clone();
-    let reader = tokio::spawn(async move {
+    let mut reader = tokio::spawn(async move {
         let result = async {
             loop {
                 match worker::read_json(&mut output).await? {
@@ -307,51 +419,69 @@ async fn supervise(
                         ensure!(length <= worker::MAX_AU, "encoding IPC AU too large");
                         let mut bytes = vec![0; length];
                         output.read_exact(&mut bytes).await?;
-                        let mut s = reader_shared.state.lock().unwrap();
-                        if !reader_shared.stopped() {
-                            ensure!(
-                                s.read && s.read_sent && s.frame.is_none(),
-                                "unsolicited encoding AU"
-                            );
-                            s.frame = Some(EncodedFrame {
+                        reader_shared.output(
+                            qpc,
+                            EncodedFrame {
                                 vp8: None,
                                 bytes,
                                 presentation_time: clock.instant(qpc),
                                 keyframe,
-                            });
-                            drop(s);
-                            reader_shared.available.notify_one();
-                        }
+                            },
+                        )?;
                     }
-                    Reply::EncodingEnded { error } => {
-                        reader_shared.stop(error.as_deref());
-                        return error.map_or(Ok(()), |e| Err(anyhow!(e)));
+                    Reply::EncodingEnded {
+                        error,
+                        device_removed,
+                    } => {
+                        return error.map_or(Ok(()), |error| {
+                            Err(match device_removed {
+                                Some(code) => anyhow::Error::from(
+                                    windows::core::Error::from_hresult(HRESULT(code)),
+                                )
+                                .context(error),
+                                None => anyhow!(error),
+                            })
+                        });
                     }
                 }
             }
         }
         .await;
-        if let Err(e) = &result {
-            reader_shared.stop(Some(&format!("encoding read: {e:#}")));
-        }
-        result
+        result.context("encoding read")
     });
-    let status = tokio::select! {
-        status = child.wait() => status,
-        _ = stopped.changed() => {
-            match tokio::time::timeout(Duration::from_secs(1), child.wait()).await {
-                Ok(status) => status,
-                Err(_) => {
-                    child.start_kill()?;
-                    child.wait().await
-                }
+    let (write, read, status) = tokio::select! {
+        write = &mut writer => (Some(write), None, None),
+        read = &mut reader => (None, Some(read), None),
+        status = child.wait() => (None, None, Some(status)),
+        _ = stopped.changed() => (None, None, None),
+    };
+    // Dropping the only stdin writer asks the child to stop. Keep draining its
+    // terminal reply while the existing bounded process shutdown joins it.
+    if write.is_none() {
+        writer.abort();
+        let _ = writer.await;
+    }
+    let status = match status {
+        Some(status) => status,
+        None => match tokio::time::timeout(Duration::from_secs(1), child.wait()).await {
+            Ok(status) => status,
+            Err(_) => {
+                child.start_kill()?;
+                child.wait().await
             }
-        }
+        },
     }?;
-    writer.abort();
-    let _ = writer.await;
-    let read = reader.await.context("encoding reader panicked")?;
-    read.with_context(|| format!("encoding process exited {status}"))?;
+    let read = match read {
+        Some(read) => read,
+        None => reader.await,
+    }
+    .context("encoding reader panicked")?;
+    let write = write.map_or(Ok(()), |write| write.context("encoding writer panicked")?);
+    let result = match (write, read) {
+        (Err(write), Err(read)) if gpu::device_lost(&read).is_none() => Err(write),
+        (write, read) => read.and(write),
+    };
+    result.with_context(|| format!("encoding process exited {status}"))?;
     ensure!(status.success(), "encoding process exited {status}");
     if let Some(Err(error)) = &*shared.stop.borrow() {
         return Err(anyhow!(error.clone()));
@@ -412,6 +542,47 @@ mod tests {
             let qpc = clock.qpc + delta;
             assert_eq!(clock.presentation_qpc(clock.instant(qpc)), qpc);
         }
+    }
+    #[tokio::test]
+    async fn child_replacement_retains_demand_clock_and_requires_a_fresh_independent_au() {
+        let mut encoding = proxy();
+        let clock = CaptureClock::new().unwrap();
+        encoding.control().set_bitrate(600_000).unwrap();
+        let deliver = |qpc, keyframe| {
+            encoding.shared.state.lock().unwrap().read_sent = true;
+            encoding
+                .shared
+                .output(
+                    qpc,
+                    EncodedFrame {
+                        vp8: None,
+                        bytes: vec![u8::from(keyframe)],
+                        presentation_time: clock.instant(qpc),
+                        keyframe,
+                    },
+                )
+                .unwrap();
+        };
+        encoding.shared.state.lock().unwrap().read = true;
+        deliver(clock.qpc, true);
+        let first = encoding.shared.state.lock().unwrap().frame.take().unwrap();
+        assert_eq!(first.presentation_time, clock.instant(clock.qpc));
+
+        encoding.shared.state.lock().unwrap().begin_child();
+        for (qpc, keyframe) in [(clock.qpc, true), (clock.qpc + 1, false)] {
+            deliver(qpc, keyframe);
+            let state = encoding.shared.state.lock().unwrap();
+            assert!(state.frame.is_none());
+            assert!(state.read && !state.read_sent && state.keyframe);
+        }
+        deliver(clock.qpc + 2, true);
+        let frame = encoding.recv().await.unwrap().unwrap();
+        assert!(frame.keyframe);
+        assert_eq!(frame.presentation_time, clock.instant(clock.qpc + 2));
+        let state = encoding.shared.state.lock().unwrap();
+        assert_eq!(state.bitrate, Some(600_000));
+        assert_eq!(state.last_qpc, Some(clock.qpc + 2));
+        assert!(!state.read);
     }
     #[test]
     fn final_child_error_refines_requested_stop() {

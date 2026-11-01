@@ -766,6 +766,13 @@ existing two-AU queue fills. Static keyframe requests reuse its private image.
 Each Encoding joins its child on Stop/Drop; a Windows Job also closes it when
 the App exits. Source stop ends input authority and signals every encoding;
 the Capture owner joins WGC.
+Windows device removal is observed through the
+[D3D11 device event](https://learn.microsoft.com/en-us/windows/win32/api/d3d11_4/nf-d3d11_4-id3d11device4-registerdeviceremovedevent).
+The existing Capture and Encoding owners join and replace their affected WGC or
+child resources while retaining the source clock, audio, current bitrate and
+logical feed. Each replacement child must publish a newer independent access unit
+before its output resumes. A replacement that fails before producing usable
+output ends with the original device error; unrelated failures remain terminal.
 
 A controlled single-MFT shutdown reproduced an NVIDIA callback using an already
 destroyed transform after `ShutdownObject` returned. The encoding process boundary
@@ -793,7 +800,7 @@ Optional restoration keeps playing its incumbent until the new IDR arrives.
 Small source-time skew between encodings is handled by the outgoing RTP timeline,
 following [LiveKit's source-switch mapping](https://github.com/livekit/livekit/blob/master/pkg/sfu/forwarder.go).
 Original capture timestamps and their NTP correlation remain unchanged.
-Each physical encoder has its own feed identity. Failure is applied atomically
+Each allocated encoding has its own feed identity. Failure is applied atomically
 against an output's current or required pending feed; a failed optional upgrade
 preserves the incumbent. The existing driver loop consumes latest targets
 without queuing intermediate values.
