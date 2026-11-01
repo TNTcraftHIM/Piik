@@ -2809,6 +2809,7 @@ dependencies = [
  "dirs",
  "futures-util",
  "if-addrs",
+ "netwatch",
  "piik-channel-core",
  "piik-channel-native",
  "rcgen",

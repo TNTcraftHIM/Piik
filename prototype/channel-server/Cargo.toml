@@ -43,6 +43,7 @@ semver = "1"
 ureq = { version = "=3.5.0", default-features = false, features = ["rustls"] }
 
 [dev-dependencies]
+netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }
 tokio-tungstenite = "0.29"
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 

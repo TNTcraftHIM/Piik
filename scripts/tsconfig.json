@@ -25,6 +25,7 @@
     "update-guide-diagrams.tsx",
     "../src/client/ui/icons.tsx",
     "browser-local-pool-probe.ts",
+    "network-lab.ts",
     "../tests"
   ]
 }
