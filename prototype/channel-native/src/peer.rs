@@ -414,6 +414,45 @@ pub(crate) enum InitialMedia {
     Rtp(Vec<rtp::Packet>),
     Video(crate::EncodedFrame),
 }
+fn media_trace(stage: &str, details: serde_json::Value) {
+    if std::env::var_os("PIIK_MEDIA_TRACE").is_some() {
+        eprintln!(
+            "PIIK_MEDIA_TRACE reader {}",
+            serde_json::json!({
+                "atMs":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
+                "stage":stage, "details":details,
+            })
+        );
+    }
+}
+struct ReaderTrace {
+    pair: Uuid,
+    flow: Uuid,
+    source: Uuid,
+    packets: u64,
+    reports: u64,
+    no_clock: u64,
+    other_ssrc: u64,
+    missing_codec: u64,
+    mismatched_codec: u64,
+    missing_rid: u64,
+    frames: u64,
+    reason: &'static str,
+}
+impl Drop for ReaderTrace {
+    fn drop(&mut self) {
+        media_trace(
+            "exit",
+            serde_json::json!({
+                "pair":self.pair, "flow":self.flow, "source":self.source,
+                "reason":self.reason, "packets":self.packets, "reports":self.reports,
+                "noClock":self.no_clock, "frames":self.frames,
+                "otherSsrc":self.other_ssrc, "missingCodec":self.missing_codec,
+                "mismatchedCodec":self.mismatched_codec, "missingRid":self.missing_rid,
+            }),
+        );
+    }
+}
 struct Pair {
     plan: PairInfo,
     pc: Transport,
@@ -1872,6 +1911,13 @@ impl Driver {
                 .filter(|t| p.plan.incoming.iter().any(|flow| flow.id == t.flow_id))
                 .map(|t| (t.stream_id, t.flow_id))
                 .collect();
+            media_trace(
+                "signal-bindings",
+                serde_json::json!({
+                    "pair":id, "description":description.kind, "remote":p.remote,
+                    "incoming":p.plan.incoming, "outgoing":p.plan.outgoing,
+                }),
+            );
             p.pc.accept(description.kind, description.sdp.unwrap_or_default())
                 .await?;
             for c in p.candidates.drain(..) {
@@ -2436,6 +2482,14 @@ impl Driver {
             },
             layers: layered.then(|| crate::media::video::Layers::new(rids)),
         };
+        media_trace(
+            "start",
+            serde_json::json!({
+                "pair":id, "flow":flow_id, "source":source.id, "stream":track.stream,
+                "track":track_id, "kind":format!("{kind:?}"), "codec":source.codec.mime_type,
+                "firstSsrc":ssrc, "rids":track.rids, "layered":layered,
+            }),
+        );
         if let Some(previous) = p.latest.insert(key, source.id) {
             if !self.sources.contains_key(&previous) {
                 if let Some(task) = p.tasks.remove(&previous) {
@@ -2450,12 +2504,28 @@ impl Driver {
         let events = self.events.clone();
         p.tasks.retain(|_, reader| !reader.task.is_finished());
         let task = tokio::spawn(async move {
+            let mut trace = ReaderTrace {
+                pair: id,
+                flow: flow_id,
+                source: source_id,
+                packets: 0,
+                reports: 0,
+                no_clock: 0,
+                frames: 0,
+                reason: "cancelled",
+                other_ssrc: 0,
+                missing_codec: 0,
+                mismatched_codec: 0,
+                missing_rid: 0,
+            };
             let mut first = true;
             let framed = crate::media::incoming::Incoming::supports(&source.codec.mime_type);
             struct Layer {
                 rid: String,
                 report: crate::media::SourceReport,
                 input: Option<(crate::media::incoming::Incoming, watch::Receiver<u64>)>,
+                traced_wait: bool,
+                traced_report: bool,
             }
             let mut layers: HashMap<u32, Layer> = HashMap::new();
             let mut time: Option<crate::media::clock::SourceTime> = None;
@@ -2464,10 +2534,11 @@ impl Driver {
                 let event = tokio::select! {
                     event = track.poll() => match event {
                         Some(event) => event,
-                        None => break,
+                        None => { trace.reason = "track-poll-ended"; break; },
                     },
                     result = requests.changed(), if kind == MediaKind::Video && !framed => {
                         if result.is_err() {
+                            trace.reason = "keyframe-watch-closed";
                             break;
                         }
                         let _ = track.request_keyframe(ssrc).await;
@@ -2495,20 +2566,36 @@ impl Driver {
                 };
                 match event {
                     TrackEvent::Rtp(packet, sequence, media_time) => {
+                        trace.packets += 1;
+                        if trace.packets == 1 {
+                            media_trace(
+                                "first-rtp",
+                                serde_json::json!({
+                                    "pair":id, "flow":flow_id, "source":source_id,
+                                    "ssrc":packet.header.ssrc, "sequence":sequence,
+                                    "timestamp":packet.header.timestamp, "mediaTime":media_time,
+                                    "padding":packet.header.padding, "empty":packet.payload.is_empty(),
+                                }),
+                            );
+                        }
                         if framed {
                             let packet_ssrc = packet.header.ssrc;
                             if !layered && packet_ssrc != ssrc {
+                                trace.other_ssrc += 1;
                                 continue;
                             }
                             if !layers.contains_key(&packet_ssrc) {
                                 let Some(codec) = track.codec(packet_ssrc) else {
+                                    trace.missing_codec += 1;
                                     continue;
                                 };
                                 if !crate::media::compatible(&source.codec, &codec.rtp_codec) {
+                                    trace.mismatched_codec += 1;
                                     continue;
                                 }
                                 let rid = track.rid(packet_ssrc).unwrap_or_default();
                                 if layered && rid.is_empty() {
+                                    trace.missing_rid += 1;
                                     continue;
                                 }
                                 // An SSRC successor replaces only its RID, not the source.
@@ -2522,6 +2609,8 @@ impl Driver {
                                         rid,
                                         report: track.report(packet_ssrc),
                                         input: None,
+                                        traced_wait: false,
+                                        traced_report: false,
                                     },
                                 );
                             }
@@ -2548,8 +2637,29 @@ impl Driver {
                                         }),
                                 };
                                 let Some(next_time) = next_time else {
+                                    trace.no_clock += 1;
+                                    if !layer.traced_wait {
+                                        layer.traced_wait = true;
+                                        media_trace(
+                                            "waiting-sr",
+                                            serde_json::json!({
+                                                "pair":id, "flow":flow_id, "source":source_id,
+                                                "ssrc":packet_ssrc, "rid":layer.rid,
+                                                "rootTime":time.is_some(), "layerReport":layer.report.lock().unwrap().is_some(),
+                                            }),
+                                        );
+                                    }
                                     continue;
                                 };
+                                media_trace(
+                                    "incoming-created",
+                                    serde_json::json!({
+                                        "pair":id, "flow":flow_id, "source":source_id,
+                                        "ssrc":packet_ssrc, "rid":layer.rid, "sequence":sequence,
+                                        "timestamp":packet.header.timestamp, "rootTime":time.is_some(),
+                                        "layerReport":layer.report.lock().unwrap().is_some(),
+                                    }),
+                                );
                                 let input = crate::media::incoming::Incoming::with_time(
                                     &source.codec.mime_type,
                                     next_time.clone(),
@@ -2567,6 +2677,16 @@ impl Driver {
                             loop {
                                 match input.pop() {
                                     Ok(Some(frame)) => {
+                                        trace.frames += 1;
+                                        if trace.frames == 1 {
+                                            media_trace(
+                                                "first-ready-au",
+                                                serde_json::json!({
+                                                    "pair":id, "flow":flow_id, "source":source_id,
+                                                    "ssrc":packet_ssrc, "rid":layer.rid, "keyframe":frame.keyframe,
+                                                }),
+                                            );
+                                        }
                                         if frame.keyframe {
                                             if let Some(group) = &source.layers {
                                                 group.insert(
@@ -2586,6 +2706,7 @@ impl Driver {
                                                 .await
                                                 .is_err()
                                             {
+                                                trace.reason = "source-ready-channel-closed";
                                                 break 'reading;
                                             }
                                         } else {
@@ -2595,6 +2716,7 @@ impl Driver {
                                     Ok(None) => break,
                                     Err(error) => {
                                         eprintln!("Native encoded input failed: {error}");
+                                        trace.reason = "incoming-error";
                                         break 'reading;
                                     }
                                 }
@@ -2621,18 +2743,34 @@ impl Driver {
                                 .await
                                 .is_err()
                             {
+                                trace.reason = "source-ready-channel-closed";
                                 break;
                             }
                         } else {
                             relay.write(source.id, packet);
                         }
                     }
-                    TrackEvent::End => break,
+                    TrackEvent::End => {
+                        trace.reason = "track-end";
+                        break;
+                    }
                     TrackEvent::Report(packets) => {
+                        trace.reports += packets.len() as u64;
                         for (received, at) in packets {
                             {
                                 if framed {
-                                    if let Some(layer) = layers.get(&received.ssrc) {
+                                    if let Some(layer) = layers.get_mut(&received.ssrc) {
+                                        if !layer.traced_report {
+                                            layer.traced_report = true;
+                                            media_trace(
+                                                "first-sr",
+                                                serde_json::json!({
+                                                    "pair":id, "flow":flow_id, "source":source_id,
+                                                    "ssrc":received.ssrc, "rid":layer.rid,
+                                                    "timestamp":received.rtp_time, "hasIncoming":layer.input.is_some(),
+                                                }),
+                                            );
+                                        }
                                         *layer.report.lock().unwrap() =
                                             Some((received.clone(), at));
                                     }
@@ -2693,6 +2831,12 @@ impl Driver {
         let SourceReady { source, media } = ready;
         let publication = source.publication_id;
         if !self.publications.contains_key(&publication) {
+            media_trace(
+                "source-ready-rejected",
+                serde_json::json!({
+                    "source":source.id, "publication":publication, "publicationExists":false,
+                }),
+            );
             return Ok(());
         }
         let incoming = match &source.origin {
@@ -2702,6 +2846,20 @@ impl Driver {
                 stream,
             } => {
                 let key = (*flow_id, source.kind);
+                if std::env::var_os("PIIK_MEDIA_TRACE").is_some() {
+                    let p = self.pairs.get(pair);
+                    media_trace(
+                        "source-ready-fence",
+                        serde_json::json!({
+                            "source":source.id, "pair":pair, "flow":flow_id, "stream":stream,
+                            "kind":format!("{:?}",source.kind), "publicationExists":true,
+                            "pairExists":p.is_some(),
+                            "flowCurrent":p.is_some_and(|p|p.plan.incoming.iter().any(|f|f.id==*flow_id && f.publication_id==publication)),
+                            "streamCurrent":p.is_some_and(|p|p.remote.get(stream)==Some(flow_id)),
+                            "latestCurrent":p.is_some_and(|p|p.latest.get(&key)==Some(&source.id)),
+                        }),
+                    );
+                }
                 let desired = self.pairs.get(pair).is_some_and(|p| {
                     p.plan
                         .incoming
@@ -2763,6 +2921,12 @@ impl Driver {
         }
         self.sources.insert(source.id, source.clone());
         self.refresh_media(false).await?;
+        media_trace(
+            "source-ready-installed",
+            serde_json::json!({
+                "source":source.id, "publication":publication, "kind":format!("{:?}",source.kind),
+            }),
+        );
         match media {
             InitialMedia::Rtp(packets) => {
                 for packet in packets {
