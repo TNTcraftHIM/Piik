@@ -174,11 +174,22 @@ Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-depe
 to prepare and review updates without changing the current pin.
 
 Optional port mapping selects its socket in the pair-owned worker, independently
-of host-candidate signaling. The prepared `portmapper` 0.20.0 scheduling repair
-moves its blocking gateway lookup off the Tokio reactor without changing the
-public API or mapping protocols. Its
-[official baseline](https://github.com/n0-computer/net-tools/tree/80b449c74d38c564c598ae286de13032276f3515/portmapper)
-and the Piik worker remain separate owners; [TODO](../../docs/todo.md) tracks adoption.
+of host-candidate signaling. Native pins `portmapper` 0.20.0 to
+[`0a61bb64facc469d015f5ba537dda57c94cdcb17`](https://github.com/TNTcraftHIM/net-tools/commit/0a61bb64facc469d015f5ba537dda57c94cdcb17),
+a one-file scheduling repair on the
+[official 0.20.0 baseline](https://github.com/n0-computer/net-tools/tree/80b449c74d38c564c598ae286de13032276f3515/portmapper).
+It moves synchronous gateway discovery onto Tokio's blocking pool and awaits it
+through existing private callers, preserving the public API and mapping protocols.
+The Git workspace also supplies sibling `netwatch` 0.20.0, so Native's direct
+`netwatch` entry uses that same revision. Its source is unchanged from the
+published release; this keeps one netwatch source in each consuming graph.
+Both crates retain upstream MIT/Apache-2.0 licensing.
+
+[Issue #266](https://github.com/n0-computer/net-tools/issues/266) owns upstream
+discussion. A PR awaits maintainer discussion and the required `ready-for-pr`
+label. When an upstream release includes the repair, return both direct entries
+to that release and regenerate Native, Server and Android locks, then run the
+existing mapping timer/lifecycle checks and package notice collection.
 
 The selected private replacement uses released str0m 0.24.1 through public
 APIs, replacing the application GoogCc integration and async transport wrapper.
@@ -196,9 +207,7 @@ mechanisms move into Piik's adapter; it is not validated against this bug-only p
 `build/native-current-assembly/receipt.json` indexes the previous combined source
 and the replacement under `development.transportAlternative`, with separately
 frozen source and runtime evidence. The adjacent README describes these local
-candidates. Adopting the private transport and the separate gateway scheduling
-repair remains in [TODO](../../docs/todo.md); publishing these RTC utilities does
-not adopt either candidate.
+candidates. Adopting the private transport remains in [TODO](../../docs/todo.md).
 That index also owns the separately frozen Linux and macOS incoming-H264
 extensions, which reuse the same derived producer, source clock and independent
 encoding owners. Each candidate's receipt records its platform checks.
