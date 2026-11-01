@@ -384,7 +384,11 @@ window across rooms, separate from the media/control queues. The Browser writes
 temporary files through OPFS, then verifies the full size and digest before
 preview or download. Recognized PNG/JPEG/GIF/WebP images use the same file model.
 A receiving Browser needs secure-context file storage; there is no in-memory
-whole-file fallback. Selected and verified copies belong to the current session.
+whole-file fallback. Unconfirmed selections remain session-only sources. Confirmed
+sent files and verified downloads may remain available after reopening through the
+participant's bounded retained store, scoped to its domain and user identity;
+the [room-data model](../../docs/research/channel-storage-and-identity.md#retained-files-and-images)
+owns retention and reclamation.
 Current access controls offers and downloads; already downloaded bytes cannot be revoked.
 
 Replicated history, federation and authority handoff remain outside this slice.
