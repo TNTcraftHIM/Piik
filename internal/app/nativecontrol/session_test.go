@@ -282,7 +282,7 @@ func runQuietCaptureFixture(directory string) {
 				return
 			case <-time.After(20 * time.Millisecond):
 				if _, err := os.Stat(filepath.Join(directory, "failure")); err == nil {
-					_, _ = io.WriteString(os.Stderr, "stage=windows-runtime\nhresult=0x887a0005\ndetail=private fixture title and path\n")
+					_, _ = io.WriteString(os.Stderr, "stage=windows-runtime\nhresult=0x80004005\ndetail=private fixture title and path\n")
 					os.Exit(2)
 				}
 			}
@@ -326,7 +326,7 @@ func TestLiveCaptureFailureDetailsRequireOptIn(t *testing.T) {
 					if !ended.Failed || session.current(request.ShareID) != nil || (ended.Failure != nil) != report {
 						t.Fatalf("capture failure changed retirement or legacy payload: %#v", ended)
 					}
-					if report && *ended.Failure != (nativecapture.Failure{Stage: "windows-runtime", HRESULT: "0x887a0005", ExitCode: 2}) {
+					if report && *ended.Failure != (nativecapture.Failure{Stage: "windows-runtime", HRESULT: "0x80004005", ExitCode: 2}) {
 						t.Fatalf("capture failure lost structured codes: %#v", ended.Failure)
 					}
 					encoded, _ := json.Marshal(ended)
