@@ -136,7 +136,7 @@ export const en: Record<CopyKey, string> = {
   "playback.changeFit": "Switch picture fit",
   "playback.fitCycle": "Current: {current}. Switch to {next}. Only changes your view.",
   "playback.rotation": "Rotate picture",
-  "playback.rotationHint": "Rotate the picture locally without changing the shared source.",
+  "playback.rotationHint": "Rotate the picture 90° clockwise on this device.",
   "playback.connection": "Connection",
   "playback.relayVolunteer": "Help relay to more viewers",
   "playback.relayVolunteerHint": "Uses more upload bandwidth for this visit.",

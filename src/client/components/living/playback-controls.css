@@ -57,7 +57,7 @@
 .lr-playback :is(.lr-remote-controls, .lr-playback-view)::before, .lr-playback-window::before { content: ""; flex: none; width: 1px; height: 20px; margin-right: 4px; background: var(--control-edge); }
 .lr-playback-picture-actions { display: inline-flex; align-items: center; gap: 4px; }
 .lr-playback-more { display: inline-flex; }
-.lr-playback-more.is-compact-only, .lr-playback-compact-picture { display: none; }
+.lr-playback-more.is-compact-only, .lr-playback .lr-playback-compact-picture { display: none; }
 .lr-playback-picture-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .lr-playback-picture-options .lr-btn { width: 100%; padding: 0 8px; }
 .lr-playback-menu { position: fixed; inset: auto; margin: 0; padding: 8px; max-width: calc(100vw - 16px); overflow: auto; overscroll-behavior: contain; }
