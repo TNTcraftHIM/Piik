@@ -413,6 +413,8 @@ impl Runtime {
             .enable_vp8(true)
             .set_rtp_mode(true)
             .enable_bwe(Some(Bitrate::bps(300_000)))
+            // Forwarding awaits a source clock; use video's report cadence for audio too.
+            .set_rtcp_report_interval_audio(Duration::from_secs(1))
             .set_stats_interval(Some(Duration::from_millis(500)))
             .set_sctp_max_buffered_amount(2 * 1024 * 1024);
         // Advertise the same H264 subset admitted by media::supported.
