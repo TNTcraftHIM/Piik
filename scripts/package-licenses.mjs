@@ -139,5 +139,5 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, target, tunn
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   if (process.argv.length !== 3) throw new Error("Usage: node scripts/package-licenses.mjs <web-notices-output>");
-  writeWebLicenseNotices(root, resolve(process.argv[2]));
+  writeChannelWebLicenseNotices(root, resolve(process.argv[2]));
 }

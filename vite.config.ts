@@ -1,29 +1,25 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-// The Go server owns /api, /healthz and /signal; everything else (including
-// /r/<roomId> invitation paths) is the SPA that Vite already serves. Keeping the
-// Browser origin on 8787 leaves PUBLIC_BASE_URL, ALLOWED_ORIGINS, the README and
-// the LAN-phone instructions unchanged; the Go dev server moves to 8788.
-const server = "http://127.0.0.1:8788";
+// Keep the repository root available for the shared UI previews, website and film.
+// The Rust domain owns signaling and health; Vite serves the frontend.
+const server = `http://127.0.0.1:${process.env.PIIK_CHANNEL_PORT ?? 8791}`;
 
 export default defineConfig({
   plugins: [react()],
   build: {
-    outDir: "internal/server/webassets/dist",
-    emptyOutDir: false,
+    outDir: "build/channel-web",
+    emptyOutDir: true,
   },
   server: {
     // host: true keeps the documented LAN-phone workflow reachable.
     host: true,
     port: 8787,
     strictPort: true,
-    // Packaging and the embedded Go bundle are outputs, not live UI sources.
-    watch: { ignored: ["**/build/**", "**/target/**", "**/internal/server/webassets/dist/**"] },
+    watch: { ignored: ["**/build/**", "**/target/**"] },
     proxy: {
-      "/api": { target: server },
+      "^/prototype/channel(?:/|$)": { target: server, ws: true },
       "/healthz": { target: server },
-      "/signal": { target: server, ws: true },
     },
   },
 });
