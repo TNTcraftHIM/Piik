@@ -6,6 +6,7 @@ import { createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { fixture } from '../../prototype/channel-server/browser-fixture.mjs';
+import { readPacketFlows } from './packets';
 import type { LabNetwork } from './network';
 import type { LabProcess } from './process';
 
@@ -41,6 +42,8 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     });
   };
   const f = fixture(browser);
+  const ice = (index: number) => f.evaluate(index, `(async()=>{const rows=[];for(const pc of window.__channelProbe.peers){const stats=await pc.getStats();rows.push({connectionState:pc.connectionState,iceConnectionState:pc.iceConnectionState,candidates:[...stats.values()].filter(row=>row.type==='candidate-pair'||row.type==='local-candidate'||row.type==='remote-candidate')});}return rows;})()`);
+  let recoveryCapture: LabProcess | undefined;
   await writeFile(join(output, 'vite.config.mts'),
     'import { mergeConfig } from '+JSON.stringify(join(source, 'node_modules/vite/dist/node/index.js'))+';\n'
     + 'import base from '+JSON.stringify(join(source, 'vite.config.ts'))+';\n'
@@ -141,14 +144,17 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     assert.notDeepEqual(result.mediaAfter.pixels, result.mediaBefore.pixels, 'actual decoded pixels must change');
     await selectedPath(result.mediaAfter);
     if (relayed) {
-      const node = browserRelay! + 1, blockedAt = Date.now();
+      const node = browserRelay! + 1;
       result.sourceBeforeOutage = await f.sample(sourceBrowser);
+      result.recovery = { blockedAt: Date.now() };
       network.setFault(node, 'udp-block', 1);
       await delay(50_000, undefined, { signal });
       result.blocked = network.counters(node);
       assert(result.blocked.faultDrops > 0, 'Relay blackout must drop actual traffic');
       let previous = await mediaSample();
-      const restoredAt = Date.now(); network.setFault(node, 'none', 1);
+      recoveryCapture = start('recovery-capture', network.wan, 'tcpdump', ['-i', 'internet', '-n', '-s', '96', '-U', '-w', join(output, 'recovery.pcap'), '-c', '10000', 'udp']);
+      await recoveryCapture.wait(() => recoveryCapture!.stderr.includes('listening on'), signal);
+      result.recovery.restoredAt = Date.now(); network.setFault(node, 'none', 1);
       for (const [from, to] of result.blockedShortcuts.filter(([from]: number[]) => from === node)) network.exec(network.router(from), 'nft', [
         `add rule inet lab_filter faults ip daddr ${network.publicIP(to)} meta l4proto udp counter drop`,
       ]);
@@ -157,7 +163,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
           previous.audio.some((before: any) => row.id === before.id && row.samples > before.samples && row.energy > before.energy));
         previous = value; return advanced;
       }, 30_000);
-      result.recovery = { blockedAt, restoredAt, recoveredAt: Date.now(), before: recovered };
+      Object.assign(result.recovery, { recoveredAt: Date.now(), before: recovered });
       await delay(3000, undefined, { signal }); result.recovery.after = await mediaSample();
       assert(result.recovery.after.frames > recovered.frames && result.recovery.after.time > recovered.time);
       assert.notDeepEqual(result.recovery.after.pixels, recovered.pixels);
@@ -184,8 +190,21 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     for (const index of indices) await f.assertNoError(index, 'kernel NAT media');
     result.stop = await Promise.all(indices.map(index => f.sample(index)));
     assert(result.stop.every((value: any) => value.captures.every((track: any) => track.state === 'ended')));
+  } catch (error) {
+    result.failure = { atMs: Date.now(), browsers: await Promise.allSettled([...browserOpened].map(async index => ({
+      index, view: await f.view(index), sample: await f.sample(index), ice: await ice(index),
+    }))) };
+    if (relayed && result.roles) result.failure.routers = await Promise.allSettled(indices.map(async index => ({ index: index + 1,
+      counters: network.counters(index + 1),
+      nat: JSON.parse(network.exec(network.router(index + 1), 'nft', ['-j', 'list', 'table', 'ip', 'lab_nat'])),
+    })));
+    throw error;
   } finally {
     const closed = await Promise.allSettled([...browserOpened].map(index => browser(index, 'close')));
+    if (recoveryCapture) {
+      await recoveryCapture.close('SIGINT');
+      result.recoveryPacketFlows = await readPacketFlows(join(output, 'recovery.pcap'));
+    }
     const errors = closed.filter(value => value.status === 'rejected').map(value => value.reason);
     if (errors.length) throw new AggregateError(errors, 'Owned Browser cleanup failed');
   }
