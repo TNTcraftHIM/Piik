@@ -166,12 +166,13 @@ logs, bounded packet captures and the existing result are retained for seven day
 including failed runs. Passing a DataChannel control does not establish decoded
 media recovery; this job does not establish physical capture or Internet success rates.
 
-At `26857f21`, the maintained `ordinary` and `media` controls passed with their
-actual room/transport owners and clean teardown. Exact source closures and
-separate failed controls remain in the
+Initial picture and sound pass through ordinary and prepared Native paths.
+At `2f162c14`, the [Browser-relay control](https://github.com/TNTcraftHIM/Piik/actions/runs/41356548642)
+recovers picture and current source sound 7.4 seconds after a 50-second UDP outage,
+with clean teardown. Long-interruption recovery through two Native nodes remains
+in [TODO](../todo.md#now). Exact source closures and failed controls remain in the
 [Native evidence index](../../prototype/channel-native/README.md#rtc-dependency).
-Remaining decoded-media combinations stay in [TODO](../todo.md#now); the older
-Go runners below require their matching snapshot.
+The older Go runners below require their matching snapshot.
 
 ## Running The Process Layer
 

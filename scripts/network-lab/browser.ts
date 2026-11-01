@@ -72,9 +72,8 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     const vite = start('vite', network.wan, process.execPath, [join(source, 'node_modules/vite/bin/vite.js'), '--host', '0.0.0.0', '--port', '9000', '--strictPort', '--config', join(output, 'vite.config.mts')],
       { ...process.env, PIIK_CHANNEL_PORT: '9001' });
     await vite.wait(() => vite.stdout.includes('9000'), signal);
-    const nativeEnvironment = { ...process.env, PIIK_MEDIA_TRACE: '1' };
-    start('native-host', network.endpoint(0), executable, ['host', join(output, 'host')], nativeEnvironment);
-    const relay = prepared ? start('native-relay', network.endpoint(1), executable, ['participant'], nativeEnvironment) : undefined;
+    start('native-host', network.endpoint(0), executable, ['host', join(output, 'host')]);
+    const relay = prepared ? start('native-relay', network.endpoint(1), executable, ['participant']) : undefined;
     if (relay) await relay.wait(() => relay.records.some(row => row.event?.type === 'admitted'), signal);
     for (const index of indices) {
       await writeFile(join(output, `${index}.js`), f.captureProbe(index ? 'Viewer' : 'Source'));

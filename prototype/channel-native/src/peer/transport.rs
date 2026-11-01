@@ -212,22 +212,6 @@ struct TrackState {
     track: Track,
     tx: mpsc::Sender<TrackEvent>,
 }
-#[derive(Default)]
-struct MediaTrace {
-    packets: HashSet<u32>,
-    reports: HashSet<(u32, &'static str)>,
-    descriptions: u8,
-    tracks: u8,
-}
-fn trace_media(pair: Uuid, stage: &str, detail: serde_json::Value) {
-    eprintln!(
-        "PIIK_MEDIA_TRACE transport {}",
-        serde_json::json!({
-            "atMs": SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis(),
-            "pair": pair, "stage": stage, "detail": detail,
-        })
-    );
-}
 pub(crate) struct Engine {
     rtc: Rtc,
     handle: Transport,
@@ -258,7 +242,6 @@ pub(crate) struct Engine {
     reported: bool,
     estimate: f64,
     deadline: Instant,
-    media_trace: Option<MediaTrace>,
 }
 
 impl Runtime {
@@ -530,7 +513,6 @@ impl Runtime {
             reported: false,
             estimate: 300_000.0,
             deadline: Instant::now(),
-            media_trace: std::env::var_os("PIIK_MEDIA_TRACE").map(|_| MediaTrace::default()),
         };
         let (done, ready) = oneshot::channel();
         self.tx
@@ -679,9 +661,7 @@ impl Transport {
             let Some((offer, pending)) = changes.apply() else {
                 return Ok(false);
             };
-            let sdp = offer.to_sdp_string();
-            e.trace_sdp("local", "offer", &sdp);
-            e.local = Some(("offer".into(), sdp));
+            e.local = Some(("offer".into(), offer.to_sdp_string()));
             e.pending = Some(pending);
             Ok(true)
         })
@@ -689,7 +669,6 @@ impl Transport {
     }
     pub async fn accept(&self, kind: String, sdp: String) -> Result<()> {
         self.call(move |e| {
-            e.trace_sdp("remote", &kind, &sdp);
             let parsed = SdpOffer::from_sdp_string(&sdp)?;
             let remote_media = parsed
                 .media_lines
@@ -703,9 +682,7 @@ impl Transport {
             if kind == "offer" {
                 e.pending = None;
                 let answer = e.rtc.sdp_api().accept_offer(parsed)?;
-                let sdp = answer.to_sdp_string();
-                e.trace_sdp("local", "answer", &sdp);
-                e.local = Some(("answer".into(), sdp));
+                e.local = Some(("answer".into(), answer.to_sdp_string()));
             } else {
                 let pending = e.pending.take().context("answer without pending offer")?;
                 e.rtc
@@ -724,10 +701,6 @@ impl Transport {
                 .collect::<Vec<_>>();
             for mid in replaced {
                 if let Some(track) = e.tracks.remove(&mid) {
-                    e.trace_track("track-identity-ended", serde_json::json!({
-                        "mid": mid.to_string(), "stream": track.track.stream, "track": track.track.id,
-                        "next": remote_media.get(&mid),
-                    }));
                     let _ = track.tx.try_send(TrackEvent::End);
                 }
                 e.sender_reports.retain(|_, (m, _, _)| *m != mid);
@@ -1124,46 +1097,6 @@ fn codec(params: &PayloadParams) -> RtpCodecParameters {
 }
 
 impl Engine {
-    fn trace_sdp(&mut self, side: &str, kind: &str, sdp: &str) {
-        let Some(trace) = &mut self.media_trace else {
-            return;
-        };
-        if trace.descriptions >= 8 {
-            return;
-        }
-        trace.descriptions += 1;
-        let lines: Vec<_> = sdp
-            .lines()
-            .filter(|line| {
-                [
-                    "m=",
-                    "a=mid:",
-                    "a=msid:",
-                    "a=rid:",
-                    "a=simulcast:",
-                    "a=rtpmap:",
-                    "a=fmtp:",
-                ]
-                .iter()
-                .any(|prefix| line.starts_with(prefix))
-            })
-            .collect();
-        trace_media(
-            self.handle.pair,
-            "sdp",
-            serde_json::json!({"side": side, "kind": kind, "lines": lines}),
-        );
-    }
-    fn trace_track(&mut self, stage: &str, detail: serde_json::Value) {
-        let Some(trace) = &mut self.media_trace else {
-            return;
-        };
-        if trace.tracks >= 16 {
-            return;
-        }
-        trace.tracks += 1;
-        trace_media(self.handle.pair, stage, detail);
-    }
     fn receive(
         &mut self,
         at: Instant,
@@ -1454,35 +1387,6 @@ impl Engine {
             RtcEvent::SenderFeedback(feedback) => {
                 let info = feedback.sender_info;
                 let ssrc = *info.ssrc;
-                let reason =
-                    if info.sender_packet_count == 0 && !self.sender_reports.contains_key(&ssrc) {
-                        "zero_packet_count"
-                    } else if !self.remote_media.contains_key(&feedback.mid) {
-                        "remote_mid_missing"
-                    } else {
-                        "accepted"
-                    };
-                if self
-                    .rtc
-                    .media(feedback.mid)
-                    .is_none_or(|m| m.kind() == MediaKind::Video)
-                {
-                    if let Some(trace) = &mut self.media_trace {
-                        if trace.reports.len() < 16 && trace.reports.insert((ssrc, reason)) {
-                            trace_media(
-                                self.handle.pair,
-                                "sdk-sr",
-                                serde_json::json!({
-                                    "mid": feedback.mid.to_string(), "rid": feedback.rid.map(|r| r.to_string()),
-                                    "ssrc": ssrc, "reason": reason, "rtpTime": info.rtp_time.numer(),
-                                    "ntp": ntp(info.ntp_time), "packetCount": info.sender_packet_count,
-                                    "binding": self.remote_media.get(&feedback.mid),
-                                    "trackExists": self.tracks.contains_key(&feedback.mid),
-                                }),
-                            );
-                        }
-                    }
-                }
                 // A pre-media SR has no RTP/capture correlation yet. Treating its
                 // zero RTP origin as the source clock can put the first AU far
                 // in the future. A later counter wrap retains its existing SR.
@@ -1521,33 +1425,12 @@ impl Engine {
             }
             RtcEvent::RtpPacket(packet) => {
                 let ssrc = packet.header.ssrc;
-                let binding = self
+                let Some((mid, rid)) = self
                     .rtc
                     .direct_api()
                     .stream_rx(&ssrc)
-                    .map(|s| (s.mid(), s.rid()));
-                let kind = binding.and_then(|(mid, _)| self.rtc.media(mid).map(|m| m.kind()));
-                if kind != Some(MediaKind::Audio) {
-                    if let Some(trace) = &mut self.media_trace {
-                        if trace.packets.len() < 16 && trace.packets.insert(*ssrc) {
-                            trace_media(
-                                self.handle.pair,
-                                "sdk-rtp",
-                                serde_json::json!({
-                                    "ssrc": *ssrc, "pt": *packet.header.payload_type,
-                                    "sequence": *packet.seq_no, "rtpTime": packet.header.timestamp,
-                                    "mid": binding.map(|(mid, _)| mid.to_string()),
-                                    "rid": binding.and_then(|(_, rid)| rid.map(|r| r.to_string())),
-                                    "binding": binding.and_then(|(mid, _)| self.remote_media.get(&mid)),
-                                    "codec": self.rtc.codec_config().params().iter()
-                                        .find(|p| p.pt() == packet.header.payload_type).map(|p| format!("{:?}", p.spec().codec)),
-                                    "padding": packet.header.has_padding, "empty": packet.payload.is_empty(),
-                                }),
-                            );
-                        }
-                    }
-                }
-                let Some((mid, rid)) = binding else {
+                    .map(|s| (s.mid(), s.rid()))
+                else {
                     return;
                 };
                 let Some(media) = self.rtc.media(mid) else {
@@ -1595,10 +1478,6 @@ impl Engine {
                                 .collect(),
                         )),
                     };
-                    self.trace_track("track-created", serde_json::json!({
-                        "mid": mid.to_string(), "stream": track.stream, "track": track.id,
-                        "ssrc": ssrc, "rids": track.rids, "codec": track.first_codec.rtp_codec.mime_type,
-                    }));
                     self.tracks.insert(
                         mid,
                         TrackState {
@@ -1635,10 +1514,6 @@ impl Engine {
             RtcEvent::MediaChanged(change) => {
                 if !change.direction.is_receiving() {
                     if let Some(track) = self.tracks.remove(&change.mid) {
-                        self.trace_track("track-direction-ended", serde_json::json!({
-                            "mid": change.mid.to_string(), "stream": track.track.stream, "track": track.track.id,
-                            "direction": format!("{:?}", change.direction),
-                        }));
                         let _ = track.tx.try_send(TrackEvent::End);
                     }
                     self.sender_reports

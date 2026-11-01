@@ -34,9 +34,10 @@ controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
   identity from an independent directory, then exits cleanly on native Ctrl+C.
   Current str0m App and Server archives pass their normal package checks,
   including served source identity, WASM/notices, SQLite room creation and
-  listener release. The Linux static-musl Server's resource loading, SQLite
-  creation and SIGTERM results predate str0m adoption; refreshed Linux package
-  acceptance is tracked in [TODO](./todo.md#now).
+  listener release. The [cross-platform candidate build](https://github.com/TNTcraftHIM/Piik/actions/runs/41356545468)
+  at `2f162c14` passes all six App and three Server packages. Both Linux
+  container architectures pass shared-Web loading, authenticated Native rooms,
+  persistence across recreation and clean shutdown.
 - The combined Windows App and Server pass normal production-UI chat, voice and
   viewing flows. The App's native window capture decodes as H264 in the Browser;
   closing the captured window retires its share while room chat continues.
@@ -45,9 +46,9 @@ controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
-  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41344422446)
-  at `19367895`, including ScreenCaptureKit, VideoToolbox, source sound, native
-  microphone capture/conversion and Quartz input.
+  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41356545468)
+  at `2f162c14` on both architectures, including ScreenCaptureKit, VideoToolbox,
+  source sound, native microphone capture/conversion and Quartz input.
   Native test programs also compile and link. System permission, capture,
   sound and input acceptance on a Mac remain open.
 - The isolated 3.0 Linux adapter passes Native/App/Server compilation and real
