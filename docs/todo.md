@@ -20,13 +20,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   Browser/Native decoded-media combinations through the maintained Rust process runner
   in the existing [network laboratory](./research/network-lab.md), exercising calibrated
   NAT and failure/recovery through current room and transport owners.
-- [ ] **3.0 portable domain and room backups.** Implement export/import under the
-  [data ownership and recovery model](./research/channel-storage-and-identity.md#persistence-and-recovery):
-  domain authority and directory stay separate from each room's policy, confirmed
-  history, retry identities and locally retained content. Restore at the actual
-  storage owner, without restoring live sessions or borrowing another owner's
-  credentials. On a fresh host binding, reconcile the authoritative reading
-  window so restoring older history does not retain newer cached messages.
+- [ ] **3.0 Room backup UI acceptance.** Verify the completed export/import
+  through the normal Room controls and real Browser storage: restore an older
+  archive and confirm that the renewed authoritative reading replaces newer
+  cached history. Domain UI acceptance and storage-owner controls are complete.
 - [ ] **3.0 media configuration.** Connect room-voice bitrate and source-audio
   profile/output gain to the current producers and shared controls. Reuse the
   numeric media contracts and existing settings owners; preserve separate voice,
