@@ -162,10 +162,10 @@ async function verifyLocalPackage(root, target, version, revision, temporaryRoot
       if (child.exitCode !== null || child.signalCode !== null) break;
       try {
         const response = await fetch(discoveryURL, {
-          headers: { Connection: "close" },
           signal: AbortSignal.timeout(500),
         });
         const discovery = response.ok ? await response.json() : null;
+        if (!response.ok) await response.body?.cancel();
         appReady = discovery?.port === port && discovery?.connectURL === `${origin}/client`;
       } catch {}
       if (appReady) break;
@@ -176,9 +176,12 @@ async function verifyLocalPackage(root, target, version, revision, temporaryRoot
     }
     const request = async (path) => {
       const response = await fetch(new URL(path, `${origin}/`), {
-        headers: { Connection: "close" }, signal: AbortSignal.timeout(2_000),
+        signal: AbortSignal.timeout(2_000),
       });
-      if (!response.ok) fail(`Packaged App returned HTTP ${response.status} for ${path}`);
+      if (!response.ok) {
+        await response.body?.cancel();
+        fail(`Packaged App returned HTTP ${response.status} for ${path}`);
+      }
       return response;
     };
     const identity = await (await request("/api/client-launcher")).json();
@@ -209,10 +212,10 @@ async function verifyLocalPackage(root, target, version, revision, temporaryRoot
     const closeDeadline = Date.now() + 5_000;
     while (Date.now() < closeDeadline) {
       try {
-        await fetch(discoveryURL, {
-          headers: { Connection: "close" },
+        const response = await fetch(discoveryURL, {
           signal: AbortSignal.timeout(300),
         });
+        await response.arrayBuffer();
       } catch {
         return;
       }
