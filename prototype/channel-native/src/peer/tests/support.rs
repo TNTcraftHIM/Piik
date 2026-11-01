@@ -526,6 +526,7 @@ pub(in crate::peer) fn message(tag: &str) -> Result<(Vec<u8>, MessageScope)> {
                 access: RoomAccess::Public,
                 hidden: false,
                 has_password: false,
+                voice_bitrate: 64_000,
                 authorized: true,
                 can_manage: true,
                 available: true,
