@@ -318,6 +318,15 @@ impl BaseTree {
         self.plan.needs_repair(demand, connected)
     }
     pub fn retry_required(&mut self, demand: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) {
+        if !self.plan.needs_repair(demand, connected) {
+            return;
+        }
+        // Unproved reservations must not consume the capacity needed to repair
+        // a required base path. Keep the acknowledged healthy tree installed.
+        self.plan
+            .parents
+            .retain(|child, _| self.plan.ready.contains_key(child));
+        self.prune_proofs();
         self.plan.retry_required(demand, connected);
     }
     pub fn links(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
@@ -403,6 +412,48 @@ impl BaseTree {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn required_base_repair_releases_unproved_capacity_before_retrying() {
+        let id = Uuid::from_u128;
+        let connected = BTreeSet::from([id(1), id(2), id(3), id(4)]);
+        let mut demand = BTreeSet::new();
+        let mut base = BaseTree::new(id(1));
+        for child in [2, 3, 4] {
+            demand.insert(id(child));
+            base.reconcile(&demand, &connected, &connected);
+            for (parent, child) in base.links().collect::<Vec<_>>() {
+                base.state(parent, child, true);
+                base.state(child, parent, true);
+            }
+        }
+        assert_eq!(
+            base.plan.parents,
+            BTreeMap::from([(id(2), id(1)), (id(3), id(1)), (id(4), id(2))])
+        );
+        // The two relay edges fail independently. Failed shortcut attempts then
+        // time out at different times, while H-S remains ready throughout.
+        for (first, second) in [(2, 4), (1, 2), (3, 4), (3, 2)] {
+            base.failed(id(first), id(second));
+            base.reconcile(&demand, &connected, &connected);
+        }
+        assert!(base.needs_repair(&demand, &connected));
+        assert_eq!(base.plan.parents.get(&id(4)), Some(&id(1)));
+        assert!(!base.plan.ready.contains_key(&id(4)));
+        base.retry_required(&demand, &connected);
+        base.reconcile(&demand, &connected, &connected);
+        assert_eq!(
+            base.plan.parents.get(&id(3)),
+            Some(&id(1)),
+            "the healthy base stays installed"
+        );
+        assert!(base.plan.ready.contains_key(&id(3)));
+        assert_eq!(
+            base.plan.parents.get(&id(2)),
+            Some(&id(1)),
+            "the reachable old relay edge needs a free root slot to retry"
+        );
+    }
     fn id(value: u128) -> Uuid {
         Uuid::from_u128(value)
     }

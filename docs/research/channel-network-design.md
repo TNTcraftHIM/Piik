@@ -383,6 +383,9 @@ again after the room's five-second repair cooldown. The existing room wake-up
 schedules missing paths while retaining healthy branches, their failed-shortcut
 history and running screen-operation deadlines. Required leases on a retired
 physical pair receive a new pair identity.
+At required base repair, release unproved base reservations before retrying
+admission; they must not occupy the capacity needed by a missing path. Ready
+branches remain installed, and physical connections retain their other leases.
 
 App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to
