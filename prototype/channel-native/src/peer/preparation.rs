@@ -53,7 +53,7 @@ impl Pending {
     pub fn start(
         local: Uuid,
         plan: PairInfo,
-        servers: [StunServer; 3],
+        servers: Vec<StunServer>,
         commands: mpsc::Sender<NativeEvent>,
     ) -> Self {
         let (input, incoming) = mpsc::channel(4);
@@ -106,7 +106,7 @@ pub(super) async fn next(
 async fn negotiate(
     pair: Uuid,
     initiator: bool,
-    servers: [StunServer; 3],
+    servers: Vec<StunServer>,
     commands: mpsc::Sender<NativeEvent>,
     mut incoming: mpsc::Receiver<UdpSignal>,
     deadline: Instant,
@@ -114,18 +114,10 @@ async fn negotiate(
     let local = local_ipv4()
         .await
         .ok_or_else(|| anyhow::anyhow!("no default IPv4 interface for UDP preparation"))?;
-    let mut addresses = Vec::with_capacity(3);
-    for server in servers {
-        let address = tokio::net::lookup_host((server.host.as_str(), server.port))
-            .await?
-            .find_map(|address| match address {
-                SocketAddr::V4(address) if !addresses.contains(&address) => Some(address),
-                _ => None,
-            })
-            .ok_or_else(|| anyhow::anyhow!("distinct IPv4 STUN destination unavailable"))?;
-        addresses.push(address);
-    }
-    let servers: [SocketAddrV4; 3] = addresses.try_into().unwrap();
+    let servers = resolve_servers(servers, |server| async move {
+        tokio::net::lookup_host((server.host, server.port)).await
+    })
+    .await?;
     let send = |udp| {
         let commands = &commands;
         async move {
@@ -181,6 +173,43 @@ async fn negotiate(
         "expected peer preparation completion"
     );
     Ok(prepared)
+}
+
+async fn resolve_servers<F, A>(
+    servers: Vec<StunServer>,
+    lookup: impl Fn(StunServer) -> F,
+) -> Result<[SocketAddrV4; 3]>
+where
+    F: std::future::Future<Output = std::io::Result<A>>,
+    A: IntoIterator<Item = SocketAddr>,
+{
+    let mut queries: FuturesUnordered<_> = servers
+        .into_iter()
+        .take(super::MAX_ICE_CANDIDATES)
+        .map(lookup)
+        .collect();
+    let mut selected = Vec::with_capacity(3);
+    while let Some(result) = queries.next().await {
+        let Ok(addresses) = result else { continue };
+        // Each authority contributes one distinct IPv4 destination, as before.
+        if let Some(address) = addresses.into_iter().find_map(|address| match address {
+            SocketAddr::V4(address)
+                if !address.ip().is_unspecified()
+                    && !address.ip().is_multicast()
+                    && !address.ip().is_broadcast()
+                    && !selected.contains(&address) =>
+            {
+                Some(address)
+            }
+            _ => None,
+        }) {
+            selected.push(address);
+            if selected.len() == 3 {
+                return Ok(selected.try_into().unwrap());
+            }
+        }
+    }
+    bail!("three distinct IPv4 STUN destinations unavailable")
 }
 
 /// Owned by one authorized pair attempt. Dropping its future drops all work:
@@ -420,6 +449,88 @@ async fn binding(socket: &UdpSocket, remote: SocketAddr) -> Result<SocketAddrV4>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn preparation_dns_fallback_does_not_wait_for_failed_or_stalled_authorities() -> Result<()>
+    {
+        use std::sync::{
+            atomic::{AtomicUsize, Ordering},
+            Arc,
+        };
+        struct PendingLookup(Arc<AtomicUsize>);
+        impl Drop for PendingLookup {
+            fn drop(&mut self) {
+                self.0.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+        let servers = |names: &[&str]| {
+            names
+                .iter()
+                .map(|name| StunServer {
+                    host: name.to_string(),
+                    port: 3478,
+                })
+                .collect()
+        };
+        let cancelled = Arc::new(AtomicUsize::new(0));
+        let selected = tokio::time::timeout(
+            Duration::from_secs(5),
+            resolve_servers(
+                servers(&["failed", "stalled", "one", "alias", "two", "three"]),
+                |server| {
+                    let cancelled = cancelled.clone();
+                    async move {
+                        match server.host.as_str() {
+                            "failed" => Err(std::io::Error::from(std::io::ErrorKind::NotFound)),
+                            "stalled" => {
+                                let _pending = PendingLookup(cancelled);
+                                std::future::pending::<std::io::Result<Vec<SocketAddr>>>().await
+                            }
+                            name => Ok(vec![SocketAddr::from((
+                                match name {
+                                    "one" | "alias" => [192, 0, 2, 1],
+                                    "two" => [192, 0, 2, 2],
+                                    _ => [192, 0, 2, 3],
+                                },
+                                server.port,
+                            ))]),
+                        }
+                    }
+                },
+            ),
+        )
+        .await??;
+        assert_eq!(
+            selected.map(|address| *address.ip()),
+            [
+                Ipv4Addr::new(192, 0, 2, 1),
+                Ipv4Addr::new(192, 0, 2, 2),
+                Ipv4Addr::new(192, 0, 2, 3),
+            ]
+        );
+        assert_eq!(
+            cancelled.load(Ordering::SeqCst),
+            1,
+            "unused lookup survived selection"
+        );
+
+        let mut resolving = Box::pin(resolve_servers(servers(&["one", "two", "three"]), |_| {
+            let cancelled = cancelled.clone();
+            async move {
+                let _pending = PendingLookup(cancelled);
+                std::future::pending::<std::io::Result<Vec<SocketAddr>>>().await
+            }
+        }));
+        assert!(futures_util::poll!(resolving.as_mut()).is_pending());
+        drop(resolving);
+        assert_eq!(
+            cancelled.load(Ordering::SeqCst),
+            4,
+            "cancelled pair retained lookups"
+        );
+        Ok(())
+    }
+
     #[tokio::test]
     async fn local_interface_lookup_keeps_the_reactor_running() -> Result<()> {
         let lookup = tokio::spawn(local_ipv4());

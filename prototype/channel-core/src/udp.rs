@@ -8,9 +8,9 @@ pub struct StunServer {
     pub port: u16,
 }
 
-/// Select three distinct standard `stun:host[:port]` authorities in config order.
+/// Retain all distinct standard `stun:host[:port]` authorities in config order.
 /// This is configuration eligibility, not DNS resolution or reachability proof.
-pub fn stun_servers(ice_servers: &[Value]) -> Option<[StunServer; 3]> {
+pub fn stun_servers(ice_servers: &[Value]) -> Option<Vec<StunServer>> {
     let mut selected = Vec::new();
     for server in ice_servers {
         let Some(urls) = server.get("urls") else {
@@ -27,13 +27,10 @@ pub fn stun_servers(ice_servers: &[Value]) -> Option<[StunServer; 3]> {
             };
             if !selected.contains(&server) {
                 selected.push(server);
-                if selected.len() == 3 {
-                    return selected.try_into().ok();
-                }
             }
         }
     }
-    None
+    (selected.len() >= 3).then_some(selected)
 }
 
 // This feature uses IPv4 sockets. A DNS authority may resolve to IPv4; an IPv6

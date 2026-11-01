@@ -2539,7 +2539,7 @@ fn coordinated_udp_preparation_uses_current_capability_and_never_restarts_a_conn
 #[test]
 fn coordinated_udp_preparation_requires_distinct_configured_stun_authorities() {
     use piik_channel_core::{udp::stun_servers, wire::UdpPreparation};
-    for ice in [
+    for (ice, expected_count) in [
         vec![],
         vec![json!({"urls":"stun:192.168.1.2:3478"})],
         vec![
@@ -2548,8 +2548,15 @@ fn coordinated_udp_preparation_requires_distinct_configured_stun_authorities() {
         vec![
             json!({"urls":["STUN:ONE.example.", "stun:two.example:3479", "stun:203.0.113.5:3480"]}),
         ],
-    ] {
+        vec![
+            json!({"urls":["STUN:ONE.example.", "stun:two.example:3479", "stun:203.0.113.5:3480", "stun:four.example", "stun:FOUR.example.:3478"]}),
+        ],
+    ]
+    .into_iter()
+    .zip([0, 0, 0, 3, 4])
+    {
         let servers = stun_servers(&ice);
+        assert_eq!(servers.as_ref().map_or(0, Vec::len), expected_count);
         let configured = servers.is_some();
         if let Some(servers) = servers {
             assert_eq!(servers[0].host, "one.example");
