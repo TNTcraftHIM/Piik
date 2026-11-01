@@ -35,12 +35,12 @@ own behavior; research and Git/PRs own evidence and completed history.
   works in [#500](https://github.com/TNTcraftHIM/Piik/issues/500); the remaining
   report concerns missing source thumbnails. The maintenance branch implements
   the macOS helper's missing preview entry. Verify its build and thumbnails on macOS.
-- [ ] **Control loss when the Host browser is minimized (#502).** Follow
-  [#502](https://github.com/TNTcraftHIM/Piik/issues/502) on the original Windows
-  host with the maintenance line's input-recovery candidate. Its v2.5.0 report
-  shows rejected input and failed release cleanup; the candidate repairs a
-  reproduced thread-desktop mismatch and records the native rejection context.
-  Confirm the original host's trigger before closing the issue.
+- [ ] **Mouse input stops when Host Chrome is minimized (#502).** The
+  [v2.5.1 follow-up](https://github.com/TNTcraftHIM/Piik/issues/502#issuecomment-6552858370)
+  retains the grant, but mouse movement and clicks stop until Chrome is restored.
+  The maintenance candidate adds aggregate input-stage and sink-API counts.
+  Use the original host's failure/restoration reports to locate the interruption;
+  the local controlled Chrome trial did not reproduce that trigger.
 - [ ] **2.x: return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
