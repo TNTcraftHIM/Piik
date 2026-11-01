@@ -837,16 +837,18 @@ source timeline. Outputs reuse complete-frame packetization and keyframe handoff
 the source supplies the encoding work, so the default Server needs no decoder or
 encoder runtime. Layered Native forwarding must preserve downstream supply rather
 than collapse it into a single low encoding.
-The isolated incoming-H264 candidates share complete source access units between
+Received H264 sources share complete source access units between
 original forwarding and one demand-driven decoder. Windows GPU, Linux GStreamer
 and macOS VideoToolbox adapters feed the same derived-producer boundary.
+Windows VP8 decoding uses stock libvpx and publishes owned NV12 frames into
+that same producer, retaining each access unit's original presentation time.
 Decoded frames reuse local capture's encoding and retirement owners. Stable outputs
 adopt the replacement's keyframe before retiring their previous encoding; closing a weak
 output releases its derivation without stopping healthy siblings. Source RTP/SR
 mapping preserves the sender's clock through decoding and re-encoding.
 The [Native candidate index](../../prototype/channel-native/README.md#rtc-dependency)
-separates each platform's source and checks; integration still requires the held
-SDK dependency decision and remaining platform acceptance.
+separates each platform's source and checks; [verification status](../verification-status.md)
+owns the remaining platform acceptance.
 Completeness belongs to the assembler across reception, expiry and delivery:
 expired fragments must never become decoder inputs. Codec metadata may legitimately
 produce no RTP; that leaves the existing sender and its last clock correlation alive.

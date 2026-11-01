@@ -5,9 +5,9 @@ as the Browser adapter. SQLite stores each room's policy and confirmed history;
 the domain supplies admission, directory views and transport leases. Its
 str0m endpoint carries room DataChannels, encoded media and requested file
 ranges without retaining file contents in SQLite. Opus and compatible original
-video are forwarded without decoding. Capture-enabled Apps can derive constrained
-H264 outputs from a received source through one shared decoder; the original
-encoded feed remains available. Server forwarding builds without capture.
+video are forwarded without decoding. Capture-enabled desktop Apps derive
+constrained H264 outputs through one demand-driven decoder; Windows also supports
+VP8. The original encoded feed remains available. Server forwarding builds without capture.
 
 The [network design](../../docs/research/channel-network-design.md) owns the model.
 This executable is an explicitly started development host. Chat, history, room voice and files

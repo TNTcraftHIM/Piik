@@ -146,6 +146,9 @@ now follows the production per-SSRC AU path, removing its obsolete shared replay
 filter. Earlier failed observations retain their original source and results.
 Receipts retain their exact source identities in the
 [Native candidate index](../prototype/channel-native/README.md#rtc-dependency).
+Windows received-VP8 controls also exercise the real shared decoder and two
+constrained encoders, including independent pause/recovery and decoder retirement.
+Original access-unit bytes and the source RTP/Sender Report clock remain unchanged.
 
 ## Interpretation
 
