@@ -1205,11 +1205,8 @@ async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<HostCommand>
     }
 }
 
-// The wire uses the browser RTCIceServer shape; the native library requires an
-// array and explicit credential strings even for an unauthenticated STUN server.
-fn ice_server(
-    mut value: serde_json::Value,
-) -> Result<rtc::peer_connection::transport::RTCIceServer> {
+// Normalize the browser RTCIceServer shape into Native's typed configuration.
+fn ice_server(mut value: serde_json::Value) -> Result<crate::peer::IceServer> {
     let object = value
         .as_object_mut()
         .ok_or_else(|| anyhow!("invalid_ice_server"))?;

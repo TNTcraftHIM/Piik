@@ -722,7 +722,7 @@ impl Input {
 mod tests {
     use super::*;
     use crate::media::vp8::Vp8FrameMetadata;
-    use rtc::shared::time::SystemInstant;
+    use rtc_shared::time::SystemInstant;
     use std::time::Duration;
 
     fn temporal_frame(

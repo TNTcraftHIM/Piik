@@ -43,7 +43,15 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     let SocketAddr::V4(target) = fixed4 else {
         unreachable!()
     };
-    let candidate = crate::peer::prepared_candidate(target)?.candidate.unwrap();
+    let signal = crate::peer::prepared_candidate(target)?;
+    assert_eq!(signal.sdp_mid.as_deref(), Some(""));
+    assert_eq!(signal.sdp_m_line_index, Some(0));
+    assert_eq!(signal.username_fragment, None);
+    let candidate = signal.candidate.unwrap();
+    assert_eq!(
+        candidate,
+        format!("candidate:2693830880 1 udp 2130706431 127.0.0.1 {port} typ host")
+    );
     ensure!(
         str0m::Candidate::from_sdp_string(&candidate)?.addr() == fixed4,
         "prepared target changed identity"

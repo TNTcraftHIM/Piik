@@ -386,13 +386,14 @@ fn pump(
 mod tests {
     use super::*;
     use crate::EncodedFrame;
-    use rtc::shared::time::SystemInstant;
+    use rtc_shared::time::SystemInstant;
     use std::time::Duration;
 
     #[tokio::test]
     async fn layered_h264_demands_forward_or_derive_per_reader_with_one_grant() -> Result<()> {
+        use crate::media::MediaKind;
+        use crate::media::RtpCodec;
         use crate::media::{video::Layers, SourceFeed, SourceOrigin};
-        use rtc::rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind};
         let epoch = Instant::now();
         let time = SourceTime::local(epoch, SystemInstant::now(epoch));
         let changed = Arc::new(Notify::new());
@@ -419,8 +420,8 @@ mod tests {
                 flow_id: Uuid::new_v4(),
                 stream: "one".into(),
             },
-            kind: RtpCodecKind::Video,
-            codec: RTCRtpCodec {
+            kind: MediaKind::Video,
+            codec: RtpCodec {
                 mime_type: "video/H264".into(),
                 clock_rate: 90_000,
                 ..Default::default()

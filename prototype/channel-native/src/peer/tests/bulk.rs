@@ -105,7 +105,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
             tokio::select! {
                 result=proxy.recv_from(&mut buffer)=>{
                     let (len,from)=result?;let destination=if from==a_addr{b_addr}else if from==b_addr{a_addr}else{continue};
-                    if from==a_addr && len>1024 && rtc::shared::util::match_dtls(&buffer[..len]) && proxy_armed.swap(false,Ordering::AcqRel) {
+                    if from==a_addr && len>1024 && rtc_shared::util::match_dtls(&buffer[..len]) && proxy_armed.swap(false,Ordering::AcqRel) {
                         held=Some((buffer[..len].to_vec(),destination));let _=held_notice.try_send(len);continue;
                     }
                     proxy.send_to(&buffer[..len],destination).await?;
@@ -124,7 +124,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
         .add_output(
             video,
             vp8(),
-            RtpCodecKind::Video,
+            MediaKind::Video,
             "bulk-sibling-video".into(),
             vec![String::new()],
         )

@@ -1,25 +1,21 @@
 //! Finite pair-scoped STUN work. The runtime remains the sole socket reader.
 use super::*;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use rtc::{
-    ice::url::{ProtoType, SchemeType, Url},
-    sansio::Protocol as _,
-    shared::{TaggedBytesMut, TransportContext, TransportProtocol},
-    stun::{
-        agent::StunEvent,
-        client::{ClientBuilder, TaggedMessage},
-        message::{
-            is_stun_message, Getter, Message, TransactionId, BINDING_REQUEST, BINDING_SUCCESS,
-        },
-        xoraddr::XorMappedAddress,
-    },
+use rtc_ice::url::{ProtoType, SchemeType, Url};
+use rtc_shared::{TaggedBytesMut, TransportContext, TransportProtocol};
+use rtc_stun::{
+    agent::StunEvent,
+    client::{ClientBuilder, TaggedMessage},
+    message::{is_stun_message, Getter, Message, TransactionId, BINDING_REQUEST, BINDING_SUCCESS},
+    xoraddr::XorMappedAddress,
 };
+use sansio::Protocol as _;
 
 #[derive(Clone)]
 pub(super) struct Base {
     pub socket: Arc<UdpIo>,
     pub local: SocketAddr,
-    pub candidate: RTCIceCandidate,
+    pub candidate: IceCandidate,
 }
 pub(super) struct Config {
     bases: Vec<Base>,
@@ -37,7 +33,7 @@ impl Config {
         }
     }
 }
-pub(super) fn urls(servers: &[RTCIceServer]) -> Vec<Url> {
+pub(super) fn urls(servers: &[IceServer]) -> Vec<Url> {
     servers
         .iter()
         .flat_map(|server| server.urls.iter().map(move |raw| (server, raw)))

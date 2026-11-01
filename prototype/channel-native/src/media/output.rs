@@ -3,10 +3,11 @@ use super::{
     packetizer::Packetizer, video, OutputStream, OutputStreams, Source, SourceFeed, SourceOrigin,
     TrackKey, RTP_PACKETS,
 };
+use crate::media::RtpCodecParameters;
 use crate::peer::transport::Transport;
 use anyhow::Result;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use rtc::{rtp, rtp_transceiver::rtp_sender::RTCRtpCodecParameters};
+use rtc_rtp as rtp;
 use std::sync::Arc;
 use std::sync::Weak;
 use tokio::{
@@ -117,7 +118,7 @@ pub(crate) struct Output {
     pub source: Uuid,
     pub stream: String,
 
-    negotiated: watch::Sender<Option<RTCRtpCodecParameters>>,
+    negotiated: watch::Sender<Option<RtpCodecParameters>>,
     encodings: Vec<Encoding>,
     task: JoinHandle<()>,
     feedback: JoinHandle<()>,
@@ -235,7 +236,7 @@ impl Output {
             });
             readers.push((ssrc, rid, reader));
         }
-        let (negotiated, mut format) = watch::channel(None::<RTCRtpCodecParameters>);
+        let (negotiated, mut format) = watch::channel(None::<RtpCodecParameters>);
         let source_id = source.id;
         let upstream = source.clone();
         let feedback_inputs = encodings.clone();
@@ -375,7 +376,7 @@ impl Output {
             layers.supply(&inputs, demand, now)
         }
     }
-    pub fn confirm(&self, codec: Option<RTCRtpCodecParameters>) -> Result<()> {
+    pub fn confirm(&self, codec: Option<RtpCodecParameters>) -> Result<()> {
         self.negotiated.send_replace(codec);
         Ok(())
     }

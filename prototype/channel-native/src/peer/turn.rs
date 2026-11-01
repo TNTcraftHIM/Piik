@@ -1,13 +1,11 @@
-//! Pair-owned UDP TURN endpoints; rtc owns authentication, framing and timers.
+//! Pair-owned UDP TURN endpoints; rtc-turn owns authentication, framing and timers.
 use super::*;
 use futures_util::{stream::FuturesUnordered, StreamExt};
-use rtc::{
-    ice::url::{SchemeType, Url},
-    sansio::Protocol as _,
-    shared::{error::Error, TaggedBytesMut, TransportContext, TransportProtocol},
-    stun::message::TransactionId,
-    turn::client::{Client, ClientConfig, Event as ClientEvent},
-};
+use rtc_ice::url::{SchemeType, Url};
+use rtc_shared::{error::Error, TaggedBytesMut, TransportContext, TransportProtocol};
+use rtc_stun::message::TransactionId;
+use rtc_turn::client::{Client, ClientConfig, Event as ClientEvent};
+use sansio::Protocol as _;
 use std::collections::VecDeque;
 
 const LIMIT: usize = super::super::MAX_ICE_CANDIDATES;
@@ -83,7 +81,7 @@ struct Pending {
     packets: VecDeque<Vec<u8>>,
 }
 pub(super) enum Change {
-    Ready(SocketAddr, RTCIceCandidate),
+    Ready(SocketAddr, IceCandidate),
     Receive(SocketAddr, SocketAddr, Vec<u8>, Instant),
     Failed,
 }
@@ -125,7 +123,7 @@ impl Endpoint {
                 password: url.password,
                 ..Default::default()
             },
-            rtc::crypto::default_provider()?,
+            rtc_crypto::default_provider()?,
         )?;
         Ok(Self {
             socket: Arc::new(UdpIo::new(socket)?),
@@ -224,8 +222,8 @@ impl Endpoint {
             match event {
                 ClientEvent::AllocateResponse(_, relay) => {
                     self.relay = Some(relay);
-                    let signal = rtc::peer_connection::transport::CandidateRelayConfig {
-                        base_config: rtc::peer_connection::transport::CandidateConfig {
+                    let signal = rtc_ice::candidate::candidate_relay::CandidateRelayConfig {
+                        base_config: rtc_ice::candidate::CandidateConfig {
                             network: "udp".into(),
                             address: relay.ip().to_string(),
                             port: relay.port(),
@@ -237,8 +235,7 @@ impl Endpoint {
                         url: Some(self.url.clone()),
                         ..Default::default()
                     }
-                    .new_candidate_relay()
-                    .map(|c| RTCIceCandidate::from(&c));
+                    .new_candidate_relay();
                     return Some(match signal {
                         Ok(signal) => Change::Ready(relay, signal),
                         Err(_) => Change::Failed,

@@ -3,6 +3,8 @@ use super::{
     clock::SourceTime, packetizer::Packetizer, video::Video, H264Sps, Relay, Source, SourceFeed,
     SourceOrigin,
 };
+use crate::media::MediaKind;
+use crate::media::RtpCodec;
 use crate::{
     capture::{
         AudioCapture, AudioControl as CaptureAudioControl, Capture, Control as VideoControl,
@@ -11,10 +13,7 @@ use crate::{
     peer::{Event, InitialMedia, SourceReady},
 };
 use anyhow::{anyhow, Result};
-use rtc::{
-    rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
-    shared::time::SystemInstant,
-};
+use rtc_shared::time::SystemInstant;
 use std::{
     sync::{Arc, Mutex},
     time::Instant,
@@ -363,7 +362,7 @@ async fn audio_source(
             let mut source = RtpSource::new(
                 id,
                 publication_id,
-                RtpCodecKind::Audio,
+                MediaKind::Audio,
                 crate::peer::codec(),
                 111,
                 now,
@@ -441,8 +440,8 @@ impl RtpSource {
     fn new(
         id: Uuid,
         publication_id: Uuid,
-        kind: RtpCodecKind,
-        codec: RTCRtpCodec,
+        kind: MediaKind,
+        codec: RtpCodec,
         payload_type: u8,
         epoch: Instant,
         clock: SystemInstant,
@@ -476,7 +475,7 @@ impl RtpSource {
         &mut self,
         bytes: Vec<u8>,
         presentation_time: Instant,
-    ) -> Result<Vec<rtc::rtp::Packet>> {
+    ) -> Result<Vec<rtc_rtp::Packet>> {
         self.packetizer.packetize(bytes, presentation_time, None)
     }
 }
@@ -589,7 +588,7 @@ mod tests {
         let mut audio = RtpSource::new(
             Uuid::from_u128(1 << 96),
             publication,
-            RtpCodecKind::Audio,
+            MediaKind::Audio,
             crate::peer::codec(),
             111,
             epoch,
@@ -598,8 +597,8 @@ mod tests {
         let mut video = RtpSource::new(
             Uuid::from_u128(2 << 96),
             publication,
-            RtpCodecKind::Video,
-            RTCRtpCodec {
+            MediaKind::Video,
+            RtpCodec {
                 mime_type: "video/H264".into(),
                 clock_rate: 90_000,
                 ..Default::default()

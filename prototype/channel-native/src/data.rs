@@ -1,11 +1,10 @@
 //! One pair owns its reliable channel writers. Consumers own queued-work validity.
-use crate::peer::transport::Channel;
+use crate::peer::{transport::Channel, PeerState};
 use piik_channel_core::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
 use piik_channel_core::{
     conversation::{self, ControlFrame, SignedPacket},
     wire::Snapshot,
 };
-use rtc::data_channel::RTCDataChannelState;
 use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
@@ -104,11 +103,18 @@ impl MessageScope {
         }
     }
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BindingState {
+    Connecting,
+    Open,
+    Closed,
+}
+
 #[derive(Clone)]
 struct Binding {
     token: Uuid,
     channel: Arc<Channel>,
-    state: RTCDataChannelState,
+    state: BindingState,
 }
 #[derive(Clone)]
 pub(crate) struct Ready {
@@ -118,7 +124,7 @@ pub(crate) struct Ready {
 impl Ready {
     pub fn open(&self) -> bool {
         self.binding.borrow().as_ref().is_some_and(|binding| {
-            binding.token == self.token && binding.state == RTCDataChannelState::Open
+            binding.token == self.token && binding.state == BindingState::Open
         })
     }
     pub fn set(&self, open: bool) -> bool {
@@ -128,9 +134,9 @@ impl Ready {
                 if binding.token == self.token {
                     current = true;
                     binding.state = if open {
-                        RTCDataChannelState::Open
+                        BindingState::Open
                     } else {
-                        RTCDataChannelState::Closed
+                        BindingState::Closed
                     };
                     return true;
                 }
@@ -163,7 +169,7 @@ impl Senders {
             Lane::Input => &self.input_binding,
         };
         state.borrow().as_ref().is_some_and(|binding| {
-            binding.token == token && (!open || binding.state == RTCDataChannelState::Open)
+            binding.token == token && (!open || binding.state == BindingState::Open)
         })
     }
 }
@@ -205,7 +211,7 @@ impl DataLink {
         binding.send_replace(Some(Binding {
             token,
             channel,
-            state: RTCDataChannelState::Connecting,
+            state: BindingState::Connecting,
         }));
         Ready {
             binding: binding.clone(),
@@ -220,7 +226,7 @@ impl DataLink {
         }
         .send_if_modified(|value| {
             if let Some(binding) = value {
-                binding.state = RTCDataChannelState::Closed;
+                binding.state = BindingState::Closed;
                 true
             } else {
                 false
@@ -241,8 +247,7 @@ pub(crate) fn control(bytes: &[u8]) -> Option<ControlFrame> {
 }
 pub(crate) fn terminal(state: &AtomicU8) -> bool {
     let state = state.load(Ordering::Acquire);
-    state == rtc::peer_connection::state::RTCPeerConnectionState::Failed as u8
-        || state == rtc::peer_connection::state::RTCPeerConnectionState::Closed as u8
+    state == PeerState::Failed as u8 || state == PeerState::Closed as u8
 }
 fn writer(
     pair: Uuid,
@@ -259,7 +264,7 @@ fn writer(
             let message = tokio::select! {
                 _ = cancelled.changed() => break,
                 _ = channel.changed() => {
-                    if channel.borrow().as_ref().is_some_and(|binding| binding.state == RTCDataChannelState::Closed) {
+                    if channel.borrow().as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
                         while queue.try_recv().is_ok() {}
                     }
                     continue;
@@ -281,14 +286,14 @@ fn writer(
                 if let Some(binding) = channel
                     .borrow()
                     .as_ref()
-                    .filter(|binding| binding.state == RTCDataChannelState::Open)
+                    .filter(|binding| binding.state == BindingState::Open)
                 {
                     break Some(binding.clone());
                 }
                 tokio::select! {
                     _ = cancelled.changed() => return,
                     _ = channel.changed() => {
-                        if channel.borrow().as_ref().is_some_and(|binding| binding.state == RTCDataChannelState::Closed) {
+                        if channel.borrow().as_ref().is_some_and(|binding| binding.state == BindingState::Closed) {
                             while queue.try_recv().is_ok() {}
                             break None;
                         }
@@ -326,7 +331,7 @@ fn writer(
                 tokio::select! {
                     _ = cancelled.changed() => return,
                     _ = channel.changed() => {
-                        if channel.borrow().as_ref().is_some_and(|binding| binding.token != dc.token || binding.state == RTCDataChannelState::Closed) {
+                        if channel.borrow().as_ref().is_some_and(|binding| binding.token != dc.token || binding.state == BindingState::Closed) {
                             while queue.try_recv().is_ok() {}
                             break None;
                         }
@@ -338,7 +343,7 @@ fn writer(
             if result.is_some_and(|result| result.is_err())
                 && report_failure
                 && channel.borrow().as_ref().is_some_and(|binding| {
-                    binding.token == dc.token && binding.state == RTCDataChannelState::Open
+                    binding.token == dc.token && binding.state == BindingState::Open
                 })
             {
                 while queue.try_recv().is_ok() {}

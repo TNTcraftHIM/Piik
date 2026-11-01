@@ -9,10 +9,8 @@ use super::{
 };
 use crate::EncodedFrame;
 use anyhow::{ensure, Result};
-use rtc::{
-    media::io::h26x_reader::{H264NalUnitType, H26xNAL, H26xReader},
-    rtp::{codec::h264::H264Packet, packetizer::Depacketizer, Packet},
-};
+use rtc_media::io::h26x_reader::{H264NalUnitType, H26xNAL, H26xReader};
+use rtc_rtp::{codec::h264::H264Packet, packetizer::Depacketizer, Packet};
 #[cfg(test)]
 use std::time::Instant;
 use std::{collections::BTreeMap, marker::PhantomData, sync::Arc};
@@ -401,7 +399,9 @@ impl Vp8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtc::rtp::{codec::h264::H264Payloader, packetizer::Payloader, Header};
+    use rtc_rtp::codec::h264::H264Payloader;
+    use rtc_rtp::packetizer::Payloader;
+    use rtc_rtp::Header;
     use std::{sync::Mutex, time::Duration};
 
     #[test]
@@ -507,7 +507,9 @@ mod tests {
 #[cfg(test)]
 mod vp8_tests {
     use super::*;
-    use rtc::rtp::{codec::vp8::Vp8Payloader, packetizer::Payloader, Header};
+    use rtc_rtp::codec::vp8::Vp8Payloader;
+    use rtc_rtp::packetizer::Payloader;
+    use rtc_rtp::Header;
 
     #[test]
     fn complete_frames_keep_partitions_and_recover_after_missing_head_or_tail() -> Result<()> {
@@ -572,7 +574,7 @@ mod vp8_tests {
 #[cfg(test)]
 mod partition_head_test {
     use super::*;
-    use rtc::rtp::Header;
+    use rtc_rtp::Header;
 
     #[test]
     fn partition_one_cannot_start_an_independent_frame() -> Result<()> {
@@ -618,7 +620,7 @@ mod partition_head_test {
 #[cfg(test)]
 mod window_tests {
     use super::*;
-    use rtc::rtp::Header;
+    use rtc_rtp::Header;
 
     fn packet(sequence: u64, timestamp: u32, marker: bool, payload: &[u8]) -> Packet {
         Packet {

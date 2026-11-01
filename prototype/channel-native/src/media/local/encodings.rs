@@ -73,8 +73,8 @@ pub(super) async fn run(
             }
         };
         let source = Source {
-            id: source_id, publication_id, origin: SourceOrigin::Local, kind: RtpCodecKind::Video,
-            codec: RTCRtpCodec { mime_type: "video/H264".into(), clock_rate: 90_000,
+            id: source_id, publication_id, origin: SourceOrigin::Local, kind: MediaKind::Video,
+            codec: RtpCodec { mime_type: "video/H264".into(), clock_rate: 90_000,
                 sdp_fmtp_line: format!("packetization-mode=1;profile-level-id={:02x}{:02x}{:02x}", profile[0], profile[1], profile[2]), ..Default::default() },
             layers: layers.clone(),
             feed: SourceFeed::Video(frames.clone()),

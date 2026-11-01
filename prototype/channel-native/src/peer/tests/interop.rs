@@ -8,23 +8,23 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     let warm_flow = f.plans.last().unwrap().outgoing[1].id;
     f.until(|f| {
         [old_flow, warm_flow].iter().all(|flow| {
-            [RtpCodecKind::Audio, RtpCodecKind::Video]
+            [MediaKind::Audio, MediaKind::Video]
                 .iter()
                 .all(|kind| f.driver.pairs[&sink].outputs.contains_key(&(*flow, *kind)))
         })
     })
     .await
     .context("both real source generations become ready")?;
-    let warm_audio = f.output(warm_flow, RtpCodecKind::Audio);
-    let warm_video = f.output(warm_flow, RtpCodecKind::Video);
+    let warm_audio = f.output(warm_flow, MediaKind::Audio);
+    let warm_video = f.output(warm_flow, MediaKind::Video);
     f.until(|f| {
-        f.observed(&warm_audio.1, RtpCodecKind::Audio).is_some()
-            && f.observed(&warm_video.1, RtpCodecKind::Video).is_some()
+        f.observed(&warm_audio.1, MediaKind::Audio).is_some()
+            && f.observed(&warm_video.1, MediaKind::Video).is_some()
     })
     .await
     .context("warm output emits both kinds")?;
-    let before_audio = f.observed(&warm_audio.1, RtpCodecKind::Audio).unwrap();
-    let before_video = f.observed(&warm_video.1, RtpCodecKind::Video).unwrap();
+    let before_audio = f.observed(&warm_audio.1, MediaKind::Audio).unwrap();
+    let before_video = f.observed(&warm_video.1, MediaKind::Video).unwrap();
     f.until(|f| {
         f.reports
             .get(&before_audio.1)
@@ -53,22 +53,22 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
         .update(f.plans.clone(), vec![f.publication.clone()], vec![])
         .await?;
     f.until(|f| {
-        f.observed(&warm_audio.1, RtpCodecKind::Audio)
+        f.observed(&warm_audio.1, MediaKind::Audio)
             .is_some_and(|p| p.2.wrapping_sub(before_audio.2) > 9600)
-            && f.observed(&warm_video.1, RtpCodecKind::Video)
+            && f.observed(&warm_video.1, MediaKind::Video)
                 .is_some_and(|p| p.2.wrapping_sub(before_video.2) > 18000)
     })
     .await
     .context("selected candidate keeps emitting")?;
     anyhow::ensure!(
-        f.output(warm_flow, RtpCodecKind::Audio) == warm_audio
-            && f.output(warm_flow, RtpCodecKind::Video) == warm_video,
+        f.output(warm_flow, MediaKind::Audio) == warm_audio
+            && f.output(warm_flow, MediaKind::Video) == warm_video,
         "warm commit replaced prepared output identity"
     );
     anyhow::ensure!(
-        f.observed(&warm_audio.1, RtpCodecKind::Audio).unwrap().0 == before_audio.0
-            && f.observed(&warm_audio.1, RtpCodecKind::Audio).unwrap().1 == before_audio.1
-            && f.observed(&warm_video.1, RtpCodecKind::Video).unwrap().1 == before_video.1,
+        f.observed(&warm_audio.1, MediaKind::Audio).unwrap().0 == before_audio.0
+            && f.observed(&warm_audio.1, MediaKind::Audio).unwrap().1 == before_audio.1
+            && f.observed(&warm_video.1, MediaKind::Video).unwrap().1 == before_video.1,
         "warm commit replaced receiver/SSRC"
     );
     anyhow::ensure!(
@@ -86,30 +86,28 @@ async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     f.until(|f| {
         f.driver.pairs[&sink]
             .outputs
-            .get(&(warm_flow, RtpCodecKind::Audio))
+            .get(&(warm_flow, MediaKind::Audio))
             .is_some_and(|o| o.id != warm_audio.0)
             && f.driver.pairs[&sink]
                 .outputs
-                .get(&(warm_flow, RtpCodecKind::Video))
+                .get(&(warm_flow, MediaKind::Video))
                 .is_some_and(|o| o.id != warm_video.0)
     })
     .await
     .context("replacement incoming source allocates fresh outputs")?;
-    let replacement_audio = f.output(warm_flow, RtpCodecKind::Audio);
-    let replacement_video = f.output(warm_flow, RtpCodecKind::Video);
+    let replacement_audio = f.output(warm_flow, MediaKind::Audio);
+    let replacement_video = f.output(warm_flow, MediaKind::Video);
     f.until(|f| {
-        f.observed(&replacement_audio.1, RtpCodecKind::Audio)
-            .is_some()
-            && f.observed(&replacement_video.1, RtpCodecKind::Video)
-                .is_some()
+        f.observed(&replacement_audio.1, MediaKind::Audio).is_some()
+            && f.observed(&replacement_video.1, MediaKind::Video).is_some()
     })
     .await?;
     anyhow::ensure!(
-        f.observed(&replacement_audio.1, RtpCodecKind::Audio)
+        f.observed(&replacement_audio.1, MediaKind::Audio)
             .unwrap()
             .1
             != before_audio.1
-            && f.observed(&replacement_video.1, RtpCodecKind::Video)
+            && f.observed(&replacement_video.1, MediaKind::Video)
                 .unwrap()
                 .1
                 != before_video.1,
@@ -129,13 +127,13 @@ async fn complete_h264_au_reaches_two_children_on_retained_pairs() -> Result<()>
     f.until(|f| {
         f.driver.pairs[&first]
             .outputs
-            .contains_key(&(flow, RtpCodecKind::Video))
+            .contains_key(&(flow, MediaKind::Video))
     })
     .await?;
-    let output = f.output(flow, RtpCodecKind::Video);
-    f.until(|f| f.observed(&output.1, RtpCodecKind::Video).is_some())
+    let output = f.output(flow, MediaKind::Video);
+    f.until(|f| f.observed(&output.1, MediaKind::Video).is_some())
         .await?;
-    let before = f.observed(&output.1, RtpCodecKind::Video).unwrap();
+    let before = f.observed(&output.1, MediaKind::Video).unwrap();
     let second = f.add_remote(Uuid::new_v4()).await?;
     let child_flow = Uuid::new_v4();
     let input = f.plans.iter().find(|p| p.id == first).unwrap().outgoing[0].input_flow_id;
@@ -159,17 +157,17 @@ async fn complete_h264_au_reaches_two_children_on_retained_pairs() -> Result<()>
     f.until(|f| {
         f.driver.pairs[&second]
             .outputs
-            .contains_key(&(child_flow, RtpCodecKind::Video))
+            .contains_key(&(child_flow, MediaKind::Video))
     })
     .await?;
-    let second_stream = f.driver.pairs[&second].outputs[&(child_flow, RtpCodecKind::Video)]
+    let second_stream = f.driver.pairs[&second].outputs[&(child_flow, MediaKind::Video)]
         .stream
         .clone();
     f.until(|f| {
         [&output.1, &second_stream].iter().all(|stream| {
             f.tracks
                 .values()
-                .filter(|t| t.stream == stream.as_str() && t.kind == RtpCodecKind::Video)
+                .filter(|t| t.stream == stream.as_str() && t.kind == MediaKind::Video)
                 .any(|t| {
                     f.packets.get(&t.id).is_some_and(|packets| {
                         packets.iter().any(|p| {
@@ -183,21 +181,21 @@ async fn complete_h264_au_reaches_two_children_on_retained_pairs() -> Result<()>
     })
     .await?;
     ensure!(
-        f.output(flow, RtpCodecKind::Video) == output,
+        f.output(flow, MediaKind::Video) == output,
         "new child replaced existing output"
     );
-    let current = f.observed(&output.1, RtpCodecKind::Video).unwrap();
+    let current = f.observed(&output.1, MediaKind::Video).unwrap();
     ensure!(
         current.0 == before.0 && current.1 == before.1,
         "retained child reset receiver/SSRC: before={before:?}, current={current:?}"
     );
     f.until(|f| {
-        f.observed(&output.1, RtpCodecKind::Video)
+        f.observed(&output.1, MediaKind::Video)
             .is_some_and(|packet| packet.2.wrapping_sub(before.2) > 0)
     })
     .await
     .context("retained child advances after new child receives its IDR")?;
-    let after = f.observed(&output.1, RtpCodecKind::Video).unwrap();
+    let after = f.observed(&output.1, MediaKind::Video).unwrap();
     ensure!(
         after.0 == before.0 && after.1 == before.1,
         "retained child reset receiver/SSRC: before={before:?}, after={after:?}"
@@ -206,7 +204,7 @@ async fn complete_h264_au_reaches_two_children_on_retained_pairs() -> Result<()>
     f.close().await;
     Ok(())
 }
-fn correlated(sr: &rtc::rtcp::sender_report::SenderReport, rtp: u32, rate: u32) -> i128 {
+fn correlated(sr: &rtc_rtcp::sender_report::SenderReport, rtp: u32, rate: u32) -> i128 {
     (i128::from(sr.ntp_time) * 1_000_000_000 >> 32)
         + i128::from(rtp.wrapping_sub(sr.rtp_time) as i32) * 1_000_000_000 / i128::from(rate)
 }
@@ -216,36 +214,34 @@ async fn screen_video_bursts_and_audio_share_stream_clock_and_relay_pli() -> Res
     let sink = f.sink;
     let flow = f.plans.iter().find(|p| p.id == sink).unwrap().outgoing[0].id;
     f.until(|f| {
-        [RtpCodecKind::Audio, RtpCodecKind::Video]
+        [MediaKind::Audio, MediaKind::Video]
             .iter()
             .all(|kind| f.driver.pairs[&sink].outputs.contains_key(&(flow, *kind)))
     })
     .await?;
-    let audio = f.output(flow, RtpCodecKind::Audio);
-    let video = f.output(flow, RtpCodecKind::Video);
+    let audio = f.output(flow, MediaKind::Audio);
+    let video = f.output(flow, MediaKind::Video);
     ensure!(audio.1 == video.1, "A/V output streams split");
     f.until(|f| {
-        [RtpCodecKind::Audio, RtpCodecKind::Video]
-            .iter()
-            .all(|kind| {
-                f.observed(&audio.1, *kind).is_some_and(|p| {
-                    f.reports
-                        .get(&p.1)
-                        .is_some_and(|reports| reports.len() >= 2)
-                })
+        [MediaKind::Audio, MediaKind::Video].iter().all(|kind| {
+            f.observed(&audio.1, *kind).is_some_and(|p| {
+                f.reports
+                    .get(&p.1)
+                    .is_some_and(|reports| reports.len() >= 2)
             })
+        })
     })
     .await?;
     let audio_track = f
         .tracks
         .values()
-        .find(|t| t.stream == audio.1 && t.kind == RtpCodecKind::Audio)
+        .find(|t| t.stream == audio.1 && t.kind == MediaKind::Audio)
         .unwrap()
         .clone();
     let video_track = f
         .tracks
         .values()
-        .find(|t| t.stream == video.1 && t.kind == RtpCodecKind::Video)
+        .find(|t| t.stream == video.1 && t.kind == MediaKind::Video)
         .unwrap()
         .clone();
     let video_packets = &f.packets[&video_track.id];

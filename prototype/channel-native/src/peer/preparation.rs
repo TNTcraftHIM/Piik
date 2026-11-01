@@ -7,18 +7,16 @@ use piik_channel_core::{
     udp::StunServer,
     wire::{Command, PairInfo, Signal, UdpSignal},
 };
-use rtc::{
-    sansio::Protocol,
-    shared::{TaggedBytesMut, TransportContext, TransportProtocol},
-    stun::{
-        agent::StunEvent,
-        client::{ClientBuilder, TaggedMessage},
-        fingerprint::FINGERPRINT,
-        integrity::MessageIntegrity,
-        message::{Getter, Message, Setter, TransactionId, BINDING_REQUEST, BINDING_SUCCESS},
-        xoraddr::XorMappedAddress,
-    },
+use rtc_shared::{TaggedBytesMut, TransportContext, TransportProtocol};
+use rtc_stun::{
+    agent::StunEvent,
+    client::{ClientBuilder, TaggedMessage},
+    fingerprint::FINGERPRINT,
+    integrity::MessageIntegrity,
+    message::{Getter, Message, Setter, TransactionId, BINDING_REQUEST, BINDING_SUCCESS},
+    xoraddr::XorMappedAddress,
 };
+use sansio::Protocol;
 use std::{
     net::{Ipv4Addr, SocketAddr, SocketAddrV4},
     time::{Duration, Instant},
@@ -321,7 +319,7 @@ impl Survey {
             } else {
                 for _ in 0..8 { sockets.push(UdpSocket::bind((preparation.local, 0)).await?); }
             }
-            let provider = rtc::crypto::default_provider()?;
+            let provider = rtc_crypto::default_provider()?;
             // Preserve 2.x short-term STUN integrity: lowercase hex of the pair secret.
             let key: String = preparation.secret.iter().map(|byte| format!("{byte:02x}")).collect();
             let integrity = MessageIntegrity::new_short_term_integrity_with_provider(
@@ -592,7 +590,7 @@ mod tests {
             // Windows ICMP/WSAECONNRESET before the peer creates its mapping.
             tokio::time::sleep(Duration::from_millis(150)).await;
             let socket = UdpSocket::bind(remote).await?;
-            let provider = rtc::crypto::default_provider()?;
+            let provider = rtc_crypto::default_provider()?;
             let key: String = [39; 32].iter().map(|byte| format!("{byte:02x}")).collect();
             let integrity = MessageIntegrity::new_short_term_integrity_with_provider(
                 key.clone(),

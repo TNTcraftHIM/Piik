@@ -2,7 +2,9 @@
 use crate::media::vp8::Vp8FrameMetadata;
 use anyhow::Result;
 use bytes::BytesMut;
-use rtc::rtp::{codec::vp8::Vp8Packet, packetizer::Depacketizer, Packet};
+use rtc_rtp::codec::vp8::Vp8Packet;
+use rtc_rtp::packetizer::Depacketizer;
+use rtc_rtp::Packet;
 
 // Stock VP8 already emits PictureID; only L and T/K add bytes.
 pub(super) const DESCRIPTOR_GROWTH: usize = 2;
@@ -85,6 +87,7 @@ impl Descriptor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::media::RtpCodec;
     use crate::media::{
         clock::SourceTime,
         incoming::Incoming,
@@ -93,7 +96,7 @@ mod tests {
         vp8::{Vp8Frame, Vp8PictureId},
         EncodedFrame,
     };
-    use rtc::{rtp_transceiver::rtp_sender::RTCRtpCodec, shared::marshal::MarshalSize};
+    use rtc_shared::marshal::MarshalSize;
     use std::{sync::Arc, time::Duration, time::Instant};
     use tokio::sync::Notify;
 
@@ -104,7 +107,7 @@ mod tests {
         let q = Video::new(time.clone(), Arc::new(Notify::new()));
         let h = Video::new(time.clone(), Arc::new(Notify::new()));
         let mut output = Packetizer::new(
-            &RTCRtpCodec {
+            &RtpCodec {
                 mime_type: "video/VP8".into(),
                 clock_rate: 90_000,
                 ..Default::default()

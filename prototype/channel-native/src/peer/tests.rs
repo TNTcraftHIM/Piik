@@ -60,7 +60,7 @@ async fn pending_udp_preparation_keeps_the_latest_plan_and_retires_with_its_leas
         tokio::net::UdpSocket::bind("127.0.0.1:0").await?,
         tokio::net::UdpSocket::bind("127.0.0.1:0").await?,
     ];
-    d.ice = vec![RTCIceServer {
+    d.ice = vec![IceServer {
         urls: servers
             .iter()
             .map(|socket| Ok(format!("stun:{}", socket.local_addr()?)))

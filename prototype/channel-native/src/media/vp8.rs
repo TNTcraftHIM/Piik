@@ -1,9 +1,8 @@
 //! VP8 descriptor facts retained with their complete encoded frame.
 use bytes::Bytes;
-use rtc::{
-    rtp::{codec::vp8::Vp8Packet, packetizer::Depacketizer},
-    shared::error::Result,
-};
+use rtc_rtp::codec::vp8::Vp8Packet;
+use rtc_rtp::packetizer::Depacketizer;
+use rtc_shared::error::Result;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Vp8PictureId {
@@ -67,7 +66,8 @@ impl Depacketizer for Vp8Frame {
 mod tests {
     use super::*;
     use crate::media::{clock::SourceTime, incoming::Incoming};
-    use rtc::rtp::{Header, Packet};
+    use rtc_rtp::Header;
+    use rtc_rtp::Packet;
     use std::{sync::Arc, time::Instant};
     use tokio::sync::Notify;
 

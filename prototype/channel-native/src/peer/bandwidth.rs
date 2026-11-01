@@ -61,8 +61,8 @@ impl Driver {
                             .filter(|source| source.matches(flow, source.kind))
                             .collect();
                         let primary = match self.publications[&flow.publication_id].kind {
-                            piik_channel_core::wire::Kind::Voice => RtpCodecKind::Audio,
-                            piik_channel_core::wire::Kind::Screen => RtpCodecKind::Video,
+                            piik_channel_core::wire::Kind::Voice => MediaKind::Audio,
+                            piik_channel_core::wire::Kind::Screen => MediaKind::Video,
                         };
                         let mut measured = sources.iter().any(|s| s.kind == primary);
                         if !measured {
@@ -185,7 +185,7 @@ impl Driver {
         configured: Option<u32>,
         rate: Option<u64>,
     ) -> Option<Option<u32>> {
-        if source.kind != RtpCodecKind::Video {
+        if source.kind != MediaKind::Video {
             return None;
         }
         if let Some(bps) = configured {
@@ -467,7 +467,7 @@ mod tests {
             clock::SourceTime,
             video::{Layers, Video},
         };
-        use rtc::shared::time::SystemInstant;
+        use rtc_shared::time::SystemInstant;
         let epoch = Instant::now();
         let time = SourceTime::local(epoch, SystemInstant::now(epoch));
         let low = Video::new(time.clone(), Arc::new(Notify::new()));

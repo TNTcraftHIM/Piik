@@ -142,24 +142,28 @@ warm output, stream, SSRC, source clock and feedback owner.
 
 ## RTC Dependency
 
-Native, Server and Android pin `rtc` to commit
+Native, Server and Android patch `rtc-rtp` to commit
 `3b6d3c0a03a641a92aff7518418c6eeb67cf1444` in the temporary
 [bug-fix fork](https://github.com/TNTcraftHIM/rtc/tree/3b6d3c0a03a641a92aff7518418c6eeb67cf1444).
 It contains only [PR #308](https://github.com/webrtc-rs/rtc/pull/308) on the
 published 0.21.1 baseline: a new FU-A start clears unfinished fragments, and an
-incomplete STAP-A length returns an error. Piik uses the public packet/codec,
-STUN and TURN helpers; str0m owns negotiation and transport.
+incomplete STAP-A length returns an error. The unchanged `rtc-shared` crate uses
+the same revision so its public error and marshal types have one identity.
+The other RTC helpers use published 0.21.1 crates: RTCP, media readers, ICE
+candidate/URL parsing, STUN, TURN and crypto. Piik does not depend on the umbrella
+RTC engine; str0m owns negotiation and transport.
 
 The incoming-source adapter owns complete-AU ordering and first-packet metadata.
 Its narrow H264 admission rule accepts equivalent Constrained Baseline formats
 and validates actual SPS separately from advertised decoder levels, as defined
 by the [network design](../../docs/research/channel-network-design.md).
 
-Cargo's patch belongs to each workspace root. All three consuming manifests and
-lockfiles carry the same Git revision. The fork retains upstream MIT/Apache-2.0
-licensing; no build-time source patch or registry-cache edit is used. When an
-upstream release provides the parser repair, update the three roots and locks, run the
-existing media interoperability and platform checks, and remove the patch entries.
+Cargo's patches belong to each workspace root. All three consuming manifests and
+lockfiles carry the same Git revision for the two patched packages. The fork
+retains upstream MIT/Apache-2.0 licensing; no build-time source patch or
+registry-cache edit is used. When an upstream release provides the parser repair,
+update the three roots and locks, run the existing media interoperability and
+platform checks, and remove the patch entries.
 
 Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
 to prepare and review updates without changing the current pin.

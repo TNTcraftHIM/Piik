@@ -17,18 +17,30 @@ pub(crate) mod video;
 pub(crate) mod vp8;
 use anyhow::Result;
 pub(crate) use output::Output;
-use rtc::{
-    rtcp::sender_report::SenderReport,
-    rtp,
-    rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
-};
+use rtc_rtcp::sender_report::SenderReport;
+use rtc_rtp as rtp;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+pub(crate) use str0m::media::MediaKind;
 use tokio::sync::{mpsc, watch};
 use uuid::Uuid;
+
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RtpCodec {
+    pub mime_type: String,
+    pub clock_rate: u32,
+    pub channels: u16,
+    pub sdp_fmtp_line: String,
+}
+
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+pub(crate) struct RtpCodecParameters {
+    pub rtp_codec: RtpCodec,
+    pub payload_type: u8,
+}
 
 #[derive(Debug)]
 pub struct EncodedFrame {
@@ -43,7 +55,7 @@ pub struct EncodedFrame {
 
 pub(crate) const RTP_PACKETS: usize = 256;
 // One directed flow owns each kind; a publication can have several hop flows.
-pub(crate) type TrackKey = (Uuid, RtpCodecKind);
+pub(crate) type TrackKey = (Uuid, MediaKind);
 pub(crate) type SourceReport = Arc<Mutex<Option<(SenderReport, std::time::Instant)>>>;
 
 #[derive(Clone, Default)]
@@ -54,18 +66,18 @@ pub(crate) struct OutputStream {
     clock: Option<clock::SourceTime>,
 }
 
-fn fmtp<'a>(codec: &'a RTCRtpCodec, name: &str) -> Option<&'a str> {
+fn fmtp<'a>(codec: &'a RtpCodec, name: &str) -> Option<&'a str> {
     codec.sdp_fmtp_line.split(';').find_map(|field| {
         let (key, value) = field.trim().split_once('=')?;
         key.eq_ignore_ascii_case(name).then_some(value.trim())
     })
 }
-pub(crate) fn supported(codec: &RTCRtpCodec, kind: RtpCodecKind) -> bool {
+pub(crate) fn supported(codec: &RtpCodec, kind: MediaKind) -> bool {
     match kind {
-        RtpCodecKind::Audio => {
+        MediaKind::Audio => {
             codec.mime_type.eq_ignore_ascii_case("audio/opus") && codec.clock_rate == 48000
         }
-        RtpCodecKind::Video if codec.clock_rate == 90000 => {
+        MediaKind::Video if codec.clock_rate == 90000 => {
             codec.mime_type.eq_ignore_ascii_case("video/VP8")
                 || (codec.mime_type.eq_ignore_ascii_case("video/H264")
                     && fmtp(codec, "packetization-mode") == Some("1")
@@ -74,7 +86,7 @@ pub(crate) fn supported(codec: &RTCRtpCodec, kind: RtpCodecKind) -> bool {
         _ => false,
     }
 }
-fn h264_level(codec: &RTCRtpCodec) -> Option<u8> {
+fn h264_level(codec: &RtpCodec) -> Option<u8> {
     let value = fmtp(codec, "profile-level-id").unwrap_or("42e01f");
     if value.len() != 6 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return None;
@@ -94,14 +106,14 @@ fn constrained_baseline_level([profile, constraints, level]: [u8; 3]) -> Option<
     (baseline && matches!(level, 10..=13 | 20..=22 | 30..=32 | 40..=42 | 50..=52 | 60..=62))
         .then_some(level)
 }
-pub(crate) fn compatible(source: &RTCRtpCodec, negotiated: &RTCRtpCodec) -> bool {
+pub(crate) fn compatible(source: &RtpCodec, negotiated: &RtpCodec) -> bool {
     if !source.mime_type.eq_ignore_ascii_case(&negotiated.mime_type)
         || source.clock_rate != negotiated.clock_rate
     {
         return false;
     }
     if source.mime_type.eq_ignore_ascii_case("video/H264") {
-        return supported(negotiated, RtpCodecKind::Video) && h264_level(source).is_some();
+        return supported(negotiated, MediaKind::Video) && h264_level(source).is_some();
     }
     true
 }
@@ -169,8 +181,8 @@ pub(crate) struct Source {
     pub origin: SourceOrigin,
     // SDK format identity: received-track SDP or the local encoder's initial SPS.
     // Producers validate actual SPS separately from each Output's negotiation.
-    pub codec: RTCRtpCodec,
-    pub kind: RtpCodecKind,
+    pub codec: RtpCodec,
+    pub kind: MediaKind,
     pub feed: SourceFeed,
     pub layers: Option<video::Layers>,
 }
@@ -181,7 +193,7 @@ impl Source {
             _ => None,
         }
     }
-    pub fn matches(&self, flow: &piik_channel_core::wire::FlowBinding, kind: RtpCodecKind) -> bool {
+    pub fn matches(&self, flow: &piik_channel_core::wire::FlowBinding, kind: MediaKind) -> bool {
         self.publication_id == flow.publication_id
             && self.kind == kind
             && match &self.origin {
@@ -191,7 +203,7 @@ impl Source {
             }
     }
     pub fn request_keyframe(&self) {
-        if self.kind == RtpCodecKind::Video {
+        if self.kind == MediaKind::Video {
             match &self.feed {
                 SourceFeed::Rtp { keyframes, .. } => {
                     keyframes.send_modify(|n| *n = n.wrapping_add(1));
@@ -350,7 +362,7 @@ mod tests {
 
     #[test]
     fn h264_checks_actual_sps_without_retaining_a_historical_level_ceiling() -> Result<()> {
-        let codec = |profile: &str| RTCRtpCodec {
+        let codec = |profile: &str| RtpCodec {
             mime_type: "video/H264".into(),
             clock_rate: 90000,
             sdp_fmtp_line: format!("packetization-mode=1;profile-level-id={profile}"),
@@ -360,16 +372,16 @@ mod tests {
         assert!(compatible(&codec("42f00b"), &codec("42c01f")));
         assert!(!compatible(&codec("42c028"), &codec("42001f")));
         for profile in ["42E01F", "4d801f", "58c01f"] {
-            assert!(supported(&codec(profile), RtpCodecKind::Video));
+            assert!(supported(&codec(profile), MediaKind::Video));
             assert!(compatible(&codec(profile), &codec("42e01f")));
         }
-        let default = RTCRtpCodec {
+        let default = RtpCodec {
             sdp_fmtp_line: "packetization-mode=1".into(),
             ..codec("42e01f")
         };
         assert!(compatible(&default, &codec("58c01f")));
         for profile in ["42e01", "42e01ff", "42e0zz", "42e009", "42e00e"] {
-            assert!(!supported(&codec(profile), RtpCodecKind::Video));
+            assert!(!supported(&codec(profile), MediaKind::Video));
         }
         let mut sps = H264Sps::default();
         // A lower-level SPS replaces the previous source fact. RTP depacketization

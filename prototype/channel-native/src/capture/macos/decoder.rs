@@ -4,10 +4,10 @@ use crate::capture::Format;
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context as _, Result};
 use cidre::{arc, cf, cm, cv, os, vt};
-use rtc::{
-    media::io::h26x_reader::{H264NalUnitType, H26xNAL, H26xReader},
-    shared::error::Error as RtcError,
-};
+use rtc_media::io::h26x_reader::H264NalUnitType;
+use rtc_media::io::h26x_reader::H26xNAL;
+use rtc_media::io::h26x_reader::H26xReader;
+use rtc_shared::error::Error as RtcError;
 use std::time::Instant;
 
 struct Output {

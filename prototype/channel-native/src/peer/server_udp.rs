@@ -1,7 +1,8 @@
 //! A Server service owns its fixed sockets across all physical peer leases.
 use super::mapping;
 use anyhow::{ensure, Context, Result};
-use rtc::peer_connection::transport::{RTCIceCandidate, RTCIceCandidateType, RTCIceProtocol};
+use rtc_ice::candidate::Candidate as IceCandidate;
+use rtc_ice::candidate::CandidateType;
 use std::{net::SocketAddr, sync::Arc};
 
 pub struct ServerUdp {
@@ -57,21 +58,18 @@ impl ServerUdp {
         }))
     }
 
-    pub(super) fn mapped_candidate(
-        &self,
-        base: &RTCIceCandidate,
-    ) -> Result<Option<RTCIceCandidate>> {
-        if base.protocol != RTCIceProtocol::Udp
-            || base.typ != RTCIceCandidateType::Host
-            || base.component != 1
+    pub(super) fn mapped_candidate(&self, base: &IceCandidate) -> Result<Option<IceCandidate>> {
+        if !base.network_type().is_udp()
+            || base.candidate_type() != CandidateType::Host
+            || base.component() != 1
         {
             return Ok(None);
         }
-        let Ok(ip) = base.address.parse::<std::net::IpAddr>() else {
+        let Ok(ip) = base.address().parse::<std::net::IpAddr>() else {
             return Ok(None);
         };
         let mapped = self.mappings.iter().find(|(local, _)| {
-            local.port() == base.port
+            local.port() == base.port()
                 && local.is_ipv4() == ip.is_ipv4()
                 && (local.ip().is_unspecified() || local.ip() == ip)
         });

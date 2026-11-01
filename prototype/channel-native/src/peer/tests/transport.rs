@@ -49,7 +49,7 @@ async fn native_opus_offer_and_answer_request_stereo_receive() -> Result<()> {
             .add_output(
                 Uuid::new_v4(),
                 crate::peer::codec(),
-                RtpCodecKind::Audio,
+                MediaKind::Audio,
                 "stereo".into(),
                 vec![],
             )

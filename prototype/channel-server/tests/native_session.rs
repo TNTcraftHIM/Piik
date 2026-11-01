@@ -832,7 +832,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
 async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() {
     use piik_channel_core::conversation::SessionSigner;
     use piik_channel_prototype::{app, web};
-    use rtc::stun::{
+    use rtc_stun::{
         fingerprint::FINGERPRINT,
         message::{
             Getter, Message as StunMessage, TransactionId, BINDING_REQUEST, BINDING_SUCCESS,

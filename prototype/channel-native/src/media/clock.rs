@@ -1,7 +1,7 @@
 //! A local monotonic coordinate for one source, paired with its own NTP clock.
 use super::SourceReport;
-use rtc::rtcp::sender_report::SenderReport;
-use rtc::shared::time::SystemInstant;
+use rtc_rtcp::sender_report::SenderReport;
+use rtc_shared::time::SystemInstant;
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -124,7 +124,7 @@ fn advance(at: Instant, ticks: i64, rate: u64) -> Instant {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtc::rtcp::sender_report::SenderReport;
+    use rtc_rtcp::sender_report::SenderReport;
     #[test]
     fn remote_clock_keeps_source_ntp_across_wrap_and_static_idr_without_wall_sync() {
         let epoch = Instant::now();

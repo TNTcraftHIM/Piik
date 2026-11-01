@@ -6,14 +6,14 @@ use crate::media::{
     video::{EncodingDemand, Layers, Video},
     OutputStreams, Source, SourceFeed, SourceOrigin,
 };
-use rtc::shared::time::SystemInstant;
+use rtc_shared::time::SystemInstant;
 
 async fn add(runtime: &Runtime, pair: Uuid) -> Result<(Transport, mpsc::Receiver<Event>)> {
     crate::peer::tests::support::endpoint(runtime, pair, None).await
 }
 
-fn format() -> RTCRtpCodec {
-    RTCRtpCodec {
+fn format() -> RtpCodec {
+    RtpCodec {
         mime_type: "video/VP8".into(),
         clock_rate: 90_000,
         ..Default::default()
@@ -44,7 +44,7 @@ pub async fn run() -> Result<serde_json::Value> {
         .add_output(
             id,
             format(),
-            RtpCodecKind::Video,
+            MediaKind::Video,
             "unconnected".into(),
             vec![String::new()],
         )
@@ -110,7 +110,7 @@ pub async fn run() -> Result<serde_json::Value> {
             stream: "generated-encoded-fixture".into(),
         },
         codec: format(),
-        kind: RtpCodecKind::Video,
+        kind: MediaKind::Video,
         feed: SourceFeed::Video(h.clone()),
         layers: Some(layers.clone()),
     };
@@ -120,7 +120,7 @@ pub async fn run() -> Result<serde_json::Value> {
         &source,
         "queue-output".into(),
         pair,
-        (Uuid::new_v4(), RtpCodecKind::Video),
+        (Uuid::new_v4(), MediaKind::Video),
         failures,
         OutputStreams::default(),
         true,
@@ -131,7 +131,7 @@ pub async fn run() -> Result<serde_json::Value> {
         .add_output(
             sibling_id,
             format(),
-            RtpCodecKind::Video,
+            MediaKind::Video,
             "retirement-survivor".into(),
             vec![String::new()],
         )

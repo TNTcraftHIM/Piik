@@ -12,7 +12,7 @@ pub(in crate::peer) struct Parent {
 }
 pub(in crate::peer) struct Fixture {
     pub(in crate::peer) withheld: HashSet<Uuid>,
-    pub(in crate::peer) video_codec: RTCRtpCodec,
+    pub(in crate::peer) video_codec: RtpCodec,
     pub(in crate::peer) writable: HashMap<Uuid, Arc<Notify>>,
     pub(in crate::peer) plis: HashMap<Uuid, usize>,
     pub(in crate::peer) driver: Driver,
@@ -25,7 +25,7 @@ pub(in crate::peer) struct Fixture {
     pub(in crate::peer) runtimes: Vec<transport::Runtime>,
     pub(in crate::peer) tracks: HashMap<String, Track>,
     pub(in crate::peer) packets: HashMap<String, Vec<rtp::Packet>>,
-    pub(in crate::peer) reports: HashMap<u32, Vec<rtc::rtcp::sender_report::SenderReport>>,
+    pub(in crate::peer) reports: HashMap<u32, Vec<rtc_rtcp::sender_report::SenderReport>>,
     pub(in crate::peer) parents: Vec<Parent>,
     pub(in crate::peer) tick: tokio::time::Interval,
     pub(in crate::peer) epoch: Instant,
@@ -37,7 +37,7 @@ pub(in crate::peer) struct Fixture {
 }
 
 impl Fixture {
-    pub(in crate::peer) async fn new(video_codec: RTCRtpCodec) -> Result<Self> {
+    pub(in crate::peer) async fn new(video_codec: RtpCodec) -> Result<Self> {
         let (commands, output) = mpsc::channel(256);
         let (events, input) = mpsc::channel(1024);
         let (ready, sources) = mpsc::channel(64);
@@ -190,7 +190,7 @@ impl Fixture {
             .add_output(
                 audio,
                 codec(),
-                RtpCodecKind::Audio,
+                MediaKind::Audio,
                 stream.clone(),
                 vec![String::new()],
             )
@@ -199,7 +199,7 @@ impl Fixture {
             .add_output(
                 video,
                 self.video_codec.clone(),
-                RtpCodecKind::Video,
+                MediaKind::Video,
                 stream.clone(),
                 vec![String::new()],
             )
@@ -292,6 +292,8 @@ impl Fixture {
                 }
             }
         }
+        // Match the Native actor's completed turn, including adaptive video demand.
+        self.driver.reconcile_encodings().await;
         Ok(())
     }
     pub(in crate::peer) async fn until(&mut self, ready: impl Fn(&Self) -> bool) -> Result<()> {
@@ -319,14 +321,14 @@ impl Fixture {
         result??;
         Ok(())
     }
-    pub(in crate::peer) fn output(&self, flow: Uuid, kind: RtpCodecKind) -> (Uuid, String) {
+    pub(in crate::peer) fn output(&self, flow: Uuid, kind: MediaKind) -> (Uuid, String) {
         let output = &self.driver.pairs[&self.sink].outputs[&(flow, kind)];
         (output.id, output.stream.clone())
     }
     pub(in crate::peer) fn observed(
         &self,
         stream: &str,
-        kind: RtpCodecKind,
+        kind: MediaKind,
     ) -> Option<(String, u32, u32)> {
         self.tracks
             .values()
@@ -386,27 +388,25 @@ async fn ensure_offer(transport: &Transport) -> Result<()> {
     Ok(())
 }
 
-pub(in crate::peer) fn vp8() -> RTCRtpCodec {
-    RTCRtpCodec {
+pub(in crate::peer) fn vp8() -> RtpCodec {
+    RtpCodec {
         mime_type: "video/VP8".into(),
         clock_rate: 90_000,
         ..Default::default()
     }
 }
-pub(in crate::peer) fn h264() -> RTCRtpCodec {
-    RTCRtpCodec {
+pub(in crate::peer) fn h264() -> RtpCodec {
+    RtpCodec {
         mime_type: "video/H264".into(),
         clock_rate: 90_000,
         sdp_fmtp_line: "packetization-mode=1;profile-level-id=42c028".into(),
         ..Default::default()
     }
 }
-pub(in crate::peer) fn video_payloads(
-    codec: &RTCRtpCodec,
-    frame: u32,
-) -> Result<Vec<bytes::Bytes>> {
+pub(in crate::peer) fn video_payloads(codec: &RtpCodec, frame: u32) -> Result<Vec<bytes::Bytes>> {
     if codec.mime_type.eq_ignore_ascii_case("video/H264") {
-        use rtc::rtp::{codec::h264::H264Payloader, packetizer::Payloader};
+        use rtc_rtp::codec::h264::H264Payloader;
+        use rtc_rtp::packetizer::Payloader;
         let access_unit = [
             vec![0, 0, 0, 1],
             sps(),
@@ -417,7 +417,8 @@ pub(in crate::peer) fn video_payloads(
         .concat();
         return Ok(H264Payloader::default().payload(1200, &access_unit.into())?);
     }
-    use rtc::rtp::{codec::vp8::Vp8Payloader, packetizer::Payloader};
+    use rtc_rtp::codec::vp8::Vp8Payloader;
+    use rtc_rtp::packetizer::Payloader;
     let bytes = [
         vec![0, 0, 0, 0x9d, 0x01, 0x2a, 0x80, 0x02, 0x68, 0x01, 0],
         vec![0x55; 7000],

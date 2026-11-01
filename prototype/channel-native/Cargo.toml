@@ -16,7 +16,15 @@ capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "
 bytes = "=1.12.1"
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
 str0m = { version = "=0.24.1", default-features = false, features = ["rust-crypto"] }
-rtc = "=0.21.1"
+rtc-rtp = "=0.21.1"
+rtc-rtcp = "=0.21.1"
+rtc-media = "=0.21.1"
+rtc-shared = { version = "=0.21.1", default-features = false, features = ["marshal"] }
+rtc-ice = "=0.21.1"
+rtc-stun = "=0.21.1"
+rtc-turn = "=0.21.1"
+rtc-crypto = { version = "=0.21.1", default-features = false, features = ["crypto-ring"] }
+sansio = "1"
 portmapper = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17", default-features = false }
 netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }
 socket2 = "0.6"
@@ -69,7 +77,9 @@ rusty-opus = { version = "=1.0.2", optional = true }
 
 # Temporary upstream H264 parser fix: webrtc-rs/rtc#308; removal in README.md.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "3b6d3c0a03a641a92aff7518418c6eeb67cf1444" }
+rtc-rtp = { git = "https://github.com/TNTcraftHIM/rtc", rev = "3b6d3c0a03a641a92aff7518418c6eeb67cf1444" }
+# The parser's public errors and marshal traits share this unchanged crate.
+rtc-shared = { git = "https://github.com/TNTcraftHIM/rtc", rev = "3b6d3c0a03a641a92aff7518418c6eeb67cf1444" }
 
 [target.'cfg(windows)'.dependencies]
 vigem-rust = { version = "=0.2.0", default-features = false, features = ["x360"] }

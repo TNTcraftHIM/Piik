@@ -20,13 +20,13 @@ async fn opus_starts_with_fresh_audio_and_preserves_source_timestamp_gaps() -> R
             f.frame >= 8
                 && f.driver.pairs[&sink]
                     .outputs
-                    .contains_key(&(flow, RtpCodecKind::Audio))
+                    .contains_key(&(flow, MediaKind::Audio))
                 && f.driver.pairs[&sink].pending_offer.is_some()
         })
         .await?;
         f.tick.reset_after(Duration::from_secs(30));
 
-        let output = &f.driver.pairs[&sink].outputs[&(flow, RtpCodecKind::Audio)];
+        let output = &f.driver.pairs[&sink].outputs[&(flow, MediaKind::Audio)];
         let stream = output.stream.clone();
         let source = output.source;
         let mut targets: Vec<_> = output.rtp_sink().into_iter().collect();
@@ -75,7 +75,7 @@ async fn opus_starts_with_fresh_audio_and_preserves_source_timestamp_gaps() -> R
                 .as_ref()
                 .is_some_and(|outputs| {
                     outputs.contains(
-                        &f.driver.pairs[&sink].outputs[&(flow, RtpCodecKind::Audio)].id,
+                        &f.driver.pairs[&sink].outputs[&(flow, MediaKind::Audio)].id,
                     )
                 })
         })
@@ -96,7 +96,7 @@ async fn opus_starts_with_fresh_audio_and_preserves_source_timestamp_gaps() -> R
         f.until(|f| {
             f.tracks.values().any(|track| {
                 track.stream == stream
-                    && track.kind == RtpCodecKind::Audio
+                    && track.kind == MediaKind::Audio
                     && f.packets.get(&track.id).is_some_and(|packets| packets.len() >= 3)
             })
         })
@@ -104,7 +104,7 @@ async fn opus_starts_with_fresh_audio_and_preserves_source_timestamp_gaps() -> R
         let track = f
             .tracks
             .values()
-            .find(|track| track.stream == stream && track.kind == RtpCodecKind::Audio)
+            .find(|track| track.stream == stream && track.kind == MediaKind::Audio)
             .unwrap();
         let actual: Vec<_> = f.packets[&track.id]
             .iter()

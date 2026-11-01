@@ -2,7 +2,10 @@
 use crate::{
     data::{self, DataLink, Lane},
     file::Files,
-    media::{supported, Output, OutputStreams, Relay, Source, SourceFeed, SourceOrigin, TrackKey},
+    media::{
+        supported, MediaKind, Output, OutputStreams, Relay, RtpCodec, Source, SourceFeed,
+        SourceOrigin, TrackKey,
+    },
 };
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
@@ -13,14 +16,8 @@ use piik_channel_core::wire::{
     Candidate, Command, Description, FlowState, LinkState, PairInfo, PublicationInfo, Signal,
     Track as WireTrack, UdpPreparation,
 };
-use rtc::{
-    peer_connection::{
-        state::RTCPeerConnectionState,
-        transport::{RTCIceCandidate, RTCIceServer},
-    },
-    rtp,
-    rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
-};
+use rtc_ice::candidate::Candidate as IceCandidate;
+use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
     sync::{
@@ -37,6 +34,21 @@ use transport::{Channel, ChannelEvent, Track, TrackEvent, Transport};
 use uuid::Uuid;
 
 const MAX_ICE_CANDIDATES: usize = 128;
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+pub struct IceServer {
+    pub urls: Vec<String>,
+    pub username: String,
+    pub credential: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum PeerState {
+    New,
+    Connected,
+    Failed,
+    Closed,
+}
 
 pub struct NativePeers {
     cancel: watch::Sender<bool>,
@@ -220,8 +232,8 @@ pub(crate) enum Event {
     InputMessage(Uuid, Uuid, piik_channel_core::input::InputFrame),
     InputClosed(Uuid, Uuid),
     Negotiate(Uuid),
-    Candidate(Uuid, RTCIceCandidate),
-    State(Uuid, RTCPeerConnectionState),
+    Candidate(Uuid, IceCandidate),
+    State(Uuid, PeerState),
     Track(Uuid, Track),
     Channel(Uuid, Arc<Channel>),
     Dc(Uuid, Uuid, bool),
@@ -336,7 +348,7 @@ struct OfferWork {
 
 impl Pair {
     fn connected(&self) -> bool {
-        self.state.load(Ordering::Acquire) == RTCPeerConnectionState::Connected as u8
+        self.state.load(Ordering::Acquire) == PeerState::Connected as u8
     }
 
     fn output_ids(&self) -> HashSet<Uuid> {
@@ -385,7 +397,7 @@ impl Pair {
 struct Driver {
     transport: transport::Runtime,
     session: Uuid,
-    ice: Vec<RTCIceServer>,
+    ice: Vec<IceServer>,
     server_udp: Option<Arc<server_udp::ServerUdp>>,
     commands: mpsc::Sender<NativeEvent>,
     links: Arc<Mutex<HashMap<Uuid, (Uuid, data::Senders)>>>,
@@ -416,7 +428,7 @@ pub(crate) async fn can_prepare_udp() -> bool {
 impl NativePeers {
     pub fn new(
         session_id: Uuid,
-        ice_servers: Vec<RTCIceServer>,
+        ice_servers: Vec<IceServer>,
         commands: mpsc::Sender<NativeEvent>,
     ) -> Self {
         Self::with_input(
@@ -430,7 +442,7 @@ impl NativePeers {
     }
     pub fn with_input(
         session_id: Uuid,
-        ice_servers: Vec<RTCIceServer>,
+        ice_servers: Vec<IceServer>,
         commands: mpsc::Sender<NativeEvent>,
         snapshot: watch::Receiver<Option<Snapshot>>,
         desktop: Option<crate::input::Desktop>,
@@ -798,13 +810,12 @@ impl NativePeers {
         Ok(())
     }
 }
-pub(crate) fn codec() -> RTCRtpCodec {
-    RTCRtpCodec {
+pub(crate) fn codec() -> RtpCodec {
+    RtpCodec {
         mime_type: "audio/opus".into(),
         clock_rate: 48000,
         channels: 2,
         sdp_fmtp_line: "minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=510000".into(),
-        rtcp_feedback: vec![],
     }
 }
 
@@ -892,7 +903,7 @@ impl Driver {
         p.outputs.remove(&key).unwrap().close(&p.pc).await;
         if binding.is_some_and(|flow| {
             !flow.selected
-                || key.1 == RtpCodecKind::Video
+                || key.1 == MediaKind::Video
                 || self
                     .publications
                     .get(&flow.publication_id)
@@ -1366,7 +1377,7 @@ impl Driver {
         prepared: Option<(std::net::UdpSocket, std::net::SocketAddrV4)>,
     ) -> Result<()> {
         let overflow = Arc::new(AtomicBool::new(false));
-        let state = Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8));
+        let state = Arc::new(AtomicU8::new(PeerState::New as u8));
         let reports = OutputStreams::default();
         let (demand, requested) = watch::channel(Some(0));
         let candidates = prepared
@@ -1666,9 +1677,9 @@ impl Driver {
                     let primary = if self.publications[&binding.publication_id].kind
                         == piik_channel_core::wire::Kind::Screen
                     {
-                        RtpCodecKind::Video
+                        MediaKind::Video
                     } else {
-                        RtpCodecKind::Audio
+                        MediaKind::Audio
                     };
                     !binding.selected || !p.outputs.contains_key(&(*flow, primary))
                 })
@@ -2052,7 +2063,7 @@ impl Driver {
             }
             if assigned_latest.is_some_and(|flow| {
                 !flow.selected
-                    || key.1 == RtpCodecKind::Video
+                    || key.1 == MediaKind::Video
                     || self
                         .publications
                         .get(&publication)
@@ -2171,9 +2182,7 @@ impl Driver {
                         }
                     }
                     for candidate in std::iter::once(candidate).chain(mapped) {
-                        let Ok(candidate) = signal_candidate(candidate) else {
-                            continue;
-                        };
+                        let candidate = signal_candidate(candidate);
                         self.send(Command::Signal {
                             pair_id: id,
                             payload: Signal {
@@ -2190,23 +2199,20 @@ impl Driver {
                 }
             }
             Event::State(id, state) => {
-                if state != RTCPeerConnectionState::Connected {
+                if state != PeerState::Connected {
                     for message in self.inputs.disconnected(id) {
                         self.send_input(message).await;
                     }
                 }
                 if self.pairs.contains_key(&id) {
-                    if state == RTCPeerConnectionState::Connected {
+                    if state == PeerState::Connected {
                         self.send(Command::LinkState {
                             pair_id: id,
                             state: LinkState::Connected,
                         })
                         .await;
                         self.base_ready(id).await;
-                    } else if matches!(
-                        state,
-                        RTCPeerConnectionState::Failed | RTCPeerConnectionState::Closed
-                    ) {
+                    } else if matches!(state, PeerState::Failed | PeerState::Closed) {
                         self.fail(id).await;
                     }
                 }
@@ -2273,13 +2279,13 @@ impl Driver {
         let kind = track.kind;
         let track_id = track.id.clone();
         let rids = track.rids.clone();
-        let layered = kind == RtpCodecKind::Video && !rids.is_empty();
+        let layered = kind == MediaKind::Video && !rids.is_empty();
         if !supported(&codec, kind)
-            || (kind == RtpCodecKind::Video
+            || (kind == MediaKind::Video
                 && self.publications[&publication].kind != piik_channel_core::wire::Kind::Screen)
         {
             if !binding.selected
-                || (kind == RtpCodecKind::Video
+                || (kind == MediaKind::Video
                     && self.publications[&publication].kind
                         == piik_channel_core::wire::Kind::Screen)
             {
@@ -2341,7 +2347,7 @@ impl Driver {
                         Some(event) => event,
                         None => break,
                     },
-                    result = requests.changed(), if kind == RtpCodecKind::Video && !framed => {
+                    result = requests.changed(), if kind == MediaKind::Video && !framed => {
                         if result.is_err() {
                             break;
                         }
@@ -2656,7 +2662,7 @@ impl Driver {
         }
         // A screen's audio alone does not establish its picture transport.
         if let Some((pair_id, flow_id)) = incoming {
-            if source.kind == RtpCodecKind::Video
+            if source.kind == MediaKind::Video
                 || self.publications[&publication].kind == piik_channel_core::wire::Kind::Voice
             {
                 self.send(Command::FlowState {
@@ -2685,8 +2691,8 @@ impl Driver {
             // Normal retirement on any pair permits one companion-audio retry.
             // Failed primary/candidate flows still belong to the route owner.
             pair.rejected_outputs.retain(|(flow, kind), _| {
-                *kind != RtpCodecKind::Audio
-                    || !pair.outputs.contains_key(&(*flow, RtpCodecKind::Video))
+                *kind != MediaKind::Audio
+                    || !pair.outputs.contains_key(&(*flow, MediaKind::Video))
                     || !pair
                         .plan
                         .outgoing
@@ -2806,7 +2812,7 @@ impl Driver {
                                 eprintln!("Native encoded track attach failed: {error}");
                                 p.rejected_outputs.insert(output_key, source.id);
                                 if !binding.selected
-                                    || source.kind == RtpCodecKind::Video
+                                    || source.kind == MediaKind::Video
                                     || self.publications[publication].kind
                                         == piik_channel_core::wire::Kind::Voice
                                 {
@@ -2831,18 +2837,17 @@ impl Driver {
         Ok(released)
     }
 }
-fn signal_candidate(c: RTCIceCandidate) -> Result<Candidate> {
-    let c = c.to_json()?;
-    Ok(Candidate {
-        candidate: Some(c.candidate),
-        sdp_mid: c.sdp_mid,
-        sdp_m_line_index: c.sdp_mline_index,
-        username_fragment: c.username_fragment,
-    })
+fn signal_candidate(c: IceCandidate) -> Candidate {
+    Candidate {
+        candidate: Some(format!("candidate:{}", c.marshal())),
+        sdp_mid: Some(String::new()),
+        sdp_m_line_index: Some(0),
+        username_fragment: None,
+    }
 }
 fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
-    let candidate = rtc::peer_connection::transport::CandidateHostConfig {
-        base_config: rtc::peer_connection::transport::CandidateConfig {
+    let candidate = rtc_ice::candidate::candidate_host::CandidateHostConfig {
+        base_config: rtc_ice::candidate::CandidateConfig {
             network: "udp".into(),
             address: remote.ip().to_string(),
             port: remote.port(),
@@ -2852,11 +2857,10 @@ fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
         ..Default::default()
     }
     .new_candidate_host()?;
-    signal_candidate(RTCIceCandidate::from(&candidate))
+    Ok(signal_candidate(candidate))
 }
 async fn close_pair(mut pair: Pair) {
-    pair.state
-        .store(RTCPeerConnectionState::Closed as u8, Ordering::Release);
+    pair.state.store(PeerState::Closed as u8, Ordering::Release);
     if let Some(mapping) = pair.mapping.as_mut() {
         mapping.close().await;
     }

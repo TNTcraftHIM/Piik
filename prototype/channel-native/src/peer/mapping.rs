@@ -2,8 +2,10 @@
 use super::{Event, MAX_ICE_CANDIDATES};
 use netwatch::interfaces::HomeRouter;
 use portmapper::Client;
-use rtc::peer_connection::transport::{CandidateConfig, CandidateServerReflexiveConfig};
-use rtc::peer_connection::transport::{RTCIceCandidate, RTCIceCandidateType, RTCIceProtocol};
+use rtc_ice::candidate::candidate_server_reflexive::CandidateServerReflexiveConfig;
+use rtc_ice::candidate::Candidate as IceCandidate;
+use rtc_ice::candidate::CandidateConfig;
+use rtc_ice::candidate::CandidateType;
 use std::{
     net::{IpAddr, SocketAddr, SocketAddrV4},
     num::NonZeroU16,
@@ -16,14 +18,14 @@ use uuid::Uuid;
 
 pub(super) struct Mapping {
     client: Client,
-    candidates: mpsc::Sender<RTCIceCandidate>,
+    candidates: mpsc::Sender<IceCandidate>,
     watcher: JoinHandle<()>,
 }
 
 impl Mapping {
     pub(super) fn start(
         pair: Uuid,
-        candidate: &RTCIceCandidate,
+        candidate: &IceCandidate,
         events: mpsc::Sender<Event>,
     ) -> Option<Self> {
         let base = eligible(candidate)?;
@@ -35,7 +37,7 @@ impl Mapping {
         ))
     }
 
-    pub(super) fn observe(&self, candidate: &RTCIceCandidate) {
+    pub(super) fn observe(&self, candidate: &IceCandidate) {
         if let Some(candidate) = eligible(candidate) {
             // Optional discovery cannot backpressure host-candidate signaling.
             let _ = self.candidates.try_send(candidate);
@@ -44,7 +46,7 @@ impl Mapping {
 
     fn with_lookup(
         pair: Uuid,
-        base: RTCIceCandidate,
+        base: IceCandidate,
         events: mpsc::Sender<Event>,
         lookup: JoinHandle<Option<HomeRouter>>,
     ) -> Self {
@@ -58,7 +60,7 @@ impl Mapping {
             let Some(base) = select_base(lookup, pending).await else {
                 return;
             };
-            let port = NonZeroU16::new(base.port).expect("eligible host candidate has a port");
+            let port = NonZeroU16::new(base.port()).expect("eligible host candidate has a port");
             let addresses = worker.watch_external_address();
             let _ = worker.probe().await;
             worker.update_local_port(port);
@@ -85,22 +87,22 @@ impl Drop for Mapping {
     }
 }
 
-fn eligible(candidate: &RTCIceCandidate) -> Option<RTCIceCandidate> {
-    if candidate.component != 1
-        || candidate.protocol != RTCIceProtocol::Udp
-        || candidate.typ != RTCIceCandidateType::Host
+fn eligible(candidate: &IceCandidate) -> Option<IceCandidate> {
+    if candidate.component() != 1
+        || !candidate.network_type().is_udp()
+        || candidate.candidate_type() != CandidateType::Host
     {
         return None;
     }
-    candidate.address.parse::<std::net::Ipv4Addr>().ok()?;
-    NonZeroU16::new(candidate.port)?;
+    candidate.address().parse::<std::net::Ipv4Addr>().ok()?;
+    NonZeroU16::new(candidate.port())?;
     Some(candidate.clone())
 }
 
 async fn select_base(
     lookup: JoinHandle<Option<HomeRouter>>,
-    mut candidates: mpsc::Receiver<RTCIceCandidate>,
-) -> Option<RTCIceCandidate> {
+    mut candidates: mpsc::Receiver<IceCandidate>,
+) -> Option<IceCandidate> {
     // The blocking closure owns only OS lookup data. Cancellation drops this
     // continuation, so its eventual result cannot start or publish peer work.
     let HomeRouter {
@@ -111,38 +113,33 @@ async fn select_base(
         return None;
     };
     while let Some(candidate) = candidates.recv().await {
-        if candidate.address.parse::<std::net::Ipv4Addr>().ok() == Some(local) {
+        if candidate.address().parse::<std::net::Ipv4Addr>().ok() == Some(local) {
             return Some(candidate);
         }
     }
     None
 }
 
-pub(super) fn candidate(
-    base: &RTCIceCandidate,
-    mapped: SocketAddr,
-) -> anyhow::Result<RTCIceCandidate> {
-    Ok(RTCIceCandidate::from(
-        &CandidateServerReflexiveConfig {
-            base_config: CandidateConfig {
-                network: "udp".into(),
-                address: mapped.ip().to_string(),
-                port: mapped.port(),
-                component: base.component,
-                ..Default::default()
-            },
-            rel_addr: base.address.clone(),
-            rel_port: base.port,
+pub(super) fn candidate(base: &IceCandidate, mapped: SocketAddr) -> anyhow::Result<IceCandidate> {
+    Ok(CandidateServerReflexiveConfig {
+        base_config: CandidateConfig {
+            network: "udp".into(),
+            address: mapped.ip().to_string(),
+            port: mapped.port(),
+            component: base.component(),
             ..Default::default()
-        }
-        .new_candidate_server_reflexive()?,
-    ))
+        },
+        rel_addr: base.address().to_owned(),
+        rel_port: base.port(),
+        ..Default::default()
+    }
+    .new_candidate_server_reflexive()?)
 }
 
 // Only publish successful address updates; absence does not revoke ICE paths.
 async fn forward(
     pair: Uuid,
-    base: RTCIceCandidate,
+    base: IceCandidate,
     mut addresses: watch::Receiver<Option<SocketAddrV4>>,
     events: mpsc::Sender<Event>,
 ) {
@@ -170,20 +167,18 @@ mod tests {
     use tokio::sync::oneshot;
     #[tokio::test]
     async fn gateway_lookup_yields_accepts_later_candidates_and_retires() -> Result<()> {
-        fn host(address: &str, port: u16) -> Result<RTCIceCandidate> {
-            Ok(RTCIceCandidate::from(
-                &rtc::peer_connection::transport::CandidateHostConfig {
-                    base_config: CandidateConfig {
-                        network: "udp".into(),
-                        address: address.into(),
-                        port,
-                        component: 1,
-                        ..Default::default()
-                    },
+        fn host(address: &str, port: u16) -> Result<IceCandidate> {
+            Ok(rtc_ice::candidate::candidate_host::CandidateHostConfig {
+                base_config: CandidateConfig {
+                    network: "udp".into(),
+                    address: address.into(),
+                    port,
+                    component: 1,
                     ..Default::default()
-                }
-                .new_candidate_host()?,
-            ))
+                },
+                ..Default::default()
+            }
+            .new_candidate_host()?)
         }
         let wrong = host("192.0.2.1", 41001)?;
         let expected = host("127.0.0.1", 41002)?;
@@ -220,7 +215,7 @@ mod tests {
         let base = selected
             .await?
             .ok_or_else(|| anyhow!("later gateway candidate was lost"))?;
-        ensure!(base.address == expected.address && base.port == expected.port);
+        ensure!(base.address() == expected.address() && base.port() == expected.port());
 
         let (release, blocked) = std::sync::mpsc::channel();
         let (started, waiting) = oneshot::channel();
@@ -258,19 +253,17 @@ mod tests {
     async fn mapped_updates_keep_the_bound_base_and_cancel_the_publisher() -> Result<()> {
         let socket = tokio::net::UdpSocket::bind("127.0.0.1:0").await?;
         let local = socket.local_addr()?;
-        let base = RTCIceCandidate::from(
-            &rtc::peer_connection::transport::CandidateHostConfig {
-                base_config: CandidateConfig {
-                    network: "udp".into(),
-                    address: local.ip().to_string(),
-                    port: local.port(),
-                    component: 1,
-                    ..Default::default()
-                },
+        let base = rtc_ice::candidate::candidate_host::CandidateHostConfig {
+            base_config: CandidateConfig {
+                network: "udp".into(),
+                address: local.ip().to_string(),
+                port: local.port(),
+                component: 1,
                 ..Default::default()
-            }
-            .new_candidate_host()?,
-        );
+            },
+            ..Default::default()
+        }
+        .new_candidate_host()?;
         let (updates, addresses) = watch::channel(None);
         let (events, mut received) = mpsc::channel(8);
         let pair = Uuid::new_v4();
@@ -284,9 +277,11 @@ mod tests {
             };
             ensure!(
                 id == pair
-                    && candidate.port == port
-                    && candidate.related_port == local.port()
-                    && candidate.related_address == local.ip().to_string(),
+                    && candidate.port() == port
+                    && candidate
+                        .related_address()
+                        .is_some_and(|related| related.port == local.port()
+                            && related.address == local.ip().to_string()),
                 "mapping replaced its socket base"
             );
             ensure!(

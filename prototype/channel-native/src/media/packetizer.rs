@@ -1,15 +1,13 @@
 mod vp8;
 
 use super::{clock::SourceTime, video::Video, vp8::Vp8FrameMetadata, EncodedFrame, SourceReport};
+use crate::media::RtpCodec;
 use anyhow::{ensure, Result};
-use rtc::{
-    rtcp::sender_report::SenderReport,
-    rtp::{
-        packetizer::{new_packetizer, Packetizer as RtpPacketizer},
-        sequence::new_random_sequencer,
-        Packet,
-    },
-    rtp_transceiver::rtp_sender::RTCRtpCodec,
+use rtc_rtcp::sender_report::SenderReport;
+use rtc_rtp::{
+    packetizer::{new_packetizer, Packetizer as RtpPacketizer},
+    sequence::new_random_sequencer,
+    Packet,
 };
 use std::time::Instant;
 
@@ -27,13 +25,24 @@ pub(crate) struct Packetizer {
 }
 impl Packetizer {
     pub fn new(
-        codec: &RTCRtpCodec,
+        codec: &RtpCodec,
         payload_type: u8,
         ssrc: u32,
         time: SourceTime,
         report: SourceReport,
     ) -> Result<Self> {
         let vp8 = codec.mime_type.eq_ignore_ascii_case("video/VP8");
+        let payloader: Box<dyn rtc_rtp::packetizer::Payloader> = if vp8 {
+            let mut payloader = rtc_rtp::codec::vp8::Vp8Payloader::default();
+            payloader.enable_picture_id = true;
+            Box::new(payloader)
+        } else if codec.mime_type.eq_ignore_ascii_case("video/H264") {
+            Box::<rtc_rtp::codec::h264::H264Payloader>::default()
+        } else if codec.mime_type.eq_ignore_ascii_case("audio/opus") {
+            Box::<rtc_rtp::codec::opus::OpusPayloader>::default()
+        } else {
+            return Err(rtc_shared::error::Error::ErrNoPayloaderForCodec.into());
+        };
         Ok(Self {
             inner: Box::new(new_packetizer(
                 time.epoch,
@@ -41,7 +50,7 @@ impl Packetizer {
                 1200 - if vp8 { vp8::DESCRIPTOR_GROWTH } else { 0 },
                 payload_type,
                 ssrc,
-                codec.payloader()?,
+                payloader,
                 Box::new(new_random_sequencer()),
                 codec.clock_rate,
             )),
@@ -122,7 +131,7 @@ impl Packetizer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtc::shared::time::SystemInstant;
+    use rtc_shared::time::SystemInstant;
     use std::time::Duration;
 
     #[test]
@@ -130,7 +139,7 @@ mod tests {
         let epoch = Instant::now();
         let report: SourceReport = Default::default();
         let mut packetizer = Packetizer::new(
-            &RTCRtpCodec {
+            &RtpCodec {
                 mime_type: "video/H264".into(),
                 clock_rate: 90_000,
                 ..Default::default()
@@ -182,15 +191,16 @@ mod tests {
 #[cfg(test)]
 mod vp8_tests {
     use super::*;
-    use rtc::rtp::{codec::vp8::Vp8Packet, packetizer::Depacketizer};
-    use rtc::shared::time::SystemInstant;
+    use rtc_rtp::codec::vp8::Vp8Packet;
+    use rtc_rtp::packetizer::Depacketizer;
+    use rtc_shared::time::SystemInstant;
     use std::time::Duration;
 
     #[test]
     fn vp8_output_keeps_picture_id_across_complete_frames() -> Result<()> {
         let now = Instant::now();
         let mut output = Packetizer::new(
-            &RTCRtpCodec {
+            &RtpCodec {
                 mime_type: "video/VP8".into(),
                 clock_rate: 90_000,
                 ..Default::default()

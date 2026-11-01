@@ -311,7 +311,7 @@ async fn run(
 mod tests {
     use super::*;
     use crate::{media::clock::SourceTime, EncodedFrame};
-    use rtc::shared::time::SystemInstant;
+    use rtc_shared::time::SystemInstant;
     use std::time::{Duration, Instant};
     use tokio::sync::Notify;
 

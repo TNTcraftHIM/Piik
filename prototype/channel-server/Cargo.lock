@@ -105,27 +105,11 @@ dependencies = [
 
 [[package]]
 name = "asn1-rs"
-version = "0.6.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5493c3bedbacf7fd7382c6346bbd66687d12bbaad3a89a2d2c303ee6cf20b048"
-dependencies = [
- "asn1-rs-derive 0.5.1",
- "asn1-rs-impl",
- "displaydoc",
- "nom 7.1.3",
- "num-traits",
- "rusticata-macros",
- "thiserror 1.0.69",
- "time",
-]
-
-[[package]]
-name = "asn1-rs"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7f43a50ac4fdca5df8e885c21b835997f0a1cdee65494a6847694a98652d9d8"
 dependencies = [
- "asn1-rs-derive 0.6.0",
+ "asn1-rs-derive",
  "asn1-rs-impl",
  "displaydoc",
  "nom 7.1.3",
@@ -133,18 +117,6 @@ dependencies = [
  "rusticata-macros",
  "thiserror 2.0.21",
  "time",
-]
-
-[[package]]
-name = "asn1-rs-derive"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "965c2d33e53cb6b267e148a4cb0760bc01f4904c1cd4bb4002a085bb016d1490"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
- "synstructure 0.13.2",
 ]
 
 [[package]]
@@ -414,29 +386,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
-name = "bytecheck"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26333eeac754f0ad8a6bcd0eb0ac012156302e4e16b852b72ee399aea4f12c29"
-dependencies = [
- "bytecheck_derive",
- "ptr_meta",
- "rancor",
- "simdutf8",
-]
-
-[[package]]
-name = "bytecheck_derive"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46d07918caa9eeaaf06b7873925c53a61daac173539b4f7715090745e44e4e69"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -671,15 +620,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853"
 
 [[package]]
-name = "crc32c"
-version = "0.6.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a47af21622d091a8f0fb295b88bc886ac74efcc613efc19f5d0b21de5c89e47"
-dependencies = [
- "rustc_version",
-]
-
-[[package]]
 name = "crossbeam-deque"
 version = "0.8.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -784,25 +724,11 @@ dependencies = [
 
 [[package]]
 name = "der-parser"
-version = "9.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cd0a5c643689626bec213c4d8bd4d96acc8ffdb4ad4bb6bc16abf27d5f4b553"
-dependencies = [
- "asn1-rs 0.6.2",
- "displaydoc",
- "nom 7.1.3",
- "num-bigint",
- "num-traits",
- "rusticata-macros",
-]
-
-[[package]]
-name = "der-parser"
 version = "10.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07da5016415d5a3c4dd39b11ed26f915f52fc4e0dc197d87908bc916e51bc1a6"
 dependencies = [
- "asn1-rs 0.7.2",
+ "asn1-rs",
  "displaydoc",
  "nom 7.1.3",
  "num-bigint",
@@ -2253,26 +2179,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "956787520e75e9bd233246045d19f42fb73242759cc57fba9611d940ae96d4b0"
 
 [[package]]
-name = "munge"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e17401f259eba956ca16491461b6e8f72913a0a114e39736ce404410f915a0c"
-dependencies = [
- "munge_macro",
-]
-
-[[package]]
-name = "munge_macro"
-version = "0.4.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4568f25ccbd45ab5d5603dc34318c1ec56b117531781260002151b8530a9f931"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "n0-error"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2683,20 +2589,11 @@ dependencies = [
 
 [[package]]
 name = "oid-registry"
-version = "0.7.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8d8034d9489cdaf79228eb9f6a3b8d7bb32ba00d6645ebd48eef4077ceb5bd9"
-dependencies = [
- "asn1-rs 0.6.2",
-]
-
-[[package]]
-name = "oid-registry"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "12f40cff3dde1b6087cc5d5f5d4d65712f34016a03ed60e9c08dcc392736b5b7"
 dependencies = [
- "asn1-rs 0.7.2",
+ "asn1-rs",
 ]
 
 [[package]]
@@ -2813,26 +2710,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
-name = "pem"
-version = "3.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
-dependencies = [
- "base64 0.22.1",
- "serde_core",
-]
-
-[[package]]
-name = "pem"
-version = "4.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
-dependencies = [
- "base64 0.23.1",
- "serde_core",
-]
-
-[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2893,11 +2770,19 @@ dependencies = [
  "piik-channel-core",
  "portmapper",
  "reis",
- "rtc",
+ "rtc-crypto",
+ "rtc-ice",
+ "rtc-media",
+ "rtc-rtcp",
+ "rtc-rtp",
+ "rtc-shared",
+ "rtc-stun",
+ "rtc-turn",
  "rustix",
  "rustls",
  "rustls-platform-verifier",
  "rusty-opus",
+ "sansio",
  "serde",
  "serde_json",
  "sha2",
@@ -2928,7 +2813,7 @@ dependencies = [
  "piik-channel-native",
  "rcgen",
  "ring",
- "rtc",
+ "rtc-stun",
  "rusqlite",
  "rustls",
  "semver",
@@ -3111,26 +2996,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ptr_meta"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "743da816b98c921cdbe8628ef7381b76f25ecf4da599fc80aca90eae7ef70cc0"
-dependencies = [
- "ptr_meta_derive",
-]
-
-[[package]]
-name = "ptr_meta_derive"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c8d9ca532f185d5d4db7a7c9d51420b452168ea1c2b913953281bd6fe1fcbd0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
 name = "quick-xml"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3159,15 +3024,6 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
-
-[[package]]
-name = "rancor"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b534442d0fcdb55d66f373d9cac6d33b6293a2335bc2136dbd06ce0e87d2572"
-dependencies = [
- "ptr_meta",
-]
 
 [[package]]
 name = "rand"
@@ -3257,11 +3113,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
  "aws-lc-rs",
- "pem 4.0.0",
  "ring",
  "rustls-pki-types",
  "time",
- "x509-parser 0.18.1",
+ "x509-parser",
  "yasna",
 ]
 
@@ -3313,15 +3168,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rend"
-version = "0.5.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "663ba70707f96e871406fe10d68128412e619b06d1d47cb91c3a4c6501176240"
-dependencies = [
- "bytecheck",
-]
-
-[[package]]
 name = "rfc6979"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3346,74 +3192,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "rkyv"
-version = "0.8.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9776093b7ca170454ab1406954f7b7d97a57c51dc6c0642957fb2ef25c2d399"
-dependencies = [
- "bytecheck",
- "bytes",
- "hashbrown 0.17.1",
- "indexmap",
- "munge",
- "ptr_meta",
- "rancor",
- "rend",
- "rkyv_derive",
- "tinyvec",
- "uuid",
-]
-
-[[package]]
-name = "rkyv_derive"
-version = "0.8.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c25ef604ac7dd839d44d64648952ea23c97866f124ff671b0ed2cf3ad9bb06e"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.9",
-]
-
-[[package]]
-name = "rtc"
-version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
-dependencies = [
- "bytes",
- "hex",
- "log",
- "pem 3.0.6",
- "rand 0.10.3",
- "rcgen",
- "rtc-crypto",
- "rtc-datachannel",
- "rtc-dtls",
- "rtc-ice",
- "rtc-interceptor",
- "rtc-mdns",
- "rtc-media",
- "rtc-rtcp",
- "rtc-rtp",
- "rtc-sctp",
- "rtc-sdp",
- "rtc-shared",
- "rtc-srtp",
- "rtc-stun",
- "rtc-turn",
- "rustls",
- "sansio",
- "serde",
- "serde_json",
- "unicase",
- "url",
- "x509-parser 0.16.0",
-]
-
-[[package]]
 name = "rtc-crypto"
 version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "404ea28682271626739dfb1f3a04e96c596490b948d7629d9e4651dd4ba6aaf3"
 dependencies = [
  "aes",
  "ccm",
@@ -3429,40 +3211,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "rtc-datachannel"
-version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
-dependencies = [
- "bytes",
- "log",
- "rtc-sctp",
- "rtc-shared",
- "sansio",
-]
-
-[[package]]
-name = "rtc-dtls"
-version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
-dependencies = [
- "bytecheck",
- "byteorder",
- "bytes",
- "der-parser 9.0.0",
- "log",
- "pem 3.0.6",
- "rcgen",
- "rkyv",
- "rtc-crypto",
- "rtc-shared",
- "rustls",
- "x509-parser 0.16.0",
-]
-
-[[package]]
 name = "rtc-ice"
 version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "099984f1be120b2e5692f232f8cbb82e53f6b4261c5c2eeda5be6223ba1adaa9"
 dependencies = [
  "bytes",
  "crc",
@@ -3478,22 +3230,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "rtc-interceptor"
-version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
-dependencies = [
- "log",
- "rand 0.10.3",
- "rtc-rtcp",
- "rtc-rtp",
- "rtc-shared",
- "sansio",
-]
-
-[[package]]
 name = "rtc-mdns"
 version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d86ac3cafd411bef81d70aff9d59d9520331b29970f7e361180da99e7a8b5a0d"
 dependencies = [
  "bytes",
  "log",
@@ -3505,7 +3245,8 @@ dependencies = [
 [[package]]
 name = "rtc-media"
 version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a76840ad2aff52efeb16a613db26c16981841a6cf50907bff950884f00f9d9a9"
 dependencies = [
  "byteorder",
  "bytes",
@@ -3518,7 +3259,8 @@ dependencies = [
 [[package]]
 name = "rtc-rtcp"
 version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "485aa259bdb68e550363c40c8dc30c1c453ddd80f0cf7224dd2d72dffd5e01c2"
 dependencies = [
  "bytes",
  "rtc-shared",
@@ -3534,31 +3276,6 @@ dependencies = [
  "rand 0.10.3",
  "rtc-shared",
  "serde",
-]
-
-[[package]]
-name = "rtc-sctp"
-version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
-dependencies = [
- "bytes",
- "crc32c",
- "log",
- "rand 0.10.3",
- "rtc-shared",
- "rustc-hash",
- "slab",
- "thiserror 2.0.21",
-]
-
-[[package]]
-name = "rtc-sdp"
-version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
-dependencies = [
- "rand 0.10.3",
- "rtc-shared",
- "url",
 ]
 
 [[package]]
@@ -3578,22 +3295,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "rtc-srtp"
-version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
-dependencies = [
- "byteorder",
- "bytes",
- "rtc-crypto",
- "rtc-rtcp",
- "rtc-rtp",
- "rtc-shared",
-]
-
-[[package]]
 name = "rtc-stun"
 version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e59e5c70b7900f537ded24cfee5fa476e8fdc186b90ced528611e441f4063b4"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -3609,7 +3314,8 @@ dependencies = [
 [[package]]
 name = "rtc-turn"
 version = "0.21.1"
-source = "git+https://github.com/TNTcraftHIM/rtc?rev=3b6d3c0a03a641a92aff7518418c6eeb67cf1444#3b6d3c0a03a641a92aff7518418c6eeb67cf1444"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c53078a0696df5a3a5e4947bc550c5e903b59803b252f1d39062d637ebd3d17e"
 dependencies = [
  "bytes",
  "log",
@@ -4329,12 +4035,6 @@ dependencies = [
  "displaydoc",
  "zerovec",
 ]
-
-[[package]]
-name = "tinyvec"
-version = "1.13.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tokio"
@@ -5276,34 +4976,17 @@ dependencies = [
 
 [[package]]
 name = "x509-parser"
-version = "0.16.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fcbc162f30700d6f3f82a24bf7cc62ffe7caea42c0b2cba8bf7f3ae50cf51f69"
-dependencies = [
- "asn1-rs 0.6.2",
- "data-encoding",
- "der-parser 9.0.0",
- "lazy_static",
- "nom 7.1.3",
- "oid-registry 0.7.1",
- "rusticata-macros",
- "thiserror 1.0.69",
- "time",
-]
-
-[[package]]
-name = "x509-parser"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d43b0f71ce057da06bc0851b23ee24f3f86190b07203dd8f567d0b706a185202"
 dependencies = [
- "asn1-rs 0.7.2",
+ "asn1-rs",
  "aws-lc-rs",
  "data-encoding",
- "der-parser 10.0.0",
+ "der-parser",
  "lazy_static",
  "nom 7.1.3",
- "oid-registry 0.8.1",
+ "oid-registry",
  "ring",
  "rusticata-macros",
  "thiserror 2.0.21",

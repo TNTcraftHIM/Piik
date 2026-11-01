@@ -1,15 +1,11 @@
 //! One owned sans-I/O pump. Room/flow policy and bounded producers remain outside it.
 use super::{server_udp::ServerUdp, Event};
+use crate::media::{MediaKind, RtpCodec, RtpCodecParameters};
+use crate::peer::{IceServer, PeerState};
 use anyhow::{anyhow, ensure, Context, Result};
-use rtc::{
-    peer_connection::{
-        state::RTCPeerConnectionState,
-        transport::{RTCIceCandidate, RTCIceServer},
-    },
-    rtcp::sender_report::SenderReport,
-    rtp,
-    rtp_transceiver::rtp_sender::{RTCRtpCodec, RTCRtpCodecParameters, RtpCodecKind},
-};
+use rtc_ice::candidate::Candidate as IceCandidate;
+use rtc_rtcp::sender_report::SenderReport;
+use rtc_rtp as rtp;
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
@@ -24,7 +20,7 @@ use str0m::{
     change::{SdpAnswer, SdpOffer, SdpPendingOffer},
     channel::{ChannelConfig, ChannelId, Reliability},
     format::{Codec, FormatParams, PayloadParams},
-    media::{Direction, Frequency, MediaKind, Mid, Rid, Rids},
+    media::{Direction, Frequency, Mid, Rid, Rids},
     net::{Protocol, Receive},
     rtp::{RtpWrite, SeqNo},
     Candidate, Event as RtcEvent, Input, Output, Rtc,
@@ -122,8 +118,8 @@ pub(crate) struct Transport {
     tx: mpsc::Sender<Command>,
 }
 struct Outgoing {
-    codec: RTCRtpCodec,
-    kind: RtpCodecKind,
+    codec: RtpCodec,
+    kind: MediaKind,
     stream: String,
     rids: Vec<String>,
     mid: Option<Mid>,
@@ -199,12 +195,12 @@ pub(crate) struct Track {
     pub mid: Mid,
     pub stream: String,
     pub id: String,
-    pub kind: RtpCodecKind,
+    pub kind: MediaKind,
     pub rids: Vec<String>,
     pub first_ssrc: u32,
-    pub first_codec: RTCRtpCodecParameters,
+    pub first_codec: RtpCodecParameters,
     packets: Arc<tokio::sync::Mutex<mpsc::Receiver<TrackEvent>>>,
-    encodings: Arc<Mutex<HashMap<u32, (String, RTCRtpCodecParameters)>>>,
+    encodings: Arc<Mutex<HashMap<u32, (String, RtpCodecParameters)>>>,
     reports: Arc<Mutex<HashMap<u32, (SenderReport, Instant)>>>,
 }
 pub(crate) enum TrackEvent {
@@ -221,7 +217,7 @@ pub(crate) struct Engine {
     handle: Transport,
     sockets: Vec<Arc<UdpIo>>,
     discovery: Option<JoinHandle<()>>,
-    discovery_routes: HashMap<rtc::stun::message::TransactionId, discovery::Route>,
+    discovery_routes: HashMap<rtc_stun::message::TransactionId, discovery::Route>,
     turn: HashMap<usize, turn::Endpoint>,
     turn_setup: mpsc::Receiver<turn::Endpoint>,
     turn_setup_task: Option<JoinHandle<()>>,
@@ -380,7 +376,7 @@ impl Runtime {
         state: Arc<AtomicU8>,
         mut demand: watch::Receiver<Option<u64>>,
         changed: Arc<Notify>,
-        ice: &[RTCIceServer],
+        ice: &[IceServer],
     ) -> Result<(Transport, watch::Receiver<Estimate>)> {
         let handle = Transport {
             pair,
@@ -460,8 +456,8 @@ impl Runtime {
             for ip in addresses {
                 let address = SocketAddr::new(ip, local.port());
                 rtc.add_local_candidate(Candidate::host(address, "udp")?);
-                let candidate = rtc::peer_connection::transport::CandidateHostConfig {
-                    base_config: rtc::peer_connection::transport::CandidateConfig {
+                let candidate = rtc_ice::candidate::candidate_host::CandidateHostConfig {
+                    base_config: rtc_ice::candidate::CandidateConfig {
                         network: "udp".into(),
                         address: ip.to_string(),
                         port: local.port(),
@@ -471,7 +467,6 @@ impl Runtime {
                     ..Default::default()
                 }
                 .new_candidate_host()?;
-                let candidate = RTCIceCandidate::from(&candidate);
                 if bases.len() < super::MAX_ICE_CANDIDATES {
                     bases.push(discovery::Base {
                         socket: socket.clone(),
@@ -652,11 +647,7 @@ impl Transport {
                         }
                     }
                     output.mid = Some(changes.add_media(
-                        if output.kind == RtpCodecKind::Video {
-                            MediaKind::Video
-                        } else {
-                            MediaKind::Audio
-                        },
+                        output.kind,
                         Direction::SendOnly,
                         Some(output.stream.clone()),
                         None,
@@ -792,8 +783,8 @@ impl Transport {
     pub async fn add_output(
         &self,
         id: Uuid,
-        codec: RTCRtpCodec,
-        kind: RtpCodecKind,
+        codec: RtpCodec,
+        kind: MediaKind,
         stream: String,
         rids: Vec<String>,
     ) -> Result<(mpsc::Receiver<()>, Arc<Notify>)> {
@@ -820,7 +811,7 @@ impl Transport {
         })
         .await
     }
-    pub async fn confirm(&self, id: Uuid) -> Result<Option<Option<RTCRtpCodecParameters>>> {
+    pub async fn confirm(&self, id: Uuid) -> Result<Option<Option<RtpCodecParameters>>> {
         self.call(move |e| {
             let out = e.outputs.get(&id).context("output retired")?;
             let Some(mid) = out.mid else { return Ok(None) };
@@ -944,7 +935,7 @@ impl Transport {
                         packet.payload.to_vec(),
                     )
                     .marker(packet.header.marker)
-                    .nackable(out.kind == RtpCodecKind::Video),
+                    .nackable(out.kind == MediaKind::Video),
                 );
             }
             Ok(None)
@@ -1022,7 +1013,7 @@ impl Track {
     pub async fn poll(&self) -> Option<TrackEvent> {
         self.packets.lock().await.recv().await
     }
-    pub fn codec(&self, ssrc: u32) -> Option<RTCRtpCodecParameters> {
+    pub fn codec(&self, ssrc: u32) -> Option<RtpCodecParameters> {
         self.encodings
             .lock()
             .unwrap()
@@ -1070,7 +1061,7 @@ fn ntp(time: SystemTime) -> u64 {
         time.duration_since(UNIX_EPOCH).unwrap_or_default() + Duration::from_secs(2_208_988_800);
     (d.as_secs() << 32) | ((u64::from(d.subsec_nanos()) << 32) / 1_000_000_000)
 }
-fn codec(params: &PayloadParams) -> RTCRtpCodecParameters {
+fn codec(params: &PayloadParams) -> RtpCodecParameters {
     let spec = params.spec();
     let mime = match spec.codec {
         Codec::Opus => "audio/opus",
@@ -1087,8 +1078,8 @@ fn codec(params: &PayloadParams) -> RTCRtpCodecParameters {
     } else {
         String::new()
     };
-    RTCRtpCodecParameters {
-        rtp_codec: RTCRtpCodec {
+    RtpCodecParameters {
+        rtp_codec: RtpCodec {
             mime_type: mime.into(),
             clock_rate: if spec.codec == Codec::Opus {
                 48000
@@ -1097,10 +1088,8 @@ fn codec(params: &PayloadParams) -> RTCRtpCodecParameters {
             },
             channels: spec.channels.unwrap_or(0) as u16,
             sdp_fmtp_line: fmtp,
-            ..Default::default()
         },
         payload_type: *params.pt(),
-        ..Default::default()
     }
 }
 
@@ -1278,12 +1267,8 @@ impl Engine {
                 Ok(Output::Event(event)) => self.event(event),
                 Err(error) => {
                     eprintln!("Native str0m output: {error}");
-                    self.state
-                        .store(RTCPeerConnectionState::Failed as u8, Ordering::Release);
-                    self.emit(Event::State(
-                        self.handle.pair,
-                        RTCPeerConnectionState::Failed,
-                    ));
+                    self.state.store(PeerState::Failed as u8, Ordering::Release);
+                    self.emit(Event::State(self.handle.pair, PeerState::Failed));
                     self.deadline = Instant::now() + Duration::from_secs(3600);
                     break;
                 }
@@ -1296,36 +1281,22 @@ impl Engine {
                 if state.is_disconnected() {
                     // str0m has exhausted its current candidate pairs and has no
                     // later Failed state. Reuse the owned pair replacement.
-                    self.state
-                        .store(RTCPeerConnectionState::Failed as u8, Ordering::Release);
-                    self.emit(Event::State(
-                        self.handle.pair,
-                        RTCPeerConnectionState::Failed,
-                    ));
+                    self.state.store(PeerState::Failed as u8, Ordering::Release);
+                    self.emit(Event::State(self.handle.pair, PeerState::Failed));
                 } else if state.is_connected() && self.rtc.is_connected() {
                     self.state
-                        .store(RTCPeerConnectionState::Connected as u8, Ordering::Release);
-                    self.emit(Event::State(
-                        self.handle.pair,
-                        RTCPeerConnectionState::Connected,
-                    ));
+                        .store(PeerState::Connected as u8, Ordering::Release);
+                    self.emit(Event::State(self.handle.pair, PeerState::Connected));
                 }
             }
             RtcEvent::Connected => {
                 self.state
-                    .store(RTCPeerConnectionState::Connected as u8, Ordering::Release);
-                self.emit(Event::State(
-                    self.handle.pair,
-                    RTCPeerConnectionState::Connected,
-                ));
+                    .store(PeerState::Connected as u8, Ordering::Release);
+                self.emit(Event::State(self.handle.pair, PeerState::Connected));
             }
             RtcEvent::Closed => {
-                self.state
-                    .store(RTCPeerConnectionState::Closed as u8, Ordering::Release);
-                self.emit(Event::State(
-                    self.handle.pair,
-                    RTCPeerConnectionState::Closed,
-                ));
+                self.state.store(PeerState::Closed as u8, Ordering::Release);
+                self.emit(Event::State(self.handle.pair, PeerState::Closed));
             }
             RtcEvent::ChannelOpen(id, label) => {
                 let config = self
@@ -1465,11 +1436,7 @@ impl Engine {
                 let Some((stream, track_id)) = self.remote_media.get(&mid).cloned() else {
                     return;
                 };
-                let kind = if media.kind() == MediaKind::Video {
-                    RtpCodecKind::Video
-                } else {
-                    RtpCodecKind::Audio
-                };
+                let kind = media.kind();
                 let rids = match media.rids_rx() {
                     Rids::Specific(rids) => rids.iter().map(ToString::to_string).collect(),
                     _ => vec![],

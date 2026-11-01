@@ -1,9 +1,9 @@
 //! Binding discovery for the App's selected Local LAN entry.
-use rtc::stun::{
-    fingerprint::FINGERPRINT,
-    message::{Message, BINDING_REQUEST, BINDING_SUCCESS},
-    xoraddr::XorMappedAddress,
-};
+use rtc_stun::fingerprint::FINGERPRINT;
+use rtc_stun::message::Message;
+use rtc_stun::message::BINDING_REQUEST;
+use rtc_stun::message::BINDING_SUCCESS;
+use rtc_stun::xoraddr::XorMappedAddress;
 use tokio::net::UdpSocket;
 
 pub(super) async fn serve(socket: &UdpSocket) -> anyhow::Result<()> {
