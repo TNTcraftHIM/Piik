@@ -1,12 +1,19 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-29
+Last reviewed: 2026-11-01
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
+- [ ] **Windows App sharing ends unexpectedly.** Identify WGC/source, device or
+  encoder termination in the supplied release feedback using the native stage
+  and HRESULT; implement recovery for the identified recoverable cause.
+- [ ] **Native screen sound recaptures room voice.** Exclude Piik voice while
+  retaining intended source audio. Verify Browser own-document exclusion and
+  Native process exclusion; keep acoustic echo and duplicate commentary with
+  their separate microphone owners.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
