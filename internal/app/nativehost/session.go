@@ -1026,6 +1026,9 @@ func (session *Session) runVideo() error {
 	for current != nil {
 		frame, err := current.Read()
 		if err != nil {
+			// Retirement joins the helper's exit and its sanitized failure codes.
+			// Recheck ownership afterward: a replacement can commit during Close.
+			captureErr := current.Close()
 			next := session.currentStream()
 			if next != nil && next != current {
 				if err = changeStream(next); err != nil {
@@ -1038,7 +1041,7 @@ func (session *Session) runVideo() error {
 			if errors.Is(err, nativecapture.ErrSourceCanceled) {
 				return fail(err)
 			}
-			return fail(errors.New("native capture stopped unexpectedly"))
+			return fail(errors.Join(errors.New("native capture stopped unexpectedly"), err, captureErr))
 		}
 		if next := session.currentStream(); next != current {
 			if next != nil {
