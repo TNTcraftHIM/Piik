@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps } from "react";
 import { Btn } from "../../components/living/primitives";
 import { PlaybackControlsReveal } from "../../components/living/PlaybackControlsReveal";
+import { PlaybackSettings } from "../../components/living/PlaybackSettings";
+import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
+import { useVideoRotation } from "../../components/living/use-video-rotation";
 import { usePlaybackControlsVisibility } from "../../components/living/use-playback-controls-visibility";
 import { toggleVideoFullscreen, videoFullscreenState } from "../../components/living/video-fullscreen";
 import { ViewerAudio, type ViewerAudioSnapshot } from "../../media/viewer-audio";
 import { observeCompositedVideoFrame } from "../../media/video-frame-proof";
 import { playbackFailure } from "../../media/viewer-playback";
+import { readRoomPreferences, saveRoomPreferences } from "../../lib/room-preferences";
+import type { VideoFit, VideoRotation } from "../../media/video-geometry";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import { Glyph, type GlyphName } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
@@ -25,8 +30,8 @@ export function ChannelAction({ icon, label, onClick, disabled, busy, pressed, d
     type={type} onClick={onClick} disabled={disabled || busy} busy={busy} pressed={pressed} hint={hint} />;
 }
 
-function ChannelVideoInput({ input, visible, label, register, frame, issue, playing, fullscreen }: {
-  input: ChannelScreenInput; visible: boolean; label: string;
+function ChannelVideoInput({ input, visible, label, fit, register, frame, issue, playing, fullscreen }: {
+  input: ChannelScreenInput; visible: boolean; label: string; fit: VideoFit;
   register(input: ChannelScreenInput, element: HTMLVideoElement | null): void;
   frame(input: ChannelScreenInput, element: HTMLVideoElement): void;
   issue(input: ChannelScreenInput, error: unknown): void;
@@ -50,7 +55,7 @@ function ChannelVideoInput({ input, visible, label, register, frame, issue, play
     void element.play().catch(error => { if (active && playbackFailure(error)) issue(input, error); });
     return () => { active = false; stop(); element.muted = true; element.pause(); element.srcObject = null; };
   }, [input.flowId, input.stream, frame, issue]);
-  return <video ref={attach} playsInline muted aria-label={visible ? label : undefined} aria-hidden={!visible}
+  return <video ref={attach} playsInline muted style={{ objectFit: fit }} aria-label={visible ? label : undefined} aria-hidden={!visible}
     data-flow-id={input.flowId} data-selected={visible} data-composited={composited} data-switch-ready={input.switchReady}
     tabIndex={visible ? 0 : -1} onPlay={() => playing(input, false)} onPause={() => playing(input, true)}
     onEnded={() => playing(input, true)} onError={event => issue(input, event.currentTarget.error)}
@@ -74,6 +79,11 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const ref = useRef<HTMLVideoElement>(null);
   const controls = useRef<HTMLDivElement>(null);
   const controlsId = useId();
+  const pictureId = useId();
+  const pictureTrigger = useRef<HTMLSpanElement>(null), picturePanel = useRef<HTMLDivElement>(null);
+  const [pictureOpen, setPictureOpen] = useState(false);
+  const [pictureFit, setPictureFit] = useState(() => readRoomPreferences().pictureFit);
+  const [pictureRotation, setPictureRotation] = useState(() => readRoomPreferences().pictureRotation);
   const output = useRef<ViewerAudio | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [ready, setReady] = useState(false);
@@ -87,6 +97,8 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   current.current = { displayed, inputs, onPresentation };
   const { lang, t } = useCopy();
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
+  useVideoRotation(playbackRef, pictureFit, pictureRotation);
+  useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
   const visibility = usePlaybackControlsVisibility(playbackRef, controls, paused || blocked || !ready);
   const register = useCallback((input: ChannelScreenInput, element: HTMLVideoElement | null) => {
     if (element) consumers.current.set(input.stream, { element, composited: false });
@@ -205,7 +217,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     && !fullscreen.active && !(document.fullscreenEnabled && activeVideo?.parentElement?.requestFullscreen);
   return <div className="c3-video c3-mini-player" data-controls-hidden={visibility.hidden}>
     {rendered.map(input => <ChannelVideoInput key={`${input.flowId}:${input.stream.id}`} input={input} visible={input.flowId === displayed.flowId && input.stream === displayed.stream}
-      label={label} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
+      label={label} fit={pictureFit} register={register} frame={frame} issue={issue} playing={playing} fullscreen={fullscreenToggle} />)}
     {!ready && !blocked && <div className="c3-mini-message" role="status">
       <span className="c3-frame-wait"><Glyph name="loader" className="lr-spin" size={22} />
         {lang === "zh" ? "等待画面" : "Waiting for picture"}</span>
@@ -225,7 +237,19 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
           onChange={event => output.current?.setLevel(Number(event.currentTarget.value))} />
       </>}
       <span className="c3-mini-space" />
-      {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId} />}
+      {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId}
+        pictureFit={pictureFit} pictureRotation={pictureRotation} />}
+      <span ref={pictureTrigger} className="lr-playback-more"><Btn icon="sliders" quiet title="playback.more" hint="hint-advanced"
+        popoverTarget={pictureId} controls={pictureId} expanded={pictureOpen} /></span>
+      <div ref={picturePanel} id={pictureId} popover="auto" role="dialog" aria-label={t("playback.more")}
+        className="lr-floating-surface lr-playback-menu lr-playback-settings" onToggle={event => {
+          if (event.target === event.currentTarget) setPictureOpen(event.newState === "open");
+        }}>
+        <PlaybackSettings picture={{ pictureFit, pictureRotation,
+          setPictureFit: (fit: VideoFit) => { setPictureFit(fit); saveRoomPreferences({ pictureFit: fit }); },
+          setPictureRotation: (rotation: VideoRotation) => { setPictureRotation(rotation); saveRoomPreferences({ pictureRotation: rotation }); },
+        }} reconnect={null} />
+      </div>
       <Btn icon={fullscreen.active ? "contract" : "expand"} quiet
         title={fullscreenFailed ? "playback.fullscreenFailed" : fullscreen.active ? "playback.exitFullscreen" : "playback.fullscreen"}
         hint={fullscreenFailed || !fullscreen.ready ? "hint-fullscreen-unavailable" : fullscreen.active ? "hint-fullscreen-exit" : "hint-fullscreen"}

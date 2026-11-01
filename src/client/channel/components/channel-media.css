@@ -7,7 +7,7 @@
   isolation: isolate;
   container-type: inline-size;
 }
-.c3-mini-player > video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; outline-offset: -4px; }
+.c3-mini-player > video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; outline-offset: -4px; transform: var(--picture-transform, none); }
 .c3-mini-player > video[data-selected="false"] { opacity: 0; pointer-events: none; }
 .c3-mini-controls {
   z-index: 4;
@@ -38,7 +38,7 @@
   cursor: pointer;
 }
 .c3-mini-volume:disabled { opacity: .35; cursor: default; }
-.c3-mini-player[data-controls-hidden="true"] .c3-mini-controls:not(:focus-within):not(:hover) {
+.c3-mini-player[data-controls-hidden="true"] .c3-mini-controls:not(:focus-within):not(:hover):not(:has([popover]:is(:popover-open, .\:popover-open))) {
   opacity: 0;
   pointer-events: none;
   transform: translateY(4px);

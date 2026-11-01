@@ -196,8 +196,9 @@ Viewer playback settings reuse shared controls in an anchored popover;
 placement follows the [visual language](./visual-language.md) without resizing video. Local picture
 fit defaults to contain; cover preserves proportions and may crop edges, while
 stretch fills the player by changing proportions. These choices do not change
-capture or encoding. Manual quarter-turn rotation is another local picture
-preference; it does not depend on device auto-rotation and applies to page
+capture or encoding. Each rotation action advances the local picture 90° clockwise,
+returning to its original direction after four turns. This preference does not
+depend on device auto-rotation and applies to page
 playback, including theater and DOM fullscreen. System video presentations
 retain their browser-owned behavior. Remote input and magnification use the same rendered
 picture geometry. Incoming-route choice follows the
