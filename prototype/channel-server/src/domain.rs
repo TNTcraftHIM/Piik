@@ -6,10 +6,10 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         State,
     },
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, put},
-    Router,
+    Json, Router,
 };
 use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
 use piik_channel_core::{
@@ -147,10 +147,7 @@ async fn upgrade(
     socket: WebSocketUpgrade,
 ) -> Response {
     let origin = headers.get("origin").and_then(|value| value.to_str().ok());
-    let allowed = origin.is_some_and(|origin| {
-        origin == state.origin.as_str()
-            || state.hub.lock().unwrap().invitation_origin.as_deref() == Some(origin)
-    });
+    let allowed = origin.is_some_and(|origin| state.allows_origin(origin));
     if !allowed {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -164,6 +161,29 @@ async fn upgrade(
             let _permit = permit;
             session(socket, state).await;
         })
+}
+
+async fn identify(State(domain): State<Domain>, headers: HeaderMap) -> crate::backup::ApiResult {
+    let forbidden = || crate::backup::error(StatusCode::FORBIDDEN, "forbidden");
+    if headers.get(header::ORIGIN).is_some_and(|value| {
+        value
+            .to_str()
+            .ok()
+            .is_none_or(|origin| !domain.allows_origin(origin))
+    }) {
+        return Err(forbidden());
+    }
+    let credential = crate::backup::bearer(&headers).ok_or_else(forbidden)?;
+    let hub = domain.hub.lock().unwrap();
+    let user = hub
+        .authority
+        .user_for_credential(credential)
+        .ok_or_else(forbidden)?;
+    Ok((
+        [(header::CACHE_CONTROL, "no-store")],
+        Json(serde_json::json!({"domainId": hub.authority.identity().0, "user": user})),
+    )
+        .into_response())
 }
 
 async fn send(
@@ -352,6 +372,11 @@ impl Domain {
         &self.origin
     }
 
+    fn allows_origin(&self, origin: &str) -> bool {
+        origin == self.origin
+            || self.hub.lock().unwrap().invitation_origin.as_deref() == Some(origin)
+    }
+
     pub fn owner_name(&self) -> Option<String> {
         self.hub
             .lock()
@@ -391,6 +416,7 @@ impl Domain {
         let app = Router::new()
             .route("/healthz", get(|| async { "piik-channel-prototype" }))
             .route("/prototype/channel", get(upgrade))
+            .route("/prototype/channel/identity", get(identify))
             .route(
                 "/prototype/channel/rooms/{room}/backup",
                 get(backup::export),

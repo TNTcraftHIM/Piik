@@ -113,8 +113,14 @@ impl Authority {
     }
 
     pub fn is_owner_credential(&self, credential: &str) -> bool {
-        self.channel.identity.user_for_credential(credential)
-            == Some(self.channel.identity.owner_id)
+        self.user_for_credential(credential)
+            .is_some_and(|user| user.owner)
+    }
+
+    /// Verify a supplied personal credential without creating or changing a session.
+    pub fn user_for_credential(&self, credential: &str) -> Option<&User> {
+        let id = self.channel.identity.user_for_credential(credential)?;
+        self.channel.identity.users.get(&id)
     }
 
     /// Host history/activity never rewrites the domain checkpoint. Only public

@@ -16,13 +16,16 @@ fn owner(
 {
     let forbidden = || backup::error(StatusCode::FORBIDDEN, "forbidden");
     let credential = backup::bearer(headers).ok_or_else(forbidden)?;
-    let hub = domain.hub.lock().unwrap();
     if headers.get(header::ORIGIN).is_some_and(|value| {
-        value.to_str().ok().is_none_or(|origin| {
-            origin != domain.origin && hub.invitation_origin.as_deref() != Some(origin)
-        })
-    }) || !hub.authority.is_owner_credential(credential)
-    {
+        value
+            .to_str()
+            .ok()
+            .is_none_or(|origin| !domain.allows_origin(origin))
+    }) {
+        return Err(forbidden());
+    }
+    let hub = domain.hub.lock().unwrap();
+    if !hub.authority.is_owner_credential(credential) {
         return Err(forbidden());
     }
     let commands = domain

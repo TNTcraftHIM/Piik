@@ -1289,6 +1289,33 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
         .as_ref()
         .unwrap()
         .binding_id;
+    let saved = serde_json::to_value(hub.lock().unwrap().authority.export_backup()).unwrap();
+    let (status, bytes) =
+        room_backup_http(address, "/prototype/channel/identity", &credential, None).await;
+    assert_eq!(status, 200);
+    let identified: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(identified["domainId"], state.channel.id.to_string());
+    assert_eq!(
+        identified["user"],
+        serde_json::to_value(
+            state
+                .users
+                .iter()
+                .find(|user| Some(user.id) == state.channel.owner_id)
+                .unwrap()
+        )
+        .unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(hub.lock().unwrap().authority.export_backup()).unwrap(),
+        saved
+    );
+    assert_eq!(
+        room_backup_http(address, "/prototype/channel/identity", "invalid", None)
+            .await
+            .0,
+        403
+    );
     let (status, bytes) =
         room_backup_http(address, "/prototype/channel/hosting", &credential, None).await;
     assert_eq!(status, 200);
