@@ -73,7 +73,9 @@ Message reactions use room-owned history. The room mini window moves the existin
 conversation, couch and voice controls between the page and floating/PiP surfaces;
 personal drafts, attachment selections and voice participation remain page-owned.
 Voice controls reuse one microphone capture across rooms, with device/processing
-updates and individual local listening controls. Browser cameras use the same
+updates, room-managed sender bitrate and individual local listening controls.
+Source audio has separate bitrate and output gain; local previews stay muted,
+and Viewer volume changes only local listening. Browser cameras use the same
 visual publication and source picker as screen sharing.
 Work stays on `feat/channel-prototype`, without changing the production 2.x contract.
 

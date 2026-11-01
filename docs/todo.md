@@ -24,10 +24,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   through the normal Room controls and real Browser storage: restore an older
   archive and confirm that the renewed authoritative reading replaces newer
   cached history. Domain UI acceptance and storage-owner controls are complete.
-- [ ] **3.0 media configuration.** Connect room-voice bitrate and source-audio
-  profile/output gain to the current producers and shared controls. Reuse the
-  numeric media contracts and existing settings owners; preserve separate voice,
-  source sound and local listening responsibilities.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

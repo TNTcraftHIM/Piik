@@ -169,7 +169,7 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
       const element = binding.element;
       if (keepPaused) element.pause();
       element.volume = Math.min(saved.level, 1); element.muted = true;
-      const nextAudio = local ? null : new ViewerAudio(element, setAudio, undefined, 1);
+      const nextAudio = local ? null : new ViewerAudio(element, setAudio);
       nextAudio?.bind(target.stream); nextAudio?.setLevel(saved.level); nextAudio?.setMuted(saved.muted);
       output.current = nextAudio; ref.current = element;
       setActiveVideo(element); setPaused(keepPaused); setBlocked(false);
@@ -244,8 +244,8 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
           hint={!soundAvailable ? "hint-no-audio" : sound.muted ? "hint-unmute" : "hint-mute"}
           disabled={soundDisabled} pressed={sound.muted}
           onClick={() => local ? sourceAudio?.onChange({ muted: !sound.muted }) : output.current?.setMuted(!sound.muted)} />
-        <input className="c3-mini-volume" type="range" min="0" max={local ? 2 : 1} step="0.05" value={sound.level}
-          disabled={soundDisabled} aria-label={t(local ? "host.shareVolume" : "playback.volumeBasic")} aria-valuetext={`${Math.round(sound.level * 100)}%`}
+        <input className="c3-mini-volume" type="range" min="0" max={local || audio.boostAvailable ? 2 : 1} step="0.05" value={sound.level}
+          disabled={soundDisabled} aria-label={t(local ? "host.shareVolume" : audio.boostAvailable ? "playback.volume" : "playback.volumeBasic")} aria-valuetext={`${Math.round(sound.level * 100)}%`}
           onChange={event => local ? sourceAudio?.onChange({ level: Number(event.currentTarget.value) }) : output.current?.setLevel(Number(event.currentTarget.value))} />
       </>}
       <span className="c3-mini-space" />
