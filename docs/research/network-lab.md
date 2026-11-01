@@ -93,6 +93,33 @@ outside the requested limits. Keep negative controls, finite deadlines and
 resource limits as part of the laboratory rather than changing product recovery
 to make an experiment pass.
 
+## Rust Process Controls
+
+The current Rust transport also runs through the same calibrated namespaces,
+NAT rules, packet observations and cleanup owner. Ordinary and prepared Native
+connections, brief UDP interruption, lost-mapping replacement and delayed
+signaling use the production domain, room core and str0m socket adapter. The
+[NAT assessment](./nat-traversal.md#rust-integration) records the repaired
+preparation and recovery boundaries.
+
+At `3f52e4a8`, a Browser source and Browser receiver also delivered changing
+pictures, voice and source sound through a Native room operator. Confirmed
+history and a 1 MiB file with a matching digest traversed that ordinary path.
+A separate four-endpoint control forced the picture through two Native nodes:
+both Native routers used sequential mapping and destination-dependent filtering;
+the Browser routers used calibrated full-cone, port-preserving mappings. Core
+required preparation for the Native-to-Native edge. The receiver decoded 30 new
+640×360 frames over 3.009 seconds while both audio streams advanced; the capture
+recorded 5,279 media packets across that prepared edge. The second Native was a
+transport/media probe; this control does not replace normal room-session history
+and file acceptance. Every owned process, namespace and link retired, and host
+network configuration stayed unchanged.
+
+Exact source closures and separate failed controls remain in the
+[Native evidence index](../../prototype/channel-native/README.md#rtc-dependency).
+The maintained Rust command and remaining decoded-media combinations stay in
+[TODO](../todo.md#now); the older Go runners below require their matching snapshot.
+
 ## Running The Process Layer
 
 Use an isolated Linux machine or VM with Node/Go from the repository toolchain,

@@ -13,11 +13,12 @@ own behavior; research and Git/PRs own evidence and completed history.
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint. Keep the SDK's transport controller, the first version's accepted
-  scope and the prototype isolated.
+  checkpoint, including the Android public-link first-picture delay reproduced
+  before an automatic route replacement. Keep the SDK's transport controller,
+  the first version's accepted scope and the prototype isolated.
 - [ ] **3.0 controlled network acceptance.** Complete the remaining
-  Browser/Native decoded-media combinations and prepared media forwarding in the
-  existing [network laboratory](./research/network-lab.md), exercising calibrated
+  Browser/Native decoded-media combinations and promote the Rust process runner
+  into the existing [network laboratory](./research/network-lab.md), exercising calibrated
   NAT and failure/recovery through current room and transport owners.
 - [ ] **3.0 portable domain and room backups.** Implement export/import under the
   [data ownership and recovery model](./research/channel-storage-and-identity.md#persistence-and-recovery):

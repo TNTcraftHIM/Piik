@@ -22,8 +22,11 @@ phases, including NAT and Auto codec behavior.
 Isolated 3.0 Native processes pass calibrated Linux kernel-NAT controls for
 ordinary and prepared UDP connections, short-interruption continuity and
 replacement after a lost NAT mapping. These controls observe DataChannel
-readiness and bidirectional transport traffic. The current Rust Browser/Native
-decoded-media matrix remains in [TODO](./todo.md).
+readiness and bidirectional transport traffic. Real Browser capture also decodes
+through a Native room operator and through a prepared two-Native transit path,
+with progressing voice and source sound. The
+[network laboratory](./research/network-lab.md#rust-process-controls) owns these
+controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
 
 ## Device Evidence Boundary
 
@@ -67,7 +70,10 @@ decoded-media matrix remains in [TODO](./todo.md).
   pending-page cancellation and capture stop preserve the running room.
   Notification Stop joins the runtime and closes its listeners. Opening the App
   again restores its launcher without resuming capture.
-  The selected str0m candidate also passes this full App flow on the emulator.
+  An earlier str0m package passed this App flow on the emulator. The refreshed
+  package reproduces delayed first-picture delivery: its first observation
+  times out before an automatic route replacement delivers video. This remains
+  an Android acceptance defect in [TODO](./todo.md#now).
   Its Rust encoder components also pass independent bitrate updates, keyframe
   requests, source-clock preservation and sibling isolation on the emulator's
   software codec.
