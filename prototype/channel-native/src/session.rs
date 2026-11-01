@@ -459,7 +459,7 @@ impl Session {
             let connector = None;
             let connecting = time::timeout(
                 Duration::from_secs(5),
-                connect_async_tls_with_config(request, Some(limits), false, connector),
+                connect_async_tls_with_config(request, Some(limits), true, connector),
             );
             tokio::pin!(connecting);
             let connection = loop {

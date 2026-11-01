@@ -372,7 +372,7 @@ impl Domain {
             .with_state(self.clone())
             .merge(routes);
         let (stop_http, mut http_stopped) = watch::channel(false);
-        let http = axum::serve(listener, app.clone())
+        let http = axum::serve(crate::web::http_listener(listener), app.clone())
             .with_graceful_shutdown(async move {
                 let _ = http_stopped.changed().await;
             })
@@ -382,6 +382,7 @@ impl Domain {
         let stop_https = axum_server::Handle::new();
         if let Some(https) = https {
             let server = axum_server::from_tcp_rustls(https.listener.into_std()?, https.config)?
+                .map(|acceptor| acceptor.acceptor(axum_server::accept::NoDelayAcceptor::new()))
                 .handle(stop_https.clone())
                 .serve(app.into_make_service());
             servers.push(server.boxed());

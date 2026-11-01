@@ -5,6 +5,7 @@ use axum::{
     middleware::{self, Next},
     response::Response,
     routing::{get_service, MethodRouter},
+    serve::ListenerExt,
     Router,
 };
 use axum_server::tls_rustls::RustlsConfig;
@@ -17,6 +18,17 @@ use tower_http::{
     services::{ServeDir, ServeFile},
     set_header::SetResponseHeader,
 };
+
+// HTTP also carries latency-sensitive room and App WebSockets.
+pub(crate) fn http_listener(
+    listener: TcpListener,
+) -> impl axum::serve::Listener<Io = tokio::net::TcpStream, Addr = SocketAddr> {
+    listener.tap_io(|socket| {
+        if let Err(error) = socket.set_nodelay(true) {
+            eprintln!("HTTP TCP_NODELAY: {error}");
+        }
+    })
+}
 
 #[derive(Serialize)]
 pub struct LanAddress {

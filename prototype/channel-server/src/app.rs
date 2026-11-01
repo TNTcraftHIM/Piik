@@ -337,7 +337,7 @@ pub async fn serve(
             }
         });
     }
-    axum::serve(listener, router)
+    axum::serve(crate::web::http_listener(listener), router)
         .with_graceful_shutdown(async move {
             tokio::pin!(stop);
             let mut tick = tokio::time::interval(Duration::from_millis(100));
