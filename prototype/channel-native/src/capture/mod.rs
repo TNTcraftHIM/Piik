@@ -46,6 +46,8 @@ mod output;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod process;
 #[cfg(all(feature = "capture", target_os = "windows"))]
+mod sdr;
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod vp8;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod vp8_decoder;

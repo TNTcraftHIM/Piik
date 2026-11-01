@@ -4,6 +4,7 @@ use super::{
     frames::{RawFrame, Shared},
     gpu,
     process::Encoding,
+    sdr::{Color, DisplayColor, Sdr},
     Control, FrameTiming, Frames, Settings, Target, TargetKind, VideoCodec,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
@@ -35,7 +36,7 @@ use windows_capture::{
     graphics_capture_api::InternalCaptureControl,
     monitor::Monitor,
     settings::{
-        ColorFormat, CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
+        CursorCaptureSettings, DirtyRegionSettings, DrawBorderSettings,
         MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings as WgcSettings,
     },
     window::Window,
@@ -204,6 +205,8 @@ impl TryInto<windows_capture::settings::GraphicsCaptureItemType> for Target {
 fn run(target: Target, fps: Arc<AtomicU32>, shared: Arc<Shared>) -> Result<()> {
     let mut recovering = None;
     while !shared.state.lock().unwrap().stop {
+        let mut display = DisplayColor::new(&target)?;
+        let color = display.resolve();
         let capture = match Wgc::start_free_threaded(WgcSettings::new(
             target.clone(),
             CursorCaptureSettings::Default,
@@ -211,8 +214,8 @@ fn run(target: Target, fps: Arc<AtomicU32>, shared: Arc<Shared>) -> Result<()> {
             SecondaryWindowSettings::Default,
             MinimumUpdateIntervalSettings::Default,
             DirtyRegionSettings::Default,
-            ColorFormat::Bgra8,
-            (shared.clone(), fps.clone()),
+            color.format(),
+            (shared.clone(), fps.clone(), display),
         )) {
             Ok(capture) => capture,
             Err(error) => return Err(recovering.unwrap_or_else(|| error.into())),
@@ -233,11 +236,19 @@ fn run(target: Target, fps: Arc<AtomicU32>, shared: Arc<Shared>) -> Result<()> {
             error => error.into(),
         });
         waited?;
-        let delivered = callback.lock().delivered;
+        let (delivered, format_changed) = {
+            let callback = callback.lock();
+            (callback.delivered, callback.format_changed)
+        };
         drop(callback);
         let result = reason.map_err(anyhow::Error::from).and(stopped);
         if shared.state.lock().unwrap().stop {
             return result;
+        }
+        if format_changed && result.is_ok() {
+            // Only WGC's pool format changes. Keep source, clock, encoders and
+            // routes; no frame from the old color format crosses this boundary.
+            continue;
         }
         if delivered {
             recovering = None;
@@ -258,15 +269,18 @@ struct Wgc {
     cadence: Cadence,
     fps: Arc<AtomicU32>,
     device: ID3D11Device4,
-    context: ID3D11DeviceContext,
     removed: OwnedHandle,
     cookie: u32,
     delivered: bool,
+    display: DisplayColor,
+    sdr: Sdr,
+    format_changed: bool,
 }
 impl GraphicsCaptureApiHandler for Wgc {
-    type Flags = (Arc<Shared>, Arc<AtomicU32>);
+    type Flags = (Arc<Shared>, Arc<AtomicU32>, DisplayColor);
     type Error = anyhow::Error;
     fn new(ctx: Context<Self::Flags>) -> Result<Self> {
+        let sdr = Sdr::new(&ctx.device)?;
         unsafe {
             let _ = ctx
                 .device_context
@@ -282,10 +296,12 @@ impl GraphicsCaptureApiHandler for Wgc {
             cadence: Cadence::new(ctx.flags.1.load(Ordering::Relaxed)),
             fps: ctx.flags.1,
             device,
-            context: ctx.device_context,
             removed,
             cookie,
             delivered: false,
+            display: ctx.flags.2,
+            sdr,
+            format_changed: false,
         })
     }
     fn on_frame_arrived(
@@ -301,11 +317,18 @@ impl GraphicsCaptureApiHandler for Wgc {
                 return Ok(());
             }
         }
+        let color = self.display.resolve();
+        if color.format() != frame.color_format() {
+            self.format_changed = true;
+            control.stop();
+            return Ok(());
+        }
         self.cadence.set_fps(self.fps.load(Ordering::Relaxed));
         if !self.cadence.accept(qpc) {
             return Ok(());
         }
-        self.shared.publish(self.copy(frame, qpc)?);
+        let frame = self.copy(frame, qpc, color)?;
+        self.shared.publish(frame);
         self.delivered = true;
         Ok(())
     }
@@ -319,50 +342,11 @@ impl Drop for Wgc {
     }
 }
 impl Wgc {
-    fn copy(&self, frame: &Frame, qpc: i64) -> Result<RawFrame> {
-        unsafe {
-            // WGC reuses its frame-pool surfaces. Copy once before returning the
-            // callback; every encoder may then retain this immutable GPU texture.
-            let mut texture = None;
-            self.device.CreateTexture2D(
-                &D3D11_TEXTURE2D_DESC {
-                    Width: frame.width(),
-                    Height: frame.height(),
-                    MipLevels: 1,
-                    ArraySize: 1,
-                    Format: DXGI_FORMAT_B8G8R8A8_UNORM,
-                    SampleDesc: DXGI_SAMPLE_DESC {
-                        Count: 1,
-                        Quality: 0,
-                    },
-                    Usage: D3D11_USAGE_DEFAULT,
-                    BindFlags: (D3D11_BIND_RENDER_TARGET.0 | D3D11_BIND_SHADER_RESOURCE.0) as u32,
-                    ..Default::default()
-                },
-                None,
-                Some(&mut texture),
-            )?;
-            let texture = texture.unwrap();
-            self.context.CopySubresourceRegion(
-                &texture,
-                0,
-                0,
-                0,
-                0,
-                frame.as_raw_texture(),
-                0,
-                Some(&D3D11_BOX {
-                    right: frame.width(),
-                    bottom: frame.height(),
-                    back: 1,
-                    ..Default::default()
-                }),
-            );
-            Ok(RawFrame {
-                texture,
-                qpc,
-                color_space: DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
-            })
-        }
+    fn copy(&mut self, frame: &Frame, qpc: i64, color: Color) -> Result<RawFrame> {
+        Ok(RawFrame {
+            texture: self.sdr.convert(frame.as_raw_texture(), color)?,
+            qpc,
+            color_space: DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
+        })
     }
 }
