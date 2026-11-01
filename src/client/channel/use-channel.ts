@@ -30,6 +30,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     activateApp: session.activateApp,
     browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf, updateDomain: session.updateDomain,
     setMessageReaction: session.setMessageReaction,
+    exportDomainBackup: session.exportDomainBackup, restoreDomainBackup: session.restoreDomainBackup,
     createRoom: session.createRoom, updateRoom: session.updateRoom, enterRoom: session.enterRoom,
     roomBackupAvailable: session.roomBackupAvailable, exportRoomBackup: session.exportRoomBackup, restoreRoomBackup: session.restoreRoomBackup,
     createRoomInvite: session.createRoomInvite, revokeRoomAccess: session.revokeRoomAccess,

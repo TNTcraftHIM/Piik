@@ -3310,6 +3310,91 @@ async function setupRoomBackup() {
   return { ...context, host, nextHost, snapshot, stage, row, state, metadata, open, read };
 }
 
+test("domain backup uses its actual service owner and validates kind before retiring the current session", async () => {
+  const { session, socket } = await setup();
+  const archive = new Blob(["domain-checkpoint"]), fetch = vi.fn().mockResolvedValue(new Response(archive));
+  vi.stubGlobal("fetch", fetch);
+  const read = vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => {
+    const metadata = { kind: "room" as const, version: 1 as const, domainId: "domain", policy: { id: "first", creatorId: "self" }, retainedFiles: [] };
+    await visitor.metadata(metadata); return metadata;
+  });
+  try {
+    expect(await (await session.exportDomainBackup()).text()).toBe("domain-checkpoint");
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(fetch.mock.calls[0][0]).toBe("/prototype/channel/backup");
+    expect(new Headers(fetch.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer credential");
+    await expect(session.restoreDomainBackup(archive)).rejects.toThrow("expected_domain_backup");
+    expect(read).toHaveBeenCalledOnce(); expect(fetch).toHaveBeenCalledOnce();
+    expect(session.getSnapshot().connection).toBe("connected"); expect(socket.readyState).toBe(1);
+    const state = structuredClone(session.getSnapshot().state!); state.channel.ownerId = "another-owner";
+    socket.receive({ type: "state", state });
+    await expect(session.exportDomainBackup()).rejects.toThrow("forbidden"); expect(fetch).toHaveBeenCalledOnce();
+  } finally { session.close(); }
+});
+
+test("domain restore closes the old connection, admits archived keys only after HTTP commit and verifies Welcome before saving identity", async () => {
+  const { session, socket } = await setup(3, false, "owner=old-key&room=old-room");
+  const domainId = crypto.randomUUID(), ownerId = crypto.randomUUID();
+  const metadata = { kind: "domain" as const, version: 1 as const, state: { id: domainId, ownerId }, ownerKey: "restored-owner", inviteKey: "restored-invite" };
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  let answer!: (response: Response) => void;
+  const fetch = vi.fn((_url: string, _options: RequestInit) => new Promise<Response>(resolve => { answer = resolve; })); vi.stubGlobal("fetch", fetch);
+  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  const state = structuredClone(session.getSnapshot().state!);
+  state.channel.id = domainId; state.channel.ownerId = ownerId; state.channel.rooms = [];
+  state.users = [{ id: ownerId, name: "Restored owner", roles: [] }]; state.sessions[0].userId = ownerId;
+  try {
+    const restoring = session.restoreDomainBackup(new Blob(["complete-domain-zip"]));
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    expect(socket.readyState).toBe(3); expect(session.getSnapshot().connection).toBe("closed");
+    expect(new Headers(fetch.mock.calls[0][1].headers).get("Authorization")).toBe("Bearer credential");
+    expect(fetch.mock.calls[0][1].method).toBe("PUT"); expect(saved).not.toHaveBeenCalled();
+    answer(new Response(JSON.stringify({ domainId })));
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const admission = ChannelSocket.current; await admission.onopen?.();
+    const join = admission.sent.find(command => command.type === "join")!;
+    expect(join).toMatchObject({ key: "restored-owner" });
+    for (const field of ["credential", "sessionId", "roomId"]) expect(join).not.toHaveProperty(field);
+    expect(saved).not.toHaveBeenCalled();
+    admission.receive({ type: "welcome", credential: "restored-personal-credential", sessionId: "endpoint", state });
+    await restoring;
+    expect(session.getSnapshot().self?.id).toBe(ownerId); expect(session.getSnapshot().state?.channel.id).toBe(domainId);
+    expect(saved).toHaveBeenCalledWith("piik.channel.prototype.credential", "restored-personal-credential");
+    expect(saved.mock.calls.some(call => call[1] === metadata.ownerKey || call[1] === metadata.inviteKey)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("a rejected domain replacement restarts the unchanged personal identity without importing its keys", async () => {
+  const { session, socket } = await setup();
+  const metadata = { kind: "domain" as const, version: 1 as const, state: { id: crypto.randomUUID(), ownerId: crypto.randomUUID() }, ownerKey: "not-committed", inviteKey: "not-committed-invite" };
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "restore_rejected" }), { status: 409 })));
+  try {
+    await expect(session.restoreDomainBackup(new Blob())).rejects.toThrow("restore_rejected");
+    const resumed = ChannelSocket.current; expect(resumed).not.toBe(socket); await resumed.onopen?.();
+    expect(resumed.sent.find(command => command.type === "join")).toMatchObject({ credential: "credential" });
+    expect(resumed.sent.some(command => command.key === metadata.ownerKey)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("domain admission does not save a Welcome whose current owner differs from the restored authority", async () => {
+  const { session, socket } = await setup();
+  const domainId = crypto.randomUUID(), metadata = { kind: "domain" as const, version: 1 as const,
+    state: { id: domainId, ownerId: "self" }, ownerKey: "restored-owner", inviteKey: "restored-invite" };
+  vi.spyOn(backupArchive, "readBackup").mockImplementation(async (_blob, visitor) => { await visitor.metadata(metadata); return metadata; });
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ domainId }))));
+  const saved = vi.fn(); vi.stubGlobal("localStorage", { getItem: () => null, setItem: saved });
+  const state = structuredClone(session.getSnapshot().state!); state.channel.id = domainId; state.channel.ownerId = "another-owner";
+  try {
+    const restoring = session.restoreDomainBackup(new Blob()), rejected = expect(restoring).rejects.toThrow("backup_identity_required");
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const admission = ChannelSocket.current; await admission.onopen?.();
+    admission.receive({ type: "welcome", credential: "not-verified", sessionId: "endpoint", state });
+    await rejected; expect(saved).not.toHaveBeenCalled();
+    expect(session.getSnapshot().state).toBeNull(); expect(admission.readyState).toBe(3);
+  } finally { session.close(); }
+});
+
 test("room backup exports its actual Browser host snapshot, full nonce/reactions and only matching retained copies", async () => {
   const { session, host, snapshot, row } = await setupRoomBackup();
   const attachment = { id: "file", name: "pixel.png", size: 3, mediaType: "image/png" as const, sha256: "a".repeat(64) };

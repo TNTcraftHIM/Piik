@@ -20,7 +20,7 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { captureBrowserSource, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
 import { readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
-import { NativeRoomHosting } from "./hosting-api";
+import { NativeDomainHosting, NativeRoomHosting } from "./hosting-api";
 import type { RetainedFile } from "./file-store";
 
 const credentialKey = "piik.channel.prototype.credential";
@@ -903,20 +903,6 @@ export class ChannelSession {
     if (identity.domainId !== metadata.domainId || identity.user.id !== archived.userId) throw new Error("backup_identity_required");
     const previous = { credential: this.credential, key: this.key, invitedRoom: this.invitedRoom, roomId: this.roomId,
       hash: location.hash };
-    const connect = async (credential: string | undefined, domainId: string, userId: string, skipRoom?: string) => {
-      this.close(); this.credential = credential; this.key = undefined; this.invitedRoom = undefined; this.roomId = null;
-      this.closed = false;
-      await new Promise<void>((resolve, reject) => {
-        let waiting = true;
-        const timer = setTimeout(() => { waiting = false; reject(new Error("request_timeout")); }, 10000);
-        this.connect(event => {
-          if (!waiting) throw new Error("backup_identity_required");
-          const actual = event.state.sessions.find(value => value.id === event.sessionId)?.userId;
-          if (event.state.channel.id !== domainId || actual !== userId) { clearTimeout(timer); reject(new Error("backup_identity_required")); throw new Error("backup_identity_required"); }
-          waiting = false; clearTimeout(timer); resolve(); return skipRoom;
-        });
-      });
-    };
     const rollback = async () => {
       this.close(); this.credential = previous.credential;
       if (previous.credential) stored(credentialKey, previous.credential);
@@ -924,11 +910,68 @@ export class ChannelSession {
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search + previous.hash);
       this.start();
     };
-    try { await connect(archived.credential, metadata.domainId, archived.userId, metadata.policy.id); }
+    try { await this.connectBackupIdentity(metadata.domainId, archived.userId, { credential: archived.credential }, metadata.policy.id); }
     catch (error) { await rollback(); throw error; }
     if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
     return rollback;
   }
+
+  private async connectBackupIdentity(domainId: string, userId: string, identity: { credential?: string; key?: string }, skipRoom?: string): Promise<void> {
+    this.close(); this.credential = identity.credential; this.key = identity.key; this.invitedRoom = undefined; this.roomId = null;
+    this.closed = false;
+    let socket: WebSocket | null = null;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let waiting = true;
+        const timer = setTimeout(() => { waiting = false; reject(new Error("request_timeout")); }, 10000);
+        this.connect(event => {
+          if (!waiting) throw new Error("backup_identity_required");
+          const actual = event.state.sessions.find(value => value.id === event.sessionId)?.userId;
+          if (event.state.channel.id !== domainId || actual !== userId
+            || (identity.key !== undefined && event.state.channel.ownerId !== userId)) {
+            clearTimeout(timer); reject(new Error("backup_identity_required")); throw new Error("backup_identity_required");
+          }
+          waiting = false; clearTimeout(timer); resolve(); return skipRoom;
+        });
+        socket = this.socket;
+      });
+    } catch (error) {
+      if (this.socket === socket) this.close();
+      throw error;
+    }
+  }
+
+  private domainBackupOwner(): { current(): void; native: NativeDomainHosting } {
+    const current = this.backupContext();
+    if (this.view.state!.channel.ownerId !== this.view.self!.id || !this.credential) throw new Error("forbidden");
+    return { current, native: new NativeDomainHosting({ Authorization: `Bearer ${this.credential}` }) };
+  }
+
+  exportDomainBackup = (): Promise<Blob> => this.action("domain-backup", async () => {
+    const owner = this.domainBackupOwner(), archive = await owner.native.snapshot(); owner.current();
+    return archive;
+  }, false);
+
+  restoreDomainBackup = (archive: Blob): Promise<void> => this.action("domain-backup", async () => {
+    const owner = this.domainBackupOwner();
+    const metadata = await readBackup(archive, { metadata(value) {
+      if (value.kind !== "domain") throw new Error("expected_domain_backup");
+    }, row() {}, content() {} });
+    owner.current();
+    if (metadata.kind !== "domain") throw new Error("expected_domain_backup");
+    this.close();
+    let committed = false;
+    try {
+      const domainId = await owner.native.restore(archive); committed = true;
+      if (!this.closed || this.socket) throw new Error("disconnected");
+      if (domainId !== metadata.state.id) throw new Error("backup_identity_required");
+      await this.connectBackupIdentity(domainId, metadata.state.ownerId, { key: metadata.ownerKey });
+      if (typeof history !== "undefined") history.replaceState(null, "", location.pathname + location.search);
+    } catch (error) {
+      if (!committed) this.start();
+      throw error;
+    }
+  }, false);
 
   restoreRoomBackup = (archive: Blob, roomId?: string): Promise<{ roomId: string; cached: boolean }> => this.action("room-backup", async () => {
     const initial = this.backupContext(), owner = roomId ? await this.backupOwner(roomId) : undefined;

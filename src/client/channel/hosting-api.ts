@@ -23,14 +23,32 @@ export class NativeRoomHosting {
   }
 
   private async request(url: string, archive?: Blob): Promise<Response> {
-    const headers = new Headers(this.authorization);
-    if (archive) headers.set("Content-Type", "application/zip");
-    const response = await fetch(url, { method: archive ? "PUT" : "GET", headers, body: archive });
-    if (!response.ok) {
-      const value: unknown = await response.json().catch(() => null);
-      const failure = z.object({ error: z.string() }).safeParse(value);
-      throw new Error(failure.success ? failure.data.error : "backup_failed");
-    }
-    return response;
+    return hostingRequest(url, this.authorization, archive);
   }
+}
+
+/** Domain authority is restored by its same-origin service, independently of room hosts. */
+export class NativeDomainHosting {
+  constructor(private readonly authorization: HeadersInit) {}
+
+  async snapshot(): Promise<Blob> {
+    return (await hostingRequest("/prototype/channel/backup", this.authorization)).blob();
+  }
+
+  async restore(archive: Blob): Promise<string> {
+    const value: unknown = await (await hostingRequest("/prototype/channel/backup", this.authorization, archive)).json();
+    return z.object({ domainId: z.uuid() }).parse(value).domainId;
+  }
+}
+
+async function hostingRequest(url: string, authorization: HeadersInit, archive?: Blob): Promise<Response> {
+  const headers = new Headers(authorization);
+  if (archive) headers.set("Content-Type", "application/zip");
+  const response = await fetch(url, { method: archive ? "PUT" : "GET", headers, body: archive });
+  if (!response.ok) {
+    const value: unknown = await response.json().catch(() => null);
+    const failure = z.object({ error: z.string() }).safeParse(value);
+    throw new Error(failure.success ? failure.data.error : "backup_failed");
+  }
+  return response;
 }

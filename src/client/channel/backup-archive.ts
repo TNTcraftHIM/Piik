@@ -5,7 +5,7 @@ import type { FileEntry } from "@zip.js/zip.js";
 export type BackupHistoryRow = ChannelMessage & { nonce: string; reactions: MessageReactions };
 export interface RetainedBackupFile { messageSeq: number; attachment: ChannelAttachment }
 export type BackupMetadata =
-  | { kind: "domain"; version: 1; state: Record<string, unknown>; ownerKey: string; inviteKey: string }
+  | { kind: "domain"; version: 1; state: Record<string, unknown> & { id: string; ownerId: string }; ownerKey: string; inviteKey: string }
   | { kind: "room"; version: 1; domainId: string; policy: Record<string, unknown> & { id: string; creatorId: string };
       ownCredential?: { userId: string; credential: string }; retainedFiles: RetainedBackupFile[] };
 export interface BackupVisitor {

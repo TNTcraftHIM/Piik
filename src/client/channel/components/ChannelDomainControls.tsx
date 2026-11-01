@@ -6,6 +6,7 @@ import { useCopy } from "../../ui/copy";
 import type { ChannelController } from "../types";
 import { ChannelAction } from "./ChannelMedia";
 import { ChannelIdentityFields } from "./ChannelIdentity";
+import { BackupControls } from "./BackupControls";
 import "./channel-name-editor.css";
 import "./channel-room-controls.css";
 
@@ -21,8 +22,9 @@ export function ChannelDomainControls({ channel }: { channel: ChannelController 
   const [open, setOpen] = useState(false);
   const [imageBusy, setImageBusy] = useState(false);
   const busy = channel.pending.has("domain");
-  const disabled = channel.connection !== "connected" || busy;
-  const title = zh ? "域外观" : "Domain appearance";
+  const backupBusy = channel.pending.has("domain-backup");
+  const disabled = channel.connection !== "connected" || busy || backupBusy;
+  const title = zh ? "域设置" : "Domain settings";
   useAnchoredPopover(trigger, panel, { side: "below", align: "end" });
   useEffect(() => {
     if (open) { const input = panel.current?.querySelector("input"); input?.focus({ preventScroll: true }); input?.select(); }
@@ -51,7 +53,10 @@ export function ChannelDomainControls({ channel }: { channel: ChannelController 
           <ChannelAction icon="x" quiet label={zh ? "取消" : "Cancel"} onClick={() => panel.current?.hidePopover()} />
           <ChannelAction icon="check" primary type="submit" label={zh ? "保存" : "Save"} busy={busy} disabled={disabled || imageBusy || !name.trim()} />
         </div>
-      </form></>}
+      </form>
+      <BackupControls kind="domain" busy={backupBusy} disabled={channel.connection !== "connected" || busy}
+        onExport={channel.exportDomainBackup} onRestore={channel.restoreDomainBackup} />
+      </>}
     </div>
   </>;
 }

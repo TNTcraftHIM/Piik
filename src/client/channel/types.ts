@@ -55,6 +55,8 @@ export interface ChannelActions {
   attachments: ChannelAttachments;
   renameSelf(name: string): Promise<void>;
   updateDomain(settings: DomainSettings): Promise<void>;
+  exportDomainBackup(): Promise<Blob>;
+  restoreDomainBackup(archive: Blob): Promise<void>;
   createRoom(settings: RoomSettings): Promise<string>;
   updateRoom(roomId: string, settings: RoomSettings): Promise<void>;
   roomBackupAvailable(roomId: string): Promise<boolean>;
