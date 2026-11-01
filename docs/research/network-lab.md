@@ -98,12 +98,9 @@ to make an experiment pass.
 
 ## Rust Process Controls
 
-A matched four-node loopback control interrupts both edges of a Browser relay
-for 50 seconds through the existing UDP candidate bridge. It exposed an unready
-base-tree reservation occupying the root's remaining slot and repeatedly
-excluding the reachable relay. Releasing unproved base reservations at required
-repair restored picture and the current audio stream in 17.4 seconds, preserving
-capture and signaling sessions.
+The four-node long-interruption controls keep the source running while
+interrupting a transit node for 50 seconds. They inspect both connection and
+decoded-media recovery through the current room and transport owners.
 
 The current Rust transport also runs through the same calibrated namespaces,
 NAT rules, packet observations and cleanup owner. Ordinary and prepared Native

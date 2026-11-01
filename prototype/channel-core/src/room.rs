@@ -799,6 +799,110 @@ mod tests {
     }
 
     #[test]
+    fn required_repair_preserves_another_pending_physical_attempt() {
+        use crate::transport::TransportBook;
+
+        let id = Uuid::from_u128;
+        let endpoints: BTreeMap<_, _> = (1..=4)
+            .map(|value| {
+                (
+                    id(value),
+                    Endpoint {
+                        signing_key: [value as u8; 32],
+                        member: Member {
+                            user_id: id(value),
+                            participates: true,
+                            domain_owner: value == 3,
+                        },
+                        connected: true,
+                    },
+                )
+            })
+            .collect();
+        let mut room = RoomRuntime::new(
+            RoomState::new(
+                "repair".into(),
+                "Repair".into(),
+                Default::default(),
+                id(3),
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        room.set_host_session(id(3));
+        // Source=1 is ready; Relay=4 still owns the other root slot.
+        for endpoint in [1, 4] {
+            room.browse(endpoints[&id(endpoint)].member, id(endpoint), true)
+                .unwrap();
+        }
+        room.reconcile(&endpoints, 0);
+        room.base_state(id(3), id(1), true).unwrap();
+        room.base_state(id(1), id(3), true).unwrap();
+        let mut transports = TransportBook::default();
+        transports.reconcile(room.flows(), room.base_links());
+        let original = transports
+            .snapshot(id(3), |_| true, |_| true)
+            .into_iter()
+            .find(|pair| pair.peer_id == id(4))
+            .unwrap();
+        let healthy = transports
+            .snapshot(id(3), |_| true, |_| true)
+            .into_iter()
+            .find(|pair| pair.peer_id == id(1))
+            .unwrap();
+
+        // The new Viewer=2 exhausts its assigned Source path. Its cooldown
+        // cannot revoke Relay's independent, still-valid connection attempt.
+        room.browse(endpoints[&id(2)].member, id(2), true).unwrap();
+        room.reconcile(&endpoints, 100);
+        assert!(room
+            .base_links()
+            .any(|link| link.parent == id(1) && link.child == id(2)));
+        room.failed_pair(id(1), id(2));
+        room.reconcile(&endpoints, 100);
+        assert_eq!(room.next_route_deadline(), Some(5_100));
+        room.reconcile(&endpoints, 5_096);
+        transports.reconcile(room.flows(), room.base_links());
+        assert!(transports.prepare(original.id));
+        let prepared = transports
+            .snapshot(id(3), |_| true, |_| true)
+            .into_iter()
+            .find(|pair| pair.peer_id == id(4))
+            .unwrap();
+        assert_ne!(prepared.id, original.id);
+        assert!(transports.prepared(prepared.id));
+        // The physical owner can transition immediately before a room wake.
+        room.reconcile(&endpoints, 5_100);
+        transports.reconcile(room.flows(), room.base_links());
+        assert_eq!(transports.peer(id(3), prepared.id), Some(id(4)));
+        assert_eq!(transports.peer(id(3), healthy.id), Some(id(1)));
+
+        transports.connected(prepared.id);
+        room.base_state(id(3), id(4), true).unwrap();
+        room.base_state(id(4), id(3), true).unwrap();
+        room.reconcile(&endpoints, 5_200);
+        // The Viewer's own next attempt may exhaust; the now-ready Relay then
+        // carries it without replacing either retained root connection.
+        assert!(room
+            .base_links()
+            .any(|link| link.parent == id(1) && link.child == id(2)));
+        room.failed_pair(id(1), id(2));
+        room.reconcile(&endpoints, 25_100);
+        assert!(room
+            .base_links()
+            .any(|link| link.parent == id(4) && link.child == id(2)));
+        room.base_state(id(4), id(2), true).unwrap();
+        room.base_state(id(2), id(4), true).unwrap();
+        room.reconcile(&endpoints, 25_101);
+        transports.reconcile(room.flows(), room.base_links());
+        assert_eq!(transports.peer(id(3), prepared.id), Some(id(4)));
+        assert_eq!(transports.peer(id(3), healthy.id), Some(id(1)));
+        assert_eq!(room.next_route_deadline(), None);
+    }
+
+    #[test]
     fn required_routes_recover_without_replacing_healthy_flows_or_endpoint_authority() {
         let id = Uuid::from_u128;
         for count in [2, 3] {

@@ -391,6 +391,9 @@ Confirmed physical-pair failure informs both directions in every affected plan,
 including candidates first tried by another activity. A publication's media
 failure remains local to that publication. Base failure history retires when
 neither current demand nor an installed transit path needs it.
+Required-path retries reopen exhausted choices while preserving other active
+connection attempts and their leases. Each attempt retains its transport-owned
+deadline; another path's repair wake does not restart or cancel it.
 
 App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to

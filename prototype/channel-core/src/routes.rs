@@ -360,14 +360,6 @@ impl BaseTree {
         self.plan.needs_repair(demand, connected)
     }
     pub fn retry_required(&mut self, demand: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) {
-        if !self.plan.needs_repair(demand, connected) {
-            return;
-        }
-        // Unproved reservations must not consume the capacity needed to repair
-        // a required base path. Keep the acknowledged healthy tree installed.
-        self.plan
-            .parents
-            .retain(|child, _| self.plan.ready.contains_key(child));
         self.plan.retry_required(demand, connected);
     }
     pub fn links(&self) -> impl Iterator<Item = (Uuid, Uuid)> + '_ {
@@ -473,7 +465,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn required_base_repair_releases_unproved_capacity_before_retrying() {
+    fn required_base_repair_waits_for_pending_admission_to_finish() {
         let id = Uuid::from_u128;
         let connected = BTreeSet::from([id(1), id(2), id(3), id(4)]);
         let mut demand = BTreeSet::new();
@@ -508,9 +500,18 @@ mod tests {
         );
         assert!(base.plan.ready.contains_key(&id(3)));
         assert_eq!(
+            base.plan.parents.get(&id(4)),
+            Some(&id(1)),
+            "another required path's retry cannot revoke pending admission"
+        );
+        // The pending edge's own failure releases its capacity. Normal
+        // reconciliation can then retry the old relay at the root.
+        base.failed(id(1), id(4));
+        base.reconcile(&demand, &connected, &connected);
+        assert_eq!(
             base.plan.parents.get(&id(2)),
             Some(&id(1)),
-            "the reachable old relay edge needs a free root slot to retry"
+            "the relay retries once the occupied root slot actually retires"
         );
     }
     fn id(value: u128) -> Uuid {
@@ -550,6 +551,13 @@ mod tests {
         screen.retry_required(&watching, &connected);
         base.reconcile(&demand, &connected, &connected);
         screen.reconcile(&watching, &connected, &connected, Some(&base));
+        // Preserve the pending root admission until its own attempt fails;
+        // clearing another missing path's history does not cancel that lease.
+        assert_eq!(base.plan.parents.get(&id(4)), Some(&id(1)));
+        base.failed(id(1), id(4));
+        base.reconcile(&demand, &connected, &connected);
+        base.retry_required(&demand, &connected);
+        base.reconcile(&demand, &connected, &connected);
         let pending: Vec<_> = base.links().collect();
         base.state(id(1), id(2), true);
         base.reconcile(&demand, &connected, &connected);
