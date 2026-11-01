@@ -10,7 +10,7 @@ use serde_json::{json, Value};
 use std::{future::pending, net::Ipv4Addr, sync::Arc};
 use tokio::{
     net::{TcpListener, UdpSocket},
-    sync::watch,
+    sync::{mpsc, watch},
     task::JoinHandle,
 };
 
@@ -222,32 +222,80 @@ async fn run(
     }
     let permission = Arc::new(Permission::new(identity.namespace));
     app.registry.lock().await.local = Some((origin.clone(), permission.clone()));
-    let owner_key = domain.owner_key();
+    let (commands, mut restores) = mpsc::channel::<crate::domain::RestoreDomain>(1);
+    let domain = domain.with_restores(commands);
     let (stop_domain, mut domain_stopped) = watch::channel(false);
-    let mut service = tokio::spawn(domain.serve_with_https(http, https, routes, async move {
-        let _ = domain_stopped.changed().await;
-    }));
+    let mut service = tokio::spawn(domain.clone().serve_with_https(
+        http,
+        https,
+        routes,
+        async move {
+            let _ = domain_stopped.changed().await;
+        },
+    ));
     progress.send_replace(Progress::Ready(format!(
         "{origin}/?piik-client-port={}#owner={}&piik-client=1",
-        app.port, owner_key
+        app.port,
+        domain.owner_key()
     )));
-    let (result, finished_service) = tokio::select! {
-        _ = stopped.changed() => (Ok(()), None),
-        result = &mut service => (Err(Failure::new("local-server", "The local service stopped")), Some(result)),
-        result = async {
-            match &stun {
-                Some(socket) => stun::serve(socket).await,
-                None => pending().await,
+    let (result, finished_service) = loop {
+        tokio::select! {
+            _ = stopped.changed() => break (Ok(()), None),
+            result = &mut service => break (Err(Failure::new("local-server", "The local service stopped")), Some(result)),
+            result = async {
+                match &stun {
+                    Some(socket) => stun::serve(socket).await,
+                    None => pending().await,
+                }
+            } => break (Err(Failure::new("local-network", result.err().map(|error| error.to_string())
+                .unwrap_or_else(|| "Local discovery stopped".into()))), None),
+            result = async {
+                match tunnel.as_mut() {
+                    Some(tunnel) => tunnel.wait().await,
+                    None => pending().await,
+                }
+            } => break (Err(Failure::new("tunnel-stopped", result.err().map(|error| error.to_string())
+                .unwrap_or_else(|| "The public invitation service stopped".into()))), None),
+            Some(request) = restores.recv() => {
+                if request.result.is_closed() { continue; }
+                if !domain.is_owner_credential(&request.credential) {
+                    let _ = request.result.send(Err("forbidden".into()));
+                    continue;
+                }
+                // Keep the existing creation gate through shutdown and replacement.
+                // Remote approved sites with another authority keep their own hosts.
+                let mut registry = app.registry.lock().await;
+                let domain_id = domain.identity().0;
+                let keys: Vec<_> = registry.hosts.keys()
+                    .filter(|(site, id, _)| *id == domain_id && domain.allows_origin(site))
+                    .cloned().collect();
+                let mut hosts = vec![];
+                let mut restart = vec![];
+                for key in keys {
+                    let host = registry.hosts.remove(&key).unwrap();
+                    restart.push((key, host.credential.clone()));
+                    hosts.push(host);
+                }
+                stop_hosts(hosts).await;
+                let result = domain.restore(request.metadata, &request.credential);
+                drop(registry);
+                if result.is_ok() {
+                    progress.send_replace(Progress::Ready(format!(
+                        "{origin}/?piik-client-port={}#owner={}&piik-client=1", app.port, domain.owner_key()
+                    )));
+                } else {
+                    for ((site, domain, user), credential) in restart {
+                        let permission = app.registry.lock().await.permission(&site).cloned();
+                        if let Some(permission) = permission {
+                            if let Err(error) = app.hello(&site, &permission, domain, user, credential, "Piik App".into()).await {
+                                eprintln!("App hosting restart: {error}");
+                            }
+                        }
+                    }
+                }
+                let _ = request.result.send(result.map_err(|error| error.to_string()));
             }
-        } => (Err(Failure::new("local-network", result.err().map(|error| error.to_string())
-            .unwrap_or_else(|| "Local discovery stopped".into()))), None),
-        result = async {
-            match tunnel.as_mut() {
-                Some(tunnel) => tunnel.wait().await,
-                None => pending().await,
-            }
-        } => (Err(Failure::new("tunnel-stopped", result.err().map(|error| error.to_string())
-            .unwrap_or_else(|| "The public invitation service stopped".into()))), None),
+        }
     };
     // Retire this origin's Native hosts while their domain can still acknowledge Leave.
     let hosts = {
@@ -257,7 +305,7 @@ async fn run(
         let keys: Vec<_> = registry
             .hosts
             .keys()
-            .filter(|(site, ..)| site == &origin)
+            .filter(|(site, id, _)| *id == domain.identity().0 && domain.allows_origin(site))
             .cloned()
             .collect();
         keys.into_iter()

@@ -725,7 +725,7 @@ async fn connection(
             }
         };
         let processing = async {
-            let mut host = None;
+            let mut host: Option<mpsc::Sender<HostCommand>> = None;
             let mut captures: BTreeMap<Uuid, Capture> = BTreeMap::new();
             let mut capture_starts: FuturesUnordered<
                 BoxFuture<'static, (String, Uuid, AbortHandle, Result<CaptureResult>)>,
@@ -739,6 +739,12 @@ async fn connection(
                 captures
                     .retain(|_, capture| capture.pending.is_some() || capture.lease().is_some());
                 let message = tokio::select! {
+                    _ = async {
+                        match &host {
+                            Some(commands) => commands.closed().await,
+                            None => std::future::pending().await,
+                        }
+                    } => break,
                     message = async {
                         if host.is_some() { Ok(queue.recv().await) }
                         else { timeout(IO_TIMEOUT, queue.recv()).await }

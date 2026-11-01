@@ -1236,6 +1236,135 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         } else {
             first = Some((domain_address.port(), domain, identity));
         }
+        if attempt == 0 {
+            use piik_channel_native::backup::{self, StagedBackup};
+            let origin = target.origin().ascii_serialization();
+            let mut request = format!("ws://{domain_address}/prototype/channel")
+                .into_client_request()
+                .unwrap();
+            request
+                .headers_mut()
+                .insert("Origin", origin.parse().unwrap());
+            let (mut admin, _) = connect_async(request).await.unwrap();
+            admin.send(Message::Text(json!({"type":"join","key":owner,"name":"Owner", "signingKey":SessionSigner::from_seed([32;32]).signing_key()}).to_string().into())).await.unwrap();
+            let admitted: Value =
+                serde_json::from_str(&admin.next().await.unwrap().unwrap().into_text().unwrap())
+                    .unwrap();
+            let credential = admitted["credential"].as_str().unwrap().to_owned();
+            let channel = admitted["state"]["channel"]["id"].as_str().unwrap();
+            let user = admitted["state"]["channel"]["ownerId"].as_str().unwrap();
+            let (_, health) = app_http(address, "GET", "/health", Some(&origin), None).await;
+            let mut request = format!("ws://{address}/rooms")
+                .into_client_request()
+                .unwrap();
+            request
+                .headers_mut()
+                .insert("Origin", origin.parse().unwrap());
+            request.headers_mut().insert(
+                "sec-websocket-protocol",
+                format!("piik-channel-rooms.{}", health["token"].as_str().unwrap())
+                    .parse()
+                    .unwrap(),
+            );
+            let (mut control, _) = connect_async(request).await.unwrap();
+            control.send(Message::Text(json!({"id":"hello","type":"hello","channelId":channel,"userId":user,"credential":credential,"name":"Owner"}).to_string().into())).await.unwrap();
+            let ready: Value =
+                serde_json::from_str(&control.next().await.unwrap().unwrap().into_text().unwrap())
+                    .unwrap();
+            assert!(ready.get("result").is_some());
+            let room = Uuid::new_v4().to_string();
+            let policy = piik_channel_core::RoomState::new(
+                room.clone(),
+                "Saved local room".into(),
+                Default::default(),
+                Uuid::parse_str(user).unwrap(),
+                piik_channel_core::wire::RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap();
+            control.send(Message::Text(json!({"id":"open","type":"open","policy":serde_json::to_string(&policy).unwrap()}).to_string().into())).await.unwrap();
+            let opened: Value =
+                serde_json::from_str(&control.next().await.unwrap().unwrap().into_text().unwrap())
+                    .unwrap();
+            assert_eq!(opened["result"]["id"], room);
+            let room_path = folder
+                .join("rooms")
+                .join(saved_identity()["namespace"].as_str().unwrap())
+                .join(channel)
+                .join(user)
+                .join(format!("{room}.sqlite"));
+            let restored_owner = tokio::task::spawn_blocking(move || {
+                use std::io::Read;
+                let url = format!("http://{domain_address}/prototype/channel/backup");
+                let agent = ureq::Agent::config_builder()
+                    .timeout_global(Some(Duration::from_secs(10)))
+                    .build()
+                    .new_agent();
+                let mut response = agent
+                    .get(&url)
+                    .header("Authorization", format!("Bearer {credential}"))
+                    .call()
+                    .unwrap();
+                let mut bytes = vec![];
+                response
+                    .body_mut()
+                    .as_reader()
+                    .read_to_end(&mut bytes)
+                    .unwrap();
+                let directory = tempfile::tempdir().unwrap();
+                let StagedBackup::Domain(mut metadata) =
+                    backup::stage(std::io::Cursor::new(bytes), directory.path()).unwrap()
+                else {
+                    panic!("domain backup")
+                };
+                metadata.owner_key = Uuid::new_v4().to_string();
+                metadata.invite_key = Uuid::new_v4().to_string();
+                let mut archive = vec![];
+                backup::write_domain(&metadata, &mut archive).unwrap();
+                let response = agent
+                    .put(url)
+                    .header("Authorization", format!("Bearer {credential}"))
+                    .header("Content-Type", "application/zip")
+                    .send(&archive)
+                    .unwrap();
+                assert_eq!(response.status().as_u16(), 200);
+                metadata.owner_key
+            })
+            .await
+            .unwrap();
+            tokio::time::timeout(Duration::from_secs(5), async {
+                while let Some(frame) = control.next().await {
+                    if matches!(frame.unwrap(), Message::Close(_)) {
+                        break;
+                    }
+                }
+            })
+            .await
+            .expect("retired Native closes its old App command connection");
+            let lock = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open(format!("{}.lock", room_path.display()))
+                .unwrap();
+            lock.try_lock()
+                .expect("Domain restore joined the real Native room owner");
+            assert_eq!(
+                piik_channel_core::StoredRoomHost::open(&room_path)
+                    .unwrap()
+                    .policy()
+                    .id,
+                room
+            );
+            let (_, state) = app_http(address, "GET", "/api/client-launcher", None, None).await;
+            let refreshed = url::Url::parse(state["target"].as_str().unwrap()).unwrap();
+            assert_eq!(refreshed.origin(), target.origin());
+            assert!(
+                url::form_urlencoded::parse(refreshed.fragment().unwrap().as_bytes())
+                    .any(|(key, value)| key == "owner" && value == restored_owner)
+            );
+            drop((admin, control, lock));
+        }
         stop.send(()).unwrap();
         tokio::time::timeout(Duration::from_secs(5), service)
             .await
@@ -1255,18 +1384,6 @@ async fn app_launch_retries_owns_one_domain_and_restores_it_after_port_change() 
         retired_listeners.push(TcpListener::bind(lan_address).await.unwrap());
         retired_listeners.push(TcpListener::bind(address).await.unwrap());
         retired_stun.push(UdpSocket::bind(stun_address).await.unwrap());
-        if attempt == 0 {
-            // Emulate replacement of the stopped Domain's hosting record. The
-            // next launcher URL and real guest admission must use these keys,
-            // while App namespace and original creation seeds remain unchanged.
-            let mut restored = metadata;
-            restored.owner_key = Uuid::new_v4().to_string();
-            restored.invite_key = Uuid::new_v4().to_string();
-            Storage::open(&folder.join("domain/channel.sqlite"))
-                .unwrap()
-                .save(&serde_json::to_value(restored).unwrap())
-                .unwrap();
-        }
     }
     drop(retired_listeners);
     drop(retired_stun);

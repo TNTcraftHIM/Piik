@@ -310,9 +310,11 @@ Saved data belongs to its domain or room runtime. Server defaults to
 `data/channel.sqlite` beside its executable. `PIIK_CHANNEL_DATA_DIR` chooses a
 different real directory; point it at an existing source-run directory to reuse
 that data. The domain checkpoint stores catalog summaries, identities and its
-owner/invitation admission keys; `rooms/living.sqlite`, `rooms/studio.sqlite` and `rooms/quiet.sqlite`
-each store that room's policy, grants and confirmed history. Existing room names
-and policy are restored rather than overwritten by startup defaults. The Native
+owner/invitation admission keys. Room files under `rooms/<domainId>/<ownerId>/`
+store each room's policy, grants and confirmed history. Only a newly created
+domain bootstraps Living room, Studio and Quiet corner; subsequent starts reopen
+actual files. A domain-only import leaves directory entries without room data
+unavailable. Existing room names and policy are not overwritten. The Native
 endpoint authenticates with that domain's saved owner key and restored owner identity;
 it does not create a new user on every service start.
 Browser-owned room policy and history stay in that Browser's IndexedDB; the
@@ -327,8 +329,16 @@ Sessions, captures and routes are not restored after a process restart.
 
 This unpublished prototype uses hosting metadata version 1 around domain
 authority version 4, and room SQLite schema version 3. Older experimental
-checkpoints are rejected rather than silently discarding their history. Keep any
+checkpoints and the old unscoped `rooms/*.sqlite` layout are rejected rather than
+silently discarding or attaching their history to another domain. Keep any
 old experiment's database and choose a fresh `PIIK_CHANNEL_DATA_DIR` for this version.
+
+The current domain owner's personal credential authorizes `GET` and `PUT` on
+`/prototype/channel/backup`. The App or Server service validates the complete
+archive, stops its Native operators and waits for them to exit, replaces the domain checkpoint
+and retires old connections. Server bootstrap and the App owner entry then use
+the restored keys. HTTP entries, tunnels and STUN retain their service lifetime;
+neither room histories nor participant retained files belong in a domain archive.
 
 UI preferences belong to the client; the Browser also keeps its user credential
 locally. Participant reading windows and drafts stay in memory, as do the design

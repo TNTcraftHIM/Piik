@@ -123,6 +123,7 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
         authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         invitation_origin: None,
+        room_commands: None,
         storage: Arc::new(Mutex::new(storage::Storage::open(&path).unwrap())),
     };
     let mut owner = Endpoint::join(&mut hub, "owner");
@@ -193,6 +194,7 @@ fn retired_or_closing_connections_cannot_execute_queued_requests() {
         authority: Authority::new("owner".into(), "invite".into(), vec![]).unwrap(),
         clients: BTreeMap::new(),
         invitation_origin: None,
+        room_commands: None,
         storage: Arc::new(Mutex::new(
             storage::Storage::open(Path::new(":memory:")).unwrap(),
         )),
@@ -296,6 +298,7 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         clients: BTreeMap::new(),
         storage: Arc::new(Mutex::new(directory_store)),
         invitation_origin: None,
+        room_commands: None,
     };
     let mut operator = Endpoint::join(&mut hub, "invite");
     let mut viewer = Endpoint::join(&mut hub, "invite");
@@ -1056,6 +1059,7 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         .find(|session| session.id == native)
         .unwrap()
         .user_id;
+    let rooms = crate::room_directory(&folder, (initial.channel.id, owner));
     assert!(initial
         .channel
         .rooms
@@ -1183,12 +1187,12 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         let lock = std::fs::OpenOptions::new()
             .read(true)
             .write(true)
-            .open(folder.join("rooms").join(format!("{id}.sqlite.lock")))
+            .open(rooms.join(format!("{id}.sqlite.lock")))
             .unwrap();
         lock.try_lock()
             .expect("stopped service releases the runtime lock");
     }
-    let saved = StoredRoomHost::open(&folder.join("rooms/living.sqlite")).unwrap();
+    let saved = StoredRoomHost::open(&rooms.join("living.sqlite")).unwrap();
     assert_eq!(saved.policy().name, "Saved living");
     assert!(saved.policy().access == RoomAccess::Private);
     assert!(saved.policy().grants.contains(&guest_user));
@@ -1238,14 +1242,43 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
 
 #[tokio::test]
 async fn native_hosting_failure_stops_the_http_service() {
+    use piik_channel_core::{wire::RoomAccess, RoomState, StoredRoomHost};
     let folder = std::env::temp_dir().join(format!("piik-server-failure-{}", Uuid::new_v4()));
-    std::fs::create_dir_all(folder.join("rooms")).unwrap();
+    let domain = Domain::open(
+        &folder,
+        "owner",
+        "invite",
+        "http://localhost".into(),
+        None,
+        vec![],
+    )
+    .unwrap();
+    let identity = domain.identity();
+    let rooms = crate::room_directory(&folder, identity);
+    drop(domain);
+    std::fs::create_dir_all(&rooms).unwrap();
+    drop(
+        StoredRoomHost::create(
+            &rooms.join("living.sqlite"),
+            RoomState::new(
+                "living".into(),
+                "Living".into(),
+                Default::default(),
+                identity.1,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap(),
+    );
     let lock = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
-        .open(folder.join("rooms/living.sqlite.lock"))
+        .open(rooms.join("living.sqlite.lock"))
         .unwrap();
     lock.try_lock().unwrap();
     let (address, _stop, task, hub) = start_server(&folder).await;
@@ -1260,6 +1293,20 @@ async fn native_hosting_failure_stops_the_http_service() {
         .expect("a failed Native host cannot leave a healthy HTTP shell");
     drop(listener);
     drop(lock);
+    drop(hub);
+    let unscoped = folder.join("rooms/legacy.sqlite");
+    std::fs::write(&unscoped, b"preserved private layout").unwrap();
+    let (_, _, rejected, hub) = start_server(&folder).await;
+    assert!(rejected
+        .await
+        .unwrap()
+        .unwrap_err()
+        .to_string()
+        .contains("unsupported_room_storage_layout"));
+    assert_eq!(
+        std::fs::read(&unscoped).unwrap(),
+        b"preserved private layout"
+    );
     drop(hub);
     std::fs::remove_dir_all(folder).unwrap();
 }
@@ -1494,7 +1541,9 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
     })
     .await;
     assert!(
-        !folder.path().join("rooms/imported-room.sqlite").exists(),
+        !crate::room_directory(folder.path(), hub.lock().unwrap().authority.identity())
+            .join("imported-room.sqlite")
+            .exists(),
         "room ID never chooses a filesystem path"
     );
     stop.send(()).unwrap();
@@ -1531,4 +1580,172 @@ async fn room_backup_http_restores_native_history_and_reopens_named_imports() {
     stop.send(()).unwrap();
     task.await.unwrap().unwrap();
     drop((owner, hub, snapshot, restored_room));
+}
+
+#[tokio::test]
+async fn domain_backup_restarts_its_operator_and_preserves_other_domain_room_files() {
+    use piik_channel_native::backup::{self, StagedBackup};
+    let folder = tempfile::tempdir().unwrap();
+    let (address, stop, task, hub) = start_server(folder.path()).await;
+    let (mut owner, _, initial, credential) =
+        connect_with_credential(address, "owner", "Owner").await;
+    let ready = |state: &Snapshot| {
+        state.channel.rooms.len() == 3 && state.channel.rooms.iter().all(|room| room.available)
+    };
+    let initial = if ready(&initial) {
+        initial
+    } else {
+        state_when(&mut owner, ready).await
+    };
+    let old_native = initial.channel.rooms[0]
+        .delivery
+        .as_ref()
+        .unwrap()
+        .host_session_id;
+    let identity = hub.lock().unwrap().authority.identity();
+    let rooms = crate::room_directory(folder.path(), identity);
+    let (status, bytes) =
+        room_backup_http(address, "/prototype/channel/backup", &credential, None).await;
+    assert_eq!(status, 200);
+    let staging = tempfile::tempdir().unwrap();
+    let StagedBackup::Domain(mut metadata) =
+        backup::stage(std::io::Cursor::new(bytes), staging.path()).unwrap()
+    else {
+        panic!("domain backup")
+    };
+    assert_eq!(metadata.owner_key, "owner");
+    let archive = |metadata: &DomainMetadata| {
+        let mut bytes = vec![];
+        backup::write_domain(metadata, &mut bytes).unwrap();
+        bytes
+    };
+    metadata.owner_key = "restored-owner".into();
+    metadata.invite_key = "restored-invite".into();
+    // Reject only the new durable record. Ordinary old-domain admissions can
+    // still commit, proving the service reopens its old operator after failure.
+    let reject = rusqlite::Connection::open(folder.path().join("channel.sqlite")).unwrap();
+    reject.execute_batch("CREATE TRIGGER reject_restore BEFORE UPDATE ON checkpoint WHEN instr(NEW.body, 'restored-owner') > 0 BEGIN SELECT RAISE(ABORT, 'restore_rejected'); END;").unwrap();
+    let (status, failure) = room_backup_http(
+        address,
+        "/prototype/channel/backup",
+        &credential,
+        Some(archive(&metadata)),
+    )
+    .await;
+    assert_eq!(status, 409);
+    assert!(
+        String::from_utf8_lossy(&failure).contains("restore_rejected"),
+        "{}",
+        String::from_utf8_lossy(&failure)
+    );
+    let after_failure = state_when(&mut owner, |state| {
+        ready(state)
+            && state.channel.rooms[0]
+                .delivery
+                .as_ref()
+                .unwrap()
+                .host_session_id
+                != old_native
+    })
+    .await;
+    assert_eq!(hub.lock().unwrap().authority.owner_admission_key(), "owner");
+    reject.execute_batch("DROP TRIGGER reject_restore").unwrap();
+    drop(reject);
+    let (status, result) = room_backup_http(
+        address,
+        "/prototype/channel/backup",
+        &credential,
+        Some(archive(&metadata)),
+    )
+    .await;
+    assert_eq!(status, 200, "{}", String::from_utf8_lossy(&result));
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while let Some(frame) = owner.next().await {
+            if matches!(frame.unwrap(), Message::Close(_)) {
+                return;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let (mut owner, _, initial, current_credential) =
+        connect_with_credential(address, "restored-owner", "Stale name").await;
+    let restored = if ready(&initial) {
+        initial
+    } else {
+        state_when(&mut owner, ready).await
+    };
+    assert_eq!(restored.channel.id, identity.0);
+    assert_ne!(
+        restored.channel.rooms[0]
+            .delivery
+            .as_ref()
+            .unwrap()
+            .host_session_id,
+        after_failure.channel.rooms[0]
+            .delivery
+            .as_ref()
+            .unwrap()
+            .host_session_id
+    );
+    assert_eq!(
+        room_backup_http(address, "/prototype/channel/identity", &credential, None)
+            .await
+            .0,
+        403
+    );
+    assert!(restored.publications.is_empty() && restored.voice.is_empty());
+    assert!(restored.channel.rooms.iter().all(|room| !room.reading));
+    let previous_file = std::fs::read(rooms.join("living.sqlite")).unwrap();
+    let next_id = Uuid::new_v4();
+    let mut different = serde_json::to_value(metadata).unwrap();
+    different["state"]["id"] = json!(next_id);
+    let different: DomainMetadata = serde_json::from_value(different).unwrap();
+    assert_eq!(
+        room_backup_http(
+            address,
+            "/prototype/channel/backup",
+            &current_credential,
+            Some(archive(&different))
+        )
+        .await
+        .0,
+        200
+    );
+    let (mut owner, _, initial, _) =
+        connect_with_credential(address, "restored-owner", "Owner").await;
+    let admitted = |state: &Snapshot| state.sessions.len() >= 2;
+    let current = if admitted(&initial) {
+        initial
+    } else {
+        state_when(&mut owner, admitted).await
+    };
+    assert_eq!(current.channel.id, next_id);
+    assert_eq!(current.channel.rooms.len(), 3);
+    assert!(current.channel.rooms.iter().all(|room| !room.available));
+    assert!(
+        std::fs::read_dir(crate::room_directory(folder.path(), (next_id, identity.1)))
+            .unwrap()
+            .next()
+            .is_none()
+    );
+    assert_eq!(
+        std::fs::read(rooms.join("living.sqlite")).unwrap(),
+        previous_file
+    );
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+    drop((owner, hub));
+    let (address, stop, task, hub) = start_server(folder.path()).await;
+    let (mut owner, _, initial) = connect(address, "restored-owner", "Owner").await;
+    let current = if admitted(&initial) {
+        initial
+    } else {
+        state_when(&mut owner, admitted).await
+    };
+    assert_eq!(current.channel.id, next_id);
+    assert!(current.channel.rooms.iter().all(|room| !room.available));
+    stop.send(()).unwrap();
+    task.await.unwrap().unwrap();
+    drop((owner, hub));
 }

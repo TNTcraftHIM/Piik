@@ -339,6 +339,13 @@ history must be distinguished from ordinary restart, so cached newer records
 cannot silently overwrite the restored authority. Live captures, connections
 and input grants are not backup data.
 
+Domain restore belongs to the existing App or Server service owner. It stops and
+joins its Native operators before replacing the domain's checkpoint and retiring
+old clients, then uses the restored admission keys for bootstrap. Room files stay
+scoped to their domain and owner; importing another domain preserves the former
+files without registering them under the new authority. A missing room database
+remains unavailable rather than being recreated from its directory summary.
+
 A conversation export for reading contains no authentication secrets. A hosting
 backup needs private handling because it preserves authority. Exact export
 format and controls follow the ownership decision, rather than becoming another
@@ -367,3 +374,8 @@ A Browser-held room authority additionally needs access to its original local
 data and credential. Explicit export/import can support that move; it is separate
 from editing a bookmark. This is part of Browser hosting design, not a reason to
 introduce a mandatory fixed website.
+
+A room hosting backup may contain its exporting owner's own personal credential.
+Explicit import verifies that credential with the target domain and completes
+ordinary admission as the same domain/user before replacing hosting data. An
+archive's IDs alone cannot establish that identity or grant domain administration.

@@ -11,6 +11,7 @@ use axum::{
     routing::{get, put},
     Json, Router,
 };
+pub(crate) use backup::RestoreDomain;
 use futures_util::{stream::FuturesUnordered, FutureExt, Sink, SinkExt, StreamExt};
 use piik_channel_core::{
     backup::DomainMetadata,
@@ -38,6 +39,7 @@ struct Hub {
     clients: BTreeMap<Uuid, Client>,
     storage: Arc<Mutex<storage::Storage>>,
     invitation_origin: Option<String>,
+    room_commands: Option<mpsc::Sender<piik_channel_native::session::HostCommand>>,
 }
 
 impl Hub {
@@ -138,7 +140,9 @@ pub struct Domain {
     hub: Arc<Mutex<Hub>>,
     sockets: Arc<Semaphore>,
     origin: String,
-    room_commands: Option<mpsc::Sender<piik_channel_native::session::HostCommand>>,
+    restores: Option<mpsc::Sender<RestoreDomain>>,
+    ice_servers: Vec<serde_json::Value>,
+    created: bool,
 }
 
 async fn upgrade(
@@ -330,12 +334,14 @@ impl Domain {
         std::fs::create_dir_all(directory)?;
         let mut storage = storage::Storage::open(&directory.join("channel.sqlite"))
             .map_err(anyhow::Error::from_boxed)?;
-        let authority = match storage.load().map_err(anyhow::Error::from_boxed)? {
+        let checkpoint = storage.load().map_err(anyhow::Error::from_boxed)?;
+        let created = checkpoint.is_none();
+        let authority = match checkpoint {
             Some(checkpoint) => serde_json::from_value::<DomainMetadata>(checkpoint)
                 .context("unsupported_domain_checkpoint: preserve the existing data and use a supported backup or a fresh directory")?
-                .into_authority(ice_servers)
+                .into_authority(ice_servers.clone())
                 .map_err(anyhow::Error::msg)?,
-            None => Authority::new(owner_seed.into(), invite_seed.into(), ice_servers)
+            None => Authority::new(owner_seed.into(), invite_seed.into(), ice_servers.clone())
                 .map_err(anyhow::Error::msg)
                 .context("A new domain requires distinct owner and invitation seed keys")?,
         };
@@ -348,10 +354,13 @@ impl Domain {
                 clients: BTreeMap::new(),
                 storage: Arc::new(Mutex::new(storage)),
                 invitation_origin,
+                room_commands: None,
             })),
             sockets: Arc::new(Semaphore::new(40)),
             origin,
-            room_commands: None,
+            restores: None,
+            ice_servers,
+            created,
         })
     }
 
@@ -360,19 +369,61 @@ impl Domain {
         self.hub.lock().unwrap().authority.identity()
     }
 
-    pub(crate) fn with_room_commands(
-        mut self,
-        commands: mpsc::Sender<piik_channel_native::session::HostCommand>,
-    ) -> Self {
-        self.room_commands = Some(commands);
+    pub(crate) fn set_room_commands(
+        &self,
+        commands: Option<mpsc::Sender<piik_channel_native::session::HostCommand>>,
+    ) {
+        self.hub.lock().unwrap().room_commands = commands;
+    }
+
+    pub(crate) fn with_restores(mut self, restores: mpsc::Sender<RestoreDomain>) -> Self {
+        self.restores = Some(restores);
         self
+    }
+
+    pub(crate) fn was_created(&self) -> bool {
+        self.created
+    }
+
+    pub(crate) fn is_owner_credential(&self, credential: &str) -> bool {
+        self.hub
+            .lock()
+            .unwrap()
+            .authority
+            .is_owner_credential(credential)
+    }
+
+    /// Called by the service after joining its Native operators. The checkpoint
+    /// and authority change in one Hub turn; old sockets cannot write afterward.
+    pub(crate) fn restore(
+        &self,
+        metadata: DomainMetadata,
+        credential: &str,
+    ) -> anyhow::Result<Uuid> {
+        let authority = metadata
+            .clone()
+            .into_authority(self.ice_servers.clone())
+            .map_err(anyhow::Error::msg)?;
+        let checkpoint = serde_json::to_value(metadata)?;
+        let mut hub = self.hub.lock().unwrap();
+        anyhow::ensure!(hub.authority.is_owner_credential(credential), "forbidden");
+        hub.storage
+            .lock()
+            .unwrap()
+            .save(&checkpoint)
+            .map_err(anyhow::Error::from_boxed)?;
+        hub.authority = authority;
+        for client in std::mem::take(&mut hub.clients).into_values() {
+            client.close.send_replace(true);
+        }
+        Ok(hub.authority.identity().0)
     }
 
     pub fn origin(&self) -> &str {
         &self.origin
     }
 
-    fn allows_origin(&self, origin: &str) -> bool {
+    pub(crate) fn allows_origin(&self, origin: &str) -> bool {
         origin == self.origin
             || self.hub.lock().unwrap().invitation_origin.as_deref() == Some(origin)
     }
@@ -417,6 +468,10 @@ impl Domain {
             .route("/healthz", get(|| async { "piik-channel-prototype" }))
             .route("/prototype/channel", get(upgrade))
             .route("/prototype/channel/identity", get(identify))
+            .route(
+                "/prototype/channel/backup",
+                get(backup::export_domain).put(backup::restore_domain),
+            )
             .route(
                 "/prototype/channel/rooms/{room}/backup",
                 get(backup::export),
