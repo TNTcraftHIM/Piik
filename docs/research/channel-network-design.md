@@ -596,8 +596,10 @@ distinguishes this private replacement from the formal pin.
 
 Piik owns encoder demand, complete-access-unit admission and source-time mapping.
 An output's unsent payload and retransmission state end when its flow retires,
-independently of a later SDP exchange. The replacement retains the existing media
-assembly and H264 helpers; switching transport does not remove their patches.
+independently of a later SDP exchange. Public codec depacketizers remain library
+helpers; complete-AU ordering and packet-head metadata belong to the incoming-source
+adapter. Codec parsing defects justify dependency repairs; these assembly needs
+do not require a maintained feature fork.
 
 The SDK's GCC target is one physical connection's budget, not an allocation for
 each outbound track. Consume it once for that connection's active media. As in
@@ -777,6 +779,11 @@ It reuses a warm baseline at full demand and one independently controlled encodi
 per constrained output. Zero allocation pauses that output; restoration retires
 its encoder only after a newer baseline keyframe is adopted. An unused baseline
 stops consuming access units and rests on the existing bounded queue.
+`Original` and `Limited` describe supplied-feed reuse or independent encoding,
+not delivered picture quality. A constrained local encoder changes bitrate within
+the producer's configured source-size ceiling; a supplied lower encoding's size
+is not a permanent geometry constraint on its outgoing RID. Receiver observations
+own delivered dimensions, cadence and quality.
 A required lower-rate replacement releases that output's incumbent and queued
 frames immediately, retaining its last emitted source time. A delayed replacement
 IDR can then cross a fixed boundary instead of chasing the still-playing original.

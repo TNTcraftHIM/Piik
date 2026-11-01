@@ -133,11 +133,13 @@ Distinguish an upstream defect from a missing capability or a Piik integration
 error. Reproduce defects through the dependency's public API without Piik;
 requiring a new API demonstrates a capability gap, not a broken existing contract.
 For capability additions, prefer a Piik adapter through existing public extension
-points. Where those are insufficient, expose a narrow reusable hook and keep
-application policy outside the dependency. Compare total ownership: moving or
+points or a suitable mature dependency; do not maintain an upstream feature fork
+to supply missing APIs or Piik-specific mechanisms. A general API proposal may
+proceed upstream independently, but Piik should consume its released interface.
+Keep application policy in the adapter. Compare total ownership: moving or
 duplicating private internals into an adapter does not remove maintenance cost.
-Evaluate larger feature additions as dependency choices, rather than treating
-them as small fixes.
+When public APIs are insufficient, reconsider the integration or dependency
+choice instead of classifying the gap as an upstream defect.
 
 The [Native provenance](./prototype/channel-native/README.md#rtc-dependency) and
 [independent Cloudflared owner](./mobile/cloudflared/README.md) record official

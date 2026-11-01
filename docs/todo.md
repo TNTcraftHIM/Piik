@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-10-31
+Last reviewed: 2026-11-01
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,13 +12,20 @@ own behavior; research and Git/PRs own evidence and completed history.
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Keep the selected public-API str0m transport private while resolving the
-  inconsistent Original-quality restoration after a sustained bandwidth drop.
-  Preserve the existing SDK controller; the probe-clock experiment did not
-  demonstrate a recovery benefit. Promote the
+  Preserve the selected public-API str0m transport and its SDK controller;
+  replace its feature-patched sample builder with the incoming-source adapter.
+  The probe-clock experiment did not demonstrate a recovery benefit. Promote the
   [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
-  after that acceptance and the held dependency decision. Keep the first
+  after adapter/platform acceptance and gateway-fix integration. Keep the first
   version's accepted scope and the prototype isolated.
+- [ ] **Native H264 visual recovery.** Trace the observed unshaped startup budget
+  shortfall and complete the healthy/constrained decoded-picture comparison.
+  The latest observation stopped before its network profile. The saved slow run
+  recovered picture dimensions and cadence while retaining a lower-bitrate
+  independent encoder; image detail and frame age still need comparison.
+  Evaluate delivered media and budget-funded handoff rather than treating the
+  internal `Original` feed label as a quality deadline. Keep the earlier result
+  and the stock controller; do not add another probe-policy matrix.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -42,10 +49,16 @@ own behavior; research and Git/PRs own evidence and completed history.
   temporary replacement. [Dependency provenance](https://github.com/TNTcraftHIM/Piik/blob/eef70ffda0ffddce6aec109521ab70871e5b7c2f/internal/thirdparty/README.md#local-encoder-probe-demand)
   owns the patch and removal boundary.
 - [ ] **Return the 3.0 RTC dependency to an upstream release.** Follow
-  [upstream #296](https://github.com/webrtc-rs/rtc/pull/296) and
-  [#298](https://github.com/webrtc-rs/rtc/pull/298). Native and Server use
-  the same fixed 0.21.1 fork; [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
-  owns the repair and removal criteria.
+  the submitted defect repairs in
+  [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
+  Once upstream provides those changes, verify the consumers and remove the fork.
+  The separately offered API extension is not required by Piik's dependency pin.
+- [ ] **Portmapper gateway scheduling.** Integrate and verify the approved
+  async gateway-lookup repair, then return to an official release after
+  [upstream #266](https://github.com/n0-computer/net-tools/issues/266) is resolved.
+  [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
+  owns the fixed source. The upstream PR awaits the maintainer's discussion and
+  `ready-for-pr` label.
 - [ ] **2.x: return Pion to an upstream pin.** Follow
   [upstream #3668](https://github.com/pion/webrtc/pull/3668). Once upstream
   includes equivalent H.264 profile matching, verify the receiver and forwarding
@@ -64,16 +77,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   awaits approval for an upstream issue and patch. The
   [network design](./research/channel-network-design.md#implementation-boundary)
   owns its cause and isolated validation; Piik does not bundle a compositor fork.
-- [ ] **3.0 media-library submissions.** The retained H264 parser, complete samples
-  and packet metadata repairs await external-publication approval. The selected
-  str0m transport replaces the proposed controller, async-runtime and socket
-  extensions; do not publish that superseded batch as Piik requirements. Submit
-  only the approved retained scope and verify the integrated Native adapter
-  before updating its fixed dependency. Local implementation continues.
-- [ ] **Portmapper gateway scheduling.** The verified async gateway-lookup
-  repair awaits upstream-submission and patched-dependency approval. The
-  [Native dependency owner](../prototype/channel-native/README.md#rtc-dependency)
-  records its scope. Continue local integration without changing the formal pin.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session
