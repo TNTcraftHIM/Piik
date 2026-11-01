@@ -65,7 +65,8 @@ async function rooms() {
           if (!["welcome", "state"].includes(event.type)) return;
           const { channel } = event.state;
           if (channel.rooms.length === 3 && channel.rooms.every(room => room.available)) {
-            resolve({ channelId: channel.id, roomIds: channel.rooms.map(room => room.id).sort() });
+            assert.equal(typeof channel.ownerId, "string", "Server domain must identify its owner");
+            resolve({ channelId: channel.id, ownerId: channel.ownerId, roomIds: channel.rooms.map(room => room.id).sort() });
           }
         } catch (error) { reject(error); }
       });
@@ -105,7 +106,7 @@ try {
   const state = join(workspace, "state");
   mkdirSync(state);
   compose("cp", "piik:/home/nonroot/.", state);
-  for (const file of ["channel.sqlite", ...initial.roomIds.map(id => `rooms/${id}.sqlite`)]) {
+  for (const file of ["channel.sqlite", ...initial.roomIds.map(id => join("rooms", initial.channelId, initial.ownerId, `${id}.sqlite`))]) {
     assert.equal(readFileSync(join(state, file)).subarray(0, 16).toString(), "SQLite format 3\0");
   }
   process.stdout.write("Container checks passed: shared frontend, authenticated Native rooms, persistence and shutdown.\n");
