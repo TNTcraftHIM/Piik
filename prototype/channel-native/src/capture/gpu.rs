@@ -1,5 +1,5 @@
 //! Same-adapter GPU handoff. Only the worker owns the encoder's private texture.
-use super::windows::RawFrame;
+use super::frames::RawFrame;
 use anyhow::{bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle, RawHandle};
@@ -55,6 +55,7 @@ fn texture(
     device: &ID3D11Device,
     width: u32,
     height: u32,
+    format: DXGI_FORMAT,
     shared: bool,
 ) -> Result<ID3D11Texture2D> {
     unsafe {
@@ -65,7 +66,7 @@ fn texture(
                 Height: height,
                 MipLevels: 1,
                 ArraySize: 1,
-                Format: DXGI_FORMAT_B8G8R8A8_UNORM,
+                Format: format,
                 SampleDesc: DXGI_SAMPLE_DESC {
                     Count: 1,
                     Quality: 0,
@@ -112,7 +113,7 @@ pub(super) fn send(frame: RawFrame, process: RawHandle) -> Result<Frame> {
             .AdapterLuid;
         let mut desc = D3D11_TEXTURE2D_DESC::default();
         frame.texture.GetDesc(&mut desc);
-        let shared = texture(&device, desc.Width, desc.Height, true)?;
+        let shared = texture(&device, desc.Width, desc.Height, desc.Format, true)?;
         let mutex: IDXGIKeyedMutex = shared.cast()?;
         acquire(&mutex, 0)?;
         context.CopyResource(&shared, &frame.texture);
@@ -174,7 +175,7 @@ impl Receiver {
             drop(handle);
             let mut desc = D3D11_TEXTURE2D_DESC::default();
             shared.GetDesc(&mut desc);
-            let private = texture(&self.device, desc.Width, desc.Height, false)?;
+            let private = texture(&self.device, desc.Width, desc.Height, desc.Format, false)?;
             let mutex: IDXGIKeyedMutex = shared.cast()?;
             acquire(&mutex, 1)?;
             self.context.CopyResource(&private, &shared);

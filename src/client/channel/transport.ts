@@ -1,8 +1,8 @@
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
 import { decodedVideoFrameSamples } from "../webrtc/stats";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
-import { configureAudioSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate } from "../media/quality";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
+import { configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, type QualityProfile } from "../media/quality";
 
 const MAX_FILE_FRAME_BYTES = 8192;
 const MAX_CONTROL_FRAME_BYTES = 32768;
@@ -13,6 +13,7 @@ const DATA_SEND_QUEUE_FRAMES = { control: 128, chunk: 32 * 17 };
 export interface OutgoingMedia {
   kind: ChannelPublication["kind"];
   stream: MediaStream | null;
+  profile?: QualityProfile;
 }
 
 interface OutgoingBinding {
@@ -27,6 +28,7 @@ interface OutgoingBinding {
 interface TransportOptions {
   polite: boolean;
   iceServers: RTCIceServer[];
+  canReceiveVideoLayers?: boolean;
   send(payload: ChannelSignal): void;
   receive(flowId: string, stream: MediaStream): void;
   retire?(flowId: string): void;
@@ -252,7 +254,7 @@ export class ChannelTransport {
       for (const track of previous.stream.getTracks()) previous.stream.removeTrack(track);
       this.sending.delete(id);
     }
-    for (const [id, { kind, stream }] of streams) {
+    for (const [id, { kind, stream, profile }] of streams) {
       let output = this.sending.get(id);
       if (!output) {
         output = { kind, stream: new MediaStream(), senders: [], failed: false };
@@ -272,7 +274,12 @@ export class ChannelTransport {
             for (const track of tracks) {
               const sender = owner.senders.find(sender => sender.track?.kind === track.kind && !retained.includes(sender));
               if (sender) {
-                if (sender.track !== track) await sender.replaceTrack(track);
+                if (sender.track !== track) {
+                  await sender.replaceTrack(track);
+                  if (kind === "screen" && track.kind === "video" && profile) {
+                    await this.applyVideoProfile(id, owner, sender, profile);
+                  }
+                }
                 if (this.closed || this.sending.get(id) !== owner) return;
                 if (this.stableSenders?.has(sender)) this.stableSenders.set(sender, track);
                 if (this.pendingOffer?.senders.has(sender)) this.pendingOffer.senders.set(sender, track);
@@ -283,7 +290,7 @@ export class ChannelTransport {
                 retained.push(added);
                 owner.senders.push(added);
                 if (track.kind === "audio") {
-                  try { await configureAudioSender(added, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(undefined)); }
+                  try { await configureAudioSender(added, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(profile?.maxAudioBitrate)); }
                   catch (error) { console.warn("Channel audio bitrate could not be applied", { flowId: id }, error); }
                 }
               }
@@ -313,18 +320,31 @@ export class ChannelTransport {
         if (!output.senders.some(sender => sender.track === track)) {
           try {
             output.stream.addTrack(track);
-            const sender = this.pc.addTrack(track, output.stream);
+            const video = kind === "screen" && track.kind === "video";
+            const layered = video && this.options.canReceiveVideoLayers;
+            let sender: RTCRtpSender;
+            if (video && (profile || layered)) {
+              const count = layered ? 2 : 1;
+              const encodings = profile ? screenShareEncodings(profile, track.getSettings(), count, count)
+                : [{ rid: "q", scaleResolutionDownBy: 2 }, { rid: "h", scaleResolutionDownBy: 1 }];
+              if (!layered) delete encodings[0].rid;
+              sender = this.pc.addTransceiver(track, { direction: "sendrecv", streams: [output.stream], sendEncodings: encodings }).sender;
+            } else sender = this.pc.addTrack(track, output.stream);
             output.senders.push(sender);
             if (track.kind === "audio") {
               const owner = output;
               this.enqueue(async () => {
                 if (this.sending.get(id) !== owner || !owner.senders.includes(sender)) return;
                 try {
-                  await configureAudioSender(sender, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(undefined));
+                  await configureAudioSender(sender, kind === "voice" ? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(profile?.maxAudioBitrate));
                 } catch (error) {
                   console.warn("Channel audio bitrate could not be applied", { flowId: id }, error);
                 }
               });
+            }
+            if (video && profile) {
+              const owner = output;
+              this.enqueue(() => this.applyVideoProfile(id, owner, sender, profile));
             }
           } catch (error) {
             attached = false;
@@ -352,6 +372,19 @@ export class ChannelTransport {
       });
     }
     return released;
+  }
+
+  private async applyVideoProfile(id: string, owner: OutgoingBinding, sender: RTCRtpSender, profile: QualityProfile): Promise<void> {
+    const current = () => !this.closed && this.sending.get(id) === owner && owner.senders.includes(sender);
+    if (!current()) return;
+    try {
+      const applied = await configureVideoSender(sender, profile);
+      if (current() && applied.mismatches.length) {
+        console.warn("Channel source quality parameters were not fully applied", { flowId: id, parameters: applied.mismatches });
+      }
+    } catch (error) {
+      if (current()) console.warn("Channel source quality parameters could not be applied", { flowId: id }, error);
+    }
   }
 
   private removeSender(sender: RTCRtpSender): void {

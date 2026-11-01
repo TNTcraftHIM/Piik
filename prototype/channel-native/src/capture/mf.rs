@@ -3,10 +3,11 @@ use super::{
     cadence::{AdmissionRate, Cadence},
     converter::Converter,
     frame_dropper::FrameDropper,
+    frames::RawFrame,
     output::Shared,
-    windows::RawFrame,
-    CaptureClock, EncodedFrame, Settings,
+    CaptureClock, Settings,
 };
+use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context as _, Result};
 use std::{mem::ManuallyDrop, ptr, sync::Arc};
 use windows::{
@@ -305,7 +306,12 @@ impl Encoder {
             Ok((bytes, pts, keyframe))
         }
     }
-    pub fn run(shared: &Arc<Shared>, settings: Settings, clock: CaptureClock) -> Result<()> {
+    pub fn run(
+        shared: &Arc<Shared>,
+        settings: Settings,
+        clock: CaptureClock,
+        timing: super::FrameTiming,
+    ) -> Result<()> {
         let (device, mut current) = {
             let mut state = shared.state.lock().unwrap();
             loop {
@@ -357,9 +363,17 @@ impl Encoder {
                     }
                     if !resizing && need_input > 0 {
                         if let Some(raw) = &state.latest {
-                            if state.force_keyframe
-                                || (last_capture != Some(raw.qpc) && cadence.accept(raw.qpc))
-                            {
+                            if match timing {
+                                super::FrameTiming::Capture => {
+                                    state.force_keyframe
+                                        || (last_capture != Some(raw.qpc)
+                                            && cadence.accept(raw.qpc))
+                                }
+                                super::FrameTiming::Source => {
+                                    last_capture != Some(raw.qpc)
+                                        && origin.is_none_or(|first| raw.qpc - first > last_pts)
+                                }
+                            } {
                                 let frame = raw.clone();
                                 let force = std::mem::take(&mut state.force_keyframe);
                                 break Work::Frame(frame, force);
@@ -397,6 +411,7 @@ impl Encoder {
                             dropper.fill(bytes.len(), !keyframe);
                             let presentation_time = clock.instant(origin.unwrap() + pts);
                             if !shared.output(EncodedFrame {
+                                vp8: None,
                                 bytes,
                                 presentation_time,
                                 keyframe,
@@ -437,7 +452,10 @@ impl Encoder {
                     let repeated = last_capture == Some(frame.qpc);
                     last_capture = Some(frame.qpc);
                     let mut qpc = frame.qpc;
-                    if repeated || (force && origin.is_some_and(|first| qpc - first <= last_pts)) {
+                    if timing == super::FrameTiming::Capture
+                        && (repeated
+                            || (force && origin.is_some_and(|first| qpc - first <= last_pts)))
+                    {
                         qpc = clock.now()?;
                     }
                     let first = *origin.get_or_insert(qpc);

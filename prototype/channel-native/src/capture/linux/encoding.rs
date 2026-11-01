@@ -1,6 +1,7 @@
 //! Each encoding owns its pipeline, bus and bounded complete-AU output.
 use super::{message_error, Clock, Frames, Pipeline, RawFrame};
-use crate::capture::{EncodedFrame, Settings};
+use crate::capture::{FrameTiming, Settings};
+use crate::EncodedFrame;
 use anyhow::{anyhow, bail, ensure, Context as _, Result};
 use futures_util::{SinkExt, StreamExt};
 use gst::{glib, prelude::*};
@@ -96,7 +97,6 @@ impl Encoding {
     ) -> Result<Self> {
         settings.validate()?;
         ensure!(settings.fps <= i32::MAX as u32, "invalid encoder FPS");
-        gst::init()?;
         let runtime = tokio::runtime::Handle::try_current()?;
         let clock = frames.clock();
         // This is the only encoded queue. A full sink blocks this encoding's
@@ -197,6 +197,7 @@ fn access_unit(sample: &gst::Sample, clock: &Clock) -> Result<EncodedFrame> {
     let bytes = buffer.map_readable()?;
     ensure!(!bytes.is_empty(), "empty encoded AU");
     Ok(EncodedFrame {
+        vp8: None,
         bytes: bytes.as_slice().to_vec(),
         presentation_time: clock.sample_time(sample)?,
         keyframe: !buffer.flags().contains(gst::BufferFlags::DELTA_UNIT),
@@ -497,6 +498,7 @@ async fn run(
     encoder: Option<gst::Element>,
 ) -> Result<()> {
     let clock = frames.clock();
+    let capture_timing = frames.timing() == FrameTiming::Capture;
     let source = frames.control();
     let codec = Codec::new(&clock, settings, sink, encoder)?;
     shared.state.lock().unwrap().started = true;
@@ -536,7 +538,7 @@ async fn run(
                     .unwrap_or_else(|| anyhow!("encoder bus closed")));
             },
             _ = &mut changed => continue,
-            raw = frames.recv_after(if force { None } else { previous }) => match raw? {
+            raw = frames.recv_after(if force && capture_timing { None } else { previous }) => match raw? {
                 Some(raw) => raw,
                 None => return Ok(()),
             },
@@ -544,7 +546,7 @@ async fn run(
         let force = shared.state.lock().unwrap().force
             || raw.buffer.flags().contains(gst::BufferFlags::DISCONT);
         previous = Some(raw.time);
-        let time = if force && presentation.is_some_and(|last| raw.time <= last) {
+        let time = if capture_timing && force && presentation.is_some_and(|last| raw.time <= last) {
             clock.now()?
         } else {
             raw.time
@@ -552,7 +554,8 @@ async fn run(
         if presentation.is_some_and(|last| time <= last) {
             continue;
         }
-        let admitted = cadence.accept((clock.timestamp(time)?.nseconds() / 100).try_into()?);
+        let admitted = !capture_timing
+            || cadence.accept((clock.timestamp(time)?.nseconds() / 100).try_into()?);
         if !force && !admitted {
             continue;
         }
@@ -668,7 +671,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn independent_encodings_keep_pts_resize_and_stop_under_backpressure() -> Result<()> {
         gst::init()?;
-        let frames = Frames::new();
+        let frames = Frames::new(FrameTiming::Capture)?;
         let settings = Settings {
             width: 1920,
             height: 1080,

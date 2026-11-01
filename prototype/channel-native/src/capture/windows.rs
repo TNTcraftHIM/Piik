@@ -1,15 +1,12 @@
 //! One WGC capture publishes owned BGRA textures to independent encoding workers.
 use super::{
     cadence::Cadence,
-    process::{self, Encoding},
-    CaptureClock, Settings, Target, TargetKind,
+    frames::{RawFrame, Shared},
+    process::Encoding,
+    Control, FrameTiming, Frames, Settings, Target, TargetKind,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
-use std::{
-    sync::{Arc, Condvar, Mutex, Weak},
-    thread,
-};
-use tokio::sync::Notify;
+use std::{sync::Arc, thread};
 use windows::{
     core::Interface,
     Win32::{
@@ -31,78 +28,8 @@ use windows_capture::{
     window::Window,
 };
 
-#[derive(Clone)]
-pub(super) struct RawFrame {
-    pub texture: ID3D11Texture2D,
-    pub qpc: i64,
-}
-#[derive(Default)]
-struct State {
-    stop: bool,
-    failure: Option<String>,
-    latest: Option<RawFrame>,
-    encodings: Vec<Weak<process::Shared>>,
-}
-#[derive(Default)]
-struct Shared {
-    state: Mutex<State>,
-    changed: Condvar,
-    stopped: Notify,
-}
-impl Shared {
-    fn stop(&self, failure: Option<String>) {
-        let mut state = self.state.lock().unwrap();
-        if failure.is_some() {
-            state.failure = failure;
-        }
-        state.stop = true;
-        state.latest = None;
-        let failure = state.failure.clone();
-        for encoding in state.encodings.drain(..).filter_map(|weak| weak.upgrade()) {
-            encoding.stop(failure.as_deref());
-        }
-        drop(state);
-        self.changed.notify_all();
-        self.stopped.notify_waiters();
-    }
-    fn publish(&self, frame: RawFrame) {
-        let mut state = self.state.lock().unwrap();
-        if state.stop {
-            return;
-        }
-        state.latest = Some(frame.clone());
-        state.encodings.retain(|weak| {
-            weak.upgrade()
-                .is_some_and(|encoding| encoding.input(frame.clone()))
-        });
-    }
-}
-#[derive(Clone)]
-pub struct Control(Arc<Shared>);
-impl Control {
-    pub fn is_stopped(&self) -> bool {
-        self.0.state.lock().unwrap().stop
-    }
-    /// Stop WGC and wake every encoding, including workers blocked on AU output.
-    /// Their respective Capture/Encoding owners still join the workers.
-    pub fn stop(&self) {
-        self.0.stop(None);
-    }
-    pub async fn stopped(&self) {
-        loop {
-            let stopped = self.0.stopped.notified();
-            tokio::pin!(stopped);
-            stopped.as_mut().enable();
-            if self.is_stopped() {
-                return;
-            }
-            stopped.await;
-        }
-    }
-}
 pub struct Capture {
-    shared: Arc<Shared>,
-    pub(super) clock: CaptureClock,
+    frames: Frames,
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Capture {
@@ -112,9 +39,8 @@ impl Capture {
 
     pub fn start(target: Target, fps: u32, _audio: bool) -> Result<Self> {
         ensure!(fps > 0, "capture fps must be positive");
-        let clock = CaptureClock::new()?;
-        let shared = Arc::new(Shared::default());
-        let worker = shared.clone();
+        let frames = Frames::new(FrameTiming::Capture)?;
+        let worker = frames.shared.clone();
         let thread = thread::Builder::new()
             .name("piik-capture".into())
             .spawn(move || {
@@ -123,30 +49,20 @@ impl Capture {
                 result
             })?;
         Ok(Self {
-            shared,
-            clock,
+            frames,
             thread: Some(thread),
         })
     }
-    /// Allocate one independent encoder. Initialization failures arrive through recv().
     pub fn encode(&self, settings: Settings) -> Result<Encoding> {
-        settings.validate()?;
-        let mut state = self.shared.state.lock().unwrap();
-        ensure!(!state.stop, "capture stopped");
-        state
-            .encodings
-            .retain(|weak| weak.upgrade().is_some_and(|encoding| !encoding.stopped()));
-        let encoding = Encoding::start(settings, self.clock, state.latest.clone())?;
-        state.encodings.push(Arc::downgrade(&encoding.shared));
-        Ok(encoding)
+        self.frames.encode(settings)
     }
     pub fn control(&self) -> Control {
-        Control(self.shared.clone())
+        self.frames.control()
     }
     /// Call from a blocking owner. Stop all outputs and join WGC; each Encoding
     /// remains responsible for joining its own converter/MFT worker.
     pub fn stop(mut self) -> Result<()> {
-        self.shared.stop(None);
+        self.frames.finish(None);
         self.thread
             .take()
             .unwrap()
@@ -156,7 +72,7 @@ impl Capture {
 }
 impl Drop for Capture {
     fn drop(&mut self) {
-        self.shared.stop(None);
+        self.frames.finish(None);
         if let Some(thread) = self.thread.take() {
             match thread.join() {
                 Ok(Ok(())) => {}

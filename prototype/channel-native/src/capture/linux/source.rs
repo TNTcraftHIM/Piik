@@ -1,5 +1,5 @@
 use super::{frames, message_error, portal, Encoding, Frames, Pipeline, RawFrame};
-use crate::capture::{Settings, Target, TargetKind};
+use crate::capture::{FrameTiming, Settings, Target, TargetKind};
 use crate::input::{linux::Connection as Eis, Source as InputSource};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use ashpd::desktop::{
@@ -104,8 +104,7 @@ impl Capture {
             "Linux capture uses the system picker"
         );
         ensure!(fps > 0 && fps <= i32::MAX as u32, "invalid capture FPS");
-        gst::init()?;
-        let frames = Frames::new();
+        let frames = Frames::new(FrameTiming::Capture)?;
         let (requests, receiver) = mpsc::channel(1);
         let control = Control {
             frames: frames.control(),

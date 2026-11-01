@@ -49,13 +49,6 @@ const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
 const PROTOCOL: u8 = 1;
-// Prototype native-share defaults; the shared share settings will supply these.
-const CAPTURE_SETTINGS: Settings = Settings {
-    width: 1920,
-    height: 1080,
-    fps: 30,
-    bitrate: 4_000_000,
-};
 
 pub struct Config {
     pub data_root: PathBuf,
@@ -160,6 +153,7 @@ impl App {
                 origin: site.to_owned(),
                 name,
                 credential: Some(credential.clone()),
+                server_udp: None,
                 key: None,
             };
             let management = Hosting {
@@ -301,9 +295,8 @@ pub async fn serve(
         .map(|(site, id)| (site, Arc::new(Permission::new(id))))
         .collect();
     let index = config.assets.join("index.html");
-    let assets = web::static_files(
-        ServeDir::new(&config.assets).fallback(web::document(index.clone())),
-    );
+    let assets =
+        web::static_files(ServeDir::new(&config.assets).fallback(web::document(index.clone())));
     let app = Arc::new(App {
         desktop: Desktop::new()?,
         config,
@@ -630,6 +623,7 @@ enum Operation {
         publication_id: Uuid,
         room_id: String,
         target: Target,
+        settings: Settings,
         #[serde(default)]
         audio: bool,
     },
@@ -887,6 +881,7 @@ async fn connection(
                                 publication_id,
                                 room_id,
                                 target,
+                                settings,
                                 audio,
                             } => match &host {
                                 Some(commands) => {
@@ -909,6 +904,7 @@ async fn connection(
                                                         publication_id,
                                                         room_id,
                                                         target,
+                                                        settings,
                                                         audio,
                                                         replaces,
                                                     ),
@@ -1153,19 +1149,21 @@ async fn prepare_capture(
     publication_id: Uuid,
     room_id: String,
     target: Target,
+    settings: Settings,
     audio: bool,
     replaces: Option<Uuid>,
 ) -> Result<CaptureLease> {
     if !cfg!(feature = "capture") {
         bail!("capture_unavailable");
     }
+    settings.validate()?;
     let (result, response) = oneshot::channel();
     commands
         .send(HostCommand::PrepareCapture(PrepareCapture {
             publication_id,
             room_id,
             target,
-            settings: CAPTURE_SETTINGS,
+            settings,
             audio,
             replaces,
             result,
@@ -1230,4 +1228,84 @@ async fn transfer_source(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)
+}
+
+#[cfg(all(test, feature = "capture"))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn selected_capture_settings_reach_the_host_command() {
+        let mut wire = json!({
+            "id": "selected-profile", "type": "prepare_capture", "roomId": "room",
+            "publicationId": Uuid::new_v4(),
+            "target": {"kind": "display", "sourceId": "1", "title": "Test display"},
+            "settings": {"width": 1280, "height": 720, "fps": 24, "bitrate": 2_500_000},
+            "audio": true
+        });
+        let request: Request = serde_json::from_value(wire.clone()).unwrap();
+        let Operation::PrepareCapture {
+            publication_id,
+            room_id,
+            target,
+            settings,
+            audio,
+        } = request.operation
+        else {
+            panic!("expected capture request");
+        };
+        let publication = publication_id;
+        let (commands, mut received) = mpsc::channel(1);
+        let start = prepare_capture(
+            &commands,
+            publication,
+            room_id,
+            target.clone(),
+            settings,
+            audio,
+            None,
+        );
+        let host = async {
+            let HostCommand::PrepareCapture(request) = received.recv().await.unwrap() else {
+                panic!("expected producer command");
+            };
+            assert_eq!(request.publication_id, publication);
+            assert_eq!(request.room_id, "room");
+            assert!(request.audio);
+            assert_eq!(
+                serde_json::to_value(request.settings).unwrap(),
+                wire["settings"]
+            );
+            // Stop at the existing HostCommand boundary, without starting OS capture.
+            let _ = request.result.send(Err("test_capture_not_started".into()));
+        };
+        let (result, ()) = tokio::join!(start, host);
+        assert_eq!(
+            result.err().unwrap().to_string(),
+            "test_capture_not_started"
+        );
+
+        let invalid = Settings { fps: 0, ..settings };
+        let error = prepare_capture(
+            &commands,
+            publication,
+            "room".into(),
+            target,
+            invalid,
+            false,
+            None,
+        )
+        .await
+        .err()
+        .unwrap();
+        assert!(error
+            .to_string()
+            .contains("fps and bitrate must be positive"));
+        assert!(matches!(
+            received.try_recv(),
+            Err(mpsc::error::TryRecvError::Empty)
+        ));
+        wire.as_object_mut().unwrap().remove("settings");
+        assert!(serde_json::from_value::<Request>(wire).is_err());
+    }
 }

@@ -13,8 +13,22 @@ pub const CONTROL_FRAME_BYTES: usize = 32768;
 pub const CONVERSATION_HOPS: u8 = 20;
 pub const INTERACTION_INTERVAL_MS: u64 = 800;
 pub const INTERACTION_REACTIONS: &[&str] = &[
-    "thumbsup", "thumbsdown", "laugh", "clown", "eyeroll", "eyes", "wow", "wave", "heart",
-    "clap", "party", "fire", "star", "sleep", "tomato", "poop",
+    "thumbsup",
+    "thumbsdown",
+    "laugh",
+    "clown",
+    "eyeroll",
+    "eyes",
+    "wow",
+    "wave",
+    "heart",
+    "clap",
+    "party",
+    "fire",
+    "star",
+    "sleep",
+    "tomato",
+    "poop",
 ];
 const SIGNING_PREFIX: &[u8] = b"piik-room-conversation-v1\0";
 

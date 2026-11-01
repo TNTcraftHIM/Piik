@@ -1,227 +1,279 @@
-//! One admitted output keeps its sender and RTP clock across local encodings.
-use super::{compatible, SenderReports, Source, SourceFeed, TrackKey, RTP_PACKETS};
-#[cfg(any(feature = "capture", test))]
-use super::{packetizer::Packetizer, video};
-use anyhow::Result;
-#[cfg(any(feature = "capture", test))]
-use rtc::rtp::codec::h264::H264Payloader;
-use rtc::{
-    media_stream::MediaStreamTrack,
-    rtcp::payload_feedbacks::{
-        full_intra_request::FullIntraRequest, picture_loss_indication::PictureLossIndication,
-    },
-    rtp,
-    rtp_transceiver::rtp_sender::{
-        RTCRtpCodec, RTCRtpCodecParameters, RTCRtpCodingParameters, RTCRtpEncodingParameters,
-        RTCRtpRtxParameters, RtpCodecKind,
-    },
+//! One admitted output owns its sender and each negotiated encoding's RTP clock.
+use super::{
+    packetizer::Packetizer, video, OutputStream, OutputStreams, Source, SourceFeed, SourceOrigin,
+    TrackKey, RTP_PACKETS,
 };
+use crate::peer::transport::Transport;
+use anyhow::Result;
+use futures_util::{stream::FuturesUnordered, StreamExt};
+use rtc::{rtp, rtp_transceiver::rtp_sender::RTCRtpCodecParameters};
 use std::sync::Arc;
-#[cfg(any(feature = "capture", test))]
 use std::sync::Weak;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinHandle,
 };
 use uuid::Uuid;
-use webrtc::{
-    media_stream::track_local::{static_rtp::TrackLocalStaticRTP, TrackLocal, TrackLocalEvent},
-    peer_connection::PeerConnection,
-    rtp_transceiver::RtpSender,
-};
 
 #[derive(Clone)]
 enum Input {
     Rtp(mpsc::Sender<rtp::Packet>),
-    #[cfg(any(feature = "capture", test))]
     Video(Arc<video::Input>),
 }
+
+#[derive(Clone)]
+struct Encoding {
+    rid: String,
+    ssrc: u32,
+    input: Input,
+}
+
 enum Reader {
     Rtp(mpsc::Receiver<rtp::Packet>),
-    #[cfg(any(feature = "capture", test))]
     Video(Arc<video::Input>, Packetizer),
 }
 impl Reader {
     async fn recv(&mut self) -> Option<Result<Vec<rtp::Packet>>> {
         match self {
             Self::Rtp(rx) => rx.recv().await.map(|packet| Ok(vec![packet])),
-            #[cfg(any(feature = "capture", test))]
             Self::Video(input, packetizer) => input
-                .recv()
+                .recv_with_source()
                 .await
-                .map(|frame| packetizer.packetize(frame.bytes.clone(), frame.presentation_time)),
+                .map(|(video, frame)| packetizer.packetize_source(&video, &frame)),
         }
     }
+}
+
+struct Writer {
+    transport: Transport,
+    reports: OutputStreams,
+    clock_rate: u32,
+    output: Uuid,
+    writable: Arc<tokio::sync::Notify>,
+}
+async fn write(
+    mut reader: (u32, String, Reader),
+    writer: Arc<Writer>,
+) -> ((u32, String, Reader), Option<Result<()>>) {
+    let Some(packets) = reader.2.recv().await else {
+        return (reader, None);
+    };
+    let (ssrc, rid) = (reader.0, reader.1.clone());
+    let (id, clock_rate) = (writer.output, writer.clock_rate);
+    let (transport, output_reports, writable) =
+        (&writer.transport, &writer.reports, &writer.writable);
+    let result = async {
+        let packets = packets?;
+        let timestamp = packets.first().map(|p| p.header.timestamp).unwrap_or(0);
+        let wallclock = {
+            let streams = output_reports.0.lock().unwrap();
+            let stream = &streams[&ssrc];
+            let report = stream.report.lock().unwrap();
+            report
+                .as_ref()
+                .and_then(|(sr, at)| {
+                    if let Some(clock) = &stream.clock {
+                        return clock.projected(*at).map(|(at, _)| at);
+                    }
+                    let ticks = timestamp.wrapping_sub(sr.rtp_time) as i32;
+                    let duration = std::time::Duration::from_nanos(
+                        u64::from(ticks.unsigned_abs()) * 1_000_000_000 / u64::from(clock_rate),
+                    );
+                    let projected = if ticks >= 0 {
+                        *at + duration
+                    } else {
+                        *at - duration
+                    };
+                    Some(projected)
+                })
+                .unwrap_or_else(std::time::Instant::now)
+        };
+        let queued = std::time::Instant::now();
+        if wallclock > queued {
+            tokio::time::sleep_until(wallclock.into()).await;
+        }
+        let mut pending = packets;
+        loop {
+            let changed = writable.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            match transport
+                .write_au(id, rid.clone(), pending, wallclock)
+                .await?
+            {
+                None => break,
+                Some(au) => pending = au,
+            }
+            changed.await;
+        }
+        Ok(())
+    }
+    .await;
+    (reader, Some(result))
 }
 
 pub(crate) struct Output {
     pub id: Uuid,
     pub source: Uuid,
     pub stream: String,
-    pub sender: Arc<dyn RtpSender>,
-    source_codec: RTCRtpCodec,
+
     negotiated: watch::Sender<Option<RTCRtpCodecParameters>>,
-    input: Input,
+    encodings: Vec<Encoding>,
     task: JoinHandle<()>,
     feedback: JoinHandle<()>,
-    reports: SenderReports,
-    ssrc: u32,
+    reports: OutputStreams,
 }
 impl Output {
     pub async fn new(
-        pc: &dyn PeerConnection,
+        pc: &Transport,
         source: &Source,
         stream: String,
         pair: Uuid,
         key: TrackKey,
         events: mpsc::Sender<crate::peer::Event>,
-        reports: SenderReports,
+        reports: OutputStreams,
+        preserve_layers: bool,
     ) -> Result<Self> {
         let id = Uuid::new_v4();
         let ssrc = u32::from_be_bytes(id.as_bytes()[..4].try_into().unwrap());
-        let track = Arc::new(TrackLocalStaticRTP::new(MediaStreamTrack::new(
-            stream.clone(),
-            Uuid::new_v4().to_string(),
-            "Encoded relay".into(),
-            source.kind,
-            vec![RTCRtpEncodingParameters {
-                rtp_coding_parameters: RTCRtpCodingParameters {
-                    ssrc: Some(ssrc),
-                    rtx: (source.kind == RtpCodecKind::Video).then_some(RTCRtpRtxParameters {
-                        ssrc: ssrc.wrapping_add(1),
-                    }),
-                    ..Default::default()
-                },
-                // The SDK uses this format identity to bind its SR/feedback
-                // interceptors. Actual source level still comes only from SPS.
-                codec: source.codec.clone(),
-                ..Default::default()
-            }],
-        )));
-        let sender = pc.add_track(track.clone()).await?;
-        let configure = async {
-            if source.kind == RtpCodecKind::Video {
-                for transceiver in pc.get_transceivers().await {
-                    if transceiver
-                        .sender()
-                        .await?
-                        .is_some_and(|candidate| candidate.id() == sender.id())
-                    {
-                        let capabilities = sender
-                            .get_capabilities(source.kind)
-                            .await?
-                            .ok_or_else(|| anyhow::anyhow!("missing local video capabilities"))?;
-                        let primary: Vec<RTCRtpCodecParameters> = capabilities
-                            .codecs
-                            .into_iter()
-                            .filter(|codec| compatible(&source.codec, codec))
-                            .map(|rtp_codec| RTCRtpCodecParameters {
-                                rtp_codec,
-                                ..Default::default()
-                            })
-                            .collect();
-                        anyhow::ensure!(!primary.is_empty(), "no compatible encoded video codec");
-                        // set_codec_preferences retains only repair codecs associated with the primary.
-                        transceiver.set_codec_preferences(primary).await?;
-                        break;
-                    }
+        let supplied = source.layers.as_ref().filter(|_| preserve_layers);
+        #[cfg(any(feature = "capture", test))]
+        if matches!(source.origin, SourceOrigin::Local) {
+            anyhow::ensure!(
+                supplied.is_none_or(video::Layers::has_feed),
+                "local source has no surviving supplied encoding"
+            );
+        }
+        let supply = supplied.map(video::Layers::snapshot);
+        let rids = supply
+            .as_ref()
+            .map(|layers| layers.iter().map(|(rid, _)| rid.clone()).collect())
+            .unwrap_or_else(|| vec![String::new()]);
+        let (mut feedback_rx, writable) = pc
+            .add_output(
+                id,
+                source.codec.clone(),
+                source.kind,
+                stream.clone(),
+                rids.clone(),
+            )
+            .await?;
+        let mut encodings = Vec::new();
+        let mut readers = Vec::new();
+        for (index, rid) in rids.into_iter().enumerate() {
+            let ssrc = ssrc.wrapping_add(index as u32 * 2);
+            let (input, reader, report) = match &source.feed {
+                SourceFeed::Rtp { report, .. } => {
+                    let (packets, rx) = mpsc::channel(RTP_PACKETS);
+                    (Input::Rtp(packets), Reader::Rtp(rx), report.clone())
                 }
-            }
-            Ok::<_, anyhow::Error>(())
-        }
-        .await;
-        if let Err(error) = configure {
-            let _ = pc.remove_track(&sender).await;
-            return Err(error);
-        }
-        let (input, mut reader, report) = match &source.feed {
-            SourceFeed::Rtp { report, .. } => {
-                let (packets, rx) = mpsc::channel(RTP_PACKETS);
-                (Input::Rtp(packets), Reader::Rtp(rx), report.clone())
-            }
-            #[cfg(any(feature = "capture", test))]
-            SourceFeed::Video(video) => {
-                let report: super::SourceReport = Default::default();
-                let packetizer = Packetizer::new(
-                    &source.codec,
-                    Box::<H264Payloader>::default(),
-                    0, // The writer applies this sender's negotiated payload type.
-                    ssrc,
-                    video.time(),
-                    report.clone(),
-                );
-                let input = video.subscribe();
-                // Confirmed transport demand activates the first encoding.
-                input.set_active(false);
-                (
-                    Input::Video(input.clone()),
-                    Reader::Video(input, packetizer),
+                SourceFeed::Video(video) => {
+                    let report: super::SourceReport = Default::default();
+                    let packetizer = match Packetizer::new(
+                        &source.codec,
+                        0, // The writer applies this sender's negotiated payload type.
+                        ssrc,
+                        video.time(),
+                        report.clone(),
+                    ) {
+                        Ok(packetizer) => packetizer,
+                        Err(error) => {
+                            let _ = pc.retire_output(id).await;
+                            return Err(error);
+                        }
+                    };
+                    let input = match &supply {
+                        Some(layers) => layers
+                            .iter()
+                            .find(|(id, _)| *id == rid)
+                            .and_then(|(_, video)| video.as_ref())
+                            .map_or_else(
+                                || video::Input::new(video.time(), video.changed()),
+                                video::Video::subscribe,
+                            ),
+                        None => video.subscribe(),
+                    };
+                    // Adaptive sources wait for confirmed transport demand. A relay
+                    // without a decoder can directly consume its original AU feed.
+                    let adaptive = match &source.origin {
+                        #[cfg(any(feature = "capture", test))]
+                        SourceOrigin::Local => true,
+                        SourceOrigin::Incoming { .. } => {
+                            source.codec.mime_type.eq_ignore_ascii_case("video/H264")
+                                && cfg!(all(
+                                    feature = "capture",
+                                    any(
+                                        target_os = "windows",
+                                        target_os = "linux",
+                                        target_os = "macos"
+                                    )
+                                ))
+                        }
+                    };
+                    input.set_active(!adaptive);
+                    (
+                        Input::Video(input.clone()),
+                        Reader::Video(input, packetizer),
+                        report,
+                    )
+                }
+            };
+            reports.0.lock().unwrap().insert(
+                ssrc,
+                OutputStream {
                     report,
-                )
-            }
-        };
-        reports
-            .0
-            .lock()
-            .unwrap()
-            .insert(ssrc, (source.codec.clock_rate, report));
+                    clock: match &source.feed {
+                        SourceFeed::Video(video) => Some(video.time()),
+                        SourceFeed::Rtp { .. } => None,
+                    },
+                },
+            );
+            encodings.push(Encoding {
+                rid: rid.clone(),
+                ssrc,
+                input,
+            });
+            readers.push((ssrc, rid, reader));
+        }
         let (negotiated, mut format) = watch::channel(None::<RTCRtpCodecParameters>);
         let source_id = source.id;
-        let feedback_track = track.clone();
         let upstream = source.clone();
-        let feedback_input = input.clone();
+        let feedback_inputs = encodings.clone();
         let feedback = tokio::spawn(async move {
-            while let Some(TrackLocalEvent::OnRtcpPacket(packets)) = feedback_track.poll().await {
-                if packets.iter().any(|packet| {
-                    packet.as_any().is::<PictureLossIndication>()
-                        || packet.as_any().is::<FullIntraRequest>()
-                }) {
-                    match &feedback_input {
+            while feedback_rx.recv().await.is_some() {
+                for encoding in &feedback_inputs {
+                    match &encoding.input {
                         Input::Rtp(_) => upstream.request_keyframe(),
-                        #[cfg(any(feature = "capture", test))]
                         Input::Video(input) => input.request_keyframe(),
                     }
                 }
             }
         });
-        // Audio has no startup frame to preserve while its sending format is negotiated.
-        let audio = source.kind == RtpCodecKind::Audio;
+        let writer = Arc::new(Writer {
+            transport: pc.clone(),
+            reports: reports.clone(),
+            clock_rate: source.codec.clock_rate,
+            output: id,
+            writable,
+        });
+        let mut writes = readers
+            .into_iter()
+            .map(|reader| write(reader, writer.clone()))
+            .collect::<FuturesUnordered<_>>();
         let task = tokio::spawn(async move {
             let result = async {
                 loop {
-                    let packets = tokio::select! {
+                    tokio::select! {
                         changed = format.changed() => {
                             if changed.is_err() { break; }
                             anyhow::ensure!(format.borrow().is_some(), "encoded codec no longer negotiated");
-                            continue;
                         }
-                        packets = reader.recv(), if audio || format.borrow().is_some() => {
-                            match packets { Some(packets) => packets?, None => break }
+                        next = writes.next(), if format.borrow().is_some() => {
+                            let Some((reader,result))=next else {break};
+                            if let Some(result)=result {result?;writes.push(write(reader,writer.clone()));}
                         }
-                    };
-                    let Some(payload_type) = format.borrow().as_ref().map(|codec| codec.payload_type) else {
-                        continue;
-                    };
-                    for packet in packets {
-                      // The sender owns negotiated PT (e.g. a remote offer may use 109).
-                      // Construct a hop-local header: no upstream TWCC/abs-send-time/CSRC.
-                      let packet = rtp::Packet {
-                        header: rtp::header::Header {
-                            version: 2,
-                            padding: packet.header.padding,
-                            marker: packet.header.marker,
-                            payload_type,
-                            sequence_number: packet.header.sequence_number,
-                            timestamp: packet.header.timestamp,
-                            ssrc,
-                            ..Default::default()
-                        },
-                        payload: packet.payload,
-                      };
-                      // SDK send errors contain the rejected media packet.
-                      track.write_rtp(packet).await
-                        .map_err(|_| anyhow::anyhow!("encoded RTP writer unavailable"))?;
                     }
+
                 }
                 Ok::<_, anyhow::Error>(())
             }
@@ -242,55 +294,105 @@ impl Output {
             id,
             source: source.id,
             stream,
-            sender,
-            source_codec: source.codec.clone(),
             negotiated,
-            input,
+            encodings,
             task,
             feedback,
             reports,
-            ssrc,
         })
     }
     pub fn rtp_sink(&self) -> Option<mpsc::Sender<rtp::Packet>> {
-        match &self.input {
+        if self.negotiated.borrow().is_none() {
+            return None;
+        }
+        match &self.encodings.first()?.input {
             Input::Rtp(packets) => Some(packets.clone()),
-            #[cfg(any(feature = "capture", test))]
             Input::Video(_) => None,
         }
     }
-    #[cfg(any(feature = "capture", test))]
     pub fn video_input(&self) -> Option<Weak<video::Input>> {
-        match &self.input {
+        let encoding = self.encodings.first()?;
+        if !encoding.rid.is_empty() {
+            return None;
+        }
+        match &encoding.input {
             Input::Video(input) => Some(Arc::downgrade(input)),
             Input::Rtp(_) => None,
         }
     }
     #[cfg(feature = "capture")]
-    pub fn encoding_failed(&self, video: &video::Video) -> bool {
-        match &self.input {
-            Input::Video(input) => input.failed(video),
-            Input::Rtp(_) => false,
-        }
+    pub fn video_inputs(&self) -> Vec<(String, Weak<video::Input>)> {
+        self.encodings
+            .iter()
+            .filter_map(|encoding| match &encoding.input {
+                Input::Video(input) => Some((encoding.rid.clone(), Arc::downgrade(input))),
+                Input::Rtp(_) => None,
+            })
+            .collect()
     }
-    pub fn confirm(&self, codecs: &[RTCRtpCodecParameters]) {
-        self.negotiated.send_replace(
-            codecs
+    #[cfg(feature = "capture")]
+    pub fn encoding_failed(&self, video: &video::Video, layers: Option<&video::Layers>) -> bool {
+        if let Some(input) = self.video_input().and_then(|input| input.upgrade()) {
+            return input.failed(video);
+        }
+        for encoding in &self.encodings {
+            if let Input::Video(input) = &encoding.input {
+                if layers.is_some() {
+                    input.retire(video);
+                } else {
+                    input.failed(video);
+                }
+            }
+        }
+        // The source inventory includes failures predating this output. Unbound
+        // RID readers must not keep an exhausted local supply alive.
+        layers.map_or_else(
+            || {
+                self.encodings.iter().all(
+                    |encoding| matches!(&encoding.input, Input::Video(input) if input.is_closed()),
+                )
+            },
+            |layers| !layers.has_feed(),
+        )
+    }
+    pub fn select_layers(
+        &self,
+        layers: &video::Layers,
+        demand: video::EncodingDemand,
+        now: std::time::Instant,
+    ) -> Result<()> {
+        if let Some(input) = self.video_input().and_then(|input| input.upgrade()) {
+            layers.select(&input, demand, now)
+        } else {
+            let inputs = self
+                .encodings
                 .iter()
-                .find(|codec| compatible(&self.source_codec, &codec.rtp_codec))
-                .cloned(),
-        );
-    }
-    pub async fn close(self, pc: &dyn PeerConnection) {
-        #[cfg(any(feature = "capture", test))]
-        if let Input::Video(input) = &self.input {
-            input.close();
+                .filter_map(|encoding| match &encoding.input {
+                    Input::Video(input) => Some((encoding.rid.clone(), input.clone())),
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            layers.supply(&inputs, demand, now)
         }
-        self.reports.0.lock().unwrap().remove(&self.ssrc);
+    }
+    pub fn confirm(&self, codec: Option<RTCRtpCodecParameters>) -> Result<()> {
+        self.negotiated.send_replace(codec);
+        Ok(())
+    }
+    pub async fn close(self, pc: &Transport) {
+        for encoding in &self.encodings {
+            if let Input::Video(input) = &encoding.input {
+                input.close();
+            }
+        }
         self.task.abort();
         self.feedback.abort();
         let _ = self.task.await;
         let _ = self.feedback.await;
-        let _ = pc.remove_track(&self.sender).await;
+        let _ = pc.retire_output(self.id).await;
+        let mut reports = self.reports.0.lock().unwrap();
+        for encoding in &self.encodings {
+            reports.remove(&encoding.ssrc);
+        }
     }
 }

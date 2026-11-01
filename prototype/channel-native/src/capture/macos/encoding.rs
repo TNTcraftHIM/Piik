@@ -1,6 +1,7 @@
 //! One codec thread per encoding; one VT frame in flight and two ordered AUs.
 use super::{checked, Clock, Frames, Image, RawFrame};
-use crate::capture::{EncodedFrame, Settings};
+use crate::capture::{FrameTiming, Settings};
+use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Result};
 use cidre::{arc, cf, cm, cv, objc, vt};
 use std::{
@@ -171,7 +172,7 @@ async fn next(shared: &Shared, frames: &Frames, previous: Option<Instant>) -> Re
         };
         if has_room {
             tokio::select! {
-                raw = frames.recv_after(if force { None } else { previous }) => {
+                raw = frames.recv_after(if force && frames.timing() == FrameTiming::Capture { None } else { previous }) => {
                     let Some(raw) = raw? else { return Ok(None); };
                     let mut state = shared.state.lock().unwrap();
                     if state.stop { return Ok(None); }
@@ -366,6 +367,7 @@ fn access_unit(sample: &cm::SampleBuf, clock: Clock) -> Result<EncodedFrame> {
         data = &data[length..];
     }
     Ok(EncodedFrame {
+        vp8: None,
         bytes,
         keyframe,
         presentation_time: clock.project(sample.pts())?,
@@ -399,14 +401,20 @@ fn run(
             // Capture-only: an explicit request may refresh this current static
             // snapshot once at current host time. This is not Source/derived
             // timing. Natural source frames always retain their original PTS.
-            let time = if explicit_force && last.is_some_and(|last| raw.time <= last) {
+            let time = if frames.timing() == FrameTiming::Capture
+                && explicit_force
+                && last.is_some_and(|last| raw.time <= last)
+            {
                 clock.project(cm::Clock::host_time_clock().time())?
             } else {
                 raw.time
             };
             last = Some(time);
             let mut force = explicit_force || pending_keyframe;
-            if !force && !cadence.accept(clock.timestamp(time).value / 100) {
+            if frames.timing() == FrameTiming::Capture
+                && !force
+                && !cadence.accept(clock.timestamp(time).value / 100)
+            {
                 continue;
             }
             let (width, height) = raw.image.size();

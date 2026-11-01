@@ -13,11 +13,14 @@ default = ["capture"]
 capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus", "dep:ndk", "dep:ndk-context", "dep:jni", "dep:khronos-egl", "dep:glow"]
 
 [dependencies]
+bytes = "=1.12.1"
 piik-channel-core = { path = "../channel-core", features = ["sqlite"] }
-webrtc = "=0.21.1"
+str0m = { version = "=0.24.1", default-features = false, features = ["rust-crypto"] }
 rtc = "=0.21.1"
 portmapper = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17", default-features = false }
 netwatch = { version = "=0.20.0", git = "https://github.com/TNTcraftHIM/net-tools", rev = "0a61bb64facc469d015f5ba537dda57c94cdcb17" }
+socket2 = "0.6"
+noq-udp = "=1.4.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "signal", "time", "process", "io-util", "io-std"] }
 tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
 futures-util = { version = "0.3", features = ["sink"] }
@@ -64,13 +67,13 @@ gst-video = { package = "gstreamer-video", version = "=0.24.5", optional = true,
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "android"))'.dependencies]
 rusty-opus = { version = "=1.0.2", optional = true }
 
-# Temporary upstream bug fixes: webrtc-rs/rtc#296, #298 and #308; removal in README.md.
+# Temporary upstream H264 parser fix: webrtc-rs/rtc#308; removal in README.md.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "c4a1c92093c1c715dacc13cf09ae0cb95be947ca" }
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "3b6d3c0a03a641a92aff7518418c6eeb67cf1444" }
 
 [target.'cfg(windows)'.dependencies]
 vigem-rust = { version = "=0.2.0", default-features = false, features = ["x360"] }
 wasapi = { version = "=0.26.0", optional = true }
 windows-capture = { version = "=2.0.1", optional = true }
 windows-core = "=0.62.2"
-windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_Performance", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation", "Win32_Media_Audio", "Win32_Security"] }
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_System_JobObjects", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Ole", "Win32_System_Variant", "Win32_System_Threading", "Win32_System_Performance", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_UI_HiDpi", "Win32_Graphics_Gdi", "Win32_Graphics_Dwm", "Win32_Graphics_Direct3D", "Win32_Graphics_Direct3D11", "Win32_Graphics_Direct3D10", "Win32_Graphics_Dxgi", "Win32_Graphics_Dxgi_Common", "Win32_Media_MediaFoundation", "Win32_Media_Audio", "Win32_Security"] }

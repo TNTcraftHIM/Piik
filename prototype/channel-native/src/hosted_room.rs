@@ -120,8 +120,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn signed_interactions_use_read_access_and_the_current_native_binding_without_history() -> Result<()>
-    {
+    fn signed_interactions_use_read_access_and_the_current_native_binding_without_history(
+    ) -> Result<()> {
         use piik_channel_core::{
             conversation::{
                 ConversationAddress, ConversationCommand, ConversationRecord, ConversationReply,
@@ -133,7 +133,8 @@ mod tests {
             Endpoint, Member,
         };
         use std::collections::BTreeMap;
-        let folder = std::env::temp_dir().join(format!("piik-native-interaction-{}", Uuid::new_v4()));
+        let folder =
+            std::env::temp_dir().join(format!("piik-native-interaction-{}", Uuid::new_v4()));
         std::fs::create_dir(&folder)?;
         let path = folder.join("room.sqlite");
         let owner = Member {

@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-10-31
+Last updated: 2026-11-01
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -23,15 +23,18 @@ for reading, bidirectional voice, files and screen startup. The
 explicit [Native participant](../prototype/channel-native/README.md) operates
 SQLite-backed rooms and forwards encoded Opus and file ranges on the same base paths.
 Its media adapter also forwards VP8/H264 with source audio and preserves their
-shared source clock.
+shared source clock. Capture-enabled Apps derive constrained received-video
+outputs through one shared decoder. Released str0m owns transport, congestion
+control, pacing and retransmission; Piik owns complete frames, shared encoding
+demand and source clocks.
 Chat and history use authenticated requests and room-owner confirmations on
 those base paths. File descriptions stay in confirmed history; selected and verified
 copies stay with their participants. Screen plans can replace a leaf or relay
 branch after its affected viewers prove delivery, while preserving playback.
 Server now embeds that same Native participant for its persistent rooms. Domain,
 Browser and Native consume one shared Rust core; conversation has one peer carrier.
-The combined Native candidate adds a fixed Server UDP entry for self-hosted and
-FRP deployments, retaining App peers' existing socket ownership.
+Server has a fixed UDP entry for self-hosted and FRP deployments, retaining App
+peers' existing socket ownership.
 App hosting has its own Native endpoint and process lifetime; the Browser's
 personal voice, shares and watches remain page-owned. Existing Browser rooms
 retain their page lifetime and storage when an App connects.

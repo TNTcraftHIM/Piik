@@ -1,10 +1,11 @@
 //! One Encoding owns one child and its AU slot. WGC remains in the parent.
 use super::{
+    frames::RawFrame,
     gpu,
-    windows::RawFrame,
     worker::{self, Command, Reply},
-    CaptureClock, EncodedFrame, Settings,
+    CaptureClock, FrameTiming, Settings,
 };
+use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context, Result};
 use std::{
     process::Stdio,
@@ -105,6 +106,7 @@ impl Encoding {
     pub(super) fn start(
         settings: Settings,
         clock: CaptureClock,
+        timing: FrameTiming,
         latest: Option<RawFrame>,
     ) -> Result<Self> {
         let (stop, stopped) = watch::channel(None);
@@ -125,7 +127,7 @@ impl Encoding {
                     let rt = tokio::runtime::Builder::new_current_thread()
                         .enable_all()
                         .build()?;
-                    rt.block_on(supervise(worker.clone(), stopped, clock, settings))
+                    rt.block_on(supervise(worker.clone(), stopped, clock, timing, settings))
                 })();
                 worker.finish(&result);
                 result
@@ -200,6 +202,7 @@ async fn supervise(
     shared: Arc<Shared>,
     mut stopped: watch::Receiver<Option<Result<(), String>>>,
     clock: CaptureClock,
+    timing: FrameTiming,
     settings: Settings,
 ) -> Result<()> {
     let job = super::job::Job::new()?;
@@ -226,7 +229,7 @@ async fn supervise(
     let writer_shared = shared.clone();
     let writer = tokio::spawn(async move {
         let result = async {
-            worker::write_json(&mut input, &Command::Start { settings }).await?;
+            worker::write_json(&mut input, &Command::Start { settings, timing }).await?;
             loop {
                 let changed = writer_shared.changed.notified();
                 tokio::pin!(changed);
@@ -311,6 +314,7 @@ async fn supervise(
                                 "unsolicited encoding AU"
                             );
                             s.frame = Some(EncodedFrame {
+                                vp8: None,
                                 bytes,
                                 presentation_time: clock.instant(qpc),
                                 keyframe,
@@ -390,6 +394,7 @@ mod tests {
         assert!(shared.state.lock().unwrap().read_sent);
         let pts = std::time::Instant::now();
         shared.state.lock().unwrap().frame = Some(EncodedFrame {
+            vp8: None,
             bytes: vec![1, 2, 3],
             presentation_time: pts,
             keyframe: true,

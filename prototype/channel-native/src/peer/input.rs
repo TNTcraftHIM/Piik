@@ -378,6 +378,8 @@ mod tests {
             ice_servers: vec![],
             pairs: vec![
                 PairInfo {
+                    can_receive_video_layers: false,
+                    udp_preparation: None,
                     id: id(7),
                     peer_id: id(1),
                     rooms: vec![],
@@ -390,6 +392,8 @@ mod tests {
                     }],
                 },
                 PairInfo {
+                    can_receive_video_layers: false,
+                    udp_preparation: None,
                     id: id(8),
                     peer_id: id(3),
                     rooms: vec![],

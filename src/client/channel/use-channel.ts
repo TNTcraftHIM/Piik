@@ -26,6 +26,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
     };
   }, [session]);
   return { ...view,
+    setQuality: session.setQuality,
     activateApp: session.activateApp,
     browse: session.browse, sendMessage: session.sendMessage, renameSelf: session.renameSelf, updateDomain: session.updateDomain,
     setMessageReaction: session.setMessageReaction,

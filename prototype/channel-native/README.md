@@ -2,11 +2,12 @@
 
 This isolated Rust participant operates rooms through the same [shared `RoomHost` core](../channel-core/README.md)
 as the Browser adapter. SQLite stores each room's policy and confirmed history;
-the domain supplies admission, directory views and transport leases. Its actual
-WebRTC endpoint carries room DataChannels, encoded media and requested file
-ranges without retaining file contents in SQLite. The media adapter forwards
-Opus, VP8 and H264 Constrained Baseline with packetization mode 1, without
-decoding or transcoding.
+the domain supplies admission, directory views and transport leases. Its
+str0m endpoint carries room DataChannels, encoded media and requested file
+ranges without retaining file contents in SQLite. Opus and compatible original
+video are forwarded without decoding. Capture-enabled Apps can derive constrained
+H264 outputs from a received source through one shared decoder; the original
+encoded feed remains available. Server forwarding builds without capture.
 
 The [network design](../../docs/research/channel-network-design.md) owns the model.
 This executable is an explicitly started development host. Chat, history, room voice and files
@@ -132,7 +133,6 @@ Linux and Android keep their system picker.
 Each incoming audio/video track keeps its RTP clock and source Sender Report
 mapping. Outputs in one flow share a stream while owning separate SSRCs and
 bounded writers; WebRTC handles each hop's retransmission and congestion control.
-The pinned SDK does not provide RTCP round-trip-time statistics.
 Readers, outputs and their completion reports belong to the exact directed flow
 lease. Removing that lease retires its work even if the same publication is
 subscribed again on the shared connection; the replacement has a new flow ID.
@@ -143,31 +143,22 @@ warm output, stream, SSRC, source clock and feedback owner.
 ## RTC Dependency
 
 Native, Server and Android pin `rtc` to commit
-`c4a1c92093c1c715dacc13cf09ae0cb95be947ca` in the temporary
-[bug-fix fork](https://github.com/TNTcraftHIM/rtc/tree/c4a1c92093c1c715dacc13cf09ae0cb95be947ca).
-It contains three upstream bug fixes on the published 0.21.1 baseline:
+`3b6d3c0a03a641a92aff7518418c6eeb67cf1444` in the temporary
+[bug-fix fork](https://github.com/TNTcraftHIM/rtc/tree/3b6d3c0a03a641a92aff7518418c6eeb67cf1444).
+It contains only [PR #308](https://github.com/webrtc-rs/rtc/pull/308) on the
+published 0.21.1 baseline: a new FU-A start clears unfinished fragments, and an
+incomplete STAP-A length returns an error. Piik uses the public packet/codec,
+STUN and TURN helpers; str0m owns negotiation and transport.
 
-- [PR #296](https://github.com/webrtc-rs/rtc/pull/296) retires stale RTP extension
-  mappings and preserves the active section's negotiated IDs. Changing voice and
-  screen tracks on a retained connection otherwise produces invalid Browser offers.
-- [PR #298](https://github.com/webrtc-rs/rtc/pull/298) keeps local H264 capabilities
-  separate from negotiated formats, matches equivalent profiles and applies
-  directional levels. Piik uses those formats for each output and checks the
-  actual encoded SPS at its input boundary. The [network design](../../docs/research/channel-network-design.md)
-  owns the distinction between a Browser's SDP level and its actual decoder.
-- [PR #308](https://github.com/webrtc-rs/rtc/pull/308) starts a new FU-A assembly
-  without leftover fragments and rejects an incomplete STAP-A length field.
+The incoming-source adapter owns complete-AU ordering and first-packet metadata.
+Its narrow H264 admission rule accepts equivalent Constrained Baseline formats
+and validates actual SPS separately from advertised decoder levels, as defined
+by the [network design](../../docs/research/channel-network-design.md).
 
-[PR #309](https://github.com/webrtc-rs/rtc/pull/309) remains an offered upstream
-API addition. Formal code does not call its new entry points, and the current
-pin excludes it. Piik's adapter owns any additional complete-sample and metadata
-mechanisms.
-
-This pin retains the existing Native transport implementation. Cargo's patch
-belongs to each workspace root. All three consuming manifests and lockfiles
-carry the same Git revision. The fork retains upstream MIT/Apache-2.0 licensing; no
-build-time source patch or registry-cache edit is used. When an upstream release
-provides all three fixes, update the three roots and their locks, run the
+Cargo's patch belongs to each workspace root. All three consuming manifests and
+lockfiles carry the same Git revision. The fork retains upstream MIT/Apache-2.0
+licensing; no build-time source patch or registry-cache edit is used. When an
+upstream release provides the parser repair, update the three roots and locks, run the
 existing media interoperability and platform checks, and remove the patch entries.
 
 Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
@@ -191,35 +182,21 @@ label. When an upstream release includes the repair, return both direct entries
 to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 
-The selected private replacement uses released str0m 0.24.1 through public
-APIs, replacing the application GoogCc integration and async transport wrapper.
-Piik retains complete H264 access units, shared encoding ownership, coordinated
-UDP socket handoff and service-owned fixed Server UDP listeners. Codec parsing
-and profile helpers still use the bug-fix RTC pin; it is not a fork-free
-replacement. The `rust-crypto` provider also requires AWS-LC through its published
-dependency graph.
+Native uses released str0m 0.24.1 through its public RTP/Sans-I/O interface.
+The SDK owns ICE, DTLS/SRTP, SCTP, pacing, retransmission and congestion control.
+Piik owns source clocks, shared encodings, output demand and pair-scoped socket
+handoff; Server owns its fixed UDP listeners. The `rust-crypto` provider requires
+AWS-LC through its published dependency graph.
 
-The replacement's incoming-source adapter now owns complete-AU ordering and
-first-packet metadata over the public RTP/depacketizer interfaces. Its existing
-peer and Browser interoperability checks use the bug-only pin. Earlier frozen
-SDK, Android and transport receipts used `5efc2df`, including the sample-building API;
-they retain that identity. Remaining platform acceptance precedes promotion
-of the replacement into the formal runtime.
-
-`build/native-current-assembly/receipt.json` indexes the previous combined source
-and the replacement under `development.transportAlternative`, with separately
-frozen source and runtime evidence. The adjacent README describes these local
-candidates. Adopting the private transport remains in [TODO](../../docs/todo.md).
-That index also owns the separately frozen Linux and macOS incoming-H264
-extensions, which reuse the same derived producer, source clock and independent
-encoding owners. Each candidate's receipt records its platform checks.
+`build/native-current-assembly/receipt.json` indexes separately frozen source and
+runtime evidence, including earlier dependency candidates. Each receipt records
+its tested revision. [TODO](../../docs/todo.md) owns remaining platform and
+packaging acceptance.
 
 ## Run
 
 Start the [domain and shared Web interface](../channel-server/README.md#run),
-then run this participant with Rust 1.91. The shared core and Browser/WASM adapter
-retain their Rust 1.86 requirement; the newer toolchain belongs to this Native
-media dependency.
+then run this participant with the project's Rust 1.91 toolchain.
 
 ```powershell
 $env:CHANNEL_WS_URL = "ws://127.0.0.1:8791/prototype/channel"

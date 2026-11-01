@@ -3,7 +3,7 @@ use super::{
     frames::{Clock, Frames, RawFrame},
     graphics::Graphics,
 };
-use crate::capture::{EncodedFrame, Settings};
+use crate::{capture::Settings, EncodedFrame};
 use anyhow::{anyhow, ensure, Result};
 use ndk::media::{
     media_codec::{DequeuedOutputBufferInfoResult, MediaCodec, MediaCodecDirection},
@@ -261,6 +261,7 @@ impl Codec {
                         bytes = complete;
                     }
                     return Ok(Some(EncodedFrame {
+                        vp8: None,
                         bytes,
                         keyframe,
                         presentation_time: frames.clock.project(pts * 1000),

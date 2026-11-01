@@ -11,3 +11,8 @@ pub mod session;
 mod shutdown;
 
 pub use shutdown::shutdown_signal;
+
+pub use media::{
+    vp8::{Vp8FrameMetadata, Vp8PictureId},
+    EncodedFrame,
+};

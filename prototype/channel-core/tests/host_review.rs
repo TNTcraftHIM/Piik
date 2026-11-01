@@ -23,29 +23,26 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         let reader = Uuid::new_v4();
         let publication = Uuid::new_v4();
         let binding = Uuid::new_v4();
-        let mut endpoints =
-            BTreeMap::from([
-                (
-                    publisher,
-                    Endpoint {
-                        member: owner,
-                        connected: true,
-                        signing_key:
-                            piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
-                                .signing_key(),
-                    },
-                ),
-                (
-                    reader,
-                    Endpoint {
-                        member: viewer,
-                        connected: true,
-                        signing_key:
-                            piik_channel_core::conversation::SessionSigner::from_seed([2; 32])
-                                .signing_key(),
-                    },
-                ),
-            ]);
+        let mut endpoints = BTreeMap::from([
+            (
+                publisher,
+                Endpoint {
+                    member: owner,
+                    connected: true,
+                    signing_key: piik_channel_core::conversation::SessionSigner::from_seed([1; 32])
+                        .signing_key(),
+                },
+            ),
+            (
+                reader,
+                Endpoint {
+                    member: viewer,
+                    connected: true,
+                    signing_key: piik_channel_core::conversation::SessionSigner::from_seed([2; 32])
+                        .signing_key(),
+                },
+            ),
+        ]);
         let mut host = RoomHost::new(
             RoomState::new(
                 "review".into(),

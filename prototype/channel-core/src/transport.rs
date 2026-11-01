@@ -1,4 +1,4 @@
-use crate::wire::{FlowBinding, PairInfo};
+use crate::wire::{FlowBinding, PairInfo, UdpPreparation};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -29,13 +29,21 @@ struct Directions {
     rooms: BTreeSet<String>,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Attempt {
+    Ordinary,
+    Prepared,
+}
+
 #[derive(Clone)]
 struct Pair {
     id: Uuid,
     flows: Directions,
+    attempt: Attempt,
+    ever_connected: bool,
 }
 
-/// Logical flow leases share one pair identity until the last lease retires.
+/// Logical flow leases share one current physical attempt until the last retires.
 #[derive(Clone, Default)]
 pub struct TransportBook {
     pairs: BTreeMap<(Uuid, Uuid), Pair>,
@@ -85,6 +93,8 @@ impl TransportBook {
                 .or_insert_with(|| Pair {
                     id: Uuid::new_v4(),
                     flows: Directions::default(),
+                    attempt: Attempt::Ordinary,
+                    ever_connected: false,
                 })
                 .flows = flows;
         }
@@ -132,11 +142,42 @@ impl TransportBook {
             .any(|pair| pair.id == id && pair.flows.rooms.contains(room))
     }
 
+    pub fn connected(&mut self, id: Uuid) {
+        if let Some(pair) = self.pairs.values_mut().find(|pair| pair.id == id) {
+            pair.ever_connected = true;
+        }
+    }
+
+    // The caller authorizes both current online capabilities. Only this book
+    // replaces a physical attempt; logical leases and their deadlines stay put.
+    pub fn prepare(&mut self, id: Uuid) -> bool {
+        let Some(pair) = self.pairs.values_mut().find(|pair| pair.id == id) else {
+            return false;
+        };
+        if pair.attempt != Attempt::Ordinary || pair.ever_connected {
+            return false;
+        }
+        pair.id = Uuid::new_v4();
+        pair.attempt = Attempt::Prepared;
+        true
+    }
+
     pub fn retire(&mut self, id: Uuid) {
         self.pairs.retain(|_, pair| pair.id != id);
     }
 
-    pub fn snapshot(&self, endpoint: Uuid) -> Vec<PairInfo> {
+    pub fn prepared(&self, id: Uuid) -> bool {
+        self.pairs
+            .values()
+            .any(|pair| pair.id == id && pair.attempt == Attempt::Prepared)
+    }
+
+    pub fn snapshot(
+        &self,
+        endpoint: Uuid,
+        can_prepare: impl Fn(Uuid) -> bool,
+        can_receive_video_layers: impl Fn(Uuid) -> bool,
+    ) -> Vec<PairInfo> {
         self.pairs
             .iter()
             .filter_map(|((first, second), pair)| {
@@ -149,7 +190,15 @@ impl TransportBook {
                 };
                 Some(PairInfo {
                     id: pair.id,
+                    udp_preparation: match pair.attempt {
+                        Attempt::Prepared => Some(UdpPreparation::Required),
+                        Attempt::Ordinary if !pair.ever_connected && can_prepare(peer) => {
+                            Some(UdpPreparation::Available)
+                        }
+                        Attempt::Ordinary => None,
+                    },
                     peer_id: peer,
+                    can_receive_video_layers: can_receive_video_layers(peer),
                     rooms: pair.flows.rooms.iter().cloned().collect(),
                     outgoing: outgoing.values().copied().collect(),
                     incoming: incoming.values().copied().collect(),

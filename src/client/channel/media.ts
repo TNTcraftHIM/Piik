@@ -5,6 +5,7 @@ import { VIEWER_QUALITY_EVIDENCE_INTERVAL_MS } from "../../shared/protocol";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
 import type { ChannelScreenInput, ScreenPresentation } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
+import type { QualityProfile } from "../media/quality";
 
 interface Peer {
   plan: ChannelPair;
@@ -32,7 +33,7 @@ export class ChannelMedia {
   private peers = new Map<string, Peer>();
   private publications: ChannelSnapshot["publications"] = [];
   private subscriptions: ChannelSnapshot["subscriptions"] = [];
-  private local = new Map<string, MediaStream>();
+  private local = new Map<string, { stream: MediaStream; profile?: QualityProfile }>();
   private streams = new Map<string, MediaStream>();
   private screenInputs = new Map<string, ChannelScreenInput[]>();
   private relayAudio = new Map<string, { tracks: MediaStreamTrack[]; audio: HTMLAudioElement }>();
@@ -44,13 +45,13 @@ export class ChannelMedia {
     private bulkClosed?: (peer: string) => void,
     private input?: (pairId: string, channel: RTCDataChannel | null) => void) {}
 
-  setLocal(id: string, stream: MediaStream): void {
-    this.local.set(id, stream);
+  setLocal(id: string, stream: MediaStream, profile?: QualityProfile): void {
+    this.local.set(id, { stream, profile });
     this.refresh();
   }
 
   removeLocal(id: string): void {
-    const stream = this.local.get(id);
+    const stream = this.local.get(id)?.stream;
     this.local.delete(id);
     this.refresh();
     // Only the capture owner stops tracks. Forwarders close their sender, never the source.
@@ -74,6 +75,7 @@ export class ChannelMedia {
         const transport = new ChannelTransport({
           polite: sessionId.localeCompare(plan.peerId) > 0,
           iceServers: state.iceServers,
+          canReceiveVideoLayers: plan.canReceiveVideoLayers,
           send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
           receive: (flowId, stream) => this.receive(plan.id, flowId, stream),
           retire: flowId => this.retire(plan.id, flowId),
@@ -324,7 +326,7 @@ export class ChannelMedia {
   }
 
   private refresh(released = false): void {
-    const streams = new Map(this.local);
+    const streams = new Map([...this.local].map(([id, local]) => [id, local.stream]));
     const relayAudio = new Map<string, MediaStreamTrack[]>();
     for (const publication of this.publications) {
       if (this.local.has(publication.id)) continue;
@@ -338,14 +340,15 @@ export class ChannelMedia {
       for (const flow of peer.plan.outgoing) {
         const publication = this.publications.find(publication => publication.id === flow.publicationId);
         if (!publication) continue;
-        let stream = flow.inputFlowId === null ? this.local.get(flow.publicationId) : undefined;
+        const local = flow.inputFlowId === null ? this.local.get(flow.publicationId) : undefined;
+        let stream = local?.stream;
         if (flow.inputFlowId !== null) for (const source of this.peers.values()) {
           if (!source.plan.incoming.some(input => input.id === flow.inputFlowId && input.publicationId === flow.publicationId)) continue;
           const input = source.inputs.get(flow.inputFlowId);
           if (input && !input.failed) stream = input.stream;
           break;
         }
-        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null });
+        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile });
         if (stream && flow.inputFlowId !== null) {
           const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");
           if (tracks.length) relayAudio.set(flow.inputFlowId, tracks);

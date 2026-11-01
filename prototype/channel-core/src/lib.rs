@@ -24,6 +24,7 @@ pub mod storage;
 #[cfg(feature = "sqlite")]
 mod stored_room;
 mod transport;
+pub mod udp;
 pub mod wire;
 
 pub use access::{RoomPermission, RoomState};
@@ -379,6 +380,8 @@ impl Authority {
             session_id,
             room_id: _,
             signing_key,
+            can_prepare_udp,
+            can_receive_video_layers,
         } = request.command
         else {
             effects.events.push((
@@ -398,6 +401,8 @@ impl Authority {
                 key: key.as_deref(),
                 resume: session_id.as_deref(),
                 signing_key,
+                can_prepare_udp,
+                can_receive_video_layers,
             },
             connection,
             now,
@@ -502,6 +507,8 @@ impl Authority {
                         credential,
                         session_id,
                         signing_key,
+                        can_prepare_udp,
+                        can_receive_video_layers,
                         ..
                     } = &pending.command
                     else {
@@ -518,6 +525,8 @@ impl Authority {
                             key: Some(&key),
                             resume: session_id.as_deref(),
                             signing_key: *signing_key,
+                            can_prepare_udp: *can_prepare_udp,
+                            can_receive_video_layers: *can_receive_video_layers,
                         },
                         target,
                         now,

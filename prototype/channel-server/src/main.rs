@@ -1,6 +1,10 @@
-use anyhow::Context;
+use anyhow::{ensure, Context};
+use piik_channel_native::peer::server_udp::ServerUdp;
 use piik_channel_prototype::{domain::Domain, serve_server, web};
-use std::{net::IpAddr, path::PathBuf};
+use std::{
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+};
 
 mod release;
 
@@ -40,6 +44,47 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
     let bound = listener.local_addr()?;
     let origin = std::env::var("PIIK_CHANNEL_WEB_ORIGIN")
         .unwrap_or_else(|_| format!("http://127.0.0.1:{}", bound.port()));
+    let udp_port = std::env::var("PIIK_CHANNEL_UDP_PORT")
+        .ok()
+        .map(|value| value.parse::<u16>())
+        .transpose()
+        .context("PIIK_CHANNEL_UDP_PORT must be a port")?
+        .unwrap_or(bound.port());
+    ensure!(
+        udp_port != 0,
+        "PIIK_CHANNEL_UDP_PORT must be a fixed nonzero port"
+    );
+    let addresses: Vec<IpAddr> = match std::env::var("PIIK_CHANNEL_UDP_BIND_ADDRESS") {
+        Ok(value) => vec![value
+            .parse()
+            .context("PIIK_CHANNEL_UDP_BIND_ADDRESS must be a local IP")?],
+        Err(std::env::VarError::NotPresent) => vec![
+            std::net::Ipv4Addr::UNSPECIFIED.into(),
+            std::net::Ipv6Addr::UNSPECIFIED.into(),
+        ],
+        Err(error) => return Err(error.into()),
+    };
+    let advertised = std::env::var("PIIK_CHANNEL_UDP_PUBLIC_ADDRESS")
+        .ok()
+        .map(|value| value.parse::<SocketAddr>())
+        .transpose()
+        .context("PIIK_CHANNEL_UDP_PUBLIC_ADDRESS must be an IP:port")?;
+    ensure!(
+        advertised.is_none_or(|external| addresses
+            .iter()
+            .any(|ip| ip.is_ipv4() == external.is_ipv4())),
+        "UDP public address has no listener of its family"
+    );
+    let bindings: Vec<_> = addresses
+        .into_iter()
+        .map(|ip| {
+            (
+                SocketAddr::new(ip, udp_port),
+                advertised.filter(|external| external.is_ipv4() == ip.is_ipv4()),
+            )
+        })
+        .collect();
+    let udp = ServerUdp::bind(&bindings)?;
     let state = Domain::open(
         &directory,
         &owner,
@@ -53,6 +98,6 @@ async fn main() -> anyhow::Result<std::process::ExitCode> {
         "Web interface: {origin}/__channel-preview (use your configured owner or invitation key)"
     );
     release::startup_notice();
-    serve_server(listener, state, directory, owner, routes, stop).await?;
+    serve_server(listener, state, directory, owner, routes, udp, stop).await?;
     Ok(std::process::ExitCode::SUCCESS)
 }

@@ -11,14 +11,9 @@ own behavior; research and Git/PRs own evidence and completed history.
   remaining platforms and packaging over the shared UI and Native participant,
   retaining the accepted [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Resolve the recorded GNOME cancellation cleanup defect before Linux packaging.
-  Preserve the selected public-API str0m transport and its SDK controller;
-  finish the incoming-source adapter's platform acceptance without the
-  feature-patched sample builder.
-  The probe-clock experiment did not demonstrate a recovery benefit. Promote the
-  [combined Native candidate](../prototype/channel-native/README.md#rtc-dependency)
-  after adapter/platform acceptance. Keep the first
-  version's accepted scope and the prototype isolated.
+  Finish platform acceptance of the integrated str0m transport and incoming-source
+  adapter, then verify App and Server packages. Keep the SDK's transport controller,
+  the first version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
@@ -45,12 +40,16 @@ own behavior; research and Git/PRs own evidence and completed history.
   the submitted defect repairs in
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
   Once upstream provides those changes, verify the consumers and remove the fork.
-  The separately offered API extension is not required by Piik's dependency pin.
 - [ ] **Return portmapper to an upstream release.** Follow
   [upstream #266](https://github.com/n0-computer/net-tools/issues/266), submit the
   repair when the maintainer marks it ready, then verify an official release.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
+- [ ] **GNOME cancellation cleanup submission.** Submit the independently
+  verified Mutter repair when GitLab authentication is available, under the upstream
+  contribution rules. The
+  [network design](./research/channel-network-design.md#implementation-boundary)
+  owns its cause and validation; Piik does not bundle a compositor fork.
 - [ ] **2.x: return Pion to an upstream pin.** Follow
   [upstream #3668](https://github.com/pion/webrtc/pull/3668). Once upstream
   includes equivalent H.264 profile matching, verify the receiver and forwarding
@@ -65,10 +64,6 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Held By Owner
 
-- [ ] **GNOME cancellation cleanup submission.** The prepared Mutter repair
-  awaits approval for an upstream issue and patch. The
-  [network design](./research/channel-network-design.md#implementation-boundary)
-  owns its cause and isolated validation; Piik does not bundle a compositor fork.
 - [ ] **iOS App publication.** Held on 2026-10-25. Keep the system-browser
   implementation on `feat/ios-client`, outside the Android release candidate.
   Apple SDK builds pass; signed-device acceptance still needs continued-session

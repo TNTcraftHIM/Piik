@@ -19,6 +19,10 @@ pub enum Command {
         session_id: Option<String>,
         room_id: Option<String>,
         signing_key: [u8; 32],
+        #[serde(default)]
+        can_prepare_udp: bool,
+        #[serde(default)]
+        can_receive_video_layers: bool,
     },
     SetName {
         name: String,
@@ -243,6 +247,8 @@ pub enum LinkState {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Signal {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub udp: Option<UdpSignal>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub resync: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exchange_id: Option<Uuid>,
@@ -256,6 +262,19 @@ pub struct Signal {
 
 impl Signal {
     pub fn valid(&self) -> bool {
+        if let Some(udp) = &self.udp {
+            return self.resync.is_none()
+                && self.exchange_id.is_none()
+                && self.description.is_none()
+                && self.candidate.is_none()
+                && self.tracks.is_none()
+                && match udp {
+                    UdpSignal::Offer { prediction, .. } | UdpSignal::Answer { prediction } => {
+                        prediction.target().is_some()
+                    }
+                    UdpSignal::Complete => true,
+                };
+        }
         self.description.is_some() == self.exchange_id.is_some()
             && self.description.as_ref().is_none_or(|description| {
                 ["offer", "answer"].contains(&description.kind.as_str())
@@ -282,6 +301,54 @@ impl Signal {
                 .tracks
                 .as_ref()
                 .is_none_or(|tracks| tracks.iter().all(|track| valid_id(&track.stream_id)))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UdpPreparation {
+    Available,
+    Required,
+}
+
+#[derive(Clone, Deserialize, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum UdpSignal {
+    Offer {
+        secret: [u8; 32],
+        prediction: UdpPrediction,
+    },
+    Answer {
+        prediction: UdpPrediction,
+    },
+    Complete,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct UdpPrediction {
+    pub address: std::net::Ipv4Addr,
+    pub port: u16,
+    pub step: u16,
+}
+impl UdpPrediction {
+    pub fn target(&self) -> Option<std::net::SocketAddrV4> {
+        let address = self.address;
+        if address.is_private()
+            || address.is_loopback()
+            || address.is_link_local()
+            || address.is_unspecified()
+            || address.is_multicast()
+            || address.is_broadcast()
+            || self.port < 1024
+            || self.step > 16
+        {
+            return None;
+        }
+        Some(std::net::SocketAddrV4::new(
+            address,
+            self.port.checked_add(4 * self.step)?,
+        ))
     }
 }
 
@@ -384,7 +451,11 @@ pub struct SessionInfo {
 #[serde(rename_all = "camelCase")]
 pub struct PairInfo {
     pub id: Uuid,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub udp_preparation: Option<UdpPreparation>,
     pub peer_id: Uuid,
+    #[serde(default)]
+    pub can_receive_video_layers: bool,
     pub rooms: Vec<String>,
     pub outgoing: Vec<FlowBinding>,
     pub incoming: Vec<FlowBinding>,

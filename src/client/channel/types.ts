@@ -5,6 +5,7 @@ import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlSt
 import type { RemoteStopShortcut } from "../native/wire";
 import type { InputTransport } from "../remote-control/input-route";
 import type { RemoteControlMode } from "../remote-control/protocol";
+import type { QualityProfile } from "../media/quality";
 import type { RoomInteractionSession } from "../lib/room-interactions";
 import type { RoomPreferences } from "../lib/room-preferences";
 import type { CaptureDevice } from "../media/capture-devices";
@@ -21,6 +22,7 @@ export interface ChannelScreenInput {
 export type ScreenPresentation = "prepared" | "waiting" | "failed";
 
 export interface ChannelView {
+  quality: QualityProfile;
   interactionsByRoom: ReadonlyMap<string, RoomInteractionSession>;
   voiceInput: RoomPreferences["voiceInput"];
   voicePlaybackByUser: ReadonlyMap<string, { volume: number; muted: boolean }>;
@@ -43,6 +45,7 @@ export interface ChannelView {
 }
 
 export interface ChannelActions {
+  setQuality(profile: QualityProfile): void;
   activateApp(): Promise<void>;
   browse(roomId: string): void;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;

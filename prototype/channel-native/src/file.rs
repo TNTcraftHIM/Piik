@@ -17,6 +17,7 @@ struct Lease {
     rooms: BTreeSet<String>,
     keys: BTreeSet<FileKey>,
 }
+#[derive(Clone)]
 pub(crate) struct FileScope {
     lease: watch::Receiver<Lease>,
     key: FileKey,

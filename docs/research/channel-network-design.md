@@ -584,7 +584,7 @@ inside every module. The [versioning standard](../standards/versioning.md) still
 separates build identity, wire compatibility, stored schema and live generations.
 A published cutover needs its own handshake and data-upgrade decision.
 
-The selected Native replacement uses published
+The Native runtime uses published
 [str0m 0.24.1](https://github.com/algesten/str0m/tree/8c4c5284cb11b1e3c82962639cda5b3e95af73e8)
 through public APIs. Its library owns ICE, DTLS/SRTP, SCTP, congestion control,
 probing, pacing and retransmission. One Native pump supplies socket input and
@@ -592,7 +592,7 @@ deadlines; room and flow authority stay in the existing Driver and shared Core.
 Mature STUN/TURN clients supply discovery and relay protocols through that same
 socket owner. Fixed listeners remain service-owned; prepared and relay endpoints
 retain their pair lifetimes. The [Native dependency owner](../../prototype/channel-native/README.md#rtc-dependency)
-distinguishes this private replacement from the formal pin.
+records exact pins and their removal boundaries.
 
 Piik owns encoder demand, complete-access-unit admission and source-time mapping.
 An output's unsent payload and retransmission state end when its flow retires,
@@ -745,7 +745,7 @@ Removing that eight-line early return passes an isolated Mutter build and
 runtime comparison: the owner can close an unstarted session, another caller
 is rejected, and cancelling the normal Portal dialog releases its object while
 an existing share continues. The repair remains local; no system compositor
-was replaced. Publication is tracked in [TODO](../todo.md#held-by-owner).
+was replaced. Publication is tracked in [TODO](../todo.md#now).
 
 Requested dimensions are ceilings: each encoder fits the source's natural pixel
 size without enlarging small sources. A Windows size change drains old access

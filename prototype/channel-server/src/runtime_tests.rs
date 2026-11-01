@@ -76,7 +76,8 @@ fn domain_metadata_requires_owner_and_commits_before_broadcast_then_reopens() {
     owner.drain();
     let original = serde_json::to_value(hub.authority.export_state()).unwrap();
     let icon = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==";
-    let update = json!({"type":"update_domain","name":"  Friends  ","icon":icon,"requestId":"metadata"});
+    let update =
+        json!({"type":"update_domain","name":"  Friends  ","icon":icon,"requestId":"metadata"});
     guest.request(&mut hub, update.clone());
     assert!(guest
         .drain()
@@ -647,12 +648,14 @@ async fn start_server(
     let address = listener.local_addr().unwrap();
     let (stop, stopped) = oneshot::channel();
     let folder = folder.to_owned();
+    let udp = piik_channel_native::peer::server_udp::ServerUdp::bind(&[(address, None)]).unwrap();
     let task = tokio::spawn(serve(
         listener,
         state,
         folder,
         "owner".into(),
         Router::new(),
+        udp,
         async {
             let _ = stopped.await;
         },

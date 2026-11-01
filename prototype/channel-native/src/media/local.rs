@@ -1,8 +1,7 @@
 //! One capture owns its encoders and source clocks, independently of its Outputs.
 use super::{
-    packetizer::{CaptureTime, Packetizer},
-    video::{Input, Video},
-    H264Sps, Relay, Source, SourceFeed, SourceOrigin,
+    clock::SourceTime, packetizer::Packetizer, video::Video, H264Sps, Relay, Source, SourceFeed,
+    SourceOrigin,
 };
 use crate::{
     capture::{AudioCapture, AudioControl, Capture, Control as VideoControl, Settings, Target},
@@ -10,11 +9,10 @@ use crate::{
 };
 use anyhow::{anyhow, Result};
 use rtc::{
-    rtp::{codec::opus::OpusPayloader, packetizer::Payloader},
     rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
     shared::time::SystemInstant,
 };
-use std::{sync::Weak, time::Instant};
+use std::time::Instant;
 use tokio::{
     sync::{mpsc, oneshot, watch},
     task::JoinHandle,
@@ -25,19 +23,7 @@ mod encodings;
 
 pub(crate) const AUDIO_BITRATE: u32 = 128_000;
 
-#[derive(Clone)]
-pub(crate) struct VideoDemand {
-    pub output: Uuid,
-    pub input: Weak<Input>,
-    pub bitrate: u32,
-}
-impl PartialEq for VideoDemand {
-    fn eq(&self, other: &Self) -> bool {
-        self.output == other.output
-            && self.input.ptr_eq(&other.input)
-            && self.bitrate == other.bitrate
-    }
-}
+pub(crate) use super::encodings::VideoDemand;
 
 /// The page's one lease stops both workers without waiting for the signaling actor.
 #[derive(Clone)]
@@ -154,7 +140,7 @@ impl Producer {
             settings,
             publication_id,
             video,
-            CaptureTime { epoch: now, clock },
+            SourceTime::local(now, clock),
             control.clone(),
             audio.map(|(_, _, task)| task),
             ready,
@@ -200,8 +186,8 @@ async fn audio_source(
         let mut encoded = [0u8; 1500];
         let mut source = RtpSource::new(
             id, publication_id, RtpCodecKind::Audio, crate::peer::codec(),
-            Box::<OpusPayloader>::default(), 111, now, clock,
-        );
+            111, now, clock,
+        )?;
         let mut first = true;
         loop {
             let frame = tokio::select! {
@@ -255,49 +241,47 @@ impl RtpSource {
         publication_id: Uuid,
         kind: RtpCodecKind,
         codec: RTCRtpCodec,
-        payloader: Box<dyn Payloader>,
         payload_type: u8,
         epoch: Instant,
         clock: SystemInstant,
-    ) -> Self {
+    ) -> Result<Self> {
         let ssrc = u32::from_be_bytes(id.as_bytes()[..4].try_into().unwrap());
         let report: super::SourceReport = Default::default();
         let packetizer = Packetizer::new(
             &codec,
-            payloader,
             payload_type,
             ssrc,
-            CaptureTime { epoch, clock },
+            SourceTime::local(epoch, clock),
             report.clone(),
-        );
-        Self {
+        )?;
+        Ok(Self {
             source: Source {
                 id,
                 publication_id,
                 origin: SourceOrigin::Local,
                 codec,
                 kind,
+                layers: None,
                 feed: SourceFeed::Rtp {
                     keyframes: watch::channel(0).0,
                     report,
                 },
             },
             packetizer,
-        }
+        })
     }
     fn packetize(
         &mut self,
         bytes: Vec<u8>,
         presentation_time: Instant,
     ) -> Result<Vec<rtc::rtp::Packet>> {
-        self.packetizer.packetize(bytes, presentation_time)
+        self.packetizer.packetize(bytes, presentation_time, None)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rtc::rtp::codec::h264::H264Payloader;
     use std::time::Duration;
 
     #[test]
@@ -310,11 +294,10 @@ mod tests {
             publication,
             RtpCodecKind::Audio,
             crate::peer::codec(),
-            Box::<OpusPayloader>::default(),
             111,
             epoch,
             clock,
-        );
+        )?;
         let mut video = RtpSource::new(
             Uuid::from_u128(2 << 96),
             publication,
@@ -324,11 +307,10 @@ mod tests {
                 clock_rate: 90_000,
                 ..Default::default()
             },
-            Box::<H264Payloader>::default(),
             102,
             epoch,
             clock,
-        );
+        )?;
         let mut encoder = rusty_opus::OpusEncoder::new(48_000, 2, rusty_opus::Application::Audio)?;
         encoder.bitrate_bps = 128_000;
         encoder.use_cbr = true;

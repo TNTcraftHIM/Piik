@@ -2,10 +2,7 @@
 use crate::{
     data::{self, DataLink, Lane},
     file::Files,
-    media::{
-        supported, MediaFeedback, Output, Relay, ReportProjection, SenderReports, Source,
-        SourceFeed, SourceOrigin, TrackKey, H264_RELAY_PROFILE,
-    },
+    media::{supported, Output, OutputStreams, Relay, Source, SourceFeed, SourceOrigin, TrackKey},
 };
 use anyhow::{anyhow, Context, Result};
 use futures_util::StreamExt;
@@ -14,26 +11,15 @@ use piik_channel_core::file_room::FilePlan;
 use piik_channel_core::wire::Snapshot;
 use piik_channel_core::wire::{
     Candidate, Command, Description, FlowState, LinkState, PairInfo, PublicationInfo, Signal,
-    Track as WireTrack,
+    Track as WireTrack, UdpPreparation,
 };
 use rtc::{
-    interceptor::{Gcc, PacerBuilder, Registry, Slot},
     peer_connection::{
-        configuration::{
-            interceptor_registry::{
-                configure_congestion_control, register_default_interceptors, CongestionFeedback,
-            },
-            media_engine::{MediaEngine, MIME_TYPE_OPUS},
-            setting_engine::{SctpMaxMessageSize, SettingEngineBuilder},
-        },
-        sdp::RTCSessionDescription,
-    },
-    rtcp::{
-        payload_feedbacks::picture_loss_indication::PictureLossIndication,
-        sender_report::SenderReport,
+        state::RTCPeerConnectionState,
+        transport::{RTCIceCandidate, RTCIceServer},
     },
     rtp,
-    rtp_transceiver::rtp_sender::{RTCRtpCodec, RTCRtpCodecParameters, RtpCodecKind},
+    rtp_transceiver::rtp_sender::{RTCRtpCodec, RtpCodecKind},
 };
 use std::{
     collections::{HashMap, HashSet},
@@ -47,15 +33,8 @@ use tokio::{
     sync::{mpsc, oneshot, watch, Notify},
     task::JoinHandle,
 };
+use transport::{Channel, ChannelEvent, Track, TrackEvent, Transport};
 use uuid::Uuid;
-use webrtc::{
-    data_channel::{DataChannel, DataChannelEvent},
-    media_stream::track_remote::{TrackRemote, TrackRemoteEvent},
-    peer_connection::{
-        PeerConnection, PeerConnectionBuilder, PeerConnectionEventHandler, RTCConfigurationBuilder,
-        RTCIceCandidate, RTCIceServer, RTCPeerConnectionIceEvent, RTCPeerConnectionState,
-    },
-};
 
 const MAX_ICE_CANDIDATES: usize = 128;
 
@@ -189,8 +168,8 @@ pub(crate) enum Event {
     Negotiate(Uuid),
     Candidate(Uuid, RTCIceCandidate),
     State(Uuid, RTCPeerConnectionState),
-    Track(Uuid, Arc<dyn TrackRemote>),
-    Channel(Uuid, Arc<dyn DataChannel>),
+    Track(Uuid, Track),
+    Channel(Uuid, Arc<Channel>),
     Dc(Uuid, Uuid, bool),
     Bulk(Uuid, Uuid),
     OutputFailed {
@@ -219,6 +198,7 @@ pub(crate) enum Event {
         publication_id: Uuid,
         source: Uuid,
         video: crate::media::video::Video,
+        retired_supply: Option<crate::media::video::Layers>,
     },
     DataWriteFailed {
         pair: Uuid,
@@ -233,44 +213,11 @@ pub(crate) struct SourceReady {
 }
 pub(crate) enum InitialMedia {
     Rtp(Vec<rtp::Packet>),
-    #[cfg(feature = "capture")]
-    Video(crate::capture::EncodedFrame),
-}
-struct Handler {
-    pair: Uuid,
-    events: mpsc::Sender<Event>,
-    overflow: Arc<AtomicBool>,
-    state: Arc<AtomicU8>,
-}
-impl Handler {
-    fn emit(&self, event: Event) {
-        if self.events.try_send(event).is_err() {
-            self.overflow.store(true, Ordering::Release);
-        }
-    }
-}
-#[async_trait::async_trait]
-impl PeerConnectionEventHandler for Handler {
-    async fn on_negotiation_needed(&self) {
-        self.emit(Event::Negotiate(self.pair));
-    }
-    async fn on_ice_candidate(&self, event: RTCPeerConnectionIceEvent) {
-        self.emit(Event::Candidate(self.pair, event.candidate));
-    }
-    async fn on_connection_state_change(&self, state: RTCPeerConnectionState) {
-        self.state.store(state as u8, Ordering::Release);
-        self.emit(Event::State(self.pair, state));
-    }
-    async fn on_track(&self, track: Arc<dyn TrackRemote>) {
-        self.emit(Event::Track(self.pair, track));
-    }
-    async fn on_data_channel(&self, dc: Arc<dyn DataChannel>) {
-        self.emit(Event::Channel(self.pair, dc));
-    }
+    Video(crate::EncodedFrame),
 }
 struct Pair {
     plan: PairInfo,
-    pc: Arc<dyn PeerConnection>,
+    pc: Transport,
     mapping: Option<mapping::Mapping>,
     polite: bool,
     pending_offer: Option<PendingOffer>,
@@ -284,19 +231,32 @@ struct Pair {
     latest: HashMap<TrackKey, Uuid>,
     outputs: HashMap<TrackKey, Output>,
     rejected_outputs: HashMap<TrackKey, Uuid>,
-    reports: SenderReports,
-    bandwidth: watch::Receiver<f64>,
+    reports: OutputStreams,
+    bandwidth: watch::Receiver<transport::Estimate>,
+    demand: watch::Sender<Option<u64>>,
     tasks: HashMap<Uuid, Reader>,
-    dc: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
-    bulk: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
-    input: Option<(Uuid, Arc<dyn DataChannel>, JoinHandle<()>)>,
+    dc: Option<(Uuid, Arc<Channel>, JoinHandle<()>)>,
+    bulk: Option<(Uuid, Arc<Channel>, JoinHandle<()>)>,
+    input: Option<(Uuid, Arc<Channel>, JoinHandle<()>)>,
     data: DataLink,
     state: Arc<AtomicU8>,
     dc_open: bool,
     base_failed: bool,
     reported: HashSet<String>,
-    deadline: Option<Instant>,
+    deadline: Option<Deadline>,
     overflow: Arc<AtomicBool>,
+}
+#[derive(Clone, Copy)]
+enum Deadline {
+    Connecting(Instant),
+    Control(Instant),
+}
+impl Deadline {
+    fn expires(self) -> Instant {
+        match self {
+            Self::Connecting(at) | Self::Control(at) => at,
+        }
+    }
 }
 struct Reader {
     key: TrackKey,
@@ -347,54 +307,32 @@ impl Pair {
     }
 
     async fn stable(&self) -> bool {
-        let state = self.state.load(Ordering::Acquire);
-        state != RTCPeerConnectionState::Failed as u8
-            && state != RTCPeerConnectionState::Closed as u8
-            && self.pc.current_local_description().await.is_some()
-            && self.pc.current_remote_description().await.is_some()
-            && self.pc.pending_local_description().await.is_none()
-            && self.pc.pending_remote_description().await.is_none()
+        self.pc.stable().await
     }
-
     async fn confirm_outputs(&mut self, offered: HashSet<Uuid>) -> Result<()> {
         let mut stable = HashSet::new();
-        for transceiver in self.pc.get_transceivers().await {
-            let sending = matches!(
-                transceiver.current_direction().await?,
-                rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendonly
-                    | rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendrecv
-            );
-            if let Some(sender) = transceiver.sender().await? {
-                let codecs = if sending {
-                    sender.get_parameters().await?.rtp_parameters.codecs
-                } else {
-                    vec![]
-                };
-                for output in self.outputs.values().filter(|output| {
-                    offered.contains(&output.id) && output.sender.id() == sender.id()
-                }) {
-                    if sending {
-                        output.confirm(&codecs);
-                        stable.insert(output.id);
-                    } else if self
-                        .stable_outputs
-                        .as_ref()
-                        .is_some_and(|ids| ids.contains(&output.id))
-                    {
-                        // A remote offer need not include our unnegotiated additions.
-                        // Only an established sender can lose its sending direction.
-                        output.confirm(&[]);
-                    }
-                }
+        for output in self
+            .outputs
+            .values()
+            .filter(|out| offered.contains(&out.id))
+        {
+            let Some(codec) = self.pc.confirm(output.id).await? else {
+                continue;
+            };
+            if codec.is_some() {
+                stable.insert(output.id);
             }
+            output.confirm(codec)?;
         }
         self.stable_outputs = Some(stable);
         Ok(())
     }
 }
 struct Driver {
+    transport: transport::Runtime,
     session: Uuid,
     ice: Vec<RTCIceServer>,
+    server_udp: Option<Arc<server_udp::ServerUdp>>,
     commands: mpsc::Sender<NativeEvent>,
     links: Arc<Mutex<HashMap<Uuid, (Uuid, data::Senders)>>>,
     cancel: watch::Receiver<bool>,
@@ -402,15 +340,24 @@ struct Driver {
     ready_sources: mpsc::Sender<SourceReady>,
     bandwidth_changed: Arc<Notify>,
     pairs: HashMap<Uuid, Pair>,
+    preparings: HashMap<Uuid, preparation::Pending>,
     publications: HashMap<Uuid, PublicationInfo>,
     sources: HashMap<Uuid, Source>,
     #[cfg(feature = "capture")]
     captures: HashMap<Uuid, Capture>,
     #[cfg(feature = "capture")]
     snapshot: watch::Receiver<Option<Snapshot>>,
+    #[cfg(all(
+        feature = "capture",
+        any(target_os = "windows", target_os = "linux", target_os = "macos")
+    ))]
+    derived: HashMap<Uuid, crate::media::derived::Producer>,
     relay: Relay,
     files: Files,
     inputs: input::Inputs,
+}
+pub(crate) async fn can_prepare_udp() -> bool {
+    preparation::local_ipv4().await.is_some()
 }
 impl NativePeers {
     pub fn new(
@@ -424,6 +371,7 @@ impl NativePeers {
             commands,
             watch::channel(None).1,
             None,
+            None,
         )
     }
     pub fn with_input(
@@ -432,6 +380,7 @@ impl NativePeers {
         commands: mpsc::Sender<NativeEvent>,
         snapshot: watch::Receiver<Option<Snapshot>>,
         desktop: Option<crate::input::Desktop>,
+        server_udp: Option<Arc<server_udp::ServerUdp>>,
     ) -> Self {
         // Callback events are control-only. They must never await the PC driver that
         // invokes them. RTP has a separate bounded queue and separate poll tasks.
@@ -443,9 +392,12 @@ impl NativePeers {
         let driver_links = links.clone();
         let bandwidth_changed = Arc::new(Notify::new());
         let task = tokio::spawn(async move {
+            let transport = transport::Runtime::new(server_udp.clone());
             let mut d = Driver {
+                transport,
                 session: session_id,
                 ice: ice_servers,
+                server_udp,
                 commands,
                 links: driver_links,
                 cancel: cancelled.clone(),
@@ -453,10 +405,16 @@ impl NativePeers {
                 ready_sources,
                 bandwidth_changed: bandwidth_changed.clone(),
                 pairs: HashMap::new(),
+                preparings: HashMap::new(),
                 publications: HashMap::new(),
                 sources: HashMap::new(),
                 #[cfg(feature = "capture")]
                 captures: HashMap::new(),
+                #[cfg(all(
+                    feature = "capture",
+                    any(target_os = "windows", target_os = "linux", target_os = "macos")
+                ))]
+                derived: HashMap::new(),
                 #[cfg(feature = "capture")]
                 snapshot: snapshot.clone(),
                 relay: Relay::default(),
@@ -469,6 +427,10 @@ impl NativePeers {
                 Reply(Uuid, crate::input::Reply),
                 Event(Event),
                 SourceReady(SourceReady),
+                Prepared(
+                    Option<preparation::Pending>,
+                    std::result::Result<Result<preparation::Prepared>, tokio::task::JoinError>,
+                ),
                 Bandwidth,
                 Tick,
             }
@@ -478,10 +440,12 @@ impl NativePeers {
                     request=inputs.recv()=>match request {Some(request)=>Turn::Input(request),None=>break},
                     Some(event)=event_rx.recv()=>Turn::Event(event),
                     Some(source)=ready_rx.recv()=>Turn::SourceReady(source),
+                    Some((id, result))=preparation::next(&mut d.preparings)=>Turn::Prepared(d.preparings.remove(&id), result),
                     Some((video,reply))=d.inputs.replies.next()=>Turn::Reply(video,reply),
                     _=bandwidth_changed.notified()=>Turn::Bandwidth,
                     _=tick.tick()=>Turn::Tick,
                 };
+                let refresh_keyframes = matches!(turn, Turn::Tick);
                 let work = async {
                     #[cfg(feature = "capture")]
                     for capture in d.captures.values() {
@@ -576,6 +540,11 @@ impl NativePeers {
                                 }
                             }
                         }
+                        Turn::Prepared(pending, result) => {
+                            if let Some(pending) = pending {
+                                d.prepared(pending, result).await;
+                            }
+                        }
                         Turn::SourceReady(source) => {
                             if let Err(error) = d.source_ready(source).await {
                                 eprintln!("Native encoded track attach failed: {error}");
@@ -588,14 +557,23 @@ impl NativePeers {
                             }
                         }
                     }
-                    #[cfg(feature = "capture")]
-                    d.reconcile_encodings();
+                    d.reconcile_encodings().await;
+                    if refresh_keyframes {
+                        d.request_pending_keyframes();
+                    }
                 };
                 tokio::select! {_=cancelled.changed()=>break,_=work=>{}}
             }
             d.inputs.close();
+            for (_, pending) in d.preparings.drain() {
+                pending.close().await;
+            }
             #[cfg(feature = "capture")]
             {
+                #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
+                for (_, producer) in d.derived.drain() {
+                    producer.stop().await;
+                }
                 for capture in d.captures.values() {
                     capture.producer.control.stop();
                 }
@@ -607,6 +585,7 @@ impl NativePeers {
                 close_pair(pair).await;
             }
             d.files.close().await;
+            d.transport.close().await;
         });
         Self {
             cancel,
@@ -748,94 +727,33 @@ impl NativePeers {
 }
 pub(crate) fn codec() -> RTCRtpCodec {
     RTCRtpCodec {
-        mime_type: MIME_TYPE_OPUS.into(),
+        mime_type: "audio/opus".into(),
         clock_rate: 48000,
         channels: 2,
         sdp_fmtp_line: "minptime=10;useinbandfec=1;stereo=1;maxaveragebitrate=510000".into(),
         rtcp_feedback: vec![],
     }
 }
-fn builder(
-    polite: bool,
-    reports: SenderReports,
-    feedback: MediaFeedback,
-) -> Result<PeerConnectionBuilder<String>> {
-    let mut media = MediaEngine::default();
-    media.register_codec(
-        RTCRtpCodecParameters {
-            rtp_codec: codec(),
-            payload_type: 111,
-            ..Default::default()
-        },
-        RtpCodecKind::Audio,
-    )?;
-    for (payload_type, mime_type, fmtp) in [
-        (96, "video/VP8", String::new()),
-        (
-            102,
-            "video/H264",
-            format!("level-asymmetry-allowed=1;packetization-mode=1;profile-level-id={H264_RELAY_PROFILE}"),
-        ),
-    ] {
-        media.register_codec(
-            RTCRtpCodecParameters {
-                rtp_codec: RTCRtpCodec {
-                    mime_type: mime_type.into(),
-                    clock_rate: 90000,
-                    sdp_fmtp_line: fmtp,
-                    ..Default::default()
-                },
-                payload_type,
-                ..Default::default()
-            },
-            RtpCodecKind::Video,
-        )?;
-        media.register_codec(
-            RTCRtpCodecParameters {
-                rtp_codec: RTCRtpCodec {
-                    mime_type: "video/rtx".into(),
-                    clock_rate: 90000,
-                    sdp_fmtp_line: format!("apt={payload_type}"),
-                    ..Default::default()
-                },
-                payload_type: payload_type + 1,
-                ..Default::default()
-            },
-            RtpCodecKind::Video,
-        )?;
-    }
-    let registry = register_default_interceptors(Registry::new(), &mut media)?;
-    let registry = configure_congestion_control(
-        registry,
-        Gcc::new(300_000.0, 100_000.0, 100_000_000.0),
-        CongestionFeedback::Twcc,
-        &mut media,
-    )?
-    .with(
-        Slot::Pacer,
-        PacerBuilder::new().with_target_bitrate(300_000.0).build(),
-    )
-    .with(Slot::Custom(20_000), feedback)
-    .with(Slot::Custom(500), ReportProjection::new(reports));
-    Ok(PeerConnectionBuilder::new()
-        .with_media_engine(media)
-        .with_interceptor_registry(registry)
-        .with_data_channel_send_buffer_limit(2 * 1024 * 1024)
-        .with_setting_engine(
-            SettingEngineBuilder::new()
-                // Keep the role established by the initial DC offer/answer.
-                .with_answering_dtls_role(if polite {
-                    rtc::peer_connection::transport::RTCDtlsRole::Client
-                } else {
-                    rtc::peer_connection::transport::RTCDtlsRole::Server
-                })
-                .with_sctp_max_message_size(SctpMaxMessageSize::Bounded(
-                    piik_channel_core::conversation::CONTROL_FRAME_BYTES as u32,
-                ))
-                .build(),
-        ))
-}
+
 impl Driver {
+    fn request_pending_keyframes(&self) {
+        // A PLI is best effort. Keep the existing request watch live while an
+        // active consumer still awaits refresh; adoption/cancellation ends it.
+        for source in self.sources.values() {
+            if !matches!(source.origin, SourceOrigin::Incoming { .. }) {
+                continue;
+            }
+            if let Some(layers) = &source.layers {
+                for (_, video) in layers.snapshot() {
+                    if let Some(video) = video {
+                        video.request_pending_keyframe();
+                    }
+                }
+            } else if let Some(video) = source.video() {
+                video.request_pending_keyframe();
+            }
+        }
+    }
     async fn send_input(&mut self, outgoing: input::Outgoing) {
         let mut pending = std::collections::VecDeque::from([outgoing]);
         while let Some(outgoing) = pending.pop_front() {
@@ -898,7 +816,7 @@ impl Driver {
             .find(|flow| flow.id == key.0)
             .copied();
         p.rejected_outputs.insert(key, source);
-        p.outputs.remove(&key).unwrap().close(&*p.pc).await;
+        p.outputs.remove(&key).unwrap().close(&p.pc).await;
         if binding.is_some_and(|flow| {
             !flow.selected
                 || key.1 == RtpCodecKind::Video
@@ -927,7 +845,7 @@ impl Driver {
             for key in keys {
                 let output = p.outputs.remove(&key).unwrap();
                 p.rejected_outputs.insert(key, output.source);
-                output.close(&*p.pc).await;
+                output.close(&p.pc).await;
             }
         }
         self.send(Command::FlowState {
@@ -1195,6 +1113,7 @@ impl Driver {
         let removed: Vec<_> = self
             .pairs
             .keys()
+            .chain(self.preparings.keys())
             .filter(|id| !retained.contains(id))
             .copied()
             .collect();
@@ -1205,127 +1124,38 @@ impl Driver {
         for plan in plans {
             let id = plan.id;
             let result = async {
-                if !self.pairs.contains_key(&plan.id) {
-                    let overflow = Arc::new(AtomicBool::new(false));
-                    let state = Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8));
-                    let reports = SenderReports::default();
-                    let (target, bandwidth) = watch::channel(300_000.0);
-                    let pc: Arc<dyn PeerConnection> = Arc::new(
-                        builder(
-                            self.session > plan.peer_id,
-                            reports.clone(),
-                            MediaFeedback::observe_target(target, self.bandwidth_changed.clone()),
-                        )?
-                            .with_handler(Arc::new(Handler {
-                                pair: plan.id,
-                                events: self.events.clone(),
-                                overflow: overflow.clone(),
-                                state: state.clone(),
-                            }))
-                            .with_configuration(
-                                RTCConfigurationBuilder::new()
-                                    .with_ice_servers(self.ice.clone())
-                                    .build(),
-                            )
-                            .with_udp_addrs(vec!["0.0.0.0:0".into(), "[::]:0".into()])
-                            .build()
-                            .await?,
-                    );
-                    let data = DataLink::new(plan.id, state.clone(), self.events.clone());
-                    self.links
-                        .lock()
-                        .unwrap()
-                        .insert(plan.peer_id, (plan.id, data.senders()));
-                    self.pairs.insert(
-                        plan.id,
-                        Pair {
-                            polite: self.session > plan.peer_id,
-                            plan: plan.clone(),
-                            pc,
-                            mapping: None,
-                            pending_offer: None,
-                            stable_outputs: None,
-                            failed_offer: None,
-                            answer: None,
-                            negotiate: false,
-                            ignore_offer: false,
-                            candidates: vec![],
-                            remote: HashMap::new(),
-                            latest: HashMap::new(),
-                            outputs: HashMap::new(),
-                            rejected_outputs: HashMap::new(),
-                            reports,
-                            bandwidth,
-                            tasks: HashMap::new(),
-                            dc: None,
-                            bulk: None,
-                            input: None,
-                            data,
-                            state,
-                            dc_open: false,
-                            base_failed: false,
-                            reported: HashSet::new(),
-                            deadline: Some(Instant::now() + Duration::from_secs(20)),
-                            overflow,
-                        },
-                    );
-                    self.files
-                        .attach(plan.peer_id, self.pairs[&plan.id].data.senders())
-                        .await;
-                }
-                let id = plan.id;
-                let p = self.pairs.get_mut(&id).unwrap();
-                if plan.rooms.iter().any(|r| !p.plan.rooms.contains(r)) {
-                    p.base_failed = false;
-                }
-                p.reported.retain(|r| plan.rooms.contains(r));
-                p.plan = plan;
-                p.latest.retain(|(flow_id, _), _| {
-                    p.plan.incoming.iter().any(|flow| {
-                        flow.id == *flow_id && self.publications.contains_key(&flow.publication_id)
-                    })
-                });
-                let keep: HashSet<_> = p
-                    .latest
-                    .values()
-                    .copied()
-                    .chain(self.sources.values().filter(|s| matches!(s.origin, SourceOrigin::Incoming { pair, .. } if pair == id)).map(|s| s.id))
-                    .collect();
-                let retired: Vec<_> = p
-                    .tasks
-                    .iter()
-                    .filter(|(id, reader)| !keep.contains(id) || reader.task.is_finished())
-                    .map(|(id, _)| *id)
-                    .collect();
-                for id in retired {
-                    let task = p.tasks.remove(&id).unwrap();
-                    task.task.abort();
-                    let _ = task.task.await;
-                }
-                if p.plan.rooms.is_empty() {
-                    for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
-                        task.abort();
-                        let _ = task.await;
-                        let _ = dc.close().await;
+                if !self.pairs.contains_key(&id)
+                    && plan.udp_preparation == Some(UdpPreparation::Required)
+                {
+                    if let Some(pending) = self.preparings.get_mut(&id) {
+                        pending.plan = plan;
+                    } else {
+                        let ice = self
+                            .ice
+                            .iter()
+                            .map(|server| serde_json::json!({"urls": server.urls}))
+                            .collect::<Vec<_>>();
+                        let servers = piik_channel_core::udp::stun_servers(&ice)
+                            .ok_or_else(|| anyhow!("UDP preparation destinations unavailable"))?;
+                        self.preparings.insert(
+                            id,
+                            preparation::Pending::start(
+                                self.session,
+                                plan,
+                                servers,
+                                self.commands.clone(),
+                            ),
+                        );
                     }
-                    p.data.unbind(Lane::Control);
-                    p.data.unbind(Lane::Bulk);
-                    p.dc_open = false;
-                } else if !p.polite && !p.base_failed && p.dc.is_none() {
-                    let dc = p.pc.create_data_channel("piik-room", None).await?;
-                    self.install_dc(id, dc).await?;
+                    return Ok(());
                 }
-                let p = self.pairs.get(&id).unwrap();
-                if !p.plan.rooms.is_empty() && !p.polite && !p.base_failed && p.bulk.is_none() {
-                    let dc = p.pc.create_data_channel("piik-file", None).await?;
-                    self.install_dc(id, dc).await?;
+                if let Some(pending) = self.preparings.remove(&id) {
+                    pending.close().await;
                 }
-                let p = self.pairs.get(&id).unwrap();
-                if !p.polite && p.input.is_none() {
-                    let dc = p.pc.create_data_channel("piik-input", None).await?;
-                    self.install_dc(id, dc).await?;
+                if !self.pairs.contains_key(&id) {
+                    self.create_pair(&plan, None).await?;
                 }
-                Ok::<_, anyhow::Error>(())
+                self.apply_pair(plan).await
             }
             .await;
             if let Err(error) = result {
@@ -1339,16 +1169,190 @@ impl Driver {
         }
         Ok(())
     }
+    async fn create_pair(
+        &mut self,
+        plan: &PairInfo,
+        prepared: Option<(std::net::UdpSocket, std::net::SocketAddrV4)>,
+    ) -> Result<()> {
+        let overflow = Arc::new(AtomicBool::new(false));
+        let state = Arc::new(AtomicU8::new(RTCPeerConnectionState::New as u8));
+        let reports = OutputStreams::default();
+        let (demand, requested) = watch::channel(Some(0));
+        let candidates = prepared
+            .as_ref()
+            .map(|(_, remote)| prepared_candidate(*remote))
+            .transpose()?
+            .into_iter()
+            .collect();
+        let (pc, bandwidth) = Box::pin(self.transport.add(
+            plan.id,
+            prepared.map(|(socket, _)| socket),
+            self.events.clone(),
+            overflow.clone(),
+            state.clone(),
+            requested,
+            self.bandwidth_changed.clone(),
+            &self.ice,
+        ))
+        .await?;
+        let data = DataLink::new(plan.id, state.clone(), self.events.clone());
+        self.links
+            .lock()
+            .unwrap()
+            .insert(plan.peer_id, (plan.id, data.senders()));
+        self.pairs.insert(
+            plan.id,
+            Pair {
+                polite: self.session > plan.peer_id,
+                plan: plan.clone(),
+                pc,
+                mapping: None,
+                pending_offer: None,
+                stable_outputs: None,
+                failed_offer: None,
+                answer: None,
+                negotiate: false,
+                ignore_offer: false,
+                candidates,
+                remote: HashMap::new(),
+                latest: HashMap::new(),
+                outputs: HashMap::new(),
+                rejected_outputs: HashMap::new(),
+                reports,
+                bandwidth,
+                demand,
+                tasks: HashMap::new(),
+                dc: None,
+                bulk: None,
+                input: None,
+                data,
+                state,
+                dc_open: false,
+                base_failed: false,
+                reported: HashSet::new(),
+                deadline: Some(Deadline::Connecting(
+                    Instant::now()
+                        + Duration::from_secs(
+                            if plan.udp_preparation == Some(UdpPreparation::Available) {
+                                5
+                            } else {
+                                20
+                            },
+                        ),
+                )),
+                overflow,
+            },
+        );
+        self.files
+            .attach(plan.peer_id, self.pairs[&plan.id].data.senders())
+            .await;
+        Ok(())
+    }
+    async fn apply_pair(&mut self, plan: PairInfo) -> Result<()> {
+        let id = plan.id;
+        let p = self.pairs.get_mut(&id).unwrap();
+        if plan.rooms.iter().any(|r| !p.plan.rooms.contains(r)) {
+            p.base_failed = false;
+        }
+        p.reported.retain(|r| plan.rooms.contains(r));
+        p.plan = plan;
+        p.latest.retain(|(flow_id, _), _| {
+            p.plan.incoming.iter().any(|flow| {
+                flow.id == *flow_id && self.publications.contains_key(&flow.publication_id)
+            })
+        });
+        let keep: HashSet<_> = p
+            .latest
+            .values()
+            .copied()
+            .chain(
+                self.sources
+                    .values()
+                    .filter(
+                        |s| matches!(s.origin, SourceOrigin::Incoming { pair, .. } if pair == id),
+                    )
+                    .map(|s| s.id),
+            )
+            .collect();
+        let retired: Vec<_> = p
+            .tasks
+            .iter()
+            .filter(|(id, reader)| !keep.contains(id) || reader.task.is_finished())
+            .map(|(id, _)| *id)
+            .collect();
+        for id in retired {
+            let task = p.tasks.remove(&id).unwrap();
+            task.task.abort();
+            let _ = task.task.await;
+        }
+        if p.plan.rooms.is_empty() {
+            for (_, dc, task) in [p.dc.take(), p.bulk.take()].into_iter().flatten() {
+                task.abort();
+                let _ = task.await;
+                let _ = dc.close().await;
+            }
+            p.data.unbind(Lane::Control);
+            p.data.unbind(Lane::Bulk);
+            p.dc_open = false;
+        } else if !p.polite && !p.base_failed && p.dc.is_none() {
+            let dc = p.pc.create_channel("piik-room").await?;
+            self.install_dc(id, dc).await?;
+        }
+        let p = self.pairs.get(&id).unwrap();
+        if !p.plan.rooms.is_empty() && !p.polite && !p.base_failed && p.bulk.is_none() {
+            let dc = p.pc.create_channel("piik-file").await?;
+            self.install_dc(id, dc).await?;
+        }
+        let p = self.pairs.get(&id).unwrap();
+        if !p.polite && p.input.is_none() {
+            let dc = p.pc.create_channel("piik-input").await?;
+            self.install_dc(id, dc).await?;
+        }
+        Ok(())
+    }
+    async fn prepared(
+        &mut self,
+        pending: preparation::Pending,
+        result: std::result::Result<Result<preparation::Prepared>, tokio::task::JoinError>,
+    ) {
+        let id = pending.plan.id;
+        // next() consumed the completed JoinHandle; only unconsumed tasks are joined on retirement.
+        let prepared = match result
+            .context("UDP preparation task failed")
+            .and_then(|result| result)
+            .and_then(|prepared| prepared.commit(id))
+        {
+            Ok(prepared) => Some(prepared),
+            Err(error) => {
+                eprintln!("Native UDP preparation unavailable; continuing ordinary ICE: {error}");
+                None
+            }
+        };
+        let result = async {
+            self.create_pair(&pending.plan, prepared).await?;
+            self.apply_pair(pending.plan).await?;
+            for signal in pending.signals {
+                self.signal(id, signal).await?;
+            }
+            self.refresh_media(false).await?;
+            self.base_ready(id).await;
+            Ok::<_, anyhow::Error>(())
+        }
+        .await;
+        if let Err(error) = result {
+            eprintln!("Native UDP preparation failed: {error}");
+            self.fail(id).await;
+        }
+    }
+
     async fn local_signal(&self, id: Uuid, exchange: Uuid) -> Result<Signal> {
         let p = &self.pairs[&id];
-        let description =
-            p.pc.local_description()
-                .await
-                .ok_or_else(|| anyhow!("missing local description"))?;
+        let (kind, sdp) = p.pc.local_description().await?;
         Ok(Signal {
+            udp: None,
             description: Some(Description {
-                kind: description.sdp_type.to_string(),
-                sdp: Some(description.sdp),
+                kind,
+                sdp: Some(sdp),
             }),
             candidate: None,
             tracks: Some(
@@ -1389,6 +1393,7 @@ impl Driver {
             self.send_signal(
                 id,
                 Signal {
+                    udp: None,
                     description: None,
                     candidate: None,
                     tracks: None,
@@ -1423,13 +1428,12 @@ impl Driver {
         }
         p.negotiate = false;
         let stable = p.stable_outputs.is_some() && p.stable().await;
-        let result = async {
-            p.pc.set_local_description(p.pc.create_offer(None).await?)
-                .await?;
-            Ok(())
+        let result = async { p.pc.offer().await }.await;
+        if matches!(result, Ok(false)) {
+            return Ok(());
         }
-        .await;
-        self.finish_offer(id, stable, outputs, result).await
+        self.finish_offer(id, stable, outputs, result.map(|_| ()))
+            .await
     }
 
     async fn finish_offer(
@@ -1457,7 +1461,7 @@ impl Driver {
                 let output = p.outputs.remove(&key).unwrap();
                 p.rejected_outputs.insert(key, output.source);
                 affected.insert(key.0);
-                output.close(&*p.pc).await;
+                output.close(&p.pc).await;
             }
             let failed: Vec<_> = affected
                 .into_iter()
@@ -1496,6 +1500,12 @@ impl Driver {
         Ok(())
     }
     async fn signal(&mut self, id: Uuid, signal: Signal) -> Result<()> {
+        if let Some(pending) = self.preparings.get_mut(&id) {
+            return pending.signal(signal);
+        }
+        if signal.udp.is_some() {
+            return Ok(());
+        }
         let Some(p) = self.pairs.get_mut(&id) else {
             return Ok(());
         };
@@ -1531,10 +1541,7 @@ impl Driver {
                 return Ok(());
             }
             if collision {
-                p.pc.set_local_description(serde_json::from_value(
-                    serde_json::json!({"type":"rollback","sdp":""}),
-                )?)
-                .await?;
+                p.pc.rollback().await?;
                 p.pending_offer = None;
             }
             p.remote = signal
@@ -1544,17 +1551,12 @@ impl Driver {
                 .filter(|t| p.plan.incoming.iter().any(|flow| flow.id == t.flow_id))
                 .map(|t| (t.stream_id, t.flow_id))
                 .collect();
-            let desc: RTCSessionDescription = serde_json::from_value(
-                serde_json::json!({"type":description.kind,"sdp":description.sdp.clone().unwrap_or_default()}),
-            )?;
-            p.pc.set_remote_description(desc).await?;
+            p.pc.accept(description.kind, description.sdp.unwrap_or_default())
+                .await?;
             for c in p.candidates.drain(..) {
-                // Each candidate is an independent attempt; transport state owns failure.
-                let _ = p.pc.add_ice_candidate(ice_candidate(c)).await;
+                let _ = p.pc.add_candidate(c.candidate.unwrap_or_default()).await;
             }
             if offer {
-                p.pc.set_local_description(p.pc.create_answer(None).await?)
-                    .await?;
                 let answer = self.local_signal(id, exchange).await?;
                 let p = self.pairs.get_mut(&id).unwrap();
                 p.confirm_outputs(p.output_ids()).await?;
@@ -1569,10 +1571,11 @@ impl Driver {
                 }
             }
             self.reconcile_receivers(id).await?;
+            self.refresh_media(false).await?;
         } else if let Some(c) = signal.candidate {
             if !p.ignore_offer {
-                if p.pc.remote_description().await.is_some() {
-                    let _ = p.pc.add_ice_candidate(ice_candidate(c)).await;
+                if p.pc.remote_description().await {
+                    let _ = p.pc.add_candidate(c.candidate.unwrap_or_default()).await;
                 } else if p.candidates.len() < MAX_ICE_CANDIDATES {
                     p.candidates.push(c);
                 }
@@ -1580,20 +1583,12 @@ impl Driver {
         }
         Ok(())
     }
-    async fn install_dc(&mut self, id: Uuid, dc: Arc<dyn DataChannel>) -> Result<()> {
+    async fn install_dc(&mut self, id: Uuid, dc: Arc<Channel>) -> Result<()> {
         let p = self.pairs.get_mut(&id).unwrap();
-        let label = match dc.label().await {
-            Ok(label) => label,
-            Err(_) => return Ok(()),
-        };
-        let lane = match label.as_str() {
-            "piik-room" => Lane::Control,
-            "piik-file" => Lane::Bulk,
-            "piik-input" => Lane::Input,
-            _ => {
-                dc.close().await?;
-                return Ok(());
-            }
+        let label = dc.label.clone();
+        let Some(lane) = Lane::from_label(&label) else {
+            dc.close().await?;
+            return Ok(());
         };
         if (lane != Lane::Input && p.plan.rooms.is_empty())
             || (lane == Lane::Control && p.dc.is_some())
@@ -1603,10 +1598,7 @@ impl Driver {
             dc.close().await?;
             return Ok(());
         }
-        if !dc.ordered().await?
-            || dc.max_retransmits().await?.is_some()
-            || dc.max_packet_life_time().await?.is_some()
-        {
+        if !dc.config.ordered || dc.config.reliability != str0m::channel::Reliability::Reliable {
             dc.close().await?;
             if lane == Lane::Control {
                 return Err(anyhow!("base DC must be reliable ordered"));
@@ -1624,17 +1616,17 @@ impl Driver {
         let task = tokio::spawn(async move {
             while let Some(event) = channel.poll().await {
                 match event {
-                    DataChannelEvent::OnOpen => {
+                    ChannelEvent::Open => {
                         if ready.set(true) && lane == Lane::Control {
                             let _ = events.send(Event::Dc(id, token, true)).await;
                         }
                     }
-                    DataChannelEvent::OnMessage(message) => match lane {
+                    ChannelEvent::Message(message) => match lane {
                         Lane::Control => {
                             if !ready.open() {
                                 continue;
                             }
-                            match data::control(message.data.as_ref()) {
+                            match data::control(message.as_slice()) {
                                 Some(ControlFrame::File(control)) => {
                                     files.control(peer, token, control).await
                                 }
@@ -1655,12 +1647,12 @@ impl Driver {
                                 None => {}
                             }
                         }
-                        Lane::Bulk => files.chunk(peer, token, message.data.as_ref()).await,
+                        Lane::Bulk => files.chunk(peer, token, message.as_slice()).await,
                         Lane::Input => {
-                            if !ready.open() || message.data.len() > 8192 {
+                            if !ready.open() || message.len() > 8192 {
                                 continue;
                             }
-                            if let Ok(frame) = serde_json::from_slice(message.data.as_ref()) {
+                            if let Ok(frame) = serde_json::from_slice(message.as_slice()) {
                                 if events
                                     .send(Event::InputMessage(id, token, frame))
                                     .await
@@ -1671,7 +1663,7 @@ impl Driver {
                             }
                         }
                     },
-                    DataChannelEvent::OnClose | DataChannelEvent::OnError => {
+                    ChannelEvent::Close => {
                         if ready.set(false) {
                             if lane != Lane::Input {
                                 files
@@ -1694,7 +1686,6 @@ impl Driver {
                         }
                         break;
                     }
-                    _ => {}
                 }
             }
         });
@@ -1732,8 +1723,8 @@ impl Driver {
             }
         } else if p.connected() && (p.plan.rooms.is_empty() || p.base_failed) {
             p.deadline = None;
-        } else if p.connected() && p.deadline.is_none() {
-            p.deadline = Some(Instant::now() + Duration::from_secs(20));
+        } else if p.connected() && !matches!(p.deadline, Some(Deadline::Control(_))) {
+            p.deadline = Some(Deadline::Control(Instant::now() + Duration::from_secs(20)));
         }
     }
     async fn fail_base(&mut self, id: Uuid) {
@@ -1765,6 +1756,9 @@ impl Driver {
         }
     }
     async fn retire_pair(&mut self, id: Uuid) -> bool {
+        if let Some(pending) = self.preparings.remove(&id) {
+            pending.close().await;
+        }
         let Some(pair) = self.pairs.remove(&id) else {
             return false;
         };
@@ -1793,12 +1787,16 @@ impl Driver {
         .await;
     }
     async fn deadlines(&mut self) {
+        // The callback's atomic connection fact can precede the queued State event.
+        for id in self.pairs.keys().copied().collect::<Vec<_>>() {
+            self.base_ready(id).await;
+        }
         let expired: Vec<_> = self
             .pairs
             .iter()
             .filter(|(_, p)| {
                 p.overflow.swap(false, Ordering::AcqRel)
-                    || p.deadline.is_some_and(|d| Instant::now() >= d)
+                    || p.deadline.is_some_and(|d| Instant::now() >= d.expires())
             })
             .map(|(id, p)| (*id, p.connected()))
             .collect();
@@ -1816,17 +1814,7 @@ impl Driver {
             return Ok(());
         };
         let mut ended = HashSet::new();
-        for transceiver in p.pc.get_transceivers().await {
-            if !matches!(
-                transceiver.current_direction().await?,
-                rtc::rtp_transceiver::RTCRtpTransceiverDirection::Recvonly
-                    | rtc::rtp_transceiver::RTCRtpTransceiverDirection::Sendrecv
-            ) {
-                if let Some(receiver) = transceiver.receiver().await? {
-                    ended.insert(receiver.track().track_id().await);
-                }
-            }
-        }
+        ended.extend(p.pc.ended_receivers().await?);
         let retired: Vec<_> = p
             .tasks
             .iter()
@@ -1868,7 +1856,7 @@ impl Driver {
                     .map(|(key, _)| *key)
                     .collect();
                 for key in retired {
-                    p.outputs.remove(&key).unwrap().close(&*p.pc).await;
+                    p.outputs.remove(&key).unwrap().close(&p.pc).await;
                 }
             }
             if assigned_latest.is_some_and(|flow| {
@@ -1941,17 +1929,22 @@ impl Driver {
                 publication_id,
                 source,
                 video,
+                retired_supply,
             } => {
-                if self.captures.get(&source).is_some_and(|capture| {
-                    capture.scope.publication_id == publication_id && capture.selected
-                }) {
+                if self
+                    .sources
+                    .get(&source)
+                    .filter(|current| current.publication_id == publication_id)
+                    .is_some()
+                {
                     let failed: Vec<_> = self
                         .pairs
                         .iter()
                         .flat_map(|(pair, p)| {
                             p.outputs.iter().filter_map(|(key, current)| {
-                                (current.source == source && current.encoding_failed(&video))
-                                    .then_some((*pair, *key, current.id))
+                                (current.source == source
+                                    && current.encoding_failed(&video, retired_supply.as_ref()))
+                                .then_some((*pair, *key, current.id))
                             })
                         })
                         .collect();
@@ -1973,25 +1966,36 @@ impl Driver {
             }
             Event::Candidate(id, candidate) => {
                 if let Some(p) = self.pairs.get_mut(&id) {
-                    if let Some(mapping) = &p.mapping {
-                        mapping.observe(&candidate);
+                    let mapped = if let Some(udp) = &self.server_udp {
+                        udp.mapped_candidate(&candidate)?
                     } else {
-                        p.mapping = mapping::Mapping::start(id, &candidate, self.events.clone());
-                    }
-                    let Ok(candidate) = signal_candidate(candidate) else {
-                        return Ok(());
+                        None
                     };
-                    self.send(Command::Signal {
-                        pair_id: id,
-                        payload: Signal {
-                            candidate: Some(candidate),
-                            description: None,
-                            tracks: None,
-                            resync: None,
-                            exchange_id: None,
-                        },
-                    })
-                    .await;
+                    if self.server_udp.is_none() {
+                        if let Some(mapping) = &p.mapping {
+                            mapping.observe(&candidate);
+                        } else {
+                            p.mapping =
+                                mapping::Mapping::start(id, &candidate, self.events.clone());
+                        }
+                    }
+                    for candidate in std::iter::once(candidate).chain(mapped) {
+                        let Ok(candidate) = signal_candidate(candidate) else {
+                            continue;
+                        };
+                        self.send(Command::Signal {
+                            pair_id: id,
+                            payload: Signal {
+                                udp: None,
+                                candidate: Some(candidate),
+                                description: None,
+                                tracks: None,
+                                resync: None,
+                                exchange_id: None,
+                            },
+                        })
+                        .await;
+                    }
                 }
             }
             Event::State(id, state) => {
@@ -2000,8 +2004,8 @@ impl Driver {
                         self.send_input(message).await;
                     }
                 }
-                if let Some(p) = self.pairs.get_mut(&id) {
-                    if p.connected() {
+                if self.pairs.contains_key(&id) {
+                    if state == RTCPeerConnectionState::Connected {
                         self.send(Command::LinkState {
                             pair_id: id,
                             state: LinkState::Connected,
@@ -2058,11 +2062,11 @@ impl Driver {
         }
         Ok(())
     }
-    async fn track(&mut self, id: Uuid, track: Arc<dyn TrackRemote>) -> Result<()> {
+    async fn track(&mut self, id: Uuid, track: Track) -> Result<()> {
         let Some(p) = self.pairs.get_mut(&id) else {
             return Ok(());
         };
-        let stream = track.stream_id().await;
+        let stream = track.stream.clone();
         let Some(flow_id) = p.remote.get(&stream).copied() else {
             return Ok(());
         };
@@ -2073,13 +2077,12 @@ impl Driver {
         if !self.publications.contains_key(&publication) {
             return Ok(());
         }
-        let Some(ssrc) = track.ssrcs().await.first().copied() else {
-            return Ok(());
-        };
-        let Some(codec) = track.codec(ssrc).await else {
-            return Ok(());
-        };
-        let kind = track.kind().await;
+        let ssrc = track.first_ssrc;
+        let codec = track.first_codec.rtp_codec.clone();
+        let kind = track.kind;
+        let track_id = track.id.clone();
+        let rids = track.rids.clone();
+        let layered = kind == RtpCodecKind::Video && !rids.is_empty();
         if !supported(&codec, kind)
             || (kind == RtpCodecKind::Video
                 && self.publications[&publication].kind != piik_channel_core::wire::Kind::Screen)
@@ -2100,8 +2103,8 @@ impl Driver {
         }
         let key = (flow_id, kind);
         let (keyframes, mut requests) = watch::channel(0u64);
-        let report: crate::media::SourceReport = Default::default();
-        let source = Source {
+        let report: crate::media::SourceReport = track.report(ssrc);
+        let mut source = Source {
             id: Uuid::new_v4(),
             publication_id: publication,
             origin: SourceOrigin::Incoming {
@@ -2115,6 +2118,7 @@ impl Driver {
                 keyframes,
                 report: report.clone(),
             },
+            layers: layered.then(|| crate::media::video::Layers::new(rids)),
         };
         if let Some(previous) = p.latest.insert(key, source.id) {
             if !self.sources.contains_key(&previous) {
@@ -2128,37 +2132,164 @@ impl Driver {
         let relay = self.relay.clone();
         let source_id = source.id;
         let events = self.events.clone();
-        let track_id = track.track_id().await;
         p.tasks.retain(|_, reader| !reader.task.is_finished());
         let task = tokio::spawn(async move {
             let mut first = true;
-            let mut ingress = crate::media::RtpIngress::new(&source.codec);
-            loop {
+            let framed = crate::media::incoming::Incoming::supports(&source.codec.mime_type);
+            struct Layer {
+                rid: String,
+                report: crate::media::SourceReport,
+                input: Option<(crate::media::incoming::Incoming, watch::Receiver<u64>)>,
+            }
+            let mut layers: HashMap<u32, Layer> = HashMap::new();
+            let mut time: Option<crate::media::clock::SourceTime> = None;
+            let changed = Arc::new(Notify::new());
+            'reading: loop {
                 let event = tokio::select! {
                     event = track.poll() => match event {
                         Some(event) => event,
                         None => break,
                     },
-                    result = requests.changed(), if kind == RtpCodecKind::Video => {
+                    result = requests.changed(), if kind == RtpCodecKind::Video && !framed => {
                         if result.is_err() {
                             break;
                         }
-                        let _ = track.write_rtcp(vec![Box::new(PictureLossIndication {
-                            sender_ssrc: 0,
-                            media_ssrc: ssrc,
-                        })]).await;
+                        let _ = track.request_keyframe(ssrc).await;
+                        continue;
+                    }
+                    ssrc = async {
+                        // Requests have their own durable watch version. The Video
+                        // Notify belongs to encoder selection, not upstream RTCP.
+                        let mut waiting: futures_util::stream::FuturesUnordered<_> = layers
+                            .iter_mut()
+                            .filter_map(|(ssrc, layer)| {
+                                layer.input.as_mut().map(|(_, requests)| async move {
+                                    requests.changed().await.ok().map(|_| *ssrc)
+                                })
+                            })
+                            .collect();
+                        while let Some(ssrc) = waiting.next().await {
+                            if let Some(ssrc) = ssrc { return ssrc; }
+                        }
+                        std::future::pending::<u32>().await
+                    }, if framed => {
+                        let _ = track.request_keyframe(ssrc).await;
                         continue;
                     }
                 };
                 match event {
-                    TrackRemoteEvent::OnRtpPacket(packet) if packet.header.ssrc == ssrc => {
-                        match ingress.accept(&packet) {
-                            Ok(false) => continue,
-                            Ok(true) => {}
-                            Err(error) => {
-                                eprintln!("Native encoded input failed: {error}");
-                                break;
+                    TrackEvent::Rtp(packet, sequence, media_time) => {
+                        if framed {
+                            let packet_ssrc = packet.header.ssrc;
+                            if !layered && packet_ssrc != ssrc {
+                                continue;
                             }
+                            if !layers.contains_key(&packet_ssrc) {
+                                let Some(codec) = track.codec(packet_ssrc) else {
+                                    continue;
+                                };
+                                if !crate::media::compatible(&source.codec, &codec.rtp_codec) {
+                                    continue;
+                                }
+                                let rid = track.rid(packet_ssrc).unwrap_or_default();
+                                if layered && rid.is_empty() {
+                                    continue;
+                                }
+                                // An SSRC successor replaces only its RID, not the source.
+                                layers.retain(|_, layer| layer.rid != rid);
+                                if let Some(group) = &source.layers {
+                                    group.remove(&rid);
+                                }
+                                layers.insert(
+                                    packet_ssrc,
+                                    Layer {
+                                        rid,
+                                        report: track.report(packet_ssrc),
+                                        input: None,
+                                    },
+                                );
+                            }
+                            let layer = layers.get_mut(&packet_ssrc).unwrap();
+                            if layer.input.is_none() {
+                                if packet.payload.is_empty() {
+                                    continue;
+                                }
+                                let next_time = match &time {
+                                    Some(root) => {
+                                        let report = layer.report.lock().unwrap();
+                                        report.as_ref().and_then(|(sr, _)| {
+                                            root.incoming_layer(packet.header.timestamp, sr)
+                                        })
+                                    }
+                                    None => track
+                                        .presentation(packet.header.timestamp, packet_ssrc)
+                                        .map(|at| {
+                                            crate::media::clock::SourceTime::incoming(
+                                                at,
+                                                packet.header.timestamp,
+                                                layer.report.clone(),
+                                            )
+                                        }),
+                                };
+                                let Some(next_time) = next_time else {
+                                    continue;
+                                };
+                                let input = crate::media::incoming::Incoming::with_time(
+                                    &source.codec.mime_type,
+                                    next_time.clone(),
+                                    changed.clone(),
+                                );
+                                let requests = input.video().requests();
+                                if time.is_none() {
+                                    time = Some(next_time);
+                                }
+                                input.video().request_keyframe();
+                                layer.input = Some((input, requests));
+                            }
+                            let (input, _) = layer.input.as_mut().unwrap();
+                            input.push(sequence, media_time, packet);
+                            loop {
+                                match input.pop() {
+                                    Ok(Some(frame)) => {
+                                        if frame.keyframe {
+                                            if let Some(group) = &source.layers {
+                                                group.insert(
+                                                    layer.rid.clone(),
+                                                    input.video().clone(),
+                                                );
+                                            }
+                                        }
+                                        if first {
+                                            first = false;
+                                            source.feed = SourceFeed::Video(input.video().clone());
+                                            if ready_sources
+                                                .send(SourceReady {
+                                                    source: source.clone(),
+                                                    media: InitialMedia::Video(frame),
+                                                })
+                                                .await
+                                                .is_err()
+                                            {
+                                                break 'reading;
+                                            }
+                                        } else {
+                                            input.video().write(frame);
+                                        }
+                                    }
+                                    Ok(None) => break,
+                                    Err(error) => {
+                                        eprintln!("Native encoded input failed: {error}");
+                                        break 'reading;
+                                    }
+                                }
+                            }
+                            continue;
+                        }
+                        if track.presentation(packet.header.timestamp, ssrc).is_none() {
+                            continue;
+                        }
+                        if packet.header.ssrc != ssrc {
+                            continue;
                         }
                         // Padding occupies the same sequence space, but cannot announce a source.
                         if packet.payload.is_empty() && (first || !packet.header.padding) {
@@ -2180,18 +2311,30 @@ impl Driver {
                             relay.write(source.id, packet);
                         }
                     }
-                    TrackRemoteEvent::OnEnded => break,
-                    TrackRemoteEvent::OnRtcpPacket(packets) => {
-                        for packet in packets {
-                            if let Some(received) = packet.as_any().downcast_ref::<SenderReport>() {
-                                if received.ssrc == ssrc {
-                                    *report.lock().unwrap() =
-                                        Some((received.clone(), Instant::now()));
+                    TrackEvent::End => break,
+                    TrackEvent::Report(packets) => {
+                        for (received, at) in packets {
+                            {
+                                if framed {
+                                    if let Some(layer) = layers.get(&received.ssrc) {
+                                        *layer.report.lock().unwrap() =
+                                            Some((received.clone(), at));
+                                    }
+                                } else if received.ssrc == ssrc {
+                                    *report.lock().unwrap() = Some((received.clone(), at));
+                                }
+                            }
+                        }
+                        // A quiet layer may have sent its first IDR before both
+                        // SRs arrived. Request its first usable independent frame.
+                        if framed {
+                            for (ssrc, layer) in &layers {
+                                if layer.input.is_none() && layer.report.lock().unwrap().is_some() {
+                                    let _ = track.request_keyframe(*ssrc).await;
                                 }
                             }
                         }
                     }
-                    _ => {}
                 }
             }
             let _ = events
@@ -2281,6 +2424,23 @@ impl Driver {
                 None
             }
         };
+        #[cfg(all(
+            feature = "capture",
+            any(target_os = "windows", target_os = "linux", target_os = "macos")
+        ))]
+        if incoming.is_some() && source.codec.mime_type.eq_ignore_ascii_case("video/H264") {
+            if let SourceFeed::Video(video) = &source.feed {
+                self.derived.insert(
+                    source.id,
+                    crate::media::derived::Producer::start(
+                        publication,
+                        source.id,
+                        video.clone(),
+                        self.events.clone(),
+                    ),
+                );
+            }
+        }
         self.sources.insert(source.id, source.clone());
         self.refresh_media(false).await?;
         match media {
@@ -2289,7 +2449,6 @@ impl Driver {
                     self.relay.write(source.id, packet);
                 }
             }
-            #[cfg(feature = "capture")]
             InitialMedia::Video(frame) => {
                 if let SourceFeed::Video(video) = &source.feed {
                     video.write(frame);
@@ -2386,7 +2545,7 @@ impl Driver {
                 })
                 .collect();
             for key in retired {
-                pair.outputs.remove(&key).unwrap().close(&*pair.pc).await;
+                pair.outputs.remove(&key).unwrap().close(&pair.pc).await;
                 released = true;
             }
         }
@@ -2432,13 +2591,14 @@ impl Driver {
                             .map(|(_, out)| out.stream.clone())
                             .unwrap_or_else(|| Uuid::new_v4().to_string());
                         let next = match Output::new(
-                            &*p.pc,
+                            &p.pc,
                             source,
                             stream,
                             *id,
                             output_key,
                             self.events.clone(),
                             p.reports.clone(),
+                            p.plan.can_receive_video_layers,
                         )
                         .await
                         {
@@ -2481,14 +2641,19 @@ fn signal_candidate(c: RTCIceCandidate) -> Result<Candidate> {
         username_fragment: c.username_fragment,
     })
 }
-fn ice_candidate(c: Candidate) -> rtc::peer_connection::transport::RTCIceCandidateInit {
-    rtc::peer_connection::transport::RTCIceCandidateInit {
-        candidate: c.candidate.unwrap_or_default(),
-        sdp_mid: c.sdp_mid,
-        sdp_mline_index: c.sdp_m_line_index,
-        username_fragment: c.username_fragment,
-        url: None,
+fn prepared_candidate(remote: std::net::SocketAddrV4) -> Result<Candidate> {
+    let candidate = rtc::peer_connection::transport::CandidateHostConfig {
+        base_config: rtc::peer_connection::transport::CandidateConfig {
+            network: "udp".into(),
+            address: remote.ip().to_string(),
+            port: remote.port(),
+            component: 1,
+            ..Default::default()
+        },
+        ..Default::default()
     }
+    .new_candidate_host()?;
+    signal_candidate(RTCIceCandidate::from(&candidate))
 }
 async fn close_pair(mut pair: Pair) {
     pair.state
@@ -2510,13 +2675,16 @@ async fn close_pair(mut pair: Pair) {
         let _ = task.task.await;
     }
     for (_, output) in pair.outputs {
-        output.close(&*pair.pc).await;
+        output.close(&pair.pc).await;
     }
 }
 
 mod bandwidth;
 mod input;
 mod mapping;
+mod preparation;
+pub mod server_udp;
+pub(crate) mod transport;
 
 #[cfg(test)]
 mod tests;

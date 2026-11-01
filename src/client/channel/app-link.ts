@@ -3,6 +3,7 @@ import { z } from "zod";
 import { appApprovalURL, discoverLocalApp, type AppDiscovery, type AppDiscoveryOptions } from "../native/discovery";
 import { nativeCaptureTargetSchema, remoteControlStateSchema, remoteStopShortcutSchema, type NativeCaptureTarget } from "../native/wire";
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
+import type { QualityProfile } from "../media/quality";
 import { activateNativePicker } from "../native/activation";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
@@ -155,11 +156,13 @@ export class ChannelApp {
     return preview;
   }
 
-  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio = false): Promise<PreparedNativeCapture> {
+  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile): Promise<PreparedNativeCapture> {
+    const settings = { width: profile.resolution.width, height: profile.resolution.height,
+      fps: profile.maxFramerate, bitrate: profile.maxBitrate };
     if (!this.connected) throw new Error("app_disconnected");
     this.prepared.add(publicationId);
     try {
-      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio });
+      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings });
       activateNativePicker(this.activationURL);
       const capture = preparedCaptureSchema.parse(await pending);
       if (!this.prepared.has(publicationId)) throw new DOMException("Capture cancelled", "AbortError");

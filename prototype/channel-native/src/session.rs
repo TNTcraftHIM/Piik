@@ -240,6 +240,7 @@ pub struct Config {
     pub name: String,
     pub key: Option<String>,
     pub credential: Option<String>,
+    pub server_udp: Option<Arc<crate::peer::server_udp::ServerUdp>>,
 }
 
 /// Trusted paths supplied by the explicit hosting caller. Existing files restore
@@ -473,6 +474,9 @@ impl Session {
             };
             if let Ok(Ok((mut socket, _))) = connection {
                 let join = Command::Join {
+                    can_prepare_udp: self.config.server_udp.is_none()
+                        && crate::peer::can_prepare_udp().await,
+                    can_receive_video_layers: true,
                     name: self.config.name.clone(),
                     credential: self.config.credential.clone(),
                     key: self.config.key.clone(),
@@ -701,6 +705,7 @@ impl Session {
                         self.hosting
                             .as_ref()
                             .and_then(|hosting| hosting.desktop.clone()),
+                        self.config.server_udp.clone(),
                     );
                     self.live = Some(Live {
                         session: session_id,
@@ -1196,7 +1201,9 @@ async fn next_host_command(hosting: &mut Option<Hosting>) -> Option<HostCommand>
 
 // The wire uses the browser RTCIceServer shape; the native library requires an
 // array and explicit credential strings even for an unauthenticated STUN server.
-fn ice_server(mut value: serde_json::Value) -> Result<webrtc::peer_connection::RTCIceServer> {
+fn ice_server(
+    mut value: serde_json::Value,
+) -> Result<rtc::peer_connection::transport::RTCIceServer> {
     let object = value
         .as_object_mut()
         .ok_or_else(|| anyhow!("invalid_ice_server"))?;

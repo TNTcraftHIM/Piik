@@ -38,6 +38,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     name: "Source".into(),
                     key: None,
                     credential: None,
+                    server_udp: None,
                 },
                 files: vec![],
                 live: None,

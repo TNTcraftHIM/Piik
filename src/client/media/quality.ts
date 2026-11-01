@@ -23,6 +23,45 @@ export type {
 
 export type QualityProfile = QualitySettings;
 export const DEFAULT_ROOM_VOICE_BITRATE = 64_000;
+
+const QUALITY_PREFERENCE_KEY = "piik:quality-preference:v1";
+
+export function readPreferredQuality(): QualityProfile {
+  try {
+    const stored = window.localStorage.getItem(QUALITY_PREFERENCE_KEY);
+    const result = qualitySettingsSchema.safeParse(stored ? JSON.parse(stored) : null);
+    if (result.success && supportsCaptureProfile(result.data)) return result.data;
+  } catch {
+    // Optional storage must not prevent sharing with session settings.
+  }
+  return { ...DEFAULT_QUALITY_SETTINGS };
+}
+
+export function savePreferredQuality(profile: QualityProfile): void {
+  try {
+    window.localStorage.setItem(QUALITY_PREFERENCE_KEY, JSON.stringify(profile));
+  } catch {
+    // Saving a preference must not fail an applied choice.
+  }
+}
+
+/** Screen simulcast uses the same source ceiling and layer construction on every sender. */
+export function screenShareEncodings(profile: QualityProfile, settings: MediaTrackSettings | undefined,
+  layerCount: number, activeCount: number): RTCRtpEncodingParameters[] {
+  const ceiling = profile.resolution;
+  const scale = Math.max(1, (settings?.width ?? ceiling.width) / ceiling.width,
+    (settings?.height ?? ceiling.height) / ceiling.height);
+  const high = {
+    rid: layerCount === 2 ? "h" : "q", active: activeCount >= layerCount,
+    scaleResolutionDownBy: scale, maxBitrate: profile.maxBitrate, maxFramerate: profile.maxFramerate,
+  };
+  // LiveKit 2.22.1 publishUtils: half size, same FPS and quarter bitrate with
+  // a 150 kbps floor, bounded by the source ceiling. WebRTC budgets the whole PC.
+  return layerCount === 2 ? [{ rid: "q", active: activeCount > 0,
+    scaleResolutionDownBy: 2 * scale,
+    maxBitrate: Math.min(profile.maxBitrate, Math.max(150_000, Math.floor(profile.maxBitrate / 4))),
+    maxFramerate: profile.maxFramerate }, high] : [high];
+}
 export const STARTUP_VIDEO_ENCODED_FRAMES = 5;
 export const MIN_VIDEO_FRAMERATE = 1;
 export const MIN_VIDEO_BITRATE = 100_000;
@@ -441,8 +480,11 @@ export async function configureVideoSender(
   // can discard ticks and strand already-encoded frames when delivery is uneven.
   if (carrierScale === undefined) encoding.maxFramerate = profile.maxFramerate;
   else delete encoding.maxFramerate;
-  if (parameters.encodings.length === 1) {
-    encoding.scaleResolutionDownBy = carrierScale ?? requestedScaleResolutionDownBy(sender, profile);
+  // Keep the existing spatial ratios when the source dimensions change.
+  const previousScale = encoding.scaleResolutionDownBy ?? 1;
+  const scale = carrierScale ?? requestedScaleResolutionDownBy(sender, profile);
+  for (const layer of parameters.encodings) {
+    layer.scaleResolutionDownBy = scale * (layer.scaleResolutionDownBy ?? previousScale) / previousScale;
   }
   // The carrier transports already-adapted frames. Native FPS adaptation on
   // that clock would discard them a second time and repeatedly break the queue.

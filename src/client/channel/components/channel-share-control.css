@@ -1,4 +1,11 @@
 .c3-share-control { display: inline-flex; gap: 8px; }
+.lr-anchored-card.c3-quality-picker {
+  width: min(640px, calc(100vw - 16px)); max-height: calc(100dvh - 16px);
+  padding: 0;
+}
+.c3-quality-picker .lr-sharing-panel { margin: 0; border: 0; border-radius: inherit; box-shadow: none; animation: none; }
+.c3-quality-heading h3 { margin: 0; font-size: 16px; }
+.c3-quality-heading p { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .lr-anchored-card.c3-share-picker {
   width: min(720px, calc(100vw - 16px));
   height: min(560px, calc(100dvh - 16px));

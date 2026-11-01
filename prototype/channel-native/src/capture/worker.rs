@@ -1,5 +1,5 @@
 //! One same-build child owns one existing MFT worker. No WGC or output map.
-use super::{gpu, output, CaptureClock, Settings};
+use super::{gpu, output, CaptureClock, FrameTiming, Settings};
 use anyhow::{anyhow, bail, ensure, Result};
 use serde::{Deserialize, Serialize};
 use std::io::Read;
@@ -13,10 +13,17 @@ pub(super) const MAX_AU: usize = 4 * 1024 * 1024;
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(super) enum Command {
-    Start { settings: Settings },
-    Frame { frame: gpu::Frame },
+    Start {
+        settings: Settings,
+        timing: FrameTiming,
+    },
+    Frame {
+        frame: gpu::Frame,
+    },
     Read,
-    Bitrate { bitrate: u32 },
+    Bitrate {
+        bitrate: u32,
+    },
     Keyframe,
     Stop,
 }
@@ -109,15 +116,15 @@ async fn encode(
     receiver: &mut mpsc::Receiver<Command>,
     stdout: &mut tokio::io::Stdout,
 ) -> Result<()> {
-    let settings = match receiver.recv().await {
-        Some(Command::Start { settings }) => settings,
+    let (settings, timing) = match receiver.recv().await {
+        Some(Command::Start { settings, timing }) => (settings, timing),
         Some(Command::Stop) | None => return Ok(()),
         _ => bail!("expected encoding Start"),
     };
     settings.validate()?;
     let clock = CaptureClock::new()?;
     let (requests, mut frames) = mpsc::channel(1);
-    let mut encoding = output::Encoding::start(settings, clock, requests)?;
+    let mut encoding = output::Encoding::start(settings, clock, timing, requests)?;
     let control = encoding.control();
     let mut gpu = None;
     let mut read = false;

@@ -20,6 +20,7 @@ pub(super) struct Converter {
 struct Processor {
     input_width: u32,
     input_height: u32,
+    input_format: DXGI_FORMAT,
     enumerator: ID3D11VideoProcessorEnumerator,
     processor: ID3D11VideoProcessor,
 }
@@ -39,11 +40,11 @@ impl Converter {
             source_texture.GetDesc(&mut source_desc);
             let (input_width, input_height) = (source_desc.Width, source_desc.Height);
             let (width, height) = (self.settings.width, self.settings.height);
-            if self
-                .processor
-                .as_ref()
-                .is_none_or(|p| p.input_width != input_width || p.input_height != input_height)
-            {
+            if self.processor.as_ref().is_none_or(|p| {
+                p.input_width != input_width
+                    || p.input_height != input_height
+                    || p.input_format != source_desc.Format
+            }) {
                 let enumerator = self.video.CreateVideoProcessorEnumerator(
                     &D3D11_VIDEO_PROCESSOR_CONTENT_DESC {
                         InputFrameFormat: D3D11_VIDEO_FRAME_FORMAT_PROGRESSIVE,
@@ -66,7 +67,11 @@ impl Converter {
                 self.context.VideoProcessorSetStreamColorSpace1(
                     &processor,
                     0,
-                    DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709,
+                    if source_desc.Format == DXGI_FORMAT_NV12 {
+                        DXGI_COLOR_SPACE_YCBCR_STUDIO_G22_LEFT_P709
+                    } else {
+                        DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709
+                    },
                 );
                 self.context.VideoProcessorSetOutputColorSpace1(
                     &processor,
@@ -100,6 +105,7 @@ impl Converter {
                 self.processor = Some(Processor {
                     input_width,
                     input_height,
+                    input_format: source_desc.Format,
                     enumerator,
                     processor,
                 });

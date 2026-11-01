@@ -1,8 +1,8 @@
-use super::{checked, encoding::Encoding, Control, Frames, Image};
-use crate::capture::{Settings, Target, TargetKind};
+use super::{checked, encoding::Encoding, Control, Frames, ImageCopy};
+use crate::capture::{FrameTiming, Settings, Target, TargetKind};
 use anyhow::{anyhow, ensure, Context as _, Result};
 use cidre::sc::stream::{Delegate as _, Output as _};
-use cidre::{arc, cf, cg, cm, cv, define_obj_type, dispatch, ns, objc, sc, vt};
+use cidre::{arc, cf, cg, cm, cv, define_obj_type, dispatch, ns, objc, sc};
 use objc2_core_graphics::{CGDisplayCopyDisplayMode, CGDisplayMode};
 use std::thread;
 
@@ -18,7 +18,7 @@ impl Capture {
     pub fn start(target: Target, fps: u32, _audio: bool) -> Result<Self> {
         ensure!(fps > 0 && fps <= i32::MAX as u32, "invalid source FPS");
         let runtime = tokio::runtime::Handle::try_current()?;
-        let frames = Frames::new();
+        let frames = Frames::new(FrameTiming::Capture)?;
         let source = frames.clone();
         let thread = thread::Builder::new()
             .name("piik-mac-source".into())
@@ -218,7 +218,7 @@ fn process_creation_time(pid: i32) -> Option<u64> {
 
 struct OutputState {
     frames: Frames,
-    transfer: Option<arc::R<vt::PixelTransferSession>>,
+    copy: ImageCopy,
 }
 define_obj_type!(
     Output + sc::stream::OutputImpl,
@@ -377,25 +377,15 @@ impl OutputState {
             &crop,
             cv::AttachMode::ShouldPropagate,
         );
-        let attrs = cf::Dictionary::with_keys_values(
-            &[cv::pixel_buffer_keys::io_surf_props()],
-            &[&*cf::Dictionary::new()],
-        )
-        .context("image attributes failed")?;
-        let owned = checked(cv::PixelBuf::new(
-            width.round().max(1.0) as usize,
-            height.round().max(1.0) as usize,
-            cv::PixelFormat::_32_BGRA,
-            Some(&attrs),
-        ))?;
-        if self.transfer.is_none() {
-            let mut transfer = checked(vt::PixelTransferSession::new())?;
-            checked(transfer.set_scaling_crop_src_to_clean_aperture())?;
-            self.transfer = Some(transfer);
-        }
-        checked(self.transfer.as_ref().unwrap().transfer(source, &owned))?;
-        self.frames
-            .publish(Image::copied(owned, geometry.size), time);
+        let image = self.copy.copy(
+            source,
+            (
+                width.round().max(1.0) as usize,
+                height.round().max(1.0) as usize,
+            ),
+            geometry.size,
+        )?;
+        self.frames.publish(image, time);
         Ok(())
     }
 }
@@ -413,7 +403,7 @@ async fn run(target: Target, fps: u32, frames: &Frames) -> Result<()> {
     cfg.set_shows_cursor(true);
     let mut output = Output::with(OutputState {
         frames: frames.clone(),
-        transfer: None,
+        copy: ImageCopy::default(),
     });
     let delegate = Delegate::with(frames.clone());
     let queue = dispatch::Queue::serial_with_ar_pool();
@@ -451,11 +441,7 @@ async fn run(target: Target, fps: u32, frames: &Frames) -> Result<()> {
     // Stop completion precedes queue drain and release. Neither call holds the
     // Frames lock. The transfer session is created/retired on this serial queue.
     let stopped = checked(stream.stop().await);
-    queue.sync(|| {
-        if let Some(mut transfer) = output.inner_mut().transfer.take() {
-            transfer.invalidate();
-        }
-    });
+    queue.sync(|| output.inner_mut().copy.clear());
     let removed = checked(stream.remove_stream_output(output.as_ref(), sc::OutputType::Screen));
     result.and(stopped).and(removed)
 }

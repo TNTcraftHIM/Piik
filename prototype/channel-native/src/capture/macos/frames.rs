@@ -1,6 +1,8 @@
 //! One source anchor and latest immutable image, independent of encoder settings.
+use super::checked;
+use crate::capture::{FrameTiming, Settings};
 use anyhow::{anyhow, ensure, Result};
-use cidre::{arc, cm, cv};
+use cidre::{arc, cf, cm, cv, vt};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -72,6 +74,47 @@ impl Image {
         &self.pixels
     }
 }
+
+/// The SC callback and VT decoder each own one serial pixel-copy session.
+#[derive(Default)]
+pub(crate) struct ImageCopy(Option<arc::R<vt::PixelTransferSession>>);
+impl ImageCopy {
+    pub fn copy(
+        &mut self,
+        source: &cv::PixelBuf,
+        pixels: (usize, usize),
+        natural: (f64, f64),
+    ) -> Result<Image> {
+        let attrs = cf::Dictionary::with_keys_values(
+            &[cv::pixel_buffer_keys::io_surf_props()],
+            &[&*cf::Dictionary::new()],
+        )
+        .ok_or_else(|| anyhow!("image attributes failed"))?;
+        let owned = checked(cv::PixelBuf::new(
+            pixels.0,
+            pixels.1,
+            cv::PixelFormat::_32_BGRA,
+            Some(&attrs),
+        ))?;
+        if self.0.is_none() {
+            let mut transfer = checked(vt::PixelTransferSession::new())?;
+            checked(transfer.set_scaling_crop_src_to_clean_aperture())?;
+            self.0 = Some(transfer);
+        }
+        checked(self.0.as_ref().unwrap().transfer(source, &owned))?;
+        Ok(Image::copied(owned, natural))
+    }
+    pub fn clear(&mut self) {
+        if let Some(mut transfer) = self.0.take() {
+            transfer.invalidate();
+        }
+    }
+}
+impl Drop for ImageCopy {
+    fn drop(&mut self) {
+        self.clear();
+    }
+}
 #[derive(Clone)]
 pub struct RawFrame {
     pub image: Image,
@@ -136,13 +179,21 @@ impl Control {
 pub struct Frames {
     pub(crate) shared: Arc<Shared>,
     clock: Clock,
+    timing: FrameTiming,
 }
 impl Frames {
-    pub fn new() -> Self {
-        Self {
+    pub(crate) fn new(timing: FrameTiming) -> Result<Self> {
+        Ok(Self {
             shared: Arc::new(Shared::default()),
             clock: Clock::new(),
-        }
+            timing,
+        })
+    }
+    pub(crate) fn timing(&self) -> FrameTiming {
+        self.timing
+    }
+    pub(crate) fn encode(&self, settings: Settings) -> Result<super::Encoding> {
+        super::Encoding::start(self.clone(), settings)
     }
     pub fn clock(&self) -> Clock {
         self.clock
@@ -162,8 +213,7 @@ impl Frames {
         drop(state);
         self.shared.changed.notify_waiters();
     }
-    /// Source-only handoff for this slice. Encoders later subscribe to the same
-    /// latest image owner; this is not an additional media queue.
+    /// Each encoder consumes the same source-owned latest image independently.
     pub async fn recv_after(&self, previous: Option<Instant>) -> Result<Option<RawFrame>> {
         loop {
             let ready = self.shared.changed.notified();

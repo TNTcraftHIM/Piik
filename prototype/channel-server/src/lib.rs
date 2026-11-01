@@ -4,8 +4,9 @@ pub mod domain;
 pub mod web;
 
 use domain::Domain;
+use piik_channel_native::peer::server_udp::ServerUdp;
 use piik_channel_native::session::{self as native, Config, RoomFile};
-use std::{future::Future, path::PathBuf};
+use std::{future::Future, path::PathBuf, sync::Arc};
 use tokio::sync::watch;
 
 pub fn ice_servers_from_environment() -> anyhow::Result<Vec<serde_json::Value>> {
@@ -25,6 +26,7 @@ pub async fn serve_server(
     directory: PathBuf,
     owner: String,
     routes: axum::Router,
+    udp: Arc<ServerUdp>,
     stop: impl Future<Output = ()>,
 ) -> anyhow::Result<()> {
     std::fs::create_dir_all(directory.join("rooms"))?;
@@ -34,6 +36,7 @@ pub async fn serve_server(
         name: domain.owner_name().unwrap_or_else(|| "Piik Server".into()),
         key: Some(owner),
         credential: None,
+        server_udp: Some(udp),
     };
     let rooms = [
         ("living", "Living room"),

@@ -1,5 +1,6 @@
 //! One encoder worker and its ordered access units, independent of other outputs.
-use super::{mf::Encoder, windows::RawFrame, CaptureClock, EncodedFrame, Settings};
+use super::{frames::RawFrame, mf::Encoder, CaptureClock, FrameTiming, Settings};
+use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Result};
 use std::{
     collections::VecDeque,
@@ -111,6 +112,7 @@ impl Encoding {
     pub(super) fn start(
         settings: Settings,
         clock: CaptureClock,
+        timing: FrameTiming,
         requests: tokio::sync::mpsc::Sender<Option<i64>>,
     ) -> Result<Self> {
         let shared = Arc::new(Shared {
@@ -123,7 +125,7 @@ impl Encoding {
         let thread = thread::Builder::new()
             .name("piik-encoder".into())
             .spawn(move || {
-                let result = Encoder::run(&worker, settings, clock);
+                let result = Encoder::run(&worker, settings, clock, timing);
                 let mut state = worker.state.lock().unwrap();
                 if let Err(error) = &result {
                     state.failure = Some(format!("{error:#}"));

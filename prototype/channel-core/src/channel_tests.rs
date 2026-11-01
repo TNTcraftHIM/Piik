@@ -57,6 +57,8 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             channel
                 .join(
                     Admission {
+                        can_prepare_udp: false,
+                        can_receive_video_layers: false,
                         name: "Participant",
                         credential: None,
                         key: Some(if index == 0 { "owner" } else { "invite" }),
@@ -208,7 +210,9 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             file.room_id = id.clone();
         }
         if index < 3 {
-            state.subscriptions.extend(view.publications.iter().map(|source| source.id));
+            state
+                .subscriptions
+                .extend(view.publications.iter().map(|source| source.id));
             state.publications.extend(view.publications);
             state.voice.extend(view.voice);
             state.files.extend(view.files);
@@ -222,6 +226,8 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
         .iter()
         .skip(1)
         .map(|peer| PairInfo {
+            udp_preparation: None,
+            can_receive_video_layers: false,
             id: Uuid::new_v4(),
             peer_id: *peer,
             rooms: state
@@ -276,6 +282,8 @@ fn text_limits_match_browser_utf16_and_room_history() {
     let owner = channel
         .join(
             Admission {
+                can_prepare_udp: false,
+                can_receive_video_layers: false,
                 name: "Owner",
                 credential: None,
                 key: Some("owner"),

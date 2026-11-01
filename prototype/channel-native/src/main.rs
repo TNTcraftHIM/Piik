@@ -34,6 +34,7 @@ async fn run_native() -> Result<()> {
         name: env::var("PIIK_CHANNEL_NATIVE_NAME").unwrap_or_else(|_| "Native Host".into()),
         key: env::var("PIIK_CHANNEL_NATIVE_KEY").ok(),
         credential: env::var("PIIK_CHANNEL_NATIVE_CREDENTIAL").ok(),
+        server_udp: None,
     };
     run(config, rooms, stop).await
 }

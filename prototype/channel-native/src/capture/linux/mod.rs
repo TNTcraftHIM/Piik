@@ -1,5 +1,6 @@
 //! Portal-owned capture and independent GStreamer media workers.
 mod audio;
+pub(crate) mod decoder;
 mod encoding;
 mod frames;
 mod portal;

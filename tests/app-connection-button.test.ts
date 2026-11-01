@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppConnectionButton } from "../src/client/components/living/AppConnectionButton";
 import { CaptureSourcePicker } from "../src/client/components/living/CaptureSourcePicker";
 import { ChannelShareControl } from "../src/client/channel/components/ChannelShareControl";
+import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import type { ChannelController } from "../src/client/channel/types";
 
 describe("shared App connection entry", () => {
@@ -46,21 +47,23 @@ describe("shared App connection entry", () => {
       ...(entry.camera ? { getUserMedia: vi.fn() } : {}),
       ...(entry.display ? { getDisplayMedia: vi.fn() } : {}),
     } });
-    const channel = { appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined } as unknown as ChannelController;
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
     const button = html.match(/<button\b[^>]*>/)![0];
     expect(button.includes("disabled")).toBe(!entry.available);
     expect(button.toLowerCase().includes("popovertarget=")).toBe(entry.picker);
-    expect(html.match(/<button\b/g)).toHaveLength(1);
+    expect(html.match(/<button\b/g)).toHaveLength(2);
+    expect(html).toMatch(/aria-label="(?:Sharing settings|分享设置)"/);
   });
   it("reuses the sharing entry as Switch source only for this page's active room share", () => {
     vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn() } });
-    const channel = { appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined,
+    const channel = { quality: DEFAULT_QUALITY_SETTINGS, setQuality: vi.fn(), appConnected: false, pending: new Set(), nativeCaptureRequest: () => undefined,
       ownedScreens: new Set(["mine"]), state: { publications: [{ id: "mine", roomId: "room" }] },
     } as unknown as ChannelController;
     const html = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "room", disabled: false }));
     expect(html).toMatch(/aria-label="(?:Switch source|切换来源)"/);
-    expect(html.match(/<button\b/g)).toHaveLength(1);
+    expect(html.match(/<button\b/g)).toHaveLength(2);
+    expect(html).toMatch(/aria-label="(?:Sharing settings|分享设置)"/);
     const elsewhere = renderToStaticMarkup(createElement(ChannelShareControl, { channel, roomId: "other", disabled: false }));
     expect(elsewhere).not.toMatch(/aria-label="(?:Switch source|切换来源)"/);
   });

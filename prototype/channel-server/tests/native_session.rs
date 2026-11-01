@@ -150,6 +150,7 @@ async fn rejected_identity_never_creates_room_storage() {
             name: "Rejected".into(),
             key: Some("not-an-invite".into()),
             credential: None,
+            server_udp: None,
         },
         vec![RoomFile {
             path: folder.join("one.sqlite"),
@@ -190,6 +191,7 @@ fn start(
                 name: "Native".into(),
                 key: Some("owner".into()),
                 credential: None,
+                server_udp: None,
             },
             ["one", "two"]
                 .into_iter()
@@ -605,9 +607,10 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     #[cfg(all(feature = "capture", target_os = "windows"))]
     {
         let target = json!({"kind":"window","sourceId":"0","title":"Unopened test target","pid":0});
+        let settings = json!({"width":1280,"height":720,"fps":24,"bitrate":2_000_000});
         page.send(Message::Text(
             json!({"id":"missing-capture-room","type":"prepare_capture","publicationId":Uuid::new_v4(),
-                "roomId":"missing-capture-room","target":target}).to_string().into(),
+                "roomId":"missing-capture-room","target":target,"settings":settings}).to_string().into(),
         )).await.unwrap();
         let denied: Value =
             serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
@@ -617,7 +620,7 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         let publication = Uuid::new_v4();
         page.send(Message::Text(
             json!({"id":"failed-prepare","type":"prepare_capture",
-            "publicationId":publication,"roomId":room,"target":target})
+            "publicationId":publication,"roomId":room,"target":target,"settings":settings})
             .to_string()
             .into(),
         ))

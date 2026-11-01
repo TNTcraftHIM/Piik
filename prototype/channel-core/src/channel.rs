@@ -39,6 +39,15 @@ pub struct Outcome {
 }
 
 impl Channel {
+    fn can_prepare_udp(&self, first: Uuid, second: Uuid) -> bool {
+        crate::udp::stun_servers(&self.ice_servers).is_some()
+            && [first, second].into_iter().all(|id| {
+                self.identity
+                    .sessions
+                    .get(&id)
+                    .is_some_and(|session| session.connection.is_some() && session.can_prepare_udp)
+            })
+    }
     pub(crate) fn identity(&self) -> (Uuid, Uuid) {
         (self.id, self.identity.owner_id)
     }
@@ -124,6 +133,17 @@ impl Channel {
                     return Err("invalid_signal");
                 }
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
+                if let Some(udp) = &payload.udp {
+                    if !self.transports.prepared(pair_id)
+                        || !match udp {
+                            UdpSignal::Offer { .. } => session_id < peer,
+                            UdpSignal::Answer { .. } => session_id > peer,
+                            UdpSignal::Complete => true,
+                        }
+                    {
+                        return Err("invalid_signal");
+                    }
+                }
                 if let Some(tracks) = &mut payload.tracks {
                     // Retired media cannot bind a stream, but must not discard
                     // an in-flight SDP exchange for this still-admitted pair.
@@ -164,7 +184,12 @@ impl Channel {
             }
             Command::LinkState { pair_id, state } => {
                 let peer = self.peer(session_id, pair_id).ok_or("unassigned_pair")?;
-                if matches!(state, LinkState::Failed) {
+                if matches!(state, LinkState::Connected) {
+                    self.transports.connected(pair_id);
+                } else if self.can_prepare_udp(session_id, peer) && self.transports.prepare(pair_id)
+                {
+                    broadcast = true;
+                } else {
                     self.transports.retire(pair_id);
                     let affected: Vec<_> = self
                         .remote
@@ -1146,7 +1171,16 @@ impl Channel {
             publications,
             voice,
             subscriptions: subscriptions.into_iter().collect(),
-            pairs: self.transports.snapshot(session_id),
+            pairs: self.transports.snapshot(
+                session_id,
+                |peer| self.can_prepare_udp(session_id, peer),
+                |peer| {
+                    self.identity
+                        .sessions
+                        .get(&peer)
+                        .is_some_and(|session| session.can_receive_video_layers)
+                },
+            ),
             ice_servers: self.ice_servers.clone(),
         }
     }

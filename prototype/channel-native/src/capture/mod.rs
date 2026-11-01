@@ -22,11 +22,15 @@ mod audio;
 mod cadence;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod converter;
+#[cfg(all(feature = "capture", target_os = "windows"))]
+mod decoder;
 #[cfg(any(
     all(feature = "capture", any(target_os = "windows", target_os = "android")),
     test
 ))]
 mod frame_dropper;
+#[cfg(all(feature = "capture", target_os = "windows"))]
+mod frames;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod gpu;
 #[cfg(all(feature = "capture", target_os = "windows"))]
@@ -47,22 +51,32 @@ mod windows;
 mod worker;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 pub use audio::{audio_capabilities, AudioCapture, AudioControl};
+#[cfg(all(feature = "capture", target_os = "windows"))]
+pub(crate) use decoder::Decoder;
+#[cfg(all(feature = "capture", target_os = "windows"))]
+pub use frames::Control;
+#[cfg(all(feature = "capture", target_os = "windows"))]
+pub(crate) use frames::Frames;
 #[cfg(all(feature = "capture", target_os = "linux"))]
 pub use linux::{
     audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
     EncodingControl,
 };
+#[cfg(all(feature = "capture", target_os = "linux"))]
+pub(crate) use linux::{decoder, Frames};
 #[cfg(all(feature = "capture", target_os = "macos"))]
 pub use macos::{
     audio_capabilities, targets, AudioCapture, AudioControl, Capture, Control, Encoding,
     EncodingControl,
 };
+#[cfg(all(feature = "capture", target_os = "macos"))]
+pub(crate) use macos::{Decoder, Frames};
 #[cfg(all(feature = "capture", target_os = "windows"))]
 pub use process::{Encoding, EncodingControl};
 #[cfg(all(feature = "capture", target_os = "windows"))]
 pub use windows::targets;
 #[cfg(all(feature = "capture", target_os = "windows"))]
-pub use windows::{Capture, Control};
+pub use windows::Capture;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 pub use worker::worker_entry;
 
@@ -106,6 +120,17 @@ pub struct AudioFrame {
     pub samples: Vec<f32>,
     /// The first sample's capture time, never buffer delivery time.
     pub presentation_time: std::time::Instant,
+}
+
+#[cfg(all(
+    feature = "capture",
+    any(target_os = "windows", target_os = "linux", target_os = "macos")
+))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Format {
+    pub width: u32,
+    pub height: u32,
+    pub fps: u32,
 }
 
 /// WGC and WASAPI both timestamp capture in QPC units of 100 ns.
@@ -187,6 +212,17 @@ pub struct Settings {
     pub bitrate: u32,
 }
 impl Settings {
+    /// Match the shared screen profile's half-size, same-FPS simulcast encoding.
+    #[cfg(any(feature = "capture", test))]
+    pub(crate) fn lower_layer(self) -> Self {
+        Self {
+            width: (self.width / 2 & !1).max(2),
+            height: (self.height / 2 & !1).max(2),
+            bitrate: self.bitrate.min((self.bitrate / 4).max(150_000)),
+            ..self
+        }
+    }
+
     /// Fit within the source's natural pixel size and this encoding's ceiling.
     pub fn fitted(self, width: f64, height: f64) -> Self {
         let scale = (self.width as f64 / width)
@@ -199,8 +235,7 @@ impl Settings {
         }
     }
 
-    #[cfg(feature = "capture")]
-    fn validate(self) -> anyhow::Result<()> {
+    pub fn validate(self) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.width > 0
                 && self.height > 0
@@ -221,6 +256,32 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::Settings;
+
+    #[test]
+    fn lower_layer_uses_the_shared_profile_and_retains_its_frame_rate() {
+        let profile = Settings {
+            width: 1920,
+            height: 1080,
+            fps: 60,
+            bitrate: 2_000_000,
+        };
+        for (bitrate, expected) in [(2_000_000, 500_000), (600_000, 150_000), (100_000, 100_000)] {
+            let lower = Settings { bitrate, ..profile }.lower_layer();
+            assert_eq!(
+                (lower.width, lower.height, lower.fps, lower.bitrate),
+                (960, 540, 60, expected)
+            );
+            lower.validate().unwrap();
+        }
+        let smallest = Settings {
+            width: 2,
+            height: 2,
+            ..profile
+        }
+        .lower_layer();
+        smallest.validate().unwrap();
+        assert_eq!((smallest.width, smallest.height), (2, 2));
+    }
 
     #[test]
     fn encoding_ceiling_fits_the_source_without_enlarging_it() {
@@ -245,12 +306,12 @@ mod tests {
     }
 }
 
-#[derive(Debug)]
-pub struct EncodedFrame {
-    /// One complete H264 Annex B access unit, including the encoder's parameter sets.
-    pub bytes: Vec<u8>,
-    /// Capture presentation time, independent of encoding/delivery delay.
-    /// A static-image IDR reuses the latest image at the current time.
-    pub presentation_time: std::time::Instant,
-    pub keyframe: bool,
+#[cfg(all(
+    feature = "capture",
+    any(target_os = "windows", target_os = "linux", target_os = "macos")
+))]
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub(crate) enum FrameTiming {
+    Capture,
+    Source,
 }

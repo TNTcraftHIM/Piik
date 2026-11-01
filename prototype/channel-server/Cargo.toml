@@ -48,4 +48,4 @@ tokio-rustls = { version = "0.26", default-features = false, features = ["ring",
 
 # Workspace-root patch; match Native/Android and the Native README removal criteria.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "c4a1c92093c1c715dacc13cf09ae0cb95be947ca" }
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "3b6d3c0a03a641a92aff7518418c6eeb67cf1444" }

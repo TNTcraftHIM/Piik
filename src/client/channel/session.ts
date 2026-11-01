@@ -11,11 +11,11 @@ import type { NativeCaptureTarget } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
+import { readPreferredQuality, savePreferredQuality, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession } from "../lib/room-interactions";
 import { createOpaqueId } from "../lib/opaque-id";
-import { DEFAULT_QUALITY_SETTINGS } from "../../shared/protocol";
 import { captureBrowserSource, type BrowserCaptureSource } from "../media/quality";
 import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews";
 
@@ -28,7 +28,7 @@ interface MicrophoneRequest {
   promise?: Promise<MicrophoneInput>;
 }
 
-interface ScreenShare { id: string; selection?: object }
+interface ScreenShare { id: string; profile: QualityProfile; selection?: object }
 
 function stored(key: string, value?: string): string | null {
   try {
@@ -51,6 +51,7 @@ function mergeMessage(previous: ChannelMessage | undefined, message: ChannelMess
 /** The live browser endpoint owns captures and reconnects; browsing owns neither. */
 export class ChannelSession {
   private view: ChannelView = {
+    quality: readPreferredQuality(),
     interactionsByRoom: new Map(),
     voiceInput: readRoomPreferences().voiceInput,
     voicePlaybackByUser: new Map(),
@@ -92,7 +93,7 @@ export class ChannelSession {
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
   private captureEpoch = 0;
   private screenShares = new Map<string, ScreenShare>();
-  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; camera?: boolean }>();
+  private local = new Map<string, { roomId: string; kind: "screen" | "voice"; stream: MediaStream; microphone?: MicrophoneInput; profile?: QualityProfile; camera?: boolean }>();
   private conversation = new ChannelConversation({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state, connected: this.view.connection === "connected" }),
     host: roomId => this.hostedRooms.get(roomId)?.host,
@@ -120,6 +121,11 @@ export class ChannelSession {
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
   stats = () => this.media.stats();
   screenPresentation = (flowId: string, stream: MediaStream, state: ScreenPresentation): void => this.media.screenPresentation(flowId, stream, state);
+  setQuality = (profile: QualityProfile): void => {
+    if (!supportsCaptureProfile(profile)) throw new Error("capture_quality_unsupported");
+    savePreferredQuality(profile);
+    this.patch({ quality: profile });
+  };
 
   private patch(patch: Partial<ChannelView>): void {
     const ownedScreens = new Set(this.app?.screens);
@@ -786,10 +792,10 @@ export class ChannelSession {
   });
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, camera, publicationId }: { microphone?: MicrophoneInput; camera?: boolean; publicationId?: string } = {}): Promise<string> {
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, profile, camera, publicationId }: { microphone?: MicrophoneInput; profile?: QualityProfile; camera?: boolean; publicationId?: string } = {}): Promise<string> {
     const id = publicationId ?? crypto.randomUUID();
-    this.local.set(id, { roomId, kind, stream, microphone, camera });
-    this.media.setLocal(id, stream);
+    this.local.set(id, { roomId, kind, stream, microphone, profile: kind === "screen" ? profile ?? this.view.quality : undefined, camera });
+    this.media.setLocal(id, stream, kind === "screen" ? profile ?? this.view.quality : undefined);
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
       await this.request({ type: "publish", publication: { id, roomId, kind, muted: false } });
@@ -813,7 +819,7 @@ export class ChannelSession {
     let share = this.screenShares.get(roomId);
     if (!share) {
       const local = [...this.local].find(([, capture]) => capture.kind === "screen" && capture.roomId === roomId);
-      share = { id: local?.[0] ?? crypto.randomUUID() };
+      share = { id: local?.[0] ?? crypto.randomUUID(), profile: local?.[1].profile ?? this.view.quality };
       this.screenShares.set(roomId, share);
     }
     const selection = share.selection = {};
@@ -846,8 +852,7 @@ export class ChannelSession {
     const { share, current } = this.selectScreen(roomId);
     let candidate: MediaStream | undefined;
     try {
-      candidate = source === "camera" ? await captureBrowserSource(DEFAULT_QUALITY_SETTINGS, source, deviceId)
-        : await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 30 } }, audio: true });
+      candidate = await captureBrowserSource(share.profile, source, deviceId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       if (candidate.getVideoTracks()[0]?.readyState !== "live") throw new Error("capture_unavailable");
       const previous = this.local.get(share.id);
@@ -876,9 +881,9 @@ export class ChannelSession {
           }
           throw new Error("capture_unavailable");
         }
-        this.local.set(share.id, { roomId, kind: "screen", stream: candidate, camera: source === "camera" });
+        this.local.set(share.id, { roomId, kind: "screen", stream: candidate, profile: share.profile, camera: source === "camera" });
         this.admittedPublications.add(share.id);
-        this.media.setLocal(share.id, candidate);
+        this.media.setLocal(share.id, candidate, share.profile);
         this.observeScreen(share.id, candidate);
         candidate = undefined;
         previous?.stream.getTracks().forEach(track => track.stop());
@@ -894,7 +899,7 @@ export class ChannelSession {
       } else {
         const stream = candidate;
         candidate = undefined; // publish owns failure cleanup from this point.
-        await this.publish("screen", roomId, stream, { camera: source === "camera", publicationId: share.id });
+        await this.publish("screen", roomId, stream, { profile: share.profile, camera: source === "camera", publicationId: share.id });
       }
     } finally {
       candidate?.getTracks().forEach(track => track.stop());
@@ -914,7 +919,7 @@ export class ChannelSession {
     try {
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
-      const preparing = app.prepareCapture(share.id, roomId, target, audio);
+      const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile);
       this.patch({});
       const prepared = await preparing;
       if (!current() || this.app !== app) throw new DOMException("Capture cancelled", "AbortError");

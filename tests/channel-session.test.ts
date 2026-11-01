@@ -8,6 +8,7 @@ import * as launchSession from "../src/client/lib/session";
 import * as cameraPreviews from "../src/client/media/camera-previews";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
+import { QUALITY_PROFILES } from "../src/client/media/quality";
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { identityIconSchema, messageSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
@@ -267,7 +268,7 @@ test("interaction readiness follows read admission and existing peer readiness, 
       return original(command, requestId);
     });
     state.channel.rooms[0].delivery!.nextHops = { host: "host" };
-    state.pairs = [{ id: "room-base", peerId: "host", rooms: ["first"], outgoing: [], incoming: [] }];
+    state.pairs = [{ id: "room-base", peerId: "host", canReceiveVideoLayers: false, rooms: ["first"], outgoing: [], incoming: [] }];
     socket.receive({ type: "state", state });
     await vi.waitFor(() => expect(attempts).toBe(1));
     const pending = session.getSnapshot().interactionsByRoom.get("first")!;
@@ -421,6 +422,21 @@ function microphoneMixer(clones: MediaStream[]) {
   vi.stubGlobal("AudioContext", class extends Context { constructor() { super(); contexts.push(this); } });
   return contexts;
 }
+
+test("sharing quality is remembered by the actual session across endpoint lifetimes", async () => {
+  const preferences = new Map([["piik:quality-preference:v1", JSON.stringify(QUALITY_PROFILES["720p30"])]]);
+  vi.stubGlobal("window", { localStorage: { getItem: (key: string) => preferences.get(key) ?? null,
+    setItem: (key: string, value: string) => preferences.set(key, value) } });
+  const { session } = await setup();
+  let resumed: ChannelSession | undefined;
+  try {
+    expect(session.getSnapshot().quality).toEqual(QUALITY_PROFILES["720p30"]);
+    session.setQuality(QUALITY_PROFILES["1080p60"]);
+    expect(JSON.parse(preferences.get("piik:quality-preference:v1")!)).toEqual(QUALITY_PROFILES["1080p60"]);
+    resumed = new ChannelSession();
+    expect(resumed.getSnapshot().quality).toEqual(QUALITY_PROFILES["1080p60"]);
+  } finally { resumed?.close(); session.close(); }
+});
 
 test("voice rooms share one microphone gain graph and release it after the last consumer", async () => {
   const preferences = new Map<string, string>();
@@ -664,7 +680,12 @@ test("camera and display shares use independent picture publications and the sam
     const first = socket.sent.at(-1)!;
     socket.receive({ type: "ack", requestId: first.requestId });
     await screenStarting;
-    expect(getDisplayMedia).toHaveBeenCalledWith({ video: { frameRate: { ideal: 30 } }, audio: true });
+    expect(getDisplayMedia).toHaveBeenCalledWith({
+      video: { width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 30, max: 30 } },
+      audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false,
+        voiceIsolation: false, channelCount: { ideal: 2 } },
+      systemAudio: "include", windowAudio: "window",
+    });
 
     const cameraStarting = session.startScreen("second", "camera", "rear");
     await vi.waitFor(() => expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(2));
@@ -1528,6 +1549,11 @@ class RoomPeerConnection extends EventTarget {
       setParameters: async (next: RTCRtpSendParameters) => { parameters = structuredClone(next); } };
     this.senders.push(sender); return sender;
   }
+  addTransceiver(track: MediaStreamTrack, init: RTCRtpTransceiverInit) {
+    const sender = this.addTrack(track, init.streams![0]);
+    void sender.setParameters({ encodings: init.sendEncodings ?? [{}] } as RTCRtpSendParameters);
+    return { sender };
+  }
   removeTrack(sender: RoomPeerConnection["senders"][number]) { this.senders.splice(this.senders.indexOf(sender), 1); }
   getReceivers() { return this.receivers; }
   getTransceivers() { return this.senders.map(sender => ({ sender, currentDirection: "sendrecv" as RTCRtpTransceiverDirection })); }
@@ -1554,7 +1580,7 @@ test("screen input shares its existing pair and retains only the committed flow'
   const publicationId = crypto.randomUUID(), pairId = crypto.randomUUID(), first = crypto.randomUUID(), trial = crypto.randomUUID();
   let state = { ...session.getSnapshot().state!, subscriptions: [publicationId],
     publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const, muted: false }],
-    pairs: [{ id: pairId, peerId: source, rooms: [] as string[], outgoing: [],
+    pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: [] as string[], outgoing: [],
       incoming: [{ id: first, publicationId, selected: true, inputFlowId: null }] }],
   };
   const register = vi.fn(), changed = vi.fn();
@@ -1633,8 +1659,8 @@ test("screen input shares its existing pair and retains only the committed flow'
       upstream: { pairId: upstreamPair, peerId: source, flowId: upstreamFlow },
       downstream: { pairId: downstreamPair, peerId: controller, flowId: trial } };
     const relayState = { ...state, subscriptions: [], pairs: [
-      { id: upstreamPair, peerId: source, rooms: ["first"], outgoing: [], incoming: [{ id: upstreamFlow, publicationId, selected: true, inputFlowId: null }] },
-      { id: downstreamPair, peerId: controller, rooms: ["first"], incoming: [], outgoing: [{ id: trial, publicationId, selected: true, inputFlowId: upstreamFlow }] },
+      { id: upstreamPair, peerId: source, canReceiveVideoLayers: false, rooms: ["first"], outgoing: [], incoming: [{ id: upstreamFlow, publicationId, selected: true, inputFlowId: null }] },
+      { id: downstreamPair, peerId: controller, canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: trial, publicationId, selected: true, inputFlowId: upstreamFlow }] },
     ] };
     vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({
       route_input: (frame: string) => JSON.stringify({ frame: { ...JSON.parse(frame), flowId: upstreamFlow }, route: { nextHop: source, binding } }),
@@ -1710,7 +1736,7 @@ async function setupRoomMedia() {
   const sent: ChannelCommand[] = [];
   const changed = vi.fn<(streams: ReadonlyMap<string, MediaStream>, inputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void>();
   const media = new ChannelMedia(command => sent.push(command), changed);
-  state.pairs = [{ id: "pair", peerId: "z", rooms: ["first"], incoming: [], outgoing: [] }];
+  state.pairs = [{ id: "pair", peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }];
   media.update("a", state);
   return { session, socket, media, state, sent, changed, pc: RoomPeerConnection.instances[0] };
 }
@@ -1729,7 +1755,7 @@ async function screenFixture() {
 }
 
 const remoteTrack = (kind: "audio" | "video") => Object.assign(new EventTarget(), {
-  id: crypto.randomUUID(), kind, readyState: "live", stop: vi.fn(),
+  id: crypto.randomUUID(), kind, readyState: "live", stop: vi.fn(), getSettings: () => ({}),
 }) as unknown as MediaStreamTrack;
 
 const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(new EventTarget(), {
@@ -1805,7 +1831,7 @@ test("a retired flow's late proof and cleanup cannot affect its replacement on t
   let resolveOld!: (report: RTCStatsReport) => void;
   const pending = new Promise<RTCStatsReport>(resolve => { resolveOld = resolve; });
   try {
-    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [],
+    state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [],
       outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
@@ -1886,7 +1912,7 @@ test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate 
     await receiveScreen(fixture, oldStream);
     await vi.advanceTimersByTimeAsync(0);
     pc.getStats.mockImplementation(async () => quality(oldVideo, 10));
-    state.pairs.push({ id: "candidate-pair", peerId: "x", rooms: [], outgoing: [],
+    state.pairs.push({ id: "candidate-pair", peerId: "x", canReceiveVideoLayers: false, rooms: [], outgoing: [],
       incoming: [{ id: "candidate-flow", publicationId: "screen", selected: false, inputFlowId: null }] });
     media.update("a", state);
     const next = RoomPeerConnection.instances[1]; next.connected();
@@ -1943,9 +1969,9 @@ test.each(["commit", "failed"])("a shadow subtree forwards exact inputs and pres
   const oldStream = remoteStream("old-branch", [oldVideo, oldAudio]);
   const candidate = remoteStream("shadow-branch", [nextVideo, nextAudio]);
   try {
-    state.pairs.push({ id: "candidate-pair", peerId: "x", rooms: [], outgoing: [],
+    state.pairs.push({ id: "candidate-pair", peerId: "x", canReceiveVideoLayers: false, rooms: [], outgoing: [],
       incoming: [{ id: "candidate-flow", publicationId: "screen", selected: false, inputFlowId: null }] });
-    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [
+    state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [
       { id: "current-output", publicationId: "screen", selected: true, inputFlowId: "screen-flow" },
       { id: "shadow-output", publicationId: "screen", selected: false, inputFlowId: "candidate-flow" },
     ] });
@@ -2032,7 +2058,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
   const audio = remoteTrack("audio");
   const tracks = [video], stream = remoteStream("screen-stream", tracks);
   try {
-    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
+    state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
     await receiveScreen(fixture, stream);
@@ -2103,6 +2129,59 @@ test("source tracks replace serially on the existing physical pair, senders and 
     expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
     for (const track of [oldVideo, oldAudio, nextVideo, nextAudio, finalVideo, finalAudio]) expect(track.stop).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
+});
+
+test.each([false, true])("source replacement rescales the retained video sender and layer state (layered=%s)", async layered => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const failed = vi.fn(), outgoingFailed = vi.fn();
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const transport = new ChannelTransport({ polite: true, iceServers: [], canReceiveVideoLayers: layered,
+    send() {}, receive() {}, connected() {}, base() {}, failed, outgoingFailed });
+  const pc = RoomPeerConnection.instances[0];
+  const add = vi.spyOn(pc, "addTransceiver");
+  const profile = QUALITY_PROFILES["1080p30"];
+  const track = (width: number, height: number) => Object.assign(remoteTrack("video"), {
+    getSettings: () => ({ width, height }),
+  });
+  const publish = (video: MediaStreamTrack) => transport.setOutgoing(new Map([
+    ["screen-flow", { kind: "screen", stream: remoteStream("source", [video]), profile }],
+  ]));
+  try {
+    publish(track(1920, 1080));
+    const sender = pc.senders[0], binding = sender.stream;
+    await vi.waitFor(() => expect(sender.getParameters().degradationPreference).toBe(profile.degradationPreference));
+    const parameters = sender.getParameters();
+    expect(parameters.encodings.map(encoding => encoding.rid)).toEqual(layered ? ["q", "h"] : [undefined]);
+    parameters.encodings.forEach((encoding, index) => { encoding.active = index % 2 === 1; });
+    parameters.codecs = [{ payloadType: 96, mimeType: "video/VP8", clockRate: 90_000 }];
+    await sender.setParameters(parameters);
+    const retained = parameters.encodings.map(({ scaleResolutionDownBy: _, ...encoding }) => encoding);
+    for (const [width, height, expected] of [[3840, 2160, layered ? [4, 2] : [2]], [1280, 720, layered ? [2, 1] : [1]]] as const) {
+      const video = track(width, height);
+      publish(video);
+      await vi.waitFor(() => expect(sender.getParameters().encodings.map(encoding => encoding.scaleResolutionDownBy)).toEqual(expected));
+      expect(pc.senders).toEqual([sender]);
+      expect(sender.track).toBe(video);
+      expect(sender.stream).toBe(binding);
+      expect(binding.getTracks()).toEqual([video]);
+      expect(sender.getParameters().encodings.map(({ scaleResolutionDownBy: _, ...encoding }) => encoding)).toEqual(retained);
+      expect(sender.getParameters().codecs).toEqual(parameters.codecs);
+    }
+    // A rejected parameter adjustment warns without retiring a successful replacement.
+    const rejected = new Error("parameter adjustment rejected");
+    vi.spyOn(sender, "setParameters").mockRejectedValueOnce(rejected);
+    const video = track(3840, 2160);
+    publish(video);
+    await vi.waitFor(() => expect(warning).toHaveBeenCalledWith("Channel source quality parameters could not be applied", { flowId: "screen-flow" }, rejected));
+    await vi.waitFor(() => expect(binding.getTracks()).toEqual([video]));
+    expect(sender.track).toBe(video);
+    expect(pc.senders).toEqual([sender]);
+    expect(add).toHaveBeenCalledOnce();
+    expect(failed).not.toHaveBeenCalled();
+    expect(outgoingFailed).not.toHaveBeenCalled();
+    expect(pc.close).not.toHaveBeenCalled();
+  } finally { transport.close(); }
 });
 
 test.each(["new", "source", "audio", "ended"])("sender rejection retires only its failed %s work without affecting healthy outputs", async mode => {
@@ -2333,7 +2412,7 @@ test.each(["flow", "pair", "attach"])("cross-pair retirement permits one compani
     media.setLocal("failed", remoteStream("unavailable-picture", [failedVideo]));
     voices.forEach((track, index) => media.setLocal(`voice-${index}`, remoteStream(`voice-${index}`, [track])));
     state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
-    state.pairs.push({ id: "other", peerId: "zz", rooms: ["second"], incoming: [], outgoing: voices.map((_, index) => ({
+    state.pairs.push({ id: "other", peerId: "zz", canReceiveVideoLayers: false, rooms: ["second"], incoming: [], outgoing: voices.map((_, index) => ({
       id: `voice-flow-${index}`, publicationId: `voice-${index}`, selected: true, inputFlowId: null,
     })) });
     media.update("a", state);
@@ -2683,7 +2762,7 @@ test("a resumed welcome requests resync only for the surviving transport plan", 
   const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.pairs = ["kept", "removed"].map(id => ({ id, peerId: "z", rooms: ["first"], incoming: [], outgoing: [] }));
+    state.pairs = ["kept", "removed"].map(id => ({ id, peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [] }));
     socket.receive({ type: "state", state });
     const [kept, removed] = RoomPeerConnection.instances;
     kept.connected(); kept.channels[0].open();
@@ -2891,7 +2970,7 @@ test("voice forwards without local listening and the same pair carries the rever
     ];
     state.pairs[0].incoming = [{ id: "voice-a-in", publicationId: "voice-a", selected: true, inputFlowId: null }];
     state.pairs[0].outgoing = [{ id: "voice-b-out", publicationId: "voice-b", selected: true, inputFlowId: null }];
-    state.pairs.push({ id: "downstream", peerId: "y", rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-out", publicationId: "voice-a", selected: true, inputFlowId: "voice-a-in" }] });
+    state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-out", publicationId: "voice-a", selected: true, inputFlowId: "voice-a-in" }] });
     media.setLocal("voice-b", local);
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
@@ -2907,7 +2986,7 @@ test("voice forwards without local listening and the same pair carries the rever
     expect(consumer.muted && consumer.hidden && consumer.autoplay).toBe(true);
     expect(consumer.srcObject?.getTracks()).toEqual([aTrack]);
     expect(consumer.play).toHaveBeenCalledOnce();
-    state.pairs.push({ id: "another-child", peerId: "x", rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-another-out", publicationId: "voice-a", selected: true, inputFlowId: "voice-a-in" }] });
+    state.pairs.push({ id: "another-child", peerId: "x", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "voice-a-another-out", publicationId: "voice-a", selected: true, inputFlowId: "voice-a-in" }] });
     media.update("a", state);
     expect(RoomAudio.instances).toHaveLength(1);
     state.pairs[1].outgoing = [];

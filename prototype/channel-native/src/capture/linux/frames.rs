@@ -1,4 +1,5 @@
 //! One source clock and immutable latest frame, outside PipeWire's buffer pool.
+use crate::capture::{FrameTiming, Settings};
 use anyhow::{anyhow, Context as _, Result};
 use gst::prelude::*;
 use std::time::{Duration, Instant};
@@ -81,7 +82,7 @@ enum State {
     Stopped(Option<String>),
 }
 #[derive(Clone)]
-pub(super) struct Control(watch::Sender<State>);
+pub(crate) struct Control(watch::Sender<State>);
 impl Control {
     pub fn stop(&self) {
         self.finish(None);
@@ -108,19 +109,28 @@ impl Control {
 pub struct Frames {
     control: Control,
     clock: Clock,
+    timing: FrameTiming,
 }
 impl Frames {
-    pub fn new() -> Self {
-        Self {
+    pub(crate) fn new(timing: FrameTiming) -> Result<Self> {
+        gst::init()?;
+        Ok(Self {
             control: Control(watch::channel(State::Live(None)).0),
             clock: Clock::new(),
-        }
+            timing,
+        })
     }
     pub fn clock(&self) -> Clock {
         self.clock.clone()
     }
-    pub(super) fn control(&self) -> Control {
+    pub(crate) fn control(&self) -> Control {
         self.control.clone()
+    }
+    pub(super) fn timing(&self) -> FrameTiming {
+        self.timing
+    }
+    pub(crate) fn encode(&self, settings: Settings) -> Result<super::Encoding> {
+        super::Encoding::start(self.clone(), settings)
     }
     pub fn finish(&self, error: Option<String>) {
         self.control.finish(error);
@@ -180,7 +190,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn static_source_handoff_reuses_encoding_and_presents_once() -> Result<()> {
         gst::init()?;
-        let frames = Frames::new();
+        let frames = Frames::new(FrameTiming::Capture)?;
         let info = gst_video::VideoInfo::builder(gst_video::VideoFormat::Bgra, 64, 48).build()?;
         let sample = |time: Instant, color: u8| -> Result<gst::Sample> {
             let mut buffer = gst::Buffer::from_mut_slice(vec![color; info.size()]);

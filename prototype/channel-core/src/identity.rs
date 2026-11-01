@@ -28,6 +28,8 @@ pub struct Session {
     pub connection: Option<Uuid>,
     pub disconnected_at: Option<u64>,
     pub signing_key: [u8; 32],
+    pub can_prepare_udp: bool,
+    pub can_receive_video_layers: bool,
 }
 
 #[derive(Clone)]
@@ -41,6 +43,8 @@ pub struct Identity {
 
 pub struct Admission<'a> {
     pub signing_key: [u8; 32],
+    pub can_prepare_udp: bool,
+    pub can_receive_video_layers: bool,
     pub credential: Option<&'a str>,
     pub key: Option<&'a str>,
     pub resume: Option<&'a str>,
@@ -185,8 +189,12 @@ impl Identity {
             connection: None,
             disconnected_at: None,
             signing_key: input.signing_key,
+            can_prepare_udp: input.can_prepare_udp,
+            can_receive_video_layers: input.can_receive_video_layers,
         });
         session.signing_key = input.signing_key;
+        session.can_prepare_udp = input.can_prepare_udp;
+        session.can_receive_video_layers = input.can_receive_video_layers;
         let replaced_connection = session.connection.replace(connection);
         session.disconnected_at = None;
         Ok(Admitted {
@@ -320,6 +328,8 @@ mod tests {
     ) -> Admission<'a> {
         Admission {
             signing_key: [1; 32],
+            can_prepare_udp: false,
+            can_receive_video_layers: false,
             key,
             credential,
             resume,

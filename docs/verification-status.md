@@ -24,8 +24,8 @@ phases, including NAT and Auto codec behavior.
 - The isolated 3.0 Windows desktop archive serves its bundled Web/WASM and build
   identity from an independent directory, then exits cleanly on native Ctrl+C.
   Windows Server archive checks and a Linux static-musl Server's resource loading,
-  SQLite creation and SIGTERM shutdown also pass. These packaged builds use the
-  formal RTC pin; the combined Native media candidate retains its own evidence.
+  SQLite creation and SIGTERM shutdown also pass. These packages predate str0m
+  adoption; refreshed package acceptance is tracked in [TODO](./todo.md#now).
 - The combined Windows App and Server pass normal production-UI chat, voice and
   viewing flows. The App's native window capture decodes as H264 in the Browser;
   closing the captured window retires its share while room chat continues.

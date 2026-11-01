@@ -1,9 +1,11 @@
 //! One pair owns its reliable channel writers. Consumers own queued-work validity.
+use crate::peer::transport::Channel;
 use piik_channel_core::file_delivery::{FILE_MAX_PENDING_RANGES, FILE_MAX_RANGE_FRAMES};
 use piik_channel_core::{
     conversation::{self, ControlFrame, SignedPacket},
     wire::Snapshot,
 };
+use rtc::data_channel::RTCDataChannelState;
 use std::sync::{
     atomic::{AtomicU8, Ordering},
     Arc,
@@ -13,7 +15,6 @@ use tokio::{
     task::JoinHandle,
 };
 use uuid::Uuid;
-use webrtc::data_channel::{DataChannel, RTCDataChannelState};
 
 pub(crate) const BULK_QUEUE: usize = FILE_MAX_PENDING_RANGES * FILE_MAX_RANGE_FRAMES;
 pub(crate) const CONTROL_QUEUE: usize = FILE_MAX_PENDING_RANGES * 4;
@@ -22,6 +23,16 @@ pub(crate) enum Lane {
     Control,
     Bulk,
     Input,
+}
+impl Lane {
+    pub(crate) fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "piik-room" => Some(Self::Control),
+            "piik-file" => Some(Self::Bulk),
+            "piik-input" => Some(Self::Input),
+            _ => None,
+        }
+    }
 }
 
 pub(crate) struct Message {
@@ -41,6 +52,7 @@ pub(crate) fn queue_controls(
     }
     Ok(())
 }
+#[derive(Clone)]
 pub(crate) enum MessageScope {
     File(crate::file::FileScope),
     Input {
@@ -57,7 +69,7 @@ pub(crate) enum MessageScope {
     },
 }
 impl MessageScope {
-    fn allowed(&self) -> bool {
+    pub(crate) fn allowed(&self) -> bool {
         match self {
             Self::File(scope) => scope.allowed(),
             Self::Input {
@@ -95,7 +107,7 @@ impl MessageScope {
 #[derive(Clone)]
 struct Binding {
     token: Uuid,
-    channel: Arc<dyn DataChannel>,
+    channel: Arc<Channel>,
     state: RTCDataChannelState,
 }
 #[derive(Clone)]
@@ -184,7 +196,7 @@ impl DataLink {
             input_binding: self.input.binding.clone(),
         }
     }
-    pub fn bind(&self, lane: Lane, token: Uuid, channel: Arc<dyn DataChannel>) -> Ready {
+    pub fn bind(&self, lane: Lane, token: Uuid, channel: Arc<Channel>) -> Ready {
         let binding = match lane {
             Lane::Control => &self.control.binding,
             Lane::Bulk => &self.bulk.binding,
@@ -229,8 +241,8 @@ pub(crate) fn control(bytes: &[u8]) -> Option<ControlFrame> {
 }
 pub(crate) fn terminal(state: &AtomicU8) -> bool {
     let state = state.load(Ordering::Acquire);
-    state == webrtc::peer_connection::RTCPeerConnectionState::Failed as u8
-        || state == webrtc::peer_connection::RTCPeerConnectionState::Closed as u8
+    state == rtc::peer_connection::state::RTCPeerConnectionState::Failed as u8
+        || state == rtc::peer_connection::state::RTCPeerConnectionState::Closed as u8
 }
 fn writer(
     pair: Uuid,
@@ -287,23 +299,27 @@ fn writer(
             let Some(dc) = dc else {
                 continue;
             };
+            let write_scope = scope.clone();
             let send = async {
-                if lane == Lane::Input && dc.channel.outstanding_bytes().await? + bytes.len() > 8192
-                {
-                    return Err(anyhow::anyhow!("input_channel_busy"));
-                }
-                match lane {
-                    Lane::Control | Lane::Input => {
-                        dc.channel
-                            .send_text(
-                                std::str::from_utf8(&bytes)
-                                    .expect("control producer supplies UTF-8"),
-                            )
-                            .await
+                loop {
+                    let notified = dc.channel.low.notified();
+                    if !write_scope.allowed() {
+                        return Ok(());
                     }
-                    Lane::Bulk => dc.channel.send(bytes.as_slice().into()).await,
+                    if dc
+                        .channel
+                        .write(
+                            lane == Lane::Bulk,
+                            bytes.clone(),
+                            write_scope.clone(),
+                            lane == Lane::Input,
+                        )
+                        .await?
+                    {
+                        return Ok::<_, anyhow::Error>(());
+                    }
+                    notified.await;
                 }
-                .map_err(anyhow::Error::from)
             };
             tokio::pin!(send);
             let result = loop {
