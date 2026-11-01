@@ -13,6 +13,14 @@ async fn add(
 ) -> Result<(Transport, mpsc::Receiver<Event>)> {
     endpoint(runtime, pair, prepared.map(|(socket, _)| socket)).await
 }
+fn local_candidates(sdp: &str) -> Result<Vec<str0m::Candidate>> {
+    sdp.lines()
+        .filter_map(|line| line.strip_prefix("a=candidate:"))
+        .map(|line| {
+            str0m::Candidate::from_sdp_string(&format!("candidate:{line}")).map_err(Into::into)
+        })
+        .collect()
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     let reserved = std::net::UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
@@ -50,11 +58,7 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
     // must never become this adopted socket's local advertised mapping.
     remote4.add_candidate(candidate).await?;
     let (_, sdp) = remote4.local_description().await?;
-    let addresses = sdp
-        .lines()
-        .filter_map(|line| line.strip_prefix("a=candidate:"))
-        .map(|line| str0m::Candidate::from_sdp_string(&format!("candidate:{line}")))
-        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let addresses = local_candidates(&sdp)?;
     ensure!(
         addresses.iter().any(|c| c.addr() == prepared_address),
         "prepared socket missing from local SDP"
@@ -63,10 +67,31 @@ async fn fixed_and_prepared_udp_keep_pair_ownership_and_ipv6() -> Result<()> {
         addresses.iter().all(|c| c.addr() != fixed4),
         "peer target advertised as local mapping"
     );
+    // Compare actual ordinary discovery: this machine may have no usable IPv6
+    // interface after loopback and unscoped link-local addresses are excluded.
+    let (ordinary, _) = add(&client4, Uuid::new_v4(), None).await?;
+    ordinary.create_channel("ordinary-candidates").await?;
+    ordinary.offer().await?;
+    let (_, ordinary_sdp) = ordinary.local_description().await?;
+    let ordinary_addresses = local_candidates(&ordinary_sdp)?;
+    let ipv6 = |candidates: &[str0m::Candidate]| {
+        candidates
+            .iter()
+            .filter(|candidate| candidate.addr().is_ipv6())
+            .map(|candidate| candidate.addr().ip())
+            .collect::<HashSet<_>>()
+    };
     ensure!(
-        addresses.iter().any(|c| c.addr().is_ipv6()),
-        "prepared IPv4 socket suppressed IPv6 alternative"
+        ipv6(&addresses) == ipv6(&ordinary_addresses),
+        "prepared IPv4 socket suppressed ordinary IPv6 candidates"
     );
+    ensure!(
+        ordinary_addresses
+            .iter()
+            .all(|candidate| !candidate.addr().ip().is_loopback()),
+        "wildcard discovery advertised a loopback interface"
+    );
+    ordinary.close().await?;
     let (left6, right6) = open(&server6, &remote6, &mut events6)
         .await
         .context("shared fixed IPv6 pair")?;
