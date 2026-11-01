@@ -184,6 +184,7 @@ mod tests {
                 domain_id: domain,
                 policy: room.clone(),
                 own_credential: None,
+                retained_files: vec![],
             },
             std::iter::empty(),
         )

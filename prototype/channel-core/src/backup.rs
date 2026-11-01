@@ -1,11 +1,16 @@
 //! Portable hosting data. Live bindings and activities never enter a backup.
 use crate::{
+    attachment::{AttachmentDescriptor, ATTACHMENT_LIMITS},
     history::{valid_message_reaction, MessageDraft, StoredMessage},
     wire::valid_id,
     Authority, DurableState, RoomState,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
+
+/// Limit one manifest or history JSON record, never the complete history stream.
+pub const RECORD_BYTES: usize = 2 * 1024 * 1024;
 
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -58,6 +63,20 @@ pub struct OwnCredential {
     pub credential: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RetainedFile {
+    pub message_seq: u64,
+    pub attachment: AttachmentDescriptor,
+}
+
+impl RetainedFile {
+    pub fn matches(&self, row: &HistoryRow) -> bool {
+        row.message.message.seq == self.message_seq
+            && row.message.message.attachments.contains(&self.attachment)
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoomMetadata {
@@ -66,6 +85,7 @@ pub struct RoomMetadata {
     pub policy: RoomState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub own_credential: Option<OwnCredential>,
+    pub retained_files: Vec<RetainedFile>,
 }
 
 impl RoomMetadata {
@@ -80,6 +100,31 @@ impl RoomMetadata {
             })
         {
             return Err("invalid_backup_identity");
+        }
+        if self.retained_files.len() > ATTACHMENT_LIMITS.max_retained_files {
+            return Err("invalid_backup_content");
+        }
+        let mut identities = BTreeSet::new();
+        let mut sizes = BTreeMap::new();
+        let mut bytes = 0;
+        for file in &self.retained_files {
+            file.attachment.validate()?;
+            if file.message_seq == 0
+                || file.message_seq > i64::MAX as u64
+                || !identities.insert((file.message_seq, file.attachment.id))
+                || sizes
+                    .insert(
+                        file.attachment.sha256.to_ascii_lowercase(),
+                        file.attachment.size,
+                    )
+                    .is_some_and(|size| size != file.attachment.size)
+            {
+                return Err("invalid_backup_content");
+            }
+            bytes += file.attachment.size;
+        }
+        if bytes > ATTACHMENT_LIMITS.max_retained_bytes {
+            return Err("invalid_backup_content");
         }
         Ok(())
     }

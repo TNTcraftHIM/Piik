@@ -61,6 +61,7 @@ impl StoredRoomHost {
             domain_id,
             policy: serde_json::from_value(store.load()?.ok_or("room_not_found")?)?,
             own_credential,
+            retained_files: vec![],
         };
         metadata.validate()?;
         Ok(RoomBackup { metadata, store })
