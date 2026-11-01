@@ -6,6 +6,8 @@ import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from
 import type { ChannelScreenInput, ScreenPresentation } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
 import { applyCaptureProfile, type QualityProfile } from "../media/quality";
+import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
+import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 
 interface Peer {
   plan: ChannelPair;
@@ -27,6 +29,8 @@ interface MediaInput {
   stopQuality?: () => void;
   stopProof?: () => void;
   release?: () => void;
+  codec?: BrowserVideoCodecPreference;
+  codecProbe?: AbortController;
 }
 
 export class ChannelMedia {
@@ -34,7 +38,7 @@ export class ChannelMedia {
   private publications: ChannelSnapshot["publications"] = [];
   private subscriptions: ChannelSnapshot["subscriptions"] = [];
   private rooms: ChannelSnapshot["channel"]["rooms"] = [];
-  private local = new Map<string, { stream: MediaStream; profile?: QualityProfile }>();
+  private local = new Map<string, { stream: MediaStream; profile?: QualityProfile; codec?: BrowserVideoCodecPreference }>();
   private streams = new Map<string, MediaStream>();
   private screenInputs = new Map<string, ChannelScreenInput[]>();
   private relayAudio = new Map<string, { tracks: MediaStreamTrack[]; audio: HTMLAudioElement }>();
@@ -46,8 +50,8 @@ export class ChannelMedia {
     private bulkClosed?: (peer: string) => void,
     private input?: (pairId: string, channel: RTCDataChannel | null) => void) {}
 
-  setLocal(id: string, stream: MediaStream, profile?: QualityProfile): void {
-    this.local.set(id, { stream, profile });
+  setLocal(id: string, stream: MediaStream, profile?: QualityProfile, codec?: BrowserVideoCodecPreference): void {
+    this.local.set(id, { stream, profile, codec });
     this.refresh();
   }
 
@@ -225,6 +229,7 @@ export class ChannelMedia {
         video?.addEventListener("ended", changed);
       }
       input.release = () => {
+        input.codecProbe?.abort();
         input.stopProof?.();
         input.stopQuality?.();
         if (kind === "screen") {
@@ -377,13 +382,26 @@ export class ChannelMedia {
         if (!publication) continue;
         const local = flow.inputFlowId === null ? this.local.get(flow.publicationId) : undefined;
         let stream = local?.stream;
+        let codec = local?.codec ?? VP8_ONLY_VIDEO_CODEC;
         if (flow.inputFlowId !== null) for (const source of this.peers.values()) {
           if (!source.plan.incoming.some(input => input.id === flow.inputFlowId && input.publicationId === flow.publicationId)) continue;
           const input = source.inputs.get(flow.inputFlowId);
-          if (input && !input.failed) stream = input.stream;
+          if (input && !input.failed) {
+            stream = input.stream;
+            if (publication.kind === "screen" && input.video && !input.codec && !input.codecProbe) {
+              // Send immediately; a late preference is only for new senders.
+              const probe = input.codecProbe = new AbortController();
+              void preferredVideoCodecForTrack(input.video, probe.signal).then(value => {
+                if (probe.signal.aborted) return;
+                input.codec = automaticVideoCodecPreference(value);
+                this.refresh();
+              }).catch(() => {});
+            }
+            if (input.codec) codec = input.codec;
+          }
           break;
         }
-        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile, paused: publication.paused,
+        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile, codec, paused: publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
         if (stream && flow.inputFlowId !== null) {
           const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");

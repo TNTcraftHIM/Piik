@@ -1,5 +1,30 @@
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { normalizeVideoOfferSdp, requireReceivingVideo, VideoReceiveRejectedError } from "../src/client/webrtc/video-codec";
+import { preferredVideoCodecForTrack } from "../src/client/webrtc/video-codec-preflight";
+
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+it.each(["deadline", "cancel"] as const)("releases the probe clone and both PCs when setup never completes (%s)", async reason => {
+  vi.useFakeTimers();
+  const close = vi.fn(), stop = vi.fn();
+  vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/H264", sdpFmtpLine: "packetization-mode=1" }] }) });
+  vi.stubGlobal("RTCPeerConnection", class {
+    close = close;
+    addTransceiver() { return { setCodecPreferences() {}, sender: {} }; }
+    createOffer() { return new Promise<RTCSessionDescriptionInit>(() => {}); }
+  });
+  const track = { kind: "video", readyState: "live", clone: () => ({ stop }) } as unknown as MediaStreamTrack;
+  const abort = new AbortController();
+  const selecting = preferredVideoCodecForTrack(track, abort.signal);
+  const outcome = reason === "cancel" ? expect(selecting).rejects.toMatchObject({ name: "AbortError" }) : expect(selecting).resolves.toBe("vp8");
+  if (reason === "cancel") abort.abort();
+  else await vi.advanceTimersByTimeAsync(4000);
+  await outcome;
+  expect(close).toHaveBeenCalledTimes(2);
+  expect(stop).toHaveBeenCalledOnce();
+  expect(track.readyState).toBe("live");
+  expect(vi.getTimerCount()).toBe(0);
+});
 
 it("recognizes a Browser-rejected video answer without inferring codec support", () => {
   const offer = (sdp: string): RTCSessionDescriptionInit => ({ type: "offer", sdp });

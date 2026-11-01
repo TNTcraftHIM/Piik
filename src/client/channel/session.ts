@@ -23,6 +23,8 @@ import { loadCameraPreviews, type CameraPreview } from "../media/camera-previews
 import { readBackup, writeBackup, type BackupMetadata, type RetainedBackupFile } from "./backup-archive";
 import { NativeDomainHosting, NativeRoomHosting } from "./hosting-api";
 import type { RetainedFile } from "./file-store";
+import { automaticVideoCodecPreference, manualVideoCodecPreference, type BrowserVideoCodecMode, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
+import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
 
 const credentialKey = "piik.channel.prototype.credential";
 const nameKey = "piik.channel.prototype.name";
@@ -36,12 +38,14 @@ interface MicrophoneRequest {
 interface ScreenShare {
   id: string;
   profile: QualityProfile;
+  codecMode: BrowserVideoCodecMode;
+  codec?: BrowserVideoCodecPreference;
   volume: { level: number; muted: boolean };
   microphone: CommentaryInput;
   audioChange?: Promise<void>;
   requestedProfile?: QualityProfile;
   qualityChange?: Promise<void>;
-  selection?: object;
+  selection?: AbortController;
   native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget };
 }
 
@@ -67,6 +71,7 @@ function mergeMessage(previous: ChannelMessage | undefined, message: ChannelMess
 export class ChannelSession {
   private view: ChannelView = {
     quality: readPreferredQuality(),
+    videoCodecMode: "auto",
     interactionsByRoom: new Map(),
     voiceInput: readRoomPreferences().voiceInput,
     voicePlaybackByUser: new Map(),
@@ -140,6 +145,9 @@ export class ChannelSession {
     if (!supportsCaptureProfile(profile)) throw new Error("capture_quality_unsupported");
     savePreferredQuality(profile);
     this.patch({ quality: profile });
+  };
+  setVideoCodecMode = (videoCodecMode: BrowserVideoCodecMode): void => {
+    this.patch({ videoCodecMode });
   };
 
   private patch(patch: Partial<ChannelView>): void {
@@ -1090,10 +1098,10 @@ export class ChannelSession {
   });
   clearError = (): void => this.patch({ error: null });
 
-  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, camera, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; camera?: boolean; publicationId?: string } = {}): Promise<string> {
+  async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; publicationId?: string } = {}): Promise<string> {
     const id = publicationId ?? crypto.randomUUID();
     this.local.set(id, { roomId, kind, stream, microphone, audio, profile: kind === "screen" ? profile ?? this.view.quality : undefined, camera });
-    this.media.setLocal(id, stream, kind === "screen" ? profile ?? this.view.quality : undefined);
+    this.media.setLocal(id, stream, kind === "screen" ? profile ?? this.view.quality : undefined, codec);
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
       await this.request({ type: "publish", publication: { id, roomId, kind, muted: false } });
@@ -1119,17 +1127,20 @@ export class ChannelSession {
     if (!share) {
       const local = [...this.local].find(([, capture]) => capture.kind === "screen" && capture.roomId === roomId);
       share = { id: local?.[0] ?? crypto.randomUUID(), profile: local?.[1].profile ?? this.view.quality,
+        codecMode: this.view.videoCodecMode,
         volume: { level: 1, muted: false }, microphone: { deviceId: "", volume: 1, voiceProcessing: true } };
       this.screenShares.set(roomId, share);
     }
     if (share.audioChange || share.qualityChange || this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
-    const selection = share.selection = {};
+    share.selection?.abort();
+    const selection = share.selection = new AbortController();
     const epoch = this.captureEpoch;
     const selected = share;
     return { share, current: () => epoch === this.captureEpoch && this.screenShares.get(roomId) === selected && selected.selection === selection };
   }
 
   private finishScreenSelection(roomId: string, share: ScreenShare): void {
+    share.selection?.abort();
     share.selection = undefined;
     if (!this.local.has(share.id) && !this.app?.screens.has(share.id) && this.screenShares.get(roomId) === share) this.screenShares.delete(roomId);
   }
@@ -1156,6 +1167,13 @@ export class ChannelSession {
     try {
       candidate = await captureBrowserSource(share.profile, source, deviceId);
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      const video = candidate.getVideoTracks()[0];
+      if (!video || video.readyState !== "live") throw new Error("capture_unavailable");
+      const codec = share.codec ?? (share.codecMode === "auto"
+        ? automaticVideoCodecPreference(await preferredVideoCodecForTrack(video, share.selection!.signal))
+        : manualVideoCodecPreference(share.codecMode));
+      if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      share.codec = codec;
       const previous = this.local.get(share.id);
       const retainedAudio = previous?.audio;
       if (!retainedAudio) {
@@ -1201,7 +1219,7 @@ export class ChannelSession {
         if (mixed) setMediaPaused(mixed.sourceStream, paused);
         this.local.set(share.id, { roomId, kind: "screen", stream: candidate, audio: mixed, profile: share.profile, camera: source === "camera" });
         this.admittedPublications.add(share.id);
-        this.media.setLocal(share.id, candidate, share.profile);
+        this.media.setLocal(share.id, candidate, share.profile, codec);
         this.observeScreen(share.id, candidate);
         candidate = undefined;
         audio = undefined;
@@ -1219,7 +1237,7 @@ export class ChannelSession {
         const stream = candidate;
         candidate = undefined; // publish owns failure cleanup from this point.
         const mixer = audio; audio = undefined;
-        await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, camera: source === "camera", publicationId: share.id });
+        await this.publish("screen", roomId, stream, { audio: mixer, profile: share.profile, codec, camera: source === "camera", publicationId: share.id });
       }
     } finally {
       audio?.dispose();
@@ -1240,7 +1258,7 @@ export class ChannelSession {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
     if (!share) return undefined;
     const audio = this.local.get(publicationId)?.audio;
-    return { ...share.microphone, available: !!audio?.commentaryAvailable, enabled: !!audio?.microphoneEnabled,
+    return { ...share.microphone, browser: this.local.has(publicationId), available: !!audio?.commentaryAvailable, enabled: !!audio?.microphoneEnabled,
       voiceProcessing: audio ? share.microphone.voiceProcessing : undefined };
   };
 
@@ -1314,7 +1332,7 @@ export class ChannelSession {
     if (!share) return undefined;
     return { ...share.volume, bitrate: share.profile.maxAudioBitrate ?? 128_000,
       available: this.local.has(publicationId)
-        ? !!this.local.get(publicationId)?.audio?.outputGainAvailable && !!this.local.get(publicationId)?.audio?.sourceAudioAvailable
+        ? !!this.local.get(publicationId)?.audio?.outputGainAvailable && !!this.local.get(publicationId)?.audio?.audioAvailable
         : !!share.native?.audio && (this.app?.screens.has(publicationId) ?? false) };
   };
 
@@ -1362,6 +1380,7 @@ export class ChannelSession {
     share.native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
     let app: ChannelApp | undefined;
     try {
+      if (share.codecMode === "vp8") throw new Error("capture_codec_unsupported");
       app = await this.connectApp();
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       const preparing = app.prepareCapture(share.id, roomId, target, audio, share.profile, audio ? share.native.excludeAudio : undefined, share.volume.muted ? 0 : share.volume.level);
@@ -1391,7 +1410,10 @@ export class ChannelSession {
     } else throw new Error("not_publication_owner");
   });
   stopScreen = (publicationId: string): Promise<void> => this.action(`stop:${publicationId}`, async () => {
-    for (const [roomId, share] of this.screenShares) if (share.id === publicationId) this.screenShares.delete(roomId);
+    for (const [roomId, share] of this.screenShares) if (share.id === publicationId) {
+      share.selection?.abort();
+      this.screenShares.delete(roomId);
+    }
     const browser = this.local.get(publicationId);
     // stop_capture also retires a pending Native candidate for a Browser incumbent.
     const nativeStop = this.app?.stopCapture(publicationId);
@@ -1582,6 +1604,7 @@ export class ChannelSession {
   private releaseMedia(): void {
     this.closeInteractions();
     this.captureEpoch += 1;
+    for (const share of this.screenShares.values()) share.selection?.abort();
     this.screenShares.clear();
     this.app?.stopCaptures();
     this.input.reset();

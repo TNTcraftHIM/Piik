@@ -16,6 +16,8 @@ import { identityIconSchema, messageSchema, snapshotSchema, signalSchema, type C
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
+import * as codecPreflight from "../src/client/webrtc/video-codec-preflight";
+import * as videoCodec from "../src/client/webrtc/video-codec";
 import type { InputTransport } from "../src/client/remote-control/input-route";
 
 class ChannelSocket {
@@ -38,6 +40,7 @@ beforeEach(() => {
   vi.spyOn(launchSession, "isClientActivated").mockReturnValue(false);
   vi.spyOn(ChannelConversation.prototype, "initialize").mockResolvedValue(testSigningKey);
   vi.stubGlobal("MediaStream", RoomMediaStream);
+  vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90000 }] }) });
 });
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); vi.useRealTimers(); });
@@ -723,6 +726,39 @@ test("camera and display shares use independent picture publications and the sam
   } finally { session.close(); }
 });
 
+test("codec selection cancellation releases capture without publishing or stopping a replacement", async () => {
+  const { session, socket } = await setup();
+  const video = remoteTrack("video");
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: async () => remoteStream("codec-source", [video]) } });
+  let cancelled: AbortSignal | undefined;
+  vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockImplementation((_track, signal) => {
+    cancelled = signal;
+    return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(new DOMException("cancelled", "AbortError")), { once: true }));
+  });
+  try {
+    const starting = session.startScreen("first");
+    const result = expect(starting).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(cancelled).toBeDefined());
+    await session.cancelScreenSelection("first");
+    await result;
+    expect(cancelled!.aborted).toBe(true);
+    expect(video.stop).toHaveBeenCalledOnce();
+    expect(socket.sent.some(command => command.type === "publish")).toBe(false);
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
+test("manual VP8 does not silently prepare H264 Native capture", async () => {
+  const { session } = await setup();
+  session.setVideoCodecMode("vp8");
+  const activate = vi.spyOn(nativeActivation, "activateNativePicker");
+  try {
+    await expect(session.startNativeScreen("first", { kind: "display", sourceId: "owned", title: "Owned fixture" })).rejects.toThrow("capture_codec_unsupported");
+    expect(activate).not.toHaveBeenCalled();
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+  } finally { session.close(); }
+});
+
 test("screen commentary owns a separate microphone and keeps its mixed track across source replacement", async () => {
   const { session, socket } = await setup();
   const voiceTrack = remoteTrack("audio"), commentary = remoteTrack("audio"), nextCommentary = remoteTrack("audio");
@@ -777,6 +813,8 @@ test("screen commentary owns a separate microphone and keeps its mixed track acr
     expect(nextCommentary.stop).not.toHaveBeenCalled(); expect(voiceTrack.stop).not.toHaveBeenCalled();
     expect(contexts[0].close).not.toHaveBeenCalled();
     expect(session.sourceMicrophone(publication.id)).toMatchObject({ available: true, enabled: true, deviceId: "commentary-device" });
+    expect(session.sourceMicrophone(publication.id)?.browser).toBe(true);
+    expect(session.sourceAudio(publication.id)?.available).toBe(true);
 
     const stopping = session.stopScreen(publication.id);
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await stopping;
@@ -2064,7 +2102,7 @@ class RoomPeerConnection extends EventTarget {
   addTransceiver(track: MediaStreamTrack, init: RTCRtpTransceiverInit) {
     const sender = this.addTrack(track, init.streams![0]);
     void sender.setParameters({ encodings: init.sendEncodings ?? [{}] } as RTCRtpSendParameters);
-    return { sender };
+    return { sender, setCodecPreferences: vi.fn() };
   }
   removeTrack(sender: RoomPeerConnection["senders"][number]) { this.senders.splice(this.senders.indexOf(sender), 1); }
   getReceivers() { return this.receivers; }
@@ -2563,6 +2601,37 @@ test("same-publication stream replacement re-proves progress on a reused receive
     expect(sent.filter(command => command.type === "flow_state")).toHaveLength(2);
     expect(video.stop).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
+});
+
+test("a relay sends VP8 immediately while its Auto proof is pending and keeps the live sender's codec", async () => {
+  const fixture = await screenFixture();
+  const { media, session, state } = fixture;
+  let resolve!: (codec: "h264") => void, signal!: AbortSignal;
+  const probe = vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockImplementation((_track, owner) => {
+    signal = owner;
+    return new Promise(done => { resolve = done; });
+  });
+  const apply = vi.spyOn(videoCodec, "applyVideoCodecPreference").mockReturnValue(true);
+  const video = remoteTrack("video"), stream = remoteStream("relay-codec", [video]);
+  try {
+    state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "relay", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
+    media.update("a", state);
+    await receiveScreen(fixture, stream);
+    const downstream = RoomPeerConnection.instances[1], sender = downstream.senders[0];
+    expect(sender.track).toBe(video);
+    expect(apply).toHaveBeenLastCalledWith(expect.anything(), { primary: "vp8", vp8Fallback: false });
+    resolve("h264"); await Promise.resolve();
+    expect(downstream.senders).toEqual([sender]);
+    expect(apply).toHaveBeenCalledTimes(1);
+    state.pairs.push({ id: "new-downstream", peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "new-relay", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
+    media.update("a", state);
+    expect(apply).toHaveBeenLastCalledWith(expect.anything(), { primary: "h264", vp8Fallback: true });
+    expect(probe).toHaveBeenCalledOnce();
+  } finally {
+    media.reset(); session.close();
+    expect(signal.aborted).toBe(true);
+    expect(video.stop).not.toHaveBeenCalled();
+  }
 });
 
 test("a relay updates senders when audio joins and leaves the same remote screen stream", async () => {

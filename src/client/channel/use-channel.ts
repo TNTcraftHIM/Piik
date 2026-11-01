@@ -27,6 +27,7 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
   }, [session]);
   return { ...view,
     setQuality: session.setQuality,
+    setVideoCodecMode: session.setVideoCodecMode,
     screenQuality: session.screenQuality, setScreenQuality: session.setScreenQuality,
     setScreenPaused: session.setScreenPaused,
     sourceAudio: session.sourceAudio, setSourceAudio: session.setSourceAudio,
