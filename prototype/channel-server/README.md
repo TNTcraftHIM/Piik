@@ -293,7 +293,10 @@ demand ends. A failed DataChannel repairs its room paths without closing healthy
 media on the same connection. Stopping one share keeps unrelated received and
 forwarded media alive. Browser relays can decode and re-encode. The Native
 participant forwards encoded Opus, VP8 and H264, and publishes App capture through
-those same plans. SFU fallback remains later work. WebRTC owns ICE and congestion control.
+those same plans. Server-hosted rooms can carry media through their Native root
+on the base paths; the same publication plan repairs failed direct paths.
+The 2.x-specific SFU-only and peer-only operator policies are not implemented.
+WebRTC owns ICE and congestion control.
 App and Server use the existing public STUN choices by default. Optional
 `PIIK_CHANNEL_ICE_SERVERS` replaces them with an ICE-server JSON array; `[]` disables
 STUN for isolated loopback checks. The local checks do not establish a public-NAT
