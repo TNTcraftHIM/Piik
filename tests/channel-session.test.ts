@@ -408,7 +408,7 @@ function microphoneMixer(clones: MediaStream[]) {
     currentTime = 0;
     resume = vi.fn(async () => {});
     close = vi.fn(async () => {});
-    gain = { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn() };
+    gain = { gain: { value: 1, setTargetAtTime: vi.fn() }, connect: vi.fn(), disconnect: vi.fn() };
     createGain = vi.fn(() => this.gain);
     createAnalyser = () => ({ fftSize: 256, getFloatTimeDomainData: vi.fn() });
     createMediaStreamSource = vi.fn(() => ({ connect: vi.fn(), disconnect: vi.fn() }));
@@ -720,6 +720,72 @@ test("camera and display shares use independent picture publications and the sam
     await session.cameraPreviews(signal, publish);
     expect(previews).toHaveBeenLastCalledWith(signal, publish, undefined);
     expect(socket.sent.some(command => command.type === "voice")).toBe(false);
+  } finally { session.close(); }
+});
+
+test("screen commentary owns a separate microphone and keeps its mixed track across source replacement", async () => {
+  const { session, socket } = await setup();
+  const voiceTrack = remoteTrack("audio"), commentary = remoteTrack("audio"), nextCommentary = remoteTrack("audio");
+  const voiceClone = remoteStream("voice-clone", [remoteTrack("audio")]);
+  const contexts = microphoneMixer([voiceClone]);
+  const firstVideo = remoteTrack("video"), firstSound = remoteTrack("audio"), nextVideo = remoteTrack("video");
+  const getDisplayMedia = vi.fn().mockResolvedValueOnce(remoteStream("first-picture", [firstVideo, firstSound]))
+    .mockResolvedValueOnce(remoteStream("next-picture", [nextVideo]));
+  const getUserMedia = vi.fn().mockResolvedValueOnce(remoteStream("room-mic", [voiceTrack]))
+    .mockResolvedValueOnce(remoteStream("commentary", [commentary]))
+    .mockResolvedValueOnce(remoteStream("next-commentary", [nextCommentary]));
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia, getUserMedia } });
+  try {
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await starting;
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
+      { ...publication, paused: false, sessionId: "endpoint", userId: "self" },
+    ] } });
+    const mixed = session.getSnapshot().streams.get(publication.id)!.getAudioTracks()[0];
+    expect(session.sourceMicrophone(publication.id)).toMatchObject({ available: true, enabled: false });
+    expect(getUserMedia).not.toHaveBeenCalled();
+
+    const joining = session.joinVoice("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("voice"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await joining;
+    await session.setSourceMicrophone(publication.id, { enabled: true, deviceId: "commentary-device", voiceProcessing: false });
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(getUserMedia).toHaveBeenLastCalledWith({ audio: expect.objectContaining({
+      deviceId: { exact: "commentary-device" }, echoCancellation: false,
+    }), video: false });
+    expect(session.getSnapshot().voiceInput.deviceId).not.toBe("commentary-device");
+    await session.setSourceMicrophone(publication.id, { volume: .4 });
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(session.sourceMicrophone(publication.id)).toMatchObject({ enabled: true, volume: .4 });
+    await session.setSourceMicrophone(publication.id, { enabled: false });
+    expect(commentary.stop).toHaveBeenCalledOnce();
+    expect(voiceTrack.stop).not.toHaveBeenCalled();
+    await session.setSourceMicrophone(publication.id, { enabled: true });
+
+    const replacing = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await replacing;
+    const stream = session.getSnapshot().streams.get(publication.id)!;
+    expect(stream.getAudioTracks()[0]).toBe(mixed);
+    expect(stream.getVideoTracks()).toEqual([nextVideo]);
+    expect(mixed.stop).not.toHaveBeenCalled();
+    expect(firstVideo.stop).toHaveBeenCalledOnce(); expect(firstSound.stop).toHaveBeenCalledOnce();
+    expect(nextCommentary.stop).not.toHaveBeenCalled(); expect(voiceTrack.stop).not.toHaveBeenCalled();
+    expect(contexts[0].close).not.toHaveBeenCalled();
+    expect(session.sourceMicrophone(publication.id)).toMatchObject({ available: true, enabled: true, deviceId: "commentary-device" });
+
+    const stopping = session.stopScreen(publication.id);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await stopping;
+    expect(nextCommentary.stop).toHaveBeenCalledOnce(); expect(nextVideo.stop).toHaveBeenCalledOnce();
+    expect(mixed.stop).toHaveBeenCalled(); expect(voiceTrack.stop).not.toHaveBeenCalled();
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    const leaving = session.leaveVoice("first");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await leaving;
+    expect(voiceTrack.stop).toHaveBeenCalledOnce();
   } finally { session.close(); }
 });
 
@@ -1086,7 +1152,8 @@ test("Browser source output gain and bitrate survive replacement and close with 
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await switching;
     expect(session.sourceAudio(publication.id)).toMatchObject({ level: 0.5, muted: true, bitrate: 192_000 });
-    expect(contexts[0].close).toHaveBeenCalledOnce();
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0].close).not.toHaveBeenCalled();
     expect(first.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
     expect(next.getTracks().every(track => !track.enabled)).toBe(true);
     const resuming = session.setScreenPaused(publication.id, false);
@@ -1094,7 +1161,7 @@ test("Browser source output gain and bitrate survive replacement and close with 
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await resuming;
     expect(next.getTracks().every(track => track.enabled)).toBe(true);
     await session.setSourceAudio(publication.id, { muted: false });
-    expect(contexts[1].gain).toHaveBeenLastCalledWith(0.5, 0, 0.01);
+    expect(contexts[0].gain).toHaveBeenLastCalledWith(0.5, 0, 0.01);
     await expect(session.setSourceAudio(publication.id, { level: 2.01 })).rejects.toThrow("invalid_audio_settings");
     expect(session.getSnapshot().listeningVolume).toBe(1);
     expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);

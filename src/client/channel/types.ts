@@ -11,6 +11,9 @@ import type { RoomPreferences } from "../lib/room-preferences";
 import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserCaptureSource } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
+import type { CommentaryInput } from "../media/host-audio";
+
+export type SourceMicrophoneSettings = Partial<CommentaryInput> & { enabled?: boolean };
 
 export interface ChannelScreenInput {
   flowId: string;
@@ -51,6 +54,9 @@ export interface ChannelActions {
   setScreenPaused(publicationId: string, paused: boolean): Promise<void>;
   sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; available: boolean } | undefined;
   setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;
+  sourceMicrophone(publicationId: string): { available: boolean; enabled: boolean; deviceId: string; volume: number; voiceProcessing?: boolean } | undefined;
+  setSourceMicrophone(publicationId: string, settings: SourceMicrophoneSettings): Promise<void>;
+  sourceMicrophones(publicationId: string): Promise<CaptureDevice[]>;
   activateApp(): Promise<void>;
   browse(roomId: string): void;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;

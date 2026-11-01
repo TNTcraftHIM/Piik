@@ -27,6 +27,7 @@ export class HostAudio {
   get audioAvailable(): boolean { return this.sourceAudioAvailable || this.microphone !== null; }
   get outputGainAvailable(): boolean { return this.context !== null && this.destination !== null; }
   get commentaryAvailable(): boolean { return this.outputGainAvailable; }
+  get microphoneEnabled(): boolean { return this.microphone !== null; }
   private output(): MediaStream {
     return this.destination ? new MediaStream([...this.source.getVideoTracks(), ...this.destination.stream.getAudioTracks()]) : this.source;
   }

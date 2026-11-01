@@ -4,7 +4,7 @@ import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
 import { eventSchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
-import type { ChannelView, ScreenPresentation } from "./types";
+import type { ChannelView, ScreenPresentation, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
 import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources } from "./app-link";
 import { isClientActivated } from "../lib/session";
@@ -12,7 +12,7 @@ import type { NativeCaptureTarget } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
-import { HostAudio } from "../media/host-audio";
+import { HostAudio, type CommentaryInput } from "../media/host-audio";
 import { readPreferredQuality, savePreferredQuality, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
@@ -33,7 +33,17 @@ interface MicrophoneRequest {
   promise?: Promise<MicrophoneInput>;
 }
 
-interface ScreenShare { id: string; profile: QualityProfile; volume: { level: number; muted: boolean }; audioChange?: Promise<void>; requestedProfile?: QualityProfile; qualityChange?: Promise<void>; selection?: object; native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget } }
+interface ScreenShare {
+  id: string;
+  profile: QualityProfile;
+  volume: { level: number; muted: boolean };
+  microphone: CommentaryInput;
+  audioChange?: Promise<void>;
+  requestedProfile?: QualityProfile;
+  qualityChange?: Promise<void>;
+  selection?: object;
+  native?: { target: NativeCaptureTarget; audio: boolean; excludeAudio?: NativeCaptureTarget };
+}
 
 function stored(key: string, value?: string): string | null {
   try {
@@ -1108,10 +1118,11 @@ export class ChannelSession {
     let share = this.screenShares.get(roomId);
     if (!share) {
       const local = [...this.local].find(([, capture]) => capture.kind === "screen" && capture.roomId === roomId);
-      share = { id: local?.[0] ?? crypto.randomUUID(), profile: local?.[1].profile ?? this.view.quality, volume: { level: 1, muted: false } };
+      share = { id: local?.[0] ?? crypto.randomUUID(), profile: local?.[1].profile ?? this.view.quality,
+        volume: { level: 1, muted: false }, microphone: { deviceId: "", volume: 1, voiceProcessing: true } };
       this.screenShares.set(roomId, share);
     }
-    if (share.audioChange || share.qualityChange) throw new Error("operation_pending");
+    if (share.audioChange || share.qualityChange || this.view.pending.has(`source-microphone:${share.id}`)) throw new Error("operation_pending");
     const selection = share.selection = {};
     const epoch = this.captureEpoch;
     const selected = share;
@@ -1144,18 +1155,20 @@ export class ChannelSession {
     let audio: HostAudio | undefined;
     try {
       candidate = await captureBrowserSource(share.profile, source, deviceId);
-      if (candidate.getAudioTracks().some(track => track.readyState === "live")) {
+      if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+      const previous = this.local.get(share.id);
+      const retainedAudio = previous?.audio;
+      if (!retainedAudio) {
         const mixer = new HostAudio(candidate, source, () => {
           if (this.local.get(share.id)?.audio === mixer) this.patch({});
         });
         audio = mixer;
         audio.setVolume(share.volume.muted ? 0 : share.volume.level);
         candidate = await audio.start();
-        if (!audio.outputGainAvailable && (share.volume.muted || share.volume.level !== 1)) throw new Error("source_audio_unavailable");
+        if (!audio.outputGainAvailable && audio.sourceAudioAvailable && (share.volume.muted || share.volume.level !== 1)) throw new Error("source_audio_unavailable");
       }
       if (!current()) throw new DOMException("Capture cancelled", "AbortError");
       if (candidate.getVideoTracks()[0]?.readyState !== "live") throw new Error("capture_unavailable");
-      const previous = this.local.get(share.id);
       const app = this.app;
       if (previous || app?.screens.has(share.id)) {
         const sessionId = this.view.sessionId;
@@ -1181,17 +1194,18 @@ export class ChannelSession {
           }
           throw new Error("capture_unavailable");
         }
+        if (retainedAudio) candidate = retainedAudio.attach(candidate, source);
+        const mixed = retainedAudio ?? audio;
         const paused = this.view.state?.publications.find(publication => publication.id === share.id)?.paused ?? false;
         setMediaPaused(candidate, paused);
-        if (audio) setMediaPaused(audio.sourceStream, paused);
-        this.local.set(share.id, { roomId, kind: "screen", stream: candidate, audio, profile: share.profile, camera: source === "camera" });
+        if (mixed) setMediaPaused(mixed.sourceStream, paused);
+        this.local.set(share.id, { roomId, kind: "screen", stream: candidate, audio: mixed, profile: share.profile, camera: source === "camera" });
         this.admittedPublications.add(share.id);
         this.media.setLocal(share.id, candidate, share.profile);
         this.observeScreen(share.id, candidate);
         candidate = undefined;
         audio = undefined;
-        previous?.audio?.dispose();
-        previous?.stream.getTracks().forEach(track => track.stop());
+        previous?.stream.getVideoTracks().forEach(track => track.stop());
         if (!previous) {
           const stopping = app!.stopCapture(share.id);
           const remoteControls = new Map(this.view.remoteControls);
@@ -1221,6 +1235,35 @@ export class ChannelSession {
     this.app?.preview(target, signal) ?? Promise.resolve(null);
   nativeCaptureRequest = (roomId: string) => this.app?.captureRequest(roomId);
   nativeCaptureSelection = (roomId: string) => this.screenShares.get(roomId)?.native;
+
+  sourceMicrophone = (publicationId: string) => {
+    const share = [...this.screenShares.values()].find(share => share.id === publicationId);
+    if (!share) return undefined;
+    const audio = this.local.get(publicationId)?.audio;
+    return { ...share.microphone, available: !!audio?.commentaryAvailable, enabled: !!audio?.microphoneEnabled,
+      voiceProcessing: audio ? share.microphone.voiceProcessing : undefined };
+  };
+
+  sourceMicrophones = (publicationId: string) => this.local.has(publicationId)
+    ? browserCaptureDevices("audioinput") : Promise.resolve([]);
+
+  setSourceMicrophone = (publicationId: string, settings: SourceMicrophoneSettings): Promise<void> => {
+    const share = [...this.screenShares.values()].find(share => share.id === publicationId);
+    const local = this.local.get(publicationId), audio = local?.audio;
+    if (!share || share.selection || !audio?.commentaryAvailable) return Promise.reject(new Error("microphone_unavailable"));
+    const next: CommentaryInput = { deviceId: settings.deviceId ?? share.microphone.deviceId,
+      volume: settings.volume ?? share.microphone.volume, voiceProcessing: settings.voiceProcessing ?? share.microphone.voiceProcessing };
+    if (!Number.isFinite(next.volume) || next.volume < 0 || next.volume > 2) return Promise.reject(new Error("invalid_audio_settings"));
+    return this.action(`source-microphone:${publicationId}`, async () => {
+      const enabled = settings.enabled ?? audio.microphoneEnabled;
+      if (enabled !== audio.microphoneEnabled || enabled && (next.deviceId !== share.microphone.deviceId
+        || next.voiceProcessing !== share.microphone.voiceProcessing)) await audio.setMicrophone(enabled, next);
+      else audio.microphoneVolume(next.volume);
+      if (this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
+      share.microphone = next;
+      this.patch({});
+    });
+  };
 
   screenQuality = (publicationId: string) => {
     const share = [...this.screenShares.values()].find(share => share.id === publicationId);
