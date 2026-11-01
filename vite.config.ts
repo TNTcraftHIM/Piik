@@ -34,6 +34,8 @@ export default defineConfig({
       if (id === "\0piik-film-controls") return (await buildFilmControls()).toString("utf8");
     },
   }],
+  // Local build output includes Browser profiles, not application entries.
+  optimizeDeps: { entries: ["index.html", "site/**/*.html"] },
   build: {
     outDir: "build/channel-web",
     emptyOutDir: true,
