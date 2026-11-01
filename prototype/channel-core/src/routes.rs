@@ -91,7 +91,6 @@ impl Plan {
             if self.graft_base(*child, &base_parents, available, connected) {
                 continue;
             }
-            self.failed_parents.entry(*child).or_default();
             if let Some(parent) = self.candidate_parent(*child, connected) {
                 self.parents.insert(*child, parent);
             }
@@ -699,7 +698,10 @@ mod tests {
         assert_eq!(plan.parents[&id(4)], id(2));
         plan.failed(id(1), id(2));
         assert!(plan.failed_parents[&id(2)].contains(&id(1)));
-        assert!(plan.failed_parents[&id(4)].is_empty());
+        assert!(plan
+            .failed_parents
+            .get(&id(4))
+            .is_none_or(BTreeSet::is_empty));
         plan.mark_ready(id(3), id(1), Readiness::Forwardable);
         plan.reconcile(&set(&[2, 3, 4]), &available, &available, None);
         assert_eq!(plan.parents[&id(2)], id(3));
