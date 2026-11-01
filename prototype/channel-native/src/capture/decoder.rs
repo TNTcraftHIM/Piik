@@ -1,5 +1,5 @@
-//! One MF H264 decoder. AU assembly, selection and source time belong to media.
-use super::Format;
+//! One selected decoder. AU assembly, selection and source time belong to media.
+use super::{Format, VideoCodec};
 use crate::EncodedFrame;
 use anyhow::{anyhow, ensure, Context, Result};
 use std::{
@@ -46,7 +46,52 @@ impl Drop for Com {
         }
     }
 }
-pub(crate) struct Decoder {
+pub(crate) enum Decoder {
+    H264(H264),
+    Vp8(super::vp8_decoder::Decoder),
+}
+impl Decoder {
+    pub fn new(epoch: Instant, codec: VideoCodec) -> Result<Self> {
+        match codec {
+            VideoCodec::H264 => H264::new(epoch).map(Self::H264),
+            VideoCodec::Vp8 => super::vp8_decoder::Decoder::new().map(Self::Vp8),
+        }
+    }
+    pub fn decode(
+        &mut self,
+        frame: &EncodedFrame,
+        consume: &mut impl FnMut(ID3D11Texture2D, Instant, Format) -> Result<()>,
+    ) -> Result<()> {
+        match self {
+            Self::H264(decoder) => decoder.decode(frame, consume),
+            Self::Vp8(decoder) => decoder.decode(frame, consume),
+        }
+    }
+}
+
+pub(super) fn device() -> Result<ID3D11Device> {
+    unsafe {
+        let mut device = None;
+        D3D11CreateDevice(
+            None,
+            D3D_DRIVER_TYPE_HARDWARE,
+            HMODULE::default(),
+            D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+            None,
+            D3D11_SDK_VERSION,
+            Some(&mut device),
+            None,
+            None,
+        )?;
+        let device = device.unwrap();
+        let _ = device
+            .cast::<ID3D10Multithread>()?
+            .SetMultithreadProtected(true);
+        Ok(device)
+    }
+}
+
+pub(crate) struct H264 {
     transform: IMFTransform,
     _manager: IMFDXGIDeviceManager,
     device: ID3D11Device,
@@ -58,26 +103,11 @@ pub(crate) struct Decoder {
     nominal_fps: u32,
     epoch: Instant,
 }
-impl Decoder {
+impl H264 {
     pub fn new(epoch: Instant) -> Result<Self> {
         unsafe {
             let com = Com::start()?;
-            let mut device = None;
-            D3D11CreateDevice(
-                None,
-                D3D_DRIVER_TYPE_HARDWARE,
-                HMODULE::default(),
-                D3D11_CREATE_DEVICE_BGRA_SUPPORT | D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
-                None,
-                D3D11_SDK_VERSION,
-                Some(&mut device),
-                None,
-                None,
-            )?;
-            let device = device.unwrap();
-            let _ = device
-                .cast::<ID3D10Multithread>()?
-                .SetMultithreadProtected(true);
+            let device = device()?;
             let context = device.GetImmediateContext()?;
             let mut token = 0;
             let mut manager = None;
@@ -331,7 +361,7 @@ impl Decoder {
         }
     }
 }
-impl Drop for Decoder {
+impl Drop for H264 {
     fn drop(&mut self) {
         unsafe {
             let _ = self.transform.ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);

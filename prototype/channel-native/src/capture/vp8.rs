@@ -24,7 +24,7 @@ pub(super) struct Encoder {
     config: vpx_codec_enc_cfg_t,
 }
 
-fn check(result: vpx_codec_err_t) -> Result<()> {
+pub(super) fn check(result: vpx_codec_err_t) -> Result<()> {
     if result != vpx_codec_err_t::VPX_CODEC_OK {
         let reason = unsafe { CStr::from_ptr(vpx_codec_err_to_string(result)) };
         anyhow::bail!("libvpx VP8: {}", reason.to_string_lossy());

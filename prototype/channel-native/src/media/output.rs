@@ -211,15 +211,7 @@ impl Output {
                         #[cfg(any(feature = "capture", test))]
                         SourceOrigin::Local => true,
                         SourceOrigin::Incoming { .. } => {
-                            source.codec.mime_type.eq_ignore_ascii_case("video/H264")
-                                && cfg!(all(
-                                    feature = "capture",
-                                    any(
-                                        target_os = "windows",
-                                        target_os = "linux",
-                                        target_os = "macos"
-                                    )
-                                ))
+                            super::derived_codec(&source.codec).is_some()
                         }
                     };
                     input.set_active(!adaptive && !paused);

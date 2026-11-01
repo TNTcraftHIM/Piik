@@ -25,10 +25,11 @@ impl Producer {
         publication: Uuid,
         source: Uuid,
         baseline: Video,
+        codec: VideoCodec,
         events: mpsc::Sender<Event>,
     ) -> Self {
         let (demands, rx) = watch::channel(Vec::new());
-        let task = tokio::spawn(run(publication, source, baseline, rx, events));
+        let task = tokio::spawn(run(publication, source, baseline, codec, rx, events));
         Self { demands, task }
     }
     pub fn set_demands(&self, next: Vec<VideoDemand>) {
@@ -48,6 +49,7 @@ impl Producer {
 }
 
 struct Decoding {
+    codec: VideoCodec,
     encodings: Encodings,
     frames: Frames,
     input: Arc<Input>,
@@ -55,7 +57,7 @@ struct Decoding {
     task: JoinHandle<Result<()>>,
 }
 impl Decoding {
-    fn start(baseline: &Video) -> Result<Self> {
+    fn start(baseline: &Video, codec: VideoCodec) -> Result<Self> {
         let frames = Frames::new(FrameTiming::Source)?;
         let worker = frames.clone();
         let input = baseline.subscribe();
@@ -71,7 +73,7 @@ impl Decoding {
             tokio::task::spawn_blocking(move || {
                 let result = (|| -> Result<()> {
                     #[cfg(target_os = "windows")]
-                    let mut decoder = crate::capture::Decoder::new(epoch)?;
+                    let mut decoder = crate::capture::Decoder::new(epoch, codec)?;
                     #[cfg(target_os = "macos")]
                     let mut decoder = crate::capture::Decoder::new(clock)?;
                     while let Some(frame) = runtime.block_on(feed.recv()) {
@@ -102,7 +104,8 @@ impl Decoding {
             crate::capture::decoder::run(access_units, worker, format).await
         });
         Ok(Self {
-            encodings: Encodings::new(baseline.time(), baseline.changed(), VideoCodec::H264),
+            codec,
+            encodings: Encodings::new(baseline.time(), baseline.changed(), codec),
             frames,
             input,
             format: formats,
@@ -160,7 +163,7 @@ fn apply(decoding: &mut Decoding, next: &[VideoDemand]) -> Vec<Video> {
                     fps: format.fps,
                     bitrate,
                 },
-                VideoCodec::H264,
+                decoding.codec,
             )
         })
 }
@@ -179,6 +182,7 @@ async fn run(
     publication: Uuid,
     source: Uuid,
     baseline: Video,
+    codec: VideoCodec,
     mut demands: watch::Receiver<Vec<VideoDemand>>,
     events: mpsc::Sender<Event>,
 ) {
@@ -227,7 +231,7 @@ async fn run(
                         .find(|d| matches!(d.encoding, EncodingDemand::Limited(_)))
                         .and_then(|d| d.source.as_ref())
                         .unwrap_or(&baseline);
-                    match Decoding::start(source) {
+                    match Decoding::start(source, codec) {
                         Ok(decoder) => decoding = Some(decoder),
                         Err(error) => {
                             eprintln!("Native derived decoder initialization failed: {error:#}");
@@ -347,6 +351,7 @@ mod tests {
         let worker = frames.clone();
         let (format, formats) = watch::channel(None);
         let mut decoding = Decoding {
+            codec: VideoCodec::H264,
             encodings: Encodings::new(baseline.time(), baseline.changed(), VideoCodec::H264),
             frames,
             input: baseline.subscribe(),

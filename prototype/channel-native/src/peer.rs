@@ -2747,7 +2747,7 @@ impl Driver {
             feature = "capture",
             any(target_os = "windows", target_os = "linux", target_os = "macos")
         ))]
-        if incoming.is_some() && source.codec.mime_type.eq_ignore_ascii_case("video/H264") {
+        if let Some(codec) = incoming.and_then(|_| crate::media::derived_codec(&source.codec)) {
             if let SourceFeed::Video(video) = &source.feed {
                 self.derived.insert(
                     source.id,
@@ -2755,6 +2755,7 @@ impl Driver {
                         publication,
                         source.id,
                         video.clone(),
+                        codec,
                         self.events.clone(),
                     ),
                 );

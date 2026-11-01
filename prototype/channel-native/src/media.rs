@@ -36,6 +36,27 @@ pub(crate) struct RtpCodec {
     pub sdp_fmtp_line: String,
 }
 
+pub(crate) fn derived_codec(codec: &RtpCodec) -> Option<crate::capture::VideoCodec> {
+    use crate::capture::VideoCodec;
+    if cfg!(all(
+        feature = "capture",
+        any(
+            target_os = "windows",
+            target_os = "linux",
+            target_os = "macos"
+        )
+    )) && codec.mime_type.eq_ignore_ascii_case("video/H264")
+    {
+        Some(VideoCodec::H264)
+    } else if cfg!(all(feature = "capture", target_os = "windows"))
+        && codec.mime_type.eq_ignore_ascii_case("video/VP8")
+    {
+        Some(VideoCodec::Vp8)
+    } else {
+        None
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RtpCodecParameters {
     pub rtp_codec: RtpCodec,

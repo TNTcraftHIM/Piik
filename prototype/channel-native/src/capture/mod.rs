@@ -48,6 +48,8 @@ mod process;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod vp8;
 #[cfg(all(feature = "capture", target_os = "windows"))]
+mod vp8_decoder;
+#[cfg(all(feature = "capture", target_os = "windows"))]
 mod windows;
 #[cfg(all(feature = "capture", target_os = "windows"))]
 mod worker;
