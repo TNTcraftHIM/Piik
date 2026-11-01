@@ -26,8 +26,6 @@ use uuid::Uuid;
 
 mod encodings;
 
-pub(crate) const AUDIO_BITRATE: u32 = 128_000;
-
 pub(crate) use super::encodings::VideoDemand;
 
 /// The page's one lease stops both workers without waiting for the signaling actor.
@@ -35,14 +33,19 @@ pub(crate) use super::encodings::VideoDemand;
 pub(crate) struct Control {
     video: VideoControl,
     audio: Arc<Mutex<Option<AudioLeaseControl>>>,
+    audio_settings: watch::Sender<crate::peer::SourceAudioSettings>,
 }
 
 #[derive(Clone)]
 pub(crate) struct AudioLeaseControl {
     capture: Option<CaptureAudioControl>,
     cancelled: watch::Sender<bool>,
+    settings: watch::Sender<crate::peer::SourceAudioSettings>,
 }
 impl AudioLeaseControl {
+    pub fn set_audio_settings(&self, settings: crate::peer::SourceAudioSettings) {
+        self.settings.send_replace(settings);
+    }
     pub fn stop(&self) {
         self.cancelled.send_replace(true);
         if let Some(capture) = &self.capture {
@@ -66,6 +69,13 @@ impl AudioLease {
     }
 }
 impl Control {
+    pub fn set_audio_settings(&self, settings: crate::peer::SourceAudioSettings) {
+        self.audio_settings.send_replace(settings);
+    }
+
+    pub fn audio_bitrate(&self) -> u32 {
+        self.audio_settings.borrow().bitrate
+    }
     #[cfg(target_os = "linux")]
     pub(crate) async fn authorize(
         &self,
@@ -129,6 +139,8 @@ impl Producer {
         let capture = Capture::start(target.clone(), settings.fps, audio)?;
         let encoding = capture.encode(settings)?;
         let video_control = capture.control();
+        let (audio_settings, settings_rx) =
+            watch::channel(crate::peer::SourceAudioSettings::default());
         let (audio_ready, required_audio) = if exclude_audio.is_some() {
             let (ready, started) = oneshot::channel();
             (Some(ready), Some(started))
@@ -157,6 +169,7 @@ impl Producer {
                     let control = AudioLeaseControl {
                         capture: Some(capture.control()),
                         cancelled: retire,
+                        settings: audio_settings.clone(),
                     };
                     let task = tokio::spawn(audio_source(
                         capture,
@@ -172,6 +185,7 @@ impl Producer {
                         error,
                         retired,
                         audio_ready,
+                        settings_rx,
                     ));
                     Some((id, AudioLease { control, task }))
                 }
@@ -191,6 +205,7 @@ impl Producer {
         let audio_id = audio.as_ref().map(|(id, _)| *id);
         let control = Control {
             video: video_control,
+            audio_settings,
             audio: Arc::new(Mutex::new(
                 audio.as_ref().map(|(_, lease)| lease.control.clone()),
             )),
@@ -295,6 +310,7 @@ impl Producer {
         let control = AudioLeaseControl {
             capture: capture.as_ref().map(|c| c.control()),
             cancelled: retire,
+            settings: self.control.audio_settings.clone(),
         };
         *self.control.audio.lock().unwrap() = Some(control.clone());
         if let Some(capture) = capture {
@@ -314,6 +330,7 @@ impl Producer {
                 warning,
                 retired,
                 Some(ready),
+                self.control.audio_settings.subscribe(),
             ));
             self.audio_lease = Some(AudioLease {
                 control: control.clone(),
@@ -349,13 +366,13 @@ async fn audio_source(
     warning: oneshot::Sender<String>,
     mut retired: watch::Receiver<bool>,
     mut ready: Option<oneshot::Sender<Result<()>>>,
+    mut settings: watch::Receiver<crate::peer::SourceAudioSettings>,
 ) {
     let result = {
         let work = async {
             capture.ready().await?;
             let mut encoder =
                 rusty_opus::OpusEncoder::new(48_000, 2, rusty_opus::Application::Audio)?;
-            encoder.bitrate_bps = AUDIO_BITRATE as i32;
             encoder.complexity = 10;
             encoder.use_cbr = true;
             let mut encoded = [0u8; 1500];
@@ -373,14 +390,19 @@ async fn audio_source(
             }
             let mut first = true;
             loop {
-                let frame = tokio::select! {
+                let mut frame = tokio::select! {
                     frame = capture.recv() => match frame {
                         Some(frame) => frame?,
                         None => break,
                     },
                     _ = cancelled.changed() => break,
                 };
-                let length = encoder.encode(&frame.samples, 960, &mut encoded)?;
+                let length = encode_audio(
+                    &mut encoder,
+                    &mut frame.samples,
+                    *settings.borrow_and_update(),
+                    &mut encoded,
+                )?;
                 let packets =
                     source.packetize(encoded[..length].to_vec(), frame.presentation_time)?;
                 if first {
@@ -429,6 +451,21 @@ async fn audio_source(
             _ = retired.changed() => {},
         }
     }
+}
+
+fn encode_audio(
+    encoder: &mut rusty_opus::OpusEncoder,
+    samples: &mut [f32],
+    settings: crate::peer::SourceAudioSettings,
+    encoded: &mut [u8],
+) -> Result<usize> {
+    encoder.bitrate_bps = settings.bitrate as i32;
+    if settings.gain != 1.0 {
+        for sample in samples.iter_mut() {
+            *sample = (*sample * settings.gain).clamp(-1.0, 1.0);
+        }
+    }
+    Ok(encoder.encode(samples, 960, encoded)?)
 }
 
 /// Packet timestamps and reports share capture time, never encode/arrival time.
@@ -485,6 +522,74 @@ mod tests {
     use super::*;
     use std::time::Duration;
 
+    #[test]
+    fn source_audio_settings_update_the_same_stereo_opus_encoder() -> Result<()> {
+        use crate::peer::SourceAudioSettings;
+        let mut encoder = rusty_opus::OpusEncoder::new(48_000, 2, rusty_opus::Application::Audio)?;
+        encoder.use_cbr = true;
+        let mut decoder = rusty_opus::OpusDecoder::new(48_000, 2)?;
+        let mut encoded = [0u8; 1500];
+        let mut decoded = [0.0f32; 1920];
+        let mut energy = Vec::new();
+        let mut frame_index = 0usize;
+        for (bitrate, gain) in [
+            (64_000, 1.0),
+            (192_000, 0.5),
+            (128_000, 0.0),
+            (128_000, 2.0),
+        ] {
+            let settings = SourceAudioSettings { bitrate, gain };
+            settings.validate()?;
+            let mut sum = [0.0f64; 2];
+            for frame in 0..12 {
+                let mut pcm = [0.0; 1920];
+                for (index, pair) in pcm.chunks_exact_mut(2).enumerate() {
+                    let at = (frame_index * 960 + index) as f32 / 48_000.0;
+                    pair[0] = (at * 440.0 * std::f32::consts::TAU).sin() * 0.1;
+                    pair[1] = (at * 880.0 * std::f32::consts::TAU).sin() * 0.2;
+                }
+                let length = encode_audio(&mut encoder, &mut pcm, settings, &mut encoded)?;
+                assert_eq!(length, bitrate as usize / 400);
+                assert_eq!(decoder.decode(&encoded[..length], 960, &mut decoded)?, 960);
+                if frame >= 4 {
+                    for pair in decoded.chunks_exact(2) {
+                        sum[0] += (pair[0] as f64).powi(2);
+                        sum[1] += (pair[1] as f64).powi(2);
+                    }
+                }
+                frame_index += 1;
+            }
+            energy.push(sum);
+        }
+        for channel in 0..2 {
+            assert!((0.15..0.4).contains(&(energy[1][channel] / energy[0][channel])));
+            assert!(energy[2][channel] < energy[0][channel] * 0.0001);
+            assert!((3.0..5.0).contains(&(energy[3][channel] / energy[0][channel])));
+        }
+        assert!(energy[0][1] > energy[0][0] * 2.0);
+        for settings in [
+            SourceAudioSettings {
+                bitrate: 5_999,
+                gain: 1.0,
+            },
+            SourceAudioSettings {
+                bitrate: 320_001,
+                gain: 1.0,
+            },
+            SourceAudioSettings {
+                bitrate: 128_000,
+                gain: f32::NAN,
+            },
+            SourceAudioSettings {
+                bitrate: 128_000,
+                gain: 2.01,
+            },
+        ] {
+            assert!(settings.validate().is_err());
+        }
+        Ok(())
+    }
+
     #[cfg(target_os = "windows")]
     #[tokio::test]
     async fn audio_replacement_joins_its_lease_and_keeps_the_video_clock() -> Result<()> {
@@ -496,6 +601,7 @@ mod tests {
         let previous = AudioLeaseControl {
             capture: None,
             cancelled: retire,
+            settings: watch::channel(crate::peer::SourceAudioSettings::default()).0,
         };
         let (joined, finished) = oneshot::channel();
         let task = tokio::spawn(async move {
@@ -516,6 +622,7 @@ mod tests {
             clock,
             control: Control {
                 video: frames.control(),
+                audio_settings: previous.settings.clone(),
                 audio: Arc::new(Mutex::new(Some(previous.clone()))),
             },
             task: Some(tokio::spawn(async { None })),

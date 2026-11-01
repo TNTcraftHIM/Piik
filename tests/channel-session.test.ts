@@ -831,7 +831,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
   } finally { session.close(); }
 });
 
-test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
+test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-close-before-state", "app-close-after-state", "transfer-rejected", "audio-stop-before-reply"])("Browser and Native handoffs keep one publication and use the current Native capture lease (%s)", async outcome => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const { session, socket } = await setup();
@@ -883,6 +883,39 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-clo
     socket.receive({ type: "state", state }); coreReply(); await native;
     expect(old.stop).toHaveBeenCalledOnce();
     expect(session.getSnapshot().ownedScreens).toEqual(new Set([publication.id]));
+    const audioSettings = session.setSourceAudio(publication.id, { bitrate: 192_000, level: 0.5 });
+    expect(await appCommand("capture_audio_settings")).toMatchObject({ publicationId: publication.id, captureId: firstCaptureId,
+      settings: { bitrate: 192_000, gain: 0.5 } });
+    const coalesced = session.setSourceAudio(publication.id, { level: 1.0 });
+    const latest = session.setSourceAudio(publication.id, { level: 1.5 });
+    expect(coalesced).toBe(audioSettings); expect(latest).toBe(audioSettings);
+    expect(app.sent.filter(command => command.type === "capture_audio_settings")).toHaveLength(1);
+    await expect(session.startScreen("first")).rejects.toThrow("operation_pending");
+    appReply();
+    await vi.waitFor(() => expect(app.sent.filter(command => command.type === "capture_audio_settings")).toHaveLength(2));
+    expect(app.sent.at(-1)).toMatchObject({ settings: { bitrate: 192_000, gain: 1.5 } });
+    appReply(); await audioSettings;
+    expect(session.sourceAudio(publication.id)).toMatchObject({ bitrate: 192_000, level: 1.5, muted: false, available: true });
+
+    if (outcome === "audio-stop-before-reply") {
+      const rejected = session.setSourceAudio(publication.id, { level: 0.25 });
+      const failure = expect(rejected).rejects.toThrow("audio_unavailable");
+      await appCommand("capture_audio_settings");
+      app.receive({ id: app.sent.at(-1)!.id, error: "audio_unavailable" }); await failure;
+      expect(session.sourceAudio(publication.id)?.level).toBe(1.5);
+      const updating = session.setSourceAudio(publication.id, { level: 0.75 });
+      const retired = expect(updating).rejects.toMatchObject({ name: "AbortError" });
+      const pending = await appCommand("capture_audio_settings");
+      expect(session.setSourceAudio(publication.id, { level: 1.75 })).toBe(updating);
+      const before = app.sent.filter(command => command.type === "capture_audio_settings").length;
+      const stopping = session.stopScreen(publication.id);
+      expect(app.sent.at(-1)?.type).toBe("stop_capture"); appReply(); await stopping;
+      app.receive({ id: pending.id, result: null }); await retired;
+      expect(app.sent.filter(command => command.type === "capture_audio_settings")).toHaveLength(before);
+      expect(session.sourceAudio(publication.id)).toBeUndefined();
+      expect(session.getSnapshot().ownedScreens.size).toBe(0);
+      return;
+    }
 
     const oldShortcut = session.inputShortcut(publication.id, 10);
     const oldShortcutCommand = app.sent.at(-1)!;
@@ -985,6 +1018,52 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-clo
     expect(socket.sent.some(command => command.type === "unpublish")).toBe(false);
     expect(next.stop).not.toHaveBeenCalled();
   } finally { session.close(); }
+});
+
+test("Browser source output gain and bitrate survive replacement and close with the capture", async () => {
+  const { session, socket } = await setup();
+  const contexts: Array<{ gain: ReturnType<typeof vi.fn>; close: ReturnType<typeof vi.fn> }> = [];
+  const node = () => ({ connect() {}, disconnect() {} });
+  vi.stubGlobal("AudioContext", class {
+    currentTime = 0;
+    gain = vi.fn(); close = vi.fn(async () => {});
+    constructor() { contexts.push(this); }
+    createMediaStreamDestination() { return { ...node(), stream: remoteStream("mixed", [remoteTrack("audio")]) }; }
+    createGain() { return { ...node(), gain: { value: 1, setTargetAtTime: this.gain } }; }
+    createMediaStreamSource() { return node(); }
+    async resume() {}
+  });
+  const first = remoteStream("original", [remoteTrack("video"), remoteTrack("audio")]);
+  const next = remoteStream("replacement", [remoteTrack("video"), remoteTrack("audio")]);
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(next) } });
+  try {
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await starting;
+    socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [{ ...publication, sessionId: "endpoint", userId: "self" }] } });
+    expect(session.sourceAudio(publication.id)).toMatchObject({ level: 1, muted: false, bitrate: 128_000, available: true });
+    await session.setSourceAudio(publication.id, { level: 0.5, bitrate: 192_000 });
+    expect(contexts[0].gain).toHaveBeenLastCalledWith(0.5, 0, 0.01);
+    await session.setSourceAudio(publication.id, { muted: true });
+    expect(contexts[0].gain).toHaveBeenLastCalledWith(0, 0, 0.01);
+    expect(first.getVideoTracks()[0].stop).not.toHaveBeenCalled();
+    const switching = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("transfer_source"));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await switching;
+    expect(session.sourceAudio(publication.id)).toMatchObject({ level: 0.5, muted: true, bitrate: 192_000 });
+    expect(contexts[0].close).toHaveBeenCalledOnce();
+    expect(first.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
+    await session.setSourceAudio(publication.id, { muted: false });
+    expect(contexts[1].gain).toHaveBeenLastCalledWith(0.5, 0, 0.01);
+    await expect(session.setSourceAudio(publication.id, { level: 2.01 })).rejects.toThrow("invalid_audio_settings");
+    expect(session.getSnapshot().listeningVolume).toBe(1);
+    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
+  } finally {
+    session.close();
+    expect(contexts.every(context => context.close.mock.calls.length === 1)).toBe(true);
+    expect(next.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
+  }
 });
 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
@@ -1953,6 +2032,8 @@ class RoomMediaStream {
   readonly id = crypto.randomUUID();
   constructor(private tracks: MediaStreamTrack[] = []) { this.tracks = [...tracks]; }
   getTracks() { return [...this.tracks]; }
+  getAudioTracks() { return this.tracks.filter(track => track.kind === "audio"); }
+  getVideoTracks() { return this.tracks.filter(track => track.kind === "video"); }
   addTrack(track: MediaStreamTrack) { this.tracks.push(track); }
   removeTrack(track: MediaStreamTrack) { this.tracks = this.tracks.filter(current => current !== track); }
 }

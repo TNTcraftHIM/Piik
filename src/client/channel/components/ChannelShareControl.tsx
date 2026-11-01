@@ -4,8 +4,8 @@ import { Btn } from "../../components/living/primitives";
 import { useAnchoredPopover } from "../../components/living/use-anchored-popover";
 import { useCopy } from "../../ui/copy";
 import { SharingSettings } from "../../components/living/SharingSettings";
-import { QualityPresets, PictureSettingsSummary, ResolutionControl, VideoRateControls } from "../../components/living/QualityPresets";
-import { QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId } from "../../media/quality";
+import { AudioBitrateControl, QualityPresets, PictureSettingsSummary, ResolutionControl, VideoRateControls } from "../../components/living/QualityPresets";
+import { MAX_AUDIO_SEND_BITRATE, QUALITY_PROFILES, VIDEO_CAPTURE_LIMITS, captureFramerateCeiling, matchingQualityProfileId } from "../../media/quality";
 import { activateNativePicker } from "../../native/activation";
 import type { ChannelController } from "../types";
 import "./channel-share-control.css";
@@ -26,12 +26,13 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   const { appConnected, nativeSources, startNativeScreen, startScreen, quality, setQuality } = channel;
   const browserSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getDisplayMedia === "function";
   const cameraSupported = typeof navigator !== "undefined" && typeof navigator.mediaDevices?.getUserMedia === "function";
-  const busy = channel.pending.has(`screen:${roomId}`);
   const captureRequest = channel.nativeCaptureRequest(roomId);
   const selectedNative = channel.nativeCaptureSelection(roomId);
   const available = browserSupported || cameraSupported || appConnected;
   const pickerAvailable = appConnected || cameraSupported;
-  const sharing = channel.state?.publications.some(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const sharing = channel.state?.publications.find(publication => publication.roomId === roomId && channel.ownedScreens.has(publication.id));
+  const sourceAudio = sharing ? channel.sourceAudio(sharing.id) : undefined;
+  const busy = channel.pending.has(`screen:${roomId}`) || !!sharing && channel.pending.has(`source-audio:${sharing.id}`);
   const label = t(sharing ? "host.switchSource" : "host.start");
   useAnchoredPopover(trigger, panel, { maxHeight: 560, minVisibleHeight: 240 });
   useAnchoredPopover(settingsTrigger, settingsPanel, { maxHeight: 640, minVisibleHeight: 240 });
@@ -87,7 +88,13 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
           onChange={resolution => setQuality({ ...quality, resolution,
             maxFramerate: Math.min(quality.maxFramerate, captureFramerateCeiling(resolution, VIDEO_CAPTURE_LIMITS)) })} />
           <VideoRateControls value={quality} limits={VIDEO_CAPTURE_LIMITS} disabled={busy}
-            onChange={next => setQuality({ ...quality, ...next })} /></>} />
+            onChange={next => setQuality({ ...quality, ...next })} /></>}
+        audio={<AudioBitrateControl value={sourceAudio?.bitrate ?? quality.maxAudioBitrate ?? 128_000} max={MAX_AUDIO_SEND_BITRATE}
+          disabled={busy || !!sharing && channel.pending.has(`source-audio:${sharing.id}`)}
+          onChange={bitrate => {
+            if (sharing) void channel.setSourceAudio(sharing.id, { bitrate }).catch(() => {});
+            else setQuality({ ...quality, maxAudioBitrate: bitrate });
+          }} />} />
     </div>
     <div ref={panel} id={id} popover="auto" className="lr-anchored-card c3-share-picker"
       onToggle={event => setOpen(event.newState === "open")}>

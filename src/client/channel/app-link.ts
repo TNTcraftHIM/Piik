@@ -166,14 +166,15 @@ export class ChannelApp {
     return preview;
   }
 
-  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, excludeAudio?: NativeCaptureTarget): Promise<PreparedNativeCapture> {
+  async prepareCapture(publicationId: string, roomId: string, target: NativeCaptureTarget, audio: boolean, profile: QualityProfile, excludeAudio?: NativeCaptureTarget, gain = 1): Promise<PreparedNativeCapture> {
     const settings = { width: profile.resolution.width, height: profile.resolution.height,
       fps: profile.maxFramerate, bitrate: profile.maxBitrate };
     if (!this.connected) throw new Error("app_disconnected");
     if (excludeAudio && (!audio || target.kind !== "display" || excludeAudio.kind !== "window" || !this.processAudioExclusion)) throw new Error("audio exclusion unavailable");
     this.prepared.add(publicationId);
     try {
-      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings, ...(excludeAudio ? { excludeAudio } : {}) });
+      const pending = this.request({ type: "prepare_capture", publicationId, roomId, target, audio, settings,
+        audioSettings: { bitrate: profile.maxAudioBitrate ?? 128_000, gain }, ...(excludeAudio ? { excludeAudio } : {}) });
       activateNativePicker(this.activationURL);
       const capture = preparedCaptureSchema.parse(await pending);
       if (!this.prepared.has(publicationId)) throw new DOMException("Capture cancelled", "AbortError");
@@ -182,6 +183,13 @@ export class ChannelApp {
       await this.cancelCapture(publicationId).catch(() => {});
       throw error;
     }
+  }
+
+  async setSourceAudio(publicationId: string, bitrate: number, gain: number): Promise<void> {
+    const captureId = this.captures.get(publicationId);
+    if (!captureId) throw new Error("capture_unavailable");
+    await this.request({ type: "capture_audio_settings", publicationId, captureId, settings: { bitrate, gain } });
+    if (this.captures.get(publicationId) !== captureId) throw new DOMException("Capture cancelled", "AbortError");
   }
 
   async commitCapture(publicationId: string, captureId: string): Promise<void> {

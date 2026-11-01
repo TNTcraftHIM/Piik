@@ -165,7 +165,7 @@ impl Driver {
                     },
                 )
             } else if producer.audio == Some(source.id) {
-                Some(crate::media::local::AUDIO_BITRATE)
+                Some(producer.control.audio_bitrate())
             } else {
                 None
             }

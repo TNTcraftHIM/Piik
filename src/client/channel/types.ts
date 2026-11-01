@@ -46,6 +46,8 @@ export interface ChannelView {
 
 export interface ChannelActions {
   setQuality(profile: QualityProfile): void;
+  sourceAudio(publicationId: string): { level: number; muted: boolean; bitrate: number; available: boolean } | undefined;
+  setSourceAudio(publicationId: string, settings: { bitrate?: number; level?: number; muted?: boolean }): Promise<void>;
   activateApp(): Promise<void>;
   browse(roomId: string): void;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;

@@ -30,7 +30,7 @@ use piik_channel_core::RoomState;
 use piik_channel_native::{
     capture::{Settings, Target},
     input::{Desktop, Mode, SourceView},
-    peer::CaptureLease,
+    peer::{CaptureLease, SourceAudioSettings},
     session::{
         self, CommitCapture, HostCommand, Hosting, OpenRoom, PrepareCapture, TransferSource,
     },
@@ -643,6 +643,8 @@ enum Operation {
         target: Target,
         settings: Settings,
         #[serde(default)]
+        audio_settings: SourceAudioSettings,
+        #[serde(default)]
         audio: bool,
         #[serde(default)]
         exclude_audio: Option<Target>,
@@ -650,6 +652,11 @@ enum Operation {
     CommitCapture {
         publication_id: Uuid,
         capture_id: Uuid,
+    },
+    CaptureAudioSettings {
+        publication_id: Uuid,
+        capture_id: Uuid,
+        settings: SourceAudioSettings,
     },
     CancelCapture {
         publication_id: Uuid,
@@ -910,6 +917,7 @@ async fn connection(
                                 room_id,
                                 target,
                                 settings,
+                                audio_settings,
                                 audio,
                                 exclude_audio,
                             } => match &host {
@@ -935,6 +943,7 @@ async fn connection(
                                                         room_id,
                                                         target,
                                                         settings,
+                                                        audio_settings,
                                                         audio,
                                                         exclude_audio,
                                                         replaces,
@@ -1030,6 +1039,17 @@ async fn connection(
                                 drop(captures.remove(&publication_id));
                                 Ok(Value::Null)
                             }
+                            Operation::CaptureAudioSettings {
+                                publication_id,
+                                capture_id,
+                                settings,
+                            } => captures
+                                .get(&publication_id)
+                                .and_then(Capture::lease)
+                                .filter(|lease| lease.id == capture_id)
+                                .ok_or_else(|| anyhow!("capture_unavailable"))
+                                .and_then(|lease| lease.configure_audio(settings))
+                                .map(|_| Value::Null),
                             Operation::InputPolicy {
                                 publication_id,
                                 mode,
@@ -1184,6 +1204,7 @@ async fn prepare_capture(
     room_id: String,
     target: Target,
     settings: Settings,
+    audio_settings: SourceAudioSettings,
     audio: bool,
     exclude_audio: Option<Target>,
     replaces: Option<Uuid>,
@@ -1192,6 +1213,7 @@ async fn prepare_capture(
         bail!("capture_unavailable");
     }
     settings.validate()?;
+    audio_settings.validate()?;
     let (result, response) = oneshot::channel();
     commands
         .send(HostCommand::PrepareCapture(PrepareCapture {
@@ -1210,6 +1232,7 @@ async fn prepare_capture(
         .await
         .map_err(|_| anyhow!("hosting_unavailable"))?
         .map_err(anyhow::Error::msg)?;
+    lease.configure_audio(audio_settings)?;
     lease.ready().await.map_err(|error| {
         if error.is::<Aborted>() {
             anyhow!("capture_cancelled")
@@ -1278,6 +1301,7 @@ mod tests {
             "publicationId": Uuid::new_v4(),
             "target": {"kind": "display", "sourceId": "1", "title": "Test display"},
             "settings": {"width": 1280, "height": 720, "fps": 24, "bitrate": 2_500_000},
+            "audioSettings": {"bitrate":192000,"gain":0.5},
             "audio": true,
             "excludeAudio": {"kind":"window","sourceId":"2","title":"Excluded app","pid":42,"creationTime":"1234"}
         });
@@ -1287,12 +1311,20 @@ mod tests {
             room_id,
             target,
             settings,
+            audio_settings,
             audio,
             exclude_audio,
         } = request.operation
         else {
             panic!("expected capture request");
         };
+        assert_eq!(
+            audio_settings,
+            SourceAudioSettings {
+                bitrate: 192_000,
+                gain: 0.5
+            }
+        );
         let publication = publication_id;
         let (commands, mut received) = mpsc::channel(1);
         let start = prepare_capture(
@@ -1301,6 +1333,7 @@ mod tests {
             room_id,
             target.clone(),
             settings,
+            audio_settings,
             audio,
             exclude_audio,
             None,
@@ -1336,6 +1369,7 @@ mod tests {
             "room".into(),
             target,
             invalid,
+            SourceAudioSettings::default(),
             false,
             None,
             None,

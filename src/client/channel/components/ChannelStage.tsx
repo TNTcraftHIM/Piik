@@ -2,7 +2,7 @@ import { PawnSvg } from "../../components/living/Pawn";
 import { participantColor } from "../../components/living/participant-color";
 import { Glyph } from "../../ui/icons";
 import { useCopy } from "../../ui/copy";
-import { ChannelAction, ChannelVideo } from "./ChannelMedia";
+import { ChannelAction, ChannelVideo, type SourceAudioControl } from "./ChannelMedia";
 import type { ChannelScreenInput, ScreenPresentation } from "../types";
 import "./channel-stage.css";
 import type { InputTransport } from "../../remote-control/input-route";
@@ -20,6 +20,7 @@ export interface ChannelStageSource {
   owned: boolean;
   subscribed: boolean;
   stream?: MediaStream;
+  sourceAudio?: SourceAudioControl;
   inputs?: readonly ChannelScreenInput[];
   input?: InputTransport;
   remoteControl?: Omit<ChannelRemoteControlState, "requests"> & { requests: (ChannelRemoteControlState["requests"][number] & { name: string })[] };
@@ -101,6 +102,7 @@ export function ChannelStage({ sources, focusedId, canSubscribe, onFocus, onWatc
               onFocus(source.id);
             }}>
             {source.stream ? <ChannelVideo stream={source.stream} local={source.owned} inputs={source.inputs} onPresentation={onPresentation} input={source.input}
+              sourceAudio={source.sourceAudio}
               label={`${source.name} — ${source.roomName}`} />
               : <div className="c3-monitor-wait" role="status"><Glyph name="loader" size={24} className="lr-spin" />
                 <span>{copy("正在连接画面", "Connecting picture")}</span></div>}

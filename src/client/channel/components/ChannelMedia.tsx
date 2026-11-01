@@ -64,9 +64,15 @@ function ChannelVideoInput({ input, visible, label, fit, register, frame, issue,
     }} />;
 }
 
-export function ChannelVideo({ stream, local, label, inputs, onPresentation, input }: {
+export interface SourceAudioControl {
+  level: number; muted: boolean; available: boolean; busy: boolean;
+  onChange(settings: { level?: number; muted?: boolean }): void;
+}
+
+export function ChannelVideo({ stream, local, label, inputs, onPresentation, input, sourceAudio }: {
   stream: MediaStream; local: boolean; label: string; inputs?: readonly ChannelScreenInput[];
   input?: InputTransport;
+  sourceAudio?: SourceAudioControl;
   onPresentation?: (flowId: string, stream: MediaStream, state: ScreenPresentation) => void;
 }) {
   const target = inputs?.find(input => input.selected) ?? { flowId: stream.id, stream, selected: true, switchReady: false };
@@ -96,6 +102,9 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
   const current = useRef({ displayed, inputs, onPresentation });
   current.current = { displayed, inputs, onPresentation };
   const { lang, t } = useCopy();
+  const sound = local && sourceAudio ? sourceAudio : audio;
+  const soundAvailable = hasAudio && (!local || !!sourceAudio?.available);
+  const soundDisabled = !soundAvailable || local && !!sourceAudio?.busy;
   const playbackRef = useMemo(() => ({ current: activeVideo }), [activeVideo]);
   useVideoRotation(playbackRef, pictureFit, pictureRotation);
   useAnchoredPopover(pictureTrigger, picturePanel, { side: "above", align: "center" });
@@ -224,17 +233,20 @@ export function ChannelVideo({ stream, local, label, inputs, onPresentation, inp
     </div>}
     {blocked && <div className="c3-mini-message"><Btn icon="play" title="playback.play" cap="playback.play"
       onClick={play} hint="hint-local-play" /></div>}
-    <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={lang === "zh" ? "本机播放" : "Local playback"}>
+    <div id={controlsId} ref={controls} className="c3-mini-controls lr-media-toolbar lr-media-controls" role="group" aria-label={t("playback.controls")}>
       <Btn icon={paused ? "play" : "pause"} title={paused ? "playback.play" : "playback.pause"} quiet
         hint={paused ? "hint-local-play" : "hint-local-pause"} onClick={() => { if (ref.current?.paused) play(); else ref.current?.pause(); }} />
-      {!local && <>
-        <Btn icon={audio.muted || audio.level === 0 ? "speakerOff" : "speaker"} quiet
-          title={!hasAudio ? "playback.noAudio" : audio.muted ? "playback.unmute" : "playback.mute"}
-          hint={!hasAudio ? "hint-no-audio" : audio.muted ? "hint-unmute" : "hint-mute"}
-          disabled={!hasAudio} pressed={audio.muted} onClick={() => output.current?.setMuted(!audio.muted)} />
-        <input className="c3-mini-volume" type="range" min="0" max="1" step="0.05" value={audio.level}
-          disabled={!hasAudio} aria-label={t("playback.volumeBasic")} aria-valuetext={`${Math.round(audio.level * 100)}%`}
-          onChange={event => output.current?.setLevel(Number(event.currentTarget.value))} />
+      {(!local || sourceAudio) && <>
+        <Btn icon={sound.muted || sound.level === 0 ? "speakerOff" : "speaker"} quiet
+          title={!hasAudio ? "playback.noAudio" : local
+            ? !sourceAudio?.available ? "host.shareVolume.unavailable" : sound.muted ? "host.shareVolume.unmute" : "host.shareVolume.mute"
+            : sound.muted ? "playback.unmute" : "playback.mute"}
+          hint={!soundAvailable ? "hint-no-audio" : sound.muted ? "hint-unmute" : "hint-mute"}
+          disabled={soundDisabled} pressed={sound.muted}
+          onClick={() => local ? sourceAudio?.onChange({ muted: !sound.muted }) : output.current?.setMuted(!sound.muted)} />
+        <input className="c3-mini-volume" type="range" min="0" max={local ? 2 : 1} step="0.05" value={sound.level}
+          disabled={soundDisabled} aria-label={t(local ? "host.shareVolume" : "playback.volumeBasic")} aria-valuetext={`${Math.round(sound.level * 100)}%`}
+          onChange={event => local ? sourceAudio?.onChange({ level: Number(event.currentTarget.value) }) : output.current?.setLevel(Number(event.currentTarget.value))} />
       </>}
       <span className="c3-mini-space" />
       {!local && <RemoteControl channel={input ?? null} videoRef={playbackRef} available={ready && displayed.flowId === target.flowId}

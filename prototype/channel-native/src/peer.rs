@@ -35,6 +35,32 @@ use uuid::Uuid;
 
 const MAX_ICE_CANDIDATES: usize = 128;
 
+#[derive(Clone, Copy, Debug, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SourceAudioSettings {
+    pub bitrate: u32,
+    pub gain: f32,
+}
+impl Default for SourceAudioSettings {
+    fn default() -> Self {
+        Self {
+            bitrate: 128_000,
+            gain: 1.0,
+        }
+    }
+}
+impl SourceAudioSettings {
+    pub fn validate(self) -> Result<()> {
+        anyhow::ensure!(
+            (6_000..=320_000).contains(&self.bitrate)
+                && self.gain.is_finite()
+                && (0.0..=2.0).contains(&self.gain),
+            "invalid_audio_settings"
+        );
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 pub struct IceServer {
     pub urls: Vec<String>,
@@ -110,6 +136,21 @@ struct Capture {
     pending_audio: Option<Uuid>,
 }
 impl CaptureLease {
+    pub fn configure_audio(&self, settings: SourceAudioSettings) -> Result<()> {
+        settings.validate()?;
+        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
+        #[cfg(feature = "capture")]
+        match self.control.as_ref() {
+            Some(CaptureLeaseControl::Capture(control)) => control.set_audio_settings(settings),
+            Some(CaptureLeaseControl::Audio(control)) => control.set_audio_settings(settings),
+            None => anyhow::bail!("capture_unavailable"),
+        }
+        #[cfg(not(feature = "capture"))]
+        anyhow::bail!("capture_unavailable");
+        #[cfg(feature = "capture")]
+        Ok(())
+    }
+
     pub fn producer_id(&self) -> Uuid {
         self.producer
     }

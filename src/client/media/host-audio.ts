@@ -25,7 +25,8 @@ export class HostAudio {
   get sourceKind(): BrowserCaptureSource { return this.kind; }
   get sourceAudioAvailable(): boolean { return this.source.getAudioTracks().some(track => track.readyState === "live"); }
   get audioAvailable(): boolean { return this.sourceAudioAvailable || this.microphone !== null; }
-  get commentaryAvailable(): boolean { return this.context !== null && this.destination !== null; }
+  get outputGainAvailable(): boolean { return this.context !== null && this.destination !== null; }
+  get commentaryAvailable(): boolean { return this.outputGainAvailable; }
   private output(): MediaStream {
     return this.destination ? new MediaStream([...this.source.getVideoTracks(), ...this.destination.stream.getAudioTracks()]) : this.source;
   }

@@ -235,6 +235,11 @@ export function ChannelPreviewPage() {
             available: rooms.find(value => value.id === publication.roomId)?.available ?? false,
             subscribed: state?.subscriptions.includes(publication.id) ?? false, stream: streams.get(publication.id), inputs: channel.screenInputs.get(publication.id),
             input: channel.inputChannels.get(publication.id),
+            sourceAudio: (() => {
+              const sound = channel.sourceAudio(publication.id);
+              return sound && { ...sound, busy: busy("screen", publication.roomId),
+                onChange: (settings: { level?: number; muted?: boolean }) => run(channel.setSourceAudio(publication.id, settings)) };
+            })(),
             remoteControl: (() => {
               const remote = channel.remoteControls.get(publication.id);
               return remote && { ...remote, requests: remote.requests.map(request => ({ ...request,
