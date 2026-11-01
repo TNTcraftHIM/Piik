@@ -7,6 +7,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { fixture } from '../../prototype/channel-server/browser-fixture.mjs';
 import { readPacketFlows } from './packets';
+import { command } from './network';
 import type { LabNetwork } from './network';
 import type { LabProcess } from './process';
 
@@ -25,6 +26,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
   const sessions = indices.map(index => network.prefix+'-browser'+index);
   let sourceBrowser = 0, viewerBrowser = 1, browserRelay: number | undefined;
   const browserOpened = new Set<number>();
+  const cdp = new Map<number, string>();
   const browser = async (index: number, ...args: string[]) => {
     const commandArgs = ['netns', 'exec', network.endpoint(index + (prepared ? 2 : 1)), process.env.AGENT_BROWSER_BIN ?? 'agent-browser',
       '--session', sessions[index]!, '--json', '--executable-path', process.env.CHROMIUM_BIN ?? '/usr/bin/chromium',
@@ -32,13 +34,30 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       '--init-script', join(output, `${index}.js`), ...args];
     return new Promise<any>((resolve, reject) => {
       const child = spawn('ip', commandArgs, { stdio: ['ignore', 'pipe', 'pipe'] }); let stdout = '', stderr = '';
-      child.stdout.on('data', bytes => { stdout += bytes; }); child.stderr.on('data', bytes => { stderr += bytes; });
-      const timer = setTimeout(() => { child.kill(); reject(Error('owned Browser command deadline')); }, 35000);
-      child.once('error', error => { clearTimeout(timer); reject(error); });
-      child.once('close', code => { clearTimeout(timer);
-        if (code) return reject(Error(stderr || stdout || `Browser exit${code}`));
-        try { const value = JSON.parse(stdout); assert(value.success, value.error); resolve(value.data); } catch (error) { result.browserFailure = { index, command: args[0], code, stdout, stderr }; reject(error); }
-      });
+      const finish = (error?: unknown, data?: any) => {
+        clearTimeout(timer); child.removeAllListeners();
+        child.stdout.removeAllListeners(); child.stderr.removeAllListeners();
+        child.stdout.destroy(); child.stderr.destroy();
+        if (error) reject(error); else resolve(data);
+      };
+      // A daemon can retain the CLI's pipe handles after exit. Require the
+      // complete JSON response and exit, rather than waiting for inherited EOF.
+      const complete = (closed = false) => {
+        if (child.exitCode === null && !child.signalCode && !closed) return;
+        let value: any;
+        try { value = JSON.parse(stdout); } catch (error) { if (!closed) return; return finish(error); }
+        if (child.exitCode !== 0 || !value?.success) return finish(Error(stderr || value?.error || stdout));
+        finish(undefined, value.data);
+      };
+      child.stdout.on('data', bytes => { stdout += bytes; complete(); });
+      child.stderr.on('data', bytes => { stderr += bytes; });
+      const timer = setTimeout(() => {
+        result.browserFailure ??= { index, phase: result.phase, command: args[0], atMs: Date.now(),
+          exitCode: child.exitCode, signalCode: child.signalCode, stdoutBytes: stdout.length, stderrBytes: stderr.length };
+        child.kill(); finish(Error('owned Browser command deadline'));
+      }, 35000);
+      child.once('error', error => finish(error));
+      child.once('exit', () => complete()); child.once('close', () => complete(true));
     });
   };
   const f = fixture(browser);
@@ -49,6 +68,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     + 'import base from '+JSON.stringify(join(source, 'vite.config.ts'))+';\n'
     + 'export default mergeConfig(base,{root:'+JSON.stringify(source)+',cacheDir:'+JSON.stringify(join(output, 'vite-cache'))+'});\n');
   try {
+    result.phase = 'Browser room setup';
     const vite = start('vite', network.wan, process.execPath, [join(source, 'node_modules/vite/bin/vite.js'), '--host', '0.0.0.0', '--port', '9000', '--strictPort', '--config', join(output, 'vite.config.mts')],
       { ...process.env, PIIK_CHANNEL_PORT: '9001' });
     await vite.wait(() => vite.stdout.includes('9000'), signal);
@@ -59,6 +79,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       await writeFile(join(output, `${index}.js`), f.captureProbe(index ? 'Viewer' : 'Source'));
       browserOpened.add(index);
       await browser(index, 'open', `${origin}/__channel-preview#invite=owned-kernel-lab-invite`);
+      cdp.set(index, (await browser(index, 'get', 'cdp-url')).cdpUrl);
       await f.until(`Browser${index} admitted`, () => f.view(index), (value: any) => value.connection === 'connected');
       await f.action(index, `renameSelf(${JSON.stringify(index ? 'Owned viewer' : 'Owned source')})`);
       await f.until('Native room available', () => f.view(index), (value: any) => value.state.channel.rooms.some((entry: any) => entry.id === room && entry.available));
@@ -115,7 +136,10 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     await f.until('bidirectional Native-forwarded voice', () => Promise.all([sourceBrowser, viewerBrowser].map(index => f.sample(index))), (values: any[]) => values.every(value => value.inbound.some((row: any) => row.kind === 'audio' && row.samples > 0 && row.energy > 0)));
     await f.evaluate(sourceBrowser, 'window.__channelProbe.captureAudio(true)');
     const publication = await f.capturedScreen(sourceBrowser, room); result.publication = publication;
-    await f.action(viewerBrowser, `watch(${JSON.stringify(publication)})`); await f.playing(viewerBrowser, publication); await f.audioProgressing(viewerBrowser, publication);
+    await f.action(viewerBrowser, `watch(${JSON.stringify(publication)})`);
+    result.phase = 'viewer playing'; await f.playing(viewerBrowser, publication);
+    result.phase = 'viewer source audio progressing'; await f.audioProgressing(viewerBrowser, publication);
+    result.phase = 'initial decoded continuity';
     const mediaSample = () => f.evaluate(viewerBrowser, `(async () => {
       const snap=${f.hook}.snapshot(), stream=snap.streams.get(${JSON.stringify(publication)});
       const video=[...document.querySelectorAll('video')].find(value=>value.srcObject===stream);
@@ -147,6 +171,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       const node = browserRelay! + 1;
       result.sourceBeforeOutage = await f.sample(sourceBrowser);
       result.recovery = { blockedAt: Date.now() };
+      result.phase = 'relay UDP blackout';
       network.setFault(node, 'udp-block', 1);
       await delay(50_000, undefined, { signal });
       result.blocked = network.counters(node);
@@ -155,6 +180,7 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
       recoveryCapture = start('recovery-capture', network.wan, 'tcpdump', ['-i', 'internet', '-n', '-s', '96', '-U', '-w', join(output, 'recovery.pcap'), '-c', '10000', 'udp']);
       await recoveryCapture.wait(() => recoveryCapture!.stderr.includes('listening on'), signal);
       result.recovery.restoredAt = Date.now(); network.setFault(node, 'none', 1);
+      result.phase = 'relay decoded picture and source audio recovery';
       for (const [from, to] of result.blockedShortcuts.filter(([from]: number[]) => from === node)) network.exec(network.router(from), 'nft', [
         `add rule inet lab_filter faults ip daddr ${network.publicIP(to)} meta l4proto udp counter drop`,
       ]);
@@ -191,7 +217,28 @@ export async function media(lab: MediaLab, mode: 'ordinary' | 'media' | 'browser
     result.stop = await Promise.all(indices.map(index => f.sample(index)));
     assert(result.stop.every((value: any) => value.captures.every((track: any) => track.state === 'ended')));
   } catch (error) {
-    result.failure = { atMs: Date.now(), browsers: await Promise.allSettled([...browserOpened].map(async index => ({
+    result.failure = { atMs: Date.now(), phase: result.phase,
+      memory: command('cat', ['/proc/meminfo']),
+      memoryPressure: command('cat', ['/proc/pressure/memory']), cpuPressure: command('cat', ['/proc/pressure/cpu']),
+      processes: await Promise.allSettled(network.namespaces.map(async namespace => {
+        const pids = command('ip', ['netns', 'pids', namespace]).split(/\s+/).filter(Boolean);
+        return { namespace, pids, status: pids.length ? command('ps', ['-p', pids.join(','), '-o', 'pid,ppid,stat,pcpu,rss,etime,comm']) : '' };
+      })),
+      cdp: await Promise.allSettled([...cdp].map(async ([index, url]) => ({ index,
+        // Standard CDP, independently of an agent command or awaited page Promise.
+        health: JSON.parse(network.exec(network.endpoint(index + (prepared ? 2 : 1)), process.execPath, ['--input-type=module', '-e', `
+          const ws=new WebSocket(process.argv[1]), replies=[];let done=false;
+          const finish=()=>{if(done)return;done=true;console.log(JSON.stringify(replies));ws.close();};
+          const timer=setTimeout(finish,2000);
+          ws.onopen=()=>{ws.send(JSON.stringify({id:1,method:'Browser.getVersion'}));ws.send(JSON.stringify({id:2,method:'Target.getTargets'}));};
+          ws.onmessage=({data})=>{const row=JSON.parse(data);if(!row.id)return;replies.push(row);
+            if(row.id===2){const page=row.result?.targetInfos.find(t=>t.type==='page');if(page)ws.send(JSON.stringify({id:3,method:'Target.attachToTarget',params:{targetId:page.targetId,flatten:true}}));}
+            if(row.id===3&&row.result?.sessionId)ws.send(JSON.stringify({id:4,sessionId:row.result.sessionId,method:'Runtime.evaluate',params:{expression:'1',returnByValue:true,awaitPromise:false}}));
+            if(row.id===4){clearTimeout(timer);finish();}};
+          ws.onerror=()=>{clearTimeout(timer);finish();};
+        `, url])),
+      }))),
+      browsers: await Promise.allSettled([...browserOpened].map(async index => ({
       index, view: await f.view(index), sample: await f.sample(index), ice: await ice(index),
     }))) };
     if (relayed && result.roles) result.failure.routers = await Promise.allSettled(indices.map(async index => ({ index: index + 1,
