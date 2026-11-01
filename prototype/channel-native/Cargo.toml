@@ -64,9 +64,9 @@ gst-video = { package = "gstreamer-video", version = "=0.24.5", optional = true,
 [target.'cfg(any(target_os = "windows", target_os = "macos", target_os = "linux", target_os = "android"))'.dependencies]
 rusty-opus = { version = "=1.0.2", optional = true }
 
-# Temporary fixes/API: webrtc-rs/rtc#296, #298, #308 and #309; removal in README.md.
+# Temporary upstream bug fixes: webrtc-rs/rtc#296, #298 and #308; removal in README.md.
 [patch.crates-io]
-rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "5efc2df76d116db86f41ad12b393dbf846c514a5" }
+rtc = { git = "https://github.com/TNTcraftHIM/rtc", rev = "c4a1c92093c1c715dacc13cf09ae0cb95be947ca" }
 
 [target.'cfg(windows)'.dependencies]
 vigem-rust = { version = "=0.2.0", default-features = false, features = ["x360"] }

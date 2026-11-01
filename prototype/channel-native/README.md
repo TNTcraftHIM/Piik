@@ -143,10 +143,9 @@ warm output, stream, SSRC, source clock and feedback owner.
 ## RTC Dependency
 
 Native, Server and Android pin `rtc` to commit
-`5efc2df76d116db86f41ad12b393dbf846c514a5` in the temporary
-[fork](https://github.com/TNTcraftHIM/rtc/tree/5efc2df76d116db86f41ad12b393dbf846c514a5).
-It retains two previously submitted fixes on the published 0.21.1 baseline and
-adds the H264 parser repair and sample-building API below:
+`c4a1c92093c1c715dacc13cf09ae0cb95be947ca` in the temporary
+[bug-fix fork](https://github.com/TNTcraftHIM/rtc/tree/c4a1c92093c1c715dacc13cf09ae0cb95be947ca).
+It contains three upstream bug fixes on the published 0.21.1 baseline:
 
 - [PR #296](https://github.com/webrtc-rs/rtc/pull/296) retires stale RTP extension
   mappings and preserves the active section's negotiated IDs. Changing voice and
@@ -158,17 +157,17 @@ adds the H264 parser repair and sample-building API below:
   owns the distinction between a Browser's SDP level and its actual decoder.
 - [PR #308](https://github.com/webrtc-rs/rtc/pull/308) starts a new FU-A assembly
   without leftover fragments and rejects an incomplete STAP-A length field.
-- [PR #309](https://github.com/webrtc-rs/rtc/pull/309) adds opt-in complete-sample
-  delivery and owned metadata from the first media packet. It handles reordered
-  packets, expiry and padding within that assembly. This is an additive API;
-  the existing duration-oriented constructor remains available.
 
-The new delta is confined to H264 depacketization and SampleBuilder; this pin
-retains the existing Native transport implementation. Cargo's patch belongs to
-each workspace root, so all three consuming manifests and lockfiles carry the
-same Git revision. The fork retains upstream MIT/Apache-2.0 licensing; no
+[PR #309](https://github.com/webrtc-rs/rtc/pull/309) remains an offered upstream
+API addition. Formal code does not call its new entry points, and the current
+pin excludes it. Piik's adapter owns any additional complete-sample and metadata
+mechanisms.
+
+This pin retains the existing Native transport implementation. Cargo's patch
+belongs to each workspace root. All three consuming manifests and lockfiles
+carry the same Git revision. The fork retains upstream MIT/Apache-2.0 licensing; no
 build-time source patch or registry-cache edit is used. When an upstream release
-provides all four changes, update the three roots and their locks, run the
+provides all three fixes, update the three roots and their locks, run the
 existing media interoperability and platform checks, and remove the patch entries.
 
 Use the shared [upstream refresh procedure](../../CONTRIBUTING.md#temporary-dependency-patches)
@@ -188,6 +187,11 @@ UDP socket handoff and service-owned fixed Server UDP listeners. Media assembly,
 H264 parsing and profile helpers still use the RTC fork; it is not a fork-free
 replacement. The `rust-crypto` provider also requires AWS-LC through its published
 dependency graph.
+
+Its frozen SDK, Android and transport evidence used the earlier `5efc2df` source,
+including the offered sample-building API. Those receipts retain that identity.
+The prepared selected-source integration is held until the required feature
+mechanisms move into Piik's adapter; it is not validated against this bug-only pin.
 
 `build/native-current-assembly/receipt.json` indexes the previous combined source
 and the replacement under `development.transportAlternative`, with separately
