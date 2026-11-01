@@ -387,6 +387,10 @@ Base reconciliation retains proved edges and re-evaluates unproved reservations
 against the ready tree, preferring shallower ready parents. Unchanged edges keep
 their physical leases and endpoint acknowledgements. A complete ready base path
 can replace an unproved screen fallback; proved media branches remain installed.
+Confirmed physical-pair failure informs both directions in every affected plan,
+including candidates first tried by another activity. A publication's media
+failure remains local to that publication. Base failure history retires when
+neither current demand nor an installed transit path needs it.
 
 App Local discovers addresses through Binding-only STUN on its selected LAN
 interface, without contacting public STUN services. That listener belongs to
