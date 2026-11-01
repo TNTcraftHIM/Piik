@@ -37,7 +37,7 @@ export class FileStore {
     });
   }
 
-  async retain(entry: RetainedFile, limits: FileRetentionLimits): Promise<{ file: File; evicted: ChannelFileKey[] }> {
+  async retain(entry: RetainedFile, limits: FileRetentionLimits): Promise<{ file: File | null; evicted: ChannelFileKey[] }> {
     if (entry.file.size > limits.maxRetainedBytes || limits.maxRetainedFiles < 1) return Promise.reject(new Error("file_retention_limit"));
     const evicted = await this.transaction<ChannelFileKey[]>("readwrite", (store, done) => {
       const request = store.getAll();
@@ -57,9 +57,9 @@ export class FileStore {
     });
     // A GET inside the write transaction can still return the original OPFS
     // snapshot. Reopen after commit to read the independent IndexedDB value.
-    const file = await this.transaction<File>("readonly", (store, done) => {
+    const file = await this.transaction<File | null>("readonly", (store, done) => {
       const request = store.index("key").get(cacheKey(entry.key));
-      request.onsuccess = () => done((request.result as StoredFile).file);
+      request.onsuccess = () => done((request.result as StoredFile | undefined)?.file ?? null);
     });
     return { file, evicted };
   }

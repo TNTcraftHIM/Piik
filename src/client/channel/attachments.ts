@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { downloadBlob } from "../lib/download";
+import { FileStore, type FileScope, type FileRetentionLimits } from "./file-store";
 import { loadRoomHosting, type AttachmentHash, type FileDelivery } from "./hosting";
 import { attachmentSchema, type ChannelAttachment, type ChannelCommand, type ChannelFileKey, type ChannelFilePlan, type ChannelMessage, type ChannelRoom } from "./protocol";
 
-export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive() });
+export const attachmentLimitsSchema = z.object({ maxFileBytes: z.number().positive(), maxAttachmentsPerMessage: z.number().positive(), maxRetainedBytes: z.number().positive(), maxRetainedFiles: z.number().positive() });
 export type AttachmentLimits = z.infer<typeof attachmentLimitsSchema>;
 export interface DraftFile { id: string; file: File }
 export interface PreparedFile extends DraftFile { attachment: ChannelAttachment }
@@ -24,6 +25,7 @@ interface Sink {
 }
 interface PendingSink { ready: Promise<Sink>; consumers: Set<symbol> }
 interface Download { controller: AbortController; promise: Promise<void>; status: { busy: boolean; error: string | null } }
+interface Source { key: ChannelFileKey; file: File; status: typeof idle; retained: boolean }
 const idle: { busy: boolean; error: string | null } = { busy: false, error: null };
 const keyOf = (key: ChannelFileKey) => JSON.stringify([key.roomId, key.messageSeq, key.attachmentId]);
 const errorOf = (error: unknown) => error instanceof Error ? error : new Error(String(error));
@@ -36,7 +38,9 @@ export class ChannelAttachments {
   private runtime: Promise<Runtime> | null = null;
   private plans: ChannelFilePlan[] = [];
   private rooms: ChannelRoom[] = [];
-  private sources = new Map<string, { key: ChannelFileKey; file: File; status: typeof idle }>();
+  private sources = new Map<string, Source>();
+  private scope: FileScope | null = null;
+  private store: FileStore | null = null;
   private sinks = new Map<string, PendingSink>();
   private downloads = new Map<string, Download>();
   private listeners = new Set<() => void>();
@@ -65,14 +69,40 @@ export class ChannelAttachments {
   private current(runtime: Runtime): boolean { return this.lifetime === runtime.lifetime && !runtime.lifetime.signal.aborted; }
   private invoke(runtime: Runtime, work: () => string): void { if (this.current(runtime)) this.effects(runtime, JSON.parse(work()) as Effect[]); }
 
-  update(sessionId: string, plans: ChannelFilePlan[], rooms: ChannelRoom[]): void {
-    if (this.sessionId && this.sessionId !== sessionId) this.reset();
+  update(sessionId: string, scope: FileScope, plans: ChannelFilePlan[], rooms: ChannelRoom[]): void {
+    if ((this.sessionId && this.sessionId !== sessionId) || (this.scope && (this.scope.domainId !== scope.domainId || this.scope.userId !== scope.userId))) this.reset();
     this.sessionId = sessionId;
+    const opening = !this.store;
+    this.scope = scope;
+    const store = this.store ??= new FileStore(scope);
     const previous = this.rooms;
     this.rooms = rooms; this.plans = plans;
     for (const [id, source] of this.sources) if (!rooms.some(room => room.id === source.key.roomId && room.authorized)) this.sources.delete(id);
+    if (opening || rooms.some(room => room.authorized && !previous.some(old => old.id === room.id && old.authorized))) {
+      void store.list().then(files => {
+        if (this.store !== store) return;
+        for (const { key, file } of files) if (this.rooms.some(room => room.id === key.roomId && room.authorized) && !this.sources.has(keyOf(key))) {
+          this.sources.set(keyOf(key), { key, file, status: idle, retained: true }); this.reofferKey(key);
+        }
+      }).catch(() => {});
+    }
     if (plans.length || this.runtime) void this.ensure().then(runtime => this.invoke(runtime, () => runtime.delivery.update(JSON.stringify(this.plans)))).catch(() => {});
     for (const room of rooms) if (room.available && previous.some(old => old.id === room.id && !old.available)) this.resume(room.id);
+  }
+  private async retain(key: ChannelFileKey, attachment: ChannelAttachment, file: File): Promise<File | null> {
+    const store = this.store;
+    if (!store) return null;
+    try {
+      const limits: FileRetentionLimits = await this.limits();
+      if (this.store !== store) return null;
+      const retained = await store.retain({ key, attachment, file }, limits);
+      if (this.store !== store) return null;
+      for (const key of retained.evicted) if (this.sources.get(keyOf(key))?.retained) {
+        this.sources.delete(keyOf(key));
+        void this.command({ type: "file_offer", ...key, available: false }).catch(() => {});
+      }
+      return retained.file;
+    } catch { return null; } // Optional retention cannot fail a confirmed send/download.
   }
   resume(roomId?: string): void {
     for (const source of this.sources.values()) if (!roomId || source.key.roomId === roomId) this.reofferKey(source.key);
@@ -124,7 +154,8 @@ export class ChannelAttachments {
       const selected = files.find(file => file.attachment.id === attachment.id && file.attachment.sha256 === attachment.sha256 && file.attachment.size === attachment.size);
       if (!selected) continue;
       const key = { roomId, messageSeq: message.seq, attachmentId: attachment.id };
-      this.sources.set(keyOf(key), { key, file: selected.file, status: idle }); this.reofferKey(key);
+      this.sources.set(keyOf(key), { key, file: selected.file, status: idle, retained: false }); this.reofferKey(key);
+      void this.retain(key, attachment, selected.file);
     }
   }
   data(peer: string, kind: "control" | "chunk", data: string | Uint8Array): void {
@@ -229,7 +260,10 @@ export class ChannelAttachments {
         const source = this.sources.get(keyOf(key));
         if (!source) { failed(new Error("file_unavailable")); continue; }
         void source.file.slice(effect.offset, effect.offset + effect.length).arrayBuffer().then(bytes => this.invoke(runtime, () => runtime.delivery.read_result(JSON.stringify(key), BigInt(effect.offset), new Uint8Array(bytes)))).catch(error => {
-          if (this.sources.get(keyOf(key)) === source) { this.sources.delete(keyOf(key)); void this.command({ type: "file_offer", ...key, available: false }).catch(() => {}); } failed(error);
+          if (this.sources.get(keyOf(key)) === source) {
+            this.sources.delete(keyOf(key)); void this.command({ type: "file_offer", ...key, available: false }).catch(() => {});
+            if (source.retained) void this.store?.remove(key).catch(() => {});
+          } failed(error);
         });
       } else {
         const entry = this.sinks.get(keyOf(key));
@@ -254,8 +288,19 @@ export class ChannelAttachments {
               if (!this.current(runtime) || this.sinks.get(keyOf(key)) !== entry) return;
               if (file.size !== sink.attachment.size) throw new Error("file_size_mismatch");
               sink.complete = true;
-              this.sources.set(keyOf(key), { key, file, status: idle }); this.reofferKey(key);
-              void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {}); sink.resolve(file);
+              const retained = await this.retain(key, sink.attachment, file);
+              sink.lifetime.signal.throwIfAborted();
+              if (!this.current(runtime) || this.sinks.get(keyOf(key)) !== entry) return;
+              const readable = retained ?? file;
+              this.sources.set(keyOf(key), { key, file: readable, status: idle, retained: Boolean(retained) }); this.reofferKey(key);
+              void this.command({ type: "file_receive", ...key, enabled: false }).catch(() => {}); sink.resolve(readable);
+              if (retained) {
+                try {
+                  await sink.directory.removeEntry(sink.name);
+                  if (this.sinks.get(keyOf(key)) === entry) this.sinks.delete(keyOf(key));
+                }
+                catch { /* The existing temporary owner retries cleanup on reset. */ }
+              }
             }
           }).catch(sinkFailed);
         }).catch(sinkFailed);
@@ -279,7 +324,7 @@ export class ChannelAttachments {
     if (this.runtime) void this.runtime.then(runtime => runtime.delivery.free()).catch(() => {});
     for (const download of this.downloads.values()) download.controller.abort();
     for (const entry of this.sinks.values()) void entry.ready.then(sink => this.disposeSink(sink, aborted())).catch(() => {});
-    this.sources.clear(); this.sinks.clear(); this.downloads.clear(); this.runtime = null; this.plans = []; this.rooms = []; this.sessionId = null;
+    this.sources.clear(); this.sinks.clear(); this.downloads.clear(); this.runtime = null; this.plans = []; this.rooms = []; this.sessionId = null; this.scope = null; this.store = null;
     this.lifetime = new AbortController(); this.changed();
   }
 }

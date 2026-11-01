@@ -348,7 +348,8 @@ export class ChannelSession {
     }
     this.media.update(sessionId, state);
     this.input.update();
-    this.attachments.update(sessionId, state.files, state.channel.rooms);
+    if (userId) this.attachments.update(sessionId, { domainId: state.channel.id, userId }, state.files, state.channel.rooms);
+    else this.attachments.reset();
     this.sendConversations();
     if (this.roomId && freshBindings.has(this.roomId)) this.browse(this.roomId);
     this.syncInteractions();

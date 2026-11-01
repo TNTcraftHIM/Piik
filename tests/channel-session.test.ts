@@ -10,6 +10,7 @@ import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
 import { QUALITY_PROFILES } from "../src/client/media/quality";
 import { ChannelAttachments } from "../src/client/channel/attachments";
+import { FileStore } from "../src/client/channel/file-store";
 import { identityIconSchema, messageSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
@@ -1572,10 +1573,13 @@ test("a confirmed send returns a historical reader to latest without failing the
 });
 
 test("a confirmed file becomes a session source while its sender reads an older history window", async () => {
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  const retain = vi.spyOn(FileStore.prototype, "retain").mockRejectedValue(new DOMException("Full", "QuotaExceededError"));
   const { session, socket, peer } = await setup(1);
   const file = new File(["saved"], "note.txt"), id = crypto.randomUUID();
   const attachment = { id, name: file.name, size: file.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
   vi.spyOn(session.attachments, "describe").mockResolvedValue([{ id, file, attachment }]);
+  vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
   try {
     await peer.history([message(2)], true);
     await peer.history([message(1)], false, true);
@@ -1587,6 +1591,50 @@ test("a confirmed file becomes a session source while its sender reads an older 
     expect(socket.sent.at(-1)).toMatchObject({ type: "file_offer", roomId: "first", messageSeq: 3, attachmentId: id, available: true });
     await expect(session.attachments.content({ roomId: "first", messageSeq: 3, attachmentId: id }, attachment, new AbortController().signal)).resolves.toBe(file);
     await sending;
+    await vi.waitFor(() => expect(retain).toHaveBeenCalledOnce());
+  } finally { session.close(); }
+});
+
+test("retained files offer only authorized rooms and eviction withdraws cache sources, preserving selected files", async () => {
+  const cached = new File(["cached"], "cached.txt"), selected = new File(["selected"], "selected.txt");
+  const key = { roomId: "first", messageSeq: 1, attachmentId: crypto.randomUUID() };
+  const descriptor = { id: key.attachmentId, name: cached.name, size: cached.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([{ key, attachment: descriptor, file: cached }, { key: { ...key, roomId: "unreadable" }, attachment: descriptor, file: cached }]);
+  const retain = vi.spyOn(FileStore.prototype, "retain").mockResolvedValue({ file: selected, evicted: [key] });
+  const { session, socket } = await setup();
+  vi.spyOn(session.attachments, "limits").mockResolvedValue({ maxFileBytes: 100, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+  try {
+    await vi.waitFor(() => expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, available: true })));
+    expect(socket.sent.some(command => command.type === "file_offer" && command.roomId === "unreadable")).toBe(false);
+    const attachment = { ...descriptor, id: crypto.randomUUID(), name: selected.name, size: selected.size };
+    session.attachments.confirmed("first", { ...message(2), attachments: [attachment] }, [{ id: attachment.id, attachment, file: selected }]);
+    await vi.waitFor(() => expect(socket.sent).toContainEqual(expect.objectContaining({ type: "file_offer", ...key, available: false })));
+    const selectedKey = { ...key, messageSeq: 2, attachmentId: attachment.id };
+    retain.mockResolvedValue({ file: cached, evicted: [selectedKey] });
+    const next = { ...descriptor, id: crypto.randomUUID() };
+    session.attachments.confirmed("first", { ...message(3), attachments: [next] }, [{ id: next.id, attachment: next, file: cached }]);
+    await vi.waitFor(() => expect(retain).toHaveBeenCalledTimes(2));
+    await expect(session.attachments.content(selectedKey, attachment, new AbortController().signal)).resolves.toBe(selected);
+    expect(socket.sent.some(command => command.type === "file_offer" && command.attachmentId === selectedKey.attachmentId && command.available === false)).toBe(false);
+  } finally { session.close(); }
+});
+
+test("an old identity's retained-file restore cannot publish into the next identity", async () => {
+  let finish!: (files: Awaited<ReturnType<FileStore["list"]>>) => void;
+  const old = new Promise<Awaited<ReturnType<FileStore["list"]>>>(resolve => { finish = resolve; });
+  vi.spyOn(FileStore.prototype, "list").mockReturnValueOnce(old).mockResolvedValue([]);
+  const { session, socket } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.sessions[0].userId = "new-user";
+    state.users = [{ ...state.users[0], id: "new-user" }];
+    socket.receive({ type: "state", state });
+    const file = new File(["private"], "old.txt"), id = crypto.randomUUID();
+    finish([{ key: { roomId: "first", messageSeq: 1, attachmentId: id }, file,
+      attachment: { id, name: file.name, size: file.size, mediaType: "application/octet-stream", sha256: "a".repeat(64) } }]);
+    await old; await Promise.resolve();
+    session.attachments.resume();
+    expect(socket.sent.some(command => command.type === "file_offer" && command.attachmentId === id)).toBe(false);
   } finally { session.close(); }
 });
 
@@ -2459,7 +2507,7 @@ test("rejected file admission cancels its shared-core consumer and releases the 
     getFileHandle: async () => ({ createWritable: async () => ({ abort }) }), removeEntry,
   }) }) } });
   const files = new ChannelAttachments(async command => { if (command.type === "file_receive" && command.enabled) throw new Error("forbidden"); }, async () => {});
-  files.update("session", [], []);
+  files.update("session", { domainId: "domain", userId: "user" }, [], []);
   const key = { roomId: "room", messageSeq: 1, attachmentId: crypto.randomUUID() };
   const attachment = { id: key.attachmentId, name: "file", size: 1, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
   try {
@@ -2467,6 +2515,43 @@ test("rejected file admission cancels its shared-core consumer and releases the 
     expect(cancel).toHaveBeenCalledWith(JSON.stringify(key));
     expect(abort).toHaveBeenCalledOnce(); expect(removeEntry).toHaveBeenCalledOnce();
     expect(files.status(key)).toEqual({ busy: false, error: "forbidden" });
+  } finally { files.reset(); }
+});
+
+test.each([true, false])("a verified download survives optional retention (stored=%s) and cleans only its temporary file", async stored => {
+  vi.spyOn(FileStore.prototype, "list").mockResolvedValue([]);
+  const { session } = await setup();
+  const rooms = session.getSnapshot().state!.channel.rooms;
+  session.close();
+  const temporary = new File(["done"], "temporary"), durable = new File(["done"], "durable");
+  const key = { roomId: "first", messageSeq: 1, attachmentId: crypto.randomUUID() };
+  const attachment = { id: key.attachmentId, name: "download.bin", size: temporary.size, mediaType: "application/octet-stream" as const, sha256: "a".repeat(64) };
+  const close = vi.fn(async () => {}), removeEntry = vi.fn(async () => {});
+  const retain = vi.spyOn(FileStore.prototype, "retain");
+  if (stored) retain.mockResolvedValue({ file: durable, evicted: [] });
+  else retain.mockRejectedValue(new DOMException("Full", "QuotaExceededError"));
+  vi.spyOn(hosting, "loadRoomHosting").mockResolvedValue({ initializeFiles: async () => {},
+    FileDelivery: class {
+      start() { return "[]"; } update() { return "[]"; } cancel() { return "[]"; } free() {}
+      control() { return JSON.stringify([{ type: "complete", key }]); }
+    },
+  } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
+  vi.stubGlobal("navigator", { storage: { getDirectory: async () => ({ getDirectoryHandle: async () => ({
+    getFileHandle: async () => ({ createWritable: async () => ({ close, abort: async () => {} }), getFile: async () => temporary }), removeEntry,
+  }) }) } });
+  const command = vi.fn(async () => {});
+  const files = new ChannelAttachments(command, async () => {});
+  vi.spyOn(files, "limits").mockResolvedValue({ maxFileBytes: 100, maxAttachmentsPerMessage: 8, maxRetainedBytes: 20, maxRetainedFiles: 2 });
+  files.update("session", { domainId: "domain", userId: "user" }, [], rooms);
+  try {
+    const receiving = files.content(key, attachment, new AbortController().signal);
+    await vi.waitFor(() => expect(command).toHaveBeenCalledWith({ type: "file_receive", ...key, enabled: true }));
+    expect(retain).not.toHaveBeenCalled();
+    files.data("peer", "control", "verified-complete");
+    await expect(receiving).resolves.toBe(stored ? durable : temporary);
+    expect(close).toHaveBeenCalledOnce(); expect(retain).toHaveBeenCalledOnce();
+    expect(removeEntry).toHaveBeenCalledTimes(stored ? 1 : 0);
+    expect(command).toHaveBeenCalledWith({ type: "file_offer", ...key, available: true });
   } finally { files.reset(); }
 });
 
