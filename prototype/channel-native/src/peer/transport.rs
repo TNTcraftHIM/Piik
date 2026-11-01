@@ -411,11 +411,14 @@ impl Runtime {
         let mut config = Rtc::builder()
             .clear_codecs()
             .enable_vp8(true)
-            .enable_h264(true)
             .set_rtp_mode(true)
             .enable_bwe(Some(Bitrate::bps(300_000)))
             .set_stats_interval(Some(Duration::from_millis(500)))
             .set_sctp_max_buffered_amount(2 * 1024 * 1024);
+        // Advertise the same H264 subset admitted by media::supported.
+        config
+            .codec_config()
+            .add_h264(108.into(), Some(109.into()), true, 0x42e01f);
         config.codec_config().add_config(
             111.into(),
             None,
