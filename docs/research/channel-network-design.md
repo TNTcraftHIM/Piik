@@ -650,6 +650,13 @@ encodings. Each encoding owns its conversion, bitrate, keyframe requests and
 stop, replaces only unencoded work and applies backpressure to complete access
 units. A blocked or stopped encoding does not stall its siblings; stopping the
 capture ends them all.
+Windows raw frames carry their actual colour space through GPU handoff and
+encoding. RGB capture and decoded NV12 share the existing limited-range BT.601
+SDR output; H264 declares matching colour metadata. The source maps HDR input
+to SDR once before preview and fanout, preserving ordinary SDR's copy path.
+Display changes recreate only the source's WGC resources, retaining its clock,
+encoders and routes. The [fidelity assessment](./media-fidelity.md) owns colour
+conversion, tone mapping and their measured boundaries.
 Windows Auto selects from actual encoder startup: hardware H264 first, then
 software VP8 after a failed or timed-out first independent access unit. The
 failed encoder stops before replacement, and both retain the same capture and

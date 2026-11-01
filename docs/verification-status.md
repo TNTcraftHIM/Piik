@@ -93,6 +93,8 @@ controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
 - Windows HDR-to-SDR has synthetic GPU and decoded-video evidence; it does not
   establish Browser-capture HDR conversion or end-to-end HDR. The
   [fidelity assessment](./research/media-fidelity.md#hdr-to-sdr) owns that boundary.
+  The isolated Rust source adapter also passes GPU tone-map controls and normal
+  SDR App sharing/preview regression; physical HDR display checks remain separate.
 - Audio-exclusion availability follows actual platform capability. The
   [audio assessment](./research/native-client-media.md#windows-audio-exclusion)
   owns supported interfaces and isolation evidence.

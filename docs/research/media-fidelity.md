@@ -1,6 +1,6 @@
 # Media Fidelity
 
-Reviewed 2026-10-13. [Media quality](../standards/media-quality.md) owns behavior;
+Reviewed 2026-11-01. [Media quality](../standards/media-quality.md) owns behavior;
 [TODO](../todo.md) owns remaining work. These synthetic checks do not establish
 all-device acceptance or full HDR support.
 
@@ -100,6 +100,13 @@ AMD hardware encoding was not accepted locally: MFT activation returned
 `0x8007000e` before color configuration. These local checks do not establish
 coverage of all hardware encoders, HDR content or missing upstream color declarations.
 
+The isolated Rust Native pipeline uses the same raw-frame colour contract,
+including GPU process handoff and actual decoder matrix/range. In Chrome 156
+WebRTC controls, canonical conversion reduced direct VP8's maximum RGB channel
+error from 22/255 to 2/255. Direct H264 and derived outputs from VP8, BT.601 H264
+and explicitly tagged BT.709 H264 also stayed within 2/255. These controls use
+the production converter and encoders, rather than WebCodecs colour defaults.
+
 ## HDR To SDR
 
 [#420](https://github.com/TNTcraftHIM/Piik/issues/420) initially reported
@@ -115,7 +122,7 @@ avoid clipping. Reducing brightness after encoding cannot restore clipped
 highlights. This is a confirmed implementation gap, not proof that every
 reported Browser failure has the same cause.
 
-The implementation uses one `CaptureSdrConverter` before native output fanout and in
+Windows source adapters perform tone mapping before native output fanout and in
 thumbnails. HDR displays use an scRGB FP16 pool, then Windows Direct2D's
 [HDR tone-map effect](https://learn.microsoft.com/en-us/windows/win32/direct2d/hdr-tone-map-effect)
 compresses luminance, the
@@ -126,7 +133,7 @@ CPU readback, new packaged dependency or per-output tone mapper is added.
 
 Source-monitor movement and DXGI factory invalidation refresh color metadata,
 following [GetDesc1's contract](https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_6/nf-dxgi1_6-idxgioutput6-getdesc1).
-A format change recreates the WGC pool through its existing resize boundary;
+A format change recreates WGC resources inside the source owner;
 it does not restart routes or encoders. WGC supplies no per-frame MaxCLL, so
 conversion uses the display peak (at least the configured SDR white), or the
 HDR10 10,000-nit range when usable peak metadata is absent. This stable platform
@@ -139,6 +146,11 @@ The retained `-CheckColor` probe passed on RTX 4070 SUPER and AMD Radeon:
 colors. Production H.264/VP8 output decoded over Chrome 154 WebRTC reproduced the
 converted SDR gray bars within 1/255. These are synthetic input checks, not
 observations of an HDR game or the reporter's machine.
+
+The isolated Rust source adapter also passes real-GPU synthetic controls for
+highlight detail, white-level changes, resizing and retained texture ownership.
+Its normal App sharing and source-preview paths pass SDR regression with H264,
+VP8, live quality changes and source replacement.
 
 Warmed GPU timestamp measurements for conversion, including the owned input
 copy, had the following local medians. Dimensions are captured input sizes,

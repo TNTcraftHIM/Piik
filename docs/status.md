@@ -44,6 +44,8 @@ domain through Local HTTPS or Cloudflare Quick Tunnel; its rooms retain their
 identity and storage across local-port and invitation-address changes.
 The shared source picker connects Windows H264/VP8 capture and Auto selection to
 the same Native endpoint and routing model, preserving its original presentation clock.
+Windows source capture and previews share HDR-to-SDR conversion and the existing
+SDR colour contract through the GPU and encoder boundaries.
 Optional source sound uses WASAPI and a Rust Opus encoder, retaining independent
 stereo channels. The selecting page owns both captures independently of App room hosting.
 The macOS ScreenCaptureKit/VideoToolbox adapter uses that same producer and
