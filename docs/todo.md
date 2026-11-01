@@ -17,8 +17,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   before an automatic route replacement. Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
 - [ ] **3.0 controlled network acceptance.** Complete the remaining
-  Browser/Native decoded-media combinations and promote the Rust process runner
-  into the existing [network laboratory](./research/network-lab.md), exercising calibrated
+  Browser/Native decoded-media combinations through the maintained Rust process runner
+  in the existing [network laboratory](./research/network-lab.md), exercising calibrated
   NAT and failure/recovery through current room and transport owners.
 - [ ] **3.0 portable domain and room backups.** Implement export/import under the
   [data ownership and recovery model](./research/channel-storage-and-identity.md#persistence-and-recovery):
@@ -27,11 +27,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   storage owner, without restoring live sessions or borrowing another owner's
   credentials. On a fresh host binding, reconcile the authoritative reading
   window so restoring older history does not retain newer cached messages.
-- [ ] **3.0 retained attachment copies.** Add the accepted participant-owned,
-  bounded [content store](./research/channel-storage-and-identity.md#retained-files-and-images)
-  over OPFS/local files and the existing attachment source index. Keep verified
-  copies readable across runtime restart; withdraw availability on reclamation.
-  Current session-held sources and temporary downloads do not provide this store.
 - [ ] **3.0 media configuration.** Connect room-voice bitrate and source-audio
   profile/output gain to the current producers and shared controls. Reuse the
   numeric media contracts and existing settings owners; preserve separate voice,

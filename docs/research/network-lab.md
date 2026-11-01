@@ -115,10 +115,32 @@ transport/media probe; this control does not replace normal room-session history
 and file acceptance. Every owned process, namespace and link retired, and host
 network configuration stayed unchanged.
 
-Exact source closures and separate failed controls remain in the
+The maintained runner uses the Server's `network_lab` example and shared Browser
+fixture. Build the matching source and WASM, then select a control on the
+isolated Linux host:
+
+```sh
+cargo +1.91.0 build --locked --manifest-path prototype/channel-server/Cargo.toml --example network_lab -j2
+node prototype/channel-browser/build.mjs
+node --import tsx scripts/network-lab.ts --list
+node --import tsx scripts/network-lab.ts --case ordinary --output build/network-lab/ordinary-current
+```
+
+`ordinary` covers the real Native room's history, file and Browser media path;
+`prepared` covers the prepared Native DataChannel; `recovery` covers established
+UDP loss and remapping; `media` covers decoded media through a prepared Native
+transit probe. Each run requires a new output directory. The runner follows
+`CARGO_TARGET_DIR`, or accepts `--executable` for the matching example binary.
+Use root in the isolated host, the repository's Node/Rust toolchains, the normal
+`agent-browser` and Chromium setup, and `iproute2`, `nftables`, `conntrack` and
+`tcpdump`.
+
+At `26857f21`, the maintained `ordinary` and `media` controls passed with their
+actual room/transport owners and clean teardown. Exact source closures and
+separate failed controls remain in the
 [Native evidence index](../../prototype/channel-native/README.md#rtc-dependency).
-The maintained Rust command and remaining decoded-media combinations stay in
-[TODO](../todo.md#now); the older Go runners below require their matching snapshot.
+Remaining decoded-media combinations stay in [TODO](../todo.md#now); the older
+Go runners below require their matching snapshot.
 
 ## Running The Process Layer
 

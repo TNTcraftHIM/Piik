@@ -282,20 +282,24 @@ recommendation; discuss them only if shared-tree delivery leaves a concrete gap.
 
 ### Retained Files And Images
 
-Recommend one managed, bounded content store per participant runtime for sent
-files and reusable downloaded copies. Native execution uses local files;
-Browser execution can use its origin-private file system where available.
-Successful retention, not the platform name or a past download event, determines
-whether a copy can be offered after reopening. Cache reclamation withdraws the
-source announcement and leaves the history description intact. Explicitly saved
-user files are outside that cache's cleanup.
+The Browser participant retains confirmed sent files and verified completed
+downloads in one IndexedDB store, scoped to its domain and user identity. File
+bytes and their confirmed descriptions commit together. The cache retains at
+most 256 files and 256 MiB, reclaiming oldest entries first. Reopening offers
+readable copies only in rooms the participant can still access; reclamation
+withdraws the source announcement and leaves the history description intact.
+Explicitly saved user files are outside that cache's cleanup.
+
+OPFS holds temporary streamed downloads. A retained IndexedDB copy must be
+independently readable before its temporary source is removed. A linked App or
+Server owns room policy and history and can forward file ranges; hosting a room
+does not make it a permanent holder of every participant's files.
 
 Saving a browser download into the system's Downloads directory does not give
 the page automatic future read access. It can offer a source only through a
 currently readable selection, retained copy or granted handle. Browser-managed
-storage follows [origin, quota and persistence rules](https://storage.spec.whatwg.org/);
-the [File System Standard](https://fs.spec.whatwg.org/) supplies origin-private
-storage. A session-only source must not be presented as a retained copy.
+storage follows [origin, quota and persistence rules](https://storage.spec.whatwg.org/).
+A session-only source must not be presented as a retained copy.
 
 Conversation images use this same attachment/transfer model. Loading a visible
 image requests its preview; it does not subscribe everyone to every original file.
