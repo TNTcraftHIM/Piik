@@ -1,4 +1,6 @@
 import type { ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket } from "./protocol";
+import type { BrowserRoomSnapshot, BrowserRoomStage } from "../../../prototype/channel-browser/src/room-host";
+export type { BrowserRoomSnapshot, BrowserRoomStage };
 
 export interface HostedRoom {
   readonly roomId: string;
@@ -7,6 +9,7 @@ export interface HostedRoom {
   dispatch(input: unknown): Promise<unknown>;
   dispatchPeer(packet: SignedConversationPacket, now: number): Promise<ConversationReply[]>;
   currentReaders(): string[] | Promise<string[]>;
+  snapshot(): Promise<BrowserRoomSnapshot>;
   close(): Promise<void>;
 }
 
@@ -30,6 +33,7 @@ interface RoomHosting {
   BrowserRoomHost: {
     open(databaseName: string, policy: string): Promise<HostedRoom>;
     storedPolicies(databaseName: string): Promise<string[]>;
+    stage(databaseName: string, policy: string): Promise<BrowserRoomStage>;
   };
 }
 
