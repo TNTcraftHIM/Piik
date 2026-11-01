@@ -6,18 +6,18 @@ use super::{
     Control, FrameTiming, Frames, Settings, Target, TargetKind,
 };
 use anyhow::{anyhow, ensure, Context as _, Result};
-use std::{sync::Arc, thread};
+use std::{os::windows::io::AsRawHandle, sync::Arc, thread};
 use windows::{
     core::Interface,
     Win32::{
-        Foundation::{CloseHandle, FILETIME, HWND},
+        Foundation::{CloseHandle, FILETIME, HANDLE, HWND},
         Graphics::{Direct3D11::*, Dxgi::Common::*},
         System::Threading::{GetProcessTimes, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
         UI::WindowsAndMessaging::{GetWindowThreadProcessId, IsWindow},
     },
 };
 use windows_capture::{
-    capture::{Context, GraphicsCaptureApiHandler},
+    capture::{CaptureControl, Context, GraphicsCaptureApiHandler},
     frame::Frame,
     graphics_capture_api::InternalCaptureControl,
     monitor::Monitor,
@@ -187,14 +187,16 @@ fn run(target: Target, fps: u32, shared: Arc<Shared>) -> Result<()> {
         ColorFormat::Bgra8,
         (shared.clone(), fps),
     ))?;
-    let failure = {
-        let mut state = shared.state.lock().unwrap();
-        while !state.stop {
-            state = shared.changed.wait(state).unwrap();
-        }
-        state.failure.clone()
-    };
+    let halt = capture.halt_handle();
+    let callback = capture.callback();
+    let thread = capture.into_thread_handle();
+    // A handler error ends the library thread without setting our Stop flag.
+    // Observe both lifetimes, then let the library stop and join its own worker.
+    let waited = shared.wait_for_stop_or(HANDLE(thread.as_raw_handle()));
+    let capture = CaptureControl::new(thread, halt, callback);
     let stopped = capture.stop().map_err(|error| anyhow!("stop WGC: {error}"));
+    waited?;
+    let failure = shared.state.lock().unwrap().failure.clone();
     if let Some(failure) = failure {
         return Err(anyhow!(failure));
     }

@@ -5,11 +5,16 @@ use super::{
 };
 use anyhow::{ensure, Result};
 use std::{
-    sync::{Arc, Condvar, Mutex, Weak},
+    os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle},
+    sync::{Arc, Mutex, Weak},
     time::Instant,
 };
 use tokio::sync::Notify;
-use windows::Win32::Graphics::Direct3D11::ID3D11Texture2D;
+use windows::Win32::{
+    Foundation::{HANDLE, WAIT_FAILED},
+    Graphics::Direct3D11::ID3D11Texture2D,
+    System::Threading::{CreateEventW, SetEvent, WaitForMultipleObjects, INFINITE},
+};
 
 #[derive(Clone)]
 pub(super) struct RawFrame {
@@ -23,13 +28,27 @@ pub(super) struct State {
     latest: Option<RawFrame>,
     encodings: Vec<Weak<process::Shared>>,
 }
-#[derive(Default)]
 pub(super) struct Shared {
     pub state: Mutex<State>,
-    pub changed: Condvar,
+    stop_event: OwnedHandle,
     stopped: Notify,
 }
 impl Shared {
+    fn new() -> Result<Self> {
+        let event = unsafe { CreateEventW(None, true, false, None)? };
+        Ok(Self {
+            state: Mutex::new(State::default()),
+            stop_event: unsafe { OwnedHandle::from_raw_handle(event.0) },
+            stopped: Notify::new(),
+        })
+    }
+    pub fn wait_for_stop_or(&self, completion: HANDLE) -> Result<()> {
+        let handles = [HANDLE(self.stop_event.as_raw_handle()), completion];
+        if unsafe { WaitForMultipleObjects(&handles, false, INFINITE) } == WAIT_FAILED {
+            return Err(windows::core::Error::from_thread().into());
+        }
+        Ok(())
+    }
     pub fn stop(&self, failure: Option<String>) {
         let mut state = self.state.lock().unwrap();
         if failure.is_some() {
@@ -42,7 +61,7 @@ impl Shared {
             encoding.stop(failure.as_deref());
         }
         drop(state);
-        self.changed.notify_all();
+        let _ = unsafe { SetEvent(HANDLE(self.stop_event.as_raw_handle())) };
         self.stopped.notify_waiters();
     }
     pub fn publish(&self, frame: RawFrame) {
@@ -90,7 +109,7 @@ pub(crate) struct Frames {
 impl Frames {
     pub fn new(timing: FrameTiming) -> Result<Self> {
         Ok(Self {
-            shared: Arc::new(Shared::default()),
+            shared: Arc::new(Shared::new()?),
             clock: CaptureClock::new()?,
             timing,
         })
@@ -118,5 +137,42 @@ impl Frames {
         let encoding = Encoding::start(settings, self.clock, self.timing, state.latest.clone())?;
         state.encodings.push(Arc::downgrade(&encoding.shared));
         Ok(encoding)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{sync::mpsc, thread};
+    use windows_capture::capture::GraphicsCaptureApiError;
+
+    #[test]
+    fn capture_completion_and_stop_both_wake_the_owner() {
+        let shared = Shared::new().unwrap();
+        let thread = thread::spawn(|| {
+            Err::<(), _>(GraphicsCaptureApiError::FrameHandlerError(
+                "timestamp failed",
+            ))
+        });
+        shared
+            .wait_for_stop_or(HANDLE(thread.as_raw_handle()))
+            .unwrap();
+        assert!(!shared.state.lock().unwrap().stop);
+        assert!(matches!(
+            thread.join().unwrap(),
+            Err(GraphicsCaptureApiError::FrameHandlerError(
+                "timestamp failed"
+            ))
+        ));
+
+        let (release, receiver) = mpsc::channel();
+        let thread = thread::spawn(move || receiver.recv().unwrap());
+        shared.stop(None);
+        shared
+            .wait_for_stop_or(HANDLE(thread.as_raw_handle()))
+            .unwrap();
+        assert!(!thread.is_finished());
+        release.send(()).unwrap();
+        thread.join().unwrap();
     }
 }
