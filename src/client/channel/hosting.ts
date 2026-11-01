@@ -11,6 +11,9 @@ export interface HostedRoom {
 }
 
 interface RoomHosting {
+  backup_metadata(input: string): string;
+  backup_record_bytes(): number;
+  BackupHistoryImport: new (metadata: string) => BackupHistoryImport;
   createSessionSigner(seed: Uint8Array): Promise<SessionSigner>;
   verify_reply(packet: string, key: Uint8Array): string;
   route_conversation(packet: string, local: string, state: string, from?: string): string;
@@ -39,6 +42,11 @@ export interface SessionSigner {
 export interface AttachmentHash {
   update(bytes: Uint8Array): void;
   finish(): string;
+  free(): void;
+}
+export interface BackupHistoryImport {
+  accept(input: string): string;
+  finish(): void;
   free(): void;
 }
 export interface FileDelivery {

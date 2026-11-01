@@ -5,6 +5,7 @@ import { nativeCaptureTargetSchema, remoteControlStateSchema, remoteStopShortcut
 import { remoteShortcutKeySchema, type RemoteControlMode } from "../remote-control/protocol";
 import type { QualityProfile } from "../media/quality";
 import { activateNativePicker } from "../native/activation";
+import { NativeRoomHosting } from "./hosting-api";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
@@ -65,6 +66,7 @@ export class ChannelApp {
   private activationURL?: string;
   private processAudioExclusion = false;
   private previewTail: Promise<unknown> = Promise.resolve();
+  private readonly roomHosting: NativeRoomHosting;
 
   get connected(): boolean { return this.authenticated && this.socket.readyState === WebSocket.OPEN; }
   get screens(): ReadonlySet<string> { return new Set(this.captures.keys()); }
@@ -81,6 +83,8 @@ export class ChannelApp {
   constructor(health: AppHealth, channelId: string, userId: string, credential: string, name: string,
     onClose: () => void, onAudioFailure: (publicationId: string) => void,
     onInputState: (publicationId: string, state: ChannelRemoteControlState) => void = () => {}) {
+    this.roomHosting = new NativeRoomHosting(`http://127.0.0.1:${health.port}/rooms/${channelId}/${userId}`,
+      { Authorization: `Bearer ${health.token}`, "X-Piik-Credential": credential });
     const socket = this.socket = new WebSocket(`ws://127.0.0.1:${health.port}/rooms`, `piik-channel-rooms.${health.token}`);
     const lost = () => { this.close(); onClose(); };
     this.timer = setTimeout(lost, 10000);
@@ -131,6 +135,10 @@ export class ChannelApp {
     await this.ready;
     return this.request({ type: "open", policy });
   }
+
+  async describeHosting() { await this.ready; return this.roomHosting.describe(); }
+  async snapshotRoom(roomId: string): Promise<Blob> { await this.ready; return this.roomHosting.snapshot(roomId); }
+  async restoreRoom(archive: Blob): Promise<RoomSummary> { await this.ready; return this.roomHosting.restore(archive); }
 
   async sources(): Promise<NativeCaptureSources> {
     await this.ready;

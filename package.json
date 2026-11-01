@@ -32,6 +32,7 @@
     "@types/semver": "7.8.0",
     "@types/ws": "8.18.1",
     "@vitejs/plugin-react": "6.0.5",
+    "@zip.js/zip.js": "2.24.0",
     "esbuild": "0.28.2",
     "react": "19.2.8",
     "react-dom": "19.2.8",

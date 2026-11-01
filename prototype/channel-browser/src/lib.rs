@@ -53,6 +53,51 @@ pub fn create_room_policy(input: &str) -> Result<String, JsValue> {
 }
 
 #[wasm_bindgen]
+pub fn backup_metadata(input: &str) -> Result<String, JsValue> {
+    let metadata = parse_backup::<piik_channel_core::backup::Metadata>(input)?;
+    metadata.validate().map_err(error)?;
+    encode(&metadata)
+}
+
+#[wasm_bindgen]
+pub struct BackupHistoryImport(piik_channel_core::backup::HistoryImport);
+
+#[wasm_bindgen]
+impl BackupHistoryImport {
+    #[wasm_bindgen(constructor)]
+    pub fn new(metadata: &str) -> Result<Self, JsValue> {
+        let piik_channel_core::backup::Metadata::Room(metadata) = parse_backup(metadata)? else {
+            return Err(error("invalid_backup_kind"));
+        };
+        Ok(Self(
+            piik_channel_core::backup::HistoryImport::new(&metadata).map_err(error)?,
+        ))
+    }
+
+    pub fn accept(&mut self, input: &str) -> Result<String, JsValue> {
+        let row = parse_backup::<piik_channel_core::backup::HistoryRow>(input)?;
+        self.0.accept(&row).map_err(error)?;
+        encode(&row)
+    }
+
+    pub fn finish(&self) -> Result<(), JsValue> {
+        self.0.finish().map_err(error)
+    }
+}
+
+#[wasm_bindgen]
+pub fn backup_record_bytes() -> usize {
+    piik_channel_core::backup::RECORD_BYTES
+}
+
+fn parse_backup<T: serde::de::DeserializeOwned>(input: &str) -> Result<T, JsValue> {
+    if input.len() > piik_channel_core::backup::RECORD_BYTES {
+        return Err(error("backup_record_too_large"));
+    }
+    parse(input)
+}
+
+#[wasm_bindgen]
 pub fn prepare_confirmation(draft: &str, input: &str) -> Result<String, JsValue> {
     let confirmation = parse::<MessageDraft>(draft)?
         .prepare_confirmation(parse::<ConfirmationInput>(input)?)
