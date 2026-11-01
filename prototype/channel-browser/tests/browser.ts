@@ -2,6 +2,7 @@ import { BrowserRoomHost, createRoomPolicy, createSessionSigner, decode_control,
 import type { SignedConversationPacket } from "../../../src/client/channel/protocol";
 import { IDENTITY_IMAGE_URL_BYTES, identityIconSchema } from "../../../src/client/channel/protocol";
 import { prepareIdentityImage } from "../../../src/client/channel/identity-image";
+import type { BackupHistoryRow } from "../../../src/client/channel/backup-archive";
 
 declare global { interface Window { runBrowserRoomCheck(): Promise<object> } }
 function check(value: unknown, message: string): asserts value { if (!value) throw new Error(message); }
@@ -324,6 +325,116 @@ window.runBrowserRoomCheck = async () => {
     check(limited[0].record.type === "error" && limited[0].record.code === "rate_limited", "Host applies existing 800ms interaction limit");
     const afterInteraction = await host.dispatchPeer(peerPacket({ type: "history", before: null }), 3000);
     check(JSON.stringify(afterInteraction.map(reply => reply.record)) === JSON.stringify(page.map(reply => reply.record)), "immediate interaction does not add retained history");
+
+    peerMember.participates = true;
+    await bindHost();
+    const snapshot = await host.snapshot(), rows: BackupHistoryRow[] = [];
+    const savedPolicy = snapshot.policy;
+    try {
+      await dispatch({ type: "update_room", roomId: host.roomId, name: "After snapshot", icon: "future-room_7", access: "public", hidden: false });
+      await send("Newer than backup", "after-snapshot");
+      await host.close();
+      for await (const row of snapshot.rows) rows.push(row);
+      check(rows.length === 112 && rows[0].nonce === "first" && rows.at(-1)?.seq === 112,
+        "snapshot streams all history beyond pagination, including retry nonces, after the runtime closes");
+      check(JSON.stringify(rows[0].reactions) === JSON.stringify({ revision: removedReaction.snapshot.revision, choices: removedReaction.snapshot.choices })
+        && rows[0].attachments[0].sha256 === file.sha256,
+        "snapshot retains reactions and complete attachment descriptors");
+      check(JSON.parse(savedPolicy).name === "New binding policy", "policy and history share the same snapshot before later writes");
+    } finally { await snapshot.close(); }
+    host = await BrowserRoomHost.open(database, policy); await bindHost();
+    const beforeImport = await history();
+    check(beforeImport.messages.at(-1)?.seq === 113 && host.summary().name === "After snapshot", "snapshot did not roll back live data");
+
+    const staleSnapshot = await host.snapshot(), currentSnapshot = await host.snapshot();
+    try {
+      try { await staleSnapshot.rows[Symbol.asyncIterator]().next(); throw new Error("superseded snapshot accepted"); }
+      catch (error) { check(String(error).includes("stale_backup"), "replaced snapshot fails explicitly rather than returning empty history"); }
+      await staleSnapshot.close();
+      let count = 0;
+      for await (const _row of currentSnapshot.rows) count++;
+      check(count === 113, "old snapshot close cannot clear the successor slot");
+    } finally { await staleSnapshot.close(); await currentSnapshot.close(); }
+
+    const duplicates = await BrowserRoomHost.stage(database, savedPolicy);
+    try {
+      await duplicates.append(rows[0]);
+      for (const duplicate of [{ ...rows[0], seq: 2, nonce: "different-nonce" }, { ...rows[0], seq: 2, id: crypto.randomUUID() }]) {
+        try { await duplicates.append(duplicate); throw new Error("duplicate backup row accepted"); }
+        catch (error) { check(error instanceof DOMException && error.name === "ConstraintError", "staging enforces message and nonce uniqueness in IndexedDB"); }
+      }
+    } finally { await duplicates.close(); }
+    check(JSON.stringify(await history()) === JSON.stringify(beforeImport), "failed staging leaves current history untouched");
+
+    // A different room's valid message ID causes a genuine final-copy failure.
+    const originalHost = host;
+    const otherPolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Independent history", icon: "future-room_7",
+      creatorId: owner.userId, access: "public", hidden: false });
+    let foreignId: string;
+    host = await BrowserRoomHost.open(database, otherPolicy);
+    try { await bindHost(); foreignId = (await send("Other room", "independent")).message.id; }
+    finally { await host.close(); host = originalHost; }
+    const conflicting = await BrowserRoomHost.stage(database, savedPolicy);
+    try {
+      for (const row of rows) await conflicting.append(row === rows[0] ? { ...row, id: foreignId! } : row);
+      try { await conflicting.replace(); throw new Error("cross-room ID collision accepted"); }
+      catch (error) { check(error instanceof DOMException && error.name === "ConstraintError", "actual destination unique constraint aborts the complete replacement"); }
+    } finally { await conflicting.close(); }
+    const failedPolicy = (await BrowserRoomHost.storedPolicies(database)).map(value => JSON.parse(value)).find(value => value.id === host.roomId);
+    check(JSON.stringify(await history()) === JSON.stringify(beforeImport) && failedPolicy.name === "After snapshot",
+      "replacement failure rolls back both old history and policy");
+
+    const cancelledRestore = await BrowserRoomHost.stage(database, savedPolicy), restoreAbort = new AbortController();
+    let restoreWriteSucceeded = false;
+    try {
+      for (const row of rows) await cancelledRestore.append(row);
+      IDBObjectStore.prototype.add = function (...args) {
+        const request = originalAdd.apply(this, args);
+        if (this.name === "messages") request.addEventListener("success", () => { restoreWriteSucceeded = true; restoreAbort.abort(); }, { once: true });
+        return request;
+      };
+      try { await cancelledRestore.replace(restoreAbort.signal); throw new Error("cancelled restore committed"); }
+      catch (error) { check(error instanceof DOMException && error.name === "AbortError", "cancel after a real copied row aborts restoration"); }
+      finally { IDBObjectStore.prototype.add = originalAdd; }
+    } finally { await cancelledRestore.close(); }
+    check(restoreWriteSucceeded && JSON.stringify(await history()) === JSON.stringify(beforeImport), "aborted copy preserves all original data and its writer");
+    check((await send("Still current", "after-abort")).message.seq === 114, "failed restore preserves the current write binding");
+
+    const imported = await BrowserRoomHost.stage(database, savedPolicy);
+    try { for (const row of rows) await imported.append(row); await imported.replace(); }
+    finally { await imported.close(); }
+    const oldWriter = await dispatch({ type: "update_room", roomId: host.roomId, name: "Old writer overwrite", icon: "future-room_7", access: "public", hidden: false });
+    check(oldWriter.reply?.result.code === "stale_room_host", "successful restore fences a retained old writer");
+    try { await host.bind(crypto.randomUUID()); throw new Error("old writer rebound after restore"); }
+    catch (error) { check(String(error).includes("room_host_conflict"), "old writer cannot reacquire restored policy with its prior stored binding"); }
+    await host.close(); host = await BrowserRoomHost.open(database, policy); bindingId = crypto.randomUUID(); await bindHost();
+    check(host.summary().name === "New binding policy" && host.currentReaders().length === 0,
+      "restore reopens stable policy with no previous live activity");
+    check((await history()).messages.at(-1)?.seq === 112, "older restored history remains authoritative over the newer discarded sequence");
+    const restoredRetry = await send("Changed retry", "first");
+    check(!restoredRetry.inserted && restoredRetry.message.seq === 1 && restoredRetry.message.text === "Original", "restored retry nonce retains its original confirmation");
+    check((await send("After restore", "after-restore")).message.seq === 113, "new writes continue the restored sequence floor");
+
+    const previousSchema = `${database}-schema-3`;
+    const schema3 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open(previousSchema, 3);
+      request.onupgradeneeded = () => {
+        request.result.createObjectStore("rooms", { keyPath: "id" }).add({ id: host.roomId, policy: savedPolicy });
+        const store = request.result.createObjectStore("messages", { keyPath: ["roomId", "seq"] });
+        store.createIndex("send", ["roomId", "userId", "nonce"], { unique: true }); store.createIndex("id", "id", { unique: true });
+        store.add({ ...rows[0], roomId: host.roomId });
+      };
+      request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
+    });
+    schema3.close();
+    try {
+      const migrated = await BrowserRoomHost.open(previousSchema, savedPolicy);
+      try {
+        const copy = await migrated.snapshot();
+        try { const firstRow = await copy.rows[Symbol.asyncIterator]().next(); check(firstRow.value?.nonce === "first", "additive schema3 upgrade preserves history and retry identity"); }
+        finally { await copy.close(); }
+      } finally { await migrated.close(); }
+    } finally { await new Promise<void>((resolve, reject) => { const request = indexedDB.deleteDatabase(previousSchema); request.onsuccess = () => resolve(); request.onerror = () => reject(request.error); }); }
     // Old private checkpoints must fail explicitly, without replacing the saved policy.
     const legacyPolicy = await createRoomPolicy({ id: crypto.randomUUID(), name: "Old checkpoint", icon: "future-room_7",
       creatorId: owner.userId, access: "public", hidden: false });
@@ -331,7 +442,7 @@ window.runBrowserRoomCheck = async () => {
     const legacyId = legacyHost.roomId;
     await legacyHost.close();
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open(database, 3);
+      const request = indexedDB.open(database, 4);
       request.onsuccess = () => resolve(request.result); request.onerror = () => reject(request.error);
     });
     let oldPolicy = "";
@@ -353,7 +464,7 @@ window.runBrowserRoomCheck = async () => {
       check((await BrowserRoomHost.storedPolicies(database)).includes(oldPolicy), "invalid old policy remains unchanged");
     } finally { db.close(); }
     await new Promise<void>((resolve, reject) => {
-      const upgrade = indexedDB.open(database, 4);
+      const upgrade = indexedDB.open(database, 5);
       upgrade.onsuccess = () => { upgrade.result.close(); resolve(); }; upgrade.onerror = () => reject(upgrade.error);
     });
     for (const nonce of ["closed", "closed-again"]) {
@@ -368,6 +479,8 @@ window.runBrowserRoomCheck = async () => {
       retainedReactions: true, independentUserChoices: true, reactionAbortAfterPutSuccess: reactionWriteSucceeded,
       identityImage: true, identityPngFallback: true, identityAbortAfterPutSuccess: true, identityPresetReplacement: true,
       previousSchemaPreserved: true,
+      consistentPortableSnapshot: true, stagedAtomicRestore: true, backupUniqueIndexes: true, restoreRollbackAfterCopy: restoreWriteSucceeded,
+      restoredWriterFence: true, boundedBackupSlot: true, additiveSchemaUpgrade: true,
       missingIconRejectedWithoutOverwrite: true, domainCredentialDatabaseProvided: false };
   } finally {
     await host.close();

@@ -3,6 +3,18 @@ export { AttachmentHash, BackupHistoryImport, FileDelivery, attachment_limits, a
 export async function initializeFiles(): Promise<void> { await init(); }
 export async function createSessionSigner(seed: Uint8Array): Promise<SessionSigner> { await init(); return new SessionSigner(seed); }
 import type { ChannelMessage, ConversationAddress, ConversationReply, RoomSettings, RoomSummary, SignedConversationPacket } from "../../../src/client/channel/protocol";
+import type { BackupHistoryRow } from "../../../src/client/channel/backup-archive";
+
+export interface BrowserRoomSnapshot {
+  readonly policy: string;
+  readonly rows: AsyncIterable<BackupHistoryRow>;
+  close(): Promise<void>;
+}
+export interface BrowserRoomStage {
+  append(row: BackupHistoryRow): Promise<void>;
+  replace(signal?: AbortSignal): Promise<void>;
+  close(): Promise<void>;
+}
 
 export interface NewRoomPolicy extends RoomSettings {
   id: string; creatorId: string;
@@ -33,19 +45,117 @@ function read<T>(request: IDBRequest<T>, receive: (value: T) => void, abort: (er
 }
 function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(name, 3);
+    const request = indexedDB.open(name, 4);
     let unsupported = false;
     request.onupgradeneeded = event => {
-      if (event.oldVersion !== 0) { unsupported = true; request.transaction!.abort(); return; }
+      if (event.oldVersion !== 0 && event.oldVersion !== 3) { unsupported = true; request.transaction!.abort(); return; }
       const db = request.result;
-      db.createObjectStore("rooms", { keyPath: "id" });
-      const messages = db.createObjectStore("messages", { keyPath: ["roomId", "seq"] });
-      messages.createIndex("send", ["roomId", "userId", "nonce"], { unique: true });
-      messages.createIndex("id", "id", { unique: true });
+      if (event.oldVersion === 0) {
+        db.createObjectStore("rooms", { keyPath: "id" });
+        const messages = db.createObjectStore("messages", { keyPath: ["roomId", "seq"] });
+        messages.createIndex("send", ["roomId", "userId", "nonce"], { unique: true });
+        messages.createIndex("id", "id", { unique: true });
+      }
+      const backup = db.createObjectStore("backup", { keyPath: "seq" });
+      backup.createIndex("send", ["userId", "nonce"], { unique: true });
+      backup.createIndex("id", "id", { unique: true });
     };
     request.onerror = () => reject(unsupported ? new Error("unsupported_storage_version") : request.error);
     request.onsuccess = () => { request.result.onversionchange = () => request.result.close(); resolve(request.result); };
   });
+}
+
+function transaction<T>(db: IDBDatabase, stores: string[], mode: IDBTransactionMode,
+  start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
+  complete: () => T, signal?: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException("Cancelled", "AbortError")); return; }
+    const tx = db.transaction(stores, mode);
+    let reason: Error | undefined;
+    const abort = (error: Error) => { reason = error; tx.abort(); };
+    const cancelled = () => abort(new DOMException("Cancelled", "AbortError"));
+    signal?.addEventListener("abort", cancelled, { once: true });
+    const cleanup = () => signal?.removeEventListener("abort", cancelled);
+    tx.onabort = () => { cleanup(); reject(reason ?? tx.error ?? new Error("storage_failed")); };
+    tx.oncomplete = () => { cleanup(); try { resolve(complete()); } catch (error) { reject(failure(error)); } };
+    try { start(tx, abort); } catch (error) { abort(failure(error)); }
+  });
+}
+
+interface BackupMarker { seq: 0; stageId: string }
+
+// One replaceable work slot per participant database. Interrupted work leaves
+// at most one temporary history, reused by the next operation without a GC owner.
+class RoomBackup implements BrowserRoomSnapshot, BrowserRoomStage {
+  readonly stageId = crypto.randomUUID();
+  private closed: Promise<void> | undefined;
+  constructor(private db: IDBDatabase, readonly policy: string, readonly roomId: string) {}
+
+  private turn<T>(stores: string[], mode: IDBTransactionMode,
+    start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
+    complete: () => T, signal?: AbortSignal): Promise<T> {
+    if (this.closed) return Promise.reject(new Error("closed"));
+    return transaction(this.db, stores, mode, (tx, abort) => {
+      read<BackupMarker | undefined>(tx.objectStore("backup").get(0), marker => {
+        if (marker?.stageId !== this.stageId) throw new Error("stale_backup");
+        start(tx, abort);
+      }, abort);
+    }, complete, signal);
+  }
+
+  initialize(tx: IDBTransaction): void {
+    const store = tx.objectStore("backup");
+    store.clear();
+    store.put({ seq: 0, stageId: this.stageId } satisfies BackupMarker);
+  }
+
+  append(row: BackupHistoryRow): Promise<void> {
+    // Core validated the row; reject sequence keys that IndexedDB's Number
+    // representation cannot retain exactly, including the reserved marker key.
+    if (!Number.isSafeInteger(row.seq) || row.seq <= 0) return Promise.reject(new Error("invalid_backup_history"));
+    return this.turn(["backup"], "readwrite", tx => { tx.objectStore("backup").add(row); }, () => {});
+  }
+
+  get rows(): AsyncIterable<BackupHistoryRow> { return this.readRows(); }
+  private async *readRows(): AsyncGenerator<BackupHistoryRow> {
+    let after = 0;
+    for (;;) {
+      const rows: BackupHistoryRow[] = [];
+      await this.turn(["backup"], "readonly", (tx, abort) => {
+        read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(after, true)), cursor => {
+          if (!cursor) return;
+          rows.push(cursor.value);
+          if (rows.length < history_page_size()) cursor.continue();
+        }, abort);
+      }, () => {});
+      if (!rows.length) return;
+      for (const row of rows) { after = row.seq; yield row; }
+      // Even the final empty page checks the marker, so superseded streams fail
+      // explicitly rather than silently finishing with somebody else's rows.
+    }
+  }
+
+  replace(signal?: AbortSignal): Promise<void> {
+    return this.turn(["backup", "rooms", "messages"], "readwrite", (tx, abort) => {
+      const messages = tx.objectStore("messages");
+      messages.delete(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity]));
+      // Retire the prior durable write binding in the same commit as the data.
+      tx.objectStore("rooms").put({ id: this.roomId, policy: this.policy } satisfies RoomRecord);
+      read(tx.objectStore("backup").openCursor(IDBKeyRange.lowerBound(0, true)), cursor => {
+        if (!cursor) { tx.objectStore("backup").clear(); return; }
+        messages.add({ ...cursor.value, roomId: this.roomId });
+        cursor.continue();
+      }, abort);
+    }, () => {}, signal);
+  }
+
+  close(): Promise<void> {
+    return this.closed ??= transaction(this.db, ["backup"], "readwrite", (tx, abort) => {
+      read<BackupMarker | undefined>(tx.objectStore("backup").get(0), marker => {
+        if (marker?.stageId === this.stageId) tx.objectStore("backup").clear();
+      }, abort);
+    }, () => {}).finally(() => this.db.close());
+  }
 }
 
 export async function createRoomPolicy(input: NewRoomPolicy): Promise<string> {
@@ -98,6 +208,41 @@ export class BrowserRoomHost {
   summary(): RoomSummary { return JSON.parse(this.room.summary()); }
   currentReaders(): string[] { return JSON.parse(this.room.current_readers()); }
 
+  /** Capture persisted policy and complete history at one IndexedDB commit. */
+  snapshot(): Promise<BrowserRoomSnapshot> {
+    return this.enqueue(async () => {
+      const db = await openDatabase(this.db.name);
+      let snapshot: RoomBackup | undefined;
+      try {
+        await transaction(db, ["rooms", "messages", "backup"], "readwrite", (tx, abort) => {
+          read<RoomRecord | undefined>(tx.objectStore("rooms").get(this.roomId), record => {
+            if (!record) throw new Error("storage_failed");
+            snapshot = new RoomBackup(db, record.policy, this.roomId);
+            snapshot.initialize(tx);
+            read(tx.objectStore("messages").openCursor(IDBKeyRange.bound([this.roomId], [this.roomId, Infinity])), cursor => {
+              if (!cursor) return;
+              const { roomId: _roomId, ...row } = cursor.value as StoredMessage;
+              tx.objectStore("backup").add(row);
+              cursor.continue();
+            }, abort);
+          }, abort);
+        }, () => {});
+        return snapshot!;
+      } catch (error) { db.close(); throw error; }
+    });
+  }
+
+  /** The archive owner supplies a Core-validated policy and canonical rows. */
+  static async stage(databaseName: string, policy: string): Promise<BrowserRoomStage> {
+    const roomId: string = JSON.parse(policy).id;
+    const db = await openDatabase(databaseName);
+    const stage = new RoomBackup(db, policy, roomId);
+    try {
+      await transaction(db, ["backup"], "readwrite", tx => stage.initialize(tx), () => {});
+      return stage;
+    } catch (error) { db.close(); throw error; }
+  }
+
   /** Claim only the stored owner observed by this instance, then reload its policy. */
   bind(bindingId: string): Promise<void> {
     return this.enqueue(async () => {
@@ -139,18 +284,7 @@ export class BrowserRoomHost {
   private transaction<T>(stores: string[], mode: IDBTransactionMode,
     start: (tx: IDBTransaction, abort: (error: Error) => void) => void,
     complete: () => T, signal?: AbortSignal): Promise<T> {
-    return new Promise((resolve, reject) => {
-      if (signal?.aborted) { reject(new DOMException("Cancelled", "AbortError")); return; }
-      const tx = this.db.transaction(stores, mode);
-      let reason: Error | undefined;
-      const abort = (error: Error) => { reason = error; tx.abort(); };
-      const cancelled = () => abort(new DOMException("Cancelled", "AbortError"));
-      signal?.addEventListener("abort", cancelled, { once: true });
-      const cleanup = () => signal?.removeEventListener("abort", cancelled);
-      tx.onabort = () => { cleanup(); reject(reason ?? tx.error ?? new Error("storage_failed")); };
-      tx.oncomplete = () => { cleanup(); try { resolve(complete()); } catch (error) { reject(failure(error)); } };
-      try { start(tx, abort); } catch (error) { abort(failure(error)); }
-    });
+    return transaction(this.db, stores, mode, start, complete, signal);
   }
 
   /** Read the owner and execute all work in one transaction with a competing claim. */
