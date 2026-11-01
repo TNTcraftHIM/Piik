@@ -115,6 +115,19 @@ fn set_format(transform: &IMFTransform, settings: Settings) -> Result<MFT_OUTPUT
     }
 }
 
+fn normalize_level_1b(bytes: &mut [u8]) {
+    // Some MFTs use level_idc 9 for Baseline Level 1b. RFC 6184 requires
+    // constraint_set3_flag and level_idc 11; MF decoding otherwise yields no frames.
+    for index in 0..bytes.len().saturating_sub(6) {
+        let prefix = &mut bytes[index..index + 7];
+        if prefix[..3] == [0, 0, 1] && prefix[3] & 0x1f == 7 && prefix[4] == 0x42 && prefix[6] == 9
+        {
+            prefix[5] |= 0x10;
+            prefix[6] = 11;
+        }
+    }
+}
+
 fn fitted(settings: Settings, frame: &RawFrame) -> Settings {
     let mut desc = D3D11_TEXTURE2D_DESC::default();
     unsafe { frame.texture.GetDesc(&mut desc) };
@@ -297,12 +310,13 @@ impl Encoder {
             let mut p = ptr::null_mut();
             let mut size = 0;
             buffer.Lock(&mut p, None, Some(&mut size))?;
-            let bytes = std::slice::from_raw_parts(p, size as usize).to_vec();
+            let mut bytes = std::slice::from_raw_parts(p, size as usize).to_vec();
             buffer.Unlock()?;
             ensure!(
                 bytes.starts_with(&[0, 0, 1]) || bytes.starts_with(&[0, 0, 0, 1]),
                 "hardware encoder did not emit Annex B"
             );
+            normalize_level_1b(&mut bytes);
             Ok((bytes, pts, keyframe))
         }
     }

@@ -25,9 +25,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   Browser/Native decoded-media combinations through the maintained Rust process runner
   in the existing [network laboratory](./research/network-lab.md), exercising calibrated
   NAT and failure/recovery through current room and transport owners.
-- [ ] **Small Windows H264 output.** Locate the observed `42c009` source-admission
-  failure at the 160×110, 10 fps, 150 kbps encoding boundary. Check the original
-  access units with the actual decoders and correct the owning boundary.
 - [ ] **3.0 Room backup UI acceptance.** Verify the completed export/import
   through the normal Room controls and real Browser storage: restore an older
   archive and confirm that the renewed authoritative reading replaces newer
