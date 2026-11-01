@@ -51,8 +51,10 @@ export function ChannelShareControl({ channel, roomId, disabled }: {
   return <>
     <span ref={trigger} className="c3-share-control">
       {captureRequest ? <>
-        <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
-          onClick={() => activateNativePicker(captureRequest.activationURL)} />
+        <span className="c3-app-confirmation">
+          <Btn icon="window" title="native.confirmInApp" cap="native.confirmInApp" size="compact" tone="primary"
+            onClick={() => activateNativePicker(captureRequest.activationURL)} />
+        </span>
         <Btn icon="x" title="common.cancel" cap="common.cancel" size="compact" quiet
           onClick={() => { void channel.cancelScreenSelection(roomId).catch(() => {}); }} />
       </> : <Btn icon={sharing ? "switchSource" : "cast"} title={{ text: label }} cap={{ text: label }} size="compact" tone="primary"

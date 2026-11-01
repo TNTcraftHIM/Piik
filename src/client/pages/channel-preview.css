@@ -114,6 +114,10 @@
 }
 @container (max-width: 600px) {
   .c3-room-heading .lr-cap { display: none; }
+  .c3-room-heading:has(.c3-app-confirmation) {
+    grid-template-areas: "title title" "actions actions" "tools tools" "company company";
+  }
+  .c3-room-heading .c3-app-confirmation .lr-cap { display: inline; }
 }
 @container (max-width: 800px) {
   .c3-workspace.has-screens { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(min-content, 1fr) minmax(188px, .8fr); overflow-y: auto; }
