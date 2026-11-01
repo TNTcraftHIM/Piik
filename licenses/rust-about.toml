@@ -10,6 +10,9 @@ accepted = ["MPL-2.0"]
 [option-ext]
 accepted = ["MPL-2.0"]
 
+[libvpx-native-sys]
+accepted = ["MPL-2.0"]
+
 [webpki-roots]
 accepted = ["CDLA-Permissive-2.0"]
 

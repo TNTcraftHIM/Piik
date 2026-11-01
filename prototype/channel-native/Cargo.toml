@@ -10,7 +10,7 @@ default-run = "piik-channel-native"
 
 [features]
 default = ["capture"]
-capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus", "dep:ndk", "dep:ndk-context", "dep:jni", "dep:khronos-egl", "dep:glow"]
+capture = ["dep:ashpd", "dep:reis", "dep:gst", "dep:gst-app", "dep:gst-video", "dep:cidre", "dep:windows-capture", "dep:wasapi", "dep:rusty-opus", "dep:ndk", "dep:ndk-context", "dep:jni", "dep:khronos-egl", "dep:glow", "dep:vpx-sys"]
 
 [dependencies]
 bytes = "=1.12.1"
@@ -84,6 +84,7 @@ rtc-rtp = { git = "https://github.com/TNTcraftHIM/rtc", rev = "3b6d3c0a03a641a92
 rtc-shared = { git = "https://github.com/TNTcraftHIM/rtc", rev = "3b6d3c0a03a641a92aff7518418c6eeb67cf1444" }
 
 [target.'cfg(windows)'.dependencies]
+vpx-sys = { package = "libvpx-native-sys", version = "=5.0.17", optional = true }
 vigem-rust = { version = "=0.2.0", default-features = false, features = ["x360"] }
 wasapi = { version = "=0.26.0", optional = true }
 windows-capture = { version = "=2.0.1", optional = true }

@@ -134,6 +134,9 @@ export function writeAppLicenseNotices(repositoryRoot, packageRoot, target, tunn
     text += section("Linux system dependencies (not bundled)",
       readFileSync(join(repositoryRoot, "licenses", "linux-system-dependencies.txt"), "utf8"));
   }
+  if (target.goos === "windows") {
+    text += section("libvpx 1.16.0 (BSD-3-Clause, ISC and patent grant)", pinnedNotice("libvpx@1.16.0"));
+  }
   writeFileSync(join(packageRoot, "THIRD-PARTY-NOTICES.txt"), text);
 }
 

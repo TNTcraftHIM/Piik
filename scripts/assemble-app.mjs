@@ -25,6 +25,7 @@ import { writeAppLicenseNotices } from "./package-licenses.mjs";
 import { buildChannelWeb } from "./build-channel-web.mjs";
 import { assertCleanRevision, resetBuildWorkspace } from "./build-workspace.mjs";
 import { buildVersion } from "./release-version.mjs";
+import { windowsCaptureEnvironment } from "./windows-capture-deps.mjs";
 
 function fail(message) {
   throw new Error(message);
@@ -168,10 +169,11 @@ try {
   const appName = target.appName;
   const appPath = join(runtimeRoot, appName);
   const cargoTarget = resolve(repositoryRoot, process.env.CARGO_TARGET_DIR || "prototype/channel-server/target");
+  const captureEnvironment = target.goos === "windows" ? windowsCaptureEnvironment(repositoryRoot) : {};
   run("cargo", ["+1.91.0", "build", "--locked", "--release",
     "--manifest-path", "prototype/channel-server/Cargo.toml", "--target-dir", cargoTarget,
     "--target", target.rustTarget, "--features", "capture", "--bin", "piik-channel-app"],
-  repositoryRoot, { ...process.env, PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision, PIIK_BUILD_TARGET: target.id });
+  repositoryRoot, { ...process.env, ...captureEnvironment, PIIK_BUILD_VERSION: version, PIIK_BUILD_REVISION: revision, PIIK_BUILD_TARGET: target.id });
   copyFileSync(join(cargoTarget, target.rustTarget, "release",
     `piik-channel-app${target.goos === "windows" ? ".exe" : ""}`), appPath);
   chmodSync(appPath, 0o755);

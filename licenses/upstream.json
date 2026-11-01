@@ -1,4 +1,9 @@
 {
+  "libvpx@1.16.0": {
+    "file": "libvpx-1.16.0.txt",
+    "source": "https://github.com/webmproject/libvpx/tree/v1.16.0",
+    "sha256": "d3888db3e8e65d971a6f41c199591ca9d43b2744013e61ea1a8d4653d7b9faf8"
+  },
   "libc++@ndk-30.0.16248370": {
     "file": "libcxx-ndk-30.txt",
     "source": "https://github.com/llvm/llvm-project/blob/2d287f51eff2a5fbf84458a33f7fb2493cf67965/libcxx/LICENSE.TXT",
