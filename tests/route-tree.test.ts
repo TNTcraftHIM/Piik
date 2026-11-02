@@ -3,9 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { RouteTree } from "../src/client/components/living/RouteTree.tsx";
+import { RouteGraph } from "../src/client/components/living/RouteGraph.tsx";
 import { Couch } from "../src/client/components/living/Couch.tsx";
 import { participantColor } from "../src/client/components/living/participant-color.ts";
-import { topologyLayoutForWidth } from "../src/client/components/living/route-tree-layout.ts";
+import { routeGraphLayout, topologyLayoutForWidth, type RouteGraphNode, type RouteGraphEdge } from "../src/client/components/living/route-tree-layout.ts";
 import { labelParticipantSnapshot } from "../src/client/lib/viewer-presence.ts";
 import { setCopy } from "../src/client/ui/copy.ts";
 import { deriveParticipantStatus } from "../src/client/ui/media-status";
@@ -389,7 +390,7 @@ describe("RouteTree", () => {
 
     expect(html).toContain('class="lr-route-edge is-p2p"');
     expect(html).toContain('class="lr-route-edge is-p2p is-pending"');
-    expect(html).toContain('class="lr-route-edge is-pending"');
+    expect(html.match(/class="lr-route-edge is-p2p is-pending"/g)).toHaveLength(2);
     expect(html).toContain(
       'class="lr-route-node is-pending is-selected"',
     );
@@ -508,5 +509,75 @@ describe("RouteTree", () => {
     for (let index = 0; index < 20; index++) {
       expect(html).toContain(`Viewer ${index} ← ${index === 0 ? "Host" : `Viewer ${index - 1}`}`);
     }
+  });
+});
+
+describe("RouteGraph", () => {
+  it("lays out the selected parent while retaining both real candidate edges", () => {
+    const nodes = [
+      { id: "source", label: "Source" }, { id: "relay", label: "Relay" },
+      { id: "viewer", label: "Viewer" }, { id: "helper", label: "Viewer App" },
+    ];
+    const edges = [
+      { from: "helper", to: "viewer", selected: false, ready: true, presentation: true },
+      { from: "source", to: "helper", selected: false, ready: false },
+      { from: "source", to: "relay", selected: true, ready: true },
+      { from: "relay", to: "viewer", selected: true, ready: true },
+    ];
+    const layout = routeGraphLayout(nodes, "source", edges, 640);
+    expect(layout.points.get("viewer")!.x).toBeGreaterThan(layout.points.get("relay")!.x);
+    expect(layout.points.get("helper")!.x).toBe(layout.points.get("relay")!.x);
+    const html = renderToStaticMarkup(createElement(RouteGraph, { nodes, rootId: "source", edges }));
+    expect(html.match(/class="lr-route-edge /g)).toHaveLength(4);
+    expect(html).toContain('class="lr-route-edge is-p2p is-pending is-presentation"');
+    expect(html.match(/class="lr-route-edge is-p2p"/g)).toHaveLength(2);
+    expect(html).toContain("Viewer ← Relay");
+    expect(html).toContain("Viewer ← Viewer App");
+    expect(html).not.toContain("SFU");
+  });
+
+  it("keeps distinct endpoint controls with their stable participant identity color", () => {
+    const nodes = [{ id: "source", label: "Source", host: true },
+      { id: "app", label: "Friend App", identity: "friend-user" },
+      { id: "page", label: "Friend Browser", identity: "friend-user", you: true }];
+    const edges = [{ from: "source", to: "app", selected: true, ready: true },
+      { from: "app", to: "page", selected: true, ready: true, presentation: true }];
+    const html = renderToStaticMarkup(createElement(RouteGraph, { nodes, rootId: "source", edges,
+      selectedId: "page", selectableIds: ["app", "page"], onSelect: () => undefined }));
+    expect(html.match(/class="lr-person"/g)).toHaveLength(3);
+    expect(html.split(participantColor("friend-user"))).toHaveLength(3);
+    expect(html.match(/class="lr-route-hit"/g)).toHaveLength(2);
+    expect(html).toContain('class="lr-route-node is-selected"');
+    expect(html).toContain('class="lr-route-you"');
+    expect(html).toContain('class="lr-route-edge is-p2p is-presentation"');
+  });
+
+  it("keeps a deep graph and its pending alternative inside the narrow outline", () => {
+    const nodes: RouteGraphNode[] = Array.from({ length: 21 }, (_, index) => ({ id: `${index}`, label: `Person ${index}` }));
+    const edges: RouteGraphEdge[] = nodes.slice(1).map((node, index) => ({ from: `${index}`, to: node.id, selected: true, ready: true }));
+    nodes.push({ id: "helper", label: "New App" });
+    edges.push({ from: "0", to: "helper", selected: false, ready: false },
+      { from: "helper", to: "20", selected: false, ready: false, presentation: true });
+    const layout = routeGraphLayout(nodes, "0", edges, 260);
+    expect(layout.outline).toBe(true);
+    expect(layout.width).toBe(260);
+    expect(new Set([...layout.points.values()].map(point => point.y)).size).toBe(nodes.length);
+    expect([...layout.points.values()].every(point => point.x >= 0 && point.x + 40 < layout.width)).toBe(true);
+    const html = renderToStaticMarkup(createElement(RouteGraph, { nodes, rootId: "0", edges }));
+    expect(html.match(/class="lr-route-edge /g)).toHaveLength(edges.length);
+    expect(html).not.toMatch(/NaN|undefined/);
+  });
+
+  it("retains the explicit SFU rail and pending child without widening the panel", () => {
+    const nodes = [{ id: "host", label: "Host", host: true }, { id: "sfu", label: "SFU", kind: "sfu" as const },
+      { id: "a", label: "A" }, { id: "b", label: "B" }];
+    const edges = [{ from: "host", to: "sfu", selected: true, ready: true, route: "sfu" as const },
+      { from: "sfu", to: "a", selected: true, ready: true, route: "sfu" as const },
+      { from: "sfu", to: "b", selected: true, ready: false, route: "sfu" as const }];
+    const html = renderToStaticMarkup(createElement(RouteGraph, { nodes, rootId: "host", edges }));
+    expect(html).toContain('viewBox="0 0 640 ');
+    expect(html.match(/class="lr-route-sfu"/g)).toHaveLength(1);
+    expect(html.match(/class="lr-route-edge is-sfu"/g)).toHaveLength(4);
+    expect(html).toContain('class="lr-route-edge is-sfu is-pending"');
   });
 });
