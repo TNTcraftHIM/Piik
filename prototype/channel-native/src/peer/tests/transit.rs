@@ -3,6 +3,65 @@ use super::*;
 use support::{vp8, Fixture};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn selected_screen_metrics_keep_room_voice_and_exclude_other_room() -> Result<()> {
+    let mut f = Fixture::new(vp8()).await?;
+    let mut voice = f.publication.clone();
+    voice.id = Uuid::new_v4();
+    voice.kind = piik_channel_core::wire::Kind::Voice;
+    let voice_input = f.plans[1].incoming[0].id;
+    let voice_output = f.plans.iter().find(|p| p.id == f.sink).unwrap().outgoing[1].id;
+    for plan in &mut f.plans {
+        for flow in plan.incoming.iter_mut().chain(&mut plan.outgoing) {
+            if flow.id == voice_input || flow.id == voice_output {
+                flow.publication_id = voice.id;
+            }
+        }
+    }
+    f.driver
+        .update(
+            f.plans.clone(),
+            vec![f.publication.clone(), voice.clone()],
+            vec![],
+        )
+        .await?;
+    f.until(|f| f.frame >= 70).await?;
+    let measured = f
+        .driver
+        .connection_metrics("room", Some(f.publication.id))
+        .await?;
+    let streams: Vec<_> = measured.iter().flat_map(|pair| &pair.streams).collect();
+    ensure!(streams
+        .iter()
+        .any(|stream| stream.publication_id == f.publication.id && stream.media == "video"));
+    ensure!(streams
+        .iter()
+        .any(|stream| stream.publication_id == voice.id && stream.media == "audio"));
+    ensure!(f
+        .driver
+        .connection_metrics("other", Some(f.publication.id))
+        .await?
+        .is_empty());
+    voice.room_id = "other".into();
+    f.driver
+        .update(
+            f.plans.clone(),
+            vec![f.publication.clone(), voice.clone()],
+            vec![],
+        )
+        .await?;
+    let measured = f
+        .driver
+        .connection_metrics("room", Some(f.publication.id))
+        .await?;
+    ensure!(measured
+        .iter()
+        .flat_map(|pair| &pair.streams)
+        .all(|stream| stream.publication_id != voice.id));
+    f.close().await;
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn screen_pause_stops_both_outputs_and_resumes_the_same_source_clock() -> Result<()> {
     let mut f = Fixture::new(vp8()).await?;
     let sink = f.sink;

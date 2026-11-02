@@ -1008,7 +1008,10 @@ impl Driver {
     ) -> Result<Vec<PeerConnectionMetrics>> {
         let scoped = |id: Uuid| {
             self.publications.get(&id).is_some_and(|info| {
-                info.room_id == room && publication.is_none_or(|selected| selected == id)
+                info.room_id == room
+                    && publication.is_none_or(|selected| {
+                        selected == id || info.kind == piik_channel_core::wire::Kind::Voice
+                    })
             })
         };
         let mut connections = Vec::new();
