@@ -502,6 +502,26 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
     );
     let (status, health) = app_http(address, "GET", "/health", Some(&origin), None).await;
     assert_eq!(status, 200);
+    assert_eq!(health["service"], discovery["service"]);
+    assert_eq!(health["protocol"], discovery["protocol"]);
+    assert_eq!(health["port"], address.port());
+    let (status, launcher) = app_http(
+        address,
+        "GET",
+        "/api/client-launcher",
+        Some(&local_origin),
+        None,
+    )
+    .await;
+    assert_eq!(status, 200);
+    for key in ["version", "revision", "packageTarget"] {
+        assert!(health[key].is_string());
+        assert_eq!(health[key], launcher[key]);
+        assert!(
+            discovery.get(key).is_none(),
+            "discovery exposes no build metadata"
+        );
+    }
     let token = health["token"].as_str().unwrap();
     let upgrade = |address, token: &str| {
         let mut request = format!("ws://{address}/rooms")

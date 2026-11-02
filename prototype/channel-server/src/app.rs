@@ -52,6 +52,18 @@ const IO_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: usize = 256 * 1024;
 const SERVICE: &str = "piik-channel-app";
 const PROTOCOL: u8 = 1;
+const BUILD_VERSION: &str = match option_env!("PIIK_BUILD_VERSION") {
+    Some(value) => value,
+    None => "development",
+};
+const BUILD_REVISION: &str = match option_env!("PIIK_BUILD_REVISION") {
+    Some(value) => value,
+    None => "development",
+};
+const PACKAGE_TARGET: &str = match option_env!("PIIK_BUILD_TARGET") {
+    Some(value) => value,
+    None => "",
+};
 
 pub struct Config {
     pub data_root: PathBuf,
@@ -476,15 +488,17 @@ async fn discovery(State(app): State<Arc<App>>) -> Json<Value> {
     )
 }
 async fn health(State(app): State<Arc<App>>) -> Json<Value> {
-    Json(json!({"service":SERVICE,"protocol":PROTOCOL,"port":app.port,"token":app.token}))
+    Json(
+        json!({"service":SERVICE,"protocol":PROTOCOL,"port":app.port,"token":app.token,
+        "version":BUILD_VERSION,"revision":BUILD_REVISION,"packageTarget":PACKAGE_TARGET}),
+    )
 }
 fn launcher_state(registry: &Registry, port: u16) -> Result<Value> {
     Ok(
         json!({"sites":registry.approvals.keys().collect::<Vec<_>>(),"startupSite":registry.sites.startup()?,
         "defaultMode":"link","modes":["local","link"],"siteAccess":"channel",
-        "version":option_env!("PIIK_BUILD_VERSION").unwrap_or("development"),
-        "revision":option_env!("PIIK_BUILD_REVISION").unwrap_or("development"),
-        "packageTarget":option_env!("PIIK_BUILD_TARGET").unwrap_or_default(),"controlPort":port}),
+        "version":BUILD_VERSION,"revision":BUILD_REVISION,
+        "packageTarget":PACKAGE_TARGET,"controlPort":port}),
     )
 }
 type ApiResult = std::result::Result<Json<Value>, (StatusCode, Json<Value>)>;
