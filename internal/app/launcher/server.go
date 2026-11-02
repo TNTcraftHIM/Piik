@@ -12,12 +12,12 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	appconfig "github.com/TNTcraftHIM/Piik/internal/app/config"
 	"github.com/TNTcraftHIM/Piik/internal/app/failure"
 	"github.com/TNTcraftHIM/Piik/internal/app/lan"
@@ -298,17 +298,13 @@ func (server *Server) handleState(response http.ResponseWriter, request *http.Re
 		target, resultErr = attempt.target, attempt.err
 		starting = !attempt.completed
 	}
-	packageTarget := runtime.GOOS + "-" + runtime.GOARCH
-	if runtime.GOOS == "android" {
-		packageTarget = "android-universal"
-	}
 	state := map[string]any{
 		"sites":               slices.Clone(server.sites),
 		"startupSite":         server.startupSite,
 		"localAccessPassword": server.localAccessPassword,
 		"version":             server.version,
 		"revision":            server.revision,
-		"packageTarget":       packageTarget,
+		"packageTarget":       buildinfo.PackageTarget(),
 		"controlPort":         server.controlPort,
 		"target":              target,
 		"starting":            starting,

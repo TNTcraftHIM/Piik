@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/TNTcraftHIM/Piik/internal/app/buildinfo"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -52,6 +53,9 @@ func TestHealthActivationURLIsOptionalAndOriginBound(t *testing.T) {
 }
 
 func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
+	release, revision := buildinfo.Release, buildinfo.Revision
+	buildinfo.Release, buildinfo.Revision = "v2.5.2", strings.Repeat("a", 40)
+	t.Cleanup(func() { buildinfo.Release, buildinfo.Revision = release, revision })
 	expectedMedia := NativeMediaCapabilities{
 		Video: true, ProcessAudio: false, SystemAudio: true, HardwareH264: true, MaxRelayChildren: 20,
 	}
@@ -71,6 +75,7 @@ func TestStartServesHealthAndStrictControlHandshake(t *testing.T) {
 	}
 	response.Body.Close()
 	if health.Protocol != ProtocolVersion || health.Service != ServiceName ||
+		health.Version != buildinfo.Version() || health.Revision != buildinfo.Revision || health.PackageTarget != buildinfo.PackageTarget() ||
 		health.Port != endpoint.Port || health.InstanceToken != endpoint.InstanceToken ||
 		health.NativeMedia != expectedMedia {
 		t.Fatalf("health = %+v", health)
