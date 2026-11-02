@@ -16,10 +16,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   H264 decodes, but Gecko's image conversion fails before outgoing encoding.
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
-- [ ] **3.0 App-assisted viewing and forwarding.** Restore the 2.x capability
-  through the shared endpoint and route model. Keep the Browser's actual
-  playback proof and page-owned watching lifetime; Native transit alone does
-  not provide this integration.
 - [ ] **3.0 connection details and topology.** Connect the existing shared
   presentation to actual room/publication plans and local transport reports.
   Distinguish an App-to-Browser presentation hop from the App's remote media
