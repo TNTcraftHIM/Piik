@@ -92,9 +92,14 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     const verifyApproval = async (reported = false) => {
       if (approving || signal.aborted) return;
       approving = true;
-      const health = await native?.discoverNativeHealth({ signal }).catch(() => null);
+      const health = await native?.discoverNativeHealth({ signal, ...(manage ? { waitForPermission: false } : {}) }).catch(() => null);
       if (signal.aborted) return;
       approving = false;
+      if (manage) {
+        rememberBuild(health ?? null);
+        if (!health) finish("idle");
+        return;
+      }
       if (health) {
         rememberBuild(health);
         finish("ready");
@@ -126,7 +131,7 @@ export function AppConnectionButton({ onConnected }: AppConnectionProps) {
     attempt.cancel = () => finish(manage ? "ready" : "idle");
     const onFocus = () => {
       if (waking) { attempt.open?.(); return; }
-      if (attempt.popup) void verifyApproval();
+      if (attempt.popup || manage) void verifyApproval();
     };
     const onVisible = () => { if (document.visibilityState === "visible") onFocus(); };
     window.addEventListener("message", onMessage);

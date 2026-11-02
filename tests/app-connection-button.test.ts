@@ -220,6 +220,27 @@ describe("App connection approval", () => {
     expect(page.popup.closed).toBe(false);
   });
 
+  it("rechecks the managed App on return without interrupting approval or retaining a disconnected build", async () => {
+    const page = mount(true, "ready");
+    await page.connect();
+    const build = { version: "v2.5.2", revision: "b".repeat(40), packageTarget: "windows-amd64" };
+    page.native.discoverNativeHealth.mockResolvedValue(build);
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.native.discoverNativeHealth).toHaveBeenLastCalledWith({ signal: expect.any(AbortSignal), waitForPermission: false });
+    expect(page.setBuild).toHaveBeenLastCalledWith(build);
+    expect(page.pending.current).not.toBeNull();
+    expect(page.onConnected).not.toHaveBeenCalled();
+    page.native.discoverNativeHealth.mockResolvedValue(null);
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.setBuild).toHaveBeenLastCalledWith(undefined);
+    expect(page.setState).toHaveBeenLastCalledWith("idle");
+    expect(page.pending.current).toBeNull();
+    expect(page.window.open).not.toHaveBeenCalled();
+    page.cleanup();
+  });
+
   it("offers recovery without activation or a stranded popup when no App is found", async () => {
     const page = mount();
     page.native.discoverNativeConnect.mockResolvedValue(null);
