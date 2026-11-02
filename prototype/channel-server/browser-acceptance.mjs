@@ -46,7 +46,8 @@ const hostsOnly = process.argv.includes("--hosts");
 const baseOnly = process.argv.includes("--base");
 const nativeOnly = process.argv.includes("--native");
 const appOnly = process.argv.includes("--app") || process.argv.includes("--previews");
-const active = backupOnly ? [1] : identityOnly ? [0, 1] : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
+const active = backupOnly ? [1] : identityOnly ? [0, 1] : process.argv.includes("--app") ? [0, 1, 2, 3]
+  : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
   // Omitting launch options on later commands selects a different Browser context.
   const { stdout } = await run(executable, ["--session", sessions[index], "--json",
@@ -1020,7 +1021,7 @@ try {
     console.log(`Identity image acceptance passed; evidence: ${output}`);
   } else if (appOnly) {
     await appRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample,
-      capturedScreen, playing, progressing, hook, output });
+      capturedScreen, playing, progressing, audioProgressing, hook, output });
     console.log(`Linked App room acceptance passed; evidence: ${output}`);
   } else if (nativeOnly) {
     await nativeRoom({ initial, serverRoom: roomId, browser, action, view, evaluate, until, sample, audioProgressing,

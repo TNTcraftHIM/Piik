@@ -20,6 +20,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   through the shared endpoint and route model. Keep the Browser's actual
   playback proof and page-owned watching lifetime; Native transit alone does
   not provide this integration.
+- [ ] **3.0 connection details and topology.** Connect the existing shared
+  presentation to actual room/publication plans and local transport reports.
+  Distinguish an App-to-Browser presentation hop from the App's remote media
+  path; Browser statistics describe only the former. The current App hosting
+  description supplies identity, not Native media statistics.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

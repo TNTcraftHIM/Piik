@@ -11,7 +11,7 @@ import { nativePreviews } from "./browser-preview-acceptance.mjs";
 
 // App hosting and Browser participation share a user, not an endpoint or lifetime.
 export async function appRoom({ initial, serverRoom, browser, action, view, evaluate, until, sample,
-  capturedScreen, playing, progressing, hook, output }) {
+  capturedScreen, playing, progressing, audioProgressing, hook, output }) {
   const directory = await mkdtemp(join(tmpdir(), "piik-app-room-check-"));
   const origin = process.env.CHANNEL_UI_ORIGIN;
   const freePort = async () => {
@@ -143,6 +143,89 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await evaluate(1, "window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/rooms').forEach(socket => socket.close())");
     await until("local control disconnect is visible", () => evaluate(1, `${hook}.snapshot().appConnected`), value => value === false);
     await progressing(2, picture);
+
+    // The Browser host remains the room owner while its App assists reception.
+    await action(1, `browse(${JSON.stringify(browserRoom)})`);
+    for (const index of [0, 2, 3]) {
+      await action(index, `browse(${JSON.stringify(browserRoom)})`);
+      await until("Browser host installs its ordinary room base", () => view(index), value =>
+        value.state.pairs.some(pair => (index === 3 || pair.peerId === personalEndpoint) && pair.rooms.includes(browserRoom)));
+      await until("ordinary room base opens before the next admission", () => sample(index), value =>
+        value.channels.some(channel => channel.label === "piik-room" && channel.state === "open"));
+    }
+    const browserBindingBeforeHelper = (await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.bindingId;
+    await action(0, "setVideoCodecMode('h264')");
+    await evaluate(0, "window.__channelProbe.captureAudio(true)");
+    const helperPicture = await capturedScreen(0, browserRoom);
+    const carries = (pair, direction) => pair[direction].some(flow => flow.publicationId === helperPicture && flow.selected);
+    for (const index of [1, 3, 2]) {
+      await action(index, `watch(${JSON.stringify(helperPicture)})`); await playing(index, helperPicture);
+      if (index === 3) await until("fourth viewer occupies the source's second branch before D watches", () => view(0), value =>
+        value.state.pairs.some(pair => pair.peerId === initial[3].sessionId && carries(pair, "outgoing")), 35_000);
+    }
+    const beforeHelper = await view(1);
+    assert(beforeHelper.state.pairs.some(pair => pair.peerId === (initial[0].sessionId) && carries(pair, "incoming")),
+      "ordinary Browser receives the remote source before App assistance");
+    assert(beforeHelper.state.pairs.some(pair => pair.peerId === (initial[2].sessionId) && carries(pair, "outgoing")),
+      "App assistance starts with a real Browser downstream, not two direct viewers");
+    assert((await view(0)).state.pairs.some(pair => pair.peerId === initial[3].sessionId && carries(pair, "outgoing")),
+      "a real fourth viewer occupies the source's other branch");
+    const codecs = index => evaluate(index, `(async () => {
+      const stream = ${hook}.snapshot().streams.get(${JSON.stringify(helperPicture)});
+      if (!stream) return [];
+      const rows = [];
+      for (const track of stream.getTracks()) {
+        const receiver = window.__channelProbe.peers.filter(pc => pc.connectionState === 'connected')
+          .flatMap(pc => pc.getReceivers()).find(receiver => receiver.track === track);
+        if (!receiver) continue;
+        const stats = await receiver.getStats();
+        for (const report of stats.values()) if (report.type === 'inbound-rtp') rows.push({
+          kind: report.kind, codec: stats.get(report.codecId)?.mimeType,
+          frames: report.framesDecoded ?? 0, samples: report.totalSamplesReceived ?? 0 });
+      }
+      return rows;
+    })()`);
+    const mediaBefore = await Promise.all([1, 2].map(codecs));
+    for (const rows of mediaBefore) {
+      assert(rows.some(row => row.codec?.toLowerCase() === "video/h264" && row.frames > 0));
+      assert(rows.some(row => row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
+    }
+    await action(1, "activateApp()"); await appReady(1);
+    await until("Native assists both viewers without Browser WAN forwarding", async () => {
+      const views = await Promise.all([0, 1, 2].map(view));
+      for (const index of [1, 2]) {
+        const screen = await evaluate(index, `window.__channelProbe.screen(${JSON.stringify(helperPicture)})`);
+        assert(screen.inputs.some(input => input.selected && input.frames > 0), "handover retains a decoded selected picture");
+      }
+      return views;
+    }, values => values[0].state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "outgoing"))
+      && [1, 2].every(index => values[index].state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")))
+      && !values[1].state.pairs.some(pair => carries(pair, "outgoing")), 35_000);
+    for (const index of [1, 2]) { await progressing(index, helperPicture); await audioProgressing(index, helperPicture); }
+    const mediaAfter = await Promise.all([1, 2].map(codecs));
+    for (const rows of mediaAfter) {
+      assert(rows.some(row => row.codec?.toLowerCase() === "video/h264" && row.frames > 0));
+      assert(rows.some(row => row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
+    }
+    await action(1, `unwatch(${JSON.stringify(helperPicture)})`);
+    await progressing(2, helperPicture); await audioProgressing(2, helperPicture);
+    assert((await view(2)).state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")),
+      "Native transit survives the assisted Browser's unwatch");
+    await action(1, `watch(${JSON.stringify(helperPicture)})`);
+    await until("assisted watching returns through the same Native endpoint", () => view(1), value =>
+      value.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")));
+    await evaluate(1, "window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/rooms').forEach(socket => socket.close())");
+    await until("helper control disconnect is visible", () => evaluate(1, `${hook}.snapshot().appConnected`), value => value === false);
+    assert((await view(1)).state.subscriptions.includes(helperPicture), "control loss retains the existing watch intent");
+    await progressing(1, helperPicture); await audioProgressing(1, helperPicture);
+    const browserHostAfterHelper = (await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom);
+    assert.equal(browserHostAfterHelper.delivery.hostSessionId, personalEndpoint);
+    assert.equal(browserHostAfterHelper.delivery.bindingId, browserBindingBeforeHelper);
+    await writeFile(join(output, "app-helper-result.json"), JSON.stringify({ passed: true, mediaBefore, mediaAfter,
+      scenarios: ["Browser-owned base Source to A to D", "H264 and Opus through live Native helper",
+        "Native replaces Browser WAN forwarding", "unwatch retains downstream transit", "control loss preserves ordinary watching and hosting"] }, null, 2));
+    await action(0, `stopScreen(${JSON.stringify(helperPicture)})`);
+    await evaluate(0, "window.__channelProbe.captureAudio(false)");
     await action(1, "close()");
     await browser(1, "open", "about:blank");
     await until("page close ends personal activity and Browser hosting only", () => view(2), value =>
