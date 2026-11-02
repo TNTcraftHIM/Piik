@@ -1466,14 +1466,15 @@ describe("minimal route transition contracts", () => {
     await route.disconnect();
   });
 
-  it("rejects a quality SFU candidate after three comparable regressions", async () => {
+  it("keeps a low-quality SFU candidate until recovery proves non-regression", async () => {
     const messages: ClientMessage[] = [];
     const subscribers: ReturnType<typeof createFakeSubscriber>[] = [];
     let currentMetrics = receiveMetrics(1_000);
+    const onSfuStream = vi.fn();
     const route = new ViewerSfuRoute("viewer_12345678", {
       activatePeer: () => true,
       reconcileSfuChildren: () => undefined,
-      onSfuStream: () => undefined,
+      onSfuStream,
       currentPeerMetrics: () => currentMetrics,
       qualityProbeEligible: () => true,
       send: (message) => {
@@ -1519,16 +1520,21 @@ describe("minimal route transition contracts", () => {
       );
     }
 
-    expect(messages.at(-1)).toEqual({
-      type: "route-failed",
-      revision: 2,
-      phase: "prepare",
-      connectionId: null,
-    });
-    expect(subscriber.disconnect).toHaveBeenCalledOnce();
-    expect(
-      messages.filter((message) => message.type === "route-ready"),
-    ).toEqual([]);
+    expect(messages.filter(message => message.type === "route-failed" || message.type === "route-ready")).toEqual([]);
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+    expect(onSfuStream).not.toHaveBeenCalled();
+
+    for (const timestampMs of [7_100, 9_100, 11_100]) {
+      currentMetrics = receiveMetrics(timestampMs - 100);
+      subscriber.events.onStats(receiveMetrics(timestampMs));
+    }
+    expect(messages.filter(message => message.type === "route-failed")).toEqual([]);
+    expect(messages.filter(message => message.type === "route-ready")).toEqual([
+      { type: "route-ready", revision: 2, phase: "prepare" },
+    ]);
+    expect(subscriber.disconnect).not.toHaveBeenCalled();
+    expect(onSfuStream).not.toHaveBeenCalled();
+    await route.disconnect();
   });
 
   it("reconnects only the active SFU subscriber on the current route", async () => {

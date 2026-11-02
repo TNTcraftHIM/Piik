@@ -1375,18 +1375,6 @@ export function ViewerPage({
                     activePeerMetrics,
                     snapshot.metrics,
                   );
-                  if (
-                    probe.qualityResult === "rejected" &&
-                    signal.send({
-                      type: "route-failed",
-                      revision: probe.revision,
-                      phase: "prepare",
-                      connectionId: probe.candidateConnectionId,
-                    })
-                  ) {
-                    discardPendingPeer();
-                    return;
-                  }
                 }
               }
               provePendingPeer();

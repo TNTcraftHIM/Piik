@@ -461,11 +461,6 @@ export class ViewerSfuRoute {
             );
             if (slot.qualityResult === "approved") {
               this.sendPendingReady(slot);
-            } else if (
-              slot.qualityResult === "rejected" &&
-              this.routeFailed(slot.revision, "prepare")
-            ) {
-              this.clearPending();
             }
           }
         }
