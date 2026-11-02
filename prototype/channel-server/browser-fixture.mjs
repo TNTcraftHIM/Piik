@@ -39,6 +39,7 @@ function captureProbe(name) {
     console.warn = (...args) => { warnings.push(args.map(value => String(value))); if (warnings.length > 20) warnings.shift(); warn(...args); };
     const blockedPeers = new Set(), pairPeers = new Map(), flowBindings = new Map(), flowStreams = new Map(), senders = [], channelOwners = new Map();
     let videoStall = null;
+    let retainedSource = null;
     let blockedOffers = 0;
     const record = (direction, data) => {
       const event = JSON.parse(data);
@@ -277,8 +278,9 @@ function captureProbe(name) {
         return report && { id: report.id, frames: report.framesDecoded, timestamp: report.timestamp,
           width: report.frameWidth, height: report.frameHeight };
       },
-      async sourceStats(publicationId) {
-        const rows = [], incoming = [];
+      async sourceStats(publicationId, retainPeerId) {
+        const rows = [], incoming = [], statsErrors = [];
+        let outputs = [];
         const snapshot = window.__channelGate.snapshot();
         for (const pair of snapshot.state.pairs) {
           for (const flow of pair.incoming.filter(flow => flow.publicationId === publicationId)) {
@@ -287,7 +289,12 @@ function captureProbe(name) {
               const pc = peers.find(pc => pc.connectionState === 'connected' && pc.getReceivers().some(receiver => receiver.track === track));
               const receiver = pc?.getReceivers().find(receiver => receiver.track === track);
               if (!receiver) continue;
-              const scoped = await receiver.getStats(), all = await pc.getStats();
+              const results = await Promise.allSettled([Promise.resolve().then(() => receiver.getStats()),
+                Promise.resolve().then(() => pc.getStats())]);
+              results.forEach((result, index) => { if (result.status === 'rejected') statsErrors.push({ flowId: flow.id,
+                api: ['receiver.getStats', 'pc.getStats'][index], error: String(result.reason), connectionState: pc.connectionState }); });
+              const scoped = results[0].status === 'fulfilled' ? results[0].value : new Map();
+              const all = results[1].status === 'fulfilled' ? results[1].value : new Map();
               for (const report of scoped.values()) if (report.type === 'inbound-rtp') incoming.push({
                 flowId: flow.id, pairId: pair.id, peerId: pair.peerId, inputFlowId: flow.inputFlowId, selected: flow.selected,
                 streamId: input.stream.id, track: trackState(track), pcIndex: peers.indexOf(pc),
@@ -302,55 +309,79 @@ function captureProbe(name) {
             const streamId = flowStreams.get(flow.id);
             for (const output of senders.filter(output => output.pc.connectionState === 'connected'
               && output.streams.includes(streamId) && output.sender.track?.kind === 'video')) {
-              const scoped = await output.sender.getStats(), all = await output.pc.getStats();
-              const parameters = output.sender.getParameters();
-              const encodings = parameters.encodings.map(({ rid, active, scaleResolutionDownBy, maxBitrate, maxFramerate }) =>
-                ({ rid: rid ?? null, active: active ?? null, scaleResolutionDownBy: scaleResolutionDownBy ?? null,
-                  maxBitrate: maxBitrate ?? null, maxFramerate: maxFramerate ?? null }));
-              const extensions = parameters.headerExtensions.map(extension => extension.uri);
-              const headerExtensions = {
-                transportWideCc: extensions.some(uri => uri.includes('transport-wide-cc')),
-                mid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:mid'),
-                rid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id'),
-                repairedRid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id'),
-              };
-              for (const scopedReport of scoped.values()) {
-                if (scopedReport.type !== 'outbound-rtp' || scopedReport.kind !== 'video') continue;
-                const report = all.get(scopedReport.id);
-                if (!report) continue;
-                const transport = all.get(report.transportId);
-                const selectedPair = all.get(transport?.selectedCandidatePairId);
-                const remote = all.get(report.remoteId), source = all.get(report.mediaSourceId);
-                rows.push({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId, selected: flow.selected, inputFlowId: flow.inputFlowId,
-                  streamId, track: output.sender.track ? trackState(output.sender.track) : null, pcIndex: peers.indexOf(output.pc),
-                  senderId: output.id, statsId: report.id, timestamp: report.timestamp,
-                  mid: report.mid ?? null, ssrc: report.ssrc ?? null,
-                  codec: all.get(report.codecId)?.mimeType ?? null, encodings, headerExtensions,
-                  rid: report.rid ?? null, framesEncoded: report.framesEncoded ?? null,
-                  frameWidth: report.frameWidth ?? null, frameHeight: report.frameHeight ?? null,
-                  bytesSent: report.bytesSent ?? null, packetsSent: report.packetsSent ?? null,
-                  retransmittedPacketsSent: report.retransmittedPacketsSent ?? null,
-                  retransmittedBytesSent: report.retransmittedBytesSent ?? null,
-                  qualityLimitationReason: report.qualityLimitationReason ?? null,
-                  encoderImplementation: report.encoderImplementation ?? null,
-                  keyFramesEncoded: report.keyFramesEncoded ?? null, pliCount: report.pliCount ?? null,
-                  nackCount: report.nackCount ?? null, availableOutgoingBitrate: selectedPair?.availableOutgoingBitrate ?? null,
-                  remoteInbound: remote ? { packetsLost: remote.packetsLost ?? null, fractionLost: remote.fractionLost ?? null,
-                    jitter: remote.jitter ?? null, roundTripTime: remote.roundTripTime ?? null,
-                    totalRoundTripTime: remote.totalRoundTripTime ?? null,
-                    roundTripTimeMeasurements: remote.roundTripTimeMeasurements ?? null,
-                    reportsReceived: remote.reportsReceived ?? null } : null,
-                  selectedPair: selectedPair ? { currentRoundTripTime: selectedPair.currentRoundTripTime ?? null,
-                    totalRoundTripTime: selectedPair.totalRoundTripTime ?? null,
-                    packetsSent: selectedPair.packetsSent ?? null, packetsReceived: selectedPair.packetsReceived ?? null,
-                    bytesSent: selectedPair.bytesSent ?? null, bytesReceived: selectedPair.bytesReceived ?? null } : null,
-                  mediaSource: source ? { frames: source.frames ?? null, framesPerSecond: source.framesPerSecond ?? null,
-                    width: source.width ?? null, height: source.height ?? null } : null });
-              }
+              outputs.push({ publicationId, pair, flow, streamId, output, track: output.sender.track, statsIds: [] });
             }
           }
         }
-        return { sourceCollectedTime: Date.now(), rows, incoming };
+        if (retainPeerId !== undefined) {
+          if (retainedSource?.publicationId !== publicationId || retainedSource?.pair.peerId !== retainPeerId)
+            retainedSource = outputs.find(value => value.pair.peerId === retainPeerId && value.flow.selected) ?? null;
+          outputs = retainedSource ? [retainedSource] : [];
+        }
+        for (const retained of outputs) {
+          const { pair, flow, streamId, output, track, statsIds } = retained;
+          const results = await Promise.allSettled([Promise.resolve().then(() => output.sender.getStats()),
+            Promise.resolve().then(() => output.pc.getStats()), Promise.resolve().then(() => output.sender.getParameters())]);
+          results.forEach((result, index) => { if (result.status === 'rejected') statsErrors.push({ flowId: flow.id, senderId: output.id,
+            api: ['sender.getStats', 'pc.getStats', 'sender.getParameters'][index], error: String(result.reason), connectionState: output.pc.connectionState }); });
+          const scoped = results[0].status === 'fulfilled' ? results[0].value : new Map();
+          const all = results[1].status === 'fulfilled' ? results[1].value : new Map();
+          const parameters = results[2].status === 'fulfilled' ? results[2].value : null;
+          const encodings = parameters?.encodings.map(({ rid, active, scaleResolutionDownBy, maxBitrate, maxFramerate }) =>
+            ({ rid: rid ?? null, active: active ?? null, scaleResolutionDownBy: scaleResolutionDownBy ?? null,
+              maxBitrate: maxBitrate ?? null, maxFramerate: maxFramerate ?? null })) ?? null;
+          const extensions = parameters?.headerExtensions.map(extension => extension.uri);
+          const headerExtensions = extensions ? {
+            transportWideCc: extensions.some(uri => uri.includes('transport-wide-cc')),
+            mid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:mid'),
+            rid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id'),
+            repairedRid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id'),
+          } : null;
+          for (const report of scoped.values()) if (report.type === 'outbound-rtp' && report.kind === 'video'
+            && output.sender.track === track && !statsIds.includes(report.id)) statsIds.push(report.id);
+          for (const id of statsIds) {
+            const report = all.get(id);
+            if (!report) continue;
+            const transport = all.get(report.transportId);
+            const selectedPair = all.get(transport?.selectedCandidatePairId);
+            const remote = all.get(report.remoteId), source = all.get(report.mediaSourceId);
+            rows.push({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId, selected: flow.selected, inputFlowId: flow.inputFlowId,
+              streamId, track: trackState(track), senderTrack: output.sender.track ? trackState(output.sender.track) : null,
+              pcIndex: peers.indexOf(output.pc), connectionState: output.pc.connectionState,
+              iceConnectionState: output.pc.iceConnectionState, dtlsState: transport?.dtlsState ?? null,
+              retired: !snapshot.state.pairs.some(pair => pair.outgoing.some(value => value.id === flow.id)),
+              senderId: output.id, statsId: report.id, timestamp: report.timestamp,
+              mid: report.mid ?? null, ssrc: report.ssrc ?? null,
+              codec: all.get(report.codecId)?.mimeType ?? null, encodings, headerExtensions,
+              rid: report.rid ?? null, framesEncoded: report.framesEncoded ?? null,
+              framesSent: report.framesSent ?? null, targetBitrate: report.targetBitrate ?? null,
+              frameWidth: report.frameWidth ?? null, frameHeight: report.frameHeight ?? null,
+              bytesSent: report.bytesSent ?? null, packetsSent: report.packetsSent ?? null,
+              retransmittedPacketsSent: report.retransmittedPacketsSent ?? null,
+              retransmittedBytesSent: report.retransmittedBytesSent ?? null,
+              qualityLimitationReason: report.qualityLimitationReason ?? null,
+              encoderImplementation: report.encoderImplementation ?? null,
+              keyFramesEncoded: report.keyFramesEncoded ?? null, pliCount: report.pliCount ?? null,
+              nackCount: report.nackCount ?? null, availableOutgoingBitrate: selectedPair?.availableOutgoingBitrate ?? null,
+              remoteInbound: remote ? { packetsLost: remote.packetsLost ?? null, fractionLost: remote.fractionLost ?? null,
+                jitter: remote.jitter ?? null, roundTripTime: remote.roundTripTime ?? null,
+                totalRoundTripTime: remote.totalRoundTripTime ?? null,
+                roundTripTimeMeasurements: remote.roundTripTimeMeasurements ?? null,
+                reportsReceived: remote.reportsReceived ?? null } : null,
+              selectedPair: selectedPair ? { currentRoundTripTime: selectedPair.currentRoundTripTime ?? null,
+                totalRoundTripTime: selectedPair.totalRoundTripTime ?? null,
+                packetsSent: selectedPair.packetsSent ?? null, packetsReceived: selectedPair.packetsReceived ?? null,
+                bytesSent: selectedPair.bytesSent ?? null, bytesReceived: selectedPair.bytesReceived ?? null } : null,
+              mediaSource: source ? { trackIdentifier: source.trackIdentifier ?? null,
+                frames: source.frames ?? null, framesPerSecond: source.framesPerSecond ?? null,
+                width: source.width ?? null, height: source.height ?? null } : null });
+          }
+        }
+        return { sourceCollectedTime: Date.now(), rows, incoming, statsErrors,
+          retained: retainPeerId !== undefined && retainedSource ? { flowId: retainedSource.flow.id, senderId: retainedSource.output.id,
+            statsIds: retainedSource.statsIds, track: trackState(retainedSource.track),
+            connectionState: retainedSource.output.pc.connectionState,
+            missingStatsIds: retainedSource.statsIds.filter(id => !rows.some(row => row.statsId === id)) } : null };
       },
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
@@ -432,19 +463,23 @@ const view = index => evaluate(index, `(() => {
       subscriptions: value.state.subscriptions, pairs: value.state.pairs, voice: value.state.voice, files: value.state.files },
     streams: [...value.streams.keys()], error: value.error };
 })()`);
-const picture = (index, publicationId) => evaluate(index, `(() => {
+const picture = async (index, publicationId, observe) => {
+  const value = await evaluate(index, `(() => {
   const stream = ${hook}.snapshot().streams.get(${JSON.stringify(publicationId)});
   const video = [...document.querySelectorAll('video')].find(element => element.srcObject === stream);
   return { received: !!stream, frames: video?.getVideoPlaybackQuality().totalVideoFrames ?? 0,
     time: video?.currentTime ?? 0, live: stream?.getVideoTracks().some(track => track.readyState === 'live') ?? false };
 })()`);
-async function playing(index, publicationId) {
-  return until(`browser ${index} decodes ${publicationId}`, () => picture(index, publicationId),
+  await observe?.(value);
+  return value;
+};
+async function playing(index, publicationId, observe) {
+  return until(`browser ${index} decodes ${publicationId}`, () => picture(index, publicationId, observe),
     sample => sample.live && sample.frames > 0);
 }
-async function progressing(index, publicationId) {
-  let before = await playing(index, publicationId);
-  return until(`browser ${index} advances ${publicationId}`, () => picture(index, publicationId),
+async function progressing(index, publicationId, observe) {
+  let before = await playing(index, publicationId, observe);
+  return until(`browser ${index} advances ${publicationId}`, () => picture(index, publicationId, observe),
     sample => {
       const advanced = sample.live && sample.frames > before.frames && sample.time > before.time;
       // A repaired route can replace the player and reset its frame/time counters.
