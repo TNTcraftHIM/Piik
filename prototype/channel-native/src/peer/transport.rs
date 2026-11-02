@@ -97,8 +97,8 @@ pub(super) struct UdpIo {
 impl UdpIo {
     pub(super) fn new(socket: UdpSocket) -> std::io::Result<Self> {
         let state = noq_udp::UdpSocketState::new((&socket).into())?;
-        if state.recv_buffer_size((&socket).into()).unwrap_or(0) < 1024 * 1024 {
-            let _ = state.set_recv_buffer_size((&socket).into(), 1024 * 1024);
+        if state.recv_buffer_size((&socket).into()).unwrap_or(0) < 2 * 1024 * 1024 {
+            let _ = state.set_recv_buffer_size((&socket).into(), 2 * 1024 * 1024);
         }
         Ok(Self { socket, state })
     }

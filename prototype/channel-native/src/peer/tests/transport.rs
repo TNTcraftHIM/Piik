@@ -16,7 +16,7 @@ async fn receive_buffer_request_raises_small_and_retains_larger_supplied_values(
     for bind in ["127.0.0.1:0", "[::1]:0"] {
         let reference = std::net::UdpSocket::bind(bind)?;
         let reference_ref = socket2::SockRef::from(&reference);
-        reference_ref.set_recv_buffer_size(1024 * 1024)?;
+        reference_ref.set_recv_buffer_size(2 * 1024 * 1024)?;
         let expected = reference_ref.recv_buffer_size()?;
         let small = std::net::UdpSocket::bind(bind)?;
         socket2::SockRef::from(&small).set_recv_buffer_size(4096)?;
@@ -27,7 +27,7 @@ async fn receive_buffer_request_raises_small_and_retains_larger_supplied_values(
             "small receive buffer was not raised to the OS-accepted request"
         );
         let large = std::net::UdpSocket::bind(bind)?;
-        socket2::SockRef::from(&large).set_recv_buffer_size(2 * 1024 * 1024)?;
+        socket2::SockRef::from(&large).set_recv_buffer_size(4 * 1024 * 1024)?;
         let supplied = socket2::SockRef::from(&large).recv_buffer_size()?;
         large.set_nonblocking(true)?;
         let owner = UdpIo::new(UdpSocket::from_std(large)?)?;
