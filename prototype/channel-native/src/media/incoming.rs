@@ -33,6 +33,32 @@ struct AccessUnit<D> {
     latest_time: u64,
     discontinuity: bool,
     codec: PhantomData<D>,
+    trace: Option<AuTrace>,
+}
+#[derive(Default)]
+struct AuTrace {
+    ssrc: u32,
+    packets: u64,
+    complete: u64,
+    keyframes: u64,
+    malformed: u64,
+    expired: u64,
+}
+impl<D> Drop for AccessUnit<D> {
+    fn drop(&mut self) {
+        if let Some(t) = &self.trace {
+            eprintln!(
+                "PIIK_MEDIA_TRACE incoming {}",
+                serde_json::json!({
+                    "atMs":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
+                    "stage":"drop", "ssrc":t.ssrc, "packets":t.packets,
+                    "complete":t.complete, "keyframes":t.keyframes,
+                    "malformed":t.malformed, "expired":t.expired,
+                    "queued":self.packets.len(), "next":self.next, "latestTime":self.latest_time,
+                })
+            );
+        }
+    }
 }
 struct Complete {
     data: Vec<u8>,
@@ -59,9 +85,30 @@ impl<D: AuCodec> AccessUnit<D> {
             latest_time: 0,
             discontinuity: false,
             codec: PhantomData,
+            trace: std::env::var_os("PIIK_MEDIA_TRACE").map(|_| AuTrace::default()),
+        }
+    }
+    fn trace_complete(&mut self, timestamp: u32, keyframe: bool, waiting: bool) {
+        if let Some(t) = &mut self.trace {
+            t.complete += 1;
+            t.keyframes += u64::from(keyframe);
+            if t.complete == 1 || keyframe && t.keyframes == 1 {
+                eprintln!(
+                    "PIIK_MEDIA_TRACE incoming {}",
+                    serde_json::json!({
+                        "atMs":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis(),
+                        "stage":"complete", "ssrc":t.ssrc, "timestamp":timestamp,
+                        "keyframe":keyframe, "waiting":waiting, "complete":t.complete,
+                    })
+                );
+            }
         }
     }
     fn push(&mut self, sequence: u64, time: u64, packet: Packet) {
+        if let Some(t) = &mut self.trace {
+            t.ssrc = packet.header.ssrc;
+            t.packets += 1;
+        }
         if self.next.is_some_and(|(next, _)| sequence < next) {
             return;
         }
@@ -165,6 +212,9 @@ impl<D: AuCodec> AccessUnit<D> {
                 self.packets = self.packets.split_off(&(end + 1));
                 self.next = Some((end + 1, time));
                 if malformed {
+                    if let Some(t) = &mut self.trace {
+                        t.malformed += 1;
+                    }
                     self.discontinuity = true;
                     continue;
                 }
@@ -178,6 +228,9 @@ impl<D: AuCodec> AccessUnit<D> {
             let time = head.map_or(age, |(_, time)| time);
             if !self.expired(start, time) {
                 return Ok(None);
+            }
+            if let Some(t) = &mut self.trace {
+                t.expired += 1;
             }
             // Retire only the blocked AU/prefix. A later complete AU remains in this same drain.
             let successor = self
@@ -276,6 +329,8 @@ impl H264 {
                 }
             }
             let keyframe = idr && self.parameters.iter().all(|p| !p.is_empty());
+            self.builder
+                .trace_complete(sample.timestamp, keyframe, self.waiting);
             if sample.discontinuity && !keyframe {
                 self.waiting = true;
                 self.video.request_keyframe();
@@ -377,6 +432,8 @@ impl Vp8 {
                 continue;
             };
             let keyframe = first & 1 == 0;
+            self.builder
+                .trace_complete(sample.timestamp, keyframe, self.waiting);
             if sample.discontinuity && !keyframe {
                 self.waiting = true;
                 self.video.request_keyframe();
