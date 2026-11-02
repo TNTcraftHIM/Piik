@@ -362,6 +362,31 @@ test("App hosting uses its own participant while Browser rooms retain their page
     socket.receive({ type: "room_reply", roomId: policy.id, requestId: browse.requestId, result: { type: "done" } });
     await expect(creating).resolves.toBe(policy.id);
     expect(socket.sent.filter(command => command.type === "host_register")).toEqual([register]);
+    const metrics = { sessionId: crypto.randomUUID(), bindingId: crypto.randomUUID(), connections: [] };
+    const metricsState = structuredClone(session.getSnapshot().state!);
+    metricsState.channel.rooms[0].delivery!.bindingId = metrics.bindingId;
+    socket.receive({ type: "state", state: metricsState });
+    const beforeRead = socket.sent.length;
+    const reading = session.appConnectionMetrics("first");
+    const query = app.sent.at(-1)!;
+    expect(query).toMatchObject({ type: "connection_metrics", roomId: "first" });
+    app.receive({ id: query.id, result: metrics });
+    await expect(reading).resolves.toEqual(metrics);
+    expect(socket.sent).toHaveLength(beforeRead);
+    const abort = new AbortController();
+    const aborted = session.appConnectionMetrics("first", undefined, abort.signal);
+    const abortedReply = app.sent.at(-1)!;
+    const rejectedAbort = expect(aborted).rejects.toMatchObject({ name: "AbortError" });
+    abort.abort(); await rejectedAbort;
+    app.receive({ id: abortedReply.id, result: metrics });
+    expect(session.getSnapshot().appConnected).toBe(true);
+    const late = session.appConnectionMetrics("first"), rejectedLate = expect(late).rejects.toThrow("room_context_changed");
+    const lateReply = app.sent.at(-1)!;
+    metricsState.channel.rooms[0].authorized = false;
+    socket.receive({ type: "state", state: metricsState });
+    app.receive({ id: lateReply.id, result: metrics });
+    await rejectedLate;
+    expect(session.getSnapshot().error).toBeNull();
     socket.receive({ type: "host_bound", roomId: policy.id, bindingId: "native-binding" });
     socket.receive({ type: "host_input", roomId: policy.id, input: { bindingId: "native-binding", revision: 1, endpoints: {}, action: { type: "sync" } } });
     expect(host.dispatch).not.toHaveBeenCalled();
@@ -394,7 +419,7 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(socket.sent.filter(command => command.type === "host_stop")).toEqual([
       { type: "host_stop", roomId: localRoom.id, bindingId: "browser-binding" },
     ]);
-    expect(app.sent.map(command => command.type)).toEqual(["hello", "open"]);
+    expect(app.sent.map(command => command.type)).toEqual(["hello", "open", "connection_metrics", "connection_metrics", "connection_metrics"]);
   } finally { session.close(); }
 });
 

@@ -546,6 +546,16 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         "a valid instance token does not authorize another Origin"
     );
     let (mut page, _) = connect_async(upgrade(address, token)).await.unwrap();
+    page.send(Message::Text(
+        json!({"id":"metrics-before-hello","type":"connection_metrics","roomId":"unknown"})
+            .to_string()
+            .into(),
+    ))
+    .await
+    .unwrap();
+    let denied: Value =
+        serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap()).unwrap();
+    assert_eq!(denied["error"], "hello_required");
     let hello = |credential: &str| json!({"id":"hello","type":"hello","channelId":channel,"userId":user,"credential":credential,"name":"Owner"});
     page.send(Message::Text(hello(&guest_credential).to_string().into()))
         .await
@@ -743,6 +753,40 @@ async fn app_host_outlives_its_page_and_restores_rooms_only_after_real_admission
         "a second App cannot own the same approval data directory"
     );
     domain.room_turn(&room).await;
+    for (id, queried_room, publication, error) in [
+        ("metrics", room.clone(), None, None),
+        (
+            "metrics-other-room",
+            "unknown".into(),
+            None,
+            Some("room_unavailable"),
+        ),
+        (
+            "metrics-other-publication",
+            room.clone(),
+            Some(Uuid::new_v4()),
+            Some("publication_unavailable"),
+        ),
+    ] {
+        page.send(Message::Text(json!({"id":id,"type":"connection_metrics","roomId":queried_room,"publicationId":publication}).to_string().into())).await.unwrap();
+        let reply: Value =
+            serde_json::from_str(&page.next().await.unwrap().unwrap().into_text().unwrap())
+                .unwrap();
+        assert_eq!(reply["id"], id);
+        if let Some(error) = error {
+            assert_eq!(reply["error"], error);
+        } else {
+            assert!(
+                reply.get("error").is_none(),
+                "metrics failed: {}",
+                reply["error"]
+            );
+            assert_eq!(
+                reply["result"],
+                json!({"sessionId":native,"bindingId":binding,"connections":[]})
+            );
+        }
+    }
     // Stopping an already-ended or foreign page's ID only consults this socket's
     // lease map, so an absent lease is an idempotent no-op.
     page.send(Message::Text(

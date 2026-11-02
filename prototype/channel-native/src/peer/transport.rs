@@ -1,4 +1,5 @@
 //! One owned sans-I/O pump. Room/flow policy and bounded producers remain outside it.
+use super::metrics::StreamCounters;
 use super::{server_udp::ServerUdp, Event};
 use crate::media::{MediaKind, RtpCodec, RtpCodecParameters};
 use crate::peer::{IceServer, PeerState};
@@ -23,6 +24,7 @@ use str0m::{
     media::{Direction, Frequency, Mid, Rid, Rids},
     net::{Protocol, Receive},
     rtp::{RtpWrite, SeqNo},
+    stats::{MediaEgressStats, MediaIngressStats, PeerStats},
     Candidate, Event as RtcEvent, Input, Output, Rtc,
 };
 use tokio::{
@@ -118,6 +120,7 @@ pub(crate) struct Transport {
     tx: mpsc::Sender<Command>,
 }
 struct Outgoing {
+    since: Instant,
     codec: RtpCodec,
     kind: MediaKind,
     stream: String,
@@ -209,10 +212,29 @@ pub(crate) enum TrackEvent {
     End,
 }
 struct TrackState {
+    since: Instant,
     track: Track,
     tx: mpsc::Sender<TrackEvent>,
 }
+pub(super) struct TransportStreamMetric {
+    pub stream: String,
+    pub outgoing: bool,
+    pub media: MediaKind,
+    pub counters: StreamCounters,
+}
+pub(super) struct TransportMetrics {
+    pub connection_id: Uuid,
+    pub sample_timestamp_ms: Option<f64>,
+    pub age_ms: Option<f64>,
+    pub rtt_ms: Option<f64>,
+    pub bwe_bps: Option<f64>,
+    pub streams: Vec<TransportStreamMetric>,
+}
 pub(crate) struct Engine {
+    stats_origin: Instant,
+    peer_stats: Option<PeerStats>,
+    ingress_stats: HashMap<(Mid, Option<Rid>), MediaIngressStats>,
+    egress_stats: HashMap<(Mid, Option<Rid>), MediaEgressStats>,
     rtc: Rtc,
     handle: Transport,
     sockets: Vec<Arc<UdpIo>>,
@@ -434,7 +456,8 @@ impl Runtime {
                 ..Default::default()
             },
         );
-        let mut rtc = config.build(Instant::now());
+        let stats_origin = Instant::now();
+        let mut rtc = config.build(stats_origin);
         rtc.bwe()
             .set_desired_bitrate(Bitrate::bps(desired_bps(*demand.borrow_and_update())));
         let interfaces = netwatch::interfaces::State::new().await;
@@ -486,6 +509,10 @@ impl Runtime {
         let urls = discovery::urls(ice);
         let (turn_ready, turn_setup) = mpsc::channel(super::MAX_ICE_CANDIDATES);
         let engine = Engine {
+            stats_origin,
+            peer_stats: None,
+            ingress_stats: HashMap::new(),
+            egress_stats: HashMap::new(),
             rtc,
             handle: handle.clone(),
             sockets,
@@ -606,6 +633,9 @@ fn add_reader(
 }
 
 impl Transport {
+    pub(super) async fn connection_metrics(&self) -> Result<TransportMetrics> {
+        self.call(|engine| Ok(engine.connection_metrics())).await
+    }
     async fn call<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut Engine) -> Result<T> + Send + 'static,
@@ -658,6 +688,7 @@ impl Transport {
                         None,
                         (!simulcast.send.is_empty()).then_some(simulcast),
                     ));
+                    output.since = Instant::now();
                 }
             }
             let Some((offer, pending)) = changes.apply() else {
@@ -710,6 +741,7 @@ impl Transport {
             e.clocks
                 .retain(|stream, _| remote_media.values().any(|(current, _)| current == stream));
             e.remote_media = remote_media;
+            e.prune_stats();
             e.remote = true;
             e.negotiated = true;
             e.outputs.retain(|_, out| {
@@ -735,6 +767,7 @@ impl Transport {
                     out.mid = None;
                 }
             }
+            e.prune_stats();
             Ok(())
         })
         .await
@@ -799,6 +832,7 @@ impl Transport {
             e.outputs.insert(
                 id,
                 Outgoing {
+                    since: Instant::now(),
                     codec,
                     kind,
                     stream,
@@ -864,6 +898,7 @@ impl Transport {
                     }
                 }
             }
+            e.prune_stats();
             e.emit(Event::Negotiate(e.handle.pair));
             Ok(())
         })
@@ -1369,6 +1404,7 @@ impl Engine {
                 }
             }
             RtcEvent::PeerStats(stats) => {
+                self.peer_stats = Some(stats.clone());
                 if stats.egress_loss_fraction.is_some() {
                     self.reported = true;
                 }
@@ -1376,6 +1412,16 @@ impl Engine {
                     self.estimate = bps.as_f64();
                 }
                 self.publish_estimate();
+            }
+            RtcEvent::MediaIngressStats(stats) => {
+                if self.active_ingress(&stats) {
+                    self.ingress_stats.insert((stats.mid, stats.rid), stats);
+                }
+            }
+            RtcEvent::MediaEgressStats(stats) => {
+                if self.active_egress(&stats) {
+                    self.egress_stats.insert((stats.mid, stats.rid), stats);
+                }
             }
             RtcEvent::EgressBitrateEstimate(BweKind::Twcc { estimate, .. }) => {
                 self.estimate = estimate.as_f64();
@@ -1483,6 +1529,7 @@ impl Engine {
                     self.tracks.insert(
                         mid,
                         TrackState {
+                            since: Instant::now(),
                             track: track.clone(),
                             tx,
                         },
@@ -1521,8 +1568,145 @@ impl Engine {
                     self.sender_reports
                         .retain(|_, (mid, _, _)| *mid != change.mid);
                 }
+                self.prune_stats();
             }
             _ => {}
+        }
+    }
+    fn active_ingress(&self, stats: &MediaIngressStats) -> bool {
+        self.tracks.get(&stats.mid).is_some_and(|owner| {
+            stats.timestamp >= owner.since
+                && match stats.rid {
+                    None => owner.track.rids.is_empty(),
+                    Some(rid) => {
+                        owner.track.rids.contains(&rid.to_string())
+                            || owner
+                                .track
+                                .encodings
+                                .lock()
+                                .unwrap()
+                                .values()
+                                .any(|(known, _)| *known == rid.to_string())
+                    }
+                }
+        })
+    }
+    fn active_egress(&self, stats: &MediaEgressStats) -> bool {
+        self.outputs.values().any(|owner| {
+            !owner.retired
+                && owner.mid == Some(stats.mid)
+                && stats.timestamp >= owner.since
+                && match stats.rid {
+                    None => owner.rids.iter().all(String::is_empty),
+                    Some(rid) => owner.rids.contains(&rid.to_string()),
+                }
+        })
+    }
+    fn prune_stats(&mut self) {
+        let ingress: Vec<_> = self
+            .ingress_stats
+            .iter()
+            .filter_map(|(key, stats)| (!self.active_ingress(stats)).then_some(*key))
+            .collect();
+        let egress: Vec<_> = self
+            .egress_stats
+            .iter()
+            .filter_map(|(key, stats)| (!self.active_egress(stats)).then_some(*key))
+            .collect();
+        for key in ingress {
+            self.ingress_stats.remove(&key);
+        }
+        for key in egress {
+            self.egress_stats.remove(&key);
+        }
+    }
+    fn connection_metrics(&self) -> TransportMetrics {
+        let now = Instant::now();
+        let time = |at: Instant| {
+            at.saturating_duration_since(self.stats_origin)
+                .as_secs_f64()
+                * 1000.0
+        };
+        let age = |at: Instant| now.saturating_duration_since(at).as_secs_f64() * 1000.0;
+        let mut streams = Vec::new();
+        for stats in self
+            .ingress_stats
+            .values()
+            .filter(|stats| self.active_ingress(stats))
+        {
+            let track = &self.tracks[&stats.mid].track;
+            let codec = track
+                .encodings
+                .lock()
+                .unwrap()
+                .values()
+                .find(|(rid, _)| *rid == stats.rid.map(|rid| rid.to_string()).unwrap_or_default())
+                .map(|(_, params)| params.rtp_codec.clone());
+            streams.push(TransportStreamMetric {
+                stream: track.stream.clone(),
+                outgoing: false,
+                media: track.kind,
+                counters: StreamCounters {
+                    mid: stats.mid.to_string(),
+                    rid: stats.rid.map(|rid| rid.to_string()),
+                    codec: codec.as_ref().map(|codec| codec.mime_type.clone()),
+                    sample_timestamp_ms: time(stats.timestamp),
+                    age_ms: age(stats.timestamp),
+                    bytes: stats.bytes,
+                    packets: stats.packets,
+                    rtt_ms: stats.rtt.map(|rtt| rtt.as_secs_f64() * 1000.0),
+                    loss_fraction: stats.loss,
+                    jitter_ms: codec.filter(|codec| codec.clock_rate > 0).map(|codec| {
+                        f64::from(stats.jitter) * 1000.0 / f64::from(codec.clock_rate)
+                    }),
+                },
+            });
+        }
+        for stats in self
+            .egress_stats
+            .values()
+            .filter(|stats| self.active_egress(stats))
+        {
+            let output = self
+                .outputs
+                .values()
+                .find(|output| !output.retired && output.mid == Some(stats.mid))
+                .unwrap();
+            streams.push(TransportStreamMetric {
+                stream: output.stream.clone(),
+                outgoing: true,
+                media: output.kind,
+                counters: StreamCounters {
+                    mid: stats.mid.to_string(),
+                    rid: stats.rid.map(|rid| rid.to_string()),
+                    codec: Some(output.codec.mime_type.clone()),
+                    sample_timestamp_ms: time(stats.timestamp),
+                    age_ms: age(stats.timestamp),
+                    bytes: stats.bytes,
+                    packets: stats.packets,
+                    rtt_ms: stats.rtt.map(|rtt| rtt.as_secs_f64() * 1000.0),
+                    loss_fraction: stats.loss,
+                    jitter_ms: stats
+                        .remote
+                        .as_ref()
+                        .filter(|_| output.codec.clock_rate > 0)
+                        .map(|remote| {
+                            f64::from(remote.jitter) * 1000.0 / f64::from(output.codec.clock_rate)
+                        }),
+                },
+            });
+        }
+        TransportMetrics {
+            connection_id: self.handle.instance,
+            sample_timestamp_ms: self.peer_stats.as_ref().map(|stats| time(stats.timestamp)),
+            age_ms: self.peer_stats.as_ref().map(|stats| age(stats.timestamp)),
+            rtt_ms: self
+                .peer_stats
+                .as_ref()
+                .and_then(|stats| stats.rtt)
+                .map(|rtt| rtt.as_secs_f64() * 1000.0),
+            bwe_bps: self.bandwidth.borrow().feedback(),
+            streams,
         }
     }
     fn publish_estimate(&mut self) {

@@ -645,6 +645,10 @@ enum Operation {
     Open {
         policy: String,
     },
+    ConnectionMetrics {
+        room_id: String,
+        publication_id: Option<Uuid>,
+    },
     Targets,
     Microphones,
     Preview {
@@ -931,6 +935,30 @@ async fn connection(
                             }
                             Operation::Open { policy } => match &host {
                                 Some(commands) => open(commands, &policy).await,
+                                None => Err(anyhow!("hello_required")),
+                            },
+                            Operation::ConnectionMetrics {
+                                room_id,
+                                publication_id,
+                            } => match &host {
+                                Some(commands) if operations.is_empty() => {
+                                    let commands = commands.clone();
+                                    operations.push(async move {
+                                        let measured = timeout(IO_TIMEOUT, async {
+                                            let (result, response) = oneshot::channel();
+                                            commands.send(HostCommand::ConnectionMetrics { room_id, publication_id, result }).await.map_err(|_| anyhow!("hosting_unavailable"))?;
+                                            let measured = response.await?.map_err(anyhow::Error::msg)?;
+                                            Ok::<_, anyhow::Error>(serde_json::to_value(measured)?)
+                                        }).await;
+                                        match measured {
+                                            Ok(Ok(value)) => json!({"id":request.id,"result":value}),
+                                            Ok(Err(error)) => json!({"id":request.id,"error":error.to_string()}),
+                                            Err(_) => json!({"id":request.id,"error":"request_timeout"}),
+                                        }
+                                    }.boxed());
+                                    continue;
+                                }
+                                Some(_) => Err(anyhow!("request_pending")),
                                 None => Err(anyhow!("hello_required")),
                             },
                             Operation::Targets => match &host {

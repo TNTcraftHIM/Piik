@@ -5,6 +5,84 @@ mod admission;
 mod bulk;
 #[path = "history.rs"]
 mod history;
+
+#[tokio::test]
+async fn metrics_keep_sdk_sample_clock_and_discard_retired_mid_events() -> Result<()> {
+    let runtime = Runtime::new(None);
+    let (pc, _) = crate::peer::tests::support::endpoint(&runtime, Uuid::new_v4(), None).await?;
+    let output = Uuid::new_v4();
+    pc.add_output(
+        output,
+        crate::peer::codec(),
+        MediaKind::Audio,
+        "sound".into(),
+        vec![],
+    )
+    .await?;
+    pc.offer().await?;
+    pc.call(move |engine| {
+        let mid = engine.outputs[&output].mid.context("missing offered MID")?;
+        let stats = MediaEgressStats {
+            mid,
+            rid: None,
+            bytes: 4096,
+            packets: 16,
+            firs: 0,
+            plis: 0,
+            nacks: 0,
+            rtt: Some(Duration::from_millis(12)),
+            loss: Some(0.25),
+            timestamp: Instant::now(),
+            remote: None,
+        };
+        engine.event(RtcEvent::MediaEgressStats(stats));
+        Ok(())
+    })
+    .await?;
+    let first = pc.connection_metrics().await?;
+    ensure!(first.streams.len() == 1);
+    ensure!(first.streams[0].counters.bytes == 4096);
+    ensure!(first.streams[0].counters.rtt_ms == Some(12.0));
+    ensure!(
+        first.bwe_bps.is_none(),
+        "startup budget is not measured BWE"
+    );
+    let second = pc.connection_metrics().await?;
+    ensure!(first.connection_id == second.connection_id);
+    ensure!(
+        first.streams[0].counters.sample_timestamp_ms
+            == second.streams[0].counters.sample_timestamp_ms
+    );
+    ensure!(second.streams[0].counters.age_ms >= first.streams[0].counters.age_ms);
+    pc.retire_output(output).await?;
+    pc.call(move |engine| {
+        ensure!(engine.egress_stats.is_empty());
+        let mid = engine.outputs[&output].mid.context("missing retired MID")?;
+        engine.event(RtcEvent::MediaEgressStats(MediaEgressStats {
+            mid,
+            rid: None,
+            bytes: 9999,
+            packets: 99,
+            firs: 0,
+            plis: 0,
+            nacks: 0,
+            rtt: None,
+            loss: None,
+            timestamp: Instant::now(),
+            remote: None,
+        }));
+        ensure!(
+            engine.egress_stats.is_empty(),
+            "late event revived retired MID"
+        );
+        Ok(())
+    })
+    .await?;
+    ensure!(pc.connection_metrics().await?.streams.is_empty());
+    pc.close().await?;
+    runtime.close().await;
+    Ok(())
+}
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn whole_au_admission_and_immediate_retirement_preserve_other_senders() -> Result<()> {
     let receipt = admission::run().await?;

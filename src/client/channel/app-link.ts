@@ -13,6 +13,23 @@ const identitySchema = z.object({ service: z.literal("piik-channel-app"), protoc
 const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
   version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
+const measured = z.number().finite().nonnegative();
+const nativeStreamMetricSchema = z.object({
+  flowId: z.uuid(), publicationId: z.uuid(), selected: z.boolean(),
+  direction: z.enum(["send", "receive"]), media: z.enum(["audio", "video"]),
+  mid: z.string(), rid: z.string().nullable(), codec: z.string().nullable(),
+  sampleTimestampMs: measured, ageMs: measured, bytes: measured, packets: measured,
+  rttMs: measured.nullable(), lossFraction: measured.max(1).nullable(), jitterMs: measured.nullable(),
+}).strict();
+export const nativeConnectionMetricsSchema = z.object({
+  sessionId: z.uuid(), bindingId: z.uuid(), connections: z.array(z.object({
+    pairId: z.uuid(), connectionId: z.uuid(), peerId: z.uuid(),
+    sampleTimestampMs: measured.nullable(), ageMs: measured.nullable(),
+    rttMs: measured.nullable(), bweBps: measured.nullable(), streams: z.array(nativeStreamMetricSchema),
+  }).strict()),
+}).strict();
+/** SDK sample clocks belong to each Native connectionId, never Browser performance time. */
+export type NativeConnectionMetrics = z.infer<typeof nativeConnectionMetricsSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
   processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();
 export type NativeCaptureSources = z.infer<typeof captureSourcesSchema>;
@@ -141,12 +158,21 @@ export class ChannelApp {
     socket.onerror = () => { /* Close retires the connection and its requests. */ };
   }
 
-  private request<T>(command: AppCommand, id: string = crypto.randomUUID()): Promise<T> {
+  private request<T>(command: AppCommand, id: string = crypto.randomUUID(), signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) return Promise.reject(signal.reason);
     if (this.socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error("app_disconnected"));
-    return new Promise((resolve, reject) => {
+    const abort = () => { this.requests.get(id)?.reject(signal!.reason); this.requests.delete(id); };
+    return new Promise<T>((resolve, reject) => {
       this.requests.set(id, { command, resolve: value => resolve(value as T), reject });
+      signal?.addEventListener("abort", abort, { once: true });
       this.socket.send(JSON.stringify({ ...command, id }));
-    });
+    }).finally(() => { signal?.removeEventListener("abort", abort); });
+  }
+
+  async connectionMetrics(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics> {
+    signal?.throwIfAborted();
+    if (!this.connected) throw new Error("app_disconnected");
+    return nativeConnectionMetricsSchema.parse(await this.request({ type: "connection_metrics", roomId, publicationId }, crypto.randomUUID(), signal));
   }
 
   async open(policy: string): Promise<RoomSummary> {

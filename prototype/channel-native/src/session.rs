@@ -4,7 +4,9 @@ use crate::{
     backup::RoomSnapshot,
     capture::{Settings, Target},
     hosted_room::HostedRoom,
-    peer::{CaptureInput, CaptureLease, CaptureScope, NativeEvent, NativePeers},
+    peer::{
+        CaptureInput, CaptureLease, CaptureScope, NativeConnectionMetrics, NativeEvent, NativePeers,
+    },
 };
 use anyhow::{anyhow, bail, Context, Result};
 use futures_util::{SinkExt, StreamExt};
@@ -381,6 +383,11 @@ fn capture_binding(state: &Snapshot, room_id: &str) -> Option<Uuid> {
 
 pub enum HostCommand {
     Describe(oneshot::Sender<Result<HostingDescription, String>>),
+    ConnectionMetrics {
+        room_id: String,
+        publication_id: Option<Uuid>,
+        result: oneshot::Sender<Result<NativeConnectionMetrics, String>>,
+    },
     Open(OpenRoom),
     Snapshot(SnapshotRoom),
     Restore(RestoreRoom),
@@ -393,6 +400,9 @@ impl HostCommand {
     fn unavailable(self) {
         match self {
             Self::Describe(result) => {
+                let _ = result.send(Err("hosting_unavailable".into()));
+            }
+            Self::ConnectionMetrics { result, .. } => {
                 let _ = result.send(Err("hosting_unavailable".into()));
             }
             Self::Open(request) => {
@@ -615,6 +625,10 @@ impl Session {
                                     }).ok_or_else(|| "hosting_unavailable".into());
                                     let _ = result.send(description);
                                 },
+                                HostCommand::ConnectionMetrics { room_id, publication_id, result } => {
+                                    let measured = self.connection_metrics(&room_id, publication_id, socket).await.map_err(|error| error.to_string());
+                                    let _ = result.send(measured);
+                                },
                                 HostCommand::Open(request) => self.open_room(request, socket).await?,
                                 HostCommand::Snapshot(request) => self.snapshot_room(request),
                                 HostCommand::Restore(request) => self.restore_room(request, socket).await?,
@@ -680,6 +694,85 @@ impl Session {
         }
     }
 
+    async fn connection_metrics(
+        &mut self,
+        room_id: &str,
+        publication_id: Option<Uuid>,
+        socket: &mut Socket,
+    ) -> Result<NativeConnectionMetrics> {
+        let live = self
+            .live
+            .as_mut()
+            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+        let binding = |state: &Snapshot| -> Result<Uuid> {
+            let binding =
+                capture_binding(state, room_id).ok_or_else(|| anyhow!("room_unavailable"))?;
+            if publication_id.is_some_and(|id| {
+                !state.publications.iter().any(|publication| {
+                    publication.id == id
+                        && publication.room_id == room_id
+                        && publication.kind == Kind::Screen
+                })
+            }) {
+                bail!("publication_unavailable");
+            }
+            Ok(binding)
+        };
+        let binding_id = binding(
+            live.room
+                .snapshot
+                .borrow()
+                .as_ref()
+                .ok_or_else(|| anyhow!("hosting_unavailable"))?,
+        )?;
+        let mut connections = await_peer(
+            live.peers
+                .connection_metrics(room_id.into(), publication_id),
+            &mut live.commands,
+            &live.pairs,
+            &mut live.room,
+            &live.peers,
+            socket,
+        )
+        .await?;
+        let snapshot = live.room.snapshot.borrow();
+        let state = snapshot
+            .as_ref()
+            .ok_or_else(|| anyhow!("hosting_unavailable"))?;
+        if binding(state)? != binding_id {
+            bail!("room_context_changed");
+        }
+        connections.retain_mut(|connection| {
+            let Some(pair) = state
+                .pairs
+                .iter()
+                .find(|pair| pair.id == connection.pair_id && pair.peer_id == connection.peer_id)
+            else {
+                return false;
+            };
+            connection.streams.retain(|stream| {
+                let flows = if stream.direction == "send" {
+                    &pair.outgoing
+                } else {
+                    &pair.incoming
+                };
+                flows.iter().any(|flow| {
+                    flow.id == stream.flow_id
+                        && flow.publication_id == stream.publication_id
+                        && flow.selected == stream.selected
+                }) && state.publications.iter().any(|publication| {
+                    publication.id == stream.publication_id && publication.room_id == room_id
+                })
+            });
+            !connection.streams.is_empty()
+                || (publication_id.is_none() && pair.rooms.iter().any(|id| id == room_id))
+        });
+        Ok(NativeConnectionMetrics {
+            session_id: live.session,
+            binding_id,
+            connections,
+        })
+    }
     async fn event(&mut self, event: Event, socket: &mut Socket) -> Result<()> {
         match event {
             Event::Welcome {

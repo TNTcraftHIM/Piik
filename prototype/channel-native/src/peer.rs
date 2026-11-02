@@ -32,6 +32,10 @@ use tokio::{
 };
 use transport::{Channel, ChannelEvent, Track, TrackEvent, Transport};
 use uuid::Uuid;
+#[path = "peer/metrics.rs"]
+mod metrics;
+use metrics::NativeStreamMetric;
+pub use metrics::{NativeConnectionMetrics, PeerConnectionMetrics};
 
 const MAX_ICE_CANDIDATES: usize = 128;
 
@@ -360,6 +364,11 @@ enum Input {
     Signal(Uuid, Signal, oneshot::Sender<Result<()>>),
     Resync(oneshot::Sender<Result<()>>),
     Captures(oneshot::Sender<Vec<Uuid>>),
+    ConnectionMetrics(
+        String,
+        Option<Uuid>,
+        oneshot::Sender<Result<Vec<PeerConnectionMetrics>>>,
+    ),
     #[cfg(feature = "capture")]
     PrepareCapture(
         CaptureScope,
@@ -682,6 +691,9 @@ impl NativePeers {
                             let result = d.update(plans, info, files).await;
                             let _ = done.send(result);
                         }
+                        Turn::Input(Input::ConnectionMetrics(room, publication, done)) => {
+                            let _ = done.send(d.connection_metrics(&room, publication).await);
+                        }
                         Turn::Input(Input::Resync(done)) => {
                             d.resync().await;
                             let _ = done.send(Ok(()));
@@ -962,6 +974,17 @@ impl NativePeers {
         self.input.send(Input::Captures(tx)).await?;
         Ok(rx.await?)
     }
+    pub async fn connection_metrics(
+        &self,
+        room: String,
+        publication: Option<Uuid>,
+    ) -> Result<Vec<PeerConnectionMetrics>> {
+        let (done, reply) = oneshot::channel();
+        self.input
+            .send(Input::ConnectionMetrics(room, publication, done))
+            .await?;
+        reply.await?
+    }
     pub async fn close(self) -> Result<()> {
         let _ = self.cancel.send(true);
         self.task.await?;
@@ -978,6 +1001,78 @@ pub(crate) fn codec() -> RtpCodec {
 }
 
 impl Driver {
+    async fn connection_metrics(
+        &self,
+        room: &str,
+        publication: Option<Uuid>,
+    ) -> Result<Vec<PeerConnectionMetrics>> {
+        let scoped = |id: Uuid| {
+            self.publications.get(&id).is_some_and(|info| {
+                info.room_id == room && publication.is_none_or(|selected| selected == id)
+            })
+        };
+        let mut connections = Vec::new();
+        for (id, pair) in &self.pairs {
+            let has_flow = pair
+                .plan
+                .incoming
+                .iter()
+                .chain(&pair.plan.outgoing)
+                .any(|flow| scoped(flow.publication_id));
+            if !has_flow && (publication.is_some() || !pair.plan.rooms.iter().any(|id| id == room))
+            {
+                continue;
+            }
+            let measured = pair.pc.connection_metrics().await?;
+            let mut streams = Vec::new();
+            for stream in measured.streams {
+                let flow_id = if stream.outgoing {
+                    pair.outputs
+                        .iter()
+                        .find(|((_, kind), output)| {
+                            *kind == stream.media && output.stream == stream.stream
+                        })
+                        .map(|((flow, _), _)| *flow)
+                } else {
+                    pair.remote.get(&stream.stream).copied()
+                };
+                let plan = if stream.outgoing {
+                    &pair.plan.outgoing
+                } else {
+                    &pair.plan.incoming
+                };
+                let Some(flow) = plan
+                    .iter()
+                    .find(|flow| Some(flow.id) == flow_id && scoped(flow.publication_id))
+                else {
+                    continue;
+                };
+                streams.push(NativeStreamMetric {
+                    flow_id: flow.id,
+                    publication_id: flow.publication_id,
+                    selected: flow.selected,
+                    direction: if stream.outgoing { "send" } else { "receive" },
+                    media: if stream.media == MediaKind::Video {
+                        "video"
+                    } else {
+                        "audio"
+                    },
+                    counters: stream.counters,
+                });
+            }
+            connections.push(PeerConnectionMetrics {
+                pair_id: *id,
+                connection_id: measured.connection_id,
+                peer_id: pair.plan.peer_id,
+                sample_timestamp_ms: measured.sample_timestamp_ms,
+                age_ms: measured.age_ms,
+                rtt_ms: measured.rtt_ms,
+                bwe_bps: measured.bwe_bps,
+                streams,
+            });
+        }
+        Ok(connections)
+    }
     fn request_pending_keyframes(&self) {
         // A PLI is best effort. Keep the existing request watch live while an
         // active consumer still awaits refresh; adoption/cancellation ends it.

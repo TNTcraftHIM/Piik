@@ -6,7 +6,7 @@ import { channelTopologySchema, eventSchema, userSchema, type ChannelCommand, ty
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
-import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources } from "./app-link";
+import { ChannelApp, discoverChannelAppHealth, type ChannelStopShortcut, type NativeCaptureSources, type NativeConnectionMetrics } from "./app-link";
 import { isClientActivated } from "../lib/session";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { RemoteControlMode } from "../remote-control/protocol";
@@ -895,6 +895,26 @@ export class ChannelSession {
   };
 
   connectionMetrics = (roomId: string, publicationId?: string) => this.media.connectionMetrics(roomId, publicationId);
+
+  appConnectionMetrics = async (roomId: string, publicationId?: string, signal?: AbortSignal): Promise<NativeConnectionMetrics> => {
+    signal?.throwIfAborted();
+    const current = this.backupContext(), selection = this.roomId, app = this.app;
+    if (!app?.connected) throw new Error("app_disconnected");
+    const room = this.view.state?.channel.rooms.find(value => value.id === roomId);
+    if (!room?.authorized || !room.available || !room.delivery) throw new Error("room_unavailable");
+    const bindingId = room.delivery.bindingId;
+    const publication = publicationId ? this.view.state?.publications.find(value => value.id === publicationId
+      && value.roomId === roomId && value.kind === "screen") : undefined;
+    if (publicationId && !publication) throw new Error("publication_unavailable");
+    const metrics = await app.connectionMetrics(roomId, publicationId, signal);
+    current(); signal?.throwIfAborted();
+    const actual = this.view.state?.channel.rooms.find(value => value.id === roomId);
+    if (this.app !== app || !app.connected || this.roomId !== selection || !actual?.authorized || !actual.available
+      || actual.delivery?.bindingId !== bindingId || (publicationId && !this.view.state?.publications.some(value =>
+        value.id === publicationId && value.roomId === roomId && value.kind === "screen" && value.sessionId === publication?.sessionId))) throw new Error("room_context_changed");
+    if (metrics.bindingId !== bindingId) throw new Error("invalid_response");
+    return metrics;
+  };
 
   private async backupOwner(roomId: string) {
     const check = this.backupContext(), state = this.view.state!, self = this.view.self!;

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { discoverNativeConnect, discoverNativeHealth, NativeClient, NativeCompatibilityError, notifyNativePresentation } from "../src/client/native/client";
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
-import { channelAppDiscovery, discoverChannelAppHealth } from "../src/client/channel/app-link";
+import { channelAppDiscovery, discoverChannelAppHealth, nativeConnectionMetricsSchema } from "../src/client/channel/app-link";
 
 import {
   nativeEventSchema,
@@ -24,6 +24,20 @@ afterEach(() => {
   vi.restoreAllMocks();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it("Native metrics retain unknown measurements and reject unscoped response fields", () => {
+  const id = crypto.randomUUID();
+  const value = { sessionId: id, bindingId: id, connections: [{ pairId: id, connectionId: id, peerId: id,
+    sampleTimestampMs: null, ageMs: null, rttMs: null, bweBps: null,
+    streams: [{ flowId: id, publicationId: id, selected: false, direction: "receive", media: "audio",
+      mid: "sound", rid: null, codec: null, sampleTimestampMs: 500, ageMs: 20, bytes: 100, packets: 2,
+      rttMs: null, lossFraction: null, jitterMs: null }] }] };
+  expect(nativeConnectionMetricsSchema.parse(value)).toEqual(value);
+  expect(nativeConnectionMetricsSchema.safeParse({ ...value, address: "private" }).success).toBe(false);
+  expect(nativeConnectionMetricsSchema.safeParse({ ...value, connections: [{ ...value.connections[0], streams: [
+    { ...value.connections[0].streams[0], sampleTimestampMs: -1 },
+  ] }] }).success).toBe(false);
 });
 
 it("discovers the room App independently of v10 media control and checks health after approval", async () => {
