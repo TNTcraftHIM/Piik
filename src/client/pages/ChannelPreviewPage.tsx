@@ -214,8 +214,8 @@ export function ChannelPreviewPage() {
                 isReactionPending={seq => busy(`reaction:${roomId}:${seq}`)} onReaction={channel.setMessageReaction}
                 onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !chatOpen)} /></>}
               voice={<ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />} />
-            {room?.authorized && <ChannelConnections key={roomId} channel={channel} roomId={roomId} />}
-            {room?.canManage && <ChannelRoomControls key={room.id} channel={channel} room={room} />}
+            {room?.authorized && <ChannelConnections key={`connections:${roomId}`} channel={channel} roomId={roomId} />}
+            {room?.canManage && <ChannelRoomControls key={`controls:${room.id}`} channel={channel} room={room} />}
             {visibleScreens.length > 0 && !toolSurface.open && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
               iconOnly quiet pressed={chatOpen} hint={chatOpen ? "hint-close" : "hint-chat-open"} onClick={() => setChatOpen(!chatOpen)} />}
             <Tooltip className="c3-pane-navigation" kind="hint-details" disabled={mobilePane === "people"} text={vis ? undefined : copy("域内用户", "Domain users")}><button id="c3-people-trigger" type="button" className="c3-people-trigger"
