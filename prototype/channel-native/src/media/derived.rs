@@ -54,6 +54,7 @@ struct Decoding {
     frames: Frames,
     input: Arc<Input>,
     format: watch::Receiver<Option<Format>>,
+    encoding_format: Option<Format>,
     task: JoinHandle<Result<()>>,
 }
 impl Decoding {
@@ -109,6 +110,7 @@ impl Decoding {
             frames,
             input,
             format: formats,
+            encoding_format: None,
             task,
         })
     }
@@ -149,10 +151,23 @@ fn needs_decoder(next: &[VideoDemand]) -> bool {
             && d.input.upgrade().is_some_and(|input| !input.is_closed())
     })
 }
-fn apply(decoding: &mut Decoding, next: &[VideoDemand]) -> Vec<Video> {
+async fn apply(decoding: &mut Decoding, next: &[VideoDemand], baseline: &Video) -> Vec<Video> {
     let Some(format) = *decoding.format.borrow() else {
         return vec![];
     };
+    if decoding
+        .encoding_format
+        .is_some_and(|current| current != format)
+    {
+        // Bitrate changes update an encoder in place; geometry and cadence are
+        // its creation settings. Retain the decoder, source clock and readers.
+        let previous = std::mem::replace(
+            &mut decoding.encodings,
+            Encodings::new(baseline.time(), baseline.changed(), decoding.codec),
+        );
+        previous.stop().await;
+    }
+    decoding.encoding_format = Some(format);
     decoding
         .encodings
         .reconcile(next, Some(&decoding.input), |bitrate| {
@@ -250,12 +265,12 @@ async fn run(
                             break;
                         }
                     }
-                    failed = apply(decoder, &current);
+                    failed = apply(decoder, &current, &baseline).await;
                 }
             }
             Wake::Format => {
                 if let Some(decoder) = &mut decoding {
-                    failed = apply(decoder, &current);
+                    failed = apply(decoder, &current, &baseline).await;
                 }
             }
             Wake::Encoded((video, result)) => {
@@ -323,6 +338,70 @@ mod tests {
     use tokio::sync::Notify;
 
     #[tokio::test]
+    async fn format_changes_join_old_encoding_work_but_equal_notifications_keep_it() -> Result<()> {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let epoch = Instant::now();
+        let baseline = Video::new(
+            SourceTime::local(epoch, SystemInstant::now(epoch)),
+            Arc::new(Notify::new()),
+        );
+        let (format, formats) = watch::channel(None);
+        let input = baseline.subscribe();
+        let mut decoding = Decoding {
+            codec: VideoCodec::H264,
+            encodings: Encodings::new(baseline.time(), baseline.changed(), VideoCodec::H264),
+            frames: Frames::new(FrameTiming::Source)?,
+            input: input.clone(),
+            format: formats,
+            encoding_format: None,
+            task: tokio::spawn(async { Ok(()) }),
+        };
+        let completed = Arc::new(AtomicUsize::new(0));
+        let mut current = Format {
+            width: 320,
+            height: 180,
+            fps: 30,
+        };
+        format.send_replace(Some(current));
+        assert!(apply(&mut decoding, &[], &baseline).await.is_empty());
+        for next in [
+            Format {
+                width: 640,
+                height: 360,
+                ..current
+            },
+            Format {
+                width: 640,
+                height: 360,
+                fps: 60,
+            },
+        ] {
+            let work = completed.clone();
+            let video = baseline.clone();
+            decoding.encodings.pumps.push(Box::pin(async move {
+                work.fetch_add(1, Ordering::SeqCst);
+                (video, Ok(()))
+            }));
+            let before = completed.load(Ordering::SeqCst);
+            // A published notification is not itself a new encoder specification.
+            format.send_replace(Some(current));
+            assert!(apply(&mut decoding, &[], &baseline).await.is_empty());
+            assert_eq!(completed.load(Ordering::SeqCst), before);
+            assert_eq!(decoding.encodings.pumps.len(), 1);
+
+            format.send_replace(Some(next));
+            assert!(apply(&mut decoding, &[], &baseline).await.is_empty());
+            assert_eq!(completed.load(Ordering::SeqCst), before + 1);
+            assert!(decoding.encodings.pumps.is_empty());
+            assert!(Arc::ptr_eq(&input, &decoding.input));
+            current = next;
+        }
+        decoding.stop().await;
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn decoder_ends_after_format_before_allocation_fails_only_limited() -> Result<()> {
         let epoch = Instant::now();
         let baseline = Video::new(
@@ -356,6 +435,7 @@ mod tests {
             frames,
             input: baseline.subscribe(),
             format: formats,
+            encoding_format: None,
             task: tokio::spawn(async move {
                 format.send_replace(Some(Format {
                     width: 640,
