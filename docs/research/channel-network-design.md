@@ -888,6 +888,9 @@ source timeline. Outputs reuse complete-frame packetization and keyframe handoff
 the source supplies the encoding work, so the default Server needs no decoder or
 encoder runtime. Layered Native forwarding must preserve downstream supply rather
 than collapse it into a single low encoding.
+Each received track retains its physical reader and source clock across
+negotiated codec changes. The existing feed replacement adopts the new encoded
+format without replacing the route or retiring that reader.
 Received H264 sources share complete source access units between
 original forwarding and one demand-driven decoder. Windows GPU, Linux GStreamer
 and macOS VideoToolbox adapters feed the same derived-producer boundary.

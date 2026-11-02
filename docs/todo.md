@@ -16,10 +16,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   H264 decodes, but Gecko's image conversion fails before outgoing encoding.
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
-- [ ] **3.0 Browser encoding composition.** Check reuse of the existing
-  ordinary-Browser encoding pool with multi-publication pairs, keeping Native
-  ingress separate under ADR-0014. Correlate helper quality with actual source
-  RID supply before changing encoding or bandwidth policy.
+- [ ] **3.0 Browser encoding composition.** Integrate the existing
+  ordinary-Browser encoding pool with multi-publication pairs and each
+  publication's accepted source ceiling. Keep Native ingress separate under
+  ADR-0014.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
