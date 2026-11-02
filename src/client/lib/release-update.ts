@@ -2,9 +2,9 @@ import { compare, major, valid } from "semver";
 
 export const DEFAULT_RELEASE_API_URL =
   "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest";
-export const MIRROR_RELEASE_API_URL = "https://gitee.com/api/v5/repos/TNTcraftHIM/Piik/releases";
+export const MIRROR_RELEASE_API_URL = "https://api.atomgit.com/api/v5/repos/TNTcraftHIM/Piik/releases";
 const RELEASE_PAGE = "https://github.com/TNTcraftHIM/Piik/releases/tag/";
-const MIRROR_RELEASE_PAGE = "https://gitee.com/TNTcraftHIM/Piik/releases/tag/";
+const MIRROR_RELEASE_PAGE = "https://atomgit.com/TNTcraftHIM/Piik/releases";
 
 export interface ReleaseIdentity {
   version: string;
@@ -16,7 +16,6 @@ interface PublishedRelease {
   url: string;
   releaseURL: string;
   publishedAt?: string;
-  extractAPK?: boolean;
 }
 export interface ReleaseUpdateNotice extends PublishedRelease {
   kind: "update-available" | "major-update" | "different-build" | "official-release";
@@ -32,25 +31,23 @@ function normalizeVersion(value: unknown): string | null {
   return version ? `v${version}` : null;
 }
 
-function packageDownload(release: PublishedRelease, assets: unknown, target?: string): Pick<PublishedRelease, "url" | "extractAPK"> {
-  if (!target || !/^[a-z0-9]+-[a-z0-9]+$/.test(target) || !Array.isArray(assets)) return { url: release.url };
-  const android = target === "android-universal";
-  const mirror = release.url.startsWith(MIRROR_RELEASE_PAGE);
-  const extension = android && !mirror ? "apk" : "zip";
+function packageDownloadURL(release: PublishedRelease, assets: unknown, target?: string): string {
+  if (!target || !/^[a-z0-9]+-[a-z0-9]+$/.test(target) || !Array.isArray(assets)) return release.url;
+  const extension = target === "android-universal" ? "apk" : "zip";
+  const mirror = release.releaseURL === MIRROR_RELEASE_PAGE;
   const names = [`piik-app-${target}.${extension}`];
-  if (release.revision && !android) names.push(`piik-app-${target}-${release.revision.slice(0, 7)}.zip`);
+  if (release.revision && extension === "zip") names.push(`piik-app-${target}-${release.revision.slice(0, 7)}.zip`);
   for (const name of names) {
     const matches = assets.filter(asset => asset?.name === name);
     if (!matches.length) continue;
     const asset = matches[0];
-    const expectedURL = `${release.url.replace("/releases/tag/", "/releases/download/")}/${name}`;
-    return matches.length === 1 && (mirror ||
+    const expectedURL = mirror ? `${MIRROR_RELEASE_PAGE}/download/${release.version}/${name}`
+      : `${release.releaseURL.replace("/releases/tag/", "/releases/download/")}/${name}`;
+    return matches.length === 1 && (mirror ? asset.type === "attach" :
       (Number.isSafeInteger(asset.size) && asset.size > 0 && asset.state === "uploaded")) &&
-      asset.browser_download_url === expectedURL
-      ? { url: asset.browser_download_url, ...(android && mirror ? { extractAPK: true } : {}) }
-      : { url: release.url };
+      asset.browser_download_url === expectedURL ? asset.browser_download_url : release.url;
   }
-  return { url: release.url };
+  return release.url;
 }
 
 export function parseReleaseMetadata(value: unknown, packageTarget?: string): PublishedRelease | null {
@@ -71,7 +68,7 @@ export function parseReleaseMetadata(value: unknown, packageTarget?: string): Pu
     releaseURL: RELEASE_PAGE + version,
     ...(Number.isFinite(publishedTime) ? { publishedAt: new Date(publishedTime).toISOString() } : {}),
   };
-  return { ...normalized, ...packageDownload(normalized, release.assets, packageTarget) };
+  return { ...normalized, url: packageDownloadURL(normalized, release.assets, packageTarget) };
 }
 
 export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: string): PublishedRelease | null {
@@ -86,9 +83,9 @@ export function parseMirrorReleaseMetadata(value: unknown, packageTarget?: strin
     target_commitish: sources[0][1],
   });
   if (!normalized) return null;
-  const mirror = { ...normalized, url: MIRROR_RELEASE_PAGE + normalized.version,
-    releaseURL: MIRROR_RELEASE_PAGE + normalized.version };
-  return { ...mirror, ...packageDownload(mirror, release.assets, packageTarget) };
+  const mirror = { ...normalized, url: MIRROR_RELEASE_PAGE,
+    releaseURL: MIRROR_RELEASE_PAGE };
+  return { ...mirror, url: packageDownloadURL(mirror, release.assets, packageTarget) };
 }
 
 export function releaseUpdateNotice(

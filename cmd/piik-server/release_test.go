@@ -309,7 +309,7 @@ func TestMirrorFallbackUsesOriginalSourceAndCompleteStablePagination(t *testing.
 	}))
 	defer mirror.Close()
 	result := checkRelease(t.Context(), deployedVersion, deployedRevision, primary.URL, "operator-secret", mirror.URL)
-	assertResult(t, result, statusUpdateAvailable, deployedVersion, latestVersion, deployedRevision, latestRevision, mirrorReleasePrefix+latestVersion)
+	assertResult(t, result, statusUpdateAvailable, deployedVersion, latestVersion, deployedRevision, latestRevision, mirrorReleaseURL)
 	if mirrorCalls != 2 {
 		t.Fatalf("mirror calls = %d", mirrorCalls)
 	}

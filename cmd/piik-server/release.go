@@ -19,7 +19,7 @@ import (
 
 // The Browser notice and operator checker read the same published release.
 const defaultReleaseAPIURL = "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest"
-const mirrorReleaseAPIURL = "https://gitee.com/api/v5/repos/TNTcraftHIM/Piik/releases"
+const mirrorReleaseAPIURL = "https://api.atomgit.com/api/v5/repos/TNTcraftHIM/Piik/releases"
 
 // deploy/check-release.sh forwards these codes without installing anything.
 const (
@@ -29,7 +29,7 @@ const (
 	releaseTimeout        = 5 * time.Second
 	releaseURLPrefix      = "https://github.com/TNTcraftHIM/Piik/releases/tag/"
 	releaseAPIHost        = "api.github.com"
-	mirrorReleasePrefix   = "https://gitee.com/TNTcraftHIM/Piik/releases/tag/"
+	mirrorReleaseURL      = "https://atomgit.com/TNTcraftHIM/Piik/releases"
 )
 
 var fullRevisionPattern = regexp.MustCompile(`^[0-9a-f]{40}$`)
@@ -288,5 +288,5 @@ func parseMirrorReleaseMetadata(payload []byte) (version, revision, releaseURL s
 	if !ok {
 		return "", "", "", false
 	}
-	return version, revision, mirrorReleasePrefix + version, true
+	return version, revision, mirrorReleaseURL, true
 }
