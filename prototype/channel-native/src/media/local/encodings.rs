@@ -56,6 +56,8 @@ async fn initial(
     let mut encoding = capture.encode(settings, codec)?;
     let frame = async {
         if let Some(deadline) = deadline {
+            #[cfg(target_os = "android")]
+            capture.wait_for_input().await?;
             tokio::time::timeout(deadline, encoding.recv())
                 .await
                 .map_err(|_| anyhow!("H264 startup proof timed out"))?

@@ -214,7 +214,9 @@ pub enum VideoCodec {
 }
 impl VideoCodec {
     pub const fn supported(self) -> bool {
-        cfg!(feature = "capture") && (matches!(self, Self::H264) || cfg!(target_os = "windows"))
+        cfg!(feature = "capture")
+            && (matches!(self, Self::H264)
+                || cfg!(any(target_os = "windows", target_os = "android")))
     }
 }
 

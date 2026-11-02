@@ -77,7 +77,14 @@ impl Capture {
     }
     pub fn encode(&self, settings: Settings, codec: VideoCodec) -> Result<Encoding> {
         ensure!(codec.supported(), "capture_codec_unsupported");
-        Encoding::start(self.frames.clone(), settings)
+        Encoding::start(self.frames.clone(), settings, codec)
+    }
+    pub(crate) async fn wait_for_input(&self) -> Result<()> {
+        self.frames
+            .recv_after(None)
+            .await?
+            .map(|_| ())
+            .ok_or_else(|| anyhow!("capture_unavailable"))
     }
     pub async fn set_fps(&self, fps: u32) -> Result<()> {
         ensure!(

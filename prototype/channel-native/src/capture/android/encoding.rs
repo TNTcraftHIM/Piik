@@ -3,7 +3,10 @@ use super::{
     frames::{Clock, Frames, RawFrame},
     graphics::Graphics,
 };
-use crate::{capture::Settings, EncodedFrame};
+use crate::{
+    capture::{Settings, VideoCodec},
+    EncodedFrame,
+};
 use anyhow::{anyhow, ensure, Result};
 use ndk::media::{
     media_codec::{DequeuedOutputBufferInfoResult, MediaCodec, MediaCodecDirection},
@@ -83,7 +86,7 @@ pub struct Encoding {
     thread: Option<thread::JoinHandle<Result<()>>>,
 }
 impl Encoding {
-    pub(super) fn start(frames: Frames, settings: Settings) -> Result<Self> {
+    pub(super) fn start(frames: Frames, settings: Settings, codec: VideoCodec) -> Result<Self> {
         settings.validate()?;
         ensure!(settings.fps <= i32::MAX as u32, "invalid encoder FPS");
         ensure!(
@@ -103,7 +106,7 @@ impl Encoding {
         let thread = thread::Builder::new()
             .name("piik-android-encoding".into())
             .spawn(move || {
-                let result = run(&worker, frames, settings, &runtime);
+                let result = run(&worker, frames, settings, codec, &runtime);
                 worker.finish(&result);
                 result
             })?;
@@ -149,15 +152,20 @@ struct Codec {
     graphics: Graphics,
     _window: ndk::native_window::NativeWindow,
     codec: MediaCodec,
+    video_codec: VideoCodec,
     size: (u32, u32),
     config: Vec<u8>,
 }
 impl Codec {
-    fn new(frames: &Frames, settings: Settings) -> Result<Self> {
-        let codec = MediaCodec::from_encoder_type("video/avc")
-            .ok_or_else(|| anyhow!("H264 encoder unavailable"))?;
+    fn new(frames: &Frames, settings: Settings, video_codec: VideoCodec) -> Result<Self> {
+        let mime = match video_codec {
+            VideoCodec::H264 => "video/avc",
+            VideoCodec::Vp8 => "video/x-vnd.on2.vp8",
+        };
+        let codec = MediaCodec::from_encoder_type(mime)
+            .ok_or_else(|| anyhow!("{video_codec:?} encoder unavailable"))?;
         let mut format = MediaFormat::new();
-        format.set_str("mime", "video/avc");
+        format.set_str("mime", mime);
         for (key, value) in [
             ("width", settings.width as i32),
             ("height", settings.height as i32),
@@ -166,10 +174,12 @@ impl Codec {
             ("color-format", 0x7F000789),
             ("i-frame-interval", 2),
             ("bitrate-mode", 2),
-            ("max-bframes", 0),
             ("priority", 0),
         ] {
             format.set_i32(key, value);
+        }
+        if video_codec == VideoCodec::H264 {
+            format.set_i32("max-bframes", 0);
         }
         codec.configure(&format, None, MediaCodecDirection::Encoder)?;
         let window = codec.create_input_surface()?;
@@ -179,6 +189,7 @@ impl Codec {
             graphics,
             _window: window,
             codec,
+            video_codec,
             size: (settings.width, settings.height),
             config: Vec::new(),
         })
@@ -216,9 +227,11 @@ impl Codec {
                 DequeuedOutputBufferInfoResult::OutputFormatChanged => {
                     let format = self.codec.output_format();
                     self.config.clear();
-                    for key in ["csd-0", "csd-1"] {
-                        if let Some(data) = format.buffer(key) {
-                            self.config.extend_from_slice(data);
+                    if self.video_codec == VideoCodec::H264 {
+                        for key in ["csd-0", "csd-1"] {
+                            if let Some(data) = format.buffer(key) {
+                                self.config.extend_from_slice(data);
+                            }
                         }
                     }
                 }
@@ -233,7 +246,9 @@ impl Codec {
                         .get(offset..offset + length)
                         .ok_or_else(|| anyhow!("invalid codec buffer range"))?;
                     if flags & 2 != 0 {
-                        self.config = data.to_vec();
+                        if self.video_codec == VideoCodec::H264 {
+                            self.config = data.to_vec();
+                        }
                     } else {
                         bytes.extend_from_slice(data);
                         keyframe |= flags & 1 != 0;
@@ -242,7 +257,7 @@ impl Codec {
                     ensure!(
                         bytes.len() + if keyframe { self.config.len() } else { 0 }
                             <= 4 * 1024 * 1024,
-                        "H264 access unit exceeds source limit"
+                        "Video access unit exceeds source limit"
                     );
                     if flags & 2 != 0 || flags & 8 != 0 {
                         continue;
@@ -251,14 +266,16 @@ impl Codec {
                     if bytes.is_empty() {
                         return Ok(None);
                     }
-                    ensure!(
-                        bytes.starts_with(&[0, 0, 1]) || bytes.starts_with(&[0, 0, 0, 1]),
-                        "encoder did not produce Annex B H264"
-                    );
-                    if keyframe && !self.config.is_empty() {
-                        let mut complete = self.config.clone();
-                        complete.extend(bytes);
-                        bytes = complete;
+                    if self.video_codec == VideoCodec::H264 {
+                        ensure!(
+                            bytes.starts_with(&[0, 0, 1]) || bytes.starts_with(&[0, 0, 0, 1]),
+                            "encoder did not produce Annex B H264"
+                        );
+                        if keyframe && !self.config.is_empty() {
+                            let mut complete = self.config.clone();
+                            complete.extend(bytes);
+                            bytes = complete;
+                        }
                     }
                     return Ok(Some(EncodedFrame {
                         vp8: None,
@@ -282,6 +299,7 @@ fn run(
     shared: &Shared,
     frames: Frames,
     settings: Settings,
+    video_codec: VideoCodec,
     runtime: &tokio::runtime::Handle,
 ) -> Result<()> {
     let mut codec: Option<Codec> = None;
@@ -338,7 +356,7 @@ fn run(
             .is_none_or(|codec| codec.size != (fitted.width, fitted.height))
         {
             drop(codec.take());
-            codec = Some(Codec::new(&frames, fitted)?);
+            codec = Some(Codec::new(&frames, fitted, video_codec)?);
             force = true;
         }
         if let Some(frame) = codec
