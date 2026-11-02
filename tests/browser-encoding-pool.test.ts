@@ -88,6 +88,17 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it("keeps sampling healthy members after retiring a pending sender stats wait", async () => {
+    const retired = member(), healthy = member();
+    vi.mocked(retired.sender.getStats).mockReturnValueOnce(new Promise(() => {}));
+    await sample();
+    retired.handle.dispose();
+    await sample(4);
+    expect(healthy.producerId()).not.toBeNull();
+    expect(healthy.sender.getStats).toHaveBeenCalledTimes(5);
+    expect(healthy.fatal).not.toHaveBeenCalled();
+  });
+
   it("keeps two publications on one connection scoped to each sender's native budget", async () => {
     const mixed = new Map<string, object>();
     stats({ targetBitrate: profile.maxBitrate + 1_000_000 }).forEach(row => mixed.set(row.id, row));

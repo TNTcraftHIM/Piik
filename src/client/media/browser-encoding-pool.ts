@@ -2,6 +2,7 @@ import { createOpaqueId } from "../lib/opaque-id";
 import { browserDebugEnabled, debugError, debugEvent } from "../lib/debug";
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
 import { captureMetrics, collectConnectionMetricsFromReport, createStatsAccumulator } from "../webrtc/stats";
+import { waitForConnectionOperation } from "../webrtc/connection-operation";
 import { BrowserEncodingProducer } from "./browser-encoding-producer";
 import { BROWSER_CARRIER_SIZE, type BrowserEncodingOutput } from "./browser-encoding-output";
 import { codecIdentity, fits, nativeVideoBudget, negotiatedCodec, noRegression, observeVideo,
@@ -28,7 +29,7 @@ type Member = {
   profile: VideoSenderProfile; encoded: BrowserEncodingOutput;
   configureCarrier: () => Promise<boolean>;
   requestKey: () => Promise<void>; onFatal: () => void;
-  paused: boolean; disabled: boolean; disposed: boolean; mixed: boolean; carrier: boolean;
+  paused: boolean; disabled: boolean; readonly disposed: boolean; abort: AbortController; mixed: boolean; carrier: boolean;
   codec?: RTCRtpCodec; codecKey?: string; budget?: number; raw?: RTCOutboundRtpStreamStats;
   encoderStats: ReturnType<typeof createStatsAccumulator>;
   current?: Group; pending?: { group: Group; selecting?: boolean };
@@ -53,7 +54,8 @@ export class BrowserEncodingPool {
     onFatal: () => void): BrowserPooledSender | null {
     if (this.disposed || this.failedSources.has(source) || source.kind !== "video" || source.readyState !== "live") return null;
     const member: Member = { id: createOpaqueId(), source, sender, connection, profile: { ...profile }, encoded, configureCarrier, requestKey, onFatal,
-      paused: !source.enabled, disabled: false, disposed: false, mixed: false, carrier: encoded.snapshot().frames === 0,
+      paused: !source.enabled, disabled: false, abort: new AbortController(),
+      get disposed() { return this.abort.signal.aborted; }, mixed: false, carrier: encoded.snapshot().frames === 0,
       encoderStats: createStatsAccumulator() };
     this.members.add(member);
     // A fresh connection has no useful raw output to preserve. Start its
@@ -153,7 +155,7 @@ export class BrowserEncodingPool {
       await Promise.allSettled([
         ...[...this.members].map(async (member) => {
           if (member.disposed || member.disabled || member.connection.connectionState !== "connected") { member.budget = undefined; return; }
-          const report = await member.sender.getStats().catch(() => null);
+          const report = await waitForConnectionOperation(member.abort.signal, () => member.sender.getStats()).catch(() => null);
           if (member.disposed) return;
           if (!report) { member.budget = undefined; return; }
           const codec = negotiatedCodec(report);
@@ -409,7 +411,7 @@ export class BrowserEncodingPool {
 
   private remove(member: Member): void {
     if (member.disposed) return;
-    member.disposed = true;
+    member.abort.abort();
     this.members.delete(member);
     member.encoded.passthrough(member.requestKey);
     member.carrier = false;
