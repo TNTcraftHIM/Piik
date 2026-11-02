@@ -107,7 +107,7 @@ export class ChannelSession {
   private microphone: MicrophoneInput | null = null;
   private microphoneRequest: MicrophoneRequest | null = null;
   private voiceCaptures = new Map<string, string | null>();
-  private watching = new Set<string>();
+  private watching = new Map<string, string | undefined>();
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
   private reading: { roomId: string; bindingId: string; socket: WebSocket | null; ready: Promise<void>;
@@ -221,6 +221,7 @@ export class ChannelSession {
       if (invite) inviteURL.hash = new URLSearchParams({ invite }).toString();
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
       this.applyState(event.state);
+      void this.syncAppWatching();
       void this.resumeApp();
       void this.restoreHosts(event.sessionId, skipRestoreRoom).catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
@@ -331,7 +332,7 @@ export class ChannelSession {
         if (local.audio) setMediaPaused(local.audio.sourceStream, publication.paused);
       }
     }
-    for (const id of this.watching) {
+    for (const id of this.watching.keys()) {
       if (!state.publications.some(publication => publication.id === id) && !this.view.pending.has(`watch:${id}`)) this.watching.delete(id);
     }
     for (const publication of this.view.state?.publications ?? []) {
@@ -564,7 +565,7 @@ export class ChannelSession {
   }
 
   resumeApp = async (): Promise<void> => {
-    if (this.closed || this.app || this.view.connection !== "connected" || !isClientActivated()) return;
+    if (this.closed || this.view.connection !== "connected" || !isClientActivated()) return;
     try { await this.connectApp(); }
     catch { /* Passive return leaves permission and errors with the explicit App action. */ }
   };
@@ -584,6 +585,7 @@ export class ChannelSession {
           this.app = undefined;
           for (const [roomId, share] of this.screenShares) if (!this.local.has(share.id)) this.screenShares.delete(roomId);
           this.patch({ remoteControls: new Map() });
+          void this.syncAppWatching();
         }, () => {
           if (this.app === app) this.patch({ error: "capture_audio_failed" });
         }, (id, state) => {
@@ -596,11 +598,36 @@ export class ChannelSession {
     }
     const app = this.app;
     await app.ready;
-    if (this.app === app && !this.closed) this.patch({});
+    if (this.app === app && !this.closed) {
+      this.patch({});
+      void this.syncAppWatching();
+    }
     return app;
   }
 
   activateApp = (): Promise<void> => this.action("app", async () => { await this.connectApp(); });
+
+  private async syncAppWatching(): Promise<void> {
+    if (this.closed || this.view.connection !== "connected") return;
+    const watches = [...this.watching].filter(([id]) => !this.local.has(id) && !this.view.pending.has(`watch:${id}`));
+    if (!watches.length) return;
+    const socket = this.socket, sessionId = this.view.sessionId;
+    const app = this.app?.connected ? this.app : undefined;
+    let helperSessionId: string | undefined;
+    if (app) {
+      try { helperSessionId = (await app.describeHosting()).sessionId; }
+      catch { return; }
+    }
+    if (this.closed || this.view.connection !== "connected" || this.socket !== socket
+      || this.view.sessionId !== sessionId || (this.app?.connected ? this.app : undefined) !== app) return;
+    for (const [publicationId, previousHelper] of watches) {
+      if (!this.watching.has(publicationId) || this.watching.get(publicationId) !== previousHelper
+        || this.view.pending.has(`watch:${publicationId}`) || previousHelper === helperSessionId) continue;
+      this.watching.set(publicationId, helperSessionId);
+      // Assistance changes route placement; failure must not withdraw the watch.
+      void this.request({ type: "subscribe", publicationId, enabled: true, helperSessionId }).catch(() => {});
+    }
+  }
 
   inputPolicy = (publicationId: string, mode: RemoteControlMode, password?: string): Promise<void> =>
     this.action(`input:${publicationId}`, async () => {
@@ -1100,7 +1127,7 @@ export class ChannelSession {
   setRoles = (userId: string, roles: string[]): Promise<void> => this.action(`roles:${userId}`, () => this.request({ type: "set_roles", userId, roles }));
   watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
-    this.watching.add(publicationId);
+    this.watching.set(publicationId, undefined);
     try {
       await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
@@ -1110,7 +1137,7 @@ export class ChannelSession {
       if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
       throw error;
     }
-  });
+  }).then(() => { void this.syncAppWatching(); });
   unwatch = (publicationId: string): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     this.watching.delete(publicationId);
     this.refreshActivity();

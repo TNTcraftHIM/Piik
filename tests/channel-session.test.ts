@@ -398,6 +398,77 @@ test("App hosting uses its own participant while Browser rooms retain their page
   } finally { session.close(); }
 });
 
+test.each([false, true])("App viewing assistance withdraws without ending the watch (Domain recovery: %s)", async recovering => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const helperSessionId = crypto.randomUUID();
+  vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
+  const { session, socket } = await setup();
+  const state = { ...session.getSnapshot().state!, publications: [
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false },
+  ], subscriptions: ["screen"] };
+  socket.receive({ type: "state", state });
+  try {
+    const watching = session.watch("screen");
+    socket.receive({ type: "state", state });
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await watching;
+    const connecting = session.activateApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await connecting;
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "subscribe", publicationId: "screen", enabled: true, helperSessionId }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    if (recovering) socket.close();
+    app.close();
+    let current = socket;
+    if (recovering) {
+      session.reconnect();
+      current = ChannelSocket.current;
+      await current.onopen?.();
+      current.receive({ type: "welcome", credential: "credential", sessionId: "endpoint", state });
+    }
+    const ordinary = current.sent.findLast(command => command.type === "subscribe")!;
+    expect(ordinary).toMatchObject({ publicationId: "screen", enabled: true });
+    expect(ordinary).not.toHaveProperty("helperSessionId");
+    expect(session.getSnapshot().state?.subscriptions).toEqual(["screen"]);
+    expect(current.sent.some(command => command.type === "subscribe" && command.enabled === false)).toBe(false);
+    expect(app.sent.map(command => command.type)).toEqual(["hello"]);
+    current.receive({ type: "ack", requestId: ordinary.requestId });
+  } finally { session.close(); }
+});
+
+test("an App description completing after unwatch cannot recreate a subscription", async () => {
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  let describe!: (value: { sessionId: string; roomIds: string[] }) => void;
+  const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockImplementation(() => new Promise(resolve => { describe = resolve; }));
+  const { session, socket } = await setup();
+  socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false },
+  ] } });
+  try {
+    const connecting = session.activateApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(socket));
+    const app = ChannelSocket.current;
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await connecting;
+    const watching = session.watch("screen");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await watching;
+    await vi.waitFor(() => expect(description).toHaveBeenCalledOnce());
+    const stopping = session.unwatch("screen");
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await stopping;
+    describe({ sessionId: crypto.randomUUID(), roomIds: [] });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(socket.sent.filter(command => command.type === "subscribe").map(command => command.enabled)).toEqual([true, false]);
+    expect(socket.sent.some(command => "helperSessionId" in command)).toBe(false);
+  } finally { session.close(); }
+});
+
 test.each(["disconnect", "close"])("pending App health cannot create a control socket after Domain %s", async end => {
   const { session, socket } = await setup();
   vi.useFakeTimers();

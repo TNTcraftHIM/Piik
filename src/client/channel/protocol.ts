@@ -128,7 +128,7 @@ export type ChannelCommand =
   | { type: "unpublish"; publicationId: string }
   | { type: "set_paused"; publicationId: string; paused: boolean }
   | { type: "transfer_source"; publicationId: string; toSessionId: string }
-  | { type: "subscribe"; publicationId: string; enabled: boolean }
+  | { type: "subscribe"; publicationId: string; enabled: boolean; helperSessionId?: string }
   | { type: "voice"; roomId: string; joined: boolean; muted: boolean; deafened: boolean }
   | { type: "signal"; pairId: string; payload: ChannelSignal }
   | { type: "link_state"; pairId: string; state: "connected" | "failed" }
