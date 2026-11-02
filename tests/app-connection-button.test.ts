@@ -95,7 +95,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle", android = false) {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected = false) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -115,7 +115,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const operation = runInNewContext(executable, {
     window, document, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
-    state, isClientActivated: () => activated,
+    state, connected, isClientActivated: () => activated,
     loadDiscovery: async () => ({ health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
       isIncompatible: (error: unknown) => error instanceof native.NativeCompatibilityError }),
     watchClientActivation: (changed: () => void) => {
@@ -376,6 +376,20 @@ describe("App connection approval", () => {
     expect(page.native.discoverNativeHealth).toHaveBeenCalledTimes(2);
     await page.openApproval();
     expect(page.window.open).toHaveBeenCalledTimes(2);
+    page.cleanup();
+  });
+
+  it("retains a proven current App connection on focus without a background health request", async () => {
+    const page = mount(true, "ready", false, true);
+    page.native.discoverNativeHealth.mockResolvedValue(null);
+    await settle();
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
+    expect(page.activateClient).not.toHaveBeenCalled();
+    expect(page.onConnected).not.toHaveBeenCalled();
     page.cleanup();
   });
 

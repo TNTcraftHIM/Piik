@@ -136,7 +136,7 @@ export function ChannelPreviewPage() {
 
   return <div className={`lr-app c3-app${vis ? " c3-visual" : ""}`}>
     <AppHeader homeHref={`${location.pathname}${location.search}${location.hash}`} atHome
-      appControl={<AppConnectionButton discovery={channelAppDiscovery} onConnected={() => run(channel.activateApp())} />} diagnosticControl={null}
+      appControl={<AppConnectionButton discovery={channelAppDiscovery} connected={channel.appConnected} onConnected={() => run(channel.activateApp())} />} diagnosticControl={null}
       led={<LedStrip state={connected ? "live" : connection === "closed" ? "bad" : "busy"}
         label={connectionLabel} comic={connected ? "signal-connected" : "signal-connecting"} />} />
     {failure && <div className="c3-notice is-error" role="alert"><Glyph name="alert" size={20} /><span>{failure}</span>

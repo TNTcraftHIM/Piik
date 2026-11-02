@@ -14,6 +14,8 @@ import type { AppDiscovery } from "../../native/discovery";
 interface AppConnectionProps {
   onConnected?: () => void;
   discovery?: AppDiscovery;
+  /** A current control connection, supplied by its owning session. */
+  connected?: boolean;
 }
 
 interface ConnectionAttempt {
@@ -23,7 +25,7 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected, discovery }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected, discovery, connected = false }: AppConnectionProps) {
   const loadDiscovery = async (): Promise<AppDiscovery> => {
     if (discovery) return discovery;
     const native = await import("../../native/client");
@@ -43,7 +45,13 @@ export function AppConnectionButton({ onConnected, discovery }: AppConnectionPro
   const healthCheck = useRef<AbortController | null>(null);
   useEffect(() => {
     const refresh = async () => {
-      if (pending.current || help.current?.matches(":popover-open") || !isClientActivated()) return;
+      if (pending.current) return;
+      if (connected) {
+        healthCheck.current?.abort();
+        setState("ready");
+        return;
+      }
+      if (help.current?.matches(":popover-open") || !isClientActivated()) return;
       healthCheck.current?.abort();
       const current = healthCheck.current = new AbortController();
       const native = await loadDiscovery();
@@ -64,7 +72,7 @@ export function AppConnectionButton({ onConnected, discovery }: AppConnectionPro
     window.addEventListener("focus", onFocus);
     const unwatch = watchClientActivation(onFocus);
     return () => { healthCheck.current?.abort(); window.removeEventListener("focus", onFocus); unwatch(); };
-  }, [discovery]);
+  }, [discovery, connected]);
   useEffect(() => () => { pending.current?.controller.abort(); pending.current?.popup?.close(); }, []);
 
   function showHelp(): void {
