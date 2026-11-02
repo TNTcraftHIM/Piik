@@ -10,6 +10,9 @@ export interface ReleaseIdentity {
   version: string;
   revision: string;
 }
+export interface AppReleaseIdentity extends ReleaseIdentity {
+  packageTarget?: string;
+}
 interface PublishedRelease {
   version: string;
   revision: string | null;

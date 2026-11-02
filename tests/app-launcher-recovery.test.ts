@@ -45,17 +45,16 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
   const state: Record<string, unknown> = {};
   const setters = Object.fromEntries([
     "Mode", "Modes", "LocalAccessPassword", "Lan", "Version", "ControlPort", "Target", "Starting", "Sites", "StartupSite",
-    "AppDebug", "Debug", "Error", "Loading", "Update", "RemoteControlPrototype",
+    "AppDebug", "Debug", "Error", "Loading", "Build", "RemoteControlPrototype",
     "SiteBusy", "SiteError", "DebugBusy", "DebugError", "Reload",
   ].map(name => [`set${name}`, vi.fn((value: unknown) => {
     state[name] = typeof value === "function" ? value(state[name]) : value;
   })]));
   const window = Object.assign(new EventTarget(), { location: { replace: vi.fn() } });
-  const checkReleaseUpdate = vi.fn(async () => null);
   const timers = new Map<number, () => void>();
   let nextTimer = 0;
   const actions = runInNewContext(executable, {
-    ...setters, z, fetch, window, checkReleaseUpdate,
+    ...setters, z, fetch, window,
     stateChanges: { current: { revision: 0, pending: 0 } },
     siteBusy: false, debugBusy: false, starting: false, sites: saved.sites, manualSite, openOnApproval: false,
     mode: "link", lang: "en", vis: false, debug: false, appDebug: false, localAccessPassword: "",
@@ -67,7 +66,7 @@ function mount(fetch: ReturnType<typeof vi.fn>, manualSite = false) {
     },
     clearTimeout: (id: number) => timers.delete(id),
   }) as { cleanup(): void; changeSite(site: string, setting?: "site" | "startup-site", starAfterApproval?: boolean, allowed?: boolean): Promise<boolean>; approveSite(site: string): Promise<void>; enableDebug(): Promise<void>; launch(event: { preventDefault(): void }): Promise<void> };
-  return { state, setters, ...actions, checkReleaseUpdate, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
+  return { state, setters, ...actions, navigate: window.location.replace, focus: () => window.dispatchEvent(new Event("focus")),
     retry: () => {
       expect(timers.size).toBe(1);
       const [id, callback] = [...timers][0]!;
@@ -86,7 +85,7 @@ describe("App launcher state recovery", () => {
     const page = mount(vi.fn(async () => response({ ...saved, version, revision })));
     await settle();
     expect(page.state.Version).toBe(label);
-    expect(page.checkReleaseUpdate).toHaveBeenCalledWith({ version, revision }, { packageTarget: undefined });
+    expect(page.state.Build).toEqual({ version, revision, packageTarget: undefined });
     page.cleanup();
   });
 
@@ -229,7 +228,7 @@ describe("App launcher state recovery", () => {
     await settle();
     expect(page.state).toMatchObject({ Mode: "link", LocalAccessPassword: "edited", Lan: { selected: "192.0.2.2" } });
     expect(fetch).toHaveBeenCalledTimes(3);
-    expect(page.checkReleaseUpdate).toHaveBeenCalledOnce();
+    expect(page.state.Build).toMatchObject({ version: saved.version, revision: saved.revision });
     page.cleanup();
   });
 
@@ -258,7 +257,6 @@ describe("App launcher state recovery", () => {
     page.focus();
     expect(fetch).toHaveBeenCalledOnce();
     expect(page.state).toEqual({});
-    expect(page.checkReleaseUpdate).not.toHaveBeenCalled();
     for (const setter of Object.values(page.setters)) expect(setter).not.toHaveBeenCalled();
   });
 

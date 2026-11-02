@@ -27,6 +27,9 @@ export const nativeDiscoveryIdentitySchema = z.object({
 
 export const nativeHealthSchema = nativeDiscoveryIdentitySchema.extend({
   protocol: z.literal(NATIVE_CLIENT_PROTOCOL),
+  version: z.string().optional(),
+  revision: z.string().optional(),
+  packageTarget: z.string().optional(),
   qualityPreference: z.boolean().optional(),
   activationURL: z.literal("piik://media").optional(),
   instanceToken: z
