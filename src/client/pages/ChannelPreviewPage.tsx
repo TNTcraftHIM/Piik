@@ -21,6 +21,7 @@ import { ChannelDomainControls } from "../channel/components/ChannelDomainContro
 import { ChannelIdentityMark } from "../channel/components/ChannelIdentity";
 import { ChannelCouch } from "../channel/components/ChannelCouch";
 import { ChannelRoomTool, type RoomToolSurface } from "../channel/components/ChannelRoomTool";
+import { ChannelConnections } from "../channel/components/ChannelConnections";
 import { listeningVoicePublications, roomPeople } from "../channel/presentation";
 import { AppConnectionButton } from "../components/living/AppConnectionButton";
 import { channelAppDiscovery } from "../channel/app-link";
@@ -213,6 +214,7 @@ export function ChannelPreviewPage() {
                 isReactionPending={seq => busy(`reaction:${roomId}:${seq}`)} onReaction={channel.setMessageReaction}
                 onSend={channel.sendMessage} floating={toolSurface.open} hidden={room?.authorized === false || (!toolSurface.open && visibleScreens.length > 0 && !chatOpen)} /></>}
               voice={<ChannelVoiceDock channel={channel} selected={voiceFocus} onSelect={setVoiceFocus} onBrowse={selectRoom} />} />
+            {room?.authorized && <ChannelConnections key={roomId} channel={channel} roomId={roomId} />}
             {room?.canManage && <ChannelRoomControls key={room.id} channel={channel} room={room} />}
             {visibleScreens.length > 0 && !toolSurface.open && <ChannelAction icon="chat" label={chatOpen ? copy("收起聊天", "Hide chat") : copy("打开聊天", "Show chat")}
               iconOnly quiet pressed={chatOpen} hint={chatOpen ? "hint-close" : "hint-chat-open"} onClick={() => setChatOpen(!chatOpen)} />}

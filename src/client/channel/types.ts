@@ -25,6 +25,12 @@ export interface ChannelMediaMetric {
   metrics: ConnectionMetrics;
 }
 
+export interface ChannelConnectionSample extends ChannelMediaMetric {
+  ownerSessionId: string;
+  connectionId: string;
+  selected: boolean;
+}
+
 export type SourceMicrophoneConfiguration = Omit<CommentaryInput, "voiceProcessing"> & { enabled: boolean; voiceProcessing?: boolean };
 export type SourceMicrophoneSettings = Partial<SourceMicrophoneConfiguration>;
 

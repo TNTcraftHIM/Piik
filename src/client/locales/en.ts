@@ -692,6 +692,12 @@ export const en: Record<CopyKey, string> = {
   "host.advanced.codec.h264Hint": "Hardware first",
 
   "host.details": "Connection details",
+  "connection.room": "Room connections",
+  "connection.localDisplay": "Local display hop",
+  "connection.localDisplayHint": "The App receives the picture for this page. Expand details to inspect the display hop.",
+  "connection.noMedia": "No media measurements yet.",
+  "connection.loading": "Reading connection details…",
+  "connection.unavailable": "Connection details are temporarily unavailable.",
   "host.details.show": "Show connection details",
   "host.details.hide": "Hide connection details",
   "host.topology": "Connection topology",

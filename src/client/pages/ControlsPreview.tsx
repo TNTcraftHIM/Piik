@@ -31,6 +31,7 @@ import { deriveParticipantStatus, STATUS_CATALOG } from "../ui/media-status";
 import { Glyph } from "../ui/icons";
 import { useCopy } from "../ui/copy";
 import { PeoplePreview } from "./PeoplePreview";
+import { ChannelConnectionsPreview } from "./ChannelConnectionsPreview";
 import { RemoteControlsPreview } from "./RemoteControlsPreview";
 import { useRoomVoicePreview } from "./RoomVoicePreview";
 import { usePreviewInteractions } from "./use-preview-interactions";
@@ -273,6 +274,7 @@ export function ControlsPreview() {
       </section>
     </div>
     <PeoplePreview />
+    <ChannelConnectionsPreview />
     <section id="source-preview" className="cp-section">
       <header className="cp-section-head"><span className="cp-number">06</span><div><h2>{en ? "Choose a picture" : "挑一块画面。"}</h2>
         <p>{en ? "The actual source selector, with sample windows and cameras. Selection only updates this preview." : "正式的画面选择器，放入了示例窗口和摄像头；选择只影响这张预览。"}</p></div></header>

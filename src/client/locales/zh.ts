@@ -692,6 +692,12 @@ export const zh = {
   "host.advanced.codec.h264Hint": "硬件优先",
 
   "host.details": "连接详情",
+  "connection.room": "房间连接",
+  "connection.localDisplay": "本机显示链路",
+  "connection.localDisplayHint": "App 接收画面，本页负责显示。展开详情可查看显示链路。",
+  "connection.noMedia": "暂无媒体统计。",
+  "connection.loading": "正在读取连接详情…",
+  "connection.unavailable": "暂时无法读取连接详情。",
   "host.details.show": "显示连接详情",
   "host.details.hide": "隐藏连接详情",
   "host.topology": "连接拓扑",
