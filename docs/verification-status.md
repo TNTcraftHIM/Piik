@@ -80,6 +80,8 @@ controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
   before automatic replacement delivered video; its trigger remains under
   investigation in [TODO](./todo.md#now). The newer direct-path result does not
   close that case.
+  Firefox App discovery from a Browser-hosted public room also failed after Site
+  approval, before capture or media negotiation; that acceptance remains open.
   Its Rust encoder components also pass independent bitrate updates, keyframe
   requests, source-clock preservation and sibling isolation on the emulator's
   software codec.

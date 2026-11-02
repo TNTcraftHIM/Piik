@@ -13,7 +13,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
   checkpoint, including the Android public-link first-picture delay reproduced
-  before an automatic route replacement. Keep the SDK's transport controller,
+  before an automatic route replacement and Firefox App discovery after Site
+  approval from a Browser-hosted public room. Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
 - [ ] **3.0 controlled network acceptance.** Complete the remaining
   Browser/Native decoded-media combinations and long-interruption transit recovery
