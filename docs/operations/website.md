@@ -258,6 +258,7 @@ Platform buttons say “Download from GitHub” /
 [Versioning](../standards/versioning.md#release-sources) owns package verification
 and completion of mirror publication. GitHub remains the primary source; the
 AtomGit download can temporarily lag while a mirror publication completes.
+Project, source-code and feedback links point to GitHub; AtomGit is only a download mirror.
 Verify the latest redirects and package checksums after releases.
 
 ## Publish
