@@ -221,7 +221,7 @@ export class ChannelSession {
       if (invite) inviteURL.hash = new URLSearchParams({ invite }).toString();
       this.patch({ sessionId: event.sessionId, connection: "connected", error: null, inviteURL: invite ? inviteURL.href : null });
       this.applyState(event.state);
-      if (isClientActivated()) void this.connectApp().catch(() => {});
+      void this.resumeApp();
       void this.restoreHosts(event.sessionId, skipRestoreRoom).catch(error => {
         if (!this.closed && this.view.sessionId === event.sessionId) this.patch({ error: error instanceof Error ? error.message : "storage_failed" });
       });
@@ -563,13 +563,21 @@ export class ChannelSession {
     this.hostCleanup = Promise.all([this.hostCleanup, ...hosts.map(value => value.host.close())]).then(() => {});
   }
 
+  resumeApp = async (): Promise<void> => {
+    if (this.closed || this.app || this.view.connection !== "connected" || !isClientActivated()) return;
+    try { await this.connectApp(); }
+    catch { /* Passive return leaves permission and errors with the explicit App action. */ }
+  };
+
   private async connectApp(): Promise<ChannelApp> {
     const state = this.view.state, self = this.view.self;
     if (!state || !self || !this.credential || this.closed) throw new Error("disconnected");
     if (!this.app) {
+      if (this.view.connection !== "connected") throw new Error("disconnected");
       const health = await discoverChannelAppHealth({ waitForPermission: false });
       if (!health) throw new Error("app_disconnected");
-      if (this.closed || this.view.self?.id !== self.id || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
+      if (this.closed || this.view.connection !== "connected" || this.view.self?.id !== self.id
+          || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
       if (!this.app) {
         const app = new ChannelApp(health, state.channel.id, self.id, this.credential, self.name, () => {
           if (this.app !== app) return;

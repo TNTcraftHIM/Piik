@@ -322,7 +322,7 @@ test("domain and room invitations use the current Welcome origin without local b
 
 test("App hosting uses its own participant while Browser rooms retain their page lifetime", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
-  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
   const localRoom = { id: "saved-browser-room", name: "Browser room", icon: "couch", creatorId: "self", access: "public" as const, hidden: false, hasPassword: false };
   const host = {
     roomId: localRoom.id, summary: () => localRoom,
@@ -370,12 +370,63 @@ test("App hosting uses its own participant while Browser rooms retain their page
     expect(session.getSnapshot()).toMatchObject({ appConnected: false, error: null });
     expect(host.close).not.toHaveBeenCalled();
     expect(socket.sent.some(command => command.type === "host_stop")).toBe(false);
+    const domainCommands = socket.sent.length, identity = session.getSnapshot().sessionId;
+    const resuming = session.resumeApp();
+    await vi.waitFor(() => expect(ChannelSocket.current).not.toBe(app));
+    const resumedApp = ChannelSocket.current;
+    await resumedApp.onopen?.();
+    const resumedHello = resumedApp.sent.at(-1)!;
+    expect(resumedHello).toMatchObject({ type: "hello", channelId: "domain", userId: "self" });
+    resumedApp.receive({ id: resumedHello.id, result: null });
+    await resuming;
+    expect(session.getSnapshot()).toMatchObject({ appConnected: true, sessionId: identity, connection: "connected" });
+    expect(socket.readyState).toBe(ChannelSocket.OPEN);
+    expect(socket.sent).toHaveLength(domainCommands);
+    expect(resumedApp.sent.map(command => command.type)).toEqual(["hello"]);
+    expect(host.close).not.toHaveBeenCalled();
+    expect(storedPolicies).toHaveBeenCalledOnce();
+    const healthChecks = discovery.mock.calls.length;
     session.close();
+    await session.resumeApp();
+    expect(discovery).toHaveBeenCalledTimes(healthChecks);
+    expect(ChannelSocket.current).toBe(resumedApp);
     await vi.waitFor(() => expect(host.close).toHaveBeenCalledOnce());
     expect(socket.sent.filter(command => command.type === "host_stop")).toEqual([
       { type: "host_stop", roomId: localRoom.id, bindingId: "browser-binding" },
     ]);
     expect(app.sent.map(command => command.type)).toEqual(["hello", "open"]);
+  } finally { session.close(); }
+});
+
+test.each(["disconnect", "close"])("pending App health cannot create a control socket after Domain %s", async end => {
+  const { session, socket } = await setup();
+  vi.useFakeTimers();
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  let complete!: (health: Awaited<ReturnType<typeof appLink.discoverChannelAppHealth>>) => void;
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth").mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+  try {
+    const resuming = session.resumeApp();
+    expect(discovery).toHaveBeenCalledOnce();
+    if (end === "close") session.close();
+    else socket.close();
+    complete({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+    await resuming;
+    expect(ChannelSocket.current).toBe(socket);
+    expect(session.getSnapshot().appConnected).toBe(false);
+  } finally { session.close(); }
+});
+
+test.each(["absent", "rejected"])("passive App resume leaves the page error unchanged when health is %s", async health => {
+  const { session, socket } = await setup();
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  const discovery = vi.spyOn(appLink, "discoverChannelAppHealth");
+  if (health === "absent") discovery.mockResolvedValue(null);
+  else discovery.mockRejectedValue(new Error("local App unavailable"));
+  try {
+    const error = session.getSnapshot().error;
+    await session.resumeApp();
+    expect(session.getSnapshot()).toMatchObject({ appConnected: false, error });
+    expect(ChannelSocket.current).toBe(socket);
   } finally { session.close(); }
 });
 

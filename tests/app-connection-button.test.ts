@@ -95,7 +95,7 @@ const settle = () => new Promise<void>(resolve => setImmediate(resolve));
 const site = "https://site.example";
 const approval = `http://127.0.0.1:39721/client?site=${encodeURIComponent(site)}`;
 
-function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected = false) {
+function mount(activated = false, state: "idle" | "ready" = "idle", android = false, connected?: boolean) {
   const popup = { closed: false, close: vi.fn(() => { popup.closed = true; }) };
   const window = Object.assign(new EventTarget(), { open: vi.fn((): typeof popup | null => popup), location: { origin: site, assign: vi.fn() } });
   const document = Object.assign(new EventTarget(), { visibilityState: "visible" });
@@ -243,6 +243,17 @@ describe("App connection approval", () => {
     expect(page.onConnected).not.toHaveBeenCalled();
     page.cleanup();
     expect(page.popup.closed).toBe(false);
+  });
+
+  it("reconnects an explicitly disconnected owner even while App health is ready", async () => {
+    const page = mount(true, "ready", false, false);
+    await page.connect();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalled();
+    expect(page.window.open).not.toHaveBeenCalled();
+    expect(page.onConnected).toHaveBeenCalledOnce();
+    expect(page.activateClient).toHaveBeenCalledOnce();
+    expect(page.setState).toHaveBeenLastCalledWith("ready");
+    page.cleanup();
   });
 
   it("offers recovery without activation or a stranded popup when no App is found", async () => {

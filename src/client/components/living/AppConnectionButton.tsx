@@ -25,7 +25,7 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected, discovery, connected = false }: AppConnectionProps) {
+export function AppConnectionButton({ onConnected, discovery, connected }: AppConnectionProps) {
   const loadDiscovery = async (): Promise<AppDiscovery> => {
     if (discovery) return discovery;
     const native = await import("../../native/client");
@@ -81,7 +81,7 @@ export function AppConnectionButton({ onConnected, discovery, connected = false 
 
   async function connect(wake = false): Promise<void> {
     if (pending.current) { pending.current.open?.(); return; }
-    let manage = state === "ready";
+    let manage = state === "ready" && connected !== false;
     healthCheck.current?.abort();
     // Discovery and its browser permission prompt stay in the current tab.
     // A fresh click opens the real approval page without reserving a blank tab.

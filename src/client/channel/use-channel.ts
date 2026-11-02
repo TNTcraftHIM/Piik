@@ -17,10 +17,15 @@ export function useChannel(onInvitation?: (roomId: string) => void): ChannelCont
   useEffect(() => {
     session.start();
     const close = () => session.close();
+    const returned = () => { if (document.visibilityState === "visible") void session.resumeApp(); };
     window.addEventListener("pagehide", close);
+    window.addEventListener("focus", returned);
+    document.addEventListener("visibilitychange", returned);
     if (import.meta.env.DEV) window.__channelGate = { session, snapshot: session.getSnapshot };
     return () => {
       window.removeEventListener("pagehide", close);
+      window.removeEventListener("focus", returned);
+      document.removeEventListener("visibilitychange", returned);
       if (window.__channelGate?.session === session) delete window.__channelGate;
       session.close();
     };
