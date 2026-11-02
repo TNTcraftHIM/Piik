@@ -153,7 +153,7 @@ export class BrowserEncodingPool {
       await Promise.allSettled([
         ...[...this.members].map(async (member) => {
           if (member.disposed || member.disabled || member.connection.connectionState !== "connected") { member.budget = undefined; return; }
-          const report = await member.connection.getStats().catch(() => null);
+          const report = await member.sender.getStats().catch(() => null);
           if (member.disposed) return;
           if (!report) { member.budget = undefined; return; }
           const codec = negotiatedCodec(report);

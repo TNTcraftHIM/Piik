@@ -19,7 +19,7 @@ function stats(row: Record<string, unknown>, negotiated: RTCRtpCodec = codec): R
   ]) as unknown as RTCStatsReport;
 }
 
-function member(budget = 2_000_000, configureCarrier = async () => true) {
+function member(budget = 2_000_000, configureCarrier = async () => true, sharedConnection?: RTCPeerConnection) {
   const demand = { budget, codec: { ...codec } as RTCRtpCodec };
   let producerId: string | null = null;
   const select = vi.fn((id: string, _requestKey: () => Promise<void>, selected: () => void,
@@ -34,11 +34,13 @@ function member(budget = 2_000_000, configureCarrier = async () => true) {
     select, cancelSelection, push: vi.fn(), passthrough: vi.fn(() => { producerId = null; }), setPaused: vi.fn(),
     snapshot: () => ({ frames: producerId ? 30 : 0, width: 1920, height: 1080, timestamp: Date.now(), lastProducerId: producerId }),
   } as unknown as BrowserEncodingOutput;
-  const connection = { connectionState: "connected", getStats: async () => stats({ targetBitrate: demand.budget }, demand.codec) };
+  const getStats = vi.fn(async () => stats({ targetBitrate: demand.budget }, demand.codec));
+  const sender = { getStats } as unknown as RTCRtpSender;
+  const connection = sharedConnection ?? { connectionState: "connected", getStats } as unknown as RTCPeerConnection;
   const fatal = vi.fn();
-  const handle = pool.create(source, {} as RTCRtpSender, connection as RTCPeerConnection, profile,
+  const handle = pool.create(source, sender, connection, profile,
     encoded, configureCarrier, async () => undefined, fatal)!;
-  return { demand, select, cancelSelection, fatal, handle, encoded, producerId: () => producerId };
+  return { demand, select, cancelSelection, fatal, handle, encoded, sender, producerId: () => producerId };
 }
 
 async function sample(count = 1) {
@@ -86,6 +88,31 @@ afterEach(() => {
 });
 
 describe("Browser encoding pool ownership", () => {
+  it("keeps two publications on one connection scoped to each sender's native budget", async () => {
+    const mixed = new Map<string, object>();
+    stats({ targetBitrate: profile.maxBitrate + 1_000_000 }).forEach(row => mixed.set(row.id, row));
+    mixed.set("second-video", { ...mixed.get("video"), id: "second-video", targetBitrate: 350_000 });
+    mixed.set("pair", { id: "pair", type: "candidate-pair", availableOutgoingBitrate: 90_000_000 });
+    const connection = { connectionState: "connected", getStats: vi.fn(async () => mixed) } as unknown as RTCPeerConnection;
+    const first = member(profile.maxBitrate + 1_000_000, undefined, connection);
+    const second = member(350_000, undefined, connection);
+    await sample(4);
+
+    expect(producers.size).toBe(2);
+    const firstProducer = [...producers.keys()].find(producer => producer.id === first.producerId())!;
+    const secondProducer = [...producers.keys()].find(producer => producer.id === second.producerId())!;
+    expect(producers.get(firstProducer)!.budget).toBe(profile.maxBitrate);
+    expect(producers.get(secondProducer)!.budget).toBe(350_000);
+    expect(first.sender.getStats).toHaveBeenCalled();
+    expect(second.sender.getStats).toHaveBeenCalled();
+    expect(connection.getStats).not.toHaveBeenCalled();
+
+    first.demand.budget = 1_200_000;
+    await sample(2);
+    expect(producers.get(firstProducer)!.budget).toBe(1_200_000);
+    expect(producers.get(secondProducer)!.budget).toBe(350_000);
+  });
+
   it.each(["false", "rejected"])("isolates a connection's %s carrier attachment from its shared source", async (outcome) => {
     const healthy = member();
     let finish!: (applied: boolean) => void, reject!: (error: Error) => void;
