@@ -12,8 +12,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint and resolve Android Firefox's received-video relay failure: Native
-  H264 decodes, but Gecko's image conversion fails before outgoing encoding.
+  checkpoint. Resolve Android's repeated VP8 capture failure in the system codec
+  service and verify complete source cleanup after every video producer ends.
+  Follow the Android Native helper's source-layer suspension through its actual
+  source and transport measurements. Firefox's received-video conversion limit
+  is recorded in [device evidence](./verification-status.md#device-evidence-boundary).
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab

@@ -83,9 +83,14 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   A separate Chromium control forwards a received VP8 track through the shared
   Browser transport and encoding pool to a desktop receiver. The room supplies
   that VP8 input through a desktop Browser relay after Native H264 capture.
+  An approved Android Native helper also forwards compatible H264 through normal
+  room plans to Firefox and a desktop child, without Browser re-encoding.
+  Native VP8 capture and delayed-consent H264 startup deliver decoded picture;
+  repeated VP8 capture still encounters a system codec-service assertion on the
+  emulator. [TODO](./todo.md#now) owns repeat-capture and helper-quality acceptance.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
-  direct replacement delivers picture; [TODO](./todo.md#now) owns the relay repair.
+  direct replacement delivers picture.
   On that emulator, exporting the decoded input through 2D Canvas, WebGL or
   VideoFrame did not provide usable picture data; a synthetic Canvas VP8
   control worked. Mozilla's Android tests disable hardware decoders for their

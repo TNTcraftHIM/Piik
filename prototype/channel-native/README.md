@@ -24,7 +24,8 @@ the child's private resource before encoding. An unread encoding rests on its
 bounded output queue without continuing GPU transfers. The Encoding owner stops
 and joins its child; a Windows Job also releases it when the App exits.
 Encoding failure affects only outputs using that encoder. Stopping capture ends
-all its encodings and input authority while App-hosted rooms continue.
+all its encodings and input authority while App-hosted rooms continue. Once every
+video producer ends, the source also stops capture and its source sound.
 Frame-rate selection retains the original timestamps and accumulates its sampling
 interval across frames. The [network design](../../docs/research/channel-network-design.md)
 owns the process and output boundaries.
@@ -181,7 +182,7 @@ published release; this keeps one netwatch source in each consuming graph.
 Both crates retain upstream MIT/Apache-2.0 licensing.
 
 [Upstream PR #268](https://github.com/n0-computer/net-tools/pull/268) carries the
-repair following the maintainer's approval in
+repair after the maintainer requested a submission in
 [issue #266](https://github.com/n0-computer/net-tools/issues/266).
 When an upstream release includes the repair, return both direct entries
 to that release and regenerate Native, Server and Android locks, then run the

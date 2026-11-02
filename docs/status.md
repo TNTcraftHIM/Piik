@@ -23,7 +23,7 @@ for reading, bidirectional voice, files and screen startup. The
 explicit [Native participant](../prototype/channel-native/README.md) operates
 SQLite-backed rooms and forwards encoded Opus and file ranges on the same base paths.
 Its media adapter also forwards VP8/H264 with source audio and preserves their
-shared source clock. Capture-enabled Apps derive constrained received-video
+shared source clock. Capture-enabled desktop Apps derive constrained received-video
 outputs through one shared decoder. Upstream str0m owns transport, congestion
 control, pacing and retransmission; Piik owns complete frames, shared encoding
 demand and source clocks. Ordinary Browser sources and relays reuse eligible
