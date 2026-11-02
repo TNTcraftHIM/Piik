@@ -223,8 +223,9 @@ impl RoomRuntime {
                 invite_key,
                 ..
             } => {
+                let authorized = self.policy().reads(member.user_id, member.domain_owner);
                 self.enter(member, password.as_deref(), invite_key.as_deref())?;
-                op.policy_changed = true;
+                op.policy_changed = !authorized;
             }
             Command::RoomInvite { .. } => {
                 op.result = RoomResult::Invite {
@@ -305,6 +306,79 @@ pub struct RoomHost {
 mod tests {
     use super::*;
     use crate::wire::Request;
+
+    #[test]
+    fn authorized_entry_projects_a_new_endpoint_without_a_policy_write() {
+        let owner = Member {
+            user_id: Uuid::new_v4(),
+            participates: true,
+            domain_owner: false,
+        };
+        let friend = Member {
+            user_id: Uuid::new_v4(),
+            ..owner
+        };
+        let host_session = Uuid::new_v4();
+        let browser = Uuid::new_v4();
+        let native = Uuid::new_v4();
+        let binding = Uuid::new_v4();
+        let mut host = RoomHost::new(
+            RoomState::new(
+                "room".into(),
+                "Private room".into(),
+                Default::default(),
+                owner.user_id,
+                RoomAccess::Private,
+                true,
+                Some("secret".into()),
+            )
+            .unwrap(),
+        );
+        let endpoint = |member| Endpoint {
+            signing_key: [1; 32],
+            member,
+            connected: true,
+        };
+        for (revision, session, password) in [(1, browser, Some("secret")), (2, native, None)] {
+            let before = serde_json::to_value(host.policy()).unwrap();
+            let mut endpoints =
+                BTreeMap::from([(host_session, endpoint(owner)), (browser, endpoint(friend))]);
+            if session == native {
+                endpoints.insert(native, endpoint(friend));
+            }
+            let input = HostInput {
+                now: 0,
+                binding_id: binding,
+                host_session_id: host_session,
+                revision,
+                endpoints,
+                action: HostAction::Command {
+                    context: RequestContext {
+                        connection: Uuid::new_v4(),
+                        session_id: session,
+                        request_id: Some(Uuid::new_v4().to_string()),
+                        now: 0,
+                    },
+                    command: Command::EnterRoom {
+                        room_id: "room".into(),
+                        password: password.map(str::to_owned),
+                        invite_key: None,
+                    },
+                },
+            };
+            assert_eq!(
+                host.dispatch(input).unwrap().policy.is_some(),
+                session == browser
+            );
+            let output = host.finish(None).unwrap();
+            let room = &output.projection.views[&session].room;
+            assert!(room.authorized && room.hidden);
+            assert!(!room.reading);
+            if session == native {
+                assert_eq!(serde_json::to_value(host.policy()).unwrap(), before);
+            }
+        }
+    }
 
     #[test]
     fn forwarding_a_room_update_preserves_omitted_password_and_explicit_removal() {
