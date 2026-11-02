@@ -165,6 +165,15 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       `${hook}.snapshot().messagesByRoom[${JSON.stringify(room)}]`), messages =>
       messages?.some(message => message.text === "Still here after the owner closes the page"));
     const endpoint = (await view(1)).sessionId;
+    const browserBinding = (await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.bindingId;
+    const domainSockets = await evaluate(1, `(() => {
+      const sockets = window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/prototype/channel');
+      window.__appRestartWelcomes = 0;
+      for (const socket of sockets) socket.addEventListener('message', event => {
+        if (JSON.parse(event.data).type === 'welcome') window.__appRestartWelcomes++;
+      });
+      return { count: sockets.length, open: sockets.filter(socket => socket.readyState === WebSocket.OPEN).length };
+    })()`);
     await stop();
     await until("App loss pauses only its room", () => view(2), value =>
       value.state.channel.rooms.some(entry => entry.id === room && !entry.available)
@@ -175,8 +184,18 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await progressing(2, unrelated);
     start(); await ready();
     assert.equal((await health(origin)).status, 200, "approved Site survives App restart");
-    await action(1, "reconnect()");
+    const originalTab = (await browser(1, "tab")).tabs.find(tab => tab.active).targetId;
+    await browser(1, "tab", "new", "about:blank");
+    await browser(1, "tab", originalTab);
     await appReady(1);
+    assert.equal((await view(1)).sessionId, endpoint, "App re-entry retains the Browser endpoint");
+    assert.equal((await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.bindingId,
+      browserBinding, "App re-entry retains the Browser room binding");
+    assert.deepEqual(await evaluate(1, `(() => {
+      const sockets = window.__channelProbe.sockets.filter(socket => new URL(socket.url).pathname === '/prototype/channel');
+      return { count: sockets.length, open: sockets.filter(socket => socket.readyState === WebSocket.OPEN).length };
+    })()`), domainSockets, "App re-entry preserves the open Domain socket without reconnecting");
+    assert.equal(await evaluate(1, "window.__appRestartWelcomes"), 0, "App re-entry receives no new Domain Welcome");
     await until("App reconnect restores data with a fresh binding", () => view(1), value => value.state?.channel.rooms.some(entry =>
       entry.id === room && entry.available && entry.delivery.bindingId !== first));
     await action(1, `browse(${JSON.stringify(room)})`);

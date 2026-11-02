@@ -1,6 +1,6 @@
 # Current TODO Ledger
 
-Last reviewed: 2026-11-01
+Last reviewed: 2026-11-02
 
 This ledger contains unfinished work and explicit owner holds. Product modules
 own behavior; research and Git/PRs own evidence and completed history.
@@ -12,11 +12,14 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint. Reconnect the room's control link when an approved App returns,
-  without requiring a page reload. Resolve Android Firefox's received-video relay failure: Native
+  checkpoint and resolve Android Firefox's received-video relay failure: Native
   H264 decodes, but Gecko's image conversion fails before outgoing encoding.
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
+- [ ] **3.0 App-assisted viewing and forwarding.** Restore the 2.x capability
+  through the shared endpoint and route model. Keep the Browser's actual
+  playback proof and page-owned watching lifetime; Native transit alone does
+  not provide this integration.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

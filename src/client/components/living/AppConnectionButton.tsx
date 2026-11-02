@@ -186,9 +186,16 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
   }
 
   const busy = state === "busy" || state === "waking" || state === "approving";
-  const label = t(state === "busy" ? "client.connect.discovering" : state === "approving" ? "client.connect.approving" : state === "approval" ? "client.connect.found" :
-    state === "waking" ? "client.connect.returnToBrowser" : state === "ready" ? "client.connect.manage" : state === "incompatible" ? "native.incompatible" :
-    state === "unavailable" ? "client.connect.unavailable" : "client.connect.action");
+  const label = t(({
+    idle: "client.connect.action",
+    waking: "client.connect.returnToBrowser",
+    busy: "client.connect.discovering",
+    approval: "client.connect.found",
+    approving: "client.connect.approving",
+    ready: connected === false ? "client.connect.action" : "client.connect.manage",
+    unavailable: "client.connect.unavailable",
+    incompatible: "native.incompatible",
+  } as const)[state]);
   const failed = state === "unavailable" || state === "incompatible";
   return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
     text={vis ? undefined : state === "idle" ? t("client.connect.hint") : label} disabled={helpOpen}
