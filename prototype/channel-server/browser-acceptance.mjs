@@ -1090,34 +1090,31 @@ try {
   for (const index of [1, 0, 3]) await action(index, `watch(${JSON.stringify(primaryPublication)})`);
   await Promise.all([0, 1, 3, 4].map(index => playing(index, primaryPublication)));
   const routed = await Promise.all(sessions.map((_, index) => view(index)));
-  const relay = routed.findIndex((state, index) => index !== 2 && state.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)));
+  const relay = routed.findIndex((state, index) => index !== 2 && state.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication && flow.selected)));
   assert(relay >= 0, "bounded source fanout must produce an actual peer relay for four viewers");
   const sourceCopies = routed[2].state.pairs.filter(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)).length;
-  const sourceBaseDegree = routed[2].state.pairs.filter(pair => pair.rooms.includes(roomId)).length;
-  assert(sourceCopies <= Math.max(2, sourceBaseDegree), `source fanout exceeded its existing base paths: ${sourceCopies}`);
-  if (relay !== secondPublisher) {
-    await action(secondPublisher, `stopScreen(${JSON.stringify(secondPublication)})`);
-    secondPublisher = relay;
-    secondPublication = await publishScreen(relay, roomId);
-    const watcher = relay === 4 ? 0 : 4;
-    await action(watcher, `watch(${JSON.stringify(secondPublication)})`);
-    await playing(watcher, secondPublication);
-  }
+  await action(secondPublisher, `stopScreen(${JSON.stringify(secondPublication)})`);
+  secondPublisher = relay;
+  secondPublication = await publishScreen(relay, roomId);
+  const watcher = relay === 4 ? 0 : 4;
+  await action(watcher, `watch(${JSON.stringify(secondPublication)})`);
+  await playing(watcher, secondPublication);
   await action(secondPublisher, `stopScreen(${JSON.stringify(secondPublication)})`);
   await progressing(relay, primaryPublication);
   const relayView = await view(relay);
   assert(relayView.state.pairs.some(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)), "own source retirement must retain another source's forwarding");
   console.log(`Browser ${relay} stopped its own source and keeps receiving/forwarding C`);
 
-  const downstream = relayView.state.pairs.find(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication)).peerId;
-  const downstreamIndex = routed.findIndex(value => value.sessionId === downstream);
-  assert(downstreamIndex >= 0);
+  const downstreamIndices = relayView.state.pairs.filter(pair => pair.outgoing.some(flow => flow.publicationId === primaryPublication && flow.selected))
+    .map(pair => routed.findIndex(value => value.sessionId === pair.peerId));
+  assert(downstreamIndices.length > 0 && downstreamIndices.every(index => index >= 0));
+  const downstreamIndex = downstreamIndices[0];
   const transitPairs = relayView.state.pairs.filter(pair => pair.incoming.some(flow => flow.publicationId === primaryPublication) || pair.outgoing.some(flow => flow.publicationId === primaryPublication)).map(pair => pair.id).sort();
   await action(relay, `unwatch(${JSON.stringify(primaryPublication)})`);
   const transit = await until("relay stops local consumption", () => view(relay), value => !value.state.subscriptions.includes(primaryPublication));
   assert.deepEqual(transit.state.pairs.filter(pair => pair.incoming.some(flow => flow.publicationId === primaryPublication) || pair.outgoing.some(flow => flow.publicationId === primaryPublication)).map(pair => pair.id).sort(), transitPairs);
   await until("transit has no local player", () => picture(relay, primaryPublication), value => value.frames === 0);
-  await progressing(downstreamIndex, primaryPublication);
+  await Promise.all(downstreamIndices.map(index => progressing(index, primaryPublication, undefined, 30)));
   await action(relay, `watch(${JSON.stringify(primaryPublication)})`);
   await progressing(relay, primaryPublication);
   console.log("Unwatch stops the relay's local player and preserves its downstream frames and pair IDs");

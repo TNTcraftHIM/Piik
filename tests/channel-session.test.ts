@@ -2683,11 +2683,12 @@ class RoomAudio {
   autoplay = false;
   hidden = false;
   muted = false;
+  playsInline = false;
   srcObject: MediaStream | null = null;
   play = vi.fn(async () => {});
   pause = vi.fn();
   remove = vi.fn();
-  constructor() { RoomAudio.instances.push(this); }
+  constructor(readonly tagName = "AUDIO") { RoomAudio.instances.push(this); }
 }
 
 class RoomMediaStream {
@@ -2705,7 +2706,7 @@ async function setupRoomMedia(layered = false) {
   RoomAudio.instances = [];
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   vi.stubGlobal("Audio", RoomAudio);
-  vi.stubGlobal("document", { body: { append: vi.fn() } });
+  vi.stubGlobal("document", { body: { append: vi.fn() }, createElement: vi.fn((tag: string) => new RoomAudio(tag.toUpperCase())) });
   const { session, socket } = await setup();
   const state = structuredClone(session.getSnapshot().state!);
   const sent: ChannelCommand[] = [];
@@ -3057,7 +3058,7 @@ test.each(["commit", "failed"])("a shadow subtree forwards exact inputs and pres
     expect(next.getStats).toHaveBeenCalledOnce();
     media.screenPresentation("candidate-flow", candidate, "prepared");
     expect(sent.some(command => command.type === "flow_state" && command.state === "switch_ready")).toBe(false);
-    expect(RoomAudio.instances.map(audio => audio.srcObject?.getTracks())).toEqual([[oldAudio], [nextAudio]]);
+    expect(RoomAudio.instances.map(player => player.srcObject?.getTracks())).toEqual([[oldVideo, oldAudio], [nextVideo, nextAudio]]);
     const shadowConsumer = RoomAudio.instances[1];
     if (outcome === "commit") {
       state.pairs[0].incoming = [];
@@ -3111,6 +3112,55 @@ test("same-publication stream replacement re-proves progress on a reused receive
   } finally { media.reset(); session.close(); }
 });
 
+test("a relay shares one video consumer across children and releases only its own player on track changes or retirement", async () => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc } = fixture;
+  const video = remoteTrack("video"), nextVideo = remoteTrack("video"), audio = remoteTrack("audio");
+  const tracks = [video, audio], stream = remoteStream("shared-relay", tracks);
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(0) } as RTCRtpReceiver];
+  try {
+    state.pairs.push(...["first-child", "second-child"].map(id => ({ id, peerId: id, canReceiveVideoLayers: false,
+      rooms: ["first"], incoming: [], outgoing: [{ id: `${id}-out`, publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] })));
+    media.update("a", state);
+    await receiveScreen(fixture, stream);
+    expect(RoomAudio.instances).toHaveLength(1);
+    const first = RoomAudio.instances[0];
+    expect(first).toMatchObject({ tagName: "VIDEO", hidden: true, muted: true, autoplay: true, playsInline: true });
+    expect(first.srcObject?.getTracks()).toEqual([video, audio]);
+    expect(first.play).toHaveBeenCalledOnce();
+    expect(document.body.append).toHaveBeenCalledWith(first);
+
+    state.subscriptions = ["screen"]; media.update("a", state);
+    state.subscriptions = []; media.update("a", state);
+    state.pairs[1].outgoing = []; media.update("a", state);
+    expect(RoomAudio.instances).toHaveLength(1);
+    expect(first.pause).not.toHaveBeenCalled();
+
+    tracks[0] = nextVideo;
+    pc.receivers = [{ track: nextVideo, getStats: async () => decodedReport(0) } as RTCRtpReceiver];
+    pc.ontrack?.({ streams: [stream] });
+    expect(RoomAudio.instances).toHaveLength(2);
+    const replacement = RoomAudio.instances[1];
+    expect(first.pause).toHaveBeenCalledOnce(); expect(first.remove).toHaveBeenCalledOnce();
+    expect(first.srcObject).toBeNull();
+    expect(replacement.srcObject?.getTracks()).toEqual([nextVideo, audio]);
+    expect(replacement.play).toHaveBeenCalledOnce();
+
+    state.pairs[2].outgoing = []; media.update("a", state);
+    expect(replacement.pause).toHaveBeenCalledOnce(); expect(replacement.remove).toHaveBeenCalledOnce();
+    expect(replacement.srcObject).toBeNull();
+    state.pairs[2].outgoing = [{ id: "resumed-out", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }];
+    media.update("a", state);
+    const resumed = RoomAudio.instances[2];
+    expect(resumed.srcObject?.getTracks()).toEqual([nextVideo, audio]);
+    media.reset();
+    expect(resumed.pause).toHaveBeenCalledOnce(); expect(resumed.remove).toHaveBeenCalledOnce();
+    expect(resumed.srcObject).toBeNull();
+    expect(stream.getTracks()).toEqual([nextVideo, audio]);
+    for (const track of [video, nextVideo, audio]) expect(track.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test("a relay waits for decoded input and Auto proof before creating its original flow sender", async () => {
   const fixture = await screenFixture();
   const { media, session, state, pc } = fixture;
@@ -3130,6 +3180,9 @@ test("a relay waits for decoded input and Auto proof before creating its origina
     const downstream = RoomPeerConnection.instances[1];
     expect(probe).not.toHaveBeenCalled();
     expect(downstream.senders).toEqual([]);
+    expect(RoomAudio.instances).toHaveLength(1);
+    expect(RoomAudio.instances[0].srcObject?.getTracks()).toEqual([video]);
+    expect(RoomAudio.instances[0].play).toHaveBeenCalledOnce();
     frames = 1;
     await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce());
     expect(downstream.senders).toEqual([]);
@@ -3229,12 +3282,17 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     const downstream = RoomPeerConnection.instances[1];
     await receiveScreen(fixture, stream);
     await vi.waitFor(() => expect(downstream.senders.map(sender => sender.track)).toEqual([video]));
+    const videoOnlyConsumer = RoomAudio.instances[0];
+    expect(videoOnlyConsumer.srcObject?.getTracks()).toEqual([video]);
     const videoSender = downstream.senders[0];
     const binding = videoSender.stream;
     expect(binding.id).not.toBe(stream.id);
     tracks.push(audio);
     pc.ontrack?.({ streams: [stream] });
     expect(downstream.senders.map(sender => sender.track)).toEqual([video, audio]);
+    const withSound = RoomAudio.instances.at(-1)!;
+    expect(withSound.srcObject?.getTracks()).toEqual([video, audio]);
+    expect(videoOnlyConsumer.pause).toHaveBeenCalledOnce();
     await vi.waitFor(() => expect(downstream.senders[1].getParameters().encodings[0].maxBitrate).toBe(128_000));
     expect(downstream.senders[0]).toBe(videoSender);
     // Removing a remote track does not emit ontrack; the SDP replay republishes its stream.
@@ -3243,6 +3301,8 @@ test("a relay updates senders when audio joins and leaves the same remote screen
       tracks: [{ flowId: "screen-flow", streamId: stream.id }] });
     await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("audio-removed"));
     expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    expect(RoomAudio.instances.at(-1)!.srcObject?.getTracks()).toEqual([video]);
+    expect(withSound.pause).toHaveBeenCalledOnce();
     expect(downstream.senders[0]).toBe(videoSender);
     expect(binding.getTracks()).toEqual([video]);
     media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "source-paused" }, tracks: [] });
@@ -4421,6 +4481,7 @@ test("voice forwards without local listening and the same pair carries the rever
     expect(downstream.senders.map(sender => sender.track)).toEqual([aTrack]);
     expect(RoomAudio.instances).toHaveLength(1);
     const consumer = RoomAudio.instances[0];
+    expect(consumer.tagName).toBe("AUDIO");
     expect(consumer.muted && consumer.hidden && consumer.autoplay).toBe(true);
     expect(consumer.srcObject?.getTracks()).toEqual([aTrack]);
     expect(consumer.play).toHaveBeenCalledOnce();

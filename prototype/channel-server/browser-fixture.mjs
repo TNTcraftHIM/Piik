@@ -421,10 +421,16 @@ function captureProbe(name) {
       async sample() {
         const inbound = [], outbound = [];
         for (const pc of peers) if (pc.connectionState === 'connected') {
-          for (const stat of (await pc.getStats()).values()) {
-            if (stat.type === 'inbound-rtp') inbound.push({ kind: stat.kind, bytes: stat.bytesReceived,
-              frames: stat.framesDecoded, samples: stat.totalSamplesReceived, energy: stat.totalAudioEnergy });
-            if (stat.type === 'outbound-rtp') outbound.push({ kind: stat.kind, bytes: stat.bytesSent, frames: stat.framesEncoded });
+          const report = await pc.getStats();
+          const identity = stat => ({ pc: peers.indexOf(pc), id: stat.id, mid: stat.mid, ssrc: stat.ssrc,
+            codec: report.get(stat.codecId)?.mimeType });
+          for (const stat of report.values()) {
+            if (stat.type === 'inbound-rtp') inbound.push({ ...identity(stat), kind: stat.kind, bytes: stat.bytesReceived,
+              frames: stat.framesDecoded, framesReceived: stat.framesReceived, packets: stat.packetsReceived,
+              keys: stat.keyFramesDecoded, plis: stat.pliCount, nacks: stat.nackCount,
+              samples: stat.totalSamplesReceived, energy: stat.totalAudioEnergy });
+            if (stat.type === 'outbound-rtp') outbound.push({ ...identity(stat), kind: stat.kind, bytes: stat.bytesSent,
+              frames: stat.framesEncoded, packets: stat.packetsSent, keys: stat.keyFramesEncoded });
           }
         }
         const fault = videoStall, stalled = fault?.output;
@@ -477,13 +483,13 @@ async function playing(index, publicationId, observe) {
   return until(`browser ${index} decodes ${publicationId}`, () => picture(index, publicationId, observe),
     sample => sample.live && sample.frames > 0);
 }
-async function progressing(index, publicationId, observe) {
+async function progressing(index, publicationId, observe, minimumFrames = 1) {
   let before = await playing(index, publicationId, observe);
   return until(`browser ${index} advances ${publicationId}`, () => picture(index, publicationId, observe),
     sample => {
-      const advanced = sample.live && sample.frames > before.frames && sample.time > before.time;
+      const advanced = sample.live && sample.frames >= before.frames + minimumFrames && sample.time > before.time;
       // A repaired route can replace the player and reset its frame/time counters.
-      before = sample;
+      if (sample.frames < before.frames || sample.time < before.time) before = sample;
       return advanced;
     });
 }

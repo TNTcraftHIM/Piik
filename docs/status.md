@@ -1,6 +1,6 @@
 # Current Status
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 This is the compact execution/deployment index. Product modules own behavior,
 [verification status](./verification-status.md) summarizes material evidence limits,
@@ -26,7 +26,8 @@ Its media adapter also forwards VP8/H264 with source audio and preserves their
 shared source clock. Capture-enabled Apps derive constrained received-video
 outputs through one shared decoder. Upstream str0m owns transport, congestion
 control, pacing and retransmission; Piik owns complete frames, shared encoding
-demand and source clocks.
+demand and source clocks. Ordinary Browser sources and relays reuse eligible
+node-local encoding groups across publication pairs.
 Chat and history use authenticated requests and room-owner confirmations on
 those base paths. File descriptions stay in confirmed history; selected and verified
 copies stay with their participants. Screen plans can replace a leaf or relay

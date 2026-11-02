@@ -392,9 +392,10 @@ congestion control to the transport. [RFC 8831](https://www.rfc-editor.org/rfc/r
 explains shared SCTP congestion, while [RFC 8835](https://www.rfc-editor.org/rfc/rfc8835.html#section-4)
 describes media/data prioritization.
 
-Browser media relays have different costs from Native encoded forwarding. The
-current prototype receives MediaStream tracks and sends them again with addTrack;
-do not budget that as a packet-only SFU. The
+Browser media relays decode received tracks; eligible ordinary outputs reuse
+node-local encoding groups under [ADR-0014](../adr/0014-browser-node-local-encoding-pool.md).
+Forwarding owns input consumption until its last output retires, independently
+of local watching. Do not budget Browser relays as packet-only SFUs. The
 [WebRTC relay sample](https://webrtc.github.io/samples/src/content/peerconnection/multiple-relay/)
 demonstrates forwarding, not unlimited inexpensive multi-hop video.
 Keep paths short and validate simultaneous voice/video/file work on actual endpoints.

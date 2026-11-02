@@ -43,7 +43,7 @@ export class ChannelMedia {
   private local = new Map<string, { stream: MediaStream; profile?: QualityProfile; codec?: BrowserVideoCodecPreference }>();
   private streams = new Map<string, MediaStream>();
   private screenInputs = new Map<string, ChannelScreenInput[]>();
-  private relayAudio = new Map<string, { tracks: MediaStreamTrack[]; audio: HTMLAudioElement }>();
+  private relayMedia = new Map<string, { tracks: MediaStreamTrack[]; player: HTMLMediaElement }>();
   private videoPool = new BrowserEncodingPool();
 
   constructor(private send: (command: ChannelCommand) => void,
@@ -369,7 +369,7 @@ export class ChannelMedia {
 
   private refresh(released = false): void {
     const streams = new Map([...this.local].map(([id, local]) => [id, local.stream]));
-    const relayAudio = new Map<string, MediaStreamTrack[]>();
+    const relayMedia = new Map<string, MediaStreamTrack[]>();
     for (const publication of this.publications) {
       if (this.local.has(publication.id)) continue;
       const current = this.selectedInput(publication.id);
@@ -389,6 +389,8 @@ export class ChannelMedia {
           if (!source.plan.incoming.some(input => input.id === flow.inputFlowId && input.publicationId === flow.publicationId)) continue;
           const input = source.inputs.get(flow.inputFlowId);
           if (input && !input.failed) {
+            const tracks = input.stream.getTracks().filter(track => track.readyState !== "ended");
+            if (tracks.length) relayMedia.set(flow.inputFlowId, tracks);
             stream = publication.kind !== "screen" || input.codec ? input.stream : undefined;
             if (publication.kind === "screen" && input.ready && !publication.paused && input.video && !input.codec && !input.codecProbe) {
               const probe = input.codecProbe = new AbortController();
@@ -405,10 +407,6 @@ export class ChannelMedia {
         outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile ?? publication.videoCeiling,
           audioBitrate: local?.profile?.maxAudioBitrate, codec, paused: publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
-        if (stream && flow.inputFlowId !== null) {
-          const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");
-          if (tracks.length) relayAudio.set(flow.inputFlowId, tracks);
-        }
       }
       outgoingByPeer.set(peer.transport, outgoing);
       released = peer.transport.setOutgoing(outgoing) || released;
@@ -416,7 +414,7 @@ export class ChannelMedia {
     // All pairs share this participant's actual resources. Failure rollback
     // does not report a release; only normal retirement permits another try.
     if (released) for (const [transport, outgoing] of outgoingByPeer) transport.setOutgoing(outgoing, true);
-    this.syncRelayAudio(relayAudio);
+    this.syncRelayMedia(relayMedia);
     const changed = streams.size !== this.streams.size || [...streams].some(([id, stream]) => this.streams.get(id) !== stream);
     this.streams = streams;
     const screenInputs = new Map<string, ChannelScreenInput[]>();
@@ -435,25 +433,27 @@ export class ChannelMedia {
     this.screenInputs = screenInputs;
   }
 
-  private syncRelayAudio(needed: ReadonlyMap<string, MediaStreamTrack[]>): void {
-    for (const [id, binding] of this.relayAudio) {
+  private syncRelayMedia(needed: ReadonlyMap<string, MediaStreamTrack[]>): void {
+    for (const [id, binding] of this.relayMedia) {
       const tracks = needed.get(id);
       if (tracks?.length === binding.tracks.length && tracks.every((track, index) => track === binding.tracks[index])) continue;
-      binding.audio.pause();
-      binding.audio.srcObject = null;
-      binding.audio.remove();
-      this.relayAudio.delete(id);
+      binding.player.pause();
+      binding.player.srcObject = null;
+      binding.player.remove();
+      this.relayMedia.delete(id);
     }
-    for (const [id, tracks] of needed) if (!this.relayAudio.has(id)) {
-      // Chromium's audio receiver is pulled by a consumer, even for forwarding.
-      const audio = new Audio();
-      audio.autoplay = true; audio.hidden = true; audio.muted = true;
-      audio.srcObject = new MediaStream(tracks);
-      this.relayAudio.set(id, { tracks, audio });
-      document.body.append(audio);
-      void audio.play().catch(error => {
-        if (this.relayAudio.get(id)?.audio === audio && error?.name !== "AbortError") {
-          console.warn("Channel relay audio could not start", error);
+    for (const [id, tracks] of needed) if (!this.relayMedia.has(id)) {
+      // Received media needs a playback consumer independent of local watching.
+      const video = tracks.some(track => track.kind === "video");
+      const player = video ? document.createElement("video") : new Audio();
+      if (video) (player as HTMLVideoElement).playsInline = true;
+      player.autoplay = true; player.hidden = true; player.muted = true;
+      player.srcObject = new MediaStream(tracks);
+      this.relayMedia.set(id, { tracks, player });
+      document.body.append(player);
+      void player.play().catch(error => {
+        if (this.relayMedia.get(id)?.player === player && error?.name !== "AbortError") {
+          console.warn("Channel relay media could not start", error);
         }
       });
     }
