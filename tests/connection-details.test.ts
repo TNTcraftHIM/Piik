@@ -20,7 +20,7 @@ describe("progressive connection details", () => {
     const samples = [
       { connectionId: "relay", metrics: { ...EMPTY_METRICS, bitrateKbps: 80, rttMs: 20, intervalPacketsReceived: 90, intervalPacketsLost: 10 } },
       { connectionId: "relay", metrics: { ...EMPTY_METRICS, bitrateKbps: 60, rttMs: 20, intervalPacketsReceived: 990, intervalPacketsLost: 10 } },
-      { connectionId: "direct", metrics: { ...EMPTY_METRICS, bitrateKbps: 70, rttMs: 60 } },
+      { connectionId: "direct", metrics: { ...EMPTY_METRICS, bitrateKbps: 70, rttMs: 60, intervalPacketsReceived: 0, intervalPacketsLost: 0 } },
     ];
     expect(summarizeConnectionMetrics(samples, "receive")).toMatchObject({ bitrateKbps: 210, rttMs: 40, packetLossPercent: 100 * 20 / 1100 });
   });
@@ -32,5 +32,14 @@ describe("progressive connection details", () => {
     const html = renderToStaticMarkup(createElement(ConnectionDetails, { rows }));
     expect(html.match(/class="lr-media-detail lr-connection-summary"/g)).toHaveLength(4);
     expect(renderToStaticMarkup(createElement(ConnectionDetails, { rows: [] }))).toBe("");
+  });
+
+  it("keeps mixed receive loss unknown when a Native report has no window counts", () => {
+    const browser = { connectionId: "browser", metrics: { ...EMPTY_METRICS,
+      packetLossPercent: 0, intervalPacketsReceived: 100, intervalPacketsLost: 0 } };
+    const native = { connectionId: "native", metrics: { ...EMPTY_METRICS, packetLossPercent: 50 } };
+    expect(summarizeConnectionMetrics([browser, native], "receive").packetLossPercent).toBeNull();
+    expect(summarizeConnectionMetrics([native], "receive").packetLossPercent).toBe(50);
+    expect(summarizeConnectionMetrics([browser, native], "send").packetLossPercent).toBe(25);
   });
 });
