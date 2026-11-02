@@ -165,7 +165,20 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const concurrentPicture = sourceIndex === 0 ? unrelated : await capturedScreen(sourceIndex, serverRoom);
     const concurrentViewer = sourceIndex === 0 ? 2 : 0;
     if (sourceIndex !== 0) await action(concurrentViewer, `watch(${JSON.stringify(concurrentPicture)})`);
-    const concurrentBefore = await progressing(concurrentViewer, concurrentPicture);
+    const concurrentObservations = [];
+    const observeConcurrent = async phase => {
+      const pages = await Promise.allSettled([0, 1, 2, 3].map(index => evaluate(index, `(async () => ({ index: ${index},
+        screen: window.__channelProbe.screen(${JSON.stringify(concurrentPicture)}),
+        stats: await window.__channelProbe.sourceStats(${JSON.stringify(concurrentPicture)}) }))()`)));
+      concurrentObservations.push({ phase, time: Date.now(), sourceIndex, viewerIndex: concurrentViewer,
+        publicationId: concurrentPicture, roomId: serverRoom,
+        pages: pages.map((result, index) => result.status === 'fulfilled' ? result.value : { index, error: String(result.reason) }) });
+      await writeFile(join(output, "app-helper-concurrent-observations.json"), JSON.stringify(concurrentObservations, null, 2));
+    };
+    await observeConcurrent("watch-start");
+    let concurrentBefore;
+    try { concurrentBefore = await progressing(concurrentViewer, concurrentPicture); }
+    finally { await observeConcurrent(concurrentBefore ? "playing" : "failed-before-helper"); }
     await action(sourceIndex, "setVideoCodecMode('h264')");
     await evaluate(sourceIndex, "window.__channelProbe.captureAudio(true)");
     const helperPicture = await capturedScreen(sourceIndex, browserRoom);

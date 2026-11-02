@@ -22,9 +22,16 @@ function captureProbe(name) {
   return `(() => {
     localStorage.setItem('piik:ui-lang', 'en');
     localStorage.setItem('piik:ui-mode', 'text');
-    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [], qualitySamples = [], restoredVideo = [];
+    const peers = [], sockets = [], captures = [], contexts = [], protocol = [], channels = [], warnings = [], flowStates = [], audioSources = [], qualitySamples = [], restoredVideo = [], trackEvents = [];
     const trackObjects = new WeakMap();
     const trackObjectId = track => { if (!trackObjects.has(track)) trackObjects.set(track, crypto.randomUUID()); return trackObjects.get(track); };
+    const trackState = track => ({ id: track.id, objectId: trackObjectId(track), kind: track.kind,
+      readyState: track.readyState, enabled: track.enabled, muted: track.muted });
+    const observedStreams = new WeakSet();
+    const recordTrack = (pc, event, track, streams, mid) => {
+      trackEvents.push({ time: Date.now(), pcIndex: peers.indexOf(pc), event, mid, track: trackState(track), streamIds: streams.map(stream => stream.id) });
+      if (trackEvents.length > 128) trackEvents.shift();
+    };
     let qualityInstalled = false;
     let captureAudio = false;
     const conversationWS = Object.create(null);
@@ -46,7 +53,7 @@ function captureProbe(name) {
         pairPeers.set(pair.id, pair.peerId);
         for (const flow of [...pair.incoming, ...pair.outgoing]) flowBindings.set(flow.id, flow);
       }
-      if (direction === 'sent' && event.type === 'signal') for (const track of event.payload.tracks ?? []) flowStreams.set(track.flowId, track.streamId);
+      if (event.type === 'signal') for (const track of event.payload.tracks ?? []) flowStreams.set(track.flowId, track.streamId);
       if (direction === 'sent' && event.type === 'flow_state') {
         flowStates.push({ flowId: event.flowId, state: event.state, time: Date.now() });
         if (flowStates.length > 128) flowStates.shift();
@@ -73,7 +80,18 @@ function captureProbe(name) {
       return channel;
     };
     window.RTCPeerConnection = class extends NativePC {
-      constructor(...args) { super(...args); peers.push(this); this.addEventListener('datachannel', event => recordChannel(this, event.channel)); }
+      constructor(...args) {
+        super(...args); peers.push(this); this.addEventListener('datachannel', event => recordChannel(this, event.channel));
+        this.addEventListener('track', ({ track, streams, transceiver }) => {
+          recordTrack(this, 'track', track, streams, transceiver.mid);
+          track.addEventListener('ended', () => recordTrack(this, 'ended', track, streams, transceiver.mid), { once: true });
+          for (const stream of streams) if (!observedStreams.has(stream)) {
+            observedStreams.add(stream);
+            stream.addEventListener('removetrack', event => recordTrack(this, 'removetrack', event.track, [stream],
+              this.getTransceivers().find(value => value.receiver.track === event.track)?.mid ?? null));
+          }
+        });
+      }
       createDataChannel(...args) { return recordChannel(this, super.createDataChannel(...args)); }
       addTransceiver(track, options) {
         const transceiver = super.addTransceiver(track, options);
@@ -214,11 +232,22 @@ function captureProbe(name) {
       },
       screen(publicationId) {
         const snapshot = window.__channelGate.snapshot();
-        return { streamId: snapshot.streams.get(publicationId)?.id,
+        const publication = snapshot.state.publications.find(value => value.id === publicationId);
+        const streamIds = [...flowStreams].filter(([flowId]) => flowBindings.get(flowId)?.publicationId === publicationId).map(([, streamId]) => streamId);
+        return { publication: publication && { id: publication.id, roomId: publication.roomId,
+          sessionId: publication.sessionId, kind: publication.kind, paused: publication.paused },
+          streamId: snapshot.streams.get(publicationId)?.id,
           inputs: (snapshot.screenInputs.get(publicationId) ?? []).map(input => {
             const element = [...document.querySelectorAll('video')].find(video => video.dataset.flowId === input.flowId);
             if (element) element.__allocationIdentity ??= crypto.randomUUID();
+            const pair = snapshot.state.pairs.find(pair => pair.incoming.some(flow => flow.id === input.flowId));
+            const flow = pair?.incoming.find(flow => flow.id === input.flowId);
             return { flowId: input.flowId, selected: input.selected, switchReady: input.switchReady, streamId: input.stream.id,
+              pairId: pair?.id, peerId: pair?.peerId, inputFlowId: flow?.inputFlowId, active: input.stream.active,
+              tracks: input.stream.getTracks().map(track => ({ ...trackState(track),
+                receivers: peers.flatMap((pc, pcIndex) => pc.getTransceivers().filter(value => value.receiver.track === track)
+                  .map(value => ({ pcIndex, connectionState: pc.connectionState, mid: value.mid,
+                    direction: value.direction, currentDirection: value.currentDirection }))) })),
               audio: input.stream.getAudioTracks().map(track => track.id), audioObjects: input.stream.getAudioTracks().map(trackObjectId),
               video: input.stream.getVideoTracks().map(track => track.id), elementId: element?.__allocationIdentity,
               displayed: element?.dataset.selected, composited: element?.dataset.composited, muted: element?.muted,
@@ -227,10 +256,14 @@ function captureProbe(name) {
               frames: element?.getVideoPlaybackQuality().totalVideoFrames, time: element?.currentTime };
           }), outputs: snapshot.state.pairs.flatMap(pair => pair.outgoing.filter(flow => flow.publicationId === publicationId).map(flow => {
             const streamId = flowStreams.get(flow.id);
-            return { flowId: flow.id, inputFlowId: flow.inputFlowId, streamId, pairId: pair.id,
+            return { flowId: flow.id, inputFlowId: flow.inputFlowId, selected: flow.selected, streamId, pairId: pair.id, peerId: pair.peerId,
               senders: senders.filter(output => streamId && output.streams.includes(streamId) && output.sender.track)
-                .map(output => ({ id: output.id, trackId: output.sender.track.id, kind: output.sender.track.kind })) };
+                .map(output => { const transceiver = output.pc.getTransceivers().find(value => value.sender === output.sender);
+                  return { id: output.id, trackId: output.sender.track.id, kind: output.sender.track.kind,
+                    track: trackState(output.sender.track), pcIndex: peers.indexOf(output.pc), connectionState: output.pc.connectionState,
+                    mid: transceiver?.mid, direction: transceiver?.direction, currentDirection: transceiver?.currentDirection }; }) };
           })), flowStates, qualitySamples, restoredVideo,
+          trackEvents: trackEvents.filter(event => event.streamIds.some(id => streamIds.includes(id))),
           audioOwners: audioSources.filter(owner => owner.connected && owner.context.state === 'running').map(owner => owner.trackObjectId) };
       },
       async decodedVideo(publicationId, flowId) {
@@ -245,8 +278,26 @@ function captureProbe(name) {
           width: report.frameWidth, height: report.frameHeight };
       },
       async sourceStats(publicationId) {
-        const rows = [];
-        for (const pair of window.__channelGate.snapshot().state.pairs) {
+        const rows = [], incoming = [];
+        const snapshot = window.__channelGate.snapshot();
+        for (const pair of snapshot.state.pairs) {
+          for (const flow of pair.incoming.filter(flow => flow.publicationId === publicationId)) {
+            const input = snapshot.screenInputs.get(publicationId)?.find(input => input.flowId === flow.id);
+            for (const track of input?.stream.getTracks() ?? []) {
+              const pc = peers.find(pc => pc.connectionState === 'connected' && pc.getReceivers().some(receiver => receiver.track === track));
+              const receiver = pc?.getReceivers().find(receiver => receiver.track === track);
+              if (!receiver) continue;
+              const scoped = await receiver.getStats(), all = await pc.getStats();
+              for (const report of scoped.values()) if (report.type === 'inbound-rtp') incoming.push({
+                flowId: flow.id, pairId: pair.id, peerId: pair.peerId, inputFlowId: flow.inputFlowId, selected: flow.selected,
+                streamId: input.stream.id, track: trackState(track), pcIndex: peers.indexOf(pc),
+                statsId: report.id, timestamp: report.timestamp, mid: report.mid ?? null, ssrc: report.ssrc ?? null,
+                kind: report.kind, codec: all.get(report.codecId)?.mimeType ?? null,
+                packetsReceived: report.packetsReceived ?? null, bytesReceived: report.bytesReceived ?? null,
+                packetsLost: report.packetsLost ?? null, framesReceived: report.framesReceived ?? null,
+                framesDecoded: report.framesDecoded ?? null, keyFramesDecoded: report.keyFramesDecoded ?? null });
+            }
+          }
           for (const flow of pair.outgoing.filter(flow => flow.publicationId === publicationId)) {
             const streamId = flowStreams.get(flow.id);
             for (const output of senders.filter(output => output.pc.connectionState === 'connected'
@@ -270,7 +321,8 @@ function captureProbe(name) {
                 const transport = all.get(report.transportId);
                 const selectedPair = all.get(transport?.selectedCandidatePairId);
                 const remote = all.get(report.remoteId), source = all.get(report.mediaSourceId);
-                rows.push({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId, selected: flow.selected,
+                rows.push({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId, selected: flow.selected, inputFlowId: flow.inputFlowId,
+                  streamId, track: output.sender.track ? trackState(output.sender.track) : null, pcIndex: peers.indexOf(output.pc),
                   senderId: output.id, statsId: report.id, timestamp: report.timestamp,
                   mid: report.mid ?? null, ssrc: report.ssrc ?? null,
                   codec: all.get(report.codecId)?.mimeType ?? null, encodings, headerExtensions,
@@ -298,7 +350,7 @@ function captureProbe(name) {
             }
           }
         }
-        return { sourceCollectedTime: Date.now(), rows };
+        return { sourceCollectedTime: Date.now(), rows, incoming };
       },
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
