@@ -1,4 +1,4 @@
-import type { ChannelMessage, ChannelSnapshot, ChannelUser, DomainSettings, RoomSettings } from "./protocol";
+import type { ChannelMessage, ChannelSnapshot, ChannelTopology, ChannelUser, DomainSettings, RoomSettings } from "./protocol";
 import type { ChannelAttachments, DraftFile } from "./attachments";
 import type { NativeCaptureTarget } from "../native/wire";
 import type { NativeCaptureRequest, NativeCaptureSources, ChannelRemoteControlState } from "./app-link";
@@ -75,6 +75,8 @@ export interface ChannelActions {
   sourceMicrophones(publicationId: string): Promise<CaptureDevice[]>;
   activateApp(): Promise<void>;
   browse(roomId: string): void;
+  roomTopology(roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology>;
+  connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetric[]>;
   sendMessage(roomId: string, text: string, attachments?: DraftFile[], signal?: AbortSignal): Promise<void>;
   setMessageReaction(roomId: string, messageSeq: number, reaction: string, active: boolean): Promise<void>;
   loadHistory(roomId: string): Promise<void>;

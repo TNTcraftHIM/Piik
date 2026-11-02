@@ -57,6 +57,15 @@ export const signalSchema = z.object({
   candidate: z.object({ candidate: z.string().max(4096).optional(), sdpMid: z.string().nullable().optional(), sdpMLineIndex: z.number().nullable().optional(), usernameFragment: z.string().nullable().optional() }).optional(),
   tracks: z.array(z.object({ flowId: id, streamId: id })).optional(),
 }).refine(signal => Boolean(signal.description) === Boolean(signal.exchangeId), { message: "SDP requires an exchange", path: ["exchangeId"] });
+export const channelTopologySchema = z.object({
+  bindingId: id,
+  base: z.object({ rootSessionId: id, edges: z.array(z.object({ sender: id, receiver: id, ready: z.boolean() }).strict()) }).strict(),
+  screen: z.object({ publicationId: id, sourceSessionId: id, edges: z.array(z.object({
+    sender: id, receiver: id, selected: z.boolean(), proof: z.enum(["forwardable", "decoded"]).nullable(),
+    presented: z.boolean().nullable(), presentation: z.boolean(),
+  }).strict()) }).strict().nullable(),
+}).strict();
+export type ChannelTopology = z.infer<typeof channelTopologySchema>;
 export const eventSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("welcome"), credential: id, sessionId: id, state: snapshotSchema, inviteKey: id.optional(), invitationOrigin: z.string().url().optional() }),
   z.object({ type: z.literal("state"), state: snapshotSchema }),
@@ -85,7 +94,7 @@ export type RoomSummary = z.infer<typeof roomSummarySchema>;
 export type ChannelPair = ChannelSnapshot["pairs"][number];
 export type ChannelSignal = z.infer<typeof signalSchema>;
 export type ChannelEvent = z.infer<typeof eventSchema>;
-export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
+export type ChannelReply = Extract<ChannelEvent, { type: "room_invite" | "room_reply" }> | Extract<ConversationReply["record"], { type: "confirmed" }>;
 export interface SignedConversationPacket { sender: string; payload: string; signature: number[]; remainingHops: number }
 export interface ConversationAddress { roomId: string; bindingId: string; sender: string; recipient: string; requestId: string }
 export type ConversationReply = ConversationAddress & { record:
@@ -122,6 +131,7 @@ export type ChannelCommand =
   | ({ type: "update_room"; roomId: string } & RoomSettings)
   | { type: "enter_room"; roomId: string; password?: string; inviteKey?: string }
   | { type: "room_invite"; roomId: string }
+  | { type: "room_topology"; roomId: string; publicationId?: string }
   | { type: "revoke_room_access"; roomId: string; userId: string }
   | { type: "set_roles"; userId: string; roles: string[] }
   | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; muted: boolean } }

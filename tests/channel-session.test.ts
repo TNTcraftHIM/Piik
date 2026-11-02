@@ -1853,6 +1853,108 @@ test("room replies settle only the request belonging to that room", async () => 
   } finally { session.close(); }
 });
 
+const topologyResponse = () => ({ bindingId: "binding",
+  base: { rootSessionId: "host", edges: [{ sender: "host", receiver: "endpoint", ready: false }] },
+  screen: { publicationId: "screen", sourceSessionId: "source", edges: [
+    { sender: "source", receiver: "endpoint", selected: true, proof: null, presented: null, presentation: false },
+    { sender: "helper", receiver: "endpoint", selected: false, proof: "decoded", presented: false, presentation: true },
+  ] },
+});
+
+test("topology reads use the Domain reply owner without room activities or media commands", async () => {
+  const { session, socket, peer } = await setup();
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    state.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false });
+    socket.receive({ type: "state", state });
+    const before = session.getSnapshot(), sent = socket.sent.length;
+    let settled = false;
+    const reading = session.roomTopology("first", "screen").then(result => { settled = true; return result; });
+    const request = socket.sent.at(-1)!;
+    expect(request).toEqual({ type: "room_topology", roomId: "first", publicationId: "screen", requestId: expect.any(String) });
+    expect(socket.sent.slice(sent)).toHaveLength(1);
+    expect(peer.sent).toHaveLength(0);
+    expect(session.getSnapshot().pending).toEqual(before.pending);
+    socket.receive({ type: "room_reply", roomId: "second", requestId: request.requestId,
+      result: { type: "topology", topology: topologyResponse() } });
+    await Promise.resolve(); expect(settled).toBe(false);
+    socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId,
+      result: { type: "topology", topology: topologyResponse() } });
+    await expect(reading).resolves.toEqual(topologyResponse());
+    expect(session.getSnapshot().state).toEqual(before.state);
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
+test("topology parsing and server refusal reject only the read", async () => {
+  const { session, socket } = await setup();
+  try {
+    for (const result of [
+      { type: "topology", topology: { bindingId: "binding", base: { rootSessionId: "host", edges: [] }, screen: null, address: "private" } },
+      { type: "topology", topology: { bindingId: "old-binding", base: { rootSessionId: "host", edges: [] }, screen: null } },
+      { type: "error", code: "room_access_required" },
+    ]) {
+      const reading = session.roomTopology("first"), rejected = expect(reading).rejects.toThrow();
+      socket.receive({ type: "room_reply", roomId: "first", requestId: socket.sent.at(-1)!.requestId, result });
+      await rejected;
+      expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    }
+  } finally { session.close(); }
+});
+
+test("topology read abort and close retire requests without a late error banner", async () => {
+  const { session, socket } = await setup();
+  const resetMedia = vi.spyOn(ChannelMedia.prototype, "reset");
+  try {
+    const controller = new AbortController();
+    const reading = session.roomTopology("first", undefined, controller.signal);
+    const rejected = expect(reading).rejects.toMatchObject({ name: "AbortError" });
+    const request = socket.sent.at(-1)!;
+    controller.abort(); await rejected;
+    socket.receive({ type: "error", requestId: request.requestId, code: "room_unavailable" });
+    expect(resetMedia).not.toHaveBeenCalled();
+    expect(session.getSnapshot()).toMatchObject({ connection: "connected", error: null });
+    const closing = session.roomTopology("first"), closed = expect(closing).rejects.toThrow("closed");
+    session.close(); await closed;
+  } finally { session.close(); }
+});
+
+test("topology reads reject late data after binding access account or selection changes", async () => {
+  for (const change of ["binding", "access", "account", "selection", "publication"] as const) {
+    const { session, socket } = await setup();
+    try {
+      const initial = structuredClone(session.getSnapshot().state!);
+      initial.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false });
+      socket.receive({ type: "state", state: initial });
+      const reading = session.roomTopology("first", "screen"), rejected = expect(reading).rejects.toThrow();
+      const request = socket.sent.at(-1)!;
+      const state = structuredClone(initial);
+      if (change === "binding") state.channel.rooms[0].delivery!.bindingId = "replacement";
+      else if (change === "access") state.channel.rooms[0].authorized = false;
+      else if (change === "account") {
+        state.sessions[0].userId = "replacement-user";
+        state.users = [{ id: "replacement-user", name: "Other account", roles: [] }];
+      }
+      else if (change === "publication") state.publications = [];
+      if (change === "selection") session.browse("second");
+      else socket.receive({ type: "state", state });
+      socket.receive({ type: "room_reply", roomId: "first", requestId: request.requestId,
+        result: { type: "topology", topology: topologyResponse() } });
+      await rejected;
+      expect(session.getSnapshot().error).toBeNull();
+    } finally { session.close(); }
+  }
+});
+
+test("connection metrics bridge returns only the Browser media owner's current observation", async () => {
+  const { session } = await setup();
+  try {
+    const metrics = vi.spyOn(ChannelMedia.prototype, "connectionMetrics").mockResolvedValue([]);
+    await expect(session.connectionMetrics("first", "screen")).resolves.toEqual([]);
+    expect(metrics).toHaveBeenCalledExactlyOnceWith("first", "screen");
+  } finally { session.close(); }
+});
+
 test("room voice settings use the managed room update without changing local input or listening", async () => {
   const { session, socket } = await setup();
   try {

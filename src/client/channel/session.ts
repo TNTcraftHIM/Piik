@@ -2,7 +2,7 @@ import { z } from "zod";
 import { ChannelMedia } from "./media";
 import { ChannelInput } from "./input";
 import { ChannelConversation } from "./conversation";
-import { eventSchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
+import { channelTopologySchema, eventSchema, userSchema, type ChannelCommand, type ChannelEvent, type ChannelMessage, type ChannelReply, type ChannelSnapshot, type ChannelTopology, type ConversationReply, type DomainSettings, type MessageReactionSnapshot, type RoomSettings } from "./protocol";
 import { ChannelAttachments, type DraftFile } from "./attachments";
 import type { ChannelView, ScreenPresentation, SourceMicrophoneConfiguration, SourceMicrophoneSettings } from "./types";
 import { loadRoomHosting, roomDatabaseName, type HostedRoom, type BrowserRoomSnapshot, type BrowserRoomStage } from "./hosting";
@@ -281,7 +281,10 @@ export class ChannelSession {
       clearTimeout(request.timer);
       this.requests.delete(event.requestId);
       if (event.result.type === "error") request.reject(new Error(event.result.code ?? "operation_failed"));
-      else request.resolve();
+      else {
+        try { request.result?.(event); request.resolve(); }
+        catch (error) { request.reject(error instanceof Error ? error : new Error("invalid_response")); }
+      }
     } else if (event.type === "state") this.applyState(event.state);
     else if (event.type === "room_invite") {
       if (event.requestId) this.requests.get(event.requestId)?.result?.(event);
@@ -293,7 +296,7 @@ export class ChannelSession {
         this.requests.delete(event.requestId);
         if (event.type === "ack") request.resolve();
         else request.reject(new Error(event.code));
-      } else if (event.type === "error") {
+      } else if (event.type === "error" && !event.requestId) {
         this.patch({ error: event.code });
         if (!this.view.sessionId) {
           this.closed = true;
@@ -400,24 +403,32 @@ export class ChannelSession {
     else if (command.type === "signal" && this.signals.length < 256) this.signals.push(command);
   }
 
-  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command)): Promise<void> {
+  private async request(command: ChannelCommand, result?: (event: ChannelReply) => void, roomId = this.commandRoom(command), signal?: AbortSignal): Promise<void> {
     const reading = this.reading;
     const conversation = command.type === "chat" || command.type === "history" || command.type === "set_reaction";
     if (conversation && reading && reading.roomId === roomId) await reading.ready;
+    signal?.throwIfAborted();
     if (this.view.connection !== "connected") return Promise.reject(new Error("disconnected"));
     const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
     const delivery = room?.delivery;
     if (conversation && (!room?.available || !delivery)) return Promise.reject(new Error("room_unavailable"));
     const requestId = crypto.randomUUID();
-    return new Promise((resolve, reject) => {
+    const abort = () => {
+      const request = this.requests.get(requestId);
+      if (!request) return;
+      clearTimeout(request.timer); this.requests.delete(requestId);
+      request.reject(signal?.reason instanceof Error ? signal.reason : new DOMException("Read cancelled", "AbortError"));
+    };
+    return new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { this.requests.delete(requestId); reject(new Error("request_timeout")); }, 10000);
       this.requests.set(requestId, { resolve, reject, timer, result, roomId,
-        ...(delivery && (conversation || command.type === "browse") ? { bindingId: delivery.bindingId } : {}),
+        ...(delivery && (conversation || command.type === "browse" || command.type === "room_topology") ? { bindingId: delivery.bindingId } : {}),
         ...(conversation ? { pendingSend: command,
           ...(command.type === "history" ? { history: { before: command.before, entries: new Map() } } : {}) } : {}) });
+      signal?.addEventListener("abort", abort, { once: true });
       if (conversation) this.sendConversations();
       else this.write({ ...command, requestId });
-    });
+    }).finally(() => signal?.removeEventListener("abort", abort));
   }
 
   private sendConversations(): void {
@@ -855,6 +866,35 @@ export class ChannelSession {
         || this.view.sessionId !== sessionId || this.view.self?.id !== self.id || this.view.state?.channel.id !== state.channel.id) throw new Error("disconnected");
     };
   }
+
+  roomTopology = async (roomId: string, publicationId?: string, signal?: AbortSignal): Promise<ChannelTopology> => {
+    signal?.throwIfAborted();
+    const current = this.backupContext(), selection = this.roomId;
+    const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
+    if (!room?.authorized || !room.available || !room.delivery) throw new Error("room_unavailable");
+    const bindingId = room.delivery.bindingId;
+    const publication = publicationId ? this.view.state?.publications.find(value => value.id === publicationId
+      && value.roomId === roomId && value.kind === "screen") : undefined;
+    if (publicationId && !publication) throw new Error("publication_unavailable");
+    let topology: ChannelTopology | undefined;
+    await this.request({ type: "room_topology", roomId, publicationId }, event => {
+      if (event.type !== "room_reply" || event.result.type !== "topology") throw new Error("invalid_response");
+      const parsed = channelTopologySchema.safeParse(event.result.topology);
+      if (!parsed.success) throw new Error("invalid_response");
+      topology = parsed.data;
+    }, roomId, signal);
+    current(); signal?.throwIfAborted();
+    const actual = this.view.state?.channel.rooms.find(room => room.id === roomId);
+    if (this.roomId !== selection || !actual?.authorized || !actual.available || actual.delivery?.bindingId !== bindingId
+      || (publicationId && !this.view.state?.publications.some(value => value.id === publicationId
+        && value.roomId === roomId && value.sessionId === publication?.sessionId && value.kind === "screen"))) throw new Error("room_context_changed");
+    if (!topology || topology.bindingId !== bindingId || (publicationId
+      ? topology.screen?.publicationId !== publicationId || topology.screen.sourceSessionId !== publication?.sessionId
+      : topology.screen !== null)) throw new Error("invalid_response");
+    return topology;
+  };
+
+  connectionMetrics = (roomId: string, publicationId?: string) => this.media.connectionMetrics(roomId, publicationId);
 
   private async backupOwner(roomId: string) {
     const check = this.backupContext(), state = this.view.state!, self = this.view.self!;
