@@ -502,6 +502,7 @@ export async function configureVideoSender(
   // that clock would discard them a second time and repeatedly break the queue.
   if (carrierScale !== undefined) parameters.degradationPreference = "maintain-framerate";
   else if (profile.degradationPreference !== undefined) parameters.degradationPreference = profile.degradationPreference;
+  else delete parameters.degradationPreference;
 
   const requestedLayers = parameters.encodings.map((_, index) => readVideoSenderParameters(parameters, false, index));
   await sender.setParameters(parameters);

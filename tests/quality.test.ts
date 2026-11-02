@@ -18,6 +18,7 @@ import {
   qualityResolutionLabel,
   videoQualitySettingsEqual,
   screenAudioBitrate,
+  screenVideoCeiling,
   audioSenderCeiling,
   senderParameterWarning,
   setMediaPaused,
@@ -358,6 +359,15 @@ describe("realtime quality controls", () => {
     expect(applied.encodings[0]).not.toHaveProperty("maxFramerate");
     expect(carrier).toMatchObject({ requested: { maxFramerate: null, maxBitrate: 8_000_000,
       degradationPreference: "maintain-framerate" }, mismatches: [] });
+    const ceiling = screenVideoCeiling(QUALITY_PROFILES["1080p60"]);
+    for (const carrierScale of [1, undefined]) {
+      await configureVideoSender(sender, startupVideoProfile(QUALITY_PROFILES["1080p60"]), carrierScale);
+      const restored = await configureVideoSender(sender, ceiling);
+      expect(applied).not.toHaveProperty("degradationPreference");
+      expect(applied.encodings[0]!.maxFramerate).toBe(ceiling.maxFramerate);
+      expect(restored).toMatchObject({ requested: { degradationPreference: null },
+        applied: { degradationPreference: null }, mismatches: [] });
+    }
     for (const id of ["720p30", "1080p60"] as const) {
       const readback = await configureVideoSender(sender, QUALITY_PROFILES[id]);
       expect(applied.encodings[0]!.maxFramerate).toBe(QUALITY_PROFILES[id].maxFramerate);
