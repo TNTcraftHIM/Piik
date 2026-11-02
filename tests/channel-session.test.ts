@@ -2545,6 +2545,61 @@ class RoomPeerConnection extends EventTarget {
   connected() { this.connectionState = "connected"; this.onconnectionstatechange?.(); }
 }
 
+test("input registration replies stay with their endpoint after its media flow retires", async () => {
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  RoomPeerConnection.instances = [];
+  const { session, socket } = await setup();
+  const publicationId = crypto.randomUUID(), pairId = crypto.randomUUID(), source = "source";
+  let flowId = crypto.randomUUID();
+  const state = () => ({ ...session.getSnapshot().state!, subscriptions: [publicationId],
+    publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const,
+      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }],
+    pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: ["first"], outgoing: [],
+      incoming: [{ id: flowId, publicationId, selected: true, inputFlowId: null }] }],
+  });
+  const registration = () => socket.sent.findLast(command => command.type === "input_register")!;
+  try {
+    socket.receive({ type: "state", state: state() });
+    const watching = session.watch(publicationId, "first");
+    socket.receive({ type: "ack", requestId: socket.sent.findLast(command => command.type === "subscribe")!.requestId });
+    await watching;
+    socket.receive({ type: "state", state: state() });
+    const pc = RoomPeerConnection.instances.at(-1)!;
+    pc.connected(); pc.channels.find(channel => channel.label === "piik-input")!.open();
+    const retired = session.getSnapshot().inputChannels.get(publicationId)!;
+    const oldRequest = registration();
+    expect(oldRequest).toMatchObject({ flowId, requestId: expect.any(String) });
+
+    flowId = crypto.randomUUID();
+    socket.receive({ type: "state", state: state() });
+    const replacement = session.getSnapshot().inputChannels.get(publicationId)!;
+    expect(retired.readyState).toBe("closed");
+    expect(replacement).not.toBe(retired);
+    const currentRequest = registration();
+    socket.receive({ type: "error", requestId: oldRequest.requestId, code: "unassigned_input_route" });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(session.getSnapshot().error).toBeNull();
+    expect(replacement.readyState).toBe("open");
+    socket.receive({ type: "ack", requestId: currentRequest.requestId });
+    expect(session.getSnapshot().inputChannels.get(publicationId)).toBe(replacement);
+
+    flowId = crypto.randomUUID();
+    socket.receive({ type: "state", state: state() });
+    const rejected = session.getSnapshot().inputChannels.get(publicationId)!;
+    socket.receive({ type: "error", requestId: registration().requestId, code: "unassigned_input_route" });
+    await vi.waitFor(() => expect(rejected.readyState).toBe("closed"));
+    expect(session.getSnapshot().error).toBeNull();
+
+    flowId = crypto.randomUUID();
+    socket.receive({ type: "state", state: state() });
+    const healthy = session.getSnapshot().inputChannels.get(publicationId)!;
+    socket.receive({ type: "ack", requestId: registration().requestId });
+    await Promise.resolve();
+    expect(healthy.readyState).toBe("open");
+    expect(session.getSnapshot().error).toBeNull();
+  } finally { session.close(); }
+});
+
 test("screen input shares its existing pair and retains only the committed flow's control session", async () => {
   vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
   RoomPeerConnection.instances = [];
@@ -2556,7 +2611,7 @@ test("screen input shares its existing pair and retains only the committed flow'
     pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: [] as string[], outgoing: [],
       incoming: [{ id: first, publicationId, selected: true, inputFlowId: null }] }],
   };
-  const register = vi.fn(), changed = vi.fn();
+  const register = vi.fn(async (_command: Extract<ChannelCommand, { type: "input_register" }>) => {}), changed = vi.fn();
   let channels: ReadonlyMap<string, InputTransport> = new Map();
   let connected = true;
   const input = new ChannelInput({ context: () => ({ sessionId: local, state, connected }), register,
@@ -2639,7 +2694,7 @@ test("screen input shares its existing pair and retains only the committed flow'
       route_input: (frame: string) => JSON.stringify({ frame: { ...JSON.parse(frame), flowId: upstreamFlow }, route: { nextHop: source, binding } }),
       input_binding_current: () => true,
     } as unknown as Awaited<ReturnType<typeof hosting.loadRoomHosting>>);
-    const relayInput = new ChannelInput({ context: () => ({ sessionId: local, state: relayState, connected: true }), register: vi.fn(),
+    const relayInput = new ChannelInput({ context: () => ({ sessionId: local, state: relayState, connected: true }), register: vi.fn(async () => {}),
       send: (peer, frame) => relayMedia.sendInput(peer, frame), changed: () => {} });
     const relayMedia = new ChannelMedia(() => {}, () => {}, undefined, undefined, undefined,
       (pair, channel) => relayInput.setChannel(pair, channel));

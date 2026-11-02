@@ -26,7 +26,7 @@ export class ChannelInput {
 
   constructor(private options: {
     context(): Context;
-    register(command: Extract<ChannelCommand, { type: "input_register" }>): void;
+    register(command: Extract<ChannelCommand, { type: "input_register" }>): Promise<void>;
     send(peer: string, frame: string): boolean;
     changed(channels: ReadonlyMap<string, InputTransport>): void;
   }) {}
@@ -99,7 +99,8 @@ export class ChannelInput {
         () => this.endpoints.get(publicationId)?.channel === channel);
       }, flow.flowId.replaceAll("-", ""));
       this.endpoints.set(publicationId, { ...flow, channel });
-      this.options.register({ type: "input_register", publicationId, flowId: flow.flowId, secret: Array.from(secret) });
+      void this.options.register({ type: "input_register", publicationId, flowId: flow.flowId, secret: Array.from(secret) })
+        .catch(() => channel.close());
       changed = true;
     }
     if (sessionId && state && this.runtime) for (const [key, binding] of this.bindings) {

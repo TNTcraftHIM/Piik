@@ -126,7 +126,7 @@ export class ChannelSession {
   private input = new ChannelInput({
     context: () => ({ sessionId: this.view.sessionId, state: this.view.state,
       connected: this.view.connection === "connected" && this.socket?.readyState === WebSocket.OPEN }),
-    register: command => this.send(command),
+    register: command => this.request(command),
     send: (peer, frame) => this.media.sendInput(peer, frame),
     changed: inputChannels => this.patch({ inputChannels }),
   });
