@@ -252,25 +252,48 @@ function captureProbe(name) {
             for (const output of senders.filter(output => output.pc.connectionState === 'connected'
               && output.streams.includes(streamId) && output.sender.track?.kind === 'video')) {
               const scoped = await output.sender.getStats(), all = await output.pc.getStats();
-              const encodings = output.sender.getParameters().encodings.map(({ rid, active, scaleResolutionDownBy, maxBitrate, maxFramerate }) =>
+              const parameters = output.sender.getParameters();
+              const encodings = parameters.encodings.map(({ rid, active, scaleResolutionDownBy, maxBitrate, maxFramerate }) =>
                 ({ rid: rid ?? null, active: active ?? null, scaleResolutionDownBy: scaleResolutionDownBy ?? null,
                   maxBitrate: maxBitrate ?? null, maxFramerate: maxFramerate ?? null }));
+              const extensions = parameters.headerExtensions.map(extension => extension.uri);
+              const headerExtensions = {
+                transportWideCc: extensions.some(uri => uri.includes('transport-wide-cc')),
+                mid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:mid'),
+                rid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:rtp-stream-id'),
+                repairedRid: extensions.includes('urn:ietf:params:rtp-hdrext:sdes:repaired-rtp-stream-id'),
+              };
               for (const scopedReport of scoped.values()) {
                 if (scopedReport.type !== 'outbound-rtp' || scopedReport.kind !== 'video') continue;
                 const report = all.get(scopedReport.id);
                 if (!report) continue;
                 const transport = all.get(report.transportId);
                 const selectedPair = all.get(transport?.selectedCandidatePairId);
+                const remote = all.get(report.remoteId), source = all.get(report.mediaSourceId);
                 rows.push({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId, selected: flow.selected,
                   senderId: output.id, statsId: report.id, timestamp: report.timestamp,
                   mid: report.mid ?? null, ssrc: report.ssrc ?? null,
-                  codec: all.get(report.codecId)?.mimeType ?? null, encodings,
+                  codec: all.get(report.codecId)?.mimeType ?? null, encodings, headerExtensions,
                   rid: report.rid ?? null, framesEncoded: report.framesEncoded ?? null,
                   frameWidth: report.frameWidth ?? null, frameHeight: report.frameHeight ?? null,
-                  bytesSent: report.bytesSent ?? null, qualityLimitationReason: report.qualityLimitationReason ?? null,
+                  bytesSent: report.bytesSent ?? null, packetsSent: report.packetsSent ?? null,
+                  retransmittedPacketsSent: report.retransmittedPacketsSent ?? null,
+                  retransmittedBytesSent: report.retransmittedBytesSent ?? null,
+                  qualityLimitationReason: report.qualityLimitationReason ?? null,
                   encoderImplementation: report.encoderImplementation ?? null,
                   keyFramesEncoded: report.keyFramesEncoded ?? null, pliCount: report.pliCount ?? null,
-                  nackCount: report.nackCount ?? null, availableOutgoingBitrate: selectedPair?.availableOutgoingBitrate ?? null });
+                  nackCount: report.nackCount ?? null, availableOutgoingBitrate: selectedPair?.availableOutgoingBitrate ?? null,
+                  remoteInbound: remote ? { packetsLost: remote.packetsLost ?? null, fractionLost: remote.fractionLost ?? null,
+                    jitter: remote.jitter ?? null, roundTripTime: remote.roundTripTime ?? null,
+                    totalRoundTripTime: remote.totalRoundTripTime ?? null,
+                    roundTripTimeMeasurements: remote.roundTripTimeMeasurements ?? null,
+                    reportsReceived: remote.reportsReceived ?? null } : null,
+                  selectedPair: selectedPair ? { currentRoundTripTime: selectedPair.currentRoundTripTime ?? null,
+                    totalRoundTripTime: selectedPair.totalRoundTripTime ?? null,
+                    packetsSent: selectedPair.packetsSent ?? null, packetsReceived: selectedPair.packetsReceived ?? null,
+                    bytesSent: selectedPair.bytesSent ?? null, bytesReceived: selectedPair.bytesReceived ?? null } : null,
+                  mediaSource: source ? { frames: source.frames ?? null, framesPerSecond: source.framesPerSecond ?? null,
+                    width: source.width ?? null, height: source.height ?? null } : null });
               }
             }
           }

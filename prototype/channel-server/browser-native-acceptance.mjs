@@ -162,13 +162,34 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const viewers = [1, downstreamIndex];
     await writeFile(join(output, "app-helper-roles.json"), JSON.stringify({ sourceIndex, assistedIndex: 1, downstreamIndex, fillerIndex: 3 }, null, 2));
     const browserBindingBeforeHelper = (await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.bindingId;
+    const concurrentPicture = sourceIndex === 0 ? unrelated : await capturedScreen(sourceIndex, serverRoom);
+    const concurrentViewer = sourceIndex === 0 ? 2 : 0;
+    if (sourceIndex !== 0) await action(concurrentViewer, `watch(${JSON.stringify(concurrentPicture)})`);
+    const concurrentBefore = await progressing(concurrentViewer, concurrentPicture);
     await action(sourceIndex, "setVideoCodecMode('h264')");
     await evaluate(sourceIndex, "window.__channelProbe.captureAudio(true)");
-    await writeFile(join(output, "app-helper-source-load.json"), JSON.stringify(await evaluate(sourceIndex, `(() => {
-      const value = ${hook}.snapshot(); return { sourceIndex: ${sourceIndex}, quality: value.quality, codecMode: value.videoCodecMode,
-        existingLocalScreens: value.state.publications.filter(publication => publication.sessionId === value.sessionId && publication.kind === 'screen').map(({ id, roomId }) => ({ id, roomId })) };
-    })()`), null, 2));
     const helperPicture = await capturedScreen(sourceIndex, browserRoom);
+    const globalSources = await Promise.all([0, 1, 2, 3].map(index => evaluate(index, `(() => {
+      const value = ${hook}.snapshot(); return { index: ${index}, sessionId: value.sessionId,
+        quality: value.quality, codecMode: value.videoCodecMode,
+        localScreens: value.state.publications.filter(publication => publication.sessionId === value.sessionId && publication.kind === 'screen').map(({ id, roomId }) => ({ id, roomId })),
+        liveVideoCaptures: window.__channelProbe.captures.flatMap(stream => stream.getVideoTracks()).filter(track => track.readyState === 'live').length };
+    })()`)));
+    const sourceLoad = globalSources[sourceIndex];
+    assert.equal(sourceLoad.sessionId, initial[sourceIndex].sessionId);
+    assert(sourceLoad.liveVideoCaptures >= 2 && [concurrentPicture, helperPicture].every(id => sourceLoad.localScreens.some(screen => screen.id === id)),
+      "the actual helper source retains two live local captures");
+    assert.deepEqual(sourceLoad.quality.resolution, { width: 1920, height: 1080 });
+    assert.equal(sourceLoad.quality.maxFramerate, 30); assert.equal(sourceLoad.quality.maxBitrate, 5_000_000);
+    const concurrentAfter = await progressing(concurrentViewer, concurrentPicture);
+    await writeFile(join(output, "app-helper-source-load.json"), JSON.stringify({ sourceIndex,
+      quality: sourceLoad.quality, codecMode: sourceLoad.codecMode,
+      existingLocalScreens: sourceLoad.localScreens.filter(screen => screen.id !== helperPicture), globalSources,
+      concurrent: { publicationId: concurrentPicture, viewerIndex: concurrentViewer,
+        createdForRole: sourceIndex !== 0, reason: sourceIndex === 0 ? "retained original living source" : "same living load for the selected source role",
+        before: concurrentBefore, after: concurrentAfter } }, null, 2));
+    await browser(sourceIndex, "screenshot", join(output, "app-helper-actual-source.png"));
+    await browser(concurrentViewer, "screenshot", join(output, "app-helper-concurrent-viewer.png"));
     const carries = (pair, direction) => pair[direction].some(flow => flow.publicationId === helperPicture && flow.selected);
     for (const index of [1, 3, downstreamIndex]) {
       await action(index, `watch(${JSON.stringify(helperPicture)})`); await playing(index, helperPicture);
@@ -263,6 +284,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
         "Native replaces Browser WAN forwarding", "unwatch retains downstream transit", "control loss preserves ordinary watching and hosting"] }, null, 2));
     await action(sourceIndex, `stopScreen(${JSON.stringify(helperPicture)})`);
     await evaluate(sourceIndex, "window.__channelProbe.captureAudio(false)");
+    if (sourceIndex !== 0) await action(sourceIndex, `stopScreen(${JSON.stringify(concurrentPicture)})`);
     await action(1, "close()");
     await browser(1, "open", "about:blank");
     await until("page close ends personal activity and Browser hosting only", () => view(2), value =>
