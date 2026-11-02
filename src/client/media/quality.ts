@@ -6,6 +6,7 @@ import {
   type DegradationPreference,
   type QualityResolution,
   type QualitySettings,
+  type VideoCeiling,
 } from "../../shared/protocol";
 import { say, type CopyKey } from "../ui/copy";
 import type { MediaFailure } from "../ui/media-failure";
@@ -19,9 +20,15 @@ export type {
   DegradationPreference,
   QualityResolution,
   QualitySettings,
+  VideoCeiling,
 } from "../../shared/protocol";
 
 export type QualityProfile = QualitySettings;
+export type VideoSenderProfile = VideoCeiling & { degradationPreference?: DegradationPreference };
+
+export function screenVideoCeiling(profile: VideoCeiling): VideoCeiling {
+  return { resolution: profile.resolution, maxFramerate: profile.maxFramerate, maxBitrate: profile.maxBitrate };
+}
 export const DEFAULT_ROOM_VOICE_BITRATE = 64_000;
 
 const QUALITY_PREFERENCE_KEY = "piik:quality-preference:v1";
@@ -46,7 +53,7 @@ export function savePreferredQuality(profile: QualityProfile): void {
 }
 
 /** Screen simulcast uses the same source ceiling and layer construction on every sender. */
-export function screenShareEncodings(profile: QualityProfile, settings: MediaTrackSettings | undefined,
+export function screenShareEncodings(profile: VideoCeiling, settings: MediaTrackSettings | undefined,
   layerCount: number, activeCount: number): RTCRtpEncodingParameters[] {
   const ceiling = profile.resolution;
   const scale = Math.max(1, (settings?.width ?? ceiling.width) / ceiling.width,
@@ -229,8 +236,8 @@ export function qualitySettingsEqual(
 }
 
 export function videoQualitySettingsEqual(
-  left: QualitySettings,
-  right: QualitySettings,
+  left: VideoSenderProfile,
+  right: VideoSenderProfile,
 ): boolean {
   return (
     qualityResolutionEqual(left.resolution, right.resolution) &&
@@ -391,7 +398,7 @@ export function setMediaPaused(stream: MediaStream, paused: boolean): boolean {
 
 function requestedScaleResolutionDownBy(
   sender: RTCRtpSender,
-  profile: QualityProfile,
+  profile: VideoCeiling,
 ): number {
   if (sender.track && !videoTrackOwnsCaptureConstraints(sender.track)) {
     return 1;
@@ -465,7 +472,7 @@ function sameParameter(
 
 export async function configureVideoSender(
   sender: RTCRtpSender,
-  profile: QualityProfile,
+  profile: VideoSenderProfile,
   carrierScale?: number,
 ): Promise<VideoSenderParameterReadback> {
   const parameters = sender.getParameters();
@@ -493,8 +500,8 @@ export async function configureVideoSender(
   }
   // The carrier transports already-adapted frames. Native FPS adaptation on
   // that clock would discard them a second time and repeatedly break the queue.
-  parameters.degradationPreference = carrierScale === undefined
-    ? profile.degradationPreference : "maintain-framerate";
+  if (carrierScale !== undefined) parameters.degradationPreference = "maintain-framerate";
+  else if (profile.degradationPreference !== undefined) parameters.degradationPreference = profile.degradationPreference;
 
   const requestedLayers = parameters.encodings.map((_, index) => readVideoSenderParameters(parameters, false, index));
   await sender.setParameters(parameters);

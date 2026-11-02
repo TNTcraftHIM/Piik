@@ -4,7 +4,7 @@ import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import { applyVideoCodecPreference, normalizeVideoOfferSdp, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
-import { configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, videoQualitySettingsEqual, type QualityProfile } from "../media/quality";
+import { configureAudioSender, configureVideoSender, DEFAULT_ROOM_VOICE_BITRATE, screenAudioBitrate, screenShareEncodings, videoQualitySettingsEqual, type VideoSenderProfile } from "../media/quality";
 
 const MAX_FILE_FRAME_BYTES = 8192;
 const MAX_CONTROL_FRAME_BYTES = 32768;
@@ -15,7 +15,8 @@ const DATA_SEND_QUEUE_FRAMES = { control: 128, chunk: 32 * 17 };
 export interface OutgoingMedia {
   kind: ChannelPublication["kind"];
   stream: MediaStream | null;
-  profile?: QualityProfile;
+  profile?: VideoSenderProfile;
+  audioBitrate?: number;
   voiceBitrate?: number;
   paused?: boolean;
   codec?: BrowserVideoCodecPreference;
@@ -27,7 +28,7 @@ interface OutgoingBinding {
   senders: RTCRtpSender[];
   failed: boolean;
   paused: boolean;
-  profile?: QualityProfile;
+  profile?: VideoSenderProfile;
   audioBitrate?: number;
   rejectedTracks?: MediaStreamTrack[];
   replacement?: MediaStreamTrack[];
@@ -277,7 +278,7 @@ export class ChannelTransport {
       for (const track of previous.stream.getTracks()) previous.stream.removeTrack(track);
       this.sending.delete(id);
     }
-    for (const [id, { kind, stream, profile, codec, voiceBitrate, paused = false }] of streams) {
+    for (const [id, { kind, stream, profile, audioBitrate, codec, voiceBitrate, paused = false }] of streams) {
       let output = this.sending.get(id);
       if (!output) {
         output = { kind, stream: new MediaStream(), senders: [], failed: false, paused };
@@ -296,7 +297,7 @@ export class ChannelTransport {
         const owner = output;
         for (const sender of owner.senders) this.enqueue(() => this.applyPaused(id, owner, sender));
       }
-      const bitrate = kind === "voice" ? voiceBitrate ?? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(profile?.maxAudioBitrate);
+      const bitrate = kind === "voice" ? voiceBitrate ?? DEFAULT_ROOM_VOICE_BITRATE : screenAudioBitrate(audioBitrate);
       if (output.audioBitrate !== bitrate) {
         output.audioBitrate = bitrate;
         const owner = output;
@@ -414,7 +415,7 @@ export class ChannelTransport {
     catch (error) { console.warn("Channel audio bitrate could not be applied", { flowId: id }, error); }
   }
 
-  private addSender(kind: ChannelPublication["kind"], track: MediaStreamTrack, stream: MediaStream, profile?: QualityProfile, codec?: BrowserVideoCodecPreference): RTCRtpSender {
+  private addSender(kind: ChannelPublication["kind"], track: MediaStreamTrack, stream: MediaStream, profile?: VideoSenderProfile, codec?: BrowserVideoCodecPreference): RTCRtpSender {
     if (kind !== "screen" || track.kind !== "video") return this.pc.addTrack(track, stream);
     const layered = this.options.canReceiveVideoLayers, count = layered ? 2 : 1;
     const encodings = profile ? screenShareEncodings(profile, track.getSettings(), count, count)
@@ -446,7 +447,7 @@ export class ChannelTransport {
     } catch (error) { console.warn("Channel sender pause could not be applied", { flowId: id }, error); }
   }
 
-  private async applyVideoProfile(id: string, owner: OutgoingBinding, sender: RTCRtpSender, profile: QualityProfile): Promise<void> {
+  private async applyVideoProfile(id: string, owner: OutgoingBinding, sender: RTCRtpSender, profile: VideoSenderProfile): Promise<void> {
     const current = () => !this.closed && this.sending.get(id) === owner && owner.senders.includes(sender);
     if (!current()) return;
     if (!sender.getParameters().encodings.length) return;
@@ -461,7 +462,7 @@ export class ChannelTransport {
   }
 
   /** An explicit source edit shares the negotiation queue, but cannot fail the pair. */
-  configureVideo(id: string, profile: QualityProfile): Promise<void> {
+  configureVideo(id: string, profile: VideoSenderProfile): Promise<void> {
     const owner = this.sending.get(id);
     const work = this.operations.then(async () => {
       if (this.closed || !owner || this.sending.get(id) !== owner || owner.failed) return;

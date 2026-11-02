@@ -13,7 +13,7 @@ import type { RemoteControlMode } from "../remote-control/protocol";
 import { readRoomPreferences, saveRoomPreferences, type RoomPreferences } from "../lib/room-preferences";
 import { MicrophoneInput } from "../media/microphone-input";
 import { HostAudio, type CommentaryInput } from "../media/host-audio";
-import { readPreferredQuality, savePreferredQuality, supportsCaptureProfile, type QualityProfile } from "../media/quality";
+import { readPreferredQuality, savePreferredQuality, screenVideoCeiling, supportsCaptureProfile, type QualityProfile } from "../media/quality";
 import { audioInputConstraints } from "../media/audio-capture";
 import { browserCaptureDevices } from "../media/capture-devices";
 import { RoomInteractionSession } from "../lib/room-interactions";
@@ -1207,11 +1207,13 @@ export class ChannelSession {
 
   async publish(kind: "screen" | "voice", roomId: string, stream: MediaStream, { microphone, audio, profile, codec, camera, publicationId }: { microphone?: MicrophoneInput; audio?: HostAudio; profile?: QualityProfile; codec?: BrowserVideoCodecPreference; camera?: boolean; publicationId?: string } = {}): Promise<string> {
     const id = publicationId ?? crypto.randomUUID();
-    this.local.set(id, { roomId, kind, stream, microphone, audio, profile: kind === "screen" ? profile ?? this.view.quality : undefined, camera });
-    this.media.setLocal(id, stream, kind === "screen" ? profile ?? this.view.quality : undefined, codec);
+    const sourceProfile = kind === "screen" ? profile ?? this.view.quality : undefined;
+    this.local.set(id, { roomId, kind, stream, microphone, audio, profile: sourceProfile, camera });
+    this.media.setLocal(id, stream, sourceProfile, codec);
     try {
       if (microphone && !microphone.stream.active) throw new Error("microphone_unavailable");
-      await this.request({ type: "publish", publication: { id, roomId, kind, muted: false } });
+      await this.request({ type: "publish", publication: { id, roomId, kind, muted: false,
+        ...(sourceProfile ? { videoCeiling: screenVideoCeiling(sourceProfile) } : {}) } });
       const primary = kind === "screen" ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
       if (primary?.readyState === "ended" || (microphone && !microphone.stream.active)) {
         this.send({ type: "unpublish", publicationId: id });
@@ -1447,8 +1449,18 @@ export class ChannelSession {
         try {
           const local = this.local.get(publicationId);
           if (local) {
+            const previous = share.profile;
             await this.media.configureLocal(publicationId, profile);
-            if (!current()) throw new DOMException("Capture cancelled", "AbortError");
+            if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
+            try {
+              await this.request({ type: "publish", publication: { id: publicationId, roomId: local.roomId, kind: "screen",
+                muted: this.view.state?.publications.find(publication => publication.id === publicationId)?.muted ?? false,
+                videoCeiling: screenVideoCeiling(profile) } });
+            } catch (error) {
+              if (current() && this.local.get(publicationId) === local) await this.media.configureLocal(publicationId, previous);
+              throw error;
+            }
+            if (!current() || this.local.get(publicationId) !== local) throw new DOMException("Capture cancelled", "AbortError");
             local.profile = profile;
           } else {
             const app = this.app;

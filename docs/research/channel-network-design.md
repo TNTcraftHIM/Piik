@@ -847,6 +847,12 @@ not delivered picture quality. A constrained local encoder changes bitrate withi
 the producer's configured source-size ceiling; a supplied lower encoding's size
 is not a permanent geometry constraint on its outgoing RID. Receiver observations
 own delivered dimensions, cadence and quality.
+Each screen publication carries its source's accepted size, frame-rate and
+bitrate ceiling through the existing publication authority. Relays use that
+ceiling while local encoder policy and source audio retain their own controls.
+Quality edits update the same publication and preserve its routes. An App
+acknowledges an edit after both its producer and the room accept it; a rejected
+publication update restores the still-live original producer.
 A required lower-rate replacement releases that output's incumbent and queued
 frames immediately, retaining its last emitted source time. A delayed replacement
 IDR can then cross a fixed boundary instead of chasing the still-playing original.

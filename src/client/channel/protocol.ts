@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { videoCeilingSchema, type VideoCeiling } from "../../shared/protocol";
 
 // This is the experimental channel wire boundary; production room contracts stay separate.
 const id = z.string().min(1).max(128);
@@ -19,10 +20,14 @@ export const roomSchema = z.object({
   capabilities: z.object({ attachments: z.boolean() }),
   delivery: z.object({ hostSessionId: id, bindingId: id, nextHops: z.record(id, id) }).optional(),
 });
-export const publicationSchema = z.object({
+const publicationBaseSchema = z.object({
   id, roomId: id, sessionId: id, userId: id,
-  kind: z.enum(["screen", "voice"]), muted: z.boolean(), paused: z.boolean(),
+  muted: z.boolean(), paused: z.boolean(),
 });
+export const publicationSchema = z.discriminatedUnion("kind", [
+  publicationBaseSchema.extend({ kind: z.literal("screen"), videoCeiling: videoCeilingSchema }),
+  publicationBaseSchema.extend({ kind: z.literal("voice"), videoCeiling: z.never().optional() }),
+]);
 export const attachmentSchema = z.object({
   id, name: z.string().min(1).max(240), size: z.number().int().nonnegative().safe(),
   mediaType: z.enum(["image/png", "image/jpeg", "image/gif", "image/webp", "application/octet-stream"]),
@@ -134,7 +139,7 @@ export type ChannelCommand =
   | { type: "room_topology"; roomId: string; publicationId?: string }
   | { type: "revoke_room_access"; roomId: string; userId: string }
   | { type: "set_roles"; userId: string; roles: string[] }
-  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; muted: boolean } }
+  | { type: "publish"; publication: { id: string; roomId: string; kind: "screen" | "voice"; muted: boolean; videoCeiling?: VideoCeiling } }
   | { type: "unpublish"; publicationId: string }
   | { type: "set_paused"; publicationId: string; paused: boolean }
   | { type: "transfer_source"; publicationId: string; toSessionId: string }

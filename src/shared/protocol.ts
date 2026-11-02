@@ -205,6 +205,8 @@ export const qualitySettingsSchema = z
   })
   .strict();
 export type QualitySettings = z.infer<typeof qualitySettingsSchema>;
+export const videoCeilingSchema = qualitySettingsSchema.pick({ resolution: true, maxFramerate: true, maxBitrate: true });
+export type VideoCeiling = z.infer<typeof videoCeilingSchema>;
 export const DEFAULT_QUALITY_SETTINGS = {
   resolution: { width: 1920, height: 1080 },
   maxFramerate: 30,

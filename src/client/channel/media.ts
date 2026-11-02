@@ -399,7 +399,8 @@ export class ChannelMedia {
           }
           break;
         }
-        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile, codec, paused: publication.paused,
+        outgoing.set(flow.id, { kind: publication.kind, stream: stream ?? null, profile: local?.profile ?? publication.videoCeiling,
+          audioBitrate: local?.profile?.maxAudioBitrate, codec, paused: publication.paused,
           voiceBitrate: this.rooms.find(room => room.id === publication.roomId)?.voiceBitrate });
         if (stream && flow.inputFlowId !== null) {
           const tracks = stream.getAudioTracks().filter(track => track.readyState !== "ended");

@@ -9,10 +9,10 @@ import * as launchSession from "../src/client/lib/session";
 import * as cameraPreviews from "../src/client/media/camera-previews";
 import { ChannelMedia } from "../src/client/channel/media";
 import { ChannelTransport } from "../src/client/channel/transport";
-import { QUALITY_PROFILES } from "../src/client/media/quality";
+import { QUALITY_PROFILES, screenVideoCeiling, type VideoCeiling } from "../src/client/media/quality";
 import { ChannelAttachments } from "../src/client/channel/attachments";
 import { FileStore } from "../src/client/channel/file-store";
-import { identityIconSchema, messageSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
+import { identityIconSchema, messageSchema, publicationSchema, snapshotSchema, signalSchema, type ChannelCommand, type ChannelMessage, type ChannelSignal, type ConversationReply } from "../src/client/channel/protocol";
 import type { ChannelScreenInput } from "../src/client/channel/types";
 import { ChannelInput } from "../src/client/channel/input";
 import { RemoteInputSession } from "../src/client/remote-control/input-session";
@@ -429,7 +429,7 @@ test.each([false, true])("App viewing assistance withdraws without ending the wa
   vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockResolvedValue({ sessionId: helperSessionId, roomIds: [] });
   const { session, socket } = await setup();
   const state = { ...session.getSnapshot().state!, publications: [
-    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false },
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false },
   ], subscriptions: ["screen"] };
   socket.receive({ type: "state", state });
   try {
@@ -470,7 +470,7 @@ test("an App description completing after unwatch cannot recreate a subscription
   const description = vi.spyOn(appLink.ChannelApp.prototype, "describeHosting").mockImplementation(() => new Promise(resolve => { describe = resolve; }));
   const { session, socket } = await setup();
   socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
-    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false },
+    { id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false },
   ] } });
   try {
     const connecting = session.activateApp();
@@ -796,7 +796,7 @@ test("local stop does not retire another capture acknowledged before its authori
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     const firstId = await publishingFirst;
     const state = structuredClone(session.getSnapshot().state!);
-    state.publications = [{ id: firstId, roomId: "first", kind: "screen", muted: false, paused: false, sessionId: "endpoint", userId: "self" }];
+    state.publications = [{ id: firstId, roomId: "first", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false, sessionId: "endpoint", userId: "self" }];
     socket.receive({ type: "state", state });
 
     const publishingSecond = session.publish("screen", "second", remoteStream("second-capture", [second]));
@@ -808,7 +808,7 @@ test("local stop does not retire another capture acknowledged before its authori
     expect(first.stop).toHaveBeenCalledOnce();
     expect(second.stop).not.toHaveBeenCalled();
 
-    state.publications = [{ id: secondId, roomId: "second", kind: "screen", muted: false, paused: false, sessionId: "endpoint", userId: "self" }];
+    state.publications = [{ id: secondId, roomId: "second", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false, sessionId: "endpoint", userId: "self" }];
     socket.receive({ type: "state", state });
     expect(session.getSnapshot().ownedScreens.has(secondId)).toBe(true);
     expect(session.getSnapshot().state?.publications.map(publication => publication.id)).toEqual([secondId]);
@@ -845,7 +845,8 @@ test("camera and display shares use independent picture publications and the sam
     socket.receive({ type: "ack", requestId: second.requestId });
     await cameraStarting;
     const firstId = (first.publication as { id: string }).id, secondId = (second.publication as { id: string }).id;
-    expect(second.publication).toEqual({ id: secondId, roomId: "second", kind: "screen", muted: false });
+    expect(second.publication).toEqual({ id: secondId, roomId: "second", kind: "screen", muted: false,
+      videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]) });
     expect(secondId).not.toBe(firstId);
     session.setVideoCodecMode("vp8");
     expect(session.screenCodecMode(firstId)).toBe("auto");
@@ -934,7 +935,7 @@ test("screen commentary owns a separate microphone and keeps its mixed track acr
   try {
     const starting = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean; videoCeiling: VideoCeiling };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await starting;
     socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [
       { ...publication, paused: false, sessionId: "endpoint", userId: "self" },
@@ -1042,7 +1043,7 @@ test("Browser source replacement keeps its publication, rejects only the candida
   try {
     const initial = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean; videoCeiling: VideoCeiling };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
     await initial;
     const state = { ...session.getSnapshot().state!, publications: [{ ...publication, paused: false, sessionId: "endpoint", userId: "self" }] };
@@ -1117,7 +1118,7 @@ test.each(["live", "stop-before-reply", "candidate-ended-before-reply", "app-clo
     await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
     const initial = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean; videoCeiling: VideoCeiling };
     coreReply(); await initial;
     let state = { ...session.getSnapshot().state!, publications: [{ ...publication, paused: false, sessionId: "endpoint", userId: "self" }] };
     socket.receive({ type: "state", state });
@@ -1307,7 +1308,7 @@ test("Browser source output gain and bitrate survive replacement and close with 
   try {
     const starting = session.startScreen("first");
     await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
-    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean };
+    const publication = socket.sent.at(-1)!.publication as { id: string; roomId: string; kind: "screen"; muted: boolean; videoCeiling: VideoCeiling };
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await starting;
     socket.receive({ type: "state", state: { ...session.getSnapshot().state!, publications: [{ ...publication, paused: false, sessionId: "endpoint", userId: "self" }] } });
     expect(session.sourceAudio(publication.id)).toMatchObject({ level: 1, muted: false, bitrate: 128_000, available: true });
@@ -1332,7 +1333,15 @@ test("Browser source output gain and bitrate survive replacement and close with 
     expect(session.setScreenQuality(publication.id, QUALITY_PROFILES["1080p30"])).toBe(changingQuality);
     expect(session.setScreenQuality(publication.id, QUALITY_PROFILES["1080p60"])).toBe(changingQuality);
     expect(session.screenQuality(publication.id)?.requested.maxFramerate).toBe(60);
-    applied(); await changingQuality;
+    applied();
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
+      publication: { id: publication.id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } }));
+    expect(session.screenQuality(publication.id)?.applied).toEqual(originalProfile);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
+      publication: { id: publication.id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p60"]) } }));
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
+    await changingQuality;
     expect(constraints).toHaveBeenCalledTimes(2);
     expect(constraints).toHaveBeenLastCalledWith({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
     const liveProfile = { ...QUALITY_PROFILES["1080p60"], maxAudioBitrate: 192_000 };
@@ -1345,6 +1354,14 @@ test("Browser source output gain and bitrate survive replacement and close with 
     expect(session.screenQuality(publication.id)).toEqual({ applied: liveProfile, requested: liveProfile });
     expect(session.getSnapshot().quality).toEqual(liveProfile);
     expect(session.getSnapshot().pending.has(`quality:${publication.id}`)).toBe(false);
+    const rejectedMetadata = session.setScreenQuality(publication.id, QUALITY_PROFILES["720p30"]);
+    const rejectedMetadataResult = expect(rejectedMetadata).rejects.toThrow("room_unavailable");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
+      publication: { id: publication.id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } }));
+    socket.receive({ type: "error", requestId: socket.sent.at(-1)!.requestId, code: "room_unavailable" });
+    await rejectedMetadataResult;
+    expect(constraints).toHaveBeenLastCalledWith({ width: { max: 1920 }, height: { max: 1080 }, frameRate: { ideal: 60, max: 60 } });
+    expect(session.screenQuality(publication.id)?.applied).toEqual(liveProfile);
     session.setQuality(QUALITY_PROFILES["720p30"]);
     expect(session.screenQuality(publication.id)?.applied).toEqual(liveProfile);
     await session.setSourceAudio(publication.id, { muted: true });
@@ -1366,12 +1383,47 @@ test("Browser source output gain and bitrate survive replacement and close with 
     expect(contexts[0].gain).toHaveBeenLastCalledWith(0.5, 0, 0.01);
     await expect(session.setSourceAudio(publication.id, { level: 2.01 })).rejects.toThrow("invalid_audio_settings");
     expect(session.getSnapshot().listeningVolume).toBe(1);
-    expect(socket.sent.filter(command => command.type === "publish")).toHaveLength(1);
+    expect(new Set(socket.sent.filter(command => command.type === "publish").map(command => (command.publication as { id: string }).id)))
+      .toEqual(new Set([publication.id]));
   } finally {
     session.close();
     expect(contexts.every(context => context.close.mock.calls.length === 1)).toBe(true);
   }
   expect(next.getAudioTracks()[0].stop).toHaveBeenCalledOnce();
+});
+
+test("a late source-ceiling rejection cannot configure a stopped capture or its replacement", async () => {
+  const { session, socket } = await setup();
+  const previous = remoteTrack("video"), next = remoteTrack("video");
+  const previousConstraints = vi.fn(async () => {});
+  previous.applyConstraints = previousConstraints;
+  next.applyConstraints = vi.fn(async () => {});
+  vi.stubGlobal("navigator", { mediaDevices: { getDisplayMedia: vi.fn()
+    .mockResolvedValueOnce(remoteStream("old-source", [previous])).mockResolvedValueOnce(remoteStream("new-source", [next])) } });
+  try {
+    const starting = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("publish"));
+    const first = socket.sent.at(-1)!;
+    const id = (first.publication as { id: string }).id;
+    socket.receive({ type: "ack", requestId: first.requestId }); await starting;
+    const originalCalls = previousConstraints.mock.calls.length;
+    const changing = session.setScreenQuality(id, QUALITY_PROFILES["720p30"]);
+    const rejected = expect(changing).rejects.toThrow("room_unavailable");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish",
+      publication: { id, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["720p30"]) } }));
+    const updating = socket.sent.at(-1)!;
+    const stopping = session.stopScreen(id);
+    socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId }); await stopping;
+    const replacing = session.startScreen("first");
+    await vi.waitFor(() => expect(socket.sent.at(-1)).toMatchObject({ type: "publish", publication: { id: expect.not.stringMatching(id) } }));
+    const replacement = socket.sent.at(-1)!;
+    socket.receive({ type: "ack", requestId: replacement.requestId }); await replacing;
+    socket.receive({ type: "error", requestId: updating.requestId, code: "room_unavailable" }); await rejected;
+    expect(previousConstraints).toHaveBeenCalledTimes(originalCalls + 1);
+    expect(next.stop).not.toHaveBeenCalled();
+    expect(session.screenQuality(id)).toBeUndefined();
+    expect(session.getSnapshot().streams.get((replacement.publication as { id: string }).id)?.getVideoTracks()).toEqual([next]);
+  } finally { session.close(); }
 });
 
 test("Native capture previews before its snapshot, keeps picture on audio failure, and stops through its App owner", async () => {
@@ -1421,7 +1473,7 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
     const state = session.getSnapshot().state!;
     socket.receive({ type: "state", state });
     const published = { ...state,
-      publications: [{ id: publicationId, roomId: "first", sessionId: "native", userId: "self", kind: "screen", muted: false, paused: false }],
+      publications: [{ id: publicationId, roomId: "first", sessionId: "native", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }],
       subscriptions: [publicationId],
     };
     socket.receive({ type: "state", state: published });
@@ -1813,6 +1865,16 @@ test("host binding precedes its first input and a failed binding retires that ho
   } finally { session.close(); }
 });
 
+test("publication metadata requires a video-only source ceiling for pictures and none for voice", () => {
+  const base = { id: "source", roomId: "room", sessionId: "endpoint", userId: "self", muted: false, paused: false };
+  const videoCeiling = { ...screenVideoCeiling(QUALITY_PROFILES["1080p30"]), maxFramerate: 29.97 };
+  expect(publicationSchema.parse({ ...base, kind: "screen", videoCeiling }).videoCeiling).toEqual(videoCeiling);
+  expect(publicationSchema.safeParse({ ...base, kind: "screen" }).success).toBe(false);
+  expect(publicationSchema.safeParse({ ...base, kind: "voice", videoCeiling }).success).toBe(false);
+  expect(publicationSchema.safeParse({ ...base, kind: "screen", videoCeiling: { ...videoCeiling, maxAudioBitrate: 128_000 } }).success).toBe(false);
+  expect(publicationSchema.parse({ ...base, kind: "voice" }).videoCeiling).toBeUndefined();
+});
+
 test("decorative identity keys remain extensible while missing icons and invalid wire values are rejected", async () => {
   const { session } = await setup();
   try {
@@ -1890,7 +1952,7 @@ test("topology reads use the Domain reply owner without room activities or media
   const { session, socket, peer } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false });
+    state.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false });
     socket.receive({ type: "state", state });
     const before = session.getSnapshot(), sent = socket.sent.length;
     let settled = false;
@@ -1949,7 +2011,7 @@ test("topology reads reject late data after binding access account or selection 
     const { session, socket } = await setup();
     try {
       const initial = structuredClone(session.getSnapshot().state!);
-      initial.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", muted: false, paused: false });
+      initial.publications.push({ id: "screen", roomId: "first", sessionId: "source", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false });
       socket.receive({ type: "state", state: initial });
       const reading = session.roomTopology("first", "screen"), rejected = expect(reading).rejects.toThrow();
       const request = socket.sent.at(-1)!;
@@ -2010,7 +2072,7 @@ test("room voice sender ceilings update in place independently of source sound",
   const screen = remoteStream("source", [remoteTrack("audio")]);
   const update = (voiceBitrate: number) => transport.setOutgoing(new Map([
     ["voice", { kind: "voice", stream: voice, voiceBitrate }],
-    ["screen", { kind: "screen", stream: screen, profile: { ...QUALITY_PROFILES["1080p30"], maxAudioBitrate: 192_000 } }],
+    ["screen", { kind: "screen", stream: screen, profile: QUALITY_PROFILES["1080p30"], audioBitrate: 192_000 }],
   ]));
   try {
     update(96_000);
@@ -2075,7 +2137,7 @@ test("a reused sender waits for negotiated encodings before audio limits and pau
   vi.spyOn(pc, "setLocalDescription").mockImplementation(async description => { await install(description); negotiated = true; });
   try {
     transport.setOutgoing(new Map([["screen", { kind: "screen", stream: remoteStream("reused-audio", [remoteTrack("audio")]), paused: true,
-      profile: { ...QUALITY_PROFILES["1080p30"], maxAudioBitrate: 192_000 } }]]));
+      profile: QUALITY_PROFILES["1080p30"], audioBitrate: 192_000 }]]));
     const sender = pc.senders[0], set = vi.spyOn(sender, "setParameters");
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(set).not.toHaveBeenCalled();
@@ -2488,7 +2550,7 @@ test("screen input shares its existing pair and retains only the committed flow'
   const local = "00000000-0000-4000-8000-000000000001", source = "00000000-0000-4000-8000-000000000002";
   const publicationId = crypto.randomUUID(), pairId = crypto.randomUUID(), first = crypto.randomUUID(), trial = crypto.randomUUID();
   let state = { ...session.getSnapshot().state!, subscriptions: [publicationId],
-    publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const, muted: false, paused: false }],
+    publications: [{ id: publicationId, roomId: "first", sessionId: source, userId: "self", kind: "screen" as const, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }],
     pairs: [{ id: pairId, peerId: source, canReceiveVideoLayers: false, rooms: [] as string[], outgoing: [],
       incoming: [{ id: first, publicationId, selected: true, inputFlowId: null }] }],
   };
@@ -2658,7 +2720,7 @@ const decodedReport = (framesDecoded: number) => new Map([["video", {
 
 async function screenFixture() {
   const fixture = await setupRoomMedia();
-  fixture.state.publications = [{ id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", muted: false, paused: false }];
+  fixture.state.publications = [{ id: "screen", roomId: "first", sessionId: "z", userId: "other", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }];
   fixture.state.pairs[0].incoming = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
   fixture.media.update("a", fixture.state);
   fixture.pc.connected();
@@ -2679,9 +2741,9 @@ test("room metrics read each PC once and follow current selected flows without m
   const video = remoteTrack("video"), sound = remoteTrack("audio"), voice = remoteTrack("audio"), other = remoteTrack("video");
   try {
     fixture.state.publications = [
-      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false },
+      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false },
       { id: "voice", roomId: "first", sessionId: "a", userId: "self", kind: "voice", muted: false, paused: false },
-      { id: "other", roomId: "second", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false },
+      { id: "other", roomId: "second", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false },
     ];
     fixture.state.pairs[0].rooms.push("second");
     fixture.state.pairs[0].outgoing = fixture.state.publications.map(publication => ({ id: `${publication.id}-out`, publicationId: publication.id, selected: true, inputFlowId: null }));
@@ -3078,6 +3140,35 @@ test.each(["pause", "retire"])("a %s fences a relay's late codec proof without s
   } finally { media.reset(); session.close(); }
 });
 
+test("a relay applies the accepted source ceiling to its retained sender without replacing audio or encoder policy", async () => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc } = fixture;
+  const video = remoteTrack("video"), audio = remoteTrack("audio");
+  const stream = remoteStream("source-ceiling", [video, audio]);
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
+  try {
+    state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "relay", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
+    media.update("a", state);
+    await receiveScreen(fixture, stream);
+    const downstream = RoomPeerConnection.instances[1];
+    await vi.waitFor(() => expect(downstream.senders).toHaveLength(2));
+    const [picture, sound] = downstream.senders;
+    await vi.waitFor(() => expect(picture.getParameters().encodings[0]).toMatchObject({ maxBitrate: 5_000_000, maxFramerate: 30 }));
+    expect(picture.getParameters().degradationPreference).toBeUndefined();
+    expect(picture.track).toBe(video);
+    state.publications[0] = { ...state.publications[0], kind: "screen", videoCeiling: {
+      resolution: { width: 1920, height: 1080 }, maxFramerate: 60, maxBitrate: 8_000_000,
+    } };
+    media.update("a", state);
+    await vi.waitFor(() => expect(picture.getParameters().encodings[0]).toMatchObject({ maxBitrate: 8_000_000, maxFramerate: 60 }));
+    expect(picture.getParameters().degradationPreference).toBeUndefined();
+    expect(sound.getParameters().encodings[0].maxBitrate).toBe(128_000);
+    expect(downstream.senders).toEqual([picture, sound]);
+    expect(video.stop).not.toHaveBeenCalled(); expect(audio.stop).not.toHaveBeenCalled();
+    expect(downstream.close).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test("a relay updates senders when audio joins and leaves the same remote screen stream", async () => {
   const fixture = await screenFixture();
   const { media, session, state, pc } = fixture;
@@ -3131,7 +3222,7 @@ test("source tracks replace serially on the existing physical pair, senders and 
   const nextVideo = remoteTrack("video"), nextAudio = remoteTrack("audio");
   const finalVideo = remoteTrack("video"), finalAudio = remoteTrack("audio");
   try {
-    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false }];
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }];
     media.setLocal("screen", remoteStream("old", [oldVideo, oldAudio]));
     state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
     media.update("a", state);
@@ -3170,7 +3261,7 @@ test("live picture settings apply to the same capture and senders, and a refused
   });
   const audio = remoteTrack("audio"), profile = QUALITY_PROFILES["1080p30"];
   try {
-    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false }];
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }];
     state.pairs[0].outgoing = [{ id: "screen-flow", publicationId: "screen", selected: true, inputFlowId: null }];
     media.setLocal("screen", remoteStream("source", [video, audio]), profile);
     media.update("a", state);
@@ -3263,7 +3354,7 @@ test.each(["new", "source", "audio", "ended"])("sender rejection retires only it
   try {
     pc.connected(); pc.channels[0].open();
     state.publications = [
-      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false },
+      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false },
       ...["kept", "following"].map(id => ({ id, roomId: "first", sessionId: "a", userId: "self", kind: "voice" as const, muted: false, paused: false })),
     ];
     media.setLocal("kept", remoteStream("kept", [kept]));
@@ -3512,7 +3603,8 @@ test.each(["flow", "pair", "attach"])("cross-pair retirement permits one compani
   };
   try {
     state.publications = ["screen", "failed", "voice-0", "voice-1"].map(id => ({
-      id, roomId: "first", sessionId: "a", userId: "self", kind: id.startsWith("voice") ? "voice" : "screen", muted: false, paused: false,
+      id, roomId: "first", sessionId: "a", userId: "self", muted: false, paused: false,
+      ...(id.startsWith("voice") ? { kind: "voice" as const } : { kind: "screen" as const, videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]) }),
     }));
     media.setLocal("screen", remoteStream("picture", [video]));
     media.setLocal("failed", remoteStream("unavailable-picture", [failedVideo]));
@@ -3999,7 +4091,7 @@ test("browsing retires only reading and resumes the offline selection without en
   const { session, socket } = await setup();
   try {
     const state = structuredClone(session.getSnapshot().state!);
-    state.publications = [{ id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen", muted: false, paused: false }];
+    state.publications = [{ id: "screen", roomId: "first", sessionId: "other", userId: "friend", kind: "screen", videoCeiling: screenVideoCeiling(QUALITY_PROFILES["1080p30"]), muted: false, paused: false }];
     socket.receive({ type: "state", state });
     const watching = session.watch("screen");
     socket.receive({ type: "ack", requestId: socket.sent.at(-1)!.requestId });
