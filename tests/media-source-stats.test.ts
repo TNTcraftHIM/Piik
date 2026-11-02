@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   collectConnectionMetricsFromReport,
+  collectTrackConnectionMetrics,
   collectNativeSenderQualityFromReport,
   createNativeSenderQualityAccumulator,
   createStatsAccumulator,
   maxEncodedVideoFrames,
   mediaSourceRecord,
+  type StatsAccumulator,
 } from "../src/client/webrtc/stats.ts";
 
 function report(timestamp = 1_000, trackIdentifier = "video-track") {
@@ -23,6 +25,31 @@ function report(timestamp = 1_000, trackIdentifier = "video-track") {
 }
 
 describe("sender source statistics", () => {
+  it("keeps a publication's RTP layers and source sound separate from other media on the same PC", () => {
+    const previous = new Map<string, StatsAccumulator>();
+    const sample = (timestamp: number, high = true) => {
+      const records = [
+        { id: "source", type: "media-source", kind: "video", trackIdentifier: "screen" },
+        { id: "other-source", type: "media-source", kind: "video", trackIdentifier: "other" },
+        { id: "sound-source", type: "media-source", kind: "audio", trackIdentifier: "sound" },
+        { id: "voice-source", type: "media-source", kind: "audio", trackIdentifier: "voice" },
+        { id: "q", type: "outbound-rtp", kind: "video", mediaSourceId: "source", rid: "q", bytesSent: timestamp * 10, framesEncoded: timestamp / 100 },
+        ...(high ? [{ id: "h", type: "outbound-rtp", kind: "video", mediaSourceId: "source", rid: "h", bytesSent: timestamp * 30, framesEncoded: timestamp / 100 }] : []),
+        { id: "other", type: "outbound-rtp", kind: "video", mediaSourceId: "other-source", bytesSent: timestamp * 1000 },
+        { id: "sound", type: "outbound-rtp", kind: "audio", mediaSourceId: "sound-source", bytesSent: timestamp * 16 },
+        { id: "voice", type: "outbound-rtp", kind: "audio", mediaSourceId: "voice-source", bytesSent: timestamp * 6 },
+      ];
+      const report = new Map(records.map(record => [record.id, { ...record, timestamp }])) as unknown as RTCStatsReport;
+      return collectTrackConnectionMetrics(report, "send", previous, { trackIdentifier: "screen", audioTrackIdentifier: "sound" });
+    };
+    expect(sample(1000)).toMatchObject([{ rtpStatsId: "q", rtpRid: "q" }, { rtpStatsId: "h", rtpRid: "h" }]);
+    expect(sample(2000)).toMatchObject([
+      { bitrateKbps: 80, intervalFramesEncoded: 10, audioBitrateKbps: 128 },
+      { bitrateKbps: 240, intervalFramesEncoded: 10, audioBitrateKbps: null },
+    ]);
+    expect(sample(3000, false)).toMatchObject([{ rtpStatsId: "q", bitrateKbps: 80, audioBitrateKbps: 128 }]);
+    expect([...previous.keys()]).toEqual(["q"]);
+  });
   it("reads the sole same-kind source without mediaSourceId and resets on replacement", () => {
     const previous = createStatsAccumulator();
     const sample = (timestamp: number, trackIdentifier = "video-track") =>

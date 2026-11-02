@@ -61,6 +61,7 @@ export interface StatsAccumulator {
 export interface StatsMediaSelector {
   kind?: "audio" | "video";
   trackIdentifier: string | null;
+  rtpStatsId?: string;
   rid?: string | null;
   audioTrackIdentifier?: string | null;
 }
@@ -462,6 +463,7 @@ function mediaRecords(
   const selectedRid = selector?.rid ?? null;
   return candidates.filter(
     (candidate) =>
+      (!selector?.rtpStatsId || candidate.id === selector.rtpStatsId) &&
       (selectedTrackIdentifier === null ||
         mediaTrackIdentifier(report, candidate, direction) ===
           selectedTrackIdentifier) &&
@@ -680,6 +682,27 @@ export async function collectConnectionMetrics(
     debugRtcFailure(connection, error);
     throw error;
   }
+}
+
+/** One track can have several RTP layers on a connection carrying other media. */
+export function collectTrackConnectionMetrics(
+  report: RTCStatsReport,
+  direction: "send" | "receive",
+  previous: Map<string, StatsAccumulator>,
+  selector: StatsMediaSelector,
+): ConnectionMetrics[] {
+  const records = mediaRecords(report, direction, selector, selector.kind ?? "video");
+  const current = new Set(records.map(record => record.id));
+  for (const id of previous.keys()) if (!current.has(id)) previous.delete(id);
+  return records.map((record, index) => {
+    let accumulator = previous.get(record.id);
+    if (!accumulator) previous.set(record.id, accumulator = createStatsAccumulator());
+    return collectConnectionMetricsFromReport(report, direction, accumulator, {
+      ...selector, rtpStatsId: record.id,
+      // Source sound belongs to the publication, not separately to every RID.
+      audioTrackIdentifier: index === 0 ? selector.audioTrackIdentifier ?? null : null,
+    });
+  });
 }
 
 export function collectConnectionMetricsFromReport(

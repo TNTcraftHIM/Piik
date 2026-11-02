@@ -13,6 +13,17 @@ import type { BrowserCaptureSource } from "../media/quality";
 import type { loadCameraPreviews } from "../media/camera-previews";
 import type { CommentaryInput } from "../media/host-audio";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
+import type { ConnectionMetrics } from "../types";
+
+export interface ChannelMediaMetric {
+  pairId: string;
+  flowId: string;
+  publicationId: string;
+  peerId: string;
+  direction: "send" | "receive";
+  media: "video" | "audio";
+  metrics: ConnectionMetrics;
+}
 
 export type SourceMicrophoneConfiguration = Omit<CommentaryInput, "voiceProcessing"> & { enabled: boolean; voiceProcessing?: boolean };
 export type SourceMicrophoneSettings = Partial<SourceMicrophoneConfiguration>;

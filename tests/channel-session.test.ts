@@ -2547,6 +2547,44 @@ const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(n
   getAudioTracks: () => tracks.filter(track => track.kind === "audio"),
 }) as unknown as MediaStream;
 
+test("room metrics read each PC once and follow current selected flows without mixing publications", async () => {
+  const fixture = await setupRoomMedia();
+  const video = remoteTrack("video"), sound = remoteTrack("audio"), voice = remoteTrack("audio"), other = remoteTrack("video");
+  try {
+    fixture.state.publications = [
+      { id: "screen", roomId: "first", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false },
+      { id: "voice", roomId: "first", sessionId: "a", userId: "self", kind: "voice", muted: false, paused: false },
+      { id: "other", roomId: "second", sessionId: "a", userId: "self", kind: "screen", muted: false, paused: false },
+    ];
+    fixture.state.pairs[0].rooms.push("second");
+    fixture.state.pairs[0].outgoing = fixture.state.publications.map(publication => ({ id: `${publication.id}-out`, publicationId: publication.id, selected: true, inputFlowId: null }));
+    fixture.media.update("a", fixture.state);
+    fixture.media.setLocal("screen", new MediaStream([video, sound]), undefined, videoCodec.VP8_ONLY_VIDEO_CODEC);
+    fixture.media.setLocal("voice", new MediaStream([voice]));
+    fixture.media.setLocal("other", new MediaStream([other]), undefined, videoCodec.VP8_ONLY_VIDEO_CODEC);
+    await vi.waitFor(() => expect(fixture.pc.senders).toHaveLength(4));
+    const report = (timestamp: number) => new Map<string, Record<string, unknown>>([video, sound, voice, other].flatMap((track, index) => [
+      [`source-${index}`, { id: `source-${index}`, timestamp, type: "media-source", kind: track.kind, trackIdentifier: track.id }],
+      [`rtp-${index}`, { id: `rtp-${index}`, timestamp, type: "outbound-rtp", kind: track.kind, mediaSourceId: `source-${index}`,
+        bytesSent: timestamp * [100, 16, 6, 1000][index]!, framesEncoded: timestamp / 100 }],
+    ])) as unknown as RTCStatsReport;
+    fixture.pc.getStats.mockResolvedValueOnce(report(1000)).mockResolvedValueOnce(report(2000));
+    await fixture.media.connectionMetrics("first", "screen");
+    expect(await fixture.media.connectionMetrics("first", "screen")).toMatchObject([
+      { publicationId: "screen", direction: "send", media: "video", metrics: { bitrateKbps: 800, audioBitrateKbps: 128 } },
+      { publicationId: "voice", direction: "send", media: "audio", metrics: { bitrateKbps: 48, audioBitrateKbps: 48 } },
+    ]);
+    expect(fixture.pc.getStats).toHaveBeenCalledTimes(2);
+    let complete!: (value: RTCStatsReport) => void;
+    fixture.pc.getStats.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    const reading = fixture.media.connectionMetrics("first", "screen");
+    fixture.state.pairs[0].outgoing = fixture.state.pairs[0].outgoing.filter(flow => flow.publicationId !== "screen");
+    fixture.media.update("a", fixture.state);
+    complete(report(3000));
+    expect(await reading).toMatchObject([{ publicationId: "voice", media: "audio" }]);
+  } finally { fixture.media.reset(); fixture.session.close(); }
+});
+
 async function receiveScreen(fixture: Awaited<ReturnType<typeof screenFixture>>, stream: MediaStream) {
   fixture.media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: stream.id },
     tracks: [{ flowId: fixture.state.pairs[0].incoming[0].id, streamId: stream.id }] });

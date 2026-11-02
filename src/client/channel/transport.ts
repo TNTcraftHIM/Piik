@@ -1,5 +1,6 @@
 import { addRemoteIceCandidate } from "../webrtc/nat-prediction";
-import { decodedVideoFrameSamples } from "../webrtc/stats";
+import { collectTrackConnectionMetrics, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
+import type { ConnectionMetrics } from "../types";
 import { preferOpusStereoReceive } from "../webrtc/opus-receive-sdp";
 import { applyVideoCodecPreference, normalizeVideoOfferSdp, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import type { ChannelPublication, ChannelSignal } from "./protocol";
@@ -30,6 +31,7 @@ interface OutgoingBinding {
   audioBitrate?: number;
   rejectedTracks?: MediaStreamTrack[];
   replacement?: MediaStreamTrack[];
+  metrics?: Map<string, StatsAccumulator>;
 }
 
 interface TransportOptions {
@@ -76,6 +78,19 @@ export class ChannelTransport {
   private writers = new Map<RTCDataChannel, ChannelWriter>();
   private lifetime = new AbortController();
   private baseFailed = false;
+
+  outgoingMetrics(report: RTCStatsReport, flowIds: ReadonlySet<string>): Array<{ flowId: string; metrics: ConnectionMetrics }> {
+    return [...this.sending].flatMap(([flowId, binding]) => {
+      if (!flowIds.has(flowId)) return [];
+      const track = binding.senders.find(sender => sender.track?.kind === (binding.kind === "screen" ? "video" : "audio"))?.track;
+      if (!track) return [];
+      const audio = binding.senders.find(sender => sender.track?.kind === "audio")?.track;
+      return collectTrackConnectionMetrics(report, "send", binding.metrics ??= new Map(), {
+        kind: binding.kind === "screen" ? "video" : "audio", trackIdentifier: track.id,
+        audioTrackIdentifier: audio?.id ?? null,
+      }).map(metrics => ({ flowId, metrics }));
+    });
+  }
 
   constructor(private options: TransportOptions) {
     this.pc = new RTCPeerConnection({ iceServers: options.iceServers, bundlePolicy: "max-bundle" });

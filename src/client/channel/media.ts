@@ -1,9 +1,9 @@
 import { observeDecodedFrameProof } from "../media/decoded-frame-proof";
-import { collectConnectionMetrics, createStatsAccumulator, decodedVideoFrameSamples } from "../webrtc/stats";
+import { collectConnectionMetrics, collectTrackConnectionMetrics, createStatsAccumulator, decodedVideoFrameSamples, type StatsAccumulator } from "../webrtc/stats";
 import { P2pQualityProbe } from "../media/candidate-quality-probe";
 import { VIEWER_QUALITY_EVIDENCE_INTERVAL_MS } from "../../shared/protocol";
 import type { ChannelCommand, ChannelPair, ChannelSignal, ChannelSnapshot } from "./protocol";
-import type { ChannelScreenInput, ScreenPresentation } from "./types";
+import type { ChannelMediaMetric, ChannelScreenInput, ScreenPresentation } from "./types";
 import { ChannelTransport, type OutgoingMedia } from "./transport";
 import { applyCaptureProfile, type QualityProfile } from "../media/quality";
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
@@ -31,6 +31,7 @@ interface MediaInput {
   release?: () => void;
   codec?: BrowserVideoCodecPreference;
   codecProbe?: AbortController;
+  metrics?: Map<string, StatsAccumulator>;
 }
 
 export class ChannelMedia {
@@ -460,6 +461,40 @@ export class ChannelMedia {
       (await peer.transport.pc.getStats()).forEach(report => values.push(report));
       return { pairId, peerId: peer.plan.peerId, reports: values };
     }));
+  }
+
+  async connectionMetrics(roomId: string, publicationId?: string): Promise<ChannelMediaMetric[]> {
+    const inScope = (publication: ChannelSnapshot["publications"][number]) => publication.roomId === roomId
+      && (publication.kind === "voice" || publicationId === undefined || publication.id === publicationId);
+    const requested = new Set(this.publications.filter(inScope).map(publication => publication.id));
+    const samples = await Promise.allSettled([...this.peers.values()].map(async (peer): Promise<ChannelMediaMetric[]> => {
+      if (![...peer.plan.incoming, ...peer.plan.outgoing].some(flow => flow.selected && requested.has(flow.publicationId))) return [];
+      const report = await peer.transport.pc.getStats();
+      if (this.peers.get(peer.plan.id) !== peer) return [];
+      const plan = peer.plan;
+      const publications = new Map(this.publications.filter(inScope).map(publication => [publication.id, publication]));
+      const incoming = plan.incoming.filter(flow => flow.selected && publications.has(flow.publicationId));
+      const outgoing = plan.outgoing.filter(flow => flow.selected && publications.has(flow.publicationId));
+      const sample = (flowId: string, direction: "send" | "receive", metrics: ChannelMediaMetric["metrics"]): ChannelMediaMetric => {
+        const flow = (direction === "send" ? outgoing : incoming).find(flow => flow.id === flowId)!;
+        return { pairId: plan.id, peerId: plan.peerId, flowId, publicationId: flow.publicationId, direction,
+          media: publications.get(flow.publicationId)!.kind === "screen" ? "video" : "audio", metrics };
+      };
+      return [
+        ...incoming.flatMap(flow => {
+          const input = peer.inputs.get(flow.id);
+          const kind = publications.get(flow.publicationId)!.kind === "screen" ? "video" : "audio";
+          const track = kind === "video" ? input?.video : input?.stream.getAudioTracks()[0];
+          if (!input || !track) return [];
+          return collectTrackConnectionMetrics(report, "receive", input.metrics ??= new Map(), {
+            kind, trackIdentifier: track.id, audioTrackIdentifier: input.stream.getAudioTracks()[0]?.id ?? null,
+          }).map(metrics => sample(flow.id, "receive", metrics));
+        }),
+        ...peer.transport.outgoingMetrics(report, new Set(outgoing.map(flow => flow.id)))
+          .map(({ flowId, metrics }) => sample(flowId, "send", metrics)),
+      ];
+    }));
+    return samples.flatMap(result => result.status === "fulfilled" ? result.value : []);
   }
 
   private closePeer(peer: Peer): boolean {
