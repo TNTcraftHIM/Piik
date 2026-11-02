@@ -502,6 +502,8 @@ Start with the current 20-second signaling recovery policy. Failure to replace
 a socket does not extend its deadline; successful authenticated reconciliation
 ends it. Local stop takes effect immediately. One scope's retirement cannot
 release another room's healthy source or transport lease.
+Within that window the retained room binding still owns existing captures;
+temporary unavailability rejects new room operations without retiring that binding.
 
 An unfinished SDP exchange belongs to its physical connection. On resume,
 retransmit its original offer or cached answer with the same exchange identity;

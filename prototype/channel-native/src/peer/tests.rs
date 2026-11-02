@@ -6,6 +6,241 @@ mod opus_startup;
 mod sockets;
 pub(super) mod support;
 mod transit;
+
+#[test]
+fn capture_scope_survives_host_signaling_recovery_but_not_retired_authority() {
+    use piik_channel_core::{
+        host::RoomHost,
+        wire::{Event as CoreEvent, Request, RoomAccess},
+        Authority, Effects, RoomState, RECOVERY_MS,
+    };
+    use serde_json::{json, Value};
+
+    fn send(core: &mut Authority, connection: Uuid, mut command: Value, now: u64) -> Effects {
+        if command["type"] == "join" {
+            command["signingKey"] = json!(
+                piik_channel_core::conversation::SessionSigner::from_seed([1; 32]).signing_key()
+            );
+        }
+        core.handle(
+            connection,
+            Request::parse(&command.to_string()).unwrap(),
+            now,
+        )
+    }
+    fn state(effects: &Effects, connection: Uuid) -> &Snapshot {
+        effects
+            .events
+            .iter()
+            .rev()
+            .find_map(|(target, event)| match event {
+                CoreEvent::State { state } if *target == connection => Some(state),
+                _ => None,
+            })
+            .expect("current authority snapshot")
+    }
+    fn finish(
+        core: &mut Authority,
+        host: &mut RoomHost,
+        connection: Uuid,
+        effects: Effects,
+        now: u64,
+    ) -> Effects {
+        let (room_id, input) = effects
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                CoreEvent::HostInput { room_id, input } => Some((room_id, input)),
+                _ => None,
+            })
+            .expect("actual room-host work");
+        host.dispatch(input).unwrap();
+        let output = host.finish(None).unwrap();
+        send(
+            core,
+            connection,
+            json!({"type":"host_output","roomId":room_id,"output":output}),
+            now,
+        )
+    }
+
+    let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+    let host_connection = Uuid::new_v4();
+    let native_connection = Uuid::new_v4();
+    let admitted = send(
+        &mut core,
+        host_connection,
+        json!({"type":"join","key":"owner","name":"Host"}),
+        0,
+    );
+    let (host_session, credential, owner) = admitted
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            CoreEvent::Welcome {
+                session_id,
+                credential,
+                state,
+                ..
+            } => Some((session_id, credential, state.channel.owner_id.unwrap())),
+            _ => None,
+        })
+        .unwrap();
+    let admitted = send(
+        &mut core,
+        native_connection,
+        json!({"type":"join","key":"invite","name":"Native"}),
+        1,
+    );
+    let native_user = admitted
+        .events
+        .into_iter()
+        .find_map(|(_, event)| match event {
+            CoreEvent::Welcome {
+                session_id, state, ..
+            } => Some(
+                state
+                    .sessions
+                    .iter()
+                    .find(|s| s.id == session_id)
+                    .unwrap()
+                    .user_id,
+            ),
+            _ => None,
+        })
+        .unwrap();
+    let mut policy = RoomState::new(
+        "capture".into(),
+        "Capture".into(),
+        Default::default(),
+        owner,
+        RoomAccess::Private,
+        false,
+        None,
+    )
+    .unwrap();
+    policy.grants.insert(native_user);
+    let mut host = RoomHost::new(policy.clone());
+    let registered = send(
+        &mut core,
+        host_connection,
+        json!({"type":"host_register","room":host.summary()}),
+        2,
+    );
+    let registered = finish(&mut core, &mut host, host_connection, registered, 2);
+    let binding = state(&registered, native_connection).channel.rooms[0]
+        .delivery
+        .as_ref()
+        .unwrap()
+        .binding_id;
+    let scope = CaptureScope {
+        publication_id: Uuid::new_v4(),
+        room_id: "capture".into(),
+        binding_id: binding,
+    };
+    assert!(scope.is_current(state(&registered, native_connection)));
+    let publish = json!({"type":"publish","publication":{"id":scope.publication_id,"roomId":"capture","kind":"screen","muted":false}});
+    let published = send(&mut core, native_connection, publish.clone(), 3);
+    finish(&mut core, &mut host, host_connection, published, 3);
+
+    let disconnected = core.disconnect(host_connection, 100);
+    let recovering = state(&disconnected, native_connection);
+    assert!(!recovering.channel.rooms[0].available);
+    assert_eq!(
+        recovering.channel.rooms[0]
+            .delivery
+            .as_ref()
+            .map(|d| d.binding_id),
+        Some(binding),
+        "temporary signaling loss must not hide the retained room authority"
+    );
+    assert!(
+        scope.is_current(recovering),
+        "pending permission and active captures retain their authority"
+    );
+    assert!(recovering
+        .publications
+        .iter()
+        .any(|p| p.id == scope.publication_id));
+    let refused = send(&mut core, native_connection, publish, 101);
+    assert!(refused.events.iter().any(|(_, event)| matches!(event, CoreEvent::Error { code, .. } if code == "room_host_offline")), "retained authority does not admit new offline room writes");
+
+    let resumed_connection = Uuid::new_v4();
+    let resumed = send(
+        &mut core,
+        resumed_connection,
+        json!({"type":"join","credential":credential,"sessionId":host_session,"name":"Host"}),
+        200,
+    );
+    assert!(resumed.events.iter().any(|(_, event)| matches!(event, CoreEvent::Welcome { session_id, .. } if *session_id == host_session)));
+    let registered = send(
+        &mut core,
+        resumed_connection,
+        json!({"type":"host_register","room":host.summary(),"resumeBinding":binding}),
+        201,
+    );
+    let resumed = finish(&mut core, &mut host, resumed_connection, registered, 201);
+    assert!(state(&resumed, native_connection).channel.rooms[0].available);
+    assert!(scope.is_current(state(&resumed, native_connection)));
+
+    let mut expiring = core.clone();
+    expiring.disconnect(resumed_connection, 300);
+    assert!(expiring.expire(300 + RECOVERY_MS - 1).events.is_empty());
+    let expired = expiring.expire(300 + RECOVERY_MS);
+    assert!(!scope.is_current(state(&expired, native_connection)));
+    assert!(state(&expired, native_connection).channel.rooms[0]
+        .delivery
+        .is_none());
+    assert!(state(&expired, native_connection).publications.is_empty());
+
+    let stopped = send(
+        &mut core.clone(),
+        resumed_connection,
+        json!({"type":"host_stop","roomId":"capture","bindingId":binding}),
+        300,
+    );
+    assert!(!scope.is_current(state(&stopped, native_connection)));
+    assert!(state(&stopped, native_connection).channel.rooms[0]
+        .delivery
+        .is_none());
+
+    let mut replacing = core.clone();
+    let mut replacement_host = RoomHost::new(policy);
+    let registered = send(
+        &mut replacing,
+        resumed_connection,
+        json!({"type":"host_register","room":replacement_host.summary()}),
+        300,
+    );
+    let replaced = finish(
+        &mut replacing,
+        &mut replacement_host,
+        resumed_connection,
+        registered,
+        300,
+    );
+    let replacement = state(&replaced, native_connection);
+    assert!(replacement.channel.rooms[0].available);
+    assert!(replacement.channel.rooms[0].delivery.is_some());
+    assert!(
+        !scope.is_current(replacement),
+        "a new live binding cannot retain an old lease"
+    );
+
+    let revoke = send(
+        &mut core,
+        resumed_connection,
+        json!({"type":"revoke_room_access","roomId":"capture","userId":native_user}),
+        300,
+    );
+    let revoked = finish(&mut core, &mut host, resumed_connection, revoke, 300);
+    assert!(!state(&revoked, native_connection).channel.rooms[0].authorized);
+    assert!(state(&revoked, native_connection).channel.rooms[0]
+        .delivery
+        .is_none());
+    assert!(!scope.is_current(state(&revoked, native_connection)));
+}
+
 pub(super) fn driver() -> (
     Driver,
     mpsc::Receiver<Event>,

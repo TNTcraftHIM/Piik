@@ -1108,8 +1108,7 @@ impl Channel {
                 if let Some(mut snapshot) =
                     room.snapshot(member, session_id, Self::host_online(&self.identity, room))
                 {
-                    snapshot.room.delivery = if snapshot.room.authorized && snapshot.room.available
-                    {
+                    snapshot.room.delivery = if snapshot.room.authorized {
                         room.binding.as_ref().zip(room.projection.as_ref()).map(
                             |(binding, projection)| RoomDelivery {
                                 host_session_id: binding.session,

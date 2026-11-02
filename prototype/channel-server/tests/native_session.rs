@@ -269,6 +269,18 @@ async fn real_session_resumes_bindings_and_restarts_from_committed_room_files() 
     domain.events.clear();
     domain.socket.close(None).await.unwrap();
     let effects = domain.authority.disconnect(domain.connection, domain.now);
+    let recovering = effects
+        .events
+        .iter()
+        .find_map(|(connection, event)| match event {
+            Event::State { state } if *connection == guest => {
+                state.channel.rooms.iter().find(|room| room.id == "one")
+            }
+            _ => None,
+        })
+        .unwrap();
+    assert!(!recovering.available);
+    assert_eq!(recovering.delivery.as_ref().unwrap().binding_id, binding);
     domain.events.extend(effects.events);
     // A second real process cannot steal the database during the first process's
     // recovery window, even though the domain could admit its new endpoint.

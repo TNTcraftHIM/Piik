@@ -147,6 +147,19 @@ pub struct CaptureScope {
     pub room_id: String,
     pub binding_id: Uuid,
 }
+impl CaptureScope {
+    #[cfg(any(feature = "capture", test))]
+    fn is_current(&self, state: &Snapshot) -> bool {
+        state.channel.rooms.iter().any(|room| {
+            room.id == self.room_id
+                && room.authorized
+                && room
+                    .delivery
+                    .as_ref()
+                    .is_some_and(|delivery| delivery.binding_id == self.binding_id)
+        })
+    }
+}
 pub struct CaptureInput {
     pub remote: Option<crate::input::Source>,
     pub state: Option<watch::Receiver<crate::input::SourceView>>,
@@ -1408,17 +1421,9 @@ impl Driver {
         #[cfg(feature = "capture")]
         for capture in self.captures.values() {
             let authority = self.snapshot.borrow();
-            let admitted = authority.as_ref().is_some_and(|state| {
-                state.channel.rooms.iter().any(|room| {
-                    room.id == capture.scope.room_id
-                        && room.authorized
-                        && room.available
-                        && room
-                            .delivery
-                            .as_ref()
-                            .is_some_and(|delivery| delivery.binding_id == capture.scope.binding_id)
-                })
-            });
+            let admitted = authority
+                .as_ref()
+                .is_some_and(|state| capture.scope.is_current(state));
             if !admitted
                 || (capture.selected
                     && !self

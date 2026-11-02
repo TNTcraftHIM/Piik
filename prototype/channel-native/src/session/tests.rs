@@ -18,7 +18,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
             let room = |id| {
                 json!({
                     "id":id,"name":id,"icon":"couch","creatorId":user,"access":"public","hidden":false,
-                    "hasPassword":false,"authorized":true,"canManage":true,"available":true,
+                    "hasPassword":false,"voiceBitrate":64_000,"authorized":true,"canManage":true,"available":true,
                     "reading":false,"participantSessionIds":[],"capabilities":{"attachments":false},
                     "delivery":{"hostSessionId":Uuid::new_v4(),"bindingId":binding,"nextHops":{}}
                 })
