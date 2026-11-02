@@ -176,7 +176,7 @@ describe("release automation", () => {
         "scripts/app-gate-endpoint.ts", "scripts/client-gate-endpoint.ts",
         "scripts/network-lab.ts", "scripts/network-lab/endpoint.ts", "scripts/network-lab/stun/main.go",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml",
-        ".github/workflows/gitee-mirror.yml", "scripts/release-mirror-source.mjs"]) {
+        ".github/workflows/atomgit-mirror.yml", "scripts/release-mirror-source.mjs"]) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
         writeFileSync(join(root, path), "Peripheral content");
       }

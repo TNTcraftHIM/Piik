@@ -1,4 +1,4 @@
-name: Gitee mirror
+name: AtomGit mirror
 
 on:
   workflow_run:
@@ -17,7 +17,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: gitee-mirror
+  group: atomgit-mirror
   cancel-in-progress: false
   queue: max
 
@@ -72,7 +72,7 @@ jobs:
           "$RUNNER_TEMP/mirror-release" "$PIIK_RELEASE_VERSION" "$PIIK_RELEASE_REVISION"
         env:
           GH_TOKEN: ${{ github.token }}
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+          ATOMGIT_TOKEN: ${{ secrets.ATOMGIT_TOKEN }}
           PIIK_RELEASE_VERSION: ${{ steps.source.outputs.version }}
           PIIK_RELEASE_REVISION: ${{ steps.source.outputs.revision }}
       - name: Explain recovery

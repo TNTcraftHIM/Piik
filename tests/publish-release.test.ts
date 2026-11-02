@@ -43,16 +43,16 @@ const release = (draft: boolean): Release => ({
   tag_name: version, target_commitish: revision, draft, prerelease: false, assets: completeAssets,
 });
 
-describe("Gitee mirror publication", () => {
+describe("AtomGit mirror publication", () => {
   const marker = `<!-- piik-source: ${revision} -->`;
-  const api = "https://gitee.com/api/v5/repos/TNTcraftHIM/Piik";
-  const download = `https://gitee.com/TNTcraftHIM/Piik/releases/download/${version}/`;
+  const api = "https://api.atomgit.com/api/v5/repos/TNTcraftHIM/Piik";
+  const download = `https://atomgit.com/TNTcraftHIM/Piik/releases/download/${version}/`;
   const sourceAssets = packageNames.map((name) => {
     const bytes = readFileSync(join(directory, name));
     return { name, size: bytes.length, digest: `sha256:${hash(bytes)}`, state: "uploaded" };
   });
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
-    wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean;
+    wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean; uploadFailure?: boolean;
     stale?: boolean; supersededDuringUpload?: boolean;
     downloadFault?: { remaining: number; name: "TimeoutError" | "TypeError" };
     fault?: { method: string; remaining: number; status: number | "timeout" | "body-timeout" } } = {}) {
@@ -64,9 +64,10 @@ describe("Gitee mirror publication", () => {
       } }));
     };
     const mutations: string[] = [];
-    const attachments = sourceAssets.filter(asset => !asset.name.endsWith(".apk"))
+    const attachments = sourceAssets
       .map(({ name, size }) => ({ name, size, browser_download_url: download + name }));
-    const present = options.existing === "pending" ? attachments.slice(0, 1) : options.missing ? [] : attachments;
+    const present = options.existing === "pending" ? attachments.slice(0, 1) : options.existing && !options.missing ? [...attachments] : [];
+    let pending = options.existing !== "published";
     const source = {
       ...release(false), html_url: `https://github.com/TNTcraftHIM/Piik/releases/tag/${version}`,
       target_commitish: options.wrongSource ? "b".repeat(40) : revision,
@@ -82,11 +83,11 @@ describe("Gitee mirror publication", () => {
       } else expect(args[1]).toBe(`repos/TNTcraftHIM/Piik/releases/tags/${version}`);
       return JSON.stringify(source);
     });
-    vi.stubEnv("GITEE_TOKEN", "fixture-mirror-token");
+    vi.stubEnv("ATOMGIT_TOKEN", "fixture-mirror-token");
     vi.stubGlobal("fetch", vi.fn<typeof fetch>(async (input, init) => {
       const url = String(input);
       if (url.startsWith(download)) {
-        expect(url).not.toMatch(/\.apk$/);
+
         expect(init?.headers).toBeUndefined();
         const file = url.slice(download.length);
         if (options.downloadFault && options.downloadFault.remaining > 0) {
@@ -96,7 +97,17 @@ describe("Gitee mirror publication", () => {
         }
         return new Response(options.corrupt ? "corrupt" : readFileSync(join(directory, file)));
       }
-      expect(init?.headers).toHaveProperty("Authorization", "Bearer fixture-mirror-token");
+      if (url.startsWith("https://upload.example/")) {
+        const name = url.slice("https://upload.example/".length);
+        expect(init?.method).toBe("PUT");
+        expect(init?.headers).not.toHaveProperty("PRIVATE-TOKEN");
+        if (options.uploadFailure) { mutations.push("PUT " + name); throw new Error("secret signed upload URL"); }
+        expect(hash(Buffer.from(await (init?.body as Blob).arrayBuffer()))).toBe(hash(readFileSync(join(directory, name))));
+        mutations.push("PUT " + name);
+        present.push(attachments.find(asset => asset.name === name)!);
+        return new Response(null);
+      }
+      expect(init?.headers).toHaveProperty("PRIVATE-TOKEN", "fixture-mirror-token");
       expect(init?.redirect).toBe("error");
       const path = url.slice(api.length);
       const method = init?.method ?? "GET";
@@ -109,26 +120,25 @@ describe("Gitee mirror publication", () => {
         }
         return new Response(null, { status: options.fault.status });
       }
-      if (path.startsWith("/releases/tags/")) return options.existing
+      if (path.startsWith("/releases/tags/")) return options.existing || mutations.length
         ? Response.json({ id: 42, tag_name: version, body: options.existing === "unknown" ? "unknown" : marker,
-          prerelease: options.existing !== "published" }) : new Response(null, { status: 404 });
+          prerelease: pending, assets: [...present] }) : new Response(null, { status: 404 });
       if (path === "") return Response.json({ private: false, default_branch: "master" });
       if (path === "/releases" && method === "POST") {
         const body = JSON.parse(String(init?.body));
-        expect(body.prerelease).toBe(true);
+        expect(body.release_status).toBe("pre");
         expect(body.body).toContain(marker);
-        return Response.json({ ...body, id: 42 });
+        return Response.json({ ...body, prerelease: true, assets: [] });
       }
-      if (path.includes("/attach_files?") && method === "GET") return Response.json(options.existing ? present : []);
-      if (path.endsWith("/attach_files") && method === "POST") {
-        const file = (init?.body as FormData).get("file") as File;
-        expect(hash(Buffer.from(await file.arrayBuffer()))).toBe(hash(readFileSync(join(directory, file.name))));
-        return Response.json(attachments.find((asset) => asset.name === file.name));
+      if (path.includes("/upload_url?") && method === "GET") {
+        const name = new URL(url).searchParams.get("file_name")!;
+        return Response.json({ url: "https://upload.example/" + name, headers: { "Content-Type": "application/octet-stream" } });
       }
-      if (path === "/releases/42" && method === "PATCH") {
+      if (path === `/releases/${version}` && method === "PATCH") {
         const body = JSON.parse(String(init?.body));
-        expect(body.prerelease).toBe(false);
-        return Response.json({ ...body, id: 42 });
+        expect(body.release_status).toBe("latest");
+        pending = false;
+        return Response.json({ ...body, prerelease: false, assets: present });
       }
       throw new Error(`Unexpected mirror request: ${method} ${path}`);
     }));
@@ -155,14 +165,14 @@ describe("Gitee mirror publication", () => {
     const result = await mirror();
     expect(result.failure).toBeUndefined();
     expect(result.mutations[0]).toBe("POST /releases");
-    expect(result.mutations.at(-1)).toBe("PATCH /releases/42");
-    expect(result.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length - 1);
+    expect(result.mutations.at(-1)).toBe(`PATCH /releases/${version}`);
+    expect(result.mutations.filter((value) => value.startsWith("PUT "))).toHaveLength(sourceAssets.length);
   });
 
   it("resumes pending uploads and leaves complete stable releases unchanged", async () => {
     const pending = await mirror({ existing: "pending" });
     expect(pending.failure).toBeUndefined();
-    expect(pending.mutations.filter((value) => value.endsWith("/attach_files"))).toHaveLength(sourceAssets.length - 2);
+    expect(pending.mutations.filter((value) => value.startsWith("PUT "))).toHaveLength(sourceAssets.length - 1);
     expect(await mirror({ existing: "published" })).toEqual({ mutations: [], failure: undefined });
   });
 
@@ -174,7 +184,7 @@ describe("Gitee mirror publication", () => {
     }
     const superseded = await mirror({ existing: "pending", supersededDuringUpload: true });
     expect(superseded.failure).toContain("Only the latest GitHub release");
-    expect(superseded.mutations).not.toContain("PATCH /releases/42");
+    expect(superseded.mutations).not.toContain(`PATCH /releases/${version}`);
     expect(await mirror({ existing: "published", stale: true })).toEqual({ mutations: [], failure: undefined });
   });
 
@@ -194,7 +204,7 @@ describe("Gitee mirror publication", () => {
     const failed = await mirror({ downloadFault });
     expect(failed.failure).toBeDefined();
     expect(downloadFault.remaining).toBe(1);
-    expect(failed.mutations).not.toContain("PATCH /releases/42");
+    expect(failed.mutations).not.toContain(`PATCH /releases/${version}`);
   });
 
   it("does not repeat forbidden reads or ambiguous writes", async () => {
@@ -217,10 +227,18 @@ describe("Gitee mirror publication", () => {
       expect(result.mutations).toEqual([]);
     });
 
+  it("does not retry ambiguous PUTs or reveal signed upload errors", async () => {
+    const result = await mirror({ uploadFailure: true });
+    expect(result.mutations.filter(value => value.startsWith("PUT "))).toHaveLength(1);
+    expect(result.failure).toContain("rerun to inventory before retry");
+    expect(result.failure).not.toContain("secret signed");
+    expect(result.mutations).not.toContain(`PATCH /releases/${version}`);
+  });
+
   it("does not publish a corrupt upload or repair a published missing file", async () => {
     const corrupt = await mirror({ corrupt: true });
     expect(corrupt.failure).toMatch(/mismatch/);
-    expect(corrupt.mutations).not.toContain("PATCH /releases/42");
+    expect(corrupt.mutations).not.toContain(`PATCH /releases/${version}`);
     const incomplete = await mirror({ existing: "published", missing: true });
     expect(incomplete.failure).toContain("corrected new version");
     expect(incomplete.mutations).toEqual([]);

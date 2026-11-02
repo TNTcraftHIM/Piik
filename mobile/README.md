@@ -85,8 +85,8 @@ and verify that the same clean source revision still owns the final output.
 The universal `piik-app-android-universal.apk` contains arm64 and x86-64.
 The build verifies its signature, package identity, version and ABIs, then writes
 the existing schema-2 release descriptor and SHA-256 sidecars. It also wraps
-the unchanged signed APK in `piik-app-android-universal.zip` for Gitee; extract
-that ZIP before installation. GitHub publishes both distributions.
+the unchanged signed APK in `piik-app-android-universal.zip`. GitHub and AtomGit
+publish both distributions; use the APK directly for installation.
 The existing CI App matrix publishes them with the matching desktop/Server
 artifacts. Publication requires four repository secrets:
 `PIIK_ANDROID_KEYSTORE_BASE64` (the keystore bytes in Base64),
