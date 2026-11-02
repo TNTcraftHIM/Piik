@@ -363,8 +363,8 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         viewer
             .drain()
             .iter()
-            .any(|event| event["type"] == "error" && event["code"] == "unassigned_pair"),
-        "directory rollback restored signaling on the room host's revoked flow"
+            .any(|event| event["type"] == "ack" && event["requestId"] == "retired-path"),
+        "retired signaling is acknowledged without restoring its revoked path"
     );
     let private = updates
         .iter()
@@ -380,6 +380,10 @@ fn directory_save_failure_cannot_restore_a_room_hosts_revoked_flows() {
         .as_bool()
         .unwrap());
     let result = operator.drain();
+    assert!(
+        !result.iter().any(|event| event["type"] == "signal"),
+        "directory rollback restored signaling on the room host's revoked flow"
+    );
     assert!(result.iter().any(|event| event["type"] == "room_reply"
         && event["requestId"] == "make-private"
         && event["result"]["type"] == "done"));

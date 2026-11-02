@@ -673,7 +673,9 @@ impl Channel {
             } => self
                 .flow_direction(session, *pair_id, *flow_id, *state)
                 .is_some(),
-            Command::LinkState { pair_id, .. } => self.peer(session, *pair_id).is_some(),
+            Command::Signal { pair_id, .. } | Command::LinkState { pair_id, .. } => {
+                self.peer(session, *pair_id).is_some()
+            }
             _ => true,
         }
     }

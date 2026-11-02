@@ -264,6 +264,18 @@ fn required_repair_wakes_the_existing_host_and_renews_only_retired_transport() {
                 json!({"type":"link_state", "pairId":old.id, "state":"failed"}),
                 5_201,
             );
+            let late = network.command_at(
+                viewer,
+                json!({"type":"signal", "pairId":old.id, "payload":{
+                    "exchangeId":Uuid::new_v4(),
+                    "description":{"type":"offer", "sdp":"retired-transport"}
+                }}),
+                5_201,
+            );
+            assert!(
+                late.events.is_empty(),
+                "retired signaling must neither forward nor report a room error"
+            );
             assert_eq!(pair(&network, viewer, source, &room).id, restored.id);
         }
         for connection in [host, viewer] {
@@ -2546,10 +2558,10 @@ fn coordinated_udp_preparation_replaces_only_the_physical_attempt_and_preserves_
         json!({"type":"signal","pairId":original.id,"payload":{"resync":true}}),
         102,
     );
-    assert!(stale
-        .events
-        .iter()
-        .any(|(_, event)| matches!(event,Event::Error{code,..}if code=="unassigned_pair")));
+    assert!(
+        stale.events.is_empty(),
+        "retired signaling cannot reach or fail the prepared replacement"
+    );
     let input = network
         .authority
         .handle(
