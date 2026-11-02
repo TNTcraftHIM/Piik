@@ -63,6 +63,63 @@ describe("Viewer local audio", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it("retains gain on its mute echo when the system ignores volume writes", () => {
+    const video = new PlaybackVideo();
+    Object.defineProperty(video, "volume", { get: () => 1, set: () => {} });
+    const audio = new ViewerAudio(video as unknown as HTMLVideoElement, vi.fn());
+    audio.bind(new AudioStream([audioTrack()]) as unknown as MediaStream);
+    audio.setLevel(0.5);
+    const context = PlaybackContext.instances[0];
+    context.start();
+    expect(video.volume).toBe(1);
+    expect(video.muted).toBe(true);
+    video.dispatchEvent(new Event("volumechange"));
+    expect(context.close).not.toHaveBeenCalled();
+    expect(context.gain.gain.value).toBe(0.5);
+    expect(audio.snapshot).toEqual({ level: 0.5, muted: false, boostAvailable: true });
+
+    video.muted = false;
+    video.dispatchEvent(new Event("volumechange"));
+    expect(context.sources[0].disconnect).toHaveBeenCalledOnce();
+    expect(context.close).toHaveBeenCalledOnce();
+    expect(audio.snapshot).toEqual({ level: 1, muted: false, boostAvailable: true });
+    expect(video.muted).toBe(false);
+    audio.dispose();
+  });
+
+  it("hands boosted playback to native volume controls without leaving two audio outputs", () => {
+    const video = new PlaybackVideo();
+    const audio = new ViewerAudio(video as unknown as HTMLVideoElement, vi.fn());
+    audio.bind(new AudioStream([audioTrack()]) as unknown as MediaStream);
+    audio.setLevel(1.5);
+    const context = PlaybackContext.instances[0];
+    context.start();
+    video.dispatchEvent(new Event("volumechange")); // The owner's queued native mute write.
+    expect(context.close).not.toHaveBeenCalled();
+    expect(context.gain.gain.value).toBe(1.5);
+
+    // Chromium's PiP mute control writes the media element's muted property.
+    video.muted = false;
+    video.dispatchEvent(new Event("volumechange"));
+    expect(context.sources[0].disconnect).toHaveBeenCalledOnce();
+    expect(context.gain.disconnect).toHaveBeenCalledOnce();
+    expect(context.close).toHaveBeenCalledOnce();
+    expect(video.muted).toBe(false);
+    expect(audio.snapshot).toEqual({ level: 1, muted: false, boostAvailable: true });
+    video.muted = true;
+    video.dispatchEvent(new Event("volumechange"));
+    expect(audio.snapshot.muted).toBe(true);
+    video.muted = false;
+    video.dispatchEvent(new Event("volumechange"));
+    expect(audio.snapshot.muted).toBe(false);
+
+    audio.setLevel(1.5);
+    PlaybackContext.instances[1].start();
+    expect(video.muted).toBe(true);
+    expect(PlaybackContext.instances[1].gain.gain.value).toBe(1.5);
+    audio.dispose();
+  });
+
   it("lazily adjusts current audio while pause, mute and track changes remain local", () => {
     const video = new PlaybackVideo();
     const srcObject = video.srcObject;

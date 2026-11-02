@@ -13,6 +13,8 @@ export class ViewerAudio {
   private source: MediaStreamAudioSourceNode | null = null;
   private track: MediaStreamTrack | null = null;
   private disposed = false;
+  private nativeVolume: number;
+  private nativeMuted: boolean;
 
   constructor(
     private readonly video: HTMLMediaElement,
@@ -23,6 +25,8 @@ export class ViewerAudio {
   ) {
     this.level = video.volume;
     this.muted = video.muted;
+    this.nativeVolume = video.volume;
+    this.nativeMuted = video.muted;
     video.addEventListener("play", this.onPlay);
     video.addEventListener("volumechange", this.onNativeVolume);
     for (const event of ["pause", "ended"]) {
@@ -139,6 +143,10 @@ export class ViewerAudio {
     }
     this.video.volume = Math.min(this.level, 1);
     this.video.muted = this.muted || this.level === 0 || boosted;
+    // iPhone may ignore volume writes; echoes must match actual native state,
+    // while the requested listening level stays owned by the gain graph.
+    this.nativeVolume = this.video.volume;
+    this.nativeMuted = this.video.muted;
   };
 
   private readonly onPlay = (): void => {
@@ -147,13 +155,15 @@ export class ViewerAudio {
   };
 
   private readonly onNativeVolume = (): void => {
-    if (this.disposed || this.context) return;
+    if (this.disposed) return;
     const { volume, muted } = this.video;
-    // sync() also mutes zero volume. Its queued event is not a user mute.
-    if (this.level === volume && (this.muted || this.level === 0) === muted) return;
+    // Ignore our queued writes, including the native mute while WebAudio plays.
+    if (volume === this.nativeVolume && muted === this.nativeMuted) return;
     this.level = volume;
     this.muted = muted;
-    this.onChange(this.snapshot);
+    // PiP/native controls now own listening intent. Retire the parallel graph
+    // before honoring an unmute; later explicit gain adjustment can restore it.
+    this.useNativeControls();
   };
 
   private disableBoost(): void {
