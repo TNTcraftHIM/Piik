@@ -7,7 +7,7 @@ export function androidAppIntent(action: unknown, userAgent = typeof navigator =
   // A connected App supplies its own media action. Android tablets can report
   // a desktop UA; only an unconnected cold wake needs the browser OS hint.
   if (action === "piik://app" && !/Android/i.test(userAgent)) return null;
-  return `intent://${action.slice("piik://".length)}#Intent;scheme=piik;package=tv.piik.android;end`;
+  return `intent://${action.slice("piik://".length)}#Intent;scheme=piik;package=tv.piik.android.channel3;end`;
 }
 
 // Called only after the pending picker request has been sent. A browser may
