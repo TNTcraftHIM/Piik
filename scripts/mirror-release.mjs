@@ -137,7 +137,11 @@ if (option === "--dry-run") {
           body: await openAsBlob(file.path), signal: AbortSignal.timeout(180_000) });
         if (!response.ok) throw new Error("HTTP " + response.status);
         await response.arrayBuffer();
-      } catch { throw new Error("AtomGit attachment upload failed: " + file.name + "; rerun to inventory before retry"); }
+      } catch (error) {
+        const reason = response && !response.ok ? "HTTP " + response.status :
+          error?.name === "TimeoutError" ? "timeout" : "network or response failure";
+        throw new Error("AtomGit attachment upload failed: " + file.name + " (" + reason + "); rerun to inventory before retry");
+      }
       release = await request("/releases/tags/" + version);
       uploaded = release?.assets?.find((asset) => asset.name === file.name);
     }

@@ -52,7 +52,7 @@ describe("AtomGit mirror publication", () => {
     return { name, size: bytes.length, digest: `sha256:${hash(bytes)}`, state: "uploaded" };
   });
   async function mirror(options: { existing?: "pending" | "published" | "unknown"; corrupt?: boolean;
-    wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean; uploadFailure?: boolean;
+    wrongSource?: boolean; wrongDigest?: boolean; missing?: boolean; uploadFailure?: boolean | number;
     stale?: boolean; supersededDuringUpload?: boolean;
     downloadFault?: { remaining: number; name: "TimeoutError" | "TypeError" };
     fault?: { method: string; remaining: number; status: number | "timeout" | "body-timeout" } } = {}) {
@@ -101,7 +101,11 @@ describe("AtomGit mirror publication", () => {
         const name = url.slice("https://upload.example/".length);
         expect(init?.method).toBe("PUT");
         expect(init?.headers).not.toHaveProperty("PRIVATE-TOKEN");
-        if (options.uploadFailure) { mutations.push("PUT " + name); throw new Error("secret signed upload URL"); }
+        if (options.uploadFailure) {
+          mutations.push("PUT " + name);
+          if (typeof options.uploadFailure === "number") return new Response("secret signed upload URL", { status: options.uploadFailure });
+          throw new Error("secret signed upload URL");
+        }
         expect(hash(Buffer.from(await (init?.body as Blob).arrayBuffer()))).toBe(hash(readFileSync(join(directory, name))));
         mutations.push("PUT " + name);
         present.push(attachments.find(asset => asset.name === name)!);
@@ -227,8 +231,9 @@ describe("AtomGit mirror publication", () => {
       expect(result.mutations).toEqual([]);
     });
 
-  it("does not retry ambiguous PUTs or reveal signed upload errors", async () => {
-    const result = await mirror({ uploadFailure: true });
+  it.each([true, 403, 413, 503])("reports safe upload diagnostics without retrying PUT (%s)", async (uploadFailure) => {
+    const result = await mirror({ uploadFailure });
+    expect(result.failure).toContain(typeof uploadFailure === "number" ? "HTTP " + uploadFailure : "network or response failure");
     expect(result.mutations.filter(value => value.startsWith("PUT "))).toHaveLength(1);
     expect(result.failure).toContain("rerun to inventory before retry");
     expect(result.failure).not.toContain("secret signed");
