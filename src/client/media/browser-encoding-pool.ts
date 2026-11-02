@@ -6,10 +6,10 @@ import { BrowserEncodingProducer } from "./browser-encoding-producer";
 import { BROWSER_CARRIER_SIZE, type BrowserEncodingOutput } from "./browser-encoding-output";
 import { codecIdentity, fits, nativeVideoBudget, negotiatedCodec, noRegression, observeVideo,
   projectEncodingMetrics, videoOutbound, type Observation } from "./browser-encoding-stats";
-import { videoQualitySettingsEqual, type QualityProfile } from "./quality";
+import { videoQualitySettingsEqual, type VideoSenderProfile } from "./quality";
 
 export interface BrowserPooledSender {
-  updateProfile(profile: QualityProfile): Promise<void>;
+  updateProfile(profile: VideoSenderProfile): Promise<void>;
   carrierScale(): number | undefined;
   setPaused(paused: boolean): void;
   metrics(transport: ConnectionMetrics): ConnectionMetrics;
@@ -18,14 +18,14 @@ export interface BrowserPooledSender {
 
 type Output = ReturnType<BrowserEncodingOutput["snapshot"]>;
 type Group = {
-  producer: BrowserEncodingProducer; source: MediaStreamTrack; profile: QualityProfile;
+  producer: BrowserEncodingProducer; source: MediaStreamTrack; profile: VideoSenderProfile;
   codecKey: string; budget: number; ready: boolean; failed: boolean;
   report?: RTCStatsReport; previous?: RTCOutboundRtpStreamStats; output?: Observation;
   updating?: Promise<void>;
 };
 type Member = {
   id: string; source: MediaStreamTrack; sender: RTCRtpSender; connection: RTCPeerConnection;
-  profile: QualityProfile; encoded: BrowserEncodingOutput;
+  profile: VideoSenderProfile; encoded: BrowserEncodingOutput;
   configureCarrier: () => Promise<boolean>;
   requestKey: () => Promise<void>; onFatal: () => void;
   paused: boolean; disabled: boolean; disposed: boolean; mixed: boolean; carrier: boolean;
@@ -49,7 +49,7 @@ export class BrowserEncodingPool {
   private disposed = false;
 
   create(source: MediaStreamTrack, sender: RTCRtpSender, connection: RTCPeerConnection,
-    profile: QualityProfile, encoded: BrowserEncodingOutput, configureCarrier: Member["configureCarrier"], requestKey: Member["requestKey"],
+    profile: VideoSenderProfile, encoded: BrowserEncodingOutput, configureCarrier: Member["configureCarrier"], requestKey: Member["requestKey"],
     onFatal: () => void): BrowserPooledSender | null {
     if (this.disposed || this.failedSources.has(source) || source.kind !== "video" || source.readyState !== "live") return null;
     const member: Member = { id: createOpaqueId(), source, sender, connection, profile: { ...profile }, encoded, configureCarrier, requestKey, onFatal,

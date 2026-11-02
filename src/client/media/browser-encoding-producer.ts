@@ -8,7 +8,7 @@ import { encodedStreams } from "./browser-encoding-output";
 import {
   applyVideoCaptureProfile, configureVideoSender,
   needsStartupVideoProfile, startupVideoProfile, STARTUP_VIDEO_ENCODED_FRAMES,
-  videoQualitySettingsEqual, type QualityProfile,
+  videoQualitySettingsEqual, type VideoSenderProfile,
 } from "./quality";
 import { cloneSenderVideoTrack, stopSenderVideoTrack } from "./sender-video-track";
 
@@ -33,11 +33,11 @@ export class BrowserEncodingProducer {
   private startupPending: boolean;
   private startupFrames: number | undefined;
   private startupTimer: ReturnType<typeof setTimeout> | undefined;
-  private applied: { capture: QualityProfile; sender: QualityProfile } | null = null;
+  private applied: { capture: VideoSenderProfile; sender: VideoSenderProfile } | null = null;
 
   constructor(
     readonly source: MediaStreamTrack,
-    private desiredProfile: QualityProfile,
+    private desiredProfile: VideoSenderProfile,
     private readonly codec: RTCRtpCodec,
     private readonly onFrame: (frame: RTCEncodedVideoFrame) => void,
     private readonly onFailure: () => void,
@@ -135,7 +135,7 @@ export class BrowserEncodingProducer {
     }
   }
 
-  update(profile: QualityProfile, budget: number): Promise<void> {
+  update(profile: VideoSenderProfile, budget: number): Promise<void> {
     this.desiredProfile = { ...profile };
     this.budget = budget;
     if (!needsStartupVideoProfile(profile)) this.startupPending = false;

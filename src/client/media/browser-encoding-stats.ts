@@ -1,6 +1,6 @@
 import { EMPTY_METRICS, type ConnectionMetrics } from "../types";
 import type { BrowserEncodingOutput } from "./browser-encoding-output";
-import type { QualityProfile } from "./quality";
+import type { VideoSenderProfile } from "./quality";
 
 export type Observation = { width: number; height: number; fps: number; bitrate: number; reason: string | null };
 type Output = ReturnType<BrowserEncodingOutput["snapshot"]>;
@@ -46,7 +46,7 @@ export function fits(output: Observation | undefined, budget: number | undefined
 }
 
 export function noRegression(output: Observation, width: number | null, height: number | null,
-  fps: number | null, profile: QualityProfile): boolean {
+  fps: number | null, profile: VideoSenderProfile): boolean {
   return width !== null && height !== null && fps !== null && output.width >= width && output.height >= height &&
     Math.round(output.fps) >= Math.round(Math.min(fps, profile.maxFramerate));
 }

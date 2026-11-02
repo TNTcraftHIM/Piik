@@ -187,15 +187,13 @@ export type ScreenAudioPreset = keyof typeof SCREEN_AUDIO_BITRATES;
 export const MAX_AUDIO_SEND_BITRATE = 320_000;
 export const OPUS_RECEIVE_MAX_BITRATE = MAX_AUDIO_BITRATE;
 
-export function startupVideoProfile(
-  profile: QualityProfile,
-): QualityProfile {
-  return profile.degradationPreference === "maintain-resolution"
-    ? profile
-    : { ...profile, degradationPreference: "maintain-resolution" };
+export function startupVideoProfile<T extends VideoSenderProfile>(
+  profile: T,
+): Omit<T, "degradationPreference"> & { degradationPreference: "maintain-resolution" } {
+  return { ...profile, degradationPreference: "maintain-resolution" };
 }
 
-export function needsStartupVideoProfile(profile: QualityProfile): boolean {
+export function needsStartupVideoProfile(profile: VideoSenderProfile): boolean {
   return profile.degradationPreference !== "maintain-resolution";
 }
 
@@ -282,8 +280,7 @@ export function qualitySettingsLabel(settings: QualitySettings): string {
   return `${qualityResolutionLabel(settings.resolution)} ${settings.maxFramerate} fps · ${(settings.maxBitrate / 1_000_000).toFixed(1)} Mbps · ${say(DEGRADATION_PREFERENCE_KEYS[settings.degradationPreference])}`;
 }
 
-function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
-  requireCaptureProfile(profile);
+function captureConstraints(profile: VideoCeiling): MediaTrackConstraints {
   const resolution = profile.resolution;
   return {
     // A ceiling must not ask the Browser to fill both axes by cropping a source.
@@ -297,6 +294,7 @@ function captureConstraints(profile: QualityProfile): MediaTrackConstraints {
 }
 
 export async function captureDisplay(profile: QualityProfile): Promise<MediaStream> {
+  requireCaptureProfile(profile);
   if (!navigator.mediaDevices?.getDisplayMedia) {
     throw new Error("getDisplayMedia unavailable");
   }
@@ -350,6 +348,7 @@ export async function applyCaptureProfile(
   stream: MediaStream,
   profile: QualityProfile,
 ): Promise<void> {
+  requireCaptureProfile(profile);
   const videoTrack = stream.getVideoTracks()[0];
   if (!videoTrack) {
     throw new Error("capture stream has no video track");
@@ -359,7 +358,7 @@ export async function applyCaptureProfile(
 
 export async function applyVideoCaptureProfile(
   track: MediaStreamTrack,
-  profile: QualityProfile,
+  profile: VideoSenderProfile,
 ): Promise<void> {
   if (!videoTrackOwnsCaptureConstraints(track)) {
     return;

@@ -201,6 +201,10 @@ describe("realtime quality controls", () => {
       height: { max: 720 },
       frameRate: { ideal: 45, max: 45 },
     });
+    await applyVideoCaptureProfile(videoTrack, screenVideoCeiling(QUALITY_PROFILES["720p30"]));
+    expect(videoTrack.applyConstraints).toHaveBeenLastCalledWith({
+      width: { max: 1280 }, height: { max: 720 }, frameRate: { ideal: 30, max: 30 },
+    });
   });
 
   it("compares deserialized size values without treating audio edits as new video", () => {
@@ -240,7 +244,7 @@ describe("realtime quality controls", () => {
       degradationPreference: "maintain-resolution",
     } as const;
     expect(needsStartupVideoProfile(clarity)).toBe(false);
-    expect(startupVideoProfile(clarity)).toBe(clarity);
+    expect(startupVideoProfile(clarity)).toEqual(clarity);
   });
 
   it("keeps audio selection orthogonal while defaulting missing settings to music", () => {

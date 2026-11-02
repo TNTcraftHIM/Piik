@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserEncodingProducer } from "../src/client/media/browser-encoding-producer";
-import { applyVideoCaptureProfile, configureVideoSender, QUALITY_PROFILES } from "../src/client/media/quality";
+import { applyVideoCaptureProfile, configureVideoSender, QUALITY_PROFILES, screenVideoCeiling, type VideoSenderProfile } from "../src/client/media/quality";
 
 vi.mock("../src/client/media/quality", async (original) => ({
   ...await original<typeof import("../src/client/media/quality")>(),
@@ -27,13 +27,14 @@ class Connection {
   remoteDescription: RTCSessionDescriptionInit | null = null;
   readonly close = vi.fn(() => { this.connectionState = "closed"; });
   private frames!: ReadableStreamDefaultController<RTCEncodedVideoFrame>;
+  private parameters = { encodings: [{}] } as RTCRtpSendParameters;
   readonly getStats = vi.fn(async () => new Map<string, object>([
     ["video", { type: "outbound-rtp", kind: "video", mediaSourceId: "source", framesEncoded: 100 }],
     ["source", { type: "media-source", trackIdentifier: "capture" }],
   ]) as unknown as RTCStatsReport);
   readonly sender = {
-    getParameters: () => ({ encodings: [{}] }),
-    setParameters: vi.fn(async () => undefined),
+    getParameters: () => structuredClone(this.parameters),
+    setParameters: vi.fn(async (parameters: RTCRtpSendParameters) => { this.parameters = structuredClone(parameters); }),
     createEncodedStreams: () => ({
       readable: new ReadableStream<RTCEncodedVideoFrame>({ start: controller => { this.frames = controller; } }),
       writable: new WritableStream<RTCEncodedVideoFrame>(),
@@ -53,17 +54,19 @@ class Connection {
 }
 
 const producers: BrowserEncodingProducer[] = [];
-function createProducer(codec: RTCRtpCodec = { mimeType: "video/VP8", clockRate: 90000 }) {
+function createProducer(codec: RTCRtpCodec = { mimeType: "video/VP8", clockRate: 90000 },
+  profile: VideoSenderProfile = QUALITY_PROFILES["1080p30"]) {
   const source = new Track();
   const failed = vi.fn();
   const producer = new BrowserEncodingProducer(source as unknown as MediaStreamTrack,
-    QUALITY_PROFILES["1080p30"], codec, vi.fn(), failed);
+    profile, codec, vi.fn(), failed);
   producers.push(producer);
   return { producer, source, failed };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(configureVideoSender).mockReset();
   vi.useFakeTimers();
   Connection.instances = [];
   vi.stubGlobal("RTCPeerConnection", Connection);
@@ -131,12 +134,15 @@ describe("Browser encoding producer startup", () => {
     expect(sdp.match(/x-google-start-bitrate=/g)).toHaveLength(1);
   });
 
-  it("protects first publication instead of spending the startup frames on local warmup", async () => {
-    const { producer } = createProducer();
+  it.each([QUALITY_PROFILES["1080p30"], screenVideoCeiling(QUALITY_PROFILES["1080p30"])])(
+    "protects first publication and restores its video profile %j", async (profile) => {
+    const actual = await vi.importActual<typeof import("../src/client/media/quality")>("../src/client/media/quality");
+    vi.mocked(configureVideoSender).mockImplementation(actual.configureVideoSender);
+    const { producer } = createProducer(undefined, profile);
     await producer.start();
     for (const connection of Connection.instances) connection.state("connected");
     const send = Connection.instances[0];
-    const preference = () => vi.mocked(configureVideoSender).mock.lastCall![1].degradationPreference;
+    const preference = () => send.sender.getParameters().degradationPreference;
     const report = async () => { await producer.report(); await vi.advanceTimersByTimeAsync(0); };
 
     for (let i = 0; i < 10; i++) await send.frame();
@@ -156,10 +162,11 @@ describe("Browser encoding producer startup", () => {
     producer.beginOutput();
     await send.frame();
     await report();
-    expect(preference()).toBe("balanced");
+    expect(preference()).toBe("degradationPreference" in profile ? profile.degradationPreference : undefined);
     producer.beginOutput();
     await report();
-    expect(preference()).toBe("balanced");
+    expect(preference()).toBe("degradationPreference" in profile ? profile.degradationPreference : undefined);
+    expect(send.sender.getParameters().encodings[0]).toMatchObject({ maxFramerate: profile.maxFramerate, maxBitrate: profile.maxBitrate });
   });
 
   it.each(["queued", "active"])("keeps the producer after a %s candidate rejection", async (phase) => {
