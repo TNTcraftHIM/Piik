@@ -83,3 +83,5 @@ html[data-reduced-motion] :is(.lr-toggle, .lr-lang) button,
 html[data-reduced-motion] .lr-toggle > label > span { transition: none; }
 html[data-reduced-motion] :is(.lr-toggle, .lr-lang) button,
 html[data-reduced-motion] .lr-toggle > label > span { transform: none !important; }
+
+.lr-toggle button > .lr-glyph { flex: none; }
