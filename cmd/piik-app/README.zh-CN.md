@@ -30,7 +30,7 @@ macOS 原生采集需要 macOS 13 或更新版本。目前主要测试 Windows A
 App 会记住上次确认的房间模式。首次使用默认选中 **公网邀请**，确认后才启动；
 有收藏站点时，启动后直接打开该站点。
 
-启动页通过 GitHub 检查更新，Gitee 作为备用来源。更新按钮下载对应平台的 ZIP；
+启动页通过 GitHub 检查更新；已发布客户端仍内置 Gitee 备用来源，当前手动备用下载请使用 AtomGit。
 没有匹配包时打开发布页。**版本说明** 可查看改动，大版本升级会另行提示。
 替换 App 的操作见[升级步骤](#升级)。
 
@@ -111,12 +111,12 @@ App 与站点需要使用同一大版本，**2.x 与 1.x 不能混用**。
 不同 2.x 版本保留已有的分享和观看功能，新功能需要相关 App 与站点支持。
 
 1. 查看 [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest) 或
-   [Gitee](https://gitee.com/TNTcraftHIM/Piik/releases) 上的版本说明。
+   [AtomGit](https://atomgit.com/TNTcraftHIM/Piik/releases) 上的版本说明。
 2. 使用本地房间或公网邀请时，停止分享并关闭 App，完整解压新版程序包，重新启动后发送新邀请。
 3. 使用已有站点时，由管理员先[更新 Server](../../docs/operations/service-management.zh-CN.md)，
    再更新连接的 App，并刷新所有分享与观看页面。
 
-启动页的更新按钮可下载程序包，**Gitee 备用下载** 提供备用来源。
+启动页的更新按钮可下载程序包；[AtomGit 镜像](https://atomgit.com/TNTcraftHIM/Piik/releases)提供当前备用下载。
 重启 App 或 Server 会中断当前分享。
 
 ## 终端与关闭
