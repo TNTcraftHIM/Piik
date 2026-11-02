@@ -869,7 +869,8 @@ impl Channel {
                 }
             }
             for publication in &view.publications {
-                if publication.room_id != id
+                if validate_video_ceiling(publication.kind, publication.video_ceiling).is_err()
+                    || publication.room_id != id
                     || !endpoints.get(&publication.session_id).is_some_and(|e| {
                         e.member.user_id == publication.user_id && e.member.participates
                     })
@@ -897,6 +898,7 @@ impl Channel {
                 publication.user_id,
                 publication.kind,
                 publication.muted,
+                publication.video_ceiling,
             );
             if publications
                 .insert(publication.id, source)

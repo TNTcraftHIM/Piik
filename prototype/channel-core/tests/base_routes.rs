@@ -57,7 +57,7 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
     command(
         network,
         connection,
-        json!({"type":"publish", "publication":{"id":id,"roomId":room,"kind":kind,"muted":false}}),
+        json!({"type":"publish", "publication":{"id":id,"roomId":room,"kind":kind,"videoCeiling":if kind == "screen" { Some(json!({"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000})) } else { None },"muted":false}}),
     );
     id
 }
@@ -2111,7 +2111,7 @@ fn publication_completion_waits_for_installed_projection_and_keeps_request_owner
         let publication = Uuid::new_v4();
         let effects = network.authority.handle(publisher, Request::parse(&json!({
             "type":"publish","requestId":"publication-order",
-            "publication":{"id":publication,"roomId":room,"kind":if outcome == "error" { "voice" } else { "screen" },"muted":false}
+            "publication":{"id":publication,"roomId":room,"kind":if outcome == "error" { "voice" } else { "screen" },"videoCeiling":if outcome == "error" { None } else { Some(json!({"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000})) },"muted":false}
         }).to_string()).unwrap(), 100);
         let input = effects
             .events

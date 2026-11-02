@@ -111,6 +111,14 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                     kind,
                     muted: false,
                     paused: false,
+                    video_ceiling: (kind == Kind::Screen).then_some(VideoCeiling {
+                        resolution: VideoResolution {
+                            width: 1280,
+                            height: 720,
+                        },
+                        max_framerate: 29.97,
+                        max_bitrate: 2_500_000,
+                    }),
                 })
             })
             .collect();

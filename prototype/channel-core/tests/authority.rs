@@ -90,7 +90,7 @@ fn replacement_fences_old_commands_and_close_without_retiring_healthy_sources() 
     let own_source = Uuid::new_v4();
     let other_source = Uuid::new_v4();
     for (connection, source) in [(owner, own_source), (old, other_source)] {
-        core.command_at(connection, json!({"type":"publish","publication":{"id":source,"roomId":room,"kind":"screen","muted":false}}), 100);
+        core.command_at(connection, json!({"type":"publish","publication":{"id":source,"roomId":room,"kind":"screen","videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"muted":false}}), 100);
     }
     core.command_at(
         watcher,

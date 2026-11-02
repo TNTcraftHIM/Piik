@@ -137,7 +137,7 @@ fn topology_read_uses_current_room_admission_and_binding_without_host_turns() {
         command(
             &mut core,
             owner,
-            json!({"type":"publish","publication":{"id":id,"roomId":room,"kind":kind,"muted":false}}),
+            json!({"type":"publish","publication":{"id":id,"roomId":room,"kind":kind,"videoCeiling":if kind == "screen" { Some(json!({"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000})) } else { None },"muted":false}}),
         );
     }
     rejected(command(&mut core, reader, query(&private, Some(outside))));
@@ -196,14 +196,14 @@ fn hosted_room_catalogs_keep_the_per_room_source_limit_without_a_domain_total() 
                 command(
                     &mut core,
                     *connection,
-                    json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":kind,"muted":false}}),
+                    json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":kind,"videoCeiling":if kind == "screen" { Some(json!({"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000})) } else { None },"muted":false}}),
                 );
             }
         }
         let duplicate = command(
             &mut core,
             peers[0],
-            json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","muted":false}}),
+            json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"muted":false}}),
         );
         assert!(duplicate.events.iter().any(|(_, event)| matches!(event,
             Event::RoomReply { result: RoomResult::Error { code }, .. } if code == "source_already_published")));
@@ -274,7 +274,7 @@ fn independent_rooms_share_transport_without_sharing_activity_lifetimes() {
     command(
         &mut core,
         a,
-        json!({"type":"publish","publication":{"id":picture,"roomId":studio,"kind":"screen","muted":false}}),
+        json!({"type":"publish","publication":{"id":picture,"roomId":studio,"kind":"screen","videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"muted":false}}),
     );
     let before = state(
         command(
@@ -452,12 +452,12 @@ fn private_invitation_is_complete_admission_and_revoke_removes_only_its_activity
     command(
         &mut core,
         creator,
-        json!({"type":"publish","publication":{"id":private_pub,"roomId":room,"kind":"screen","muted":false}}),
+        json!({"type":"publish","publication":{"id":private_pub,"roomId":room,"kind":"screen","videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"muted":false}}),
     );
     command(
         &mut core,
         creator,
-        json!({"type":"publish","publication":{"id":public_pub,"roomId":public_room,"kind":"screen","muted":false}}),
+        json!({"type":"publish","publication":{"id":public_pub,"roomId":public_room,"kind":"screen","videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"muted":false}}),
     );
     command(
         &mut core,
@@ -673,7 +673,7 @@ fn separate_domain_and_room_checkpoints_restore_identity_without_reviving_media(
     command(
         &mut original,
         creator,
-        json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","muted":false}}),
+        json!({"type":"publish","publication":{"id":Uuid::new_v4(),"roomId":room,"kind":"screen","videoCeiling":{"resolution":{"width":1280,"height":720},"maxFramerate":29.97,"maxBitrate":2500000},"muted":false}}),
     );
     let active = state(
         command(

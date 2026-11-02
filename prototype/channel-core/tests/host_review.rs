@@ -1,6 +1,6 @@
 use piik_channel_core::{
     host::{HostAction, HostInput, RequestContext, RoomHost},
-    wire::{Command, Kind, PublicationInput, RoomAccess},
+    wire::{Command, Kind, PublicationInput, RoomAccess, VideoCeiling, VideoResolution},
     Endpoint, Member, RoomState,
 };
 use std::collections::BTreeMap;
@@ -75,6 +75,14 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                         room_id: "review".into(),
                         kind: Kind::Screen,
                         muted: false,
+                        video_ceiling: Some(VideoCeiling {
+                            resolution: VideoResolution {
+                                width: 1280,
+                                height: 720,
+                            },
+                            max_framerate: 29.97,
+                            max_bitrate: 2500000,
+                        }),
                     },
                 },
             },
@@ -401,6 +409,14 @@ fn successful_publish_projection_survives_a_later_queued_ordinary_command() {
                     room_id: "concurrent-review".into(),
                     kind: Kind::Screen,
                     muted: false,
+                    video_ceiling: Some(VideoCeiling {
+                        resolution: VideoResolution {
+                            width: 1280,
+                            height: 720,
+                        },
+                        max_framerate: 29.97,
+                        max_bitrate: 2500000,
+                    }),
                 },
             },
         },
@@ -553,6 +569,14 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
                             room_id: room.into(),
                             kind: Kind::Screen,
                             muted: false,
+                            video_ceiling: Some(VideoCeiling {
+                                resolution: VideoResolution {
+                                    width: 1280,
+                                    height: 720,
+                                },
+                                max_framerate: 29.97,
+                                max_bitrate: 2500000,
+                            }),
                         },
                     },
                 ),
@@ -711,6 +735,8 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         "promotion",
         "fresh_lineage",
         "source_descriptor",
+        "ceiling_descriptor",
+        "invalid_ceiling",
         "missing_input",
         "other_publication",
         "wrong_sender",
@@ -771,6 +797,14 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                     room_id: room_id.into(),
                     kind: Kind::Screen,
                     muted: false,
+                    video_ceiling: Some(VideoCeiling {
+                        resolution: VideoResolution {
+                            width: 1280,
+                            height: 720,
+                        },
+                        max_framerate: 29.97,
+                        max_bitrate: 2500000,
+                    }),
                 },
             },
         );
@@ -824,11 +858,28 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                 let mut other = view.publications[0].clone();
                 other.id = other_publication;
                 other.kind = Kind::Voice;
+                other.video_ceiling = None;
                 view.publications.push(other);
             }
         }
         let flows = &mut prepared.projection.flows;
         match case {
+            "ceiling_descriptor" | "invalid_ceiling" => {
+                prepared
+                    .projection
+                    .views
+                    .get_mut(&viewer)
+                    .unwrap()
+                    .publications[0]
+                    .video_ceiling
+                    .as_mut()
+                    .unwrap()
+                    .max_bitrate = if case == "invalid_ceiling" {
+                    0
+                } else {
+                    1_000_000
+                };
+            }
             "source_descriptor" => {
                 let publication = &mut prepared
                     .projection
