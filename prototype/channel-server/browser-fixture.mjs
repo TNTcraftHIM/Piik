@@ -51,13 +51,16 @@ function captureProbe(name) {
         flowStates.push({ flowId: event.flowId, state: event.state, time: Date.now() });
         if (flowStates.length > 128) flowStates.shift();
       }
-      protocol.push({ direction, type:event.type, room:event.roomId, request:event.requestId,
+      const flowId = event.flowId ?? event.input?.action?.flowId;
+      protocol.push({ time: Date.now(), direction, type:event.type, room:event.roomId, request:event.requestId,
+        flowId, publicationId: event.publicationId ?? command?.publicationId ?? flowBindings.get(flowId)?.publicationId,
+        helperSessionId: event.helperSessionId ?? command?.helperSessionId,
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
         binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
         result:event.result?.type ?? event.output?.reply?.result?.type,
         code:event.code ?? event.result?.code ?? event.output?.reply?.result?.code,
-        pair:event.pairId, ready:event.ready, state:event.state && typeof event.state === 'string' ? event.state : undefined });
-      if (protocol.length > 64) protocol.shift();
+        pair:event.pairId, ready:event.ready, state: typeof event.state === 'string' ? event.state : event.input?.action?.state });
+      if (protocol.length > 256) protocol.shift();
       return event;
     };
     const NativePC = window.RTCPeerConnection, NativeWS = window.WebSocket;
@@ -161,6 +164,7 @@ function captureProbe(name) {
       return stream;
     };
     window.__channelProbe = { peers, sockets, captures, contexts,
+      clearProtocol() { protocol.length = 0; },
       captureAudio(enabled) { captureAudio = enabled; },
       async screenAudioSeparation(publicationId) {
         const stream = window.__channelGate.snapshot().streams.get(publicationId);

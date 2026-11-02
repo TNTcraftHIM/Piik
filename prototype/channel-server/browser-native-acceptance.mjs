@@ -201,6 +201,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       assert(rows.some(row => row.direction === "received" && row.kind === "video" && row.frames > 0));
       assert(rows.some(row => row.direction === "received" && row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
     }
+    for (const index of [0, 1, 2, 3]) await evaluate(index, "window.__channelProbe.clearProtocol()");
+    for (const index of [1, 2]) await evaluate(index, "window.__channelProbe.observeQuality()");
     await action(1, "activateApp()"); await appReady(1);
     await until("Native assists both viewers without Browser WAN forwarding", async () => {
       const views = await Promise.all([0, 1, 2].map(view));
