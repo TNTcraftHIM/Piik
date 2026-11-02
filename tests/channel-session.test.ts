@@ -19,6 +19,8 @@ import { RemoteInputSession } from "../src/client/remote-control/input-session";
 import * as codecPreflight from "../src/client/webrtc/video-codec-preflight";
 import * as videoCodec from "../src/client/webrtc/video-codec";
 import type { InputTransport } from "../src/client/remote-control/input-route";
+import { BrowserEncodingPool, type BrowserPooledSender } from "../src/client/media/browser-encoding-pool";
+import * as encodingOutput from "../src/client/media/browser-encoding-output";
 
 class ChannelSocket {
   static OPEN = 1;
@@ -2736,6 +2738,50 @@ const remoteStream = (id: string, tracks: MediaStreamTrack[]) => Object.assign(n
   getAudioTracks: () => tracks.filter(track => track.kind === "audio"),
 }) as unknown as MediaStream;
 
+function channelEncodingFixture() {
+  vi.spyOn(encodingOutput, "supportsBrowserEncoding").mockReturnValue(true);
+  const clones: MediaStreamTrack[] = [], carriers: MediaStreamTrack[] = [], claimed: RTCRtpSender[] = [];
+  let rejectClaim = false;
+  const source = () => {
+    const track = Object.assign(remoteTrack("video"), { enabled: true, contentHint: "detail",
+      getSettings: () => ({ width: 1920, height: 1080 }), getCapabilities: () => ({}),
+      getConstraints: () => ({}), applyConstraints: vi.fn(async () => {}),
+    });
+    track.clone = () => { const clone = source(); clones.push(clone); return clone; };
+    return track;
+  };
+  vi.stubGlobal("document", { createElement: () => {
+    const track = Object.assign(source(), { getSettings: () => ({ width: 16, height: 16 }), requestFrame: vi.fn() });
+    carriers.push(track);
+    return { getContext: () => ({ fillRect() {} }), captureStream: () => ({ getVideoTracks: () => [track] }) };
+  } });
+  const add = RoomPeerConnection.prototype.addTransceiver;
+  vi.spyOn(RoomPeerConnection.prototype, "addTransceiver").mockImplementation(function (this: RoomPeerConnection, track, init) {
+    const transceiver = add.call(this, track, init);
+    Object.assign(transceiver.sender, { createEncodedStreams: () => {
+      claimed.push(transceiver.sender as unknown as RTCRtpSender);
+      if (rejectClaim) { rejectClaim = false; throw new DOMException("sender claim refused", "InvalidStateError"); }
+      return { readable: new ReadableStream<RTCEncodedVideoFrame>(), writable: new WritableStream<RTCEncodedVideoFrame>() };
+    } });
+    return transceiver;
+  });
+  type Create = Parameters<BrowserEncodingPool["create"]>;
+  type Member = { pool: BrowserEncodingPool; source: MediaStreamTrack; sender: RTCRtpSender;
+    encoded: Create[4]; configure: Create[5]; requestKey: Create[6]; fatal: Create[7];
+    carrier: boolean; handle: BrowserPooledSender };
+  const members: Member[] = [];
+  vi.spyOn(BrowserEncodingPool.prototype, "create").mockImplementation(function (this: BrowserEncodingPool, source, sender, _pc, profile, encoded, configure, requestKey, fatal) {
+    const member: Member = { pool: this, source, sender, encoded, configure, requestKey, fatal, carrier: true,
+      handle: { updateProfile: vi.fn(async () => {}),
+        carrierScale: () => member.carrier ? Math.max(1, (sender.track?.getSettings().width ?? profile.resolution.width) / 16) : undefined,
+        setPaused: vi.fn(), metrics: (value => value), dispose: vi.fn(),
+      } as BrowserPooledSender };
+    members.push(member);
+    return member.handle;
+  });
+  return { source, clones, carriers, claimed, members, rejectNextClaim: () => { rejectClaim = true; } };
+}
+
 test("room metrics read each PC once and follow current selected flows without mixing publications", async () => {
   const fixture = await setupRoomMedia();
   const video = remoteTrack("video"), sound = remoteTrack("audio"), voice = remoteTrack("audio"), other = remoteTrack("video");
@@ -3214,6 +3260,200 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     expect(video.stop).not.toHaveBeenCalled(); expect(audio.stop).not.toHaveBeenCalled();
     expect(downstream.close).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
+});
+
+test("channel publications share one pool across Browser children, while Native layers and audio keep ordinary senders", async () => {
+  const { session, media, state, sent, pc } = await setupRoomMedia();
+  const pool = channelEncodingFixture(), first = pool.source(), second = pool.source(), sound = remoteTrack("audio");
+  const profile = QUALITY_PROFILES["1080p30"], disposed = vi.spyOn(BrowserEncodingPool.prototype, "dispose");
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  state.publications = ["first-screen", "second-screen"].map(id => ({ id, roomId: "first", sessionId: "a", userId: "self",
+    kind: "screen", videoCeiling: screenVideoCeiling(profile), muted: false, paused: false }));
+  state.pairs[0].outgoing = state.publications.map(publication => ({ id: `${publication.id}-out`, publicationId: publication.id,
+    selected: true, inputFlowId: null }));
+  state.pairs.push({ id: "browser-child", peerId: "y", canReceiveVideoLayers: false, rooms: [], incoming: [],
+    outgoing: [{ id: "same-source-child", publicationId: "first-screen", selected: true, inputFlowId: null }] },
+  { id: "native-child", peerId: "x", canReceiveVideoLayers: true, rooms: [], incoming: [],
+    outgoing: [{ id: "layered-child", publicationId: "first-screen", selected: true, inputFlowId: null }] });
+  try {
+    media.setLocal("first-screen", remoteStream("first", [first, sound]), profile);
+    media.setLocal("second-screen", remoteStream("second", [second]), profile);
+    media.update("a", state);
+    expect(pool.members).toHaveLength(3);
+    expect(new Set(pool.members.map(member => member.pool)).size).toBe(1);
+    expect(pool.members.map(member => member.source)).toEqual([first, second, first]);
+    expect(pool.claimed).toHaveLength(3); // Claimed before any negotiation/microtask.
+    const [firstSender, audio, secondSender] = pc.senders;
+    expect(audio.track).toBe(sound);
+    expect(firstSender.track).not.toBe(first); expect(secondSender.track).not.toBe(second);
+    const native = RoomPeerConnection.instances[2].senders;
+    expect(native.map(sender => sender.track)).toEqual([first, sound]);
+    expect(native[0].getParameters().encodings.map(encoding => encoding.rid)).toEqual(["q", "h"]);
+
+    const ordinary = pool.source();
+    media.setLocal("ordinary", remoteStream("ordinary", [ordinary]), profile);
+    state.publications.push({ ...state.publications[0], id: "ordinary" });
+    state.pairs[0].outgoing.push({ id: "ordinary-out", publicationId: "ordinary", selected: true, inputFlowId: null });
+    pool.rejectNextClaim();
+    media.update("a", state);
+    expect(pc.senders.at(-1)!.track).not.toBe(ordinary);
+    expect(pc.senders.at(-1)!.track.getSettings()).toEqual(ordinary.getSettings());
+    expect(pool.members).toHaveLength(3);
+    expect(pool.claimed).toHaveLength(4);
+    expect(pool.carriers[3].stop).toHaveBeenCalledOnce();
+    expect(warning).toHaveBeenCalledWith("Channel encoding pool unavailable for sender", { flowId: "ordinary-out" }, expect.any(DOMException));
+
+    const member = pool.members[0];
+    await expect(member.configure()).resolves.toBe(true);
+    expect(firstSender.track).toBe(member.encoded.track);
+    media.update("a", state); media.update("a", state);
+    expect(pool.members).toHaveLength(3);
+    expect(pool.claimed).toHaveLength(4); // Unchanged demand does not retry the optional claim.
+    expect(firstSender.stream.getTracks()).toEqual([first, sound]);
+    state.publications[0].paused = true;
+    media.update("a", state);
+    expect(member.encoded.track.enabled).toBe(false);
+    expect(member.handle.setPaused).toHaveBeenLastCalledWith(true);
+    expect(first.enabled).toBe(true);
+    expect(pool.members[1].handle.setPaused).toHaveBeenLastCalledWith(false);
+
+    const oldPool = member.pool;
+    media.reset();
+    expect(disposed.mock.contexts).toContain(oldPool);
+    for (const member of pool.members) expect(member.handle.dispose).toHaveBeenCalledOnce();
+    for (const carrier of pool.carriers) expect(carrier.stop).toHaveBeenCalled();
+    const fresh = pool.source();
+    state.pairs = [{ ...state.pairs[0], outgoing: [state.pairs[0].outgoing[0]] }];
+    state.publications[0].paused = false;
+    media.setLocal("first-screen", remoteStream("fresh", [fresh]), profile);
+    media.update("a", state);
+    expect(pool.members.at(-1)!.pool).not.toBe(oldPool);
+    expect(pool.members.at(-1)!.source).toBe(fresh);
+    expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
+  } finally { media.reset(); session.close(); }
+});
+
+test("pooled carriers retain the logical source and pending offer across replacement, rollback and ordinary fallback", async () => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const pool = channelEncodingFixture(), videoPool = new BrowserEncodingPool();
+  const signals: ChannelSignal[] = [], failed = vi.fn(), outgoingFailed = vi.fn();
+  const transport = new ChannelTransport({ polite: true, iceServers: [], videoPool, send: value => signals.push(value),
+    receive() {}, connected() {}, base() {}, failed, outgoingFailed });
+  const pc = RoomPeerConnection.instances[0], first = pool.source(), next = pool.source(), voice = remoteTrack("audio");
+  const profile = QUALITY_PROFILES["1080p30"];
+  const outputs = new Map([
+    ["screen", { kind: "screen" as const, stream: remoteStream("first", [first]), profile }],
+    ["voice", { kind: "voice" as const, stream: remoteStream("voice", [voice]), profile }],
+  ]);
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    transport.setOutgoing(outputs);
+    const [sender, audio] = pc.senders, initial = sender.track, firstMember = pool.members[0];
+    pc.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(signals.some(value => value.description?.type === "offer")).toBe(true));
+    const offer = signals.find(value => value.description?.type === "offer")!;
+    await expect(firstMember.configure()).resolves.toBe(true);
+    const carrier = sender.track;
+    expect(initial.stop).toHaveBeenCalledOnce();
+    expect(carrier).toBe(firstMember.encoded.track);
+
+    let finish!: () => void;
+    const wait = new Promise<void>(resolve => { finish = resolve; });
+    const replace = vi.spyOn(sender, "replaceTrack").mockImplementationOnce(async track => { await wait; sender.track = track; });
+    outputs.set("screen", { kind: "screen", stream: remoteStream("next", [next]), profile });
+    transport.setOutgoing(outputs);
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    transport.signal({ exchangeId: offer.exchangeId, description: { type: "answer", sdp: "answer" }, tracks: [] });
+    expect(firstMember.handle.dispose).not.toHaveBeenCalled();
+    expect(carrier.stop).not.toHaveBeenCalled();
+    expect(sender.stream.getTracks()).toEqual([first]);
+    finish();
+    await vi.waitFor(() => expect(pc.signalingState).toBe("stable"));
+    expect(pool.members).toHaveLength(2);
+    expect(pool.claimed).toHaveLength(1); // The connection-lifetime encoded writer survives source replacement.
+    expect(pool.members[1].source).toBe(next);
+    expect(sender.stream.getTracks()).toEqual([next]);
+    expect(firstMember.handle.dispose).toHaveBeenCalledOnce();
+    expect(carrier.stop).not.toHaveBeenCalled();
+    await expect(firstMember.configure()).resolves.toBe(false);
+    firstMember.fatal();
+    expect(outgoingFailed).not.toHaveBeenCalled();
+
+    const member = pool.members[1], ordinary = sender.track;
+    vi.spyOn(sender, "setParameters").mockRejectedValueOnce(new Error("carrier configuration refused"));
+    await expect(member.configure()).resolves.toBe(false);
+    expect(sender.track).toBe(ordinary);
+    expect(ordinary.stop).not.toHaveBeenCalled();
+    await expect(member.configure()).resolves.toBe(true);
+    expect(ordinary.stop).toHaveBeenCalledOnce();
+    member.carrier = false; // Existing pool's producer-failure/codec-fallback callback.
+    await expect(member.configure()).resolves.toBe(true);
+    member.encoded.passthrough(member.requestKey);
+    const restored = sender.track;
+    expect(restored).not.toBe(carrier); expect(restored).not.toBe(next);
+    expect(restored.getSettings()).toEqual(next.getSettings());
+    transport.setOutgoing(outputs);
+    expect(pool.members).toHaveLength(2);
+
+    const candidate = pool.source();
+    outputs.set("candidate", { kind: "screen", stream: remoteStream("candidate", [candidate]), profile });
+    transport.setOutgoing(outputs);
+    vi.spyOn(pc, "setLocalDescription").mockRejectedValueOnce(new DOMException("refused new offer", "OperationError"));
+    pc.onnegotiationneeded?.();
+    await vi.waitFor(() => expect(outgoingFailed).toHaveBeenCalledWith("candidate"));
+    expect(pc.senders).toEqual([sender, audio]);
+    expect(sender.track).toBe(restored);
+    expect(restored.stop).not.toHaveBeenCalled();
+    expect(pool.members[2].handle.dispose).toHaveBeenCalledOnce();
+    expect(pool.carriers[1].stop).toHaveBeenCalled();
+    expect(failed).not.toHaveBeenCalled();
+    expect(warning).toHaveBeenCalled();
+    expect(first.stop).not.toHaveBeenCalled(); expect(next.stop).not.toHaveBeenCalled(); expect(voice.stop).not.toHaveBeenCalled();
+  } finally { transport.close(); videoPool.dispose(); }
+  for (const track of [...pool.clones, ...pool.carriers]) expect(track.stop).toHaveBeenCalled();
+});
+
+test.each(["carrier", "source"])("retiring an in-flight %s releases its pending wait and preserves sibling senders", async operation => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const pool = channelEncodingFixture(), videoPool = new BrowserEncodingPool(), source = pool.source();
+  const failed = vi.fn(), outgoingFailed = vi.fn();
+  const transport = new ChannelTransport({ polite: true, iceServers: [], videoPool, send() {},
+    receive() {}, connected() {}, base() {}, failed, outgoingFailed });
+  const pc = RoomPeerConnection.instances[0], profile = QUALITY_PROFILES["1080p30"];
+  const output = { kind: "screen" as const, stream: remoteStream("source", [source]), profile };
+  const outputs = new Map([["first", output], ["sibling", output]]);
+  try {
+    transport.setOutgoing(outputs);
+    const [sender, sibling] = pc.senders, [retiring, healthy] = pool.members;
+    vi.spyOn(sender, "replaceTrack").mockImplementationOnce(() => new Promise<void>(() => {}));
+    let pending: Promise<boolean>;
+    if (operation === "carrier") pending = retiring.configure();
+    else {
+      outputs.set("first", { ...output, stream: remoteStream("replacement", [pool.source()]) });
+      transport.setOutgoing(outputs);
+      pending = healthy.configure();
+    }
+    await vi.waitFor(() => expect(sender.replaceTrack).toHaveBeenCalledOnce());
+    outputs.delete("first");
+    transport.setOutgoing(outputs);
+    outputs.set("first", output); // A new binding with the same public flow key.
+    transport.setOutgoing(outputs);
+    const successor = pc.senders.at(-1)!;
+    expect(retiring.handle.dispose).toHaveBeenCalledOnce();
+    expect(retiring.encoded.track.stop).toHaveBeenCalled();
+    await expect(pending).resolves.toBe(operation === "source");
+    if (operation === "carrier") await expect(healthy.configure()).resolves.toBe(true);
+    await retiring.requestKey(); retiring.fatal();
+    expect(pc.senders).toEqual([sibling, successor]);
+    expect(healthy.handle.dispose).not.toHaveBeenCalled();
+    expect(pool.members[2].handle.dispose).not.toHaveBeenCalled();
+    expect(successor.track.stop).not.toHaveBeenCalled();
+    expect(source.stop).not.toHaveBeenCalled();
+    expect(failed).not.toHaveBeenCalled(); expect(outgoingFailed).not.toHaveBeenCalled();
+  } finally { transport.close(); videoPool.dispose(); }
+  for (const track of [...pool.clones, ...pool.carriers]) expect(track.stop).toHaveBeenCalled();
 });
 
 test("source tracks replace serially on the existing physical pair, senders and flow stream binding", async () => {

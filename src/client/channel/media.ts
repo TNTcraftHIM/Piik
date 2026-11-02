@@ -8,6 +8,7 @@ import { ChannelTransport, type OutgoingMedia } from "./transport";
 import { applyCaptureProfile, type QualityProfile } from "../media/quality";
 import { automaticVideoCodecPreference, VP8_ONLY_VIDEO_CODEC, type BrowserVideoCodecPreference } from "../webrtc/video-codec";
 import { preferredVideoCodecForTrack } from "../webrtc/video-codec-preflight";
+import { BrowserEncodingPool } from "../media/browser-encoding-pool";
 
 interface Peer {
   plan: ChannelPair;
@@ -43,6 +44,7 @@ export class ChannelMedia {
   private streams = new Map<string, MediaStream>();
   private screenInputs = new Map<string, ChannelScreenInput[]>();
   private relayAudio = new Map<string, { tracks: MediaStreamTrack[]; audio: HTMLAudioElement }>();
+  private videoPool = new BrowserEncodingPool();
 
   constructor(private send: (command: ChannelCommand) => void,
     private changed: (streams: ReadonlyMap<string, MediaStream>, screenInputs: ReadonlyMap<string, readonly ChannelScreenInput[]>) => void,
@@ -109,6 +111,7 @@ export class ChannelMedia {
           polite: sessionId.localeCompare(plan.peerId) > 0,
           iceServers: state.iceServers,
           canReceiveVideoLayers: plan.canReceiveVideoLayers,
+          videoPool: this.videoPool,
           send: payload => this.send({ type: "signal", pairId: plan.id, payload }),
           receive: (flowId, stream) => this.receive(plan.id, flowId, stream),
           retire: flowId => this.retire(plan.id, flowId),
@@ -506,6 +509,8 @@ export class ChannelMedia {
   reset(): void {
     for (const peer of this.peers.values()) this.closePeer(peer);
     this.peers.clear();
+    this.videoPool.dispose();
+    this.videoPool = new BrowserEncodingPool();
     for (const id of [...this.local.keys()]) this.removeLocal(id);
     this.refresh();
   }
