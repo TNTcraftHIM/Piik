@@ -35,6 +35,9 @@ Server now embeds that same Native participant for its persistent rooms. Domain,
 Browser and Native consume one shared Rust core; conversation has one peer carrier.
 Server has a fixed UDP entry for self-hosted and FRP deployments, retaining App
 peers' existing socket ownership.
+Connection details reuse the shared topology and four media groups, reading the
+current room/publication plans and each local transport's actual measurements.
+App-to-Browser display hops remain separate from remote-path totals.
 App hosting has its own Native endpoint and process lifetime; the Browser's
 personal voice, shares and watches remain page-owned. Existing Browser rooms
 retain their page lifetime and storage when an App connects.

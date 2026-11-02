@@ -12,7 +12,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint and resolve Android Firefox's received-video relay failure: Native
+  checkpoint, trace the concurrent Browser-to-Native relay that delivered audio
+  without its picture, and resolve Android Firefox's received-video relay failure: Native
   H264 decodes, but Gecko's image conversion fails before outgoing encoding.
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
@@ -20,11 +21,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   ordinary-Browser encoding pool with multi-publication pairs, keeping Native
   ingress separate under ADR-0014. Correlate helper quality with actual source
   RID supply before changing encoding or bandwidth policy.
-- [ ] **3.0 connection details and topology.** Connect the existing shared
-  presentation to actual room/publication plans and local transport reports.
-  Distinguish an App-to-Browser presentation hop from the App's remote media
-  path; Browser statistics describe only the former. The current App hosting
-  description supplies identity, not Native media statistics.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.
