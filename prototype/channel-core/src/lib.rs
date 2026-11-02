@@ -232,7 +232,10 @@ impl Authority {
                     *resume_binding,
                 );
                 match result {
-                    Ok((_, events)) => {
+                    Ok((events, replies)) => {
+                        for (room, binding, reply) in replies {
+                            self.room_reply(&room, binding, reply, &mut effects);
+                        }
                         for (session, event) in events {
                             self.deliver(session, event, &mut effects);
                         }
@@ -266,7 +269,10 @@ impl Authority {
                     .channel
                     .stop_host(room_id, session_id, connection, *binding_id)
                 {
-                    Ok(()) => {
+                    Ok(replies) => {
+                        for (room, binding, reply) in replies {
+                            self.room_reply(&room, binding, reply, &mut effects);
+                        }
                         self.broadcast(None, &mut effects);
                         if let Some(request_id) = request.request_id {
                             effects.events.push((connection, Event::Ack { request_id }));
@@ -288,6 +294,9 @@ impl Authority {
         let sync_hosts = matches!(request.command, Command::SetRoles { .. } | Command::Leave);
         match self.channel.handle(session_id, request.command, now) {
             Ok(outcome) => {
+                for (room, binding, reply) in outcome.replies {
+                    self.room_reply(&room, binding, reply, &mut effects);
+                }
                 for (recipient, event) in outcome.events {
                     self.deliver(recipient, event, &mut effects);
                 }
@@ -327,7 +336,7 @@ impl Authority {
         self.channel.now = now;
         let mut effects = Effects::default();
         if let Some(pending) = self.pending_joins.remove(&connection) {
-            self.retire_pending(&pending);
+            self.retire_pending(&pending, &mut effects);
         }
         if let Some(session_id) = self.channel.identity.session_for_connection(connection) {
             self.channel
@@ -344,7 +353,11 @@ impl Authority {
     pub fn expire(&mut self, now: u64) -> Effects {
         self.channel.now = now;
         let mut effects = Effects::default();
-        if self.channel.expire_sessions(now) {
+        let (expired, replies) = self.channel.expire_sessions(now);
+        for (room, binding, reply) in replies {
+            self.room_reply(&room, binding, reply, &mut effects);
+        }
+        if expired {
             self.sync_hosts(&mut effects, true);
             self.broadcast(None, &mut effects);
         }
@@ -358,8 +371,10 @@ impl Authority {
             .map(|(connection, _)| *connection)
             .collect();
         for connection in expired {
-            let pending = self.pending_joins.remove(&connection).unwrap();
-            self.retire_pending(&pending);
+            let Some(pending) = self.pending_joins.remove(&connection) else {
+                continue;
+            };
+            self.retire_pending(&pending, &mut effects);
             Self::error(
                 connection,
                 pending.request_id,
@@ -660,7 +675,7 @@ impl Authority {
         }
         if self.pending_joins.contains_key(&context.connection) {
             let pending = self.pending_joins.remove(&context.connection).unwrap();
-            self.retire_pending(&pending);
+            self.retire_pending(&pending, effects);
             let code = if let RoomResult::Error { code } = reply.result {
                 code
             } else {
@@ -713,9 +728,11 @@ impl Authority {
         }
     }
 
-    fn retire_pending(&mut self, pending: &PendingJoin) {
+    fn retire_pending(&mut self, pending: &PendingJoin, effects: &mut Effects) {
         if let Some(admitted) = &pending.admitted {
-            self.channel.retire_session(admitted.session_id);
+            for (room, binding, reply) in self.channel.retire_session(admitted.session_id) {
+                self.room_reply(&room, binding, reply, effects);
+            }
             if pending.created_user {
                 self.channel.identity.users.remove(&admitted.user_id);
             }

@@ -34,6 +34,8 @@ pub(crate) enum ReplyOwner {
     RouteWake,
 }
 
+pub(crate) type RetiredRoomReply = (String, Uuid, RoomReply);
+
 #[derive(Clone)]
 pub(crate) struct RemoteRoom {
     pub summary: RoomSummary,
@@ -42,7 +44,30 @@ pub(crate) struct RemoteRoom {
 }
 
 impl RemoteRoom {
-    pub fn pause(&mut self) {
+    pub fn drain_replies(&mut self) -> Vec<RetiredRoomReply> {
+        let Some(binding) = &mut self.binding else {
+            return Vec::new();
+        };
+        std::mem::take(&mut binding.replies)
+            .into_values()
+            .filter_map(|owner| match owner {
+                ReplyOwner::Request { context, .. } => Some((
+                    self.summary.id.clone(),
+                    binding.id,
+                    RoomReply {
+                        context,
+                        result: RoomResult::Error {
+                            code: "room_context_changed".into(),
+                        },
+                    },
+                )),
+                _ => None,
+            })
+            .collect()
+    }
+
+    pub fn pause(&mut self) -> Vec<RetiredRoomReply> {
+        let replies = self.drain_replies();
         self.binding = None;
         if let Some(projection) = &mut self.projection {
             projection.next_route_deadline = None;
@@ -57,6 +82,7 @@ impl RemoteRoom {
                 view.room.participant_session_ids.clear();
             }
         }
+        replies
     }
 
     pub fn restored(summary: RoomSummary) -> Self {

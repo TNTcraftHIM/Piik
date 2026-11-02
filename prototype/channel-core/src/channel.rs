@@ -2,7 +2,7 @@ use crate::{
     history::HISTORY_WINDOW,
     host::{HostAction, HostOutput, RequestContext, RoomReply, RoomResult, RoomSummary},
     identity::{Admission, Admitted, Identity, StoredUser},
-    remote::{Binding, RemoteRoom, ReplyOwner},
+    remote::{Binding, RemoteRoom, ReplyOwner, RetiredRoomReply},
     transport::{Flow, TransportBook},
     wire::*,
 };
@@ -34,6 +34,7 @@ pub(crate) struct HostAcceptance {
 
 pub struct Outcome {
     pub events: Vec<(Uuid, Event)>,
+    pub replies: Vec<RetiredRoomReply>,
     pub broadcast: bool,
     pub leave: bool,
 }
@@ -95,6 +96,7 @@ impl Channel {
         let mut events = Vec::new();
         let mut broadcast = false;
         let mut leave = false;
+        let mut replies = Vec::new();
         match command {
             Command::Join { .. } => return Err("already_joined"),
             Command::SetName { name } => {
@@ -231,7 +233,7 @@ impl Channel {
             | Command::TransferSource { .. }
             | Command::FlowState { .. } => return Err("publication_unavailable"),
             Command::Leave => {
-                self.retire_session(session_id);
+                replies = self.retire_session(session_id);
                 broadcast = true;
                 leave = true;
             }
@@ -242,34 +244,38 @@ impl Channel {
         }
         Ok(Outcome {
             events,
+            replies,
             broadcast,
             leave,
         })
     }
 
-    pub(crate) fn retire_session(&mut self, session_id: Uuid) {
+    pub(crate) fn retire_session(&mut self, session_id: Uuid) -> Vec<RetiredRoomReply> {
         self.identity.sessions.remove(&session_id);
+        let mut replies = Vec::new();
         for remote in self.remote.values_mut() {
             if remote
                 .binding
                 .as_ref()
                 .is_some_and(|binding| binding.session == session_id)
             {
-                remote.pause();
+                replies.extend(remote.pause());
             }
         }
+        replies
     }
 
-    pub fn expire_sessions(&mut self, now: u64) -> bool {
+    pub fn expire_sessions(&mut self, now: u64) -> (bool, Vec<RetiredRoomReply>) {
         let expired = self.identity.expired(now);
         if expired.is_empty() {
-            return false;
+            return (false, Vec::new());
         }
+        let mut replies = Vec::new();
         for session_id in expired {
-            self.retire_session(session_id);
+            replies.extend(self.retire_session(session_id));
         }
         self.reconcile();
-        true
+        (true, replies)
     }
 
     pub(crate) fn reconcile(&mut self) {
@@ -496,7 +502,7 @@ impl Channel {
         connection: Uuid,
         summary: RoomSummary,
         resume: Option<Uuid>,
-    ) -> Result<(Uuid, Vec<(Uuid, Event)>), &'static str> {
+    ) -> Result<(Vec<(Uuid, Event)>, Vec<RetiredRoomReply>), &'static str> {
         let member = self
             .identity
             .member(self.identity.sessions[&session].user_id)?;
@@ -540,9 +546,9 @@ impl Channel {
             .binding
             .as_ref()
             .is_some_and(|binding| binding.session == session && Some(binding.id) == resume);
+        let replies = remote.drain_replies();
         if continuing {
             remote.binding.as_mut().unwrap().connection = connection;
-            remote.binding.as_mut().unwrap().replies.clear();
         } else {
             remote.binding = Some(Binding {
                 id: Uuid::new_v4(),
@@ -574,7 +580,7 @@ impl Channel {
             .unwrap();
         binding.projection_floor = binding.revision;
         self.reconcile();
-        Ok((id, events))
+        Ok((events, replies))
     }
 
     pub(crate) fn host_input(
@@ -737,7 +743,7 @@ impl Channel {
         session: Uuid,
         connection: Uuid,
         binding: Uuid,
-    ) -> Result<(), &'static str> {
+    ) -> Result<Vec<RetiredRoomReply>, &'static str> {
         let room = self.remote.get_mut(id).ok_or("room_unavailable")?;
         if !room
             .binding
@@ -746,9 +752,9 @@ impl Channel {
         {
             return Err("stale_room_host");
         }
-        room.pause();
+        let replies = room.pause();
         self.reconcile();
-        Ok(())
+        Ok(replies)
     }
 
     pub(crate) fn accept_host(

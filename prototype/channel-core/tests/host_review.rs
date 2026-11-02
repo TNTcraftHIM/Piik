@@ -17,7 +17,7 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
         let viewer = Member {
             user_id: Uuid::new_v4(),
             participates: true,
-            domain_owner: false,
+            domain_owner: true,
         };
         let publisher = Uuid::new_v4();
         let reader = Uuid::new_v4();
@@ -108,10 +108,14 @@ fn storage_abort_does_not_restore_activity_retired_by_current_domain_endpoints()
                 endpoints,
                 action: HostAction::Command {
                     context: context(reader),
-                    command: Command::EnterRoom {
+                    command: Command::UpdateRoom {
                         room_id: "review".into(),
+                        name: "Updated".into(),
+                        icon: Default::default(),
+                        access: RoomAccess::Public,
+                        hidden: false,
                         password: None,
-                        invite_key: None,
+                        voice_bitrate: None,
                     },
                 },
             })
@@ -190,6 +194,158 @@ fn review_register(
     })
     .unwrap()
 }
+
+#[test]
+fn pending_room_request_finishes_when_its_host_binding_retires() {
+    use piik_channel_core::{
+        host::RoomResult,
+        wire::{Event, Request},
+        Authority, RECOVERY_MS,
+    };
+    for case in [
+        "stop",
+        "leave",
+        "expire",
+        "rebind",
+        "resume",
+        "requester-replaced",
+    ] {
+        let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
+        let owner = Uuid::new_v4();
+        let reader = Uuid::new_v4();
+        review_admit(&mut core, owner, "owner");
+        let joined = core.handle(reader, Request::parse(&serde_json::json!({
+            "type":"join", "name":"Reader", "key":"invite",
+            "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
+        }).to_string()).unwrap(), 0);
+        let (reader_session, credential) = joined
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::Welcome {
+                    session_id,
+                    credential,
+                    ..
+                } => Some((session_id, credential)),
+                _ => None,
+            })
+            .unwrap();
+        let room_id = "retiring-host";
+        let mut host = RoomHost::new(
+            RoomState::new(
+                room_id.into(),
+                "Retirement".into(),
+                Default::default(),
+                core.identity().1,
+                RoomAccess::Public,
+                false,
+                None,
+            )
+            .unwrap(),
+        );
+        let input = review_register(&mut core, owner, &host);
+        let binding = input.binding_id;
+        host.dispatch(input).unwrap();
+        review_host_turn(&mut core, owner, room_id, host.finish(None).unwrap());
+
+        let pending = core.handle(
+            reader,
+            Request {
+                request_id: Some("preflight-enter".into()),
+                command: Command::EnterRoom {
+                    room_id: room_id.into(),
+                    password: None,
+                    invite_key: None,
+                },
+            },
+            1,
+        );
+        let input = pending
+            .events
+            .into_iter()
+            .find_map(|(_, event)| match event {
+                Event::HostInput { input, .. } => Some(input),
+                _ => None,
+            })
+            .unwrap();
+        host.dispatch(input).unwrap();
+        let delayed = host.finish(None).unwrap();
+
+        let replacement = Uuid::new_v4();
+        if case == "requester-replaced" {
+            core.handle(replacement, Request::parse(&serde_json::json!({
+                "type":"join", "name":"Reader", "credential":credential, "sessionId":reader_session,
+                "signingKey":piik_channel_core::conversation::SessionSigner::from_seed([2; 32]).signing_key()
+            }).to_string()).unwrap(), 2);
+        }
+        let effects = match case {
+            "leave" => core.handle(
+                owner,
+                Request {
+                    request_id: None,
+                    command: Command::Leave,
+                },
+                2,
+            ),
+            "expire" => {
+                core.disconnect(owner, 2);
+                core.expire(RECOVERY_MS + 2)
+            }
+            "rebind" | "resume" => core.handle(
+                owner,
+                Request {
+                    request_id: None,
+                    command: Command::HostRegister {
+                        room: host.summary(),
+                        resume_binding: (case == "resume").then_some(binding),
+                    },
+                },
+                2,
+            ),
+            _ => core.handle(
+                owner,
+                Request {
+                    request_id: None,
+                    command: Command::HostStop {
+                        room_id: room_id.into(),
+                        binding_id: binding,
+                    },
+                },
+                2,
+            ),
+        };
+        let replies: Vec<_> = effects
+            .events
+            .iter()
+            .filter(|(_, event)| {
+                matches!(event,
+            Event::RoomReply { request_id: Some(id), .. } if id == "preflight-enter")
+            })
+            .collect();
+        if case == "requester-replaced" {
+            assert!(
+                replies.is_empty(),
+                "retired request was redirected to a new connection"
+            );
+        } else {
+            assert_eq!(replies.len(), 1, "{case} left its room request pending");
+            assert!(
+                matches!(replies[0], (target, Event::RoomReply { room_id: id,
+                result: RoomResult::Error { code }, .. })
+                if *target == reader && id == room_id && code == "room_context_changed")
+            );
+        }
+        let late = review_host_turn(&mut core, owner, room_id, delayed);
+        assert!(
+            !late.events.iter().any(|(target, event)| (*target == reader
+                || *target == replacement)
+                && matches!(event,
+                Event::RoomReply { request_id: Some(id), .. } if id == "preflight-enter")),
+            "{case} completed a retired request from late host output"
+        );
+    }
+}
+
 #[test]
 fn room_host_cannot_complete_an_unissued_other_room_request() {
     use piik_channel_core::{
@@ -304,6 +460,7 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
     let key = policy.invite().unwrap();
     let mut host = RoomHost::new(policy);
     let input = review_register(&mut core, b, &host);
+    let binding = input.binding_id;
     host.dispatch(input).unwrap();
     review_host_turn(&mut core, b, "private-review", host.finish(None).unwrap());
     let effects = core.handle(
@@ -341,6 +498,20 @@ fn invited_connection_cannot_act_before_room_grant_commits() {
             && matches!(e,Event::Ack{request_id}if request_id=="premature")),
         "uncompleted room invitation already admitted a usable domain session"
     );
+    let stopped = core.handle(
+        b,
+        Request {
+            request_id: None,
+            command: Command::HostStop {
+                room_id: "private-review".into(),
+                binding_id: binding,
+            },
+        },
+        3,
+    );
+    assert!(stopped.close.contains(&c));
+    assert!(stopped.events.iter().any(|(target, event)| *target == c
+        && matches!(event, Event::Error { request_id: None, code } if code == "room_context_changed")));
 }
 
 #[test]
