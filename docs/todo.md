@@ -65,6 +65,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **Stronger microphone noise suppression (#518).** Assess the
+  [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
+  through the shared microphone input. Browser voice processing is already the
+  default; keep screen and system audio unprocessed.
 - [ ] **Release headlines in App and Server update checks.** Keep the prepared
   implementation on `archive/deferred-prototypes` for a later feature release. It consumes
   the existing [headline contract](./standards/versioning.md#release-notes).
