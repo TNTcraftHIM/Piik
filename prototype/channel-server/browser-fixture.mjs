@@ -55,6 +55,9 @@ function captureProbe(name) {
       protocol.push({ time: Date.now(), direction, type:event.type, room:event.roomId, request:event.requestId,
         flowId, publicationId: event.publicationId ?? command?.publicationId ?? flowBindings.get(flowId)?.publicationId,
         helperSessionId: event.helperSessionId ?? command?.helperSessionId,
+        now: event.input?.now, nextRouteDeadline: event.output?.projection?.nextRouteDeadline,
+        flows: event.output?.projection?.flows.map(({ id, publicationId, sender, receiver, inputFlowId, selected }) =>
+          ({ id, publicationId, sender, receiver, inputFlowId, selected })),
         action:event.input?.action?.type, revision:event.input?.revision ?? event.output?.revision,
         binding:event.bindingId ?? event.input?.bindingId ?? event.output?.bindingId,
         result:event.result?.type ?? event.output?.reply?.result?.type,
