@@ -949,7 +949,7 @@ impl Channel {
                 return Err("invalid_room_projection");
             }
         }
-        let mut shadow_roots = BTreeSet::new();
+        let mut shadow_roots = BTreeMap::new();
         for flow in &projection.flows {
             let source = publications[&flow.publication_id].0;
             if flow.receiver == source {
@@ -969,9 +969,19 @@ impl Channel {
                 }
                 None => return Err("invalid_room_projection"),
             };
+            // One prepared branch may introduce transit without an incumbent.
+            // Its new leaves still replace selected inputs, and every root
+            // attaches to the same unchanged input (or the publication source).
             if !flow.selected
-                && (!inputs.contains(&(flow.publication_id, flow.receiver, true))
-                    || (root && !shadow_roots.insert(flow.publication_id)))
+                && ((!inputs.contains(&(flow.publication_id, flow.receiver, true))
+                    && !projection
+                        .flows
+                        .iter()
+                        .any(|output| !output.selected && output.input_flow_id == Some(flow.id)))
+                    || (root
+                        && shadow_roots
+                            .insert(flow.publication_id, flow.input_flow_id)
+                            .is_some_and(|anchor| anchor != flow.input_flow_id)))
             {
                 return Err("invalid_room_projection");
             }

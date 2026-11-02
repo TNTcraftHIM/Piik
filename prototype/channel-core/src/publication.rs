@@ -35,6 +35,7 @@ enum OperationKind {
     },
     Switch {
         root: Uuid,
+        helper: Option<Uuid>,
         legs: BTreeMap<Uuid, Shadow>,
     },
 }
@@ -42,7 +43,7 @@ enum OperationKind {
 #[derive(Clone)]
 struct Shadow {
     flow: Flow,
-    replaces: Uuid,
+    replaces: Option<Uuid>,
     viewing: bool,
     proof: Option<Readiness>,
     presented: bool,
@@ -104,13 +105,30 @@ impl Publication {
         available: &BTreeSet<Uuid>,
         connected: &BTreeSet<Uuid>,
         base: Option<&BaseTree>,
+        helpers: &BTreeMap<Uuid, Uuid>,
         now: u64,
     ) {
         self.expire(now);
         let paths = if let Some(base) = base.filter(|_| self.info.kind == Kind::Voice) {
             base.project(self.plan.source, requested)
         } else {
-            self.plan.reconcile(requested, available, connected, base);
+            self.plan
+                .reconcile(requested, available, connected, base, helpers);
+            // An unproved input has no picture to preserve. A proved branch
+            // instead keeps every incumbent lease until the shared switch.
+            for (viewer, helper) in helpers {
+                if let Some(parents) = self.plan.assisted(*viewer, *helper, connected, helpers) {
+                    if self
+                        .branch(&parents, requested)
+                        .keys()
+                        .all(|receiver| self.plan.readiness(*receiver).is_none())
+                    {
+                        self.plan.parents = parents;
+                        self.plan
+                            .reconcile(requested, available, connected, base, helpers);
+                    }
+                }
+            }
             self.plan
                 .parents
                 .iter()
@@ -124,8 +142,22 @@ impl Publication {
         if let Some(operation) = &self.operation {
             let current = match &operation.kind {
                 OperationKind::Prepare { flow } => self.preparing_flows().any(|id| id == *flow),
-                OperationKind::Switch { root, legs } => {
-                    self.current_switch(*root, legs)
+                OperationKind::Switch { root, helper, legs } => {
+                    self.current_switch(legs)
+                        && match helper {
+                            Some(helper) => {
+                                helpers.get(root) == Some(helper)
+                                    && self
+                                        .plan
+                                        .assisted(*root, *helper, connected, helpers)
+                                        .is_some_and(|parents| {
+                                            legs.iter().all(|(receiver, leg)| {
+                                                parents.get(receiver) == Some(&leg.flow.sender)
+                                            })
+                                        })
+                            }
+                            None => self.plan.can_shortcut(*root, helpers),
+                        }
                         && connected.contains(&self.plan.source)
                         && legs.iter().all(|(receiver, leg)| {
                             connected.contains(receiver)
@@ -133,10 +165,31 @@ impl Publication {
                         })
                 }
             };
-            if current {
+            if current && matches!(operation.kind, OperationKind::Switch { .. }) {
                 return;
             }
-            self.operation = None;
+            if !current {
+                self.operation = None;
+            }
+        }
+        if !connected.contains(&self.plan.source) {
+            return;
+        }
+        let assisted = helpers.iter().find_map(|(viewer, helper)| {
+            let parents = self.plan.assisted(*viewer, *helper, connected, helpers)?;
+            let legs = self.branch(&parents, requested);
+            (!legs.is_empty() && legs.keys().all(|receiver| connected.contains(receiver)))
+                .then_some((*viewer, Some(*helper), legs))
+        });
+        if let Some((root, helper, legs)) = assisted {
+            self.operation = Some(RouteOperation {
+                deadline: now.saturating_add(SCREEN_PREPARE_MS),
+                kind: OperationKind::Switch { root, helper, legs },
+            });
+            return;
+        }
+        if self.operation.is_some() {
+            return;
         }
         let preparing = self.preparing_flows().next();
         if let Some(flow) = preparing {
@@ -146,77 +199,98 @@ impl Publication {
             });
             return;
         }
-        if !connected.contains(&self.plan.source) {
-            return;
-        }
-        let root = self.plan.shortcut_candidates().into_iter().find(|root| {
-            !self.direct_attempted.contains(root)
-                && self.plan.subtree(*root).iter().all(|receiver| {
-                    connected.contains(receiver)
-                        && (!requested.contains(receiver)
-                            || self.plan.readiness(*receiver) == Some(Readiness::Decoded))
-                })
-        });
+        let root = self
+            .plan
+            .shortcut_candidates(helpers)
+            .into_iter()
+            .find(|root| {
+                !self.direct_attempted.contains(root)
+                    && self.plan.subtree(*root).iter().all(|receiver| {
+                        connected.contains(receiver)
+                            && (!requested.contains(receiver)
+                                || self.plan.readiness(*receiver) == Some(Readiness::Decoded))
+                    })
+            });
         let Some(root) = root else { return };
-        let mut legs = BTreeMap::<Uuid, Shadow>::new();
-        for receiver in self.plan.subtree(root) {
-            let old = &self.leases[&receiver];
-            let sender = if receiver == root {
-                self.plan.source
-            } else {
-                old.sender
-            };
-            legs.insert(
-                receiver,
-                Shadow {
-                    flow: Flow {
-                        id: Uuid::new_v4(),
-                        publication_id: self.info.id,
-                        input_flow_id: (receiver != root).then(|| legs[&sender].flow.id),
-                        sender,
-                        receiver,
-                        selected: false,
-                    },
-                    replaces: old.id,
-                    viewing: requested.contains(&receiver),
-                    proof: None,
-                    presented: false,
-                },
-            );
-        }
+        let mut parents = self.plan.parents.clone();
+        parents.insert(root, self.plan.source);
+        let legs = self.branch(&parents, requested);
         self.direct_attempted.insert(root);
         self.operation = Some(RouteOperation {
             deadline: now.saturating_add(SCREEN_PREPARE_MS),
-            kind: OperationKind::Switch { root, legs },
+            kind: OperationKind::Switch {
+                root,
+                helper: None,
+                legs,
+            },
         });
     }
 
+    fn branch(
+        &self,
+        parents: &BTreeMap<Uuid, Uuid>,
+        requested: &BTreeSet<Uuid>,
+    ) -> BTreeMap<Uuid, Shadow> {
+        self.planned_flows(parents)
+            .into_iter()
+            .filter_map(|(receiver, mut flow)| {
+                let replaces = self.leases.get(&receiver).map(|old| old.id);
+                if replaces == Some(flow.id) {
+                    return None;
+                }
+                flow.selected = false;
+                Some((
+                    receiver,
+                    Shadow {
+                        flow,
+                        replaces,
+                        viewing: requested.contains(&receiver),
+                        proof: None,
+                        presented: false,
+                    },
+                ))
+            })
+            .collect()
+    }
+
     fn reconcile_leases(&mut self, paths: &BTreeSet<(Uuid, Uuid)>) {
+        let parents = paths
+            .iter()
+            .map(|(parent, child)| (*child, *parent))
+            .collect();
+        let next = self.planned_flows(&parents);
+        for (receiver, flow) in &next {
+            if self.leases.get(receiver).map(|old| old.id) != Some(flow.id) {
+                self.plan.forget_ready(*receiver);
+            }
+        }
+        self.leases = next;
+    }
+
+    fn planned_flows(&self, parents: &BTreeMap<Uuid, Uuid>) -> BTreeMap<Uuid, Flow> {
         let mut next = BTreeMap::<Uuid, Flow>::new();
         let mut pending = VecDeque::from([self.plan.source]);
         while let Some(sender) = pending.pop_front() {
             let input_flow_id = next.get(&sender).map(|flow| flow.id);
-            for (_, receiver) in paths.iter().filter(|(parent, _)| *parent == sender) {
+            for (receiver, _) in parents.iter().filter(|(_, parent)| **parent == sender) {
                 let lease = self
                     .leases
-                    .remove(receiver)
+                    .get(receiver)
                     .filter(|flow| flow.sender == sender && flow.input_flow_id == input_flow_id)
-                    .unwrap_or_else(|| {
-                        self.plan.forget_ready(*receiver);
-                        Flow {
-                            id: Uuid::new_v4(),
-                            publication_id: self.info.id,
-                            input_flow_id,
-                            sender,
-                            receiver: *receiver,
-                            selected: true,
-                        }
+                    .cloned()
+                    .unwrap_or_else(|| Flow {
+                        id: Uuid::new_v4(),
+                        publication_id: self.info.id,
+                        input_flow_id,
+                        sender,
+                        receiver: *receiver,
+                        selected: true,
                     });
                 next.insert(*receiver, lease);
                 pending.push_back(*receiver);
             }
         }
-        self.leases = next;
+        next
     }
 
     fn preparing_flows(&self) -> impl Iterator<Item = Uuid> + '_ {
@@ -225,15 +299,19 @@ impl Publication {
             .filter_map(|(_, child)| self.leases.get(&child).map(|f| f.id))
     }
 
-    fn current_switch(&self, root: Uuid, legs: &BTreeMap<Uuid, Shadow>) -> bool {
-        self.plan.can_shortcut(root)
-            && self.plan.preparing_edges().next().is_none()
-            && self.plan.subtree(root).len() == legs.len()
-            && legs.iter().all(|(receiver, leg)| {
-                self.leases.get(receiver).is_some_and(|old| {
-                    old.id == leg.replaces && self.plan.parents.get(receiver) == Some(&old.sender)
-                })
-            })
+    fn current_switch(&self, legs: &BTreeMap<Uuid, Shadow>) -> bool {
+        legs.iter().all(|(receiver, leg)| {
+            self.leases.get(receiver).map(|old| old.id) == leg.replaces
+                && self
+                    .leases
+                    .get(receiver)
+                    .is_none_or(|old| self.plan.parents.get(receiver) == Some(&old.sender))
+        }) && self.leases.values().all(|flow| {
+            legs.contains_key(&flow.receiver)
+                || flow
+                    .input_flow_id
+                    .is_none_or(|input| !legs.values().any(|leg| leg.replaces == Some(input)))
+        })
     }
 
     pub fn deadline(&self) -> Option<u64> {
@@ -245,7 +323,12 @@ impl Publication {
             return false;
         }
         match self.operation.take().unwrap().kind {
-            OperationKind::Switch { .. } => true,
+            OperationKind::Switch { root, helper, .. } => {
+                if let Some(helper) = helper {
+                    self.plan.reject_parent(root, helper);
+                }
+                true
+            }
             OperationKind::Prepare { flow } => {
                 let expired = self.plan.preparing_edges().find(|(_, child)| {
                     self.leases.get(child).is_some_and(|lease| lease.id == flow)
@@ -283,7 +366,12 @@ impl Publication {
             }),
             OperationKind::Prepare { .. } => false,
         }) {
-            self.operation = None;
+            if let OperationKind::Switch { root, helper, .. } = self.operation.take().unwrap().kind
+            {
+                if let Some(helper) = helper {
+                    self.plan.reject_parent(root, helper);
+                }
+            }
         }
         self.plan.failed_pair(first, second);
     }
@@ -301,22 +389,25 @@ impl Publication {
         }
         let expired = self.expire(now);
         if let Some(RouteOperation {
-            kind: OperationKind::Switch { root, legs },
+            kind: OperationKind::Switch { legs, .. },
             ..
         }) = &self.operation
         {
-            if !self.current_switch(*root, legs) {
+            if !self.current_switch(legs) {
                 self.operation = None;
             }
         }
         if let Some(RouteOperation {
             deadline,
-            kind: OperationKind::Switch { legs, .. },
+            kind: OperationKind::Switch { root, helper, legs },
         }) = &mut self.operation
         {
             if let Some(leg) = legs.get_mut(&receiver).filter(|leg| leg.flow.id == id) {
                 match state {
                     FlowState::Failed => {
+                        if let Some(helper) = helper {
+                            self.plan.reject_parent(*root, *helper);
+                        }
                         self.operation = None;
                         return true;
                     }
@@ -331,18 +422,21 @@ impl Publication {
                     }
                     FlowState::SwitchReady => return false,
                 }
-                if legs
-                    .values()
-                    .all(|leg| leg.proof.is_some() && (!leg.viewing || leg.presented))
-                {
-                    let OperationKind::Switch { root, legs } = self.operation.take().unwrap().kind
+                if legs.iter().all(|(receiver, leg)| {
+                    leg.proof.is_some()
+                        && (!leg.viewing
+                            || (leg.proof == Some(Readiness::Decoded)
+                                && (self.plan.readiness(*receiver) != Some(Readiness::Decoded)
+                                    || leg.presented)))
+                }) {
+                    let OperationKind::Switch { legs, .. } = self.operation.take().unwrap().kind
                     else {
                         unreachable!()
                     };
                     self.plan.adopt_branch(
-                        root,
-                        legs.iter()
-                            .map(|(receiver, leg)| (*receiver, leg.proof.unwrap())),
+                        legs.iter().map(|(receiver, leg)| {
+                            (*receiver, leg.flow.sender, leg.proof.unwrap())
+                        }),
                     );
                     for (receiver, mut leg) in legs {
                         leg.flow.selected = true;

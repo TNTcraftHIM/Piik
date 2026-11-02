@@ -19,7 +19,7 @@ const REQUIRED_REPAIR_MS: u64 = 5_000;
 #[derive(Clone, Default)]
 struct Activity {
     reading: bool,
-    watching: BTreeSet<Uuid>,
+    watching: BTreeMap<Uuid, Option<Uuid>>,
     voice: Option<VoiceInfo>,
     next_interaction_at: u64,
 }
@@ -463,6 +463,7 @@ impl RoomRuntime {
         session: Uuid,
         id: Uuid,
         enabled: bool,
+        helper: Option<(Uuid, &Endpoint)>,
     ) -> Result<bool, &'static str> {
         self.authorize(member, RoomPermission::Write)?;
         let publication = self
@@ -472,11 +473,30 @@ impl RoomRuntime {
         if publication.info.kind != Kind::Screen || publication.info.session_id == session {
             return Err("invalid_subscription");
         }
+        let helper = if enabled {
+            helper
+                .map(|(id, endpoint)| {
+                    if id == session {
+                        return Err("invalid_subscription");
+                    }
+                    if endpoint.member.user_id != member.user_id {
+                        return Err("forbidden");
+                    }
+                    if !endpoint.connected {
+                        return Err("helper_unavailable");
+                    }
+                    self.authorize(endpoint.member, RoomPermission::Write)?;
+                    Ok(id)
+                })
+                .transpose()?
+        } else {
+            None
+        };
         let activity = self.activity.entry(session).or_default();
         Ok(if enabled {
-            activity.watching.insert(id)
+            activity.watching.insert(id, helper) != Some(helper)
         } else {
-            activity.watching.remove(&id)
+            activity.watching.remove(&id).is_some()
         })
     }
 
@@ -522,7 +542,7 @@ impl RoomRuntime {
         let Some(activity) = self.activity.get(&session) else {
             return BTreeSet::new();
         };
-        let mut requested = activity.watching.clone();
+        let mut requested: BTreeSet<_> = activity.watching.keys().copied().collect();
         if activity.voice.is_some() {
             requested.extend(
                 self.publications
@@ -577,7 +597,12 @@ impl RoomRuntime {
             }
             activity
                 .watching
-                .retain(|id| self.publications.contains_key(id));
+                .retain(|id, _| self.publications.contains_key(id));
+            for helper in activity.watching.values_mut() {
+                if helper.is_some_and(|id| !available.contains(&id)) {
+                    *helper = None;
+                }
+            }
         }
         let requested: BTreeMap<_, _> = self
             .activity
@@ -607,6 +632,18 @@ impl RoomRuntime {
         }
         for (id, publication) in &mut self.publications {
             publication.retain_sessions(endpoints);
+            let helpers = self
+                .activity
+                .iter()
+                .filter_map(|(viewer, activity)| {
+                    activity
+                        .watching
+                        .get(id)
+                        .copied()
+                        .flatten()
+                        .map(|helper| (*viewer, helper))
+                })
+                .collect();
             let subscribers = requested
                 .iter()
                 .filter_map(|(session, ids)| ids.contains(id).then_some(*session))
@@ -619,6 +656,7 @@ impl RoomRuntime {
                 &available,
                 &connected,
                 self.base.as_ref(),
+                &helpers,
                 now,
             );
             needs_repair |= publication.needs_repair(&subscribers, &connected);
@@ -708,6 +746,332 @@ impl RoomRuntime {
 mod tests {
     use super::*;
 
+    #[test]
+    fn assisted_viewing_prepares_native_transit_and_preserves_the_viewer_branch() {
+        let id = Uuid::from_u128;
+        let (mut room, mut endpoints) = screen_on_room_base();
+        let viewer = endpoints[&id(2)].member;
+        endpoints.insert(
+            id(5),
+            Endpoint {
+                signing_key: [5; 32],
+                member: viewer,
+                connected: true,
+            },
+        );
+        room.subscribe(viewer, id(2), id(10), true, None).unwrap();
+        for flow in room.flows().collect::<Vec<_>>() {
+            room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                .unwrap();
+        }
+        let old: BTreeMap<_, _> = room.flows().map(|flow| (flow.receiver, flow)).collect();
+        let command = serde_json::from_value(serde_json::json!({
+            "type": "subscribe", "publicationId": id(10), "enabled": true, "helperSessionId": id(5),
+        }))
+        .unwrap();
+        room.command(viewer, id(2), command, &endpoints).unwrap();
+        room.reconcile(&endpoints, 2);
+        let trial: BTreeMap<_, _> = room
+            .flows()
+            .filter(|flow| !flow.selected)
+            .map(|flow| (flow.receiver, flow))
+            .collect();
+        assert_eq!(trial.len(), 3);
+        assert_eq!(trial[&id(2)].sender, id(5));
+        assert_eq!(trial[&id(4)].sender, id(5));
+        assert_eq!(trial[&id(2)].input_flow_id, Some(trial[&id(5)].id));
+        assert_eq!(trial[&id(4)].input_flow_id, Some(trial[&id(5)].id));
+        assert!(old
+            .values()
+            .all(|old| room.flows().any(|flow| flow.id == old.id && flow.selected)));
+        for flow in trial.values() {
+            room.flow_state(
+                flow.id,
+                flow.receiver,
+                flow.sender,
+                FlowState::Forwardable,
+                3,
+            )
+            .unwrap();
+        }
+        assert!(old
+            .values()
+            .all(|old| room.flows().any(|flow| flow.id == old.id && flow.selected)));
+        for receiver in [id(2), id(4)] {
+            let flow = &trial[&receiver];
+            room.flow_state(flow.id, receiver, flow.sender, FlowState::SwitchReady, 4)
+                .unwrap();
+        }
+        room.reconcile(&endpoints, 4);
+        assert!(trial
+            .values()
+            .all(|new| room.flows().any(|flow| flow.id == new.id && flow.selected)));
+        assert!(!room.flows().any(|flow| flow.sender == id(2)));
+        assert!(room
+            .snapshot(viewer, id(5))
+            .unwrap()
+            .subscriptions
+            .is_empty());
+        room.subscribe(viewer, id(2), id(10), false, None).unwrap();
+        room.reconcile(&endpoints, 5);
+        assert!(!room.flows().any(|flow| flow.receiver == id(2)));
+        assert!(room
+            .flows()
+            .any(|flow| flow.sender == id(5) && flow.receiver == id(4) && flow.selected));
+    }
+
+    #[test]
+    fn assisted_viewing_replaces_unproved_inputs_without_waiting_for_the_old_path() {
+        let id = Uuid::from_u128;
+        for playing in [false, true] {
+            let (mut room, mut endpoints) = screen_on_room_base();
+            let viewer = endpoints[&id(2)].member;
+            endpoints.insert(
+                id(5),
+                Endpoint {
+                    signing_key: [5; 32],
+                    member: viewer,
+                    connected: true,
+                },
+            );
+            room.subscribe(viewer, id(2), id(10), true, None).unwrap();
+            // A can already receive while D has never decoded. The helper
+            // must not wait for D's failed Browser relay to become usable.
+            if playing {
+                for flow in room
+                    .flows()
+                    .filter(|flow| flow.receiver != id(4))
+                    .collect::<Vec<_>>()
+                {
+                    room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                        .unwrap();
+                }
+            }
+            room.subscribe(
+                viewer,
+                id(2),
+                id(10),
+                true,
+                Some((id(5), &endpoints[&id(5)])),
+            )
+            .unwrap();
+            room.reconcile(&endpoints, 2);
+            let candidate: BTreeMap<_, _> = room
+                .flows()
+                .filter(|flow| {
+                    flow.selected != playing && [id(2), id(4), id(5)].contains(&flow.receiver)
+                })
+                .map(|flow| (flow.receiver, flow))
+                .collect();
+            assert_eq!(candidate[&id(2)].sender, id(5));
+            assert_eq!(candidate[&id(4)].sender, id(5));
+            if !playing {
+                assert_eq!(
+                    room.flows().count(),
+                    3,
+                    "unused old transit retires in the same turn"
+                );
+            }
+            let native = &candidate[&id(5)];
+            room.flow_state(
+                native.id,
+                native.receiver,
+                native.sender,
+                FlowState::Forwardable,
+                3,
+            )
+            .unwrap();
+            for receiver in [id(4), id(2)] {
+                let flow = &candidate[&receiver];
+                room.flow_state(flow.id, receiver, flow.sender, FlowState::Decoded, 4)
+                    .unwrap();
+            }
+            if playing {
+                assert!(room.flows().any(|flow| !flow.selected));
+                let flow = &candidate[&id(2)];
+                room.flow_state(
+                    flow.id,
+                    flow.receiver,
+                    flow.sender,
+                    FlowState::SwitchReady,
+                    5,
+                )
+                .unwrap();
+            }
+            room.reconcile(&endpoints, 5);
+            assert!(candidate
+                .values()
+                .all(|new| room.flows().any(|flow| flow.id == new.id && flow.selected)));
+            assert!(!room.flows().any(|flow| flow.sender == id(2)));
+        }
+    }
+
+    #[test]
+    fn assisted_viewing_failure_preserves_the_incumbent_without_repeating_the_choice() {
+        let id = Uuid::from_u128;
+        for failure in 0..3 {
+            let (mut room, mut endpoints) = screen_on_room_base();
+            let viewer = endpoints[&id(2)].member;
+            endpoints.insert(
+                id(5),
+                Endpoint {
+                    signing_key: [5; 32],
+                    member: viewer,
+                    connected: true,
+                },
+            );
+            room.subscribe(viewer, id(2), id(10), true, None).unwrap();
+            for flow in room.flows().collect::<Vec<_>>() {
+                room.flow_state(flow.id, flow.receiver, flow.sender, FlowState::Decoded, 1)
+                    .unwrap();
+            }
+            let old: BTreeSet<_> = room.flows().map(|flow| flow.id).collect();
+            room.subscribe(
+                viewer,
+                id(2),
+                id(10),
+                true,
+                Some((id(5), &endpoints[&id(5)])),
+            )
+            .unwrap();
+            room.reconcile(&endpoints, 2);
+            let local = room
+                .flows()
+                .find(|flow| !flow.selected && flow.receiver == id(2))
+                .unwrap();
+            match failure {
+                0 => {
+                    room.flow_state(local.id, local.receiver, local.sender, FlowState::Failed, 3)
+                        .unwrap();
+                }
+                1 => {
+                    assert!(room.expire_media(20_002));
+                }
+                _ => room.failed_pair(local.sender, local.receiver),
+            }
+            for now in [20_003, 25_003, 30_003] {
+                room.reconcile(&endpoints, now);
+                assert!(old
+                    .iter()
+                    .all(|id| room.flows().any(|flow| flow.id == *id && flow.selected)));
+                assert!(!room
+                    .flows()
+                    .any(|flow| flow.sender == id(5) || flow.receiver == id(5)));
+            }
+        }
+    }
+
+    #[test]
+    fn assisted_viewing_authority_and_intent_retire_with_the_existing_activity() {
+        use crate::wire::Command;
+        let id = Uuid::from_u128;
+        let (mut room, mut endpoints) = screen_on_room_base();
+        let viewer = endpoints[&id(2)].member;
+        endpoints.insert(
+            id(5),
+            Endpoint {
+                signing_key: [5; 32],
+                member: viewer,
+                connected: true,
+            },
+        );
+        let watch = |helper| Command::Subscribe {
+            publication_id: id(10),
+            enabled: true,
+            helper_session_id: Some(helper),
+        };
+        for (helper, error) in [
+            (id(2), "invalid_subscription"),
+            (id(3), "forbidden"),
+            (id(6), "helper_unavailable"),
+        ] {
+            assert_eq!(
+                room.command(viewer, id(2), watch(helper), &endpoints).err(),
+                Some(error)
+            );
+            assert!(!room.subscriptions(id(2)).contains(&id(10)));
+        }
+        endpoints.get_mut(&id(5)).unwrap().connected = false;
+        assert_eq!(
+            room.command(viewer, id(2), watch(id(5)), &endpoints).err(),
+            Some("helper_unavailable")
+        );
+        endpoints.get_mut(&id(5)).unwrap().connected = true;
+        room.command(viewer, id(2), watch(id(5)), &endpoints)
+            .unwrap();
+        room.reconcile(&endpoints, 1);
+        endpoints.get_mut(&id(5)).unwrap().connected = false;
+        room.reconcile(&endpoints, 2);
+        assert_eq!(
+            room.activity[&id(2)].watching[&id(10)],
+            Some(id(5)),
+            "temporary signaling loss retains the existing authority window"
+        );
+        endpoints.remove(&id(5));
+        room.reconcile(&endpoints, 3);
+        assert_eq!(room.activity[&id(2)].watching[&id(10)], None);
+        assert!(!room
+            .flows()
+            .any(|flow| flow.sender == id(5) || flow.receiver == id(5)));
+        room.command(
+            viewer,
+            id(2),
+            Command::Subscribe {
+                publication_id: id(10),
+                enabled: false,
+                helper_session_id: Some(id(5)),
+            },
+            &endpoints,
+        )
+        .unwrap();
+        assert!(
+            !room.subscriptions(id(2)).contains(&id(10)),
+            "unwatch does not require an expired helper"
+        );
+        room.subscribe(viewer, id(2), id(10), true, None).unwrap();
+        room.retire_session(id(2));
+        room.reconcile(&endpoints, 4);
+        assert!(room.subscriptions(id(2)).is_empty());
+
+        // A room grant belongs to the user, including its approved helper.
+        endpoints.insert(
+            id(5),
+            Endpoint {
+                signing_key: [5; 32],
+                member: viewer,
+                connected: true,
+            },
+        );
+        let owner = endpoints[&id(1)].member;
+        for user in [id(2), id(3), id(4)] {
+            room.grant_invited(user);
+        }
+        room.update(
+            owner,
+            "Private".into(),
+            Default::default(),
+            RoomAccess::Private,
+            false,
+            None,
+            None,
+        )
+        .unwrap();
+        room.command(viewer, id(2), watch(id(5)), &endpoints)
+            .unwrap();
+        room.reconcile(&endpoints, 5);
+        room.revoke(owner, viewer).unwrap();
+        room.reconcile(&endpoints, 6);
+        assert!(room.subscriptions(id(2)).is_empty());
+        assert!(!room
+            .flows()
+            .any(|flow| [id(2), id(5)].contains(&flow.sender)
+                || [id(2), id(5)].contains(&flow.receiver)));
+        assert_eq!(
+            room.command(viewer, id(2), watch(id(5)), &endpoints).err(),
+            Some("room_access_required")
+        );
+    }
+
     fn screen_on_room_base() -> (RoomRuntime, BTreeMap<Uuid, Endpoint>) {
         let id = Uuid::from_u128;
         let endpoints: BTreeMap<_, _> = (1..=4)
@@ -759,7 +1123,7 @@ mod tests {
             false,
         )
         .unwrap();
-        room.subscribe(endpoints[&id(4)].member, id(4), publication, true)
+        room.subscribe(endpoints[&id(4)].member, id(4), publication, true, None)
             .unwrap();
         room.reconcile(&endpoints, 0);
         (room, endpoints)
@@ -946,7 +1310,7 @@ mod tests {
             room.publish(endpoints[&id(1)].member, id(1), id(10), Kind::Screen, false)
                 .unwrap();
             for n in 2..=count {
-                room.subscribe(endpoints[&id(n)].member, id(n), id(10), true)
+                room.subscribe(endpoints[&id(n)].member, id(n), id(10), true, None)
                     .unwrap();
             }
             room.reconcile(&endpoints, 0);
@@ -960,7 +1324,7 @@ mod tests {
             let preparing = if count == 3 {
                 room.publish(endpoints[&id(3)].member, id(3), id(11), Kind::Screen, false)
                     .unwrap();
-                room.subscribe(endpoints[&id(1)].member, id(1), id(11), true)
+                room.subscribe(endpoints[&id(1)].member, id(1), id(11), true, None)
                     .unwrap();
                 room.reconcile(&endpoints, 1);
                 Some(
@@ -986,7 +1350,7 @@ mod tests {
             assert_eq!(deadline, if count == 2 { 5_002 } else { 5_003 });
             // Demand toggles cannot bypass or restart the room's cooldown.
             for enabled in [false, true] {
-                room.subscribe(endpoints[&id(2)].member, id(2), id(10), enabled)
+                room.subscribe(endpoints[&id(2)].member, id(2), id(10), enabled, None)
                     .unwrap();
                 room.reconcile(&endpoints, 1_000);
                 assert_eq!(room.next_route_deadline(), Some(deadline));
@@ -1050,7 +1414,7 @@ mod tests {
                 endpoints.get_mut(&id(2)).unwrap().connected = true;
                 room.reconcile(&endpoints, 10_002);
                 assert_eq!(room.next_route_deadline(), Some(15_002));
-                room.subscribe(endpoints[&id(2)].member, id(2), id(10), false)
+                room.subscribe(endpoints[&id(2)].member, id(2), id(10), false, None)
                     .unwrap();
                 room.browse(endpoints[&id(2)].member, id(2), false).unwrap();
                 room.reconcile(&endpoints, 10_003);
@@ -1110,7 +1474,7 @@ mod tests {
         endpoints.insert(id(5), endpoints[&id(3)].clone());
         let source = endpoints[&id(3)].member;
         room.browse(source, id(5), true).unwrap();
-        room.subscribe(source, id(5), id(10), true).unwrap();
+        room.subscribe(source, id(5), id(10), true, None).unwrap();
         for session in [id(3), id(4)] {
             room.set_voice(endpoints[&session].member, session, true, false, false)
                 .unwrap();
@@ -1311,7 +1675,7 @@ mod tests {
         );
         assert_eq!(room.next_route_deadline(), Some(78_000));
 
-        room.subscribe(endpoints[&id(4)].member, id(4), publication, false)
+        room.subscribe(endpoints[&id(4)].member, id(4), publication, false, None)
             .unwrap();
         room.reconcile(&endpoints, 60_000);
         assert!(room.flows().next().is_none());
@@ -1324,10 +1688,16 @@ mod tests {
     ) -> (RoomRuntime, BTreeMap<Uuid, Endpoint>, Vec<Flow>, Vec<Flow>) {
         let id = Uuid::from_u128;
         let (mut room, endpoints) = screen_on_room_base();
-        room.subscribe(endpoints[&id(1)].member, id(1), id(10), true)
+        room.subscribe(endpoints[&id(1)].member, id(1), id(10), true, None)
             .unwrap();
-        room.subscribe(endpoints[&id(2)].member, id(2), id(10), relay_watching)
-            .unwrap();
+        room.subscribe(
+            endpoints[&id(2)].member,
+            id(2),
+            id(10),
+            relay_watching,
+            None,
+        )
+        .unwrap();
         // Room voice retains the same physical pairs during the screen change.
         for session in [id(3), id(4)] {
             room.set_voice(endpoints[&session].member, session, true, false, false)
@@ -1506,10 +1876,10 @@ mod tests {
                 .all(|old| !room.flows().any(|f| f.id == old.id)));
             // A different target may be attempted, but toggling local watching
             // cannot reset the relay's consumed source-path attempt.
-            room.subscribe(endpoints[&id(2)].member, id(2), id(10), false)
+            room.subscribe(endpoints[&id(2)].member, id(2), id(10), false, None)
                 .unwrap();
             room.reconcile(&endpoints, 23_000);
-            room.subscribe(endpoints[&id(2)].member, id(2), id(10), true)
+            room.subscribe(endpoints[&id(2)].member, id(2), id(10), true, None)
                 .unwrap();
             room.reconcile(&endpoints, 24_000);
             assert!(!room.flows().any(|f| !f.selected && f.receiver == id(2)));
@@ -1570,7 +1940,7 @@ mod tests {
             3_000,
         )
         .unwrap();
-        room.subscribe(endpoints[&id(2)].member, id(2), id(10), false)
+        room.subscribe(endpoints[&id(2)].member, id(2), id(10), false, None)
             .unwrap();
         room.reconcile(&endpoints, 4_000);
         assert!(old
@@ -1659,7 +2029,7 @@ mod tests {
             .unwrap();
         room.set_voice(viewer, viewer_session, true, false, false)
             .unwrap();
-        room.subscribe(viewer, viewer_session, picture, true)
+        room.subscribe(viewer, viewer_session, picture, true, None)
             .unwrap();
 
         let admitted = room.snapshot(viewer, viewer_session).unwrap();

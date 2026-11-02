@@ -559,6 +559,7 @@ fn host_projection_rejects_conflicting_flow_identity_and_input_ownership() {
                 (
                     viewer,
                     Command::Subscribe {
+                        helper_session_id: None,
                         publication_id: publication,
                         enabled: true,
                     },
@@ -715,7 +716,8 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         "wrong_sender",
         "false_origin",
         "selected_borrows_shadow",
-        "two_shadow_roots",
+        "distinct_shadow_anchors",
+        "unconsumed_shadow_transit",
         "shadow_cycle",
         "selected_cycle",
         "shadow_uses_own_old_branch",
@@ -726,8 +728,8 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         "live_input",
     ] {
         let mut core = Authority::new("owner".into(), "invite".into(), vec![]).unwrap();
-        let connections: [Uuid; 4] = std::array::from_fn(|_| Uuid::new_v4());
-        let [source, relay, branch, viewer] =
+        let connections: [Uuid; 5] = std::array::from_fn(|_| Uuid::new_v4());
+        let [source, relay, branch, viewer, transit] =
             connections.map(|connection| review_admit(&mut core, connection, "invite"));
         let source_user = state(&mut core, connections[0])
             .sessions
@@ -849,10 +851,11 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
                 flows[2].id = Uuid::new_v4();
                 flows[2].input_flow_id = Some(root.id);
             }
-            "two_shadow_roots" => {
-                flows[4].sender = source;
-                flows[4].input_flow_id = None;
+            "distinct_shadow_anchors" => {
+                flows[4].sender = relay;
+                flows[4].input_flow_id = Some(first.id);
             }
+            "unconsumed_shadow_transit" => flows.push(leg(source, transit, None, false)),
             "shadow_cycle" => {
                 flows[3].sender = viewer;
                 flows[3].input_flow_id = Some(child.id);

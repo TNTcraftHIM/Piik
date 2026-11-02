@@ -63,6 +63,108 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
 }
 
 #[test]
+fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_commit() {
+    let mut network = RoomNetwork::new();
+    let host = Uuid::new_v4();
+    let viewer = Uuid::new_v4();
+    let native = Uuid::new_v4();
+    let (source, _) = join(&mut network, host, None);
+    let (_, credential) = join(&mut network, viewer, None);
+    let (helper, _) = join(&mut network, native, Some(&credential));
+    let room = network.create(host, RoomAccess::Public, false);
+    let screen = publish(&mut network, host, &room, "screen");
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":screen, "enabled":true}),
+    );
+    let incumbent = network
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == source && !pair.incoming.is_empty())
+        .unwrap()
+        .clone();
+    let old = incumbent.incoming[0].id;
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"flow_state", "pairId":incumbent.id, "flowId":old, "state":"decoded"}),
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":screen, "enabled":true, "helperSessionId":helper}),
+    );
+    assert!(network.state(native).subscriptions.is_empty());
+    let upstream = network
+        .state(native)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == source && !pair.incoming.is_empty())
+        .unwrap()
+        .clone();
+    let local = network
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == helper)
+        .unwrap()
+        .clone();
+    assert!(!upstream.incoming[0].selected);
+    assert_eq!(
+        local.incoming[0].input_flow_id,
+        Some(upstream.incoming[0].id)
+    );
+    command(
+        &mut network,
+        native,
+        json!({"type":"flow_state", "pairId":upstream.id, "flowId":upstream.incoming[0].id, "state":"forwardable"}),
+    );
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"flow_state", "pairId":local.id, "flowId":local.incoming[0].id, "state":"decoded"}),
+    );
+    assert!(network
+        .state(viewer)
+        .pairs
+        .iter()
+        .flat_map(|pair| &pair.incoming)
+        .any(|flow| flow.id == old && flow.selected));
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"flow_state", "pairId":local.id, "flowId":local.incoming[0].id, "state":"switch_ready"}),
+    );
+    let selected = network
+        .state(viewer)
+        .pairs
+        .iter()
+        .find(|pair| pair.peer_id == helper)
+        .unwrap();
+    assert_eq!(selected.id, local.id);
+    assert_eq!(selected.incoming[0].id, local.incoming[0].id);
+    assert!(selected.incoming[0].selected);
+    assert!(!network
+        .state(viewer)
+        .pairs
+        .iter()
+        .flat_map(|pair| &pair.incoming)
+        .any(|flow| flow.id == old));
+    command(
+        &mut network,
+        viewer,
+        json!({"type":"subscribe", "publicationId":screen, "enabled":false}),
+    );
+    assert!(network
+        .state(native)
+        .pairs
+        .iter()
+        .all(|pair| pair.incoming.is_empty() && pair.outgoing.is_empty()));
+}
+
+#[test]
 fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
     use piik_channel_core::host::RoomResult;
     let mut network = RoomNetwork::new();

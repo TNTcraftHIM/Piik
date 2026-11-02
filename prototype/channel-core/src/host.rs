@@ -248,8 +248,18 @@ impl RoomRuntime {
             Command::Subscribe {
                 publication_id,
                 enabled,
+                helper_session_id,
             } => {
-                self.subscribe(member, session, publication_id, enabled)?;
+                let helper = helper_session_id
+                    .filter(|_| enabled)
+                    .map(|id| {
+                        endpoints
+                            .get(&id)
+                            .map(|endpoint| (id, endpoint))
+                            .ok_or("helper_unavailable")
+                    })
+                    .transpose()?;
+                self.subscribe(member, session, publication_id, enabled, helper)?;
             }
             Command::Voice {
                 joined,

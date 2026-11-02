@@ -108,6 +108,8 @@ pub enum Command {
     Subscribe {
         publication_id: Uuid,
         enabled: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        helper_session_id: Option<Uuid>,
     },
     InputRegister {
         publication_id: Uuid,
