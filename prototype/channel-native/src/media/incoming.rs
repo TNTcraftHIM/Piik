@@ -330,6 +330,12 @@ impl Incoming {
             Self::Vp8(input) => &input.video,
         }
     }
+    pub fn waiting_for_keyframe(&self) -> bool {
+        match self {
+            Self::H264(input) => input.waiting,
+            Self::Vp8(input) => input.waiting,
+        }
+    }
     pub fn push(&mut self, sequence: u64, time: u64, packet: Packet) {
         match self {
             Self::H264(input) => input.push(sequence, time, packet),

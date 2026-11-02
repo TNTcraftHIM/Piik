@@ -9,6 +9,7 @@ pub(in crate::peer) struct Parent {
     pub(in crate::peer) audio: Uuid,
     pub(in crate::peer) video: Uuid,
     pub(in crate::peer) base: u32,
+    pub(in crate::peer) keyframe_after_pli: usize,
 }
 pub(in crate::peer) struct Fixture {
     pub(in crate::peer) withheld: HashSet<Uuid>,
@@ -215,6 +216,7 @@ impl Fixture {
             audio,
             video,
             base,
+            keyframe_after_pli: 0,
         });
         ensure_offer(remote).await?;
         let (kind, sdp) = remote.local_description().await?;
@@ -285,7 +287,8 @@ impl Fixture {
                     let audio=rtp::Packet{header:rtp::header::Header{version:2,marker:true,sequence_number:self.frame as u16,timestamp:parent.base.wrapping_add(self.frame*960),..Default::default()},payload:vec![0xf8,0xff,0xfe].into()};
                     send(&self.remote[&parent.pair],parent.audio,vec![audio],wallclock,&self.writable[&parent.audio]).await?;
                     if self.frame%5==0 {
-                        let payloads=video_payloads(&self.video_codec,self.frame)?;
+                        let keyframe=self.plis.get(&parent.pair).copied().unwrap_or_default()>=parent.keyframe_after_pli;
+                        let payloads=video_payloads(&self.video_codec,self.frame,keyframe)?;
                         let last=payloads.len()-1;
                         let packets=payloads.into_iter().enumerate().map(|(part,payload)|rtp::Packet{header:rtp::header::Header{version:2,marker:part==last,sequence_number:(self.frame as usize+part)as u16,timestamp:parent.base.wrapping_add(self.frame*1800),..Default::default()},payload}).collect();
                         send(&self.remote[&parent.pair],parent.video,packets,wallclock,&self.writable[&parent.video]).await?;
@@ -404,24 +407,43 @@ pub(in crate::peer) fn h264() -> RtpCodec {
         ..Default::default()
     }
 }
-pub(in crate::peer) fn video_payloads(codec: &RtpCodec, frame: u32) -> Result<Vec<bytes::Bytes>> {
+pub(in crate::peer) fn video_payloads(
+    codec: &RtpCodec,
+    frame: u32,
+    keyframe: bool,
+) -> Result<Vec<bytes::Bytes>> {
     if codec.mime_type.eq_ignore_ascii_case("video/H264") {
         use rtc_rtp::codec::h264::H264Payloader;
         use rtc_rtp::packetizer::Payloader;
-        let access_unit = [
-            vec![0, 0, 0, 1],
-            sps(),
-            vec![0, 0, 0, 1, 0x68, 0x22, 0x33, 0, 0, 0, 1, 0x65],
-            vec![0x55; 700],
-            frame.to_be_bytes().to_vec(),
-        ]
-        .concat();
+        let prefix = if keyframe {
+            [
+                vec![0, 0, 0, 1],
+                sps(),
+                vec![0, 0, 0, 1, 0x68, 0x22, 0x33, 0, 0, 0, 1, 0x65],
+            ]
+            .concat()
+        } else {
+            vec![0, 0, 0, 1, 0x41]
+        };
+        let access_unit = [prefix, vec![0x55; 700], frame.to_be_bytes().to_vec()].concat();
         return Ok(H264Payloader::default().payload(1200, &access_unit.into())?);
     }
     use rtc_rtp::codec::vp8::Vp8Payloader;
     use rtc_rtp::packetizer::Payloader;
     let bytes = [
-        vec![0, 0, 0, 0x9d, 0x01, 0x2a, 0x80, 0x02, 0x68, 0x01, 0],
+        vec![
+            u8::from(!keyframe),
+            0,
+            0,
+            0x9d,
+            0x01,
+            0x2a,
+            0x80,
+            0x02,
+            0x68,
+            0x01,
+            0,
+        ],
         vec![0x55; 7000],
         frame.to_be_bytes().to_vec(),
     ]

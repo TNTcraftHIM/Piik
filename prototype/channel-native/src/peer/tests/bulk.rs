@@ -161,7 +161,7 @@ pub(super) async fn scenario(window: Window) -> Result<serde_json::Value> {
     }
     let emit = |timestamp| {
         let mut packets = Vec::new();
-        let payloads = video_payloads(&vp8(), 1).unwrap();
+        let payloads = video_payloads(&vp8(), 1, true).unwrap();
         let last = payloads.len() - 1;
         for (part, payload) in payloads.into_iter().enumerate() {
             packets.push(rtp::Packet {

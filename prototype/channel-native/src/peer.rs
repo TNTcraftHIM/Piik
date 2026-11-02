@@ -2641,11 +2641,16 @@ impl Driver {
                                 }
                             }
                         }
-                        // A quiet layer may have sent its first IDR before both
-                        // SRs arrived. Request its first usable independent frame.
+                        // A layer may miss its first keyframe while waiting for SRs
+                        // or after a lost PLI. Retry until it can emit an independent frame.
                         if framed {
                             for (ssrc, layer) in &layers {
-                                if layer.input.is_none() && layer.report.lock().unwrap().is_some() {
+                                if layer
+                                    .input
+                                    .as_ref()
+                                    .is_none_or(|(input, _)| input.waiting_for_keyframe())
+                                    && layer.report.lock().unwrap().is_some()
+                                {
                                     let _ = track.request_keyframe(*ssrc).await;
                                 }
                             }

@@ -1,5 +1,41 @@
 use super::*;
 use support::*;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn video_bootstrap_retries_a_missed_keyframe_request() -> Result<()> {
+    for codec in [h264(), vp8()] {
+        let mut f = Fixture::new(codec).await?;
+        let parent = f.parents[0].pair;
+        f.parents[0].keyframe_after_pli = usize::MAX;
+        let flow = f.plans.last().unwrap().outgoing[0].id;
+        // Continuous deltas cannot announce a video source. Ignore startup PLIs
+        // until the real transport and source clock have had time to settle.
+        f.until(|f| f.frame >= 150).await?;
+        let first_requests = f.plis.get(&parent).copied().unwrap_or_default();
+        ensure!(first_requests > 0, "no initial keyframe request");
+        ensure!(
+            !f.driver.pairs[&f.sink]
+                .outputs
+                .contains_key(&(flow, MediaKind::Video)),
+            "delta-only input unexpectedly became forwardable"
+        );
+        f.parents[0].keyframe_after_pli = first_requests + 1;
+        f.until(|f| {
+            f.driver.pairs[&f.sink]
+                .outputs
+                .contains_key(&(flow, MediaKind::Video))
+        })
+        .await
+        .context("a later PLI recovers the first independent frame")?;
+        let (_, stream) = f.output(flow, MediaKind::Video);
+        f.until(|f| f.observed(&stream, MediaKind::Video).is_some())
+            .await?;
+        ensure!(f.plis[&parent] > first_requests);
+        f.close().await;
+    }
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shadow_flows_preserve_source_clock_and_warm_outputs() -> Result<()> {
     let mut f = Fixture::new(vp8()).await?;
