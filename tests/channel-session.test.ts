@@ -2677,7 +2677,7 @@ test.each([
   } finally { media.reset(); session.close(); }
 });
 
-test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate until quality and presentation are %s", async outcome => {
+test.each(["approved", "warming", "retired"])("a leaf candidate stays separate until quality and presentation are %s", async outcome => {
   const fixture = await screenFixture();
   const { media, session, state, pc, sent, changed } = fixture;
   state.subscriptions = ["screen"];
@@ -2685,17 +2685,18 @@ test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate 
   const oldVideo = remoteTrack("video"), nextVideo = remoteTrack("video");
   const oldAudio = remoteTrack("audio"), nextAudio = remoteTrack("audio");
   const oldStream = remoteStream("incumbent", [oldVideo, oldAudio]), candidate = remoteStream("candidate", [nextVideo, nextAudio]);
-  const quality = (track: MediaStreamTrack, fps: number): RTCStatsReport => new Map([[track.id, {
+  let candidateWidth = outcome === "warming" ? 320 : 640;
+  const quality = (track: MediaStreamTrack, width = 640): RTCStatsReport => new Map([[track.id, {
     id: track.id, type: "inbound-rtp", kind: "video", trackIdentifier: track.id, ssrc: 7,
-    timestamp: Date.now(), bytesReceived: Date.now() * 10, framesDecoded: Math.floor(Date.now() / 1000 * fps),
-    framesPerSecond: fps, frameWidth: 640, frameHeight: 360, packetsReceived: Date.now(), packetsLost: 0,
+    timestamp: Date.now(), bytesReceived: Date.now() * 10, framesDecoded: Math.floor(Date.now() / 100),
+    framesPerSecond: 10, frameWidth: width, frameHeight: width * 9 / 16, packetsReceived: Date.now(), packetsLost: 0,
     freezeCount: 0, totalFreezesDuration: 0, pauseCount: 0, totalPausesDuration: 0,
   }]]) as unknown as RTCStatsReport;
   try {
     pc.receivers = [{ track: oldVideo, getStats: async () => decodedReport(1) } as RTCRtpReceiver];
     await receiveScreen(fixture, oldStream);
     await vi.advanceTimersByTimeAsync(0);
-    pc.getStats.mockImplementation(async () => quality(oldVideo, 10));
+    pc.getStats.mockImplementation(async () => quality(oldVideo));
     state.pairs.push({ id: "candidate-pair", peerId: "x", canReceiveVideoLayers: false, rooms: [], outgoing: [],
       incoming: [{ id: "candidate-flow", publicationId: "screen", selected: false, inputFlowId: null }] });
     media.update("a", state);
@@ -2704,7 +2705,7 @@ test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate 
     media.signal("candidate-pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "candidate" },
       tracks: [{ flowId: "candidate-flow", streamId: candidate.id }] });
     await vi.waitFor(() => expect(next.remoteDescription?.sdp).toBe("candidate"));
-    next.getStats.mockImplementation(async () => quality(nextVideo, outcome === "rejected" ? 5 : 10));
+    next.getStats.mockImplementation(async () => quality(nextVideo, candidateWidth));
     next.ontrack?.({ streams: [candidate] });
     await vi.advanceTimersByTimeAsync(0);
     expect(sent).toContainEqual({ type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "decoded" });
@@ -2719,23 +2720,25 @@ test.each(["approved", "rejected", "retired"])("a leaf candidate stays separate 
       await vi.advanceTimersByTimeAsync(6200);
       expect(sent.some(command => command.type === "flow_state" && command.state === "switch_ready")).toBe(false);
       media.screenPresentation("candidate-flow", candidate, "prepared");
-      if (outcome === "approved") {
-        expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([
-          { type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "switch_ready" },
-        ]);
+      if (outcome === "warming") {
+        expect(sent.some(command => command.type === "flow_state" && command.state === "failed")).toBe(false);
         expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
-        expect(changed.mock.calls.at(-1)![1].get("screen")?.find(value => value.flowId === "candidate-flow")?.switchReady).toBe(true);
-        media.screenPresentation("candidate-flow", candidate, "waiting");
-        state.pairs[0].incoming = [];
-        state.pairs[1].incoming[0].selected = true;
-        media.update("a", state);
-        expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(candidate);
-      } else {
-        expect(sent).toContainEqual({ type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "failed" });
-        expect(changed.mock.calls.at(-1)![1].get("screen")?.some(value => value.flowId === "candidate-flow")).toBe(false);
+        expect(changed.mock.calls.at(-1)![1].get("screen")?.some(value => value.flowId === "candidate-flow")).toBe(true);
+        candidateWidth = 640;
+        await vi.advanceTimersByTimeAsync(8100);
       }
+      expect(sent.filter(command => command.type === "flow_state" && command.state === "switch_ready")).toEqual([
+        { type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "switch_ready" },
+      ]);
+      expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
+      expect(changed.mock.calls.at(-1)![1].get("screen")?.find(value => value.flowId === "candidate-flow")?.switchReady).toBe(true);
+      media.screenPresentation("candidate-flow", candidate, "waiting");
+      state.pairs[0].incoming = [];
+      state.pairs[1].incoming[0].selected = true;
+      media.update("a", state);
+      expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(candidate);
     }
-    if (outcome !== "approved") {
+    if (outcome === "retired") {
       expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
       expect(sent.some(command => command.type === "flow_state" && command.state === "switch_ready")).toBe(false);
     }

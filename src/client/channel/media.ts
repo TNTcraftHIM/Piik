@@ -350,10 +350,7 @@ export class ChannelMedia {
         const result = probe.observe(current.peer.transport.pc.connectionState === "connected" && peer.transport.pc.connectionState === "connected"
           ? incumbent : null, candidate);
         input.qualityApproved = result === "approved";
-        if (result === "rejected") {
-          this.screenPresentation(flowId, input.stream, "failed");
-          return;
-        }
+        // The room deadline owns retirement while the candidate is still adapting.
         this.switchReady(peer, flowId, input);
       } else {
         // Missing observation remains pending under the room's operation deadline.

@@ -343,6 +343,9 @@ connected. Each publication waits on one unproved frontier edge whose parent has
 the source; downstream nodes waiting for that parent are not blamed for missing
 frames. Reconciliation does not extend the current wait. Expiry retires that
 media attempt through the same plan, preserving unrelated flows and base paths.
+Lower candidate quality keeps the change uncommitted under that same deadline;
+it is not evidence that the media path has failed. Transport, track and render
+failure retain their existing immediate retirement paths.
 The room owns the deadline and the domain's existing clock wakes a remote room
 only when it is due; Browser and Native hosting do not add separate routing timers.
 
@@ -567,9 +570,10 @@ Picture startup installs only the missing source-to-viewer suffix on ready room
 paths. Reverse flow may use all three neighbors of an internal base node; the
 small fanout policy for new branches is a topology choice, not device capacity.
 Convergence prepares one alternative branch per publication, including transit.
-Every affected viewer must have decoded its current picture, and its candidate
-must pass the shared quality comparison and supply a prewarmed player frame.
-Pure transit proves forwarding. Selection retains those prepared inputs and
+Viewers with an existing decoded picture keep that input while their candidate
+passes the shared quality comparison and supplies a prewarmed player frame.
+First-picture delivery needs decoded proof; pure transit proves forwarding.
+Selection retains those prepared inputs and
 outputs before retiring the old leases. Source sound, volume, pause and container
 fullscreen follow the player handover; native element fullscreen defers it.
 Preparation and switching share one finite operation. The first viewer's approval
