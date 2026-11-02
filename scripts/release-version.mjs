@@ -17,9 +17,11 @@ export function stableTags(root, ...filter) {
 const nonProductPaths = [
   "site/**", "docs/**", "tests/**", ".agents/**", ".codex/**", ".githooks/**",
   "*.md", ".gitignore", ".env.example", "vitest.config.ts",
-  "cmd/**/*.md", "native/**/*.md", "src/**/*.md",
+  "cmd/**/*.md", "native/**/*.md", "src/**/*.md", "mobile/**/*.md",
   ".github/ISSUE_TEMPLATE/**", ".github/pull_request_template.md",
-  ".github/workflows/website.yml", ".github/workflows/gitee-mirror.yml",
+  ".github/workflows/website.yml", ".github/workflows/atomgit-mirror.yml",
+  // Retired workflow deletions remain outside historical product diffs.
+  ".github/workflows/gitee-mirror.yml",
   "scripts/build-website.mjs", "scripts/update-website-hero.mjs", "scripts/build-film-controls.mjs",
   "scripts/update-guide-images.mjs", "scripts/update-guide-diagrams.tsx",
   "scripts/check-docs.mjs", "scripts/check-container.mjs", "scripts/markdown-slug.mjs", "scripts/check-project-state.*", "scripts/install-hooks.*",

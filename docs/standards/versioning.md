@@ -123,7 +123,7 @@ Desktop App archive names are fixed per target: `piik-app-{target}.zip`. Each pu
 tag owns its archive bytes; the full source SHA remains in `REVISION` and the
 release descriptor. Fixed names allow GitHub's native latest-asset links;
 [website operations](../operations/website.md#preview) owns download presentation
-and verification of the matching Gitee mirror.
+and verification of the matching AtomGit mirror.
 
 Android uses the installable `piik-app-android-universal.apk` for both ARM64 and
 x64. It follows the same release identity, checksum, complete-target and
@@ -134,7 +134,7 @@ Public Release attachments contain the App ZIPs/APK and Server runtime archives
 for the registered package targets. Package descriptors (`.release.json`), file manifests (`.manifest.tsv`)
 and standalone `.sha256` files remain build/deployment inputs in the local output
 and CI artifacts; publishers validate them but do not upload them to GitHub or
-Gitee Releases. The release body includes a collapsed full source SHA and
+AtomGit Releases. The release body includes a collapsed full source SHA and
 SHA-256 listing generated from the verified packages. GitHub's automatic source
 archives are separate from Piik's uploaded packages. Retain original build
 metadata with operator deployment records as described in [deployment](../deployment.md).
@@ -156,15 +156,16 @@ identity separately. Stable update notices ignore prereleases.
 ### Major-Upgrade Guidance
 
 The App update notice keeps direct download as its primary action, with a small
-Gitee mirror link below it. A newer major adds a short, visible breaking-change
-notice linking to the selected provider's exact release page; ordinary updates
+mirror link below it. Published 2.x binaries retain Gitee until their next release;
+the current manual mirror is AtomGit. A newer major adds a short, visible breaking-change
+notice linking to the selected provider's release page; ordinary updates
 do not add a separate release-notes control. The Server logs the same distinction
 while preserving its checker JSON and exit codes. This is release guidance,
 not a replacement for actual wire checks.
-Updates remain a manual action. Release prose stays on GitHub/Gitee; the App
+Updates remain a manual action. Release prose stays on GitHub/AtomGit; the App
 does not fetch or render remote Markdown or add a second changelog store.
 Keep the major warning inline, without a confirmation dialog or mandatory
-website detour. The mirror link opens Gitee releases without depending on the
+website detour. The mirror link opens provider releases without depending on the
 website. API response time does not measure package-download throughput;
 do not add speed probes or automatic
 provider switching to an otherwise valid update check.
@@ -212,7 +213,7 @@ after all required artifacts and checks pass. The publisher verifies matching
 version, source SHA and checksums, then creates/uploads/publishes one GitHub draft.
 When there are no unpublished product changes, CI validates a development build
 and skips packaging and publication; it never assigns an old release version to
-a new source SHA. The separate Website and Gitee mirror workflows follow successful
+a new source SHA. The separate Website and AtomGit mirror workflows follow successful
 main CI independently. Mirror failure must remain visible without blocking GitHub
 publication or Website deployment; retries use the original publishing artifacts.
 Failed draft uploads can resume; published artifacts are never overwritten.
@@ -281,7 +282,7 @@ rewriting main.
 
 The publisher appends generated build identity and package checksums to the
 reviewed text, passes it through a temporary notes file to GitHub, then removes
-that file. Gitee copies the GitHub description. Retrying the same
+that file. AtomGit copies the GitHub description. Retrying the same
 release preserves its reviewed prose; draft retries refresh only the marked
 generated build/checksum section to match the uploaded bytes. Published releases
 remain unchanged. An exact tag does not move
@@ -306,7 +307,7 @@ explanation to one authored line, using plain text inside `**...**` and the
 description. The website reads these same pairs from
 the published Release body and displays the current language; it does not keep
 another copy, interpret arbitrary Markdown or guess a headline from older
-releases. Gitee retains the same body. Do not add a campaign registry or automatic
+releases. AtomGit retains the same body. Do not add a campaign registry or automatic
 version-based inheritance; review any reused headline when preparing the PR.
 
 Then introduce **this update** in each language with one or two factual sentences:
@@ -340,58 +341,38 @@ presentation, not Piik's version selection or feature claims.
 
 ## Release Sources
 
-GitHub Releases is the primary publication; Gitee is an optional official mirror
-for domestic access, with a minimal README pointing development and documentation
-back to GitHub. The Gitee repository need not copy the source tree. Its README/tag
-commit is not the Piik source revision; release metadata retains the original
-GitHub SHA. Build each target once and copy the same archives, notices,
-version, full source SHA and artifact hashes to both. A Git repository mirror
-alone does not synchronize Release attachments. Keep one release description.
-Update detection reads each provider's API metadata; it does not parse the public
-changelog or download build descriptors. The existing pipeline owns local
-machine-readable build metadata.
+GitHub Releases is the primary publication. The public
+[AtomGit project](https://atomgit.com/TNTcraftHIM/Piik) mirrors source branches,
+tags and commits through its configured repository synchronization. Release
+metadata and binary attachments are published separately; Git synchronization
+alone does not make packages available.
 
-The two providers only adapt API fields and download locations into the same
-release model. Share version comparison, channel filtering and package validation.
-The normal background check tries GitHub, then Gitee if the primary is unavailable;
-download links may expose both verified locations. A lagging mirror must not
-cause a downgrade or a version/hash disagreement to be silently accepted.
-Gitee's documented latest endpoint means last updated, so provider normalization
-must select stable release precedence explicitly, not equate provider ordering.
+Build each target once. The mirror publisher reuses the shared artifact validator,
+compares every original package with GitHub's published SHA-256 digest, and copies
+the existing release description plus its original source marker
+(`<!-- piik-source: <full-SHA> -->`). It publishes all original packages,
+including the signed Android APK. Packages are not rebuilt at the mirror.
+Tokens belong only to publishing.
 
-Synchronize only an explicitly published release; branch pushes stay quiet.
-Retrying a failed mirror upload reuses the original package. Advertise a mirrored
-package as available only after its required attachments and matching metadata
-are present. Tokens belong only to publishing, never the distributed Browser/App.
-The public mirror is [TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik).
-The publisher reuses the shared artifact validator, checks every public package
-against GitHub's published asset digest, then uploads and verifies anonymous
-Gitee downloads. Gitee has no draft API: an incomplete mirror remains a preview
-release, and becomes stable only after every file passes. A source marker in
-the release body (`<!-- piik-source: <full-SHA> -->`) preserves the GitHub revision;
-the mirror's `target_commitish` identifies only its own README commit.
-App notices and the operator check share their existing version comparison
-across providers. Each provider has its own deadline; the mirror checks at most
-ten pages of 100 releases and rejects an incomplete listing. An explicit operator
-`--api-url` override checks that endpoint alone. A valid primary result, including
-an up-to-date result, does not consult the mirror.
+Create an AtomGit prerelease, obtain each missing attachment's signed upload
+location, and upload its bytes. Signed locations and callback headers are temporary
+credentials and must not appear in logs. Before marking the release stable,
+anonymously download every package and verify its complete size and SHA-256.
+A rerun inventories the existing release and attachments first; never blindly
+retry a timed-out mutation or replace a published package. An incomplete release
+remains a prerelease. GitHub and website publication remain independent of mirror
+success. No automatic deletion or Gitee-specific quota policy applies to AtomGit.
 
-Gitee currently documents 100 MB per attachment and 1 GB total repository
-attachments for ordinary projects. The mirror rejects files above 100,000,000
-bytes before writing. GitHub retains published history; Gitee retains package
-attachments for the latest stable version and one preceding verified stable
-version. Order by semantic version, not update time; a preview cannot displace
-the fallback. Verify the new mirror completely before retiring older attachments,
-and verify that the fallback's packages remain downloadable and match GitHub.
-Delete only older mirror attachments with verified GitHub originals; retain
-release descriptions and tags. Unknown files or provenance require review.
-Check capacity before upload. Cleanup may reclaim versions outside the two
-retained stable versions; never delete either retained version to make an
-unverified replacement fit. Exhausted storage leaves a pending preview.
-Target authentication, uploads, anonymous metadata/CORS and the complete matching
-Server/three-platform App downloads and SHA-256 checks passed for the public release.
-Use API metadata in the Browser; ordinary asset-link redirects are not guaranteed
-to permit cross-origin fetch, even when a normal download works.
+GitHub remains the first update source; the current Rust App and Server use
+AtomGit when it is unavailable. Published 2.x binaries retain their embedded
+Gitee fallback until a subsequent software release changes that consumer. The
+website and current download guides use AtomGit. Update consumers must normalize
+provider fields into the existing release model, retain source provenance and
+semantic version comparison, and reject incomplete listings.
+They must not treat provider update ordering as stable version precedence. A valid
+primary result, including an up-to-date result, does not consult a fallback.
+Use anonymous API metadata in the Browser; a normal attachment download does not
+establish cross-origin fetch support.
 
 ## Public Release Baseline
 
@@ -419,7 +400,7 @@ limits stay in [verification status](../verification-status.md).
 - Apple's [bundle build version](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleversion)
   and [release version](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleshortversionstring)
   are numeric; package generation derives both from the release and keeps SHA separately.
-- [GitHub Releases API](https://docs.github.com/en/rest/releases/releases) and
-  [Gitee's official API SDK reference](https://gitee.com/sdk/gitee5j/blob/main/docs/RepositoriesApi.md):
-  provider endpoints and metadata. [Gitee Release documentation](https://help.gitee.com/repository/release/intro)
-  owns its current attachment limits. Provider checks were made on 2026-09-12.
+- [GitHub Releases API](https://docs.github.com/en/rest/releases/releases),
+  [AtomGit API](https://docs.atomgit.com/docs/apis/) and
+  [AtomGit Release uploads](https://atomgit-api-doc.atomgit.com/14.release/219.get_the_upload_address_of_the_release_attachment.html)
+  own provider endpoints, authentication and attachment upload contracts.

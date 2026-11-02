@@ -144,7 +144,8 @@ the same pair and artifact hashes. The [version policy](./standards/versioning.m
 owns ordering and first-public-release readiness.
 
 The default App launcher starts immediately, then checks GitHub Releases in the
-background, falling back to the Gitee mirror if GitHub is unavailable. The
+background. Published binaries still fall back to Gitee if GitHub is unavailable;
+current manual downloads use AtomGit. The
 [release-source policy](./standards/versioning.md#release-sources) owns selection
 and provenance checks. It shows a link only when
 the latest stable release is newer, the same version has a known different source

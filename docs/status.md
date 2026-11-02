@@ -170,7 +170,7 @@ identity and postflight evidence. `piik.tv` runs on GitHub Pages behind
 Cloudflare; website delivery includes a bilingual documentation center built
 from repository guides.
 
-GitHub owns original Server and App packages; Gitee mirrors them without
+GitHub owns original Server and App packages; AtomGit mirrors them without
 rebuilding and verifies anonymous downloads against their checksums. Server
 packages cover Linux x64/ARM64 and Windows x64; Docker images are Linux-only.
 App packages cover Windows x64 and macOS/Linux x64/ARM64.

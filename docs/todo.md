@@ -28,11 +28,11 @@ own behavior; research and Git/PRs own evidence and completed history.
   report concerns missing source thumbnails. The maintenance branch implements
   the macOS helper's missing preview entry. Verify its build and thumbnails on macOS.
 - [ ] **Mouse input stops when Host Chrome is minimized (#502).** The
-  [v2.5.1 follow-up](https://github.com/TNTcraftHIM/Piik/issues/502#issuecomment-6552858370)
-  retains the grant, but mouse movement and clicks stop until Chrome is restored.
-  The maintenance candidate adds aggregate input-stage and sink-API counts.
-  Use the original host's failure/restoration reports to locate the interruption;
-  the local controlled Chrome trial did not reproduce that trigger.
+  [supplied v2.5.2 reports](https://github.com/TNTcraftHIM/Piik/issues/502)
+  retain the grant and receive authorized mouse events, but Windows `SendInput`
+  rejects a button event and subsequent release attempts. Identify that OS
+  refusal trigger and verify held-button recovery; the local controlled Chrome
+  trial did not reproduce it.
 - [ ] **2.x: return LiveKit to an upstream pin.** Follow
   [upstream #5016](https://github.com/livekit/livekit/pull/5016). Once upstream
   supplies the allocator input Piik needs, verify recovery and remove the
@@ -105,8 +105,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   reports first-launch blocking; the troubleshooting guide provides a scoped
   opening procedure, not a signing fix. Verify downloaded bundles on a Mac when
   signing becomes available.
-- **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
-  and retain Gitee; do not add a self-hosted mirror. Reopen for new provider evidence.
 - **Automatic local chat history.** Manual TXT export already exists. Automatic
   storage needs a stable room-incarnation identity, bounded retention and deletion;
   reusable room codes must not combine conversations.

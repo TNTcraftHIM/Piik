@@ -34,7 +34,8 @@ service. To supply capture to an existing site, leave the launcher open and
 App remembers the last confirmed room mode. On first use, **Public invite** is
 selected and waits for confirmation. A starred site opens on startup instead.
 
-The launcher checks releases through GitHub, with Gitee as an alternative.
+The launcher checks releases through GitHub. Published binaries retain their
+Gitee fallback; use AtomGit for current manual mirror downloads.
 Its update button downloads your platform's ZIP, or opens Releases if no package
 matches. **Release notes** opens the changes; major upgrades show a warning.
 Follow the [upgrade steps](#upgrading) to replace App.
@@ -129,14 +130,14 @@ Different 2.x versions preserve established sharing and viewing. New features
 require support from the relevant App and site.
 
 1. Read the release notes on [GitHub](https://github.com/TNTcraftHIM/Piik/releases/latest)
-   or [Gitee](https://gitee.com/TNTcraftHIM/Piik/releases).
+   or [AtomGit](https://atomgit.com/TNTcraftHIM/Piik/releases).
 2. For Local room or Public invite, stop sharing, close App and extract the
    complete new package. Start it and send a fresh invitation.
 3. For a group's site, the administrator [updates Server](../../docs/operations/service-management.md)
    first. Then update connected Apps and refresh all sharing/viewing pages.
 
-The launcher update button downloads the package; **Gitee mirror** is an
-alternative source. Restarting App or Server interrupts active shares.
+The launcher update button downloads the package; the
+[AtomGit mirror](https://atomgit.com/TNTcraftHIM/Piik/releases) is an alternative source. Restarting App or Server interrupts active shares.
 
 ## Terminal And Shutdown
 

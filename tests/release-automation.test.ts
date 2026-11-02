@@ -176,12 +176,15 @@ describe("release automation", () => {
         "scripts/browser-gate-harness.ts", "scripts/browser-local-pool-probe.ts",
         "scripts/network-lab/network.ts", "scripts/network-lab/udp.ts", "scripts/network-lab/packets.ts",
         "tests/room.test.ts", ".agents/skills/ponytail/SKILL.md", ".github/workflows/website.yml",
-        ".github/workflows/gitee-mirror.yml", "scripts/release-mirror-source.mjs"]) {
+        ".github/workflows/atomgit-mirror.yml", ".github/workflows/gitee-mirror.yml", "mobile/README.md", "scripts/release-mirror-source.mjs"]) {
         mkdirSync(dirname(join(root, path)), { recursive: true });
         writeFileSync(join(root, path), "Peripheral content");
       }
       git("add", ".");
       git("commit", "-m", "feat(site)!: redesign the website\n\nBREAKING CHANGE: website layout only");
+      expect(plan()).toMatchObject({ version: "development", publish: false });
+      git("rm", ".github/workflows/gitee-mirror.yml");
+      git("commit", "-m", "chore(mirror): remove retired workflow");
       expect(plan()).toMatchObject({ version: "development", publish: false });
       commit("fix: repair playback\n\nExample text:\nfeat: is not this commit's type");
       expect(plan().version).toBe("v1.0.1");

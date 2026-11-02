@@ -4,7 +4,7 @@
 <p align="center">
   <a href="https://piik.tv/?lang=zh-CN">官网</a> ·
   <a href="https://github.com/TNTcraftHIM/Piik/releases">下载</a> ·
-  <a href="https://gitee.com/TNTcraftHIM/Piik/releases">Gitee 镜像</a> ·
+  <a href="https://atomgit.com/TNTcraftHIM/Piik/releases">AtomGit 镜像</a> ·
   <a href="https://demo.piik.tv">在线版</a> ·
   <a href="https://piik.tv/docs/zh/">文档中心</a>
 </p>

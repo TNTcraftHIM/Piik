@@ -88,75 +88,55 @@ the Docker download. Keep repository Actions access enabled for later releases.
 Image checks, version identity and retries follow
 [container distribution](../standards/versioning.md#container-distribution).
 
-## Gitee Download Mirror
+## AtomGit Download Mirror
 
-[TNTcraftHIM/Piik](https://gitee.com/TNTcraftHIM/Piik) is a public README/Release
-mirror. Source, documentation and issues stay on GitHub. The **Gitee mirror**
-workflow uses the repository Actions secret `GITEE_TOKEN`, which is configured; rotate it there
-when needed. Never put it in source, a remote URL or a distributed package.
-GitHub publication continues to use the workflow's scoped token.
+[AtomGit TNTcraftHIM/Piik](https://atomgit.com/TNTcraftHIM/Piik) is the public
+source and Release mirror. GitHub owns development, issues and original packages.
+AtomGit's configured repository synchronization handles branches, tags and commits;
+the **AtomGit mirror** GitHub workflow separately copies published binary assets.
+Its repository Actions secret is `ATOMGIT_TOKEN`. Never put this token in source,
+a remote URL or a distributed package. GitHub publication keeps its scoped token.
 
-After a successful main-push CI run, **Gitee mirror** downloads that run's original
-artifacts and runs `scripts/mirror-release.mjs`. It skips runs that did not publish
-the current GitHub release. GitHub publication and **Website** do not depend on
-mirror success. A mirror failure stays visible in its own failed workflow; an
-unfinished Gitee release remains a preview.
+After a successful main-push CI run, the workflow downloads that run's complete
+original Server and App artifacts and invokes `scripts/mirror-release.mjs`.
+It skips runs that did not publish the current GitHub release. GitHub publication
+and **Website** do not depend on mirror success. An unfinished mirror remains a
+prerelease until every package passes anonymous full-download SHA-256 validation.
+This includes the original signed Android APK without rebuilding it.
 
-Rerun **Gitee mirror** to verify existing files and upload only missing ones.
-Read retries cover the complete JSON or attachment body, not just response
-headers. A partial attachment is discarded and its checksum starts again on
-the next bounded attempt. Uploads and other mutations are not blindly retried
-after an ambiguous timeout; rerunning inventories existing attachments first.
-Operation and package progress identify which transfer failed without recording
-tokens. A successful retry does not by itself identify the earlier network cause.
-For a separate retry, dispatch it on `main` with the **original CI run ID**:
+For recovery, rerun **AtomGit mirror** with the original publishing CI run ID:
 
 ```sh
-gh workflow run gitee-mirror.yml --repo TNTcraftHIM/Piik --ref main -f run_id=RUN_ID
+gh workflow run atomgit-mirror.yml --repo TNTcraftHIM/Piik --ref main -f run_id=RUN_ID
 ```
 
-The source must be a completed main-push run of this repository's CI workflow,
-matching the latest published GitHub release. Manual recovery also accepts a
-legacy CI run that failed after GitHub publication. The workflow executes trusted
-main tooling and treats downloaded artifacts only as data. Old retries cannot
-complete a mirror for a superseded release. Both publishers reject changing a
-published package; use a corrected new version if its bytes are wrong.
+The source must be a completed main-push CI run matching the latest published
+GitHub release. The workflow runs trusted main tooling and treats artifacts only
+as data. A superseded release cannot complete a new mirror. Both publishers reject
+changing published bytes; a corrected package needs a corrected new version.
 
-For a local retry, first let any active mirror workflow finish. Use the release
-revision's scripts and original complete build output retained outside the
-checkout. Earlier versions can have a different
-package set. While the publishing run's artifacts are available, download all packages
-into one directory (replace `RUN_ID`, `FULL_SOURCE_SHA` and `VERSION`):
+For a local retry, let any active workflow finish and recover the complete original
+build output, including descriptors, manifests and checksum sidecars, in one fresh
+directory. Use `gh run download` for each `piik-server*` and `piik-app-*` artifact
+from that publishing run, or use the retained operator output after CI expiry.
+Public Release archives alone do not include all validation sidecars. Never rebuild
+a published version to recover metadata. See [artifact retention](../deployment.md#build-host).
 
 ```sh
-for artifact in piik-server piik-server-linux-arm64 piik-server-windows-amd64 piik-app-windows-amd64 piik-app-linux-amd64 piik-app-linux-arm64 piik-app-darwin-arm64 piik-app-darwin-amd64 piik-app-android-universal; do
-  gh run download RUN_ID --repo TNTcraftHIM/Piik \
-    --name "$artifact-FULL_SOURCE_SHA" --dir /tmp/piik-mirror
-done
-node scripts/mirror-release.mjs /tmp/piik-mirror VERSION FULL_SOURCE_SHA
+node scripts/mirror-release.mjs /path/to/original-artifacts VERSION FULL_SOURCE_SHA --dry-run
+node scripts/mirror-release.mjs /path/to/original-artifacts VERSION FULL_SOURCE_SHA
 ```
 
-Use a fresh directory. Public Release downloads contain only runtime archives;
-mirror verification also needs the original descriptors, manifest and checksum
-files. If CI artifacts have expired, recover that complete output from the
-operator's retained copy. Rebuilding a published version is not a metadata
-recovery procedure. See [artifact retention](../deployment.md#build-host).
+Supply `ATOMGIT_TOKEN` only through the publisher environment. Reads retry within
+a bounded deadline, including complete response bodies. Mutations are not blindly
+retried: rerunning inventories existing files before uploading missing ones. Signed
+upload URLs and callback headers are credentials and are never logged. A failed
+upload leaves a visible failed workflow and pending prerelease.
 
-Use the release's actual version and full `target_commitish` SHA, with
-`GITEE_TOKEN` supplied through the publisher environment. `--dry-run` after the
-three arguments checks local identity, checksums and attachment sizes without
-publishing. The [release-source policy](../standards/versioning.md#release-sources)
-owns provenance, selection and quota limits. The first public release passed
-complete matching mirror download acceptance for every Server and App package.
-
-Release postflight applies the [two-version mirror retention policy](../standards/versioning.md#release-sources).
-After verifying the latest mirror and its fallback against GitHub, inventory
-older releases with `/releases/{id}/attach_files`, verify their GitHub originals,
-then remove only the reviewed attachments through
-`DELETE /releases/{id}/attach_files/{attachment_id}`. Recheck both retained
-versions and the anonymous `download/latest` links afterward. Keep deletion
-inventories and verification results with operator release records, not source
-history. The upload script does not itself delete older attachments.
+No automatic attachment cleanup runs. Do not apply Gitee's former size/quota or
+retention rules to AtomGit. This migration does not delete the old Gitee repository
+or its packages. Already published software keeps its embedded old fallback until
+a later software release replaces it.
 
 ## Platform References
 
