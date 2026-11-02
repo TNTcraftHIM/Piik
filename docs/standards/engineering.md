@@ -223,7 +223,7 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   actions must not block lifecycle handling, and repeated attempts stay bounded.
 - Keep decisions separate from effects. Respect documented lock ordering and
   revalidate after unlocked work. Local native capability never grants room
-  authority; the shared Go service remains authoritative.
+  authority; the shared core retains that responsibility.
   Injected callbacks still execute in their caller's context. Synchronous
   authority hooks must not hide blocking I/O or release the caller's lock;
   schedule slow work at an explicit, owned effect boundary.
