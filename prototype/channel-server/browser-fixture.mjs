@@ -244,6 +244,34 @@ function captureProbe(name) {
         return report && { id: report.id, frames: report.framesDecoded, timestamp: report.timestamp,
           width: report.frameWidth, height: report.frameHeight };
       },
+      async sourceStats(publicationId) {
+        const rows = [];
+        for (const pair of window.__channelGate.snapshot().state.pairs) {
+          for (const flow of pair.outgoing.filter(flow => flow.publicationId === publicationId)) {
+            const streamId = flowStreams.get(flow.id);
+            for (const output of senders.filter(output => output.pc.connectionState === 'connected'
+              && output.streams.includes(streamId) && output.sender.track?.kind === 'video')) {
+              const scoped = await output.sender.getStats(), all = await output.pc.getStats();
+              for (const scopedReport of scoped.values()) {
+                if (scopedReport.type !== 'outbound-rtp' || scopedReport.kind !== 'video') continue;
+                const report = all.get(scopedReport.id);
+                if (!report) continue;
+                const transport = all.get(report.transportId);
+                const selectedPair = all.get(transport?.selectedCandidatePairId);
+                rows.push({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId, selected: flow.selected,
+                  senderId: output.id, statsId: report.id, timestamp: report.timestamp,
+                  rid: report.rid ?? null, framesEncoded: report.framesEncoded ?? null,
+                  frameWidth: report.frameWidth ?? null, frameHeight: report.frameHeight ?? null,
+                  bytesSent: report.bytesSent ?? null, qualityLimitationReason: report.qualityLimitationReason ?? null,
+                  encoderImplementation: report.encoderImplementation ?? null,
+                  keyFramesEncoded: report.keyFramesEncoded ?? null, pliCount: report.pliCount ?? null,
+                  nackCount: report.nackCount ?? null, availableOutgoingBitrate: selectedPair?.availableOutgoingBitrate ?? null });
+              }
+            }
+          }
+        }
+        return { sourceCollectedTime: Date.now(), rows };
+      },
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
       async limitVideo(publicationId, peerId, maxFramerate, scaleResolutionDownBy) {

@@ -28,6 +28,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     `prototype/channel-server/target/debug/piik-channel-app${process.platform === "win32" ? ".exe" : ""}`);
   const url = `${origin}/__channel-preview?piik-client-port=${port}#piik-client=1`;
   let app, otherServer, otherWeb, approvalTab, personalTab, log = "";
+  const sourceLayers = [];
   const start = () => {
     log = "";
     app = spawn(executable, [], { env: { ...process.env,
@@ -215,12 +216,20 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     for (const index of [0, 1, 2, 3]) await evaluate(index, "window.__channelProbe.clearProtocol()");
     for (const index of viewers) await evaluate(index, "window.__channelProbe.observeQuality()");
     await action(1, "activateApp()"); await appReady(1);
+    const lastQualityTimes = new Map();
     await until("Native assists both viewers without Browser WAN forwarding", async () => {
       const [source, assisted, downstream] = await Promise.all([sourceIndex, ...viewers].map(view));
+      const qualitySamples = [];
       for (const index of viewers) {
         const screen = await evaluate(index, `window.__channelProbe.screen(${JSON.stringify(helperPicture)})`);
+        for (const sample of screen.qualitySamples.filter(sample => sample.time > (lastQualityTimes.get(index) ?? 0))) {
+          qualitySamples.push({ index, qualitySampleTime: sample.time, result: sample.result });
+          lastQualityTimes.set(index, sample.time);
+        }
         assert(screen.inputs.some(input => input.selected && input.frames > 0), "handover retains a decoded selected picture");
       }
+      if (qualitySamples.length) sourceLayers.push({ qualitySamples,
+        ...await evaluate(sourceIndex, `window.__channelProbe.sourceStats(${JSON.stringify(helperPicture)})`) });
       return { source, assisted, downstream };
     }, ({ source, assisted, downstream }) => source.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "outgoing"))
       && [assisted, downstream].every(value => value.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")))
@@ -393,6 +402,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       if (key) log = log.replaceAll(key, "[test key]");
     }
     await writeFile(join(output, "app-runtime.log"), log);
+    await writeFile(join(output, "app-helper-source-layers.json"), JSON.stringify(sourceLayers, null, 2));
     if (relative(tmpdir(), directory).startsWith("..") || !basename(directory).startsWith("piik-app-room-check-")) throw new Error("Unexpected App acceptance directory");
     await rm(directory, { recursive: true, force: true });
   }
