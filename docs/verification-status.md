@@ -80,6 +80,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   retains the App connection without late retired-path errors.
   Android receiver controls also carry VP8 and source sound through the Native
   room operator; an unsuccessful background direct trial preserves that path.
+  A separate Chromium control forwards a received VP8 track through the shared
+  Browser transport and encoding pool to a desktop receiver. The room supplies
+  that VP8 input through a desktop Browser relay after Native H264 capture.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture; [TODO](./todo.md#now) owns the relay repair.
