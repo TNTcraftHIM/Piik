@@ -71,7 +71,7 @@ void CheckQuietCaptureRefresh() {
   latest.capture_timestamp = latest.timestamp;
   const auto previous = latest.timestamp;
   const auto before = static_cast<UINT64>(MFGetSystemTime());
-  const auto refreshed = RefreshCaptureInput(latest);
+  const auto refreshed = RefreshCaptureInput(latest, previous);
   const auto after = static_cast<UINT64>(MFGetSystemTime());
   assert(refreshed->timestamp >= before && refreshed->timestamp <= after);
   assert(refreshed->timestamp - previous >= 50'000'000);
@@ -81,6 +81,17 @@ void CheckQuietCaptureRefresh() {
          refreshed->presentation.cx == latest.presentation.cx &&
          refreshed->presentation.cy == latest.presentation.cy &&
          refreshed->color_space == latest.color_space && refreshed->texture.Get() == latest.texture.Get());
+  // A delayed real frame can advance presentation beyond the current QPC time.
+  CaptureInput ahead = latest;
+  ahead.timestamp = after + 10'000'000;
+  const auto after_ahead = RefreshCaptureInput(latest, ahead.timestamp);
+  assert(after_ahead->timestamp > ahead.timestamp);
+  assert((after_ahead->timestamp - ahead.timestamp) * 90'000 >= 10'000'000);
+  const auto repeated = RefreshCaptureInput(latest, after_ahead->timestamp);
+  assert(repeated->timestamp > after_ahead->timestamp);
+  assert((repeated->timestamp - after_ahead->timestamp) * 90'000 >= 10'000'000);
+  assert(repeated->capture_timestamp == latest.capture_timestamp);
+  assert(latest.timestamp == previous);
   // The compositor changed the picture just before the refresh, but its frame
   // callback arrives afterwards. It is new capture input, not a stale still.
   const auto delayed_capture = before - 1;
@@ -150,14 +161,16 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
   input->presentation = {64, 64};
   input->timestamp = static_cast<UINT64>(MFGetSystemTime());
   input->capture_timestamp = input->timestamp;
+  UINT64 previous_timestamp = 0;
   auto submit = [&](std::shared_ptr<const CaptureInput> next) {
     for (auto& worker : workers) worker->Submit(next);
+    previous_timestamp = next->timestamp;
   };
   const auto deadline = EncoderClock::now() + std::chrono::seconds(3);
   auto wait = [&](auto done) {
     while (!done()) {
       assert(EncoderClock::now() < deadline);
-      if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+      if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
       std::this_thread::sleep_for(std::chrono::milliseconds(34));
     }
   };
@@ -172,20 +185,20 @@ void CheckRetainedContentAtAdaptedCadence(ID3D11Device* device) {
   submit(input);
   wait([&] { return changed[0] > 0 && changed[1] > 0; });
   // One rendition's drop must not reopen the other rendition's delivered content.
-  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   assert(!refresh.load());
   const auto before = keys[0].load();
   workers[0]->RequestKeyFrame();
-  submit(RefreshCaptureInput(*input));
+  submit(RefreshCaptureInput(*input, previous_timestamp));
   wait([&] { return keys[0] > before; });
-  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   assert(!refresh.load());
   workers[0]->SetBitrate(profile.bit_rate);
-  submit(RefreshCaptureInput(*input));
+  submit(RefreshCaptureInput(*input, previous_timestamp));
   wait([&] { return published_bitrate[0] == profile.bit_rate; });
-  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input));
+  if (refresh.exchange(false)) submit(RefreshCaptureInput(*input, previous_timestamp));
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
   assert(!refresh.load());
   for (auto& worker : workers) worker->Stop();

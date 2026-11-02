@@ -1541,11 +1541,18 @@ struct CaptureInput final {
   UINT64 capture_timestamp = 0;
 };
 
-std::shared_ptr<const CaptureInput> RefreshCaptureInput(const CaptureInput& latest) {
+UINT64 NextPresentationTimestamp(UINT64 candidate, UINT64 previous) {
+  constexpr UINT64 rtp_tick_100ns = (10'000'000 + 90'000 - 1) / 90'000;
+  return std::max(candidate, previous + rtp_tick_100ns);
+}
+
+std::shared_ptr<const CaptureInput> RefreshCaptureInput(
+    const CaptureInput& latest, UINT64 previous_presentation) {
   auto input = std::make_shared<CaptureInput>(latest);
   // WGC SystemRelativeTime and MFGetSystemTime share the 100 ns QPC clock.
-  // A requested still frame is presented now, including after a quiet gap.
-  input->timestamp = static_cast<UINT64>(MFGetSystemTime());
+  // Delayed capture can already have advanced presentation beyond the clock.
+  input->timestamp = NextPresentationTimestamp(
+      static_cast<UINT64>(MFGetSystemTime()), previous_presentation);
   return input;
 }
 
@@ -1555,8 +1562,7 @@ std::optional<UINT64> CapturePresentationTimestamp(
   if (captured <= previous_capture || captured < minimum_capture) return std::nullopt;
   // A real frame can have been captured before a requested still was presented.
   // Retain its new pixels and keep separate access units at least one RTP tick apart.
-  constexpr UINT64 rtp_tick_100ns = (10'000'000 + 90'000 - 1) / 90'000;
-  return std::max(captured, previous_presentation + rtp_tick_100ns);
+  return NextPresentationTimestamp(captured, previous_presentation);
 }
 
 class OutputWorker final {
@@ -2196,7 +2202,7 @@ void RunVideoCapture(ProductArguments arguments) {
       if (wait == WAIT_TIMEOUT) {
         // An explicit output/control request may reuse a quiet source; silence is not EOF.
         if (refresh_input && latest_input) {
-          submit(RefreshCaptureInput(*latest_input));
+          submit(RefreshCaptureInput(*latest_input, previous_timestamp));
         }
         continue;
       }
