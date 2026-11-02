@@ -206,7 +206,7 @@ impl Encodings {
     /// select their supplied feed; only Limited demands allocate an encoder.
     /// Only real demand changes call this method. Adoption merely retires unused
     /// entries, so an allocation failure cannot spin into automatic retries.
-    pub fn reconcile(
+    pub async fn reconcile(
         &mut self,
         next: &[VideoDemand],
         external: Option<&Arc<Input>>,
@@ -256,6 +256,7 @@ impl Encodings {
                     }
                 }
             } else {
+                failed.extend(self.join_retired().await);
                 let video = Video::new(self.time.clone(), self.changed.clone());
                 let requests = video.requests();
                 if !select(demand, &video, true) {
@@ -280,6 +281,22 @@ impl Encodings {
             }
         }
         self.retire_unused();
+        failed
+    }
+    async fn join_retired(&mut self) -> Vec<Video> {
+        self.retire_unused();
+        let mut failed = Vec::new();
+        // Each Entry owns one pump; extra pumps still own retiring encoders.
+        while self.pumps.len()
+            > usize::from(self.baseline.is_some())
+                + usize::from(self.supplied.is_some())
+                + self.limited.len()
+        {
+            let (video, result) = self.pumps.next().await.unwrap();
+            if self.retired_or_failed(&video, result) {
+                failed.push(video);
+            }
+        }
         failed
     }
     pub fn retired_or_failed(&mut self, video: &Video, result: Result<()>) -> bool {
@@ -402,6 +419,49 @@ mod tests {
     use crate::EncodedFrame;
     use rtc_shared::time::SystemInstant;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn limited_allocation_follows_retirement_and_current_reader() -> Result<()> {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        use tokio::sync::oneshot;
+
+        for close_reader in [false, true] {
+            let epoch = Instant::now();
+            let time = SourceTime::local(epoch, SystemInstant::now(epoch));
+            let changed = Arc::new(Notify::new());
+            let mut encodings = Encodings::new(time.clone(), changed.clone(), VideoCodec::Vp8);
+            let retired = Video::new(time.clone(), changed.clone());
+            let (release, joined) = oneshot::channel();
+            encodings.pumps.push(Box::pin(async move {
+                joined.await.unwrap();
+                (retired, Ok(()))
+            }));
+            let input = Input::new(time.clone(), changed.clone());
+            let demands = [VideoDemand {
+                output: Uuid::new_v4(),
+                rid: String::new(),
+                input: Arc::downgrade(&input),
+                encoding: EncodingDemand::Limited(200_000),
+                source: None,
+            }];
+            let allocated = Arc::new(AtomicBool::new(false));
+            let called = allocated.clone();
+            let mut reconcile = Box::pin(encodings.reconcile(&demands, None, move |_| {
+                called.store(true, Ordering::SeqCst);
+                Err(anyhow::anyhow!("test allocation boundary"))
+            }));
+            assert!(futures_util::poll!(reconcile.as_mut()).is_pending());
+            assert!(!allocated.load(Ordering::SeqCst));
+            if close_reader {
+                input.close();
+            }
+            release.send(()).unwrap();
+            let failed = reconcile.await;
+            assert_eq!(allocated.load(Ordering::SeqCst), !close_reader);
+            assert_eq!(failed.len(), usize::from(!close_reader));
+        }
+        Ok(())
+    }
 
     #[tokio::test]
     async fn layered_h264_demands_forward_or_derive_per_reader_with_one_grant() -> Result<()> {

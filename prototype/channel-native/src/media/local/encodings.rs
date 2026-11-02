@@ -250,7 +250,7 @@ pub(super) async fn run(
                     control.video_settings.send_replace(settings);
                     let failed = encodings.reconcile(&next, None, |bitrate| {
                         capture.encode(Settings { bitrate, ..settings }, codec)
-                    });
+                    }).await;
                     frames.write(prepared.first);
                     bandwidth_changed.notify_one();
                     for video in failed {
@@ -263,7 +263,7 @@ pub(super) async fn run(
                     let next = demands.borrow_and_update().clone();
                     let failed = encodings.reconcile(&next, None, |bitrate| {
                         capture.encode(Settings { bitrate, ..settings }, codec)
-                    });
+                    }).await;
                     for video in failed {
                         report_failure(&events, &control.video, publication_id, source_id, video, layers.as_ref()).await?;
                     }

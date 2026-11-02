@@ -181,6 +181,7 @@ async fn apply(decoding: &mut Decoding, next: &[VideoDemand], baseline: &Video) 
                 decoding.codec,
             )
         })
+        .await
 }
 // Without an encoder owner, fail only Inputs requiring a derived encoding;
 // the original feed remains usable.
