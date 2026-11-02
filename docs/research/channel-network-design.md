@@ -266,6 +266,30 @@ The source and viewers determine a screen plan, while the room owner manages
 the plan's lifecycle. Different publications can reuse a physical pair. Stopping
 one publication removes its work, not an unrelated call, file transfer or base link.
 
+### App-Assisted Viewing
+
+A Browser may attach its currently approved App's live endpoint to its own
+screen subscription. The existing App hosting description supplies that endpoint;
+do not infer it from a same-user participant list. The room validates that the
+helper is an admitted endpoint of the same user with room access. The Browser
+remains the real viewer and supplies decoded and presentation proof; the App
+receives and forwards without adding a fictitious watch or reading activity.
+
+For that publication, the Browser becomes a presentation leaf. Replacing
+`parent → Browser → children` with `parent → App → {Browser, children}` uses the
+same prepared branch operation, retaining old playback until affected viewers
+prove the replacement. The exact App-to-Browser presentation edge does not
+consume WAN fanout; its PeerConnection, media output and overlap resources still
+use normal admission. Same-user endpoints alone do not qualify for this exception.
+Native capture preview follows this same presentation-edge rule.
+
+The association belongs to the Browser's live watch. Unwatch, access removal or
+session expiry removes it. Losing App control clears the helper while retaining
+ordinary viewing when domain signaling is writable; otherwise the existing
+authority-recovery window applies. Necessary transit for other viewers and App
+room hosting retain their own lifetimes. Failed assistance keeps healthy playback
+and uses the existing candidate-failure memory, rather than a second retry loop.
+
 ### Start On Existing Paths, Then Converge
 
 The room tree's root owns coordination. Its edges are bidirectional, so projecting
