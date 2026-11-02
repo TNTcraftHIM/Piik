@@ -24,7 +24,7 @@ explicit [Native participant](../prototype/channel-native/README.md) operates
 SQLite-backed rooms and forwards encoded Opus and file ranges on the same base paths.
 Its media adapter also forwards VP8/H264 with source audio and preserves their
 shared source clock. Capture-enabled Apps derive constrained received-video
-outputs through one shared decoder. Released str0m owns transport, congestion
+outputs through one shared decoder. Upstream str0m owns transport, congestion
 control, pacing and retransmission; Piik owns complete frames, shared encoding
 demand and source clocks.
 Chat and history use authenticated requests and room-owner confirmations on

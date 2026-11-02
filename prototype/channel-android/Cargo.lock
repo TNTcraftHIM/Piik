@@ -805,9 +805,9 @@ dependencies = [
 
 [[package]]
 name = "dimpl"
-version = "0.7.6"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0e769119713c7cf11efb6dd594258095c4a5959fa2bb8d4a7f89978efbd0c08b"
+checksum = "df69b372e2de9011f8c22a58d1b5f5afa1752041bc5c0ae6b8a126aadaea5ed2"
 dependencies = [
  "aes",
  "aes-gcm",
@@ -1893,8 +1893,7 @@ dependencies = [
 [[package]]
 name = "is"
 version = "0.11.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6edbbdc611843e8c65878ee735f68c495cede11ae5a9582b17fe0369c456ef5"
+source = "git+https://github.com/algesten/str0m?rev=0edd131226e679c6fc05ec112fb5bea5d6b97fcb#0edd131226e679c6fc05ec112fb5bea5d6b97fcb"
 dependencies = [
  "crc",
  "serde",
@@ -3890,8 +3889,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.24.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e80c4a4ef148e4a9fd15b9525c7f376d97e86729f19880b591ad220f1288c0f"
+source = "git+https://github.com/algesten/str0m?rev=0edd131226e679c6fc05ec112fb5bea5d6b97fcb#0edd131226e679c6fc05ec112fb5bea5d6b97fcb"
 dependencies = [
  "arrayvec",
  "base64ct",
@@ -3911,8 +3909,7 @@ dependencies = [
 [[package]]
 name = "str0m-proto"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8f3d99f2cf6c76a502e45feb896ea71e54787ede8744bcdb215acfbfcb905dd"
+source = "git+https://github.com/algesten/str0m?rev=0edd131226e679c6fc05ec112fb5bea5d6b97fcb#0edd131226e679c6fc05ec112fb5bea5d6b97fcb"
 dependencies = [
  "base64ct",
  "dimpl",
@@ -3925,8 +3922,7 @@ dependencies = [
 [[package]]
 name = "str0m-rust-crypto"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "947c2417bf43e47504911f92f47c22b6125a57d162e1661f1c77b78ebb3aa9d3"
+source = "git+https://github.com/algesten/str0m?rev=0edd131226e679c6fc05ec112fb5bea5d6b97fcb#0edd131226e679c6fc05ec112fb5bea5d6b97fcb"
 dependencies = [
  "aes",
  "aes-gcm",

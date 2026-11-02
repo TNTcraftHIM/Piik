@@ -186,7 +186,14 @@ label. When an upstream release includes the repair, return both direct entries
 to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 
-Native uses released str0m 0.24.1 through its public RTP/Sans-I/O interface.
+Native uses str0m's public RTP/Sans-I/O interface, pinned to the official merged
+[commit `0edd1312`](https://github.com/algesten/str0m/commit/0edd131226e679c6fc05ec112fb5bea5d6b97fcb).
+Released 0.24.1 omits authentic early simulcast RTX padding from TWCC feedback
+before the main SSRC is known. This pin includes the upstream
+[receipt-accounting repair](https://github.com/algesten/str0m/pull/1086) and
+[TWCC timestamp precision repair](https://github.com/algesten/str0m/pull/1071),
+without a private RTC fork. Return to a release containing these repairs and
+regenerate the Native, Server and Android locks when one is available.
 The SDK owns ICE, DTLS/SRTP, SCTP, pacing, retransmission and congestion control.
 Piik owns source clocks, shared encodings, output demand and pair-scoped socket
 handoff; Server owns its fixed UDP listeners. The `rust-crypto` provider requires

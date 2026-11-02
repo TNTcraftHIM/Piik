@@ -627,8 +627,8 @@ inside every module. The [versioning standard](../standards/versioning.md) still
 separates build identity, wire compatibility, stored schema and live generations.
 A published cutover needs its own handshake and data-upgrade decision.
 
-The Native runtime uses published
-[str0m 0.24.1](https://github.com/algesten/str0m/tree/8c4c5284cb11b1e3c82962639cda5b3e95af73e8)
+The Native runtime uses upstream
+[str0m](https://github.com/algesten/str0m)
 through public APIs. Its library owns ICE, DTLS/SRTP, SCTP, congestion control,
 probing, pacing and retransmission. One Native pump supplies socket input and
 deadlines; room and flow authority stay in the existing Driver and shared Core.
@@ -650,7 +650,7 @@ each outbound track. Consume it once for that connection's active media. As in
 allocate before passing demand to encoders. Independently constrained branches
 need actual independently rate-controlled outputs; copying the same encoded
 packets or applying a minimum/maximum to one shared encoder cannot provide that.
-The library's [built-in BWE](https://github.com/algesten/str0m/blob/8c4c5284cb11b1e3c82962639cda5b3e95af73e8/docs/BWE.md)
+The library's [built-in BWE](https://github.com/algesten/str0m/blob/0edd131226e679c6fc05ec112fb5bea5d6b97fcb/docs/BWE.md)
 replaces the private GoogCc/controller and probe-executor integration. Piik
 consumes its transport estimates through the existing Native allocator, without
 another congestion controller. Each connection aggregates known local media
