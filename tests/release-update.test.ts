@@ -55,8 +55,8 @@ describe("App release update notice", () => {
       browser_download_url: `https://github.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
     expect(parseReleaseMetadata({ ...release, assets: [asset] }, "android-universal")?.url)
       .toBe(asset.browser_download_url);
-    const mirrorAsset = { name,
-      browser_download_url: `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
+    const mirrorAsset = { name, type: "attach",
+      browser_download_url: `https://atomgit.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
     expect(parseMirrorReleaseMetadata({ tag_name: release.tag_name, prerelease: false,
       body: `<!-- piik-source: ${latestRevision} -->`, assets: [mirrorAsset] }, "android-universal")?.url)
       .toBe(mirrorAsset.browser_download_url);
@@ -80,21 +80,21 @@ describe("App release update notice", () => {
 
   it.each(["windows-amd64", "darwin-arm64", "darwin-amd64", "linux-amd64", "linux-arm64"])("uses a listed mirror %s ZIP only after the existing primary check fails", async (packageTarget) => {
     const name = `piik-app-${packageTarget}.zip`;
-    const mirrorAsset = { name,
-      browser_download_url: `https://gitee.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
+    const mirrorAsset = { name, type: "attach",
+      browser_download_url: `https://atomgit.com/TNTcraftHIM/Piik/releases/download/${release.tag_name}/${name}` };
     const mirrored = { tag_name: release.tag_name, prerelease: false,
       body: `<!-- piik-source: ${latestRevision} -->`, assets: [mirrorAsset] };
     const fetchImpl = vi.fn<typeof fetch>(async (input) => String(input) === DEFAULT_RELEASE_API_URL
       ? new Response(null, { status: 503 }) : Response.json([mirrored]));
     await expect(checkReleaseUpdate({ version: "v1.1.0", revision: currentRevision },
       { fetchImpl, packageTarget })).resolves.toMatchObject({ url: mirrorAsset.browser_download_url,
-        releaseURL: `https://gitee.com/TNTcraftHIM/Piik/releases/tag/${release.tag_name}` });
+        releaseURL: `https://atomgit.com/TNTcraftHIM/Piik/releases` });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    for (const assets of [[], [mirrorAsset, mirrorAsset],
-      [{ ...mirrorAsset, browser_download_url: mirrorAsset.browser_download_url.replace("gitee.com", "evil.example") }],
+    for (const assets of [[], [mirrorAsset, mirrorAsset], [{ ...mirrorAsset, type: "source" }],
+      [{ ...mirrorAsset, browser_download_url: mirrorAsset.browser_download_url.replace("atomgit.com", "evil.example") }],
       [{ ...mirrorAsset, browser_download_url: mirrorAsset.browser_download_url.replace("v1.2.0", "v1.1.0") }],
     ]) expect(parseMirrorReleaseMetadata({ ...mirrored, assets }, packageTarget)?.url)
-      .toBe(`https://gitee.com/TNTcraftHIM/Piik/releases/tag/${release.tag_name}`);
+      .toBe(`https://atomgit.com/TNTcraftHIM/Piik/releases`);
   });
 
   it("checks a release without sending installed identity or credentials", async () => {
@@ -169,8 +169,8 @@ describe("App release update notice", () => {
     const current = { version: "v1.9.0", revision: currentRevision };
     await expect(checkReleaseUpdate(current, { fetchImpl })).resolves.toEqual({
       kind: "update-available", version: "v1.10.0", revision: latestRevision,
-      url: "https://gitee.com/TNTcraftHIM/Piik/releases/tag/v1.10.0",
-      releaseURL: "https://gitee.com/TNTcraftHIM/Piik/releases/tag/v1.10.0",
+      url: "https://atomgit.com/TNTcraftHIM/Piik/releases",
+      releaseURL: "https://atomgit.com/TNTcraftHIM/Piik/releases",
     });
     await expect(checkReleaseUpdate({ ...current, version: "v2.0.0" }, { fetchImpl })).resolves.toBeNull();
   });

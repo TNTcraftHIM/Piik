@@ -147,7 +147,7 @@ async fn fallback_pages_share_the_published_mirror_fixture_and_keep_github_prima
     assert_eq!(result.latest_revision.as_deref(), Some(SOURCE));
     assert_eq!(
         result.release_url.as_deref(),
-        Some("https://gitee.com/TNTcraftHIM/Piik/releases/tag/v1.10.0")
+        Some("https://atomgit.com/TNTcraftHIM/Piik/releases")
     );
     assert_eq!(pages.load(Ordering::SeqCst), 2);
     assert!(!result.notice().unwrap().contains("major"));

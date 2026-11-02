@@ -25,9 +25,9 @@ export function AppReleaseNotice({ update }: { update: ReleaseUpdateNotice }) {
         {vis && <span aria-hidden="true">{update.version}</span>}
       </a>
     </Tooltip>
-    <a className="lr-client-release-mirror" href="https://gitee.com/TNTcraftHIM/Piik/releases"
+    <a className="lr-client-release-mirror" href="https://atomgit.com/TNTcraftHIM/Piik/releases"
       target="_blank" rel="noopener noreferrer" aria-label={t("client.update.downloads")}>
-      {vis ? <>Gitee <Glyph name="arrowDown" size={14} /></> : t("client.update.downloads")}
+      {vis ? <>AtomGit <Glyph name="arrowDown" size={14} /></> : t("client.update.downloads")}
       <span aria-hidden="true"> ↗</span>
     </a>
     {major && <a id={warningId} className="lr-client-release-warning" href={update.releaseURL}

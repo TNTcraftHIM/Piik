@@ -9,9 +9,9 @@ use std::{
 use url::Url;
 
 const GITHUB_API: &str = "https://api.github.com/repos/TNTcraftHIM/Piik/releases/latest";
-const MIRROR_API: &str = "https://gitee.com/api/v5/repos/TNTcraftHIM/Piik/releases";
+const MIRROR_API: &str = "https://api.atomgit.com/api/v5/repos/TNTcraftHIM/Piik/releases";
 const GITHUB_PAGE: &str = "https://github.com/TNTcraftHIM/Piik/releases/tag/";
-const MIRROR_PAGE: &str = "https://gitee.com/TNTcraftHIM/Piik/releases/tag/";
+const MIRROR_PAGE: &str = "https://atomgit.com/TNTcraftHIM/Piik/releases";
 const PROVIDER_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_METADATA_BYTES: u64 = 4 << 20;
 
@@ -170,7 +170,7 @@ fn published(value: &Value, mirror: bool) -> Option<PublishedRelease> {
         Some(PublishedRelease {
             version,
             revision: Some(source.into()),
-            url: format!("{MIRROR_PAGE}{tag}"),
+            url: MIRROR_PAGE.to_owned(),
         })
     } else {
         if value.get("draft").is_some_and(|value| value != false)
