@@ -149,6 +149,7 @@ export class ChannelMedia {
           if (this.publications.find(publication => publication.id === flow.publicationId)?.paused) {
             input.stopProof?.(); input.stopProof = undefined;
             input.stopQuality?.(); input.ready = false;
+            input.codecProbe?.abort(); input.codecProbe = undefined;
           } else this.prove(peer, flowId, input.stream);
         }
       }
@@ -385,12 +386,11 @@ export class ChannelMedia {
           if (!source.plan.incoming.some(input => input.id === flow.inputFlowId && input.publicationId === flow.publicationId)) continue;
           const input = source.inputs.get(flow.inputFlowId);
           if (input && !input.failed) {
-            stream = input.stream;
-            if (publication.kind === "screen" && input.video && !input.codec && !input.codecProbe) {
-              // Send immediately; a late preference is only for new senders.
+            stream = publication.kind !== "screen" || input.codec ? input.stream : undefined;
+            if (publication.kind === "screen" && input.ready && !publication.paused && input.video && !input.codec && !input.codecProbe) {
               const probe = input.codecProbe = new AbortController();
               void preferredVideoCodecForTrack(input.video, probe.signal).then(value => {
-                if (probe.signal.aborted) return;
+                if (input.codecProbe !== probe || probe.signal.aborted || !this.ownsInput(source, flow.inputFlowId!, input)) return;
                 input.codec = automaticVideoCodecPreference(value);
                 this.refresh();
               }).catch(() => {});

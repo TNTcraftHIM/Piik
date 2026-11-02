@@ -3003,9 +3003,9 @@ test("same-publication stream replacement re-proves progress on a reused receive
   } finally { media.reset(); session.close(); }
 });
 
-test("a relay sends VP8 immediately while its Auto proof is pending and keeps the live sender's codec", async () => {
+test("a relay waits for decoded input and Auto proof before creating its original flow sender", async () => {
   const fixture = await screenFixture();
-  const { media, session, state } = fixture;
+  const { media, session, state, pc } = fixture;
   let resolve!: (codec: "h264") => void, signal!: AbortSignal;
   const probe = vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockImplementation((_track, owner) => {
     signal = owner;
@@ -3013,15 +3013,26 @@ test("a relay sends VP8 immediately while its Auto proof is pending and keeps th
   });
   const apply = vi.spyOn(videoCodec, "applyVideoCodecPreference").mockReturnValue(true);
   const video = remoteTrack("video"), stream = remoteStream("relay-codec", [video]);
+  let frames = 0;
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(frames) } as RTCRtpReceiver];
   try {
     state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "relay", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
     await receiveScreen(fixture, stream);
-    const downstream = RoomPeerConnection.instances[1], sender = downstream.senders[0];
-    expect(sender.track).toBe(video);
-    expect(apply).toHaveBeenLastCalledWith(expect.anything(), { primary: "vp8", vp8Fallback: false });
+    const downstream = RoomPeerConnection.instances[1];
+    expect(probe).not.toHaveBeenCalled();
+    expect(downstream.senders).toEqual([]);
+    frames = 1;
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce());
+    expect(downstream.senders).toEqual([]);
+    expect(apply).not.toHaveBeenCalled();
     resolve("h264"); await Promise.resolve();
+    const sender = downstream.senders[0];
+    expect(sender.track).toBe(video);
+    expect(apply).toHaveBeenLastCalledWith(expect.anything(), { primary: "h264", vp8Fallback: true });
+    state.publications[0].paused = true; media.update("a", state);
     expect(downstream.senders).toEqual([sender]);
+    expect(sender.track).toBe(video);
     expect(apply).toHaveBeenCalledTimes(1);
     state.pairs.push({ id: "new-downstream", peerId: "z", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "new-relay", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
@@ -3034,18 +3045,53 @@ test("a relay sends VP8 immediately while its Auto proof is pending and keeps th
   }
 });
 
+test.each(["pause", "retire"])("a %s fences a relay's late codec proof without stopping its input", async outcome => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc } = fixture;
+  const pending: Array<{ signal: AbortSignal; resolve(codec: "h264"): void }> = [];
+  vi.spyOn(codecPreflight, "preferredVideoCodecForTrack").mockImplementation((_track, signal) =>
+    new Promise(resolve => { pending.push({ signal, resolve }); }));
+  vi.spyOn(videoCodec, "applyVideoCodecPreference").mockReturnValue(true);
+  const video = remoteTrack("video"), stream = remoteStream("late-codec", [video]);
+  let frames = 1;
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(frames++) } as RTCRtpReceiver];
+  try {
+    state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "relay", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
+    media.update("a", state);
+    await receiveScreen(fixture, stream);
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    const downstream = RoomPeerConnection.instances[1];
+    if (outcome === "pause") state.publications[0].paused = true;
+    else state.pairs[0].incoming = [];
+    media.update("a", state);
+    expect(pending[0].signal.aborted).toBe(true);
+    pending[0].resolve("h264"); await Promise.resolve();
+    expect(downstream.senders).toEqual([]);
+    if (outcome === "pause") {
+      state.publications[0].paused = false; frames++;
+      media.update("a", state);
+      await vi.waitFor(() => expect(pending).toHaveLength(2));
+      pending[1].resolve("h264"); await Promise.resolve();
+      expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    }
+    expect(video.stop).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
 test("a relay updates senders when audio joins and leaves the same remote screen stream", async () => {
   const fixture = await screenFixture();
   const { media, session, state, pc } = fixture;
   const video = remoteTrack("video");
   const audio = remoteTrack("audio");
   const tracks = [video], stream = remoteStream("screen-stream", tracks);
+  let frames = 1;
+  pc.receivers = [{ track: video, getStats: async () => decodedReport(frames++) } as RTCRtpReceiver];
   try {
     state.pairs.push({ id: "downstream", peerId: "y", canReceiveVideoLayers: false, rooms: ["first"], incoming: [], outgoing: [{ id: "screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }] });
     media.update("a", state);
     const downstream = RoomPeerConnection.instances[1];
     await receiveScreen(fixture, stream);
-    expect(downstream.senders.map(sender => sender.track)).toEqual([video]);
+    await vi.waitFor(() => expect(downstream.senders.map(sender => sender.track)).toEqual([video]));
     const videoSender = downstream.senders[0];
     const binding = videoSender.stream;
     expect(binding.id).not.toBe(stream.id);
@@ -3067,6 +3113,7 @@ test("a relay updates senders when audio joins and leaves the same remote screen
     expect(downstream.senders).toEqual([]);
     expect(binding.getTracks()).toEqual([]);
     await receiveScreen(fixture, stream);
+    await vi.waitFor(() => expect(downstream.senders).toHaveLength(1));
     expect(downstream.senders[0].stream).toBe(binding);
     state.pairs[1].outgoing = [{ id: "renewed-screen-downstream", publicationId: "screen", selected: true, inputFlowId: "screen-flow" }];
     media.update("a", state);
