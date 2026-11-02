@@ -5,7 +5,7 @@ interface DeliveredVideoSample {
   timestampMs: number;
   windowMs: number;
   pixels: number;
-  framesPerSecond: number;
+  framesDecoded: number;
   bitrateKbps: number | null;
 }
 
@@ -28,7 +28,7 @@ function deliveredNothingSample(
     timestampMs: sampleTimestampMs,
     windowMs: sampleWindowMs,
     pixels: 0,
-    framesPerSecond: 0,
+    framesDecoded: 0,
     bitrateKbps: 0,
   };
 }
@@ -67,8 +67,7 @@ function deliveredVideoSample(
     timestampMs: sampleTimestampMs,
     windowMs: sampleWindowMs,
     pixels: frameWidth * frameHeight,
-    // Native framesPerSecond covers the last second, not this comparison window.
-    framesPerSecond: Math.round((intervalFramesDecoded * 1_000) / sampleWindowMs),
+    framesDecoded: intervalFramesDecoded,
     bitrateKbps:
       typeof bitrateKbps === "number" &&
       Number.isFinite(bitrateKbps) &&
@@ -103,6 +102,24 @@ function comparableSamples(
   return [currentVideo, candidateVideo];
 }
 
+function frameRateDoesNotRegress(
+  current: DeliveredVideoSample,
+  candidate: DeliveredVideoSample,
+): boolean {
+  return frameCountDeficit(
+    current.framesDecoded, current.windowMs,
+    candidate.framesDecoded, candidate.windowMs,
+  ) <= 1;
+}
+
+function frameCountDeficit(
+  currentFrames: number, currentWindowMs: number,
+  candidateFrames: number, candidateWindowMs: number,
+): number {
+  // Normalize discrete counters to one window; a boundary frame is not a rate change.
+  return Math.round(currentFrames * candidateWindowMs / currentWindowMs) - candidateFrames;
+}
+
 export function sfuCandidateDoesNotRegress(
   current: ConnectionMetrics,
   candidate: ConnectionMetrics,
@@ -122,7 +139,7 @@ export function sfuCandidateDoesNotRegress(
     candidate.intervalPauseCount === 0 &&
     candidate.intervalPauseDurationMs === 0 &&
     candidateVideo.pixels >= currentVideo.pixels &&
-    candidateVideo.framesPerSecond >= currentVideo.framesPerSecond &&
+    frameRateDoesNotRegress(currentVideo, candidateVideo) &&
     candidateVideo.bitrateKbps >= currentVideo.bitrateKbps
   );
 }
@@ -140,7 +157,7 @@ export function p2pCandidateDoesNotRegress(
     candidate.intervalPauseCount === 0 &&
     candidate.intervalPauseDurationMs === 0 &&
     candidateVideo.pixels >= currentVideo.pixels &&
-    candidateVideo.framesPerSecond >= currentVideo.framesPerSecond
+    frameRateDoesNotRegress(currentVideo, candidateVideo)
   );
 }
 
@@ -149,6 +166,7 @@ class ConsecutiveCandidateQualityProbe {
   private lastCurrentTimestampMs: number | null = null;
   private consecutiveApprovedWindows = 0;
   private consecutiveRejectedWindows = 0;
+  private consecutiveFrameDeficit = 0;
 
   constructor(
     private readonly compare: (
@@ -197,14 +215,23 @@ class ConsecutiveCandidateQualityProbe {
       return "pending";
     }
     if (approved) {
+      // The whole proof run shares one frame of resolution, not one per window.
+      this.consecutiveFrameDeficit += frameCountDeficit(
+        current.intervalFramesDecoded!, current.sampleWindowMs!,
+        candidate.intervalFramesDecoded!, candidate.sampleWindowMs!,
+      );
+      if (this.consecutiveFrameDeficit > 1) {
+        this.resetRuns();
+        return "pending";
+      }
       this.consecutiveApprovedWindows += 1;
       this.consecutiveRejectedWindows = 0;
-      return this.consecutiveApprovedWindows >=
-        PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
+      return this.consecutiveApprovedWindows >= PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
         ? "approved"
         : "pending";
     }
     this.consecutiveApprovedWindows = 0;
+    this.consecutiveFrameDeficit = 0;
     this.consecutiveRejectedWindows += 1;
     return this.consecutiveRejectedWindows >=
       PERSISTENT_NATIVE_EDGE_DEGRADED_WINDOWS
@@ -221,6 +248,7 @@ class ConsecutiveCandidateQualityProbe {
   private resetRuns(): void {
     this.consecutiveApprovedWindows = 0;
     this.consecutiveRejectedWindows = 0;
+    this.consecutiveFrameDeficit = 0;
   }
 }
 

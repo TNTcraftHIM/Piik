@@ -206,6 +206,28 @@ describe("SFU quality probe", () => {
     expect(probe.observe(metrics(7_000), metrics(7_100))).toBe("pending");
   });
 
+  it.each([P2pQualityProbe, SfuQualityProbe])(
+    "preserves clean delivery evidence across one-frame sampling boundaries",
+    (Probe) => {
+      const probe = new Probe();
+      const results = [20, 19, 20].map((frames, index) => probe.observe(
+        metrics(10_000 + index * 2_000, {
+          sampleWindowMs: 2002.045166015625, intervalFramesDecoded: 20,
+        }),
+        metrics(10_100 + index * 2_000, {
+          sampleWindowMs: 2002.046875, intervalFramesDecoded: frames,
+        }),
+      ));
+      expect(results).toEqual(["pending", "pending", "approved"]);
+      probe.reset();
+      for (const timestamp of [20_000, 22_000, 24_000]) {
+        const result = probe.observe(metrics(timestamp, { intervalFramesDecoded: 20 }),
+          metrics(timestamp + 100, { intervalFramesDecoded: 18 }));
+        expect(result).toBe(timestamp === 24_000 ? "rejected" : "pending");
+      }
+    },
+  );
+
   it("rejects after three comparable regressing P2P windows", () => {
     const probe = new P2pQualityProbe();
     const candidate = (timestampMs: number) =>
@@ -214,6 +236,22 @@ describe("SFU quality probe", () => {
     expect(probe.observe(metrics(3_000), candidate(3_100))).toBe("pending");
     expect(probe.observe(metrics(5_000), candidate(5_100))).toBe("rejected");
   });
+
+  it.each([P2pQualityProbe, SfuQualityProbe])(
+    "does not accumulate a new frame allowance in every low-rate window",
+    (Probe) => {
+      const probe = new Probe();
+      for (const timestamp of [10_000, 12_000, 14_000, 16_000]) {
+        expect(probe.observe(metrics(timestamp, { intervalFramesDecoded: 2 }),
+          metrics(timestamp + 100, { intervalFramesDecoded: 1 }))).toBe("pending");
+      }
+      for (const timestamp of [18_000, 20_000, 22_000]) {
+        const result = probe.observe(metrics(timestamp, { intervalFramesDecoded: 2 }),
+          metrics(timestamp + 100, { intervalFramesDecoded: 2 }));
+        expect(result).toBe(timestamp === 22_000 ? "approved" : "pending");
+      }
+    },
+  );
 
   it("keeps unknown evidence pending instead of counting it as rejection", () => {
     const probe = new P2pQualityProbe();
