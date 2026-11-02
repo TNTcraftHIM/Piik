@@ -107,8 +107,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   reports first-launch blocking; the troubleshooting guide provides a scoped
   opening procedure, not a signing fix. Verify downloaded bundles on a Mac when
   signing becomes available.
-- **Gitee download-source warning.** Paused by the owner. Keep GitHub primary
-  and retain Gitee; do not add a self-hosted mirror. Reopen for new provider evidence.
 - **Automatic local chat history.** Manual TXT export already exists. Automatic
   storage needs a stable room-incarnation identity, bounded retention and deletion;
   reusable room codes must not combine conversations.

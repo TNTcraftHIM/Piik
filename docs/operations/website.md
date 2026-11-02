@@ -10,7 +10,7 @@ The static website source is `site/`. Its content and design follow the
 | Website | [piik.tv](https://piik.tv) |
 | P2P-only demo on the separate US server | [demo.piik.tv](https://demo.piik.tv) |
 | App downloads and release notes | [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) |
-| Download mirror for domestic access | [Gitee Releases](https://gitee.com/TNTcraftHIM/Piik/releases) |
+| Download mirror for domestic access | [AtomGit Releases](https://atomgit.com/TNTcraftHIM/Piik/releases) |
 | Documentation source | [Reader guides](../guide/README.md), with a separate [developer map](../README.md) |
 
 GitHub Pages serves `piik.tv` behind
@@ -240,12 +240,12 @@ each provider's native latest-attachment route:
 
 - GitHub: `releases/latest/download/asset-name.zip`
   ([documentation](https://docs.github.com/en/repositories/releasing-projects-on-github/linking-to-releases)).
-- Gitee: `releases/download/latest/asset-name.zip`
-  ([Windows download](https://gitee.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip)).
+- AtomGit: `releases/download/latest/asset-name.zip`
+  ([Windows download](https://atomgit.com/TNTcraftHIM/Piik/releases/download/latest/piik-app-windows-amd64.zip)).
 
 Both links follow provider publication without a website rebuild. Supported App
 architecture choices stay visible; one selection updates both providers' links.
-Android uses one universal APK for ARM64 and x64. The iOS entry opens the online
+Both providers distribute the same universal Android APK for ARM64 and x64. The iOS entry opens the online
 version without promising an App release date. An optional GitHub metadata request supplies the latest version/date and its
 authored editorial title and one-line explanation;
 failure does not disable architecture selection. Without JavaScript, the default
@@ -253,11 +253,11 @@ links remain Windows x64, Apple silicon, Linux x64 and Android universal. Publis
 package before deploying its website option. ARM64 Server packages alone do not
 enable an ARM64 App choice.
 Platform buttons say “Download from GitHub” /
-“GitHub 下载”; the secondary link says “Download from Gitee” /
-“Gitee 国内镜像下载”. Keep versions and archive formats out of these labels.
+“GitHub 下载”; the secondary link says “Download from AtomGit” /
+“AtomGit 国内镜像下载”. Keep versions and archive formats out of these labels.
 [Versioning](../standards/versioning.md#release-sources) owns package verification
 and completion of mirror publication. GitHub remains the primary source; the
-Gitee download can temporarily lag while a mirror publication completes.
+AtomGit download can temporarily lag while a mirror publication completes.
 Verify the latest redirects and package checksums after releases.
 
 ## Publish
@@ -273,7 +273,7 @@ Verify the latest redirects and package checksums after releases.
 4. Accepted main pushes run CI first; success triggers **Website**, which checks
    out that CI run's exact commit. Manual dispatch uses its selected `main` commit.
    Before publishing, both paths skip a build that is no longer current main;
-   dispatch again for the latest commit when needed. The separate Gitee mirror
+   dispatch again for the latest commit when needed. The separate AtomGit mirror
    workflow does not gate Website deployment. Download links resolve through each provider, so
    publishing a package or retrying its mirror needs no link refresh.
    Only `build/site/` is uploaded; website work does not package App/Server.

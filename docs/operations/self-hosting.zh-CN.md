@@ -15,7 +15,7 @@ Piik Server 将网页、房间管理和可选的媒体转发打包在**一个服
 服务端提供 Linux x64／ARM64 和 Windows x64 程序包。
 
 从 [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases) 或
-[Gitee 镜像](https://gitee.com/TNTcraftHIM/Piik/releases)下载对应架构的服务端程序包。
+[AtomGit 镜像](https://atomgit.com/TNTcraftHIM/Piik/releases)下载对应架构的服务端程序包。
 Linux 可运行 `uname -m` 查看架构：
 
 | 平台 | 程序包 |

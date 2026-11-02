@@ -18,7 +18,7 @@ Server packages are available for Linux x64/ARM64 and Windows x64.
 
 Download the Server archive matching your machine
 from [GitHub Releases](https://github.com/TNTcraftHIM/Piik/releases)
-or the [Gitee mirror](https://gitee.com/TNTcraftHIM/Piik/releases).
+or the [AtomGit mirror](https://atomgit.com/TNTcraftHIM/Piik/releases).
 On Linux, use `uname -m` to check the architecture:
 
 | Platform | Archive |
