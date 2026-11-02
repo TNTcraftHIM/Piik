@@ -7,7 +7,10 @@ use ndk::{
     hardware_buffer_format::HardwareBufferFormat,
     native_window::NativeWindow,
 };
-use std::{ffi::c_void, sync::Arc};
+use std::{
+    ffi::c_void,
+    sync::{Arc, Mutex},
+};
 
 #[link(name = "EGL")]
 extern "C" {}
@@ -19,21 +22,23 @@ const IDENTITY: [f32; 16] = [
 ];
 
 pub(super) struct Display(egl::Display);
-// EGLDisplay is a process connection, not a current context. EGL permits concurrent
-// contexts on one display; the last Arc terminates it after all workers have joined.
+// DEFAULT_DISPLAY is a process connection, not a thread-bound context. Captures
+// share it across App runtime restarts; workers release their own GL resources.
+static DISPLAY: Mutex<Option<Arc<Display>>> = Mutex::new(None);
 unsafe impl Send for Display {}
 unsafe impl Sync for Display {}
 impl Display {
     pub fn new() -> Result<Arc<Self>> {
+        let mut shared = DISPLAY.lock().unwrap();
+        if let Some(display) = &*shared {
+            return Ok(display.clone());
+        }
         let display =
             unsafe { EGL.get_display(egl::DEFAULT_DISPLAY) }.context("EGL display unavailable")?;
         EGL.initialize(display)?;
-        Ok(Arc::new(Self(display)))
-    }
-}
-impl Drop for Display {
-    fn drop(&mut self) {
-        let _ = EGL.terminate(self.0);
+        let display = Arc::new(Self(display));
+        *shared = Some(display.clone());
+        Ok(display)
     }
 }
 
@@ -361,7 +366,19 @@ impl Graphics {
                 unsafe { present(self.display.0.as_ptr(), self.surface.as_ptr(), nanos) } != 0,
                 "presentation time failed"
             );
-            EGL.swap_buffers(self.display.0, self.surface)?;
+            // A dead codec can fail a swap without setting the wrapper's expected EGL error.
+            let swapped = unsafe {
+                egl::api::EGL1_0::eglSwapBuffers(
+                    &egl::Static,
+                    self.display.0.as_ptr(),
+                    self.surface.as_ptr(),
+                )
+            };
+            ensure!(
+                swapped == egl::TRUE,
+                "encoder surface swap failed: {:?}",
+                EGL.get_error()
+            );
             Ok(())
         })();
         unsafe {
