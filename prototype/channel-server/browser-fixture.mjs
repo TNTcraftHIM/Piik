@@ -252,6 +252,9 @@ function captureProbe(name) {
             for (const output of senders.filter(output => output.pc.connectionState === 'connected'
               && output.streams.includes(streamId) && output.sender.track?.kind === 'video')) {
               const scoped = await output.sender.getStats(), all = await output.pc.getStats();
+              const encodings = output.sender.getParameters().encodings.map(({ rid, active, scaleResolutionDownBy, maxBitrate, maxFramerate }) =>
+                ({ rid: rid ?? null, active: active ?? null, scaleResolutionDownBy: scaleResolutionDownBy ?? null,
+                  maxBitrate: maxBitrate ?? null, maxFramerate: maxFramerate ?? null }));
               for (const scopedReport of scoped.values()) {
                 if (scopedReport.type !== 'outbound-rtp' || scopedReport.kind !== 'video') continue;
                 const report = all.get(scopedReport.id);
@@ -260,6 +263,8 @@ function captureProbe(name) {
                 const selectedPair = all.get(transport?.selectedCandidatePairId);
                 rows.push({ flowId: flow.id, pairId: pair.id, peerId: pair.peerId, selected: flow.selected,
                   senderId: output.id, statsId: report.id, timestamp: report.timestamp,
+                  mid: report.mid ?? null, ssrc: report.ssrc ?? null,
+                  codec: all.get(report.codecId)?.mimeType ?? null, encodings,
                   rid: report.rid ?? null, framesEncoded: report.framesEncoded ?? null,
                   frameWidth: report.frameWidth ?? null, frameHeight: report.frameHeight ?? null,
                   bytesSent: report.bytesSent ?? null, qualityLimitationReason: report.qualityLimitationReason ?? null,
