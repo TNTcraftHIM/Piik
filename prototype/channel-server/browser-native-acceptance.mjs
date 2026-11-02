@@ -153,22 +153,29 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       await until("ordinary room base opens before the next admission", () => sample(index), value =>
         value.channels.some(channel => channel.label === "piik-room" && channel.state === "open"));
     }
+    const fillerBase = (await view(3)).state.pairs.filter(pair => pair.rooms.includes(browserRoom));
+    assert.equal(fillerBase.length, 1, "fourth Browser has one ordinary base parent");
+    const sourceIndex = [0, 2].find(index => initial[index].sessionId === fillerBase[0].peerId);
+    assert.notEqual(sourceIndex, undefined, "fourth Browser is attached below one original base child");
+    const downstreamIndex = sourceIndex === 0 ? 2 : 0;
+    const viewers = [1, downstreamIndex];
+    await writeFile(join(output, "app-helper-roles.json"), JSON.stringify({ sourceIndex, assistedIndex: 1, downstreamIndex, fillerIndex: 3 }, null, 2));
     const browserBindingBeforeHelper = (await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.bindingId;
-    await action(0, "setVideoCodecMode('h264')");
-    await evaluate(0, "window.__channelProbe.captureAudio(true)");
-    const helperPicture = await capturedScreen(0, browserRoom);
+    await action(sourceIndex, "setVideoCodecMode('h264')");
+    await evaluate(sourceIndex, "window.__channelProbe.captureAudio(true)");
+    const helperPicture = await capturedScreen(sourceIndex, browserRoom);
     const carries = (pair, direction) => pair[direction].some(flow => flow.publicationId === helperPicture && flow.selected);
-    for (const index of [1, 3, 2]) {
+    for (const index of [1, 3, downstreamIndex]) {
       await action(index, `watch(${JSON.stringify(helperPicture)})`); await playing(index, helperPicture);
-      if (index === 3) await until("fourth viewer occupies the source's second branch before D watches", () => view(0), value =>
+      if (index === 3) await until("fourth viewer occupies the source's second branch before D watches", () => view(sourceIndex), value =>
         value.state.pairs.some(pair => pair.peerId === initial[3].sessionId && carries(pair, "outgoing")), 35_000);
     }
     const beforeHelper = await view(1);
-    assert(beforeHelper.state.pairs.some(pair => pair.peerId === (initial[0].sessionId) && carries(pair, "incoming")),
+    assert(beforeHelper.state.pairs.some(pair => pair.peerId === initial[sourceIndex].sessionId && carries(pair, "incoming")),
       "ordinary Browser receives the remote source before App assistance");
-    assert(beforeHelper.state.pairs.some(pair => pair.peerId === (initial[2].sessionId) && carries(pair, "outgoing")),
+    assert(beforeHelper.state.pairs.some(pair => pair.peerId === initial[downstreamIndex].sessionId && carries(pair, "outgoing")),
       "App assistance starts with a real Browser downstream, not two direct viewers");
-    assert((await view(0)).state.pairs.some(pair => pair.peerId === initial[3].sessionId && carries(pair, "outgoing")),
+    assert((await view(sourceIndex)).state.pairs.some(pair => pair.peerId === initial[3].sessionId && carries(pair, "outgoing")),
       "a real fourth viewer occupies the source's other branch");
     const codecs = index => evaluate(index, `(async () => {
       const stream = ${hook}.snapshot().streams.get(${JSON.stringify(helperPicture)});
@@ -193,7 +200,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       }
       return rows;
     })()`);
-    const mediaBefore = await Promise.all([1, 2].map(codecs));
+    const mediaBefore = await Promise.all(viewers.map(codecs));
     await writeFile(join(output, "app-helper-media-before.json"), JSON.stringify(mediaBefore, null, 2));
     assert(mediaBefore[0].some(row => row.direction === "received" && row.codec?.toLowerCase() === "video/h264" && row.frames > 0),
       "Source sends actual H264 into the ordinary Browser relay");
@@ -202,28 +209,28 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       assert(rows.some(row => row.direction === "received" && row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
     }
     for (const index of [0, 1, 2, 3]) await evaluate(index, "window.__channelProbe.clearProtocol()");
-    for (const index of [1, 2]) await evaluate(index, "window.__channelProbe.observeQuality()");
+    for (const index of viewers) await evaluate(index, "window.__channelProbe.observeQuality()");
     await action(1, "activateApp()"); await appReady(1);
     await until("Native assists both viewers without Browser WAN forwarding", async () => {
-      const views = await Promise.all([0, 1, 2].map(view));
-      for (const index of [1, 2]) {
+      const [source, assisted, downstream] = await Promise.all([sourceIndex, ...viewers].map(view));
+      for (const index of viewers) {
         const screen = await evaluate(index, `window.__channelProbe.screen(${JSON.stringify(helperPicture)})`);
         assert(screen.inputs.some(input => input.selected && input.frames > 0), "handover retains a decoded selected picture");
       }
-      return views;
-    }, values => values[0].state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "outgoing"))
-      && [1, 2].every(index => values[index].state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")))
-      && !values[1].state.pairs.some(pair => carries(pair, "outgoing")), 35_000);
-    for (const index of [1, 2]) { await progressing(index, helperPicture); await audioProgressing(index, helperPicture); }
-    const mediaAfter = await Promise.all([1, 2].map(codecs));
+      return { source, assisted, downstream };
+    }, ({ source, assisted, downstream }) => source.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "outgoing"))
+      && [assisted, downstream].every(value => value.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")))
+      && !assisted.state.pairs.some(pair => carries(pair, "outgoing")), 35_000);
+    for (const index of viewers) { await progressing(index, helperPicture); await audioProgressing(index, helperPicture); }
+    const mediaAfter = await Promise.all(viewers.map(codecs));
     await writeFile(join(output, "app-helper-media-after.json"), JSON.stringify(mediaAfter, null, 2));
     for (const rows of mediaAfter) {
       assert(rows.some(row => row.codec?.toLowerCase() === "video/h264" && row.frames > 0));
       assert(rows.some(row => row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
     }
     await action(1, `unwatch(${JSON.stringify(helperPicture)})`);
-    await progressing(2, helperPicture); await audioProgressing(2, helperPicture);
-    assert((await view(2)).state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")),
+    await progressing(downstreamIndex, helperPicture); await audioProgressing(downstreamIndex, helperPicture);
+    assert((await view(downstreamIndex)).state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")),
       "Native transit survives the assisted Browser's unwatch");
     await action(1, `watch(${JSON.stringify(helperPicture)})`);
     await until("assisted watching returns through the same Native endpoint", () => view(1), value =>
@@ -238,8 +245,8 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await writeFile(join(output, "app-helper-result.json"), JSON.stringify({ passed: true, mediaBefore, mediaAfter,
       scenarios: ["Browser-owned base Source to A to D", "H264 and Opus through live Native helper",
         "Native replaces Browser WAN forwarding", "unwatch retains downstream transit", "control loss preserves ordinary watching and hosting"] }, null, 2));
-    await action(0, `stopScreen(${JSON.stringify(helperPicture)})`);
-    await evaluate(0, "window.__channelProbe.captureAudio(false)");
+    await action(sourceIndex, `stopScreen(${JSON.stringify(helperPicture)})`);
+    await evaluate(sourceIndex, "window.__channelProbe.captureAudio(false)");
     await action(1, "close()");
     await browser(1, "open", "about:blank");
     await until("page close ends personal activity and Browser hosting only", () => view(2), value =>
