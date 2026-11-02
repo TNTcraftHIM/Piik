@@ -194,7 +194,7 @@ pub(super) async fn run(
         }
         let _ = ready.take().unwrap().send(Ok(()));
         encodings.baseline(encoding.take().unwrap(), frames.clone(), requests);
-        loop {
+        while !encodings.pumps.is_empty() || preparing.is_some() {
             tokio::select! {
                 _ = control.video.stopped() => break,
                 _ = cancelled.changed() => break,

@@ -63,6 +63,15 @@ impl EncodingControl {
     pub fn is_stopped(&self) -> bool {
         self.0.state.lock().unwrap().stop
     }
+    pub async fn stopped(&self) {
+        loop {
+            let changed = self.0.changed.notified();
+            if self.is_stopped() {
+                return;
+            }
+            changed.await;
+        }
+    }
     pub fn force_keyframe(&self) -> Result<()> {
         let mut state = self.0.state.lock().unwrap();
         ensure!(!state.stop, "encoding stopped");
@@ -158,6 +167,14 @@ struct Codec {
 }
 impl Codec {
     fn new(frames: &Frames, settings: Settings, video_codec: VideoCodec) -> Result<Self> {
+        eprintln!(
+            "Android encoder create tid={} codec={video_codec:?} size={}x{} fps={} bitrate={}",
+            unsafe { libc::gettid() },
+            settings.width,
+            settings.height,
+            settings.fps,
+            settings.bitrate
+        );
         let mime = match video_codec {
             VideoCodec::H264 => "video/avc",
             VideoCodec::Vp8 => "video/x-vnd.on2.vp8",
@@ -291,6 +308,13 @@ impl Codec {
 }
 impl Drop for Codec {
     fn drop(&mut self) {
+        eprintln!(
+            "Android encoder stop tid={} codec={:?} size={}x{}",
+            unsafe { libc::gettid() },
+            self.video_codec,
+            self.size.0,
+            self.size.1
+        );
         let _ = self.codec.stop();
     }
 }

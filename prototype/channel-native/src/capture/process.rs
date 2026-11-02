@@ -123,6 +123,10 @@ impl EncodingControl {
     pub fn is_stopped(&self) -> bool {
         self.0.stopped()
     }
+    pub async fn stopped(&self) {
+        let mut terminal = self.0.stop.subscribe();
+        let _ = terminal.wait_for(|value| value.is_some()).await;
+    }
     pub fn stop(&self) {
         self.0.stop(None)
     }
@@ -628,6 +632,20 @@ mod tests {
         assert_eq!(
             *encoding.shared.stop.borrow(),
             Some(Err("child failed".into()))
+        );
+    }
+    #[tokio::test]
+    async fn terminal_wait_preserves_unread_failure_without_frame_credit() {
+        let mut encoding = proxy();
+        let control = encoding.control();
+        let mut stopped = Box::pin(control.stopped());
+        assert!(matches!(futures_util::poll!(&mut stopped), Poll::Pending));
+        encoding.shared.finish(&Err(anyhow!("worker failed")));
+        stopped.await;
+        assert!(!encoding.shared.state.lock().unwrap().read);
+        assert_eq!(
+            encoding.recv().await.unwrap().unwrap_err().to_string(),
+            "worker failed"
         );
     }
     #[tokio::test]

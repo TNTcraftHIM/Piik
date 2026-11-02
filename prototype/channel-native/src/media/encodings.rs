@@ -369,6 +369,7 @@ fn pump(
         let result = async {
             while !control.is_stopped() {
                 tokio::select! {
+                    _ = control.stopped() => break,
                     frame = encoding.recv(), if video.needed() => match frame {
                         Some(frame) => {
                             let frame = frame?;

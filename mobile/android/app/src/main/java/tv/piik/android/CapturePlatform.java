@@ -81,6 +81,7 @@ public final class CapturePlatform implements CaptureRequest {
   }
   private synchronized void size(int w, int h) {
     if (closed || w <= 0 || h <= 0 || (width == w && height == h)) return;
+    android.util.Log.i("PiikCapture", "size=" + w + "x" + h);
     width = w; height = h;
     texture.setDefaultBufferSize(w, h);
     if (display != null) display.resize(w, h, density);

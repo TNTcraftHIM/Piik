@@ -53,6 +53,15 @@ impl EncodingControl {
     pub fn is_stopped(&self) -> bool {
         self.0.state.lock().unwrap().stop
     }
+    pub async fn stopped(&self) {
+        loop {
+            let changed = self.0.changed.notified();
+            if self.is_stopped() {
+                return;
+            }
+            changed.await;
+        }
+    }
     pub fn force_keyframe(&self) -> Result<()> {
         let mut state = self.0.state.lock().unwrap();
         ensure!(!state.stop, "encoding stopped");
