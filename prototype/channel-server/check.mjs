@@ -11,6 +11,8 @@ assert(["127.0.0.1", "localhost"].includes(new URL(endpoint).hostname), "Checks 
 const ownerKey = process.env.PIIK_CHANNEL_OWNER_KEY;
 const inviteKey = process.env.PIIK_CHANNEL_INVITE_KEY;
 assert(ownerKey && inviteKey, "Set PIIK_CHANNEL_OWNER_KEY and PIIK_CHANNEL_INVITE_KEY to the local server's test keys");
+// The protocol-only sources explicitly declare the accepted 720p30 ceiling.
+const videoCeiling = { resolution: { width: 1280, height: 720 }, maxFramerate: 30, maxBitrate: 3_000_000 };
 
 async function connect(t, join) {
   const socket = new WebSocket(endpoint, { origin });
@@ -81,7 +83,8 @@ test("the frontend accepts real cross-room publications and subscriptions", { ti
       assert.equal((await client.request({ type: "voice", roomId: room.id, joined: true, muted: false, deafened: false })).type, "ack");
       for (const kind of ["screen", "voice"]) {
         const publicationId = randomUUID();
-        assert.equal((await client.request({ type: "publish", publication: { id: publicationId, roomId: room.id, kind, muted: false } })).type, "ack");
+        assert.equal((await client.request({ type: "publish", publication: { id: publicationId, roomId: room.id, kind, muted: false,
+          ...(kind === "screen" ? { videoCeiling } : {}) } })).type, "ack");
         if (client !== reader && kind === "screen") assert.equal((await reader.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
       }
     }
@@ -134,7 +137,7 @@ test("authenticated users, role authority, peer-only conversation and selective 
   attacker.socket.close();
 
   const publicationId = randomUUID();
-  assert.equal((await friend.request({ type: "publish", publication: { id: publicationId, roomId, kind: "screen", muted: false } })).type, "ack");
+  assert.equal((await friend.request({ type: "publish", publication: { id: publicationId, roomId, kind: "screen", muted: false, videoCeiling } })).type, "ack");
   assert.equal((await other.request({ type: "unpublish", publicationId })).type, "error");
   assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
   const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");
@@ -189,7 +192,7 @@ test("Server-owned private invitations admit new users, conceal content and revo
   assert(guest.welcome.state.channel.rooms.some(room => room.id === roomId && room.authorized));
   const guestUser = guest.welcome.state.sessions.find(session => session.id === guest.welcome.sessionId).userId;
   const privatePublication = randomUUID();
-  assert.equal((await creator.request({ type: "publish", publication: { id: privatePublication, roomId, kind: "screen", muted: false } })).type, "ack");
+  assert.equal((await creator.request({ type: "publish", publication: { id: privatePublication, roomId, kind: "screen", muted: false, videoCeiling } })).type, "ack");
   assert.equal((await outsider.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "error");
   assert.equal((await guest.request({ type: "subscribe", publicationId: privatePublication, enabled: true })).type, "ack");
   assert.equal((await guest.request({ type: "browse", roomId, active: true })).type, "ack");
