@@ -267,6 +267,18 @@ pub struct Settings {
     pub fps: u32,
     pub bitrate: u32,
 }
+impl From<Settings> for piik_channel_core::wire::VideoCeiling {
+    fn from(settings: Settings) -> Self {
+        Self {
+            resolution: piik_channel_core::wire::VideoResolution {
+                width: settings.width,
+                height: settings.height,
+            },
+            max_framerate: settings.fps as f64,
+            max_bitrate: settings.bitrate,
+        }
+    }
+}
 #[cfg(all(feature = "capture", any(target_os = "linux", target_os = "macos")))]
 pub(super) struct FramerateRequest {
     pub fps: u32,

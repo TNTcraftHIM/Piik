@@ -2,6 +2,116 @@ use super::*;
 use serde_json::json;
 
 #[tokio::test]
+async fn capture_ceiling_completes_only_on_the_correlated_room_reply() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    let (client, remote) = tokio::join!(tokio_tungstenite::connect_async(&url), async {
+        tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await
+    });
+    let (mut socket, _) = client.unwrap();
+    let _remote = remote.unwrap();
+    let mut session = Session {
+        config: Config {
+            url,
+            origin: "http://localhost".into(),
+            name: "Source".into(),
+            key: None,
+            credential: None,
+            server_udp: None,
+        },
+        files: vec![],
+        live: None,
+        recovery: None,
+        signer: Arc::new(SessionSigner::from_seed([1; 32])),
+        hosting: None,
+        opening: BTreeMap::new(),
+        pending_captures: BTreeMap::new(),
+    };
+    for result in [
+        RoomResult::Done,
+        RoomResult::Error {
+            code: "room_rejected".into(),
+        },
+    ] {
+        let (done, mut response) = oneshot::channel();
+        let id = Uuid::new_v4().to_string();
+        session.pending_captures.insert(
+            id.clone(),
+            PendingCapture::Ceiling(PublishCaptureCeiling {
+                scope: CaptureScope {
+                    publication_id: Uuid::new_v4(),
+                    room_id: "room".into(),
+                    binding_id: Uuid::new_v4(),
+                },
+                capture_id: Uuid::new_v4(),
+                ceiling: Settings {
+                    width: 640,
+                    height: 360,
+                    fps: 30,
+                    bitrate: 1_000_000,
+                }
+                .into(),
+                result: done,
+            }),
+        );
+        session
+            .event(
+                Event::Ack {
+                    request_id: id.clone(),
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "other".into(),
+                    request_id: Some(id.clone()),
+                    result: RoomResult::Done,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            response.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+        let expected = match &result {
+            RoomResult::Done => Ok(()),
+            RoomResult::Error { code } => Err(code.clone()),
+            _ => unreachable!(),
+        };
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "room".into(),
+                    request_id: Some(id.clone()),
+                    result,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.await.unwrap(), expected);
+        assert!(session.pending_captures.is_empty());
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "room".into(),
+                    request_id: Some(id),
+                    result: RoomResult::Done,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert!(session.pending_captures.is_empty());
+    }
+}
+
+#[tokio::test]
 async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publication() {
     tokio::time::timeout(Duration::from_secs(10), async {
         for change in ["offline", "replaced", "revoked"] {
@@ -70,7 +180,8 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                 // the real Session's pending room-authority acknowledgement.
                 session.pending_captures.insert(request_id.clone(), PendingCapture::Commit(CommitCapture {
                     scope: CaptureScope { publication_id, room_id: id.into(), binding_id: binding },
-                    capture_id: Uuid::new_v4(), replacing: false, retaining: false, result,
+                    capture_id: Uuid::new_v4(), replacing: false, retaining: false,
+                    video_ceiling: Some(Settings { width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()), result,
                 }));
                 requests.push((
                     publication_id,
@@ -122,6 +233,7 @@ async fn pending_capture_commit_ends_with_its_room_and_retires_a_late_publicatio
                     kind: Kind::Screen,
                     muted: false,
                     paused: false,
+                    video_ceiling: Some(Settings { width: 640, height: 360, fps: 30, bitrate: 5_000_000 }.into()),
                 })
                 .collect();
             session.state(state, &mut socket).await.unwrap();

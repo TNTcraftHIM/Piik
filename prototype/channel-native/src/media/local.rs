@@ -44,6 +44,9 @@ struct VideoSettingsRequest {
 }
 
 impl Control {
+    pub fn settings(&self) -> Settings {
+        *self.video_settings.borrow()
+    }
     pub fn microphone_state(&self) -> watch::Receiver<crate::peer::SourceMicrophoneSettings> {
         self.audio.microphone.clone()
     }
@@ -64,6 +67,26 @@ impl Control {
             .try_send(VideoSettingsRequest { settings, result })
             .map_err(|_| anyhow!("capture_unavailable"))?;
         applied.await.map_err(|_| anyhow!("capture_unavailable"))?
+    }
+    pub async fn configure_published_video(
+        &self,
+        settings: Settings,
+        published: impl std::future::Future<Output = Result<()>>,
+    ) -> Result<()> {
+        let previous = self.settings();
+        self.configure_video(settings).await?;
+        if let Err(error) = published.await {
+            if !self.is_stopped() {
+                if let Err(rollback) = self.configure_video(previous).await {
+                    return Err(
+                        error.context(format!("capture quality rollback failed: {rollback:#}"))
+                    );
+                }
+            }
+            return Err(error);
+        }
+        anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
+        Ok(())
     }
     pub fn set_audio_settings(&self, settings: crate::peer::SourceAudioSettings) {
         self.audio.settings.send_replace(settings);
@@ -100,7 +123,7 @@ pub(crate) struct Producer {
 }
 impl Producer {
     pub fn settings(&self) -> Settings {
-        *self.control.video_settings.borrow()
+        self.control.settings()
     }
     pub fn set_demands(&self, next: Vec<VideoDemand>) {
         self.demands.send_if_modified(|current| {
@@ -347,6 +370,86 @@ impl RtpSource {
 mod tests {
     use super::*;
     use std::time::Duration;
+
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn video_settings_wait_for_publication_and_rollback_only_the_live_producer() -> Result<()>
+    {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            let frames = crate::capture::Frames::new(crate::capture::FrameTiming::Source)?;
+            let epoch = Instant::now();
+            let (sources, _ready) = mpsc::channel(1);
+            let (events, _events) = mpsc::channel(1);
+            let (_cancel, cancelled) = watch::channel(false);
+            let (audio, audio_task) = audio::start(Uuid::new_v4(), epoch, SystemInstant::now(epoch),
+                sources, events, Relay::default(), cancelled);
+            let previous = Settings { width: 640, height: 360, fps: 30, bitrate: 1_000_000 };
+            let next = Settings { width: 1280, height: 720, bitrate: 3_000_000, ..previous };
+            let (video_settings, _) = watch::channel(previous);
+            let (video_requests, mut requests) = mpsc::channel(1);
+            let control = Control { video: frames.control(), codec: Arc::new(OnceLock::new()),
+                video_settings, video_requests, audio };
+
+            // The existing encoder acknowledgement is separate from room authority.
+            let (accepted, reply) = oneshot::channel();
+            let (publishing, mut started) = oneshot::channel();
+            let update = control.configure_published_video(next, async {
+                publishing.send(()).unwrap();
+                reply.await?
+            });
+            tokio::pin!(update);
+            let request = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                result = &mut update => panic!("configuration completed before encoder: {result:?}"),
+            };
+            assert!(matches!(started.try_recv(), Err(oneshot::error::TryRecvError::Empty)));
+            assert_eq!(request.settings, next);
+            control.video_settings.send_replace(request.settings);
+            request.result.send(Ok(())).unwrap();
+            tokio::select! {
+                result = started => result.unwrap(),
+                result = &mut update => panic!("configuration completed before room reply: {result:?}"),
+            }
+            accepted.send(Ok(())).unwrap();
+            update.await?;
+            assert_eq!(control.settings(), next);
+
+            let rejected = control.configure_published_video(previous, async { Err(anyhow!("room_rejected")) });
+            tokio::pin!(rejected);
+            let request = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                result = &mut rejected => panic!("missing local apply: {result:?}"),
+            };
+            control.video_settings.send_replace(request.settings);
+            request.result.send(Ok(())).unwrap();
+            let rollback = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                result = &mut rejected => panic!("room rejection escaped before rollback: {result:?}"),
+            };
+            assert_eq!(rollback.settings, next);
+            control.video_settings.send_replace(rollback.settings);
+            rollback.result.send(Ok(())).unwrap();
+            assert_eq!(rejected.await.unwrap_err().to_string(), "room_rejected");
+            assert_eq!(control.settings(), next);
+
+            let (accepted, reply) = oneshot::channel();
+            let retired = control.configure_published_video(previous, async { reply.await? });
+            tokio::pin!(retired);
+            let request = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                result = &mut retired => panic!("missing last apply: {result:?}"),
+            };
+            control.video_settings.send_replace(request.settings);
+            request.result.send(Ok(())).unwrap();
+            control.stop(); // Stop and replacement retire this exact Control.
+            accepted.send(Ok(())).unwrap();
+            assert_eq!(retired.await.unwrap_err().to_string(), "capture_unavailable");
+            assert!(matches!(requests.try_recv(), Err(mpsc::error::TryRecvError::Empty)));
+            audio_task.await?;
+            Ok::<_, anyhow::Error>(())
+        }).await??;
+        Ok(())
+    }
 
     #[test]
     fn source_audio_settings_update_the_same_stereo_opus_encoder() -> Result<()> {

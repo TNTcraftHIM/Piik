@@ -33,7 +33,7 @@ use piik_channel_native::{
     peer::{CaptureLease, SourceAudioSettings, SourceMicrophoneSettings},
     session::{
         self, CommitCapture, HostCommand, Hosting, OpenRoom, PauseCapture, PrepareCapture,
-        TransferSource,
+        PublishCaptureCeiling, TransferSource,
     },
 };
 use serde::Deserialize;
@@ -1169,7 +1169,23 @@ async fn connection(
                                     .and_then(Capture::lease)
                                     .filter(|lease| lease.id == capture_id)
                                     .ok_or_else(|| anyhow!("capture_unavailable"))
-                                    .and_then(|lease| lease.configure_video(settings));
+                                    .and_then(|lease| {
+                                        let commands = host
+                                            .as_ref()
+                                            .ok_or_else(|| anyhow!("hello_required"))?
+                                            .clone();
+                                        let scope = lease.scope.clone();
+                                        let producer = lease.producer_id();
+                                        lease.configure_video(settings, async move {
+                                            publish_capture_ceiling(
+                                                &commands,
+                                                scope,
+                                                producer,
+                                                settings.into(),
+                                            )
+                                            .await
+                                        })
+                                    });
                                 match update {
                                     Ok(update) => {
                                         operations.push(async move {
@@ -1469,6 +1485,7 @@ async fn commit_capture(
             capture_id: lease.id,
             replacing,
             retaining: lease.retains_video(),
+            video_ceiling: lease.video_ceiling(),
             result,
         }))
         .await
@@ -1516,6 +1533,28 @@ async fn pause_capture(
             scope,
             capture_id,
             paused,
+            result,
+        }))
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?;
+    response
+        .await
+        .map_err(|_| anyhow!("hosting_unavailable"))?
+        .map_err(anyhow::Error::msg)
+}
+
+async fn publish_capture_ceiling(
+    commands: &mpsc::Sender<HostCommand>,
+    scope: piik_channel_native::peer::CaptureScope,
+    capture_id: Uuid,
+    ceiling: piik_channel_core::wire::VideoCeiling,
+) -> Result<()> {
+    let (result, response) = oneshot::channel();
+    commands
+        .send(HostCommand::PublishCaptureCeiling(PublishCaptureCeiling {
+            scope,
+            capture_id,
+            ceiling,
             result,
         }))
         .await
@@ -1645,5 +1684,48 @@ mod tests {
             (publication_id, actual_capture, actual_settings),
             (publication, capture_id, settings)
         );
+        assert_eq!(
+            serde_json::to_value(piik_channel_core::wire::VideoCeiling::from(settings)).unwrap(),
+            json!({"resolution":{"width":1280,"height":720},"maxFramerate":24.0,"maxBitrate":2_500_000})
+        );
+    }
+
+    #[tokio::test]
+    async fn capture_ceiling_response_waits_for_the_native_room_reply() {
+        let scope = piik_channel_native::peer::CaptureScope {
+            publication_id: Uuid::new_v4(),
+            room_id: "room".into(),
+            binding_id: Uuid::new_v4(),
+        };
+        let producer = Uuid::new_v4();
+        let ceiling = Settings {
+            width: 1280,
+            height: 720,
+            fps: 24,
+            bitrate: 2_500_000,
+        }
+        .into();
+        for acknowledgement in [Ok(()), Err("room_rejected".to_owned())] {
+            let (commands, mut requests) = mpsc::channel(1);
+            let update = publish_capture_ceiling(&commands, scope.clone(), producer, ceiling);
+            tokio::pin!(update);
+            let request = tokio::select! {
+                request = requests.recv() => request.unwrap(),
+                result = &mut update => panic!("App replied before Native authority: {result:?}"),
+            };
+            let HostCommand::PublishCaptureCeiling(request) = request else {
+                panic!("ceiling command")
+            };
+            assert_eq!(request.scope.publication_id, scope.publication_id);
+            assert_eq!(request.scope.binding_id, scope.binding_id);
+            assert_eq!(request.capture_id, producer);
+            assert_eq!(request.ceiling, ceiling);
+            assert!(futures_util::poll!(&mut update).is_pending());
+            request.result.send(acknowledgement.clone()).unwrap();
+            assert_eq!(
+                update.await.map_err(|error| error.to_string()),
+                acknowledgement
+            );
+        }
     }
 }

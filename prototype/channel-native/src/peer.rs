@@ -229,6 +229,7 @@ impl CaptureLease {
     pub fn configure_video(
         &self,
         settings: crate::capture::Settings,
+        published: impl std::future::Future<Output = Result<()>> + Send + 'static,
     ) -> Result<impl std::future::Future<Output = Result<()>> + Send + 'static> {
         settings.validate()?;
         anyhow::ensure!(!self.is_stopped(), "capture_unavailable");
@@ -239,10 +240,20 @@ impl CaptureLease {
         };
         Ok(async move {
             #[cfg(feature = "capture")]
-            return control.configure_video(settings).await;
+            return control.configure_published_video(settings, published).await;
             #[cfg(not(feature = "capture"))]
-            anyhow::bail!("capture_unavailable")
+            {
+                let _ = published;
+                anyhow::bail!("capture_unavailable")
+            }
         })
+    }
+    pub fn video_ceiling(&self) -> Option<piik_channel_core::wire::VideoCeiling> {
+        #[cfg(feature = "capture")]
+        if let Some(CaptureLeaseControl::Capture(control)) = &self.control {
+            return Some(control.settings().into());
+        }
+        None
     }
     pub fn configure_audio(&self, settings: SourceAudioSettings) -> Result<()> {
         settings.validate()?;

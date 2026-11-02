@@ -81,6 +81,15 @@ impl Fixture {
             kind: Kind::Screen,
             muted: false,
             paused: false,
+            video_ceiling: Some(
+                crate::capture::Settings {
+                    width: 640,
+                    height: 360,
+                    fps: 30,
+                    bitrate: 5_000_000,
+                }
+                .into(),
+            ),
         };
         let mut f = Self {
             withheld: HashSet::new(),
