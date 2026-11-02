@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BrowserEncodingProducer } from "../src/client/media/browser-encoding-producer";
+import { BrowserEncodingPool } from "../src/client/media/browser-encoding-pool";
+import type { BrowserEncodingOutput } from "../src/client/media/browser-encoding-output";
 import { applyVideoCaptureProfile, configureVideoSender, QUALITY_PROFILES } from "../src/client/media/quality";
 import { cloneSenderVideoTrack } from "../src/client/media/sender-video-track";
 
@@ -229,6 +231,50 @@ describe("Browser encoding producer startup", () => {
     expect(old.failed).not.toHaveBeenCalled();
     expect(next.failed).not.toHaveBeenCalled();
     expect(next.producer.track?.readyState).toBe("live");
+  });
+
+  it("releases a pending stats wait when retired without failing the producer", async () => {
+    const { producer, source, failed } = createProducer();
+    await producer.start();
+    Connection.instances[0].getStats.mockReturnValueOnce(new Promise(() => {}));
+    let outcome = "pending";
+    void producer.report().then(() => { outcome = "resolved"; }, error => { outcome = error.name; });
+    producer.dispose();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(outcome).toBe("AbortError");
+    expect(failed).not.toHaveBeenCalled();
+    expect(source.stop).not.toHaveBeenCalled();
+  });
+
+  it("keeps the pool sampling after retiring a producer with pending stats", async () => {
+    vi.stubGlobal("RTCRtpSender", { getCapabilities: () => ({ codecs: [{ mimeType: "video/VP8", clockRate: 90_000 }] }) });
+    const pool = new BrowserEncodingPool();
+    const addMember = () => {
+      const source = Object.assign(new Track(), { kind: "video" });
+      const getStats = vi.fn(async () => new Map([
+        ["video", { type: "outbound-rtp", kind: "video", codecId: "codec", targetBitrate: 2_000_000 }],
+        ["codec", { type: "codec", mimeType: "video/VP8", clockRate: 90_000 }],
+      ]) as unknown as RTCStatsReport);
+      const output = { snapshot: () => ({ frames: 0 }), select: vi.fn(), passthrough: vi.fn() } as unknown as BrowserEncodingOutput;
+      const fatal = vi.fn();
+      const handle = pool.create(source as unknown as MediaStreamTrack, { getStats } as unknown as RTCRtpSender,
+        { connectionState: "connected", getStats } as unknown as RTCPeerConnection, QUALITY_PROFILES["1080p30"],
+        output, async () => true, async () => undefined, fatal)!;
+      return { handle, getStats, fatal };
+    };
+    try {
+      const retired = addMember(), healthy = addMember();
+      await vi.advanceTimersByTimeAsync(500);
+      Connection.instances[0].getStats.mockReturnValueOnce(new Promise(() => {}));
+      await vi.advanceTimersByTimeAsync(500);
+      expect(Connection.instances[0].getStats).toHaveBeenCalledOnce();
+      retired.handle.dispose();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(healthy.getStats).toHaveBeenCalledTimes(3);
+      expect(healthy.fatal).not.toHaveBeenCalled();
+      expect(Connection.instances[0].close).toHaveBeenCalledOnce();
+      expect(Connection.instances[2].close).not.toHaveBeenCalled();
+    } finally { pool.dispose(); }
   });
 
   it("routes keyframe request failure through the producer owner, not the outgoing connection", async () => {
