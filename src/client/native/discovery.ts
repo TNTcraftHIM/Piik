@@ -17,37 +17,39 @@ export function isLoopbackPage(): boolean {
   return ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
 }
 
-async function ungrantedLocalPermission(): Promise<PermissionState | null> {
+async function localPermission(): Promise<PermissionStatus | null> {
   if (isLoopbackPage()) return null;
   for (const name of ["loopback-network", "local-network-access"]) {
     try {
-      const { state } = await navigator.permissions.query({ name: name as PermissionName });
-      return state === "granted" ? null : state;
+      return await navigator.permissions.query({ name: name as PermissionName });
     } catch { /* Older Browsers may expose neither permission name. */ }
   }
   return null;
 }
 
-/** One bounded scan; each protocol adapter verifies the responding App's identity. */
+/** One network deadline; each protocol adapter verifies the responding App's identity. */
 export async function discoverLocalApp<T>(
   path: "health" | "connect-discovery", read: (body: unknown, port: number) => T,
   { waitForPermission = true, signal }: AppDiscoveryOptions,
   isIncompatible: (error: unknown) => boolean,
 ): Promise<T | null> {
   if (signal?.aborted) return null;
-  if (!waitForPermission) {
-    const permission = await ungrantedLocalPermission();
-    if (permission) {
-      debugEvent("native", "unavailable", { stage: "permission", permission });
-      return null;
-    }
+  const permission = await localPermission();
+  if (!waitForPermission && permission && permission.state !== "granted") {
+    debugEvent("native", "unavailable", { stage: "permission", permission: permission.state });
+    return null;
   }
   if (signal?.aborted) return null;
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
   signal?.addEventListener("abort", abort, { once: true });
-  const timer = window.setTimeout(() => controller.abort(), 8_000);
+  let timer: number | undefined;
+  const startDeadline = () => { timer ??= window.setTimeout(() => controller.abort(), 8_000); };
+  const permissionChanged = () => { if (permission?.state !== "prompt") startDeadline(); };
+  const awaitingPermission = permission?.state === "prompt";
   try {
+    if (awaitingPermission) permission.addEventListener("change", permissionChanged);
+    permissionChanged();
     const selectedPort = clientRuntimePort();
     const ports = selectedPort === null ? Array.from({
       length: NATIVE_CLIENT_PORT_END - NATIVE_CLIENT_PORT_START + 1,
@@ -57,6 +59,7 @@ export async function discoverLocalApp<T>(
         cache: "no-store", signal: controller.signal,
         ...(isLoopbackPage() ? {} : { targetAddressSpace: "loopback" }),
       } as RequestInit);
+      startDeadline();
       if (!response.ok) throw new Error("Piik App discovery was not accepted");
       return read(await response.json(), port);
     }));
@@ -66,6 +69,7 @@ export async function discoverLocalApp<T>(
     debugEvent("native", "unavailable", { stage: "discovery", timedOut: controller.signal.aborted });
     return null;
   } finally {
+    if (awaitingPermission) permission.removeEventListener("change", permissionChanged);
     signal?.removeEventListener("abort", abort);
     window.clearTimeout(timer);
     controller.abort();
