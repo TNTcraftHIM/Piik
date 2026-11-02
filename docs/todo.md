@@ -55,6 +55,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **Stronger microphone noise suppression (#518).** Assess the
+  [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
+  through the shared microphone input. Browser voice processing is already the
+  default; keep screen and system audio unprocessed.
 - [ ] **3.0 semantic reconstruction.** Continue the isolated `feat/channel-prototype`
   from the accepted domain/room/participant model. Map existing behavior and
   ownership, remove accidental constraints, then implement cohesive Rust runtimes
