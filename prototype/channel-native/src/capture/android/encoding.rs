@@ -116,6 +116,11 @@ impl Encoding {
             .name("piik-android-encoding".into())
             .spawn(move || {
                 let result = run(&worker, frames, settings, codec, &runtime);
+                eprintln!(
+                    "Android encoder finished tid={} codec={codec:?} ok={}",
+                    unsafe { libc::gettid() },
+                    result.is_ok()
+                );
                 worker.finish(&result);
                 result
             })?;
