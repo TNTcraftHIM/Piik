@@ -12,8 +12,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint, including Android Firefox App discovery after Site approval from a
-  Browser-hosted public room and first-picture delivery through that relay path.
+  checkpoint and resolve Android Firefox's received-video relay failure: Native
+  H264 decodes, but Gecko's image conversion fails before outgoing encoding.
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab

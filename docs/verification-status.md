@@ -68,25 +68,23 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   the GNOME shortcut provider leaves its dialog visible, as recorded by the
   same evidence owner.
   Hardware encoding and physical sound remain platform acceptance work.
-- The isolated 3.0 Android Rust App passes NDK/JNI builds and emulator use through
-  Firefox: App linkage, system screen selection, decoded H.264 picture and captured
-  source sound. Cancelling the system picker preserves the active share;
+- The isolated 3.0 Android Rust App builds ARM64/x64 packages and passes emulator
+  system-browser linkage, screen selection, decoded H.264 picture and captured
+  source sound. Same-signature updates preserve App data. Picker cancellation,
   pending-page cancellation and capture stop preserve the running room.
-  Notification Stop joins the runtime and closes its listeners. Opening the App
-  again restores its launcher without resuming capture.
-  The refreshed App also passes its first public-link share to a desktop Browser
-  through Chromium on the emulator, including source sound, picker cancellation,
-  stop and launcher reentry. The Android Browser receives VP8 and source sound
-  through the Native room operator; an unsuccessful background direct trial
-  preserves that selected relay path. An earlier Firefox-mediated route timed out
-  before automatic replacement delivered video; its trigger remains under
-  investigation in [TODO](./todo.md#now). The newer direct-path result does not
-  close that case.
-  Firefox App discovery from a Browser-hosted public room also failed after Site
-  approval, before capture or media negotiation; that acceptance remains open.
-  Its Rust encoder components also pass independent bitrate updates, keyframe
-  requests, source-clock preservation and sibling isolation on the emulator's
-  software codec.
+  Notification Stop joins the runtime and closes its listeners; launcher reentry
+  retains the running domain without resuming capture. App-owned public rooms
+  deliver picture directly from their Native host to the desktop Browser.
+  Firefox Site approval from a Browser-hosted public room completes automatically,
+  including permission waits longer than the network deadline. Stopping the share
+  retains the App connection without late retired-path errors.
+  Android receiver controls also carry VP8 and source sound through the Native
+  room operator; an unsuccessful background direct trial preserves that path.
+  The Firefox relay failure is now traced to Gecko image-conversion errors:
+  incoming Native H264 decodes while outgoing video remains unencoded. Automatic
+  direct replacement delivers picture; [TODO](./todo.md#now) owns the relay repair.
+  Independent Rust encoder controls pass bitrate updates, keyframe requests,
+  source-clock preservation and sibling isolation on the emulator's software codec.
 - The published 2.x Android system-browser App passed emulator screen/camera sharing
   with concurrent room voice. Browser consent returns to the same tab; source
   replacement, cancellation and background return preserve the share. Local/public
