@@ -686,7 +686,17 @@ impl RoomRuntime {
     }
 
     pub fn flows(&self) -> impl Iterator<Item = Flow> + '_ {
-        self.publications.values().flat_map(Publication::flows)
+        self.publications
+            .values()
+            .flat_map(Publication::flows)
+            .map(|mut flow| {
+                flow.presentation = self
+                    .activity
+                    .get(&flow.receiver)
+                    .and_then(|activity| activity.watching.get(&flow.publication_id))
+                    .is_some_and(|helper| *helper == Some(flow.sender));
+                flow
+            })
     }
 
     pub fn base_links(&self) -> impl Iterator<Item = BaseLink> + '_ {
@@ -697,6 +707,7 @@ impl RoomRuntime {
                 room_id: self.policy.id.clone(),
                 parent,
                 child,
+                ready: self.base.as_ref().is_some_and(|base| base.ready(child)),
             })
     }
     pub fn base_state(
@@ -801,6 +812,16 @@ mod tests {
             let flow = &trial[&receiver];
             room.flow_state(flow.id, receiver, flow.sender, FlowState::SwitchReady, 4)
                 .unwrap();
+            if receiver == id(2) {
+                let pending = room
+                    .flows()
+                    .find(|candidate| candidate.id == flow.id)
+                    .unwrap();
+                assert!(!pending.selected);
+                assert_eq!(pending.proof, Some(FlowState::Decoded));
+                assert_eq!(pending.presented, Some(true));
+                assert!(pending.presentation);
+            }
         }
         room.reconcile(&endpoints, 4);
         assert!(trial

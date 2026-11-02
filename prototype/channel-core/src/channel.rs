@@ -1102,6 +1102,81 @@ impl Channel {
         })
     }
 
+    pub(crate) fn room_topology(
+        &self,
+        id: &str,
+        session: Uuid,
+        publication_id: Option<Uuid>,
+    ) -> Result<crate::topology::RoomTopology, &'static str> {
+        use crate::topology::{BaseEdge, BaseTopology, RoomTopology, ScreenEdge, ScreenTopology};
+        let member = self.identity.member(
+            self.identity
+                .sessions
+                .get(&session)
+                .ok_or("session_expired")?
+                .user_id,
+        )?;
+        let room = self.remote.get(id).ok_or("room_unavailable")?;
+        if !Self::host_online(&self.identity, room) {
+            return Err("room_unavailable");
+        }
+        let binding = room.binding.as_ref().ok_or("room_unavailable")?;
+        if binding.applied_revision < binding.projection_floor {
+            return Err("room_unavailable");
+        }
+        let view = room
+            .snapshot(member, session, true)
+            .ok_or("room_unavailable")?;
+        if !view.room.authorized {
+            return Err("room_access_required");
+        }
+        let projection = room.projection.as_ref().ok_or("room_unavailable")?;
+        let screen = publication_id
+            .map(|publication_id| {
+                let publication = view
+                    .publications
+                    .iter()
+                    .find(|publication| {
+                        publication.id == publication_id && publication.kind == Kind::Screen
+                    })
+                    .ok_or("publication_unavailable")?;
+                Ok(ScreenTopology {
+                    publication_id,
+                    source_session_id: publication.session_id,
+                    edges: projection
+                        .flows
+                        .iter()
+                        .filter(|flow| flow.publication_id == publication_id)
+                        .map(|flow| ScreenEdge {
+                            sender: flow.sender,
+                            receiver: flow.receiver,
+                            selected: flow.selected,
+                            proof: flow.proof,
+                            presented: flow.presented,
+                            presentation: flow.presentation,
+                        })
+                        .collect(),
+                })
+            })
+            .transpose()?;
+        Ok(RoomTopology {
+            binding_id: binding.id,
+            base: BaseTopology {
+                root_session_id: binding.session,
+                edges: projection
+                    .base_links
+                    .iter()
+                    .map(|link| BaseEdge {
+                        sender: link.parent,
+                        receiver: link.child,
+                        ready: link.ready,
+                    })
+                    .collect(),
+            },
+            screen,
+        })
+    }
+
     pub fn snapshot(&self, session_id: Uuid) -> Snapshot {
         let member = self
             .identity

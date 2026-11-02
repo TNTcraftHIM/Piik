@@ -1,4 +1,4 @@
-use crate::wire::{FlowBinding, PairInfo, UdpPreparation};
+use crate::wire::{FlowBinding, FlowState, PairInfo, UdpPreparation};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
@@ -12,6 +12,10 @@ pub struct Flow {
     pub sender: Uuid,
     pub receiver: Uuid,
     pub selected: bool,
+    // Refreshed from the room plan when projecting leases, never inferred by transport.
+    pub proof: Option<FlowState>,
+    pub presented: Option<bool>,
+    pub presentation: bool,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -20,6 +24,7 @@ pub struct BaseLink {
     pub room_id: String,
     pub parent: Uuid,
     pub child: Uuid,
+    pub ready: bool,
 }
 
 #[derive(Clone, Default)]
@@ -132,6 +137,9 @@ impl TransportBook {
                 sender,
                 receiver,
                 selected: binding.selected,
+                proof: None,
+                presented: None,
+                presentation: false,
             })
         })
     }

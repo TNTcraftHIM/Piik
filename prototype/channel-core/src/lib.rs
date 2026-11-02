@@ -24,6 +24,7 @@ mod routes;
 pub mod storage;
 #[cfg(feature = "sqlite")]
 mod stored_room;
+pub mod topology;
 mod transport;
 pub mod udp;
 pub mod wire;
@@ -200,6 +201,26 @@ impl Authority {
             now,
         };
         match &request.command {
+            Command::RoomTopology {
+                room_id,
+                publication_id,
+            } => {
+                match self
+                    .channel
+                    .room_topology(room_id, session_id, *publication_id)
+                {
+                    Ok(topology) => effects.events.push((
+                        connection,
+                        Event::RoomReply {
+                            room_id: room_id.clone(),
+                            request_id: request.request_id,
+                            result: RoomResult::Topology { topology },
+                        },
+                    )),
+                    Err(code) => Self::error(connection, request.request_id, code, &mut effects),
+                }
+                return effects;
+            }
             Command::HostRegister {
                 room,
                 resume_binding,

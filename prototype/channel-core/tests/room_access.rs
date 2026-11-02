@@ -80,6 +80,101 @@ fn core() -> RoomNetwork {
 }
 
 #[test]
+fn topology_read_uses_current_room_admission_and_binding_without_host_turns() {
+    let mut core = core();
+    let owner = Uuid::new_v4();
+    let reader = Uuid::new_v4();
+    admit(
+        &mut core,
+        owner,
+        json!({"type":"join","name":"Owner","key":"owner"}),
+    );
+    let (reader_session, _, _) = admit(
+        &mut core,
+        reader,
+        json!({"type":"join","name":"Reader","key":"invite"}),
+    );
+    let reader_user = core
+        .state(reader)
+        .sessions
+        .iter()
+        .find(|session| session.id == reader_session)
+        .unwrap()
+        .user_id;
+    let private = room(&mut core, owner, "private", false);
+    let query = |room: &str, publication: Option<Uuid>| {
+        json!({"type":"room_topology", "roomId":room,
+        "publicationId":publication,"requestId":"inspect"})
+    };
+    rejected(command(&mut core, reader, query(&private, None)));
+    let key = invite(&mut core, owner, &private);
+    command(
+        &mut core,
+        reader,
+        json!({"type":"enter_room","roomId":private,"inviteKey":key}),
+    );
+    let before = serde_json::to_value(core.authority.export_backup()).unwrap();
+    let effects = command(&mut core, reader, query(&private, None));
+    assert_eq!(effects.events.len(), 1);
+    assert_eq!(
+        serde_json::to_value(core.authority.export_backup()).unwrap(),
+        before
+    );
+    let old_binding = match &effects.events[0] {
+        (
+            connection,
+            Event::RoomReply {
+                result: RoomResult::Topology { topology },
+                ..
+            },
+        ) if *connection == reader => topology.binding_id,
+        _ => panic!("admitted reader receives its scoped reply"),
+    };
+    let other = room(&mut core, owner, "public", false);
+    let outside = Uuid::new_v4();
+    let voice = Uuid::new_v4();
+    for (id, room, kind) in [(outside, &other, "screen"), (voice, &private, "voice")] {
+        command(
+            &mut core,
+            owner,
+            json!({"type":"publish","publication":{"id":id,"roomId":room,"kind":kind,"muted":false}}),
+        );
+    }
+    rejected(command(&mut core, reader, query(&private, Some(outside))));
+    rejected(command(&mut core, reader, query(&private, Some(voice))));
+    rejected(command(&mut core, reader, query("not-a-room", None)));
+    command(
+        &mut core,
+        owner,
+        json!({"type":"revoke_room_access","roomId":private,"userId":reader_user}),
+    );
+    rejected(command(&mut core, reader, query(&private, None)));
+    let summary = core
+        .state(owner)
+        .channel
+        .rooms
+        .iter()
+        .find(|room| room.id == private)
+        .unwrap()
+        .clone();
+    command(
+        &mut core,
+        owner,
+        json!({"type":"host_stop","roomId":private,"bindingId":old_binding}),
+    );
+    rejected(command(&mut core, owner, query(&private, None)));
+    command(
+        &mut core,
+        owner,
+        json!({"type":"host_register","room":summary}),
+    );
+    let effects = command(&mut core, owner, query(&private, None));
+    assert!(effects.events.iter().any(|(_, event)| matches!(event,
+        Event::RoomReply { result: RoomResult::Topology { topology }, .. } if topology.binding_id != old_binding)));
+    rejected(command(&mut core, reader, query(&private, None)));
+}
+
+#[test]
 fn hosted_room_catalogs_keep_the_per_room_source_limit_without_a_domain_total() {
     let mut core = core();
     let peers: Vec<_> = (0..20).map(|index| {

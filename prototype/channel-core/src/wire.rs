@@ -83,6 +83,10 @@ pub enum Command {
     RoomInvite {
         room_id: String,
     },
+    RoomTopology {
+        room_id: String,
+        publication_id: Option<Uuid>,
+    },
     RevokeRoomAccess {
         room_id: String,
         user_id: Uuid,

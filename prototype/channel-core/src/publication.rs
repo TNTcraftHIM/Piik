@@ -285,6 +285,9 @@ impl Publication {
                         sender,
                         receiver: *receiver,
                         selected: true,
+                        proof: None,
+                        presented: None,
+                        presentation: false,
                     });
                 next.insert(*receiver, lease);
                 pending.push_back(*receiver);
@@ -346,7 +349,14 @@ impl Publication {
     pub fn flows(&self) -> impl Iterator<Item = Flow> + '_ {
         self.leases
             .values()
-            .cloned()
+            .map(|flow| {
+                let mut flow = flow.clone();
+                flow.proof = self.plan.readiness(flow.receiver).map(|proof| match proof {
+                    Readiness::Forwardable => FlowState::Forwardable,
+                    Readiness::Decoded => FlowState::Decoded,
+                });
+                flow
+            })
             .chain(self.operation.iter().flat_map(|op| {
                 match &op.kind {
                     OperationKind::Switch { legs, .. } => Some(legs.values()),
@@ -354,7 +364,15 @@ impl Publication {
                 }
                 .into_iter()
                 .flatten()
-                .map(|leg| leg.flow.clone())
+                .map(|leg| {
+                    let mut flow = leg.flow.clone();
+                    flow.proof = leg.proof.map(|proof| match proof {
+                        Readiness::Forwardable => FlowState::Forwardable,
+                        Readiness::Decoded => FlowState::Decoded,
+                    });
+                    flow.presented = Some(leg.presented);
+                    flow
+                })
             }))
     }
 

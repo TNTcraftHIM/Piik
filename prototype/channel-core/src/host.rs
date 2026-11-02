@@ -113,9 +113,16 @@ pub struct HostInput {
 )]
 pub enum RoomResult {
     Done,
-    Invite { key: String },
+    Topology {
+        topology: crate::topology::RoomTopology,
+    },
+    Invite {
+        key: String,
+    },
     Invited,
-    Error { code: String },
+    Error {
+        code: String,
+    },
 }
 
 #[derive(Clone, Deserialize, Serialize)]

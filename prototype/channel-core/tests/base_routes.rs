@@ -62,6 +62,38 @@ fn publish(network: &mut RoomNetwork, connection: Uuid, room: &str, kind: &str) 
     id
 }
 
+fn topology(
+    network: &mut RoomNetwork,
+    connection: Uuid,
+    room: &str,
+    publication: Option<Uuid>,
+) -> piik_channel_core::topology::RoomTopology {
+    let before = serde_json::to_value(network.authority.export_backup()).unwrap();
+    let effects = network.authority.handle(connection, piik_channel_core::wire::Request::parse(
+        &json!({"type":"room_topology", "roomId":room, "publicationId":publication, "requestId":"topology"}).to_string()).unwrap(), 100);
+    assert_eq!(
+        effects.events.len(),
+        1,
+        "read neither broadcasts nor dispatches a storage turn"
+    );
+    assert_eq!(
+        serde_json::to_value(network.authority.export_backup()).unwrap(),
+        before
+    );
+    let (recipient, event) = effects.events.into_iter().next().unwrap();
+    assert_eq!(recipient, connection);
+    let Event::RoomReply {
+        request_id,
+        result: piik_channel_core::host::RoomResult::Topology { topology },
+        ..
+    } = event
+    else {
+        panic!("scoped topology reply");
+    };
+    assert_eq!(request_id.as_deref(), Some("topology"));
+    topology
+}
+
 #[test]
 fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_commit() {
     let mut network = RoomNetwork::new();
@@ -69,7 +101,7 @@ fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_c
     let viewer = Uuid::new_v4();
     let native = Uuid::new_v4();
     let (source, _) = join(&mut network, host, None);
-    let (_, credential) = join(&mut network, viewer, None);
+    let (viewing_session, credential) = join(&mut network, viewer, None);
     let (helper, _) = join(&mut network, native, Some(&credential));
     let room = network.create(host, RoomAccess::Public, false);
     let screen = publish(&mut network, host, &room, "screen");
@@ -86,6 +118,13 @@ fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_c
         .unwrap()
         .clone();
     let old = incumbent.incoming[0].id;
+    let unproved = topology(&mut network, viewer, &room, Some(screen));
+    assert!(unproved
+        .screen
+        .unwrap()
+        .edges
+        .iter()
+        .all(|edge| edge.selected && edge.proof.is_none() && edge.presented.is_none()));
     command(
         &mut network,
         viewer,
@@ -116,6 +155,35 @@ fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_c
         local.incoming[0].input_flow_id,
         Some(upstream.incoming[0].id)
     );
+    let preparing = topology(&mut network, viewer, &room, Some(screen));
+    let edges = &preparing.screen.as_ref().unwrap().edges;
+    assert!(edges.iter().any(
+        |edge| edge.selected && edge.proof == Some(piik_channel_core::wire::FlowState::Decoded)
+    ));
+    assert_eq!(edges.iter().filter(|edge| !edge.selected).count(), 2);
+    assert!(edges
+        .iter()
+        .filter(|edge| !edge.selected)
+        .all(|edge| edge.proof.is_none() && edge.presented == Some(false)));
+    assert!(edges
+        .iter()
+        .any(|edge| edge.sender == helper && edge.presentation));
+    assert!(!edges
+        .iter()
+        .any(|edge| edge.sender == source && edge.presentation));
+    let serialized = serde_json::to_string(&preparing).unwrap();
+    for secret in [
+        old,
+        incumbent.id,
+        upstream.incoming[0].id,
+        upstream.id,
+        local.id,
+    ] {
+        assert!(
+            !serialized.contains(&secret.to_string()),
+            "read projection exposes no flow or pair IDs"
+        );
+    }
     command(
         &mut network,
         native,
@@ -132,6 +200,15 @@ fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_c
         .iter()
         .flat_map(|pair| &pair.incoming)
         .any(|flow| flow.id == old && flow.selected));
+    let proved = topology(&mut network, viewer, &room, Some(screen));
+    let edges = proved.screen.unwrap().edges;
+    assert!(edges.iter().any(|edge| edge.receiver == helper
+        && edge.proof == Some(piik_channel_core::wire::FlowState::Forwardable)
+        && !edge.selected));
+    assert!(edges.iter().any(|edge| edge.receiver == viewing_session
+        && edge.proof == Some(piik_channel_core::wire::FlowState::Decoded)
+        && edge.presented == Some(false)
+        && !edge.selected));
     command(
         &mut network,
         viewer,
@@ -152,6 +229,13 @@ fn assisted_viewing_projects_new_transit_and_keeps_the_local_transport_through_c
         .iter()
         .flat_map(|pair| &pair.incoming)
         .any(|flow| flow.id == old));
+    let committed = topology(&mut network, viewer, &room, Some(screen));
+    assert!(committed
+        .screen
+        .unwrap()
+        .edges
+        .iter()
+        .all(|edge| edge.selected && edge.presented.is_none()));
     command(
         &mut network,
         viewer,
@@ -175,6 +259,11 @@ fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
     let room = network.create(host, RoomAccess::Public, false);
     browse(&mut network, viewer, &room, true);
     let transport = pair(&network, viewer, source, &room);
+    assert!(topology(&mut network, viewer, &room, None)
+        .base
+        .edges
+        .iter()
+        .all(|edge| !edge.ready));
     for connection in [host, viewer] {
         command(
             &mut network,
@@ -188,6 +277,10 @@ fn screen_pause_is_authoritative_and_retains_voice_and_transport() {
         );
         voice(&mut network, connection, &room, true);
     }
+    let base = topology(&mut network, viewer, &room, None);
+    assert!(base.screen.is_none());
+    assert_eq!(base.base.root_session_id, source);
+    assert!(base.base.edges.iter().all(|edge| edge.ready));
     let speech = publish(&mut network, host, &room, "voice");
     let screen = publish(&mut network, host, &room, "screen");
     command(

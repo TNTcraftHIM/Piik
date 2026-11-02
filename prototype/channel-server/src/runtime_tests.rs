@@ -1057,6 +1057,46 @@ async fn service_hosts_three_rooms_as_one_native_endpoint_and_releases_them_on_r
         .unwrap()
         .host_session_id
         == native));
+    let query = json!({"type":"room_topology", "roomId":"living", "requestId":"topology"});
+    let checkpoint = serde_json::to_value(hub.lock().unwrap().authority.export_backup()).unwrap();
+    assert!(!hub
+        .lock()
+        .unwrap()
+        .authority
+        .changes_metadata(&Request::parse(&query.to_string()).unwrap()));
+    admin
+        .send(Message::Text(query.to_string().into()))
+        .await
+        .unwrap();
+    let topology = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            if let Event::RoomReply {
+                request_id,
+                result: piik_channel_core::host::RoomResult::Topology { topology },
+                ..
+            } = event(&mut admin).await
+            {
+                assert_eq!(request_id.as_deref(), Some("topology"));
+                break topology;
+            }
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        topology.binding_id,
+        initial.channel.rooms[0]
+            .delivery
+            .as_ref()
+            .unwrap()
+            .binding_id
+    );
+    assert_eq!(topology.base.root_session_id, native);
+    assert!(topology.screen.is_none());
+    assert_eq!(
+        serde_json::to_value(hub.lock().unwrap().authority.export_backup()).unwrap(),
+        checkpoint
+    );
     let owner = initial
         .sessions
         .iter()

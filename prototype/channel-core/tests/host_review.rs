@@ -777,6 +777,7 @@ fn host_projection_keeps_shadow_lineage_owned_and_promotes_the_same_leases() {
         published.projection.flows = serde_json::from_value(serde_json::json!([{
             "id": Uuid::new_v4(), "publicationId": publication,
             "sender": source, "receiver": relay, "inputFlowId": null, "selected": true,
+            "proof": null, "presented": null, "presentation": false,
         }]))
         .unwrap();
         let first = published.projection.flows[0].clone();

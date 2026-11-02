@@ -151,6 +151,7 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
             room_id: room_id.clone(),
             parent: sessions[(index - 1) / 2],
             child: *child,
+            ready: false,
         })
         .collect();
     output.projection.flows = room
@@ -167,6 +168,9 @@ fn image_directory_and_active_host_output_fit_the_domain_socket_budget() {
                     sender: sessions[0],
                     receiver: *receiver,
                     selected: true,
+                    proof: None,
+                    presented: None,
+                    presentation: false,
                 })
         })
         .collect();

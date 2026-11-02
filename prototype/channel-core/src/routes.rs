@@ -440,6 +440,9 @@ impl BaseTree {
     pub fn root(&self) -> Uuid {
         self.plan.source
     }
+    pub fn ready(&self, child: Uuid) -> bool {
+        self.plan.readiness(child).is_some()
+    }
     pub fn needs_repair(&self, demand: &BTreeSet<Uuid>, connected: &BTreeSet<Uuid>) -> bool {
         self.plan.needs_repair(demand, connected)
     }
