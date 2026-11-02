@@ -12,15 +12,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
-  checkpoint, including the Android public-link first-picture delay reproduced
-  before an automatic route replacement and Firefox App discovery after Site
-  approval from a Browser-hosted public room. Keep the SDK's transport controller,
+  checkpoint, including Android Firefox App discovery after Site approval from a
+  Browser-hosted public room and first-picture delivery through that relay path.
+  Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
-- [ ] **3.0 controlled network acceptance.** Complete the remaining
-  Browser/Native decoded-media combinations and long-interruption transit recovery
-  through the maintained Rust process runner
-  in the existing [network laboratory](./research/network-lab.md), exercising calibrated
-  NAT and failure/recovery through current room and transport owners.
 - [ ] **Virtual-LAN page loading.** Investigate the UU report where only the tab
   title appears and the page never loads. Static compression reduces transfer
   size; capture the stalled document/script response to locate this failure.

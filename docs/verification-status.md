@@ -24,9 +24,11 @@ ordinary and prepared UDP connections, short-interruption continuity and
 replacement after a lost NAT mapping. These controls observe DataChannel
 readiness and bidirectional transport traffic. Real Browser capture also decodes
 through a Native room operator and through a prepared two-Native transit path,
-with progressing voice and source sound. The
+with progressing voice and source sound. Prepared Native transit and Browser
+relay controls also recover decoded picture and current source sound after
+50-second UDP interruptions. The
 [network laboratory](./research/network-lab.md#rust-process-controls) owns these
-controls; the remaining decoded-media matrix stays in [TODO](./todo.md).
+controls; platform-specific integration remains in [TODO](./todo.md).
 
 ## Device Evidence Boundary
 

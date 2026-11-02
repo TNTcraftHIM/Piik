@@ -39,6 +39,10 @@ Reviewed on 2026-10-13:
 
 ## Acceptance Contract
 
+The evidence rules apply to both lines. Pion, the four Browser/App pairings and
+SFU cases below describe the archived 2.x matrix; the maintained Rust controls
+have their own scope in [Rust process controls](#rust-process-controls).
+
 The laboratory is complete only when the following are executable and verified:
 
 1. Isolated Host, Viewer, routers and Site run real processes. Only laboratory
@@ -77,12 +81,12 @@ It exercised that transport with synthetic
 media, not every Browser/OS behavior. The process layer uses Linux namespaces,
 kernel NAT/firewall rules and traffic shaping. Neither layer establishes
 Windows/macOS driver behavior, physical radio scheduling, mobile suspension or
-the distribution of real-world NATs. The current process matrix uses desktop
-Chrome and a Linux App with Browser-generated H264 ingress; it does not exercise
+the distribution of real-world NATs. That 2.x process matrix used desktop
+Chrome and a Linux App with Browser-generated H264 ingress; it did not exercise
 physical capture, other Browser engines, real gateway mapping or the public
 invitation provider.
 
-The `voice-browser-browser`, `voice-browser-app`, `voice-app-browser` and
+The archived 2.x `voice-browser-browser`, `voice-browser-app`, `voice-app-browser` and
 `voice-app-app` cases additionally open room voice through the normal UI and
 require progressing received audio in both directions. `voice-sfu-fallback`
 blocks direct media, and `voice-media-outage` interrupts then restores UDP while
@@ -164,10 +168,11 @@ including failed runs. Passing a DataChannel control does not establish decoded
 media recovery; this job does not establish physical capture or Internet success rates.
 
 Initial picture and sound pass through ordinary and prepared Native paths.
-At `2f162c14`, the [Browser-relay control](https://github.com/TNTcraftHIM/Piik/actions/runs/41356548642)
-recovers picture and current source sound 7.4 seconds after a 50-second UDP outage,
-with clean teardown. Long-interruption recovery through two Native nodes remains
-in [TODO](../todo.md#now). Exact source closures and failed controls remain in the
+After 50-second UDP outages, the [Browser-relay control](https://github.com/TNTcraftHIM/Piik/actions/runs/41362949305)
+at `7e85df27` restores decoded picture and current source sound in 21.1 seconds;
+the [prepared two-Native control](https://github.com/TNTcraftHIM/Piik/actions/runs/41366641152)
+at `7e146910` does so in 9.8 seconds. Both then show three seconds of progressing
+media and clean teardown. Exact source closures and failed controls remain in the
 [Native evidence index](../../prototype/channel-native/README.md#rtc-dependency).
 The older Go runners below require their matching snapshot.
 
