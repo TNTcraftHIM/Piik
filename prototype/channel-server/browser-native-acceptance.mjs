@@ -163,6 +163,10 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     const browserBindingBeforeHelper = (await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.bindingId;
     await action(sourceIndex, "setVideoCodecMode('h264')");
     await evaluate(sourceIndex, "window.__channelProbe.captureAudio(true)");
+    await writeFile(join(output, "app-helper-source-load.json"), JSON.stringify(await evaluate(sourceIndex, `(() => {
+      const value = ${hook}.snapshot(); return { sourceIndex: ${sourceIndex}, quality: value.quality, codecMode: value.videoCodecMode,
+        existingLocalScreens: value.state.publications.filter(publication => publication.sessionId === value.sessionId && publication.kind === 'screen').map(({ id, roomId }) => ({ id, roomId })) };
+    })()`), null, 2));
     const helperPicture = await capturedScreen(sourceIndex, browserRoom);
     const carries = (pair, direction) => pair[direction].some(flow => flow.publicationId === helperPicture && flow.selected);
     for (const index of [1, 3, downstreamIndex]) {
@@ -221,6 +225,9 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     }, ({ source, assisted, downstream }) => source.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "outgoing"))
       && [assisted, downstream].every(value => value.state.pairs.some(pair => pair.peerId === nativeEndpoint && carries(pair, "incoming")))
       && !assisted.state.pairs.some(pair => carries(pair, "outgoing")), 35_000);
+    const helperProofs = await Promise.all(viewers.map(async index => ({ index,
+      ...await evaluate(index, `window.__channelProbe.sample().then(({ protocol, qualitySamples }) => ({ protocol, qualitySamples }))`) })));
+    await writeFile(join(output, "app-helper-proofs.json"), JSON.stringify(helperProofs, null, 2));
     for (const index of viewers) { await progressing(index, helperPicture); await audioProgressing(index, helperPicture); }
     const mediaAfter = await Promise.all(viewers.map(codecs));
     await writeFile(join(output, "app-helper-media-after.json"), JSON.stringify(mediaAfter, null, 2));
