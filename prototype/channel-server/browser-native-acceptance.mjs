@@ -175,20 +175,31 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       if (!stream) return [];
       const rows = [];
       for (const track of stream.getTracks()) {
-        const receiver = window.__channelProbe.peers.filter(pc => pc.connectionState === 'connected')
-          .flatMap(pc => pc.getReceivers()).find(receiver => receiver.track === track);
-        if (!receiver) continue;
-        const stats = await receiver.getStats();
-        for (const report of stats.values()) if (report.type === 'inbound-rtp') rows.push({
-          kind: report.kind, codec: stats.get(report.codecId)?.mimeType,
+        const pc = window.__channelProbe.peers.find(pc => pc.connectionState === 'connected'
+          && pc.getReceivers().some(receiver => receiver.track === track));
+        if (!pc) continue;
+        const stats = await pc.getStats();
+        for (const report of stats.values()) if (report.type === 'inbound-rtp' && report.trackIdentifier === track.id) rows.push({
+          direction: 'received', kind: report.kind, codec: stats.get(report.codecId)?.mimeType,
           frames: report.framesDecoded ?? 0, samples: report.totalSamplesReceived ?? 0 });
+        for (const output of window.__channelProbe.peers.filter(pc => pc.connectionState === 'connected')) {
+          for (const sender of output.getSenders().filter(sender => sender.track === track)) {
+            const all = await output.getStats();
+            for (const report of (await sender.getStats()).values()) if (report.type === 'outbound-rtp') rows.push({
+              direction: 'sent', kind: report.kind, codec: all.get(report.codecId)?.mimeType,
+              frames: report.framesEncoded ?? 0, bytes: report.bytesSent ?? 0 });
+          }
+        }
       }
       return rows;
     })()`);
     const mediaBefore = await Promise.all([1, 2].map(codecs));
+    await writeFile(join(output, "app-helper-media-before.json"), JSON.stringify(mediaBefore, null, 2));
+    assert(mediaBefore[0].some(row => row.direction === "received" && row.codec?.toLowerCase() === "video/h264" && row.frames > 0),
+      "Source sends actual H264 into the ordinary Browser relay");
     for (const rows of mediaBefore) {
-      assert(rows.some(row => row.codec?.toLowerCase() === "video/h264" && row.frames > 0));
-      assert(rows.some(row => row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
+      assert(rows.some(row => row.direction === "received" && row.kind === "video" && row.frames > 0));
+      assert(rows.some(row => row.direction === "received" && row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
     }
     await action(1, "activateApp()"); await appReady(1);
     await until("Native assists both viewers without Browser WAN forwarding", async () => {
@@ -203,6 +214,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       && !values[1].state.pairs.some(pair => carries(pair, "outgoing")), 35_000);
     for (const index of [1, 2]) { await progressing(index, helperPicture); await audioProgressing(index, helperPicture); }
     const mediaAfter = await Promise.all([1, 2].map(codecs));
+    await writeFile(join(output, "app-helper-media-after.json"), JSON.stringify(mediaAfter, null, 2));
     for (const rows of mediaAfter) {
       assert(rows.some(row => row.codec?.toLowerCase() === "video/h264" && row.frames > 0));
       assert(rows.some(row => row.codec?.toLowerCase() === "audio/opus" && row.samples > 0));
