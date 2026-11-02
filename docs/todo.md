@@ -13,7 +13,7 @@ own behavior; research and Git/PRs own evidence and completed history.
   and [room-data model](./research/channel-storage-and-identity.md).
   Finish the packaged Windows/Android main-flow acceptance at the internal-test
   checkpoint. Resolve Android's repeated VP8 capture failure in the system codec
-  service and verify complete source cleanup after every video producer ends.
+  service.
   Follow the Android Native helper's source-layer suspension through its actual
   source and transport measurements. Firefox's received-video conversion limit
   is recorded in [device evidence](./verification-status.md#device-evidence-boundary).

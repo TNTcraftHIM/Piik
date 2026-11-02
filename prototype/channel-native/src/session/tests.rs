@@ -1,6 +1,256 @@
 use super::*;
 use serde_json::json;
 
+async fn capture_projection_session() -> (Session, Socket, WebSocketStream<TcpStream>, Snapshot) {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("ws://{}", listener.local_addr().unwrap());
+    let (client, remote) = tokio::join!(tokio_tungstenite::connect_async(&url), async {
+        tokio_tungstenite::accept_async(listener.accept().await.unwrap().0).await
+    });
+    let (mut socket, _) = client.unwrap();
+    let session_id = Uuid::new_v4();
+    let host = Uuid::new_v4();
+    let user = Uuid::new_v4();
+    let owner = Uuid::new_v4();
+    let room = |id, available, delivery| {
+        json!({
+            "id":id,"name":id,"icon":"couch","creatorId":owner,"access":"private","hidden":true,
+            "hasPassword":false,"voiceBitrate":64_000,"authorized":true,"canManage":false,"available":available,
+            "reading":false,"participantSessionIds":[],"capabilities":{"attachments":false},"delivery":delivery
+        })
+    };
+    let state: Snapshot = serde_json::from_value(json!({
+        "channel":{"id":Uuid::new_v4(),"name":"Capture projection","icon":"couch","ownerId":owner,
+            "historyWindow":100,"roles":[],"rooms":[room("target",true,json!({
+                "hostSessionId":host,"bindingId":Uuid::new_v4(),"nextHops":{}
+            })),room("offline",false,serde_json::Value::Null)]},
+        "users":[{"id":user,"name":"Source","roles":[]},{"id":owner,"name":"Owner","roles":[]}],
+        "sessions":[{"id":session_id,"userId":user,"online":true,"signingKey":vec![0;32]},
+            {"id":host,"userId":owner,"online":true,"signingKey":vec![1;32]}],
+        "files":[],"publications":[],"voice":[],"subscriptions":[],"pairs":[],"iceServers":[]
+    }))
+    .unwrap();
+    let mut session = Session {
+        config: Config {
+            url,
+            origin: "http://localhost".into(),
+            name: "Source".into(),
+            key: None,
+            credential: None,
+            server_udp: None,
+        },
+        files: vec![],
+        live: None,
+        recovery: None,
+        signer: Arc::new(SessionSigner::from_seed([1; 32])),
+        hosting: None,
+        opening: BTreeMap::new(),
+        pending_captures: BTreeMap::new(),
+    };
+    let mut welcome = state.clone();
+    // A fresh Native endpoint has no view of this already-authorized hidden room.
+    welcome.channel.rooms.remove(0);
+    session
+        .event(
+            Event::Welcome {
+                credential: "fixture".into(),
+                session_id,
+                state: welcome,
+                invite_key: None,
+                invitation_origin: None,
+            },
+            &mut socket,
+        )
+        .await
+        .unwrap();
+    (session, socket, remote.unwrap(), state)
+}
+
+fn projection_capture(result: oneshot::Sender<Result<CaptureLease, String>>) -> PrepareCapture {
+    PrepareCapture {
+        publication_id: Uuid::new_v4(),
+        room_id: "target".into(),
+        target: Target {
+            kind: crate::capture::TargetKind::Picker,
+            source_id: "1".into(),
+            title: "Unavailable fixture picker".into(),
+            pid: 0,
+            creation_time: None,
+        },
+        settings: Settings {
+            width: 640,
+            height: 360,
+            fps: 30,
+            bitrate: 1_000_000,
+        },
+        codec_mode: crate::capture::VideoCodecMode::Vp8,
+        audio: false,
+        exclude_audio: None,
+        replaces: None,
+        result,
+    }
+}
+
+#[tokio::test]
+async fn capture_prepare_waits_for_room_authority_before_platform_preparation() {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        let (mut session, mut socket, mut remote, state) = capture_projection_session().await;
+        let (result, mut response) = oneshot::channel();
+        let mut request = projection_capture(result);
+        // The real producer admission rejects this replacement before opening a device.
+        request.replaces = Some(Uuid::new_v4());
+        session.prepare_capture(request, &mut socket).await.unwrap();
+        match response.try_recv() {
+            Err(oneshot::error::TryRecvError::Empty) => {}
+            Ok(Err(code)) => panic!("preparation completed before room confirmation: {code}"),
+            _ => panic!("preparation must wait for room confirmation"),
+        }
+        let Message::Text(text) = remote.next().await.unwrap().unwrap() else {
+            panic!("EnterRoom confirmation")
+        };
+        let command: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(command["type"], "enter_room");
+        assert_eq!(command["roomId"], "target");
+        assert!(command["password"].is_null() && command["inviteKey"].is_null());
+        let id = command["requestId"].as_str().unwrap().to_owned();
+        session
+            .event(
+                Event::Ack {
+                    request_id: id.clone(),
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "offline".into(),
+                    request_id: Some(id.clone()),
+                    result: RoomResult::Done,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert!(!state.channel.rooms[1].available);
+        session
+            .event(Event::State { state }, &mut socket)
+            .await
+            .unwrap();
+        assert_eq!(session.pending_captures.len(), 1);
+        assert!(matches!(
+            response.try_recv(),
+            Err(oneshot::error::TryRecvError::Empty)
+        ));
+        assert!(session
+            .live
+            .as_ref()
+            .unwrap()
+            .peers
+            .capture_publications()
+            .await
+            .unwrap()
+            .is_empty());
+        session
+            .event(
+                Event::RoomReply {
+                    room_id: "target".into(),
+                    request_id: Some(id),
+                    result: RoomResult::Done,
+                },
+                &mut socket,
+            )
+            .await
+            .unwrap();
+        assert!(matches!(response.await, Ok(Err(code)) if code == "capture_not_owned"));
+        assert!(session.pending_captures.is_empty());
+        session.release().await.unwrap();
+    })
+    .await
+    .expect("room confirmation and source admission complete");
+}
+
+#[tokio::test]
+async fn waiting_capture_prepare_retires_before_late_room_confirmation() {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        for change in ["room-error", "released", "caller-closed"] {
+            let (mut session, mut socket, _remote, state) = capture_projection_session().await;
+            let (result, response) = oneshot::channel();
+            let mut response = Some(response);
+            session
+                .prepare_capture(projection_capture(result), &mut socket)
+                .await
+                .unwrap();
+            assert_eq!(session.pending_captures.len(), 1);
+            let id = session.pending_captures.keys().next().unwrap().clone();
+            match change {
+                "room-error" => {
+                    session
+                        .event(
+                            Event::RoomReply {
+                                room_id: "target".into(),
+                                request_id: Some(id.clone()),
+                                result: RoomResult::Error {
+                                    code: "room_context_changed".into(),
+                                },
+                            },
+                            &mut socket,
+                        )
+                        .await
+                        .unwrap();
+                }
+                "released" => session.release().await.unwrap(),
+                "caller-closed" => {
+                    session.state(state, &mut socket).await.unwrap();
+                    drop(response.take());
+                }
+                _ => unreachable!(),
+            }
+            if let Some(response) = response {
+                let expected = if change == "released" {
+                    "hosting_unavailable"
+                } else {
+                    "room_context_changed"
+                };
+                assert!(
+                    matches!(response.await, Ok(Err(code)) if code == expected),
+                    "{change}"
+                );
+            }
+            session
+                .event(
+                    Event::RoomReply {
+                        room_id: "target".into(),
+                        request_id: Some(id),
+                        result: RoomResult::Done,
+                    },
+                    &mut socket,
+                )
+                .await
+                .unwrap();
+            assert!(session.pending_captures.is_empty(), "{change}");
+            if session.live.is_some() {
+                assert!(
+                    session
+                        .live
+                        .as_ref()
+                        .unwrap()
+                        .peers
+                        .capture_publications()
+                        .await
+                        .unwrap()
+                        .is_empty(),
+                    "{change}: a later projection must not start a retired source"
+                );
+                session.release().await.unwrap();
+            }
+        }
+    })
+    .await
+    .expect("all pending requests retire without starting capture");
+}
+
 #[tokio::test]
 async fn capture_ceiling_completes_only_on_the_correlated_room_reply() {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();

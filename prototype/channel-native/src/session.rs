@@ -344,22 +344,37 @@ pub struct PublishCaptureCeiling {
     pub result: oneshot::Sender<Result<(), String>>,
 }
 enum PendingCapture {
+    Prepare(PrepareCapture),
     Commit(CommitCapture),
     Transfer(TransferSource),
     Pause(PauseCapture),
     Ceiling(PublishCaptureCeiling),
 }
 impl PendingCapture {
-    fn scope(&self) -> &CaptureScope {
+    fn scope(&self) -> Option<&CaptureScope> {
         match self {
-            Self::Commit(r) => &r.scope,
-            Self::Transfer(r) => &r.scope,
-            Self::Pause(r) => &r.scope,
-            Self::Ceiling(r) => &r.scope,
+            Self::Prepare(_) => None,
+            Self::Commit(r) => Some(&r.scope),
+            Self::Transfer(r) => Some(&r.scope),
+            Self::Pause(r) => Some(&r.scope),
+            Self::Ceiling(r) => Some(&r.scope),
+        }
+    }
+    fn room_id(&self) -> &str {
+        match self {
+            Self::Prepare(request) => &request.room_id,
+            _ => &self.scope().unwrap().room_id,
+        }
+    }
+    fn publication_id(&self) -> Uuid {
+        match self {
+            Self::Prepare(request) => request.publication_id,
+            _ => self.scope().unwrap().publication_id,
         }
     }
     fn closed(&self) -> bool {
         match self {
+            Self::Prepare(request) => request.result.is_closed(),
             Self::Commit(r) => r.result.is_closed(),
             Self::Transfer(r) => r.result.is_closed(),
             Self::Pause(r) => r.result.is_closed(),
@@ -368,6 +383,9 @@ impl PendingCapture {
     }
     fn fail(self, code: String) {
         match self {
+            Self::Prepare(request) => {
+                let _ = request.result.send(Err(code));
+            }
             Self::Commit(r) => {
                 let _ = r.result.send(Err(code));
             }
@@ -1007,26 +1025,27 @@ impl Session {
                 if self
                     .pending_captures
                     .get(&id)
-                    .is_some_and(|pending| pending.scope().room_id == room_id)
+                    .is_some_and(|pending| pending.room_id() == room_id)
                 {
                     let request = self.pending_captures.remove(&id).unwrap();
-                    match result {
-                        RoomResult::Done => match request {
-                            PendingCapture::Commit(request) => {
-                                self.finish_capture(request, socket).await?
-                            }
-                            PendingCapture::Transfer(request) => {
-                                let _ = request.result.send(Ok(()));
-                            }
-                            PendingCapture::Pause(request) => {
-                                let _ = request.result.send(Ok(()));
-                            }
-                            PendingCapture::Ceiling(request) => {
-                                let _ = request.result.send(Ok(()));
-                            }
-                        },
-                        RoomResult::Error { code } => request.fail(code),
-                        _ => request.fail("invalid_capture_reply".into()),
+                    match (request, result) {
+                        (PendingCapture::Prepare(request), RoomResult::Done) => {
+                            self.prepare_source(request, socket).await?
+                        }
+                        (PendingCapture::Commit(request), RoomResult::Done) => {
+                            self.finish_capture(request, socket).await?
+                        }
+                        (PendingCapture::Transfer(request), RoomResult::Done) => {
+                            let _ = request.result.send(Ok(()));
+                        }
+                        (PendingCapture::Pause(request), RoomResult::Done) => {
+                            let _ = request.result.send(Ok(()));
+                        }
+                        (PendingCapture::Ceiling(request), RoomResult::Done) => {
+                            let _ = request.result.send(Ok(()));
+                        }
+                        (request, RoomResult::Error { code }) => request.fail(code),
+                        (request, _) => request.fail("invalid_capture_reply".into()),
                     }
                 }
             }
@@ -1082,6 +1101,26 @@ impl Session {
         }
         if !cfg!(feature = "capture") {
             let _ = request.result.send(Err("capture_unavailable".into()));
+            return Ok(());
+        }
+        if self.live.is_none() {
+            let _ = request.result.send(Err("room_unavailable".into()));
+            return Ok(());
+        }
+        let command = Command::EnterRoom {
+            room_id: request.room_id.clone(),
+            password: None,
+            invite_key: None,
+        };
+        let id = Uuid::new_v4().to_string();
+        self.pending_captures
+            .insert(id.clone(), PendingCapture::Prepare(request));
+        // The room host confirms access and projects this endpoint before replying.
+        write(socket, &command, Some(&id)).await
+    }
+
+    async fn prepare_source(&mut self, request: PrepareCapture, socket: &mut Socket) -> Result<()> {
+        if request.result.is_closed() {
             return Ok(());
         }
         let binding_id = self.live.as_ref().and_then(|live| {
@@ -1562,8 +1601,9 @@ impl Session {
             .iter()
             .filter_map(|(id, pending)| {
                 (pending.closed()
-                    || capture_binding(&state, &pending.scope().room_id)
-                        != Some(pending.scope().binding_id))
+                    || pending.scope().is_some_and(|scope| {
+                        capture_binding(&state, &scope.room_id) != Some(scope.binding_id)
+                    }))
                 .then_some(id.clone())
             })
             .collect();
@@ -1602,7 +1642,7 @@ impl Session {
                     && !self
                         .pending_captures
                         .values()
-                        .any(|pending| pending.scope().publication_id == publication.id)
+                        .any(|pending| pending.publication_id() == publication.id)
                 {
                     write(
                         socket,
