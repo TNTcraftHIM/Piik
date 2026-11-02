@@ -180,9 +180,10 @@ The Git workspace also supplies sibling `netwatch` 0.20.0, so Native's direct
 published release; this keeps one netwatch source in each consuming graph.
 Both crates retain upstream MIT/Apache-2.0 licensing.
 
-[Issue #266](https://github.com/n0-computer/net-tools/issues/266) owns upstream
-discussion. A PR awaits maintainer discussion and the required `ready-for-pr`
-label. When an upstream release includes the repair, return both direct entries
+[Upstream PR #268](https://github.com/n0-computer/net-tools/pull/268) carries the
+repair following the maintainer's approval in
+[issue #266](https://github.com/n0-computer/net-tools/issues/266).
+When an upstream release includes the repair, return both direct entries
 to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 

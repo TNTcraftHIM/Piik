@@ -47,8 +47,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency).
   Once upstream provides those changes, verify the consumers and remove the fork.
 - [ ] **Return portmapper to an upstream release.** Follow
-  [upstream #266](https://github.com/n0-computer/net-tools/issues/266), submit the
-  repair when the maintainer marks it ready, then verify an official release.
+  [upstream PR #268](https://github.com/n0-computer/net-tools/pull/268), then
+  verify an official release containing the repair.
   [Native dependency provenance](../prototype/channel-native/README.md#rtc-dependency)
   owns the temporary pin and removal procedure.
 - [ ] **GNOME cancellation cleanup submission.** Submit the independently

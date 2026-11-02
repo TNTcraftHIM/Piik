@@ -83,6 +83,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture; [TODO](./todo.md#now) owns the relay repair.
+  On that emulator, exporting the decoded input through 2D Canvas, WebGL or
+  VideoFrame did not provide usable picture data; a synthetic Canvas VP8
+  control worked. No picture-conversion workaround is integrated.
   Independent Rust encoder controls pass bitrate updates, keyframe requests,
   source-clock preservation and sibling isolation on the emulator's software codec.
 - The published 2.x Android system-browser App passed emulator screen/camera sharing
