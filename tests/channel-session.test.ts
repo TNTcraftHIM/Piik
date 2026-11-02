@@ -1464,6 +1464,41 @@ test("Native capture previews before its snapshot, keeps picture on audio failur
   } finally { session.close(); }
 });
 
+test("stopping committed Native capture retires its pending automatic preview error", async () => {
+  vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
+  vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });
+  const { session, socket } = await setup();
+  const app = ChannelSocket.current;
+  try {
+    await app.onopen?.();
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(session.getSnapshot().appConnected).toBe(true));
+    const target = { kind: "display" as const, sourceId: "1", title: "Test display" };
+    const starting = session.startNativeScreen("first", target).catch(error => error);
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("prepare_capture"));
+    const publicationId = app.sent.at(-1)!.publicationId as string;
+    const captureId = crypto.randomUUID();
+    app.receive({ id: app.sent.at(-1)!.id, result: { captureId, sessionId: crypto.randomUUID(), codec: "h264" } });
+    await vi.waitFor(() => expect(app.sent.at(-1)?.type).toBe("commit_capture"));
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await vi.waitFor(() => expect(socket.sent.at(-1)?.type).toBe("subscribe"));
+    const preview = socket.sent.at(-1)!;
+
+    const stopping = session.stopScreen(publicationId);
+    expect(app.sent.at(-1)).toMatchObject({ type: "stop_capture", publicationId });
+    app.receive({ id: app.sent.at(-1)!.id, result: null });
+    await stopping;
+    expect(session.getSnapshot().error).toBeNull();
+    socket.receive({ type: "error", requestId: preview.requestId, code: "unknown_publication" });
+    expect(await starting).toMatchObject({ name: "AbortError" });
+    expect(session.getSnapshot().error).toBeNull();
+    expect(session.getSnapshot().ownedScreens.size).toBe(0);
+    expect(session.getSnapshot().pending.size).toBe(0);
+    expect(app.sent.filter(command => command.type === "stop_capture")).toHaveLength(1);
+    expect(socket.sent.filter(command => command.type === "subscribe")).toHaveLength(1);
+  } finally { session.close(); }
+});
+
 test("pending Native capture stays page-owned through same-page stop and close", async () => {
   vi.mocked(launchSession.isClientActivated).mockReturnValue(true);
   vi.spyOn(appLink, "discoverChannelAppHealth").mockResolvedValue({ service: "piik-channel-app", protocol: 1, port: 8793, token: "approved" });

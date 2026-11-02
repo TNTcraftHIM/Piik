@@ -1090,10 +1090,18 @@ export class ChannelSession {
   });
   revokeRoomAccess = (roomId: string, userId: string): Promise<void> => this.action(`revoke:${roomId}:${userId}`, () => this.request({ type: "revoke_room_access", roomId, userId }));
   setRoles = (userId: string, roles: string[]): Promise<void> => this.action(`roles:${userId}`, () => this.request({ type: "set_roles", userId, roles }));
-  watch = (publicationId: string, roomId?: string): Promise<void> => this.action(`watch:${publicationId}`, async () => {
+  watch = (publicationId: string, roomId?: string, signal?: AbortSignal): Promise<void> => this.action(`watch:${publicationId}`, async () => {
+    if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
     this.watching.add(publicationId);
-    try { await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId); }
-    catch (error) { this.watching.delete(publicationId); this.refreshActivity(); throw error; }
+    try {
+      await this.request({ type: "subscribe", publicationId, enabled: true }, undefined, roomId);
+      if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
+    } catch (error) {
+      this.watching.delete(publicationId);
+      this.refreshActivity();
+      if (signal?.aborted) throw new DOMException("Capture cancelled", "AbortError");
+      throw error;
+    }
   });
   unwatch = (publicationId: string): Promise<void> => this.action(`watch:${publicationId}`, async () => {
     this.watching.delete(publicationId);
@@ -1417,6 +1425,7 @@ export class ChannelSession {
   };
   startNativeScreen = (roomId: string, target: NativeCaptureTarget, audio = false, excludeAudio?: NativeCaptureTarget): Promise<void> => this.action(`screen:${roomId}`, async () => {
     const { share, current } = this.selectScreen(roomId);
+    const signal = share.selection!.signal;
     share.native = { target, audio, excludeAudio: target.kind === "display" ? excludeAudio : undefined };
     let app: ChannelApp | undefined;
     try {
@@ -1435,7 +1444,7 @@ export class ChannelSession {
       this.retireCapture(share.id);
       this.patch({});
       // Native owns the source; this page previews it through the ordinary route.
-      if (!this.watching.has(share.id)) await this.watch(share.id, roomId);
+      if (!this.watching.has(share.id)) await this.watch(share.id, roomId, signal);
     } catch (error) {
       await app?.cancelCapture(share.id).catch(() => {});
       throw error;
