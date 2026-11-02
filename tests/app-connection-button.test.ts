@@ -77,9 +77,11 @@ const source = ts.createSourceFile("AppConnectionButton.tsx", readFileSync(
   new URL("../src/client/components/living/AppConnectionButton.tsx", import.meta.url), "utf8",
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 let connect: string | undefined;
+let rememberBuild: string | undefined;
 const effects: string[] = [];
 function collect(node: ts.Node): void {
   if (ts.isFunctionDeclaration(node) && node.name?.text === "connect") connect = node.getText(source);
+  if (ts.isFunctionDeclaration(node) && node.name?.text === "rememberBuild") rememberBuild = node.getText(source);
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect") {
     effects.push(node.arguments[0]!.getText(source));
   }
@@ -87,7 +89,7 @@ function collect(node: ts.Node): void {
 }
 collect(source);
 if (!connect || !effects.length) throw new Error("Missing App connection operation or cleanup");
-const executable = ts.transpileModule(`${connect}\nconst cleanups = [${effects.map(effect => `(${effect})()`).join(",")}];
+const executable = ts.transpileModule(`${rememberBuild}\n${connect}\nconst cleanups = [${effects.map(effect => `(${effect})()`).join(",")}];
   ({ connect, cleanup: () => cleanups.reverse().forEach(fn => fn?.()) });`, {
   compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS },
 }).outputText;
@@ -110,10 +112,11 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   const help = { current: { hidePopover: vi.fn(), matches: vi.fn(() => false) } };
   const showHelp = vi.fn();
   const setState = vi.fn();
+  const setBuild = vi.fn();
   const activateClient = vi.fn();
   const onConnected = vi.fn();
   const operation = runInNewContext(executable, {
-    window, document, pending, healthCheck, help, showHelp, setState, activateClient, onConnected, AbortController, URL,
+    window, document, pending, healthCheck, help, showHelp, setState, setBuild, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, isClientActivated: () => activated,
     loadDiscovery: async () => ({ health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
@@ -134,7 +137,7 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
   }
   const activateElsewhere = () => { activated = true; window.dispatchEvent(new Event("activation")); };
   const openApproval = async () => { await operation.connect(); await operation.connect(); };
-  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, activateClient, activateElsewhere, onConnected, message };
+  return { ...operation, openApproval, popup, window, document, native, pending, help, showHelp, setState, setBuild, activateClient, activateElsewhere, onConnected, message };
 }
 
 describe("App connection approval", () => {
@@ -390,17 +393,29 @@ describe("App connection approval", () => {
     page.cleanup();
   });
 
-  it("retains a proven current App connection on focus without a background health request", async () => {
+  it("reads App build metadata on return without downgrading a proven control connection", async () => {
     const page = mount(true, "ready", false, true);
     page.native.discoverNativeHealth.mockResolvedValue(null);
     await settle();
     page.window.dispatchEvent(new Event("focus"));
     await settle();
     expect(page.setState).toHaveBeenLastCalledWith("ready");
-    expect(page.native.discoverNativeHealth).not.toHaveBeenCalled();
+    expect(page.native.discoverNativeHealth).toHaveBeenCalledWith(expect.objectContaining({ waitForPermission: false }));
+    expect(page.setBuild).toHaveBeenLastCalledWith(undefined);
     expect(page.native.discoverNativeConnect).not.toHaveBeenCalled();
     expect(page.activateClient).not.toHaveBeenCalled();
     expect(page.onConnected).not.toHaveBeenCalled();
+    page.cleanup();
+  });
+
+  it("uses the approved App's build and drops credentials from the update input", async () => {
+    const page = mount(true);
+    const build = { version: "v2.5.1", revision: "a".repeat(40), packageTarget: "android-universal" };
+    page.native.discoverNativeHealth.mockResolvedValue({ ...build, token: "local-secret" });
+    page.window.dispatchEvent(new Event("focus"));
+    await settle();
+    expect(page.setBuild).toHaveBeenLastCalledWith(build);
+    expect(page.setBuild.mock.calls.flat()).not.toContainEqual(expect.objectContaining({ token: expect.anything() }));
     page.cleanup();
   });
 

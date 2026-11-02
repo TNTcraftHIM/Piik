@@ -254,6 +254,7 @@ export const en: Record<CopyKey, string> = {
   "client.connect.remove": "Revoke this Site's App access",
   "client.connect.openOnStart": "Open this site when App starts",
   "client.connect.manage": "App is ready. Manage App.",
+  "client.connect.update": "App {current}. Update to {version}.",
   "client.connect.approveTitle": "Allow this Site to use Piik App?",
   "client.connect.approveHint": "This Site will be able to use this device's screens, windows and microphone. Check that you trust this address.",
   "client.connect.approveChannelHint": "This Site can host rooms in App and use this device's windows and screens. Check that you trust this address.",
@@ -301,6 +302,7 @@ export const en: Record<CopyKey, string> = {
   "client.update.major": "New major Piik release",
   "client.update.majorHint": "This update includes breaking changes. Read the release notes before upgrading.",
   "client.update.downloads": "AtomGit mirror",
+  "client.update.download": "Download {version}",
   "client.update.differentBuild": "This build differs from the official release",
   "client.update.official": "An official Piik release is available",
 

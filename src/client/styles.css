@@ -924,6 +924,7 @@ body.lr-theater-open .lr-top { visibility: hidden; }
 /* ---------- buttons & chips ---------- */
 
 .lr-app-connect.is-ready > svg { color: var(--live); }
+.lr-app-connect.is-ready[data-update] > svg { color: var(--primary); }
 .lr-anchored-card {
   position: fixed; inset: auto; margin: 0; padding: 16px;
   width: min(300px, calc(100vw - 16px)); box-sizing: border-box;
@@ -933,6 +934,8 @@ body.lr-theater-open .lr-top { visibility: hidden; }
   overflow: auto; overscroll-behavior: contain;
 }
 .lr-app-connect-help p { margin: 12px 0; font-size: 13px; line-height: 1.6; }
+.lr-app-connect-help .lr-app-connect-version { color: var(--muted); font-size: 12px; }
+.lr-app-connect-help .lr-client-release { margin-block: 12px; }
 .lr-anchored-card:is(:popover-open, .\:popover-open) { animation: lr-language-open 180ms var(--spring); }
 .lr-anchored-card.is-above { --language-offset: 5px; }
 .lr-app-connect-head { display: flex; align-items: flex-start; gap: 8px; }

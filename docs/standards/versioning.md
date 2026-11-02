@@ -153,6 +153,12 @@ notice. Unknown SHA is not inferred from a branch name in GitHub metadata.
 The publisher records a full SHA in `target_commitish` and verifies actual tag
 identity separately. Stable update notices ignore prereleases.
 
+Mode entry and the Site's App control share the check against the App's compiled
+identity. A newer stable release marks that App control; its panel groups the
+installed version, manual download and App management. This also covers starred
+Site startup, which bypasses mode entry. Approved health supplies build identity;
+older Apps without that metadata retain their ordinary connection and management.
+
 ### Major-Upgrade Guidance
 
 The App update notice keeps direct download as its primary action, with a small

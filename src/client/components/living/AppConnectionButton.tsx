@@ -10,6 +10,9 @@ import { LoadingStatus } from "./WaitingStatus";
 import { useAnchoredPopover } from "./use-anchored-popover";
 import { androidAppIntent } from "../../native/activation";
 import type { AppDiscovery } from "../../native/discovery";
+import type { AppReleaseIdentity } from "../../lib/release-update";
+import { useReleaseUpdate } from "../../lib/use-release-update";
+import { AppReleaseNotice } from "./AppReleaseNotice";
 
 interface AppConnectionProps {
   onConnected?: () => void;
@@ -43,25 +46,34 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
   useAnchoredPopover(trigger, help);
   const pending = useRef<ConnectionAttempt | null>(null);
   const healthCheck = useRef<AbortController | null>(null);
+  const [build, setBuild] = useState<AppReleaseIdentity>();
+  const { update: release, refresh: checkRelease } = useReleaseUpdate(build);
+  function rememberBuild(health: Partial<AppReleaseIdentity> | null) {
+    setBuild(health?.version && health.revision
+      ? { version: health.version, revision: health.revision, packageTarget: health.packageTarget } : undefined);
+  }
   useEffect(() => {
+    if (connected === false) rememberBuild(null);
     const refresh = async () => {
       if (pending.current) return;
       if (connected) {
-        healthCheck.current?.abort();
         setState("ready");
-        return;
       }
-      if (help.current?.matches(":popover-open") || !isClientActivated()) return;
+      if (help.current?.matches(":popover-open") || (!connected && !isClientActivated())) return;
       healthCheck.current?.abort();
       const current = healthCheck.current = new AbortController();
       const native = await loadDiscovery();
       if (current.signal.aborted) return;
       try {
         const health = await native.health({ signal: current.signal, waitForPermission: false });
-        if (!current.signal.aborted && !pending.current) setState(health ? "ready" : "idle");
+        if (!current.signal.aborted && !pending.current) {
+          rememberBuild(health);
+          if (!connected) setState(health ? "ready" : "idle");
+        }
       } catch (error) {
         if (!current.signal.aborted && !pending.current) {
-          setState(native.isIncompatible(error) ? "incompatible" : "idle");
+          rememberBuild(null);
+          if (!connected) setState(native.isIncompatible(error) ? "incompatible" : "idle");
         }
       }
     };
@@ -99,6 +111,7 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
       if (signal.aborted) return;
       approving = false;
       if (health) {
+        rememberBuild(health);
         finish("ready");
         activateClient();
         onConnected?.();
@@ -149,6 +162,7 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
         if (!url) { finish("unavailable"); return; }
         const health = await native.health({ signal, waitForPermission: false });
         if (signal.aborted) return;
+        rememberBuild(health);
         manage = manage && health !== null;
         if (health && !manage) {
           finish("ready");
@@ -197,19 +211,23 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
     incompatible: "native.incompatible",
   } as const)[state]);
   const failed = state === "unavailable" || state === "incompatible";
-  return <><Tooltip kind={state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
-    text={vis ? undefined : state === "idle" ? t("client.connect.hint") : label} disabled={helpOpen}
+  const update = state === "ready" ? release : null;
+  const availableUpdate = update?.kind === "update-available" || update?.kind === "major-update";
+  const title = availableUpdate ? t("client.connect.update", { current: build!.version, version: update.version }) : label;
+  return <><Tooltip kind={availableUpdate ? "update-available" : state === "ready" ? "hint-app-ready" : state === "unavailable" ? "signal-failed" : state === "incompatible" ? "warning" : "hint-client-site"}
+    text={vis ? undefined : state === "idle" ? t("client.connect.hint") : title} disabled={helpOpen}
     place="below" align="end">
     <button ref={trigger} type="button" className={`lr-btn is-compact lr-app-connect${state === "ready" ? " is-ready" : ""}`}
-      aria-label={label} aria-busy={busy || undefined}
+      aria-label={title} aria-busy={busy || undefined} data-update={availableUpdate || undefined}
       popoverTarget={failed || state === "approval" ? helpId : undefined} aria-haspopup="dialog"
       onClick={failed || state === "approval" ? undefined : event => {
         // Failure may attach popoverTarget during this click; do not toggle the
         // recovery card closed immediately after opening it.
         event.preventDefault();
+        checkRelease();
         void connect();
       }} disabled={busy}>
-      <Glyph name={state === "ready" ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
+      <Glyph name={availableUpdate ? "arrowUp" : state === "ready" ? "check" : busy ? "loader" : state === "unavailable" || state === "incompatible" ? "alert" : "window"}
         size={16} className={busy ? "lr-spin" : undefined} />
       {vis ? null : <span className="lr-cap">App</span>}
     </button>
@@ -231,6 +249,8 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
         </button>
       </div>
       <p id={`${helpId}-message`} className={vis ? "visually-hidden" : undefined}>{state === "busy" ? t("client.connect.permissionHint") : label}</p>
+      {state === "ready" && build && <p className="lr-app-connect-version">{t("client.launch.version", { version: build.version })}</p>}
+      {update && <AppReleaseNotice update={update} />}
       <div className="lr-app-connect-actions">
         {state !== "busy" && <button type="button" className="lr-btn" aria-label={t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")} onClick={() => void connect()}>
           <Glyph name={state === "approval" || state === "ready" ? "arrowRight" : "refresh"} size={16} /><span className={vis ? "visually-hidden" : undefined}>{t(state === "approval" || state === "ready" ? "client.connect.open" : state === "waking" ? "client.connect.continue" : "common.retry")}</span>

@@ -13,10 +13,8 @@ import { consoleLanguage } from "../locales";
 import { Glyph } from "../ui/icons";
 import { currentThemePreference, subscribeTheme } from "../ui/theme";
 import { clientLaunchURL, type ClientLaunchPresentation } from "../lib/session";
-import {
-  checkReleaseUpdate,
-  type ReleaseUpdateNotice,
-} from "../lib/release-update";
+import type { AppReleaseIdentity } from "../lib/release-update";
+import { useReleaseUpdate } from "../lib/use-release-update";
 
 const launcherStateSchema = z.object({
   sites: z.array(z.string()),
@@ -62,7 +60,8 @@ export function AppLauncherPage() {
   const [debugError, setDebugError] = useState(false);
   const [reload, setReload] = useState(0);
   const [lan, setLan] = useState<z.infer<typeof launcherStateSchema>["lan"]>();
-  const [update, setUpdate] = useState<ReleaseUpdateNotice | null>(null);
+  const [build, setBuild] = useState<AppReleaseIdentity>();
+  const { update } = useReleaseUpdate(build);
   const [version, setVersion] = useState<string>();
   const [target, setTarget] = useState<string>();
   const [controlPort, setControlPort] = useState<number>();
@@ -94,7 +93,6 @@ export function AppLauncherPage() {
   useEffect(() => {
     let current = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let checkedRelease = false;
     let restoredSettings = false;
     let reading = false;
     const readState = () => {
@@ -135,16 +133,7 @@ export function AppLauncherPage() {
           : previous?.kind === "load" ? null : previous);
         setLoading(false);
         if (state.starting) timer = setTimeout(() => void readState(), 750);
-        if (checkedRelease) return;
-        checkedRelease = true;
-        void checkReleaseUpdate({
-          version: state.version,
-          revision: state.revision,
-        }, { packageTarget: state.packageTarget })
-          .then((notice) => {
-            if (current && notice) setUpdate(notice);
-          })
-          .catch(() => undefined);
+        setBuild({ version: state.version, revision: state.revision, packageTarget: state.packageTarget });
       })
       .catch(() => {
         if (!fresh()) return;

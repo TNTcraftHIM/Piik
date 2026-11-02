@@ -254,6 +254,7 @@ export const zh = {
   "client.connect.remove": "取消此站点的 App 授权",
   "client.connect.openOnStart": "启动 App 时打开此站点",
   "client.connect.manage": "App 已就绪，点击管理。",
+  "client.connect.update": "App {current}，可更新至 {version}。",
   "client.connect.approveTitle": "允许使用 Piik App？",
   "client.connect.approveHint": "此站点将可以使用本机的屏幕、窗口和麦克风。请确认你信任这个网址。",
   "client.connect.approveChannelHint": "允许此站点在 App 中托管房间，并使用本机窗口和屏幕。请确认你信任此地址。",
@@ -301,6 +302,7 @@ export const zh = {
   "client.update.major": "发现新的 Piik 大版本",
   "client.update.majorHint": "此更新含不兼容改动。升级前请查看版本说明。",
   "client.update.downloads": "AtomGit 备用下载",
+  "client.update.download": "下载 {version}",
   "client.update.differentBuild": "当前构建与官方发行版不同",
   "client.update.official": "可获取 Piik 正式发行版",
 

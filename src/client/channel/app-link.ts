@@ -10,7 +10,8 @@ import type { CaptureDevice } from "../media/capture-devices";
 import type { BrowserVideoCodecMode } from "../webrtc/video-codec";
 
 const identitySchema = z.object({ service: z.literal("piik-channel-app"), protocol: z.number().int().positive(), port: z.number().int().min(1).max(65535) });
-const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/) });
+const healthSchema = identitySchema.extend({ protocol: z.literal(1), token: z.string().min(1).max(256).regex(/^[A-Za-z0-9_-]+$/),
+  version: z.string().optional(), revision: z.string().optional(), packageTarget: z.string().optional() });
 type AppHealth = z.infer<typeof healthSchema>;
 const captureSourcesSchema = z.object({ sources: z.array(nativeCaptureTargetSchema),
   processAudio: z.boolean(), processAudioExclusion: z.boolean().default(false), systemAudio: z.boolean(), activationURL: z.string().url().max(512).optional() }).strict();

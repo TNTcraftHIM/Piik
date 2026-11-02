@@ -1,6 +1,7 @@
 import { debugEvent } from "../lib/debug";
 import { clientRuntimePort } from "../lib/session";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "./discovery-ports";
+import type { AppReleaseIdentity } from "../lib/release-update";
 
 export interface AppDiscoveryOptions {
   waitForPermission?: boolean;
@@ -8,7 +9,7 @@ export interface AppDiscoveryOptions {
 }
 
 export interface AppDiscovery {
-  health(options?: AppDiscoveryOptions): Promise<object | null>;
+  health(options?: AppDiscoveryOptions): Promise<Partial<AppReleaseIdentity> | null>;
   connect(signal?: AbortSignal): Promise<string | null>;
   isIncompatible(error: unknown): boolean;
 }
