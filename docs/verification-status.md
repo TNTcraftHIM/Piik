@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-01
+Last updated: 2026-11-02
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -85,7 +85,9 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   direct replacement delivers picture; [TODO](./todo.md#now) owns the relay repair.
   On that emulator, exporting the decoded input through 2D Canvas, WebGL or
   VideoFrame did not provide usable picture data; a synthetic Canvas VP8
-  control worked. No picture-conversion workaround is integrated.
+  control worked. Mozilla's Android tests disable hardware decoders for their
+  [SurfaceTexture readback failure](https://bugzilla.mozilla.org/show_bug.cgi?id=2050179#c6).
+  No picture-conversion workaround is integrated.
   Independent Rust encoder controls pass bitrate updates, keyframe requests,
   source-clock preservation and sibling isolation on the emulator's software codec.
 - The published 2.x Android system-browser App passed emulator screen/camera sharing
