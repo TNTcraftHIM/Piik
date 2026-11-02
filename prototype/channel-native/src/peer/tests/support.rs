@@ -10,10 +10,13 @@ pub(in crate::peer) struct Parent {
     pub(in crate::peer) video: Uuid,
     pub(in crate::peer) base: u32,
     pub(in crate::peer) keyframe_after_pli: usize,
+    pub(in crate::peer) video_enabled: bool,
+    pub(in crate::peer) video_codec: RtpCodec,
 }
 pub(in crate::peer) struct Fixture {
     pub(in crate::peer) withheld: HashSet<Uuid>,
     pub(in crate::peer) video_codec: RtpCodec,
+    video_rids: Vec<String>,
     pub(in crate::peer) writable: HashMap<Uuid, Arc<Notify>>,
     pub(in crate::peer) plis: HashMap<Uuid, usize>,
     pub(in crate::peer) driver: Driver,
@@ -39,6 +42,12 @@ pub(in crate::peer) struct Fixture {
 
 impl Fixture {
     pub(in crate::peer) async fn new(video_codec: RtpCodec) -> Result<Self> {
+        Self::with_video_rids(video_codec, vec![String::new()]).await
+    }
+    pub(in crate::peer) async fn with_video_rids(
+        video_codec: RtpCodec,
+        video_rids: Vec<String>,
+    ) -> Result<Self> {
         let (commands, output) = mpsc::channel(256);
         let (events, input) = mpsc::channel(1024);
         let (ready, sources) = mpsc::channel(64);
@@ -94,6 +103,7 @@ impl Fixture {
         let mut f = Self {
             withheld: HashSet::new(),
             video_codec,
+            video_rids,
             writable: HashMap::new(),
             plis: HashMap::new(),
             driver,
@@ -212,7 +222,7 @@ impl Fixture {
                 self.video_codec.clone(),
                 MediaKind::Video,
                 stream.clone(),
-                vec![String::new()],
+                self.video_rids.clone(),
             )
             .await?;
         self.writable.insert(audio, audio_writable);
@@ -226,6 +236,8 @@ impl Fixture {
             video,
             base,
             keyframe_after_pli: 0,
+            video_enabled: true,
+            video_codec: self.video_codec.clone(),
         });
         ensure_offer(remote).await?;
         let (kind, sdp) = remote.local_description().await?;
@@ -295,12 +307,14 @@ impl Fixture {
                     if self.remote[&parent.pair].confirm(parent.audio).await?.flatten().is_none(){continue;}
                     let audio=rtp::Packet{header:rtp::header::Header{version:2,marker:true,sequence_number:self.frame as u16,timestamp:parent.base.wrapping_add(self.frame*960),..Default::default()},payload:vec![0xf8,0xff,0xfe].into()};
                     send(&self.remote[&parent.pair],parent.audio,vec![audio],wallclock,&self.writable[&parent.audio]).await?;
-                    if self.frame%5==0 {
+                    if self.frame%5==0 && parent.video_enabled {
                         let keyframe=self.plis.get(&parent.pair).copied().unwrap_or_default()>=parent.keyframe_after_pli;
-                        let payloads=video_payloads(&self.video_codec,self.frame,keyframe)?;
-                        let last=payloads.len()-1;
-                        let packets=payloads.into_iter().enumerate().map(|(part,payload)|rtp::Packet{header:rtp::header::Header{version:2,marker:part==last,sequence_number:(self.frame as usize+part)as u16,timestamp:parent.base.wrapping_add(self.frame*1800),..Default::default()},payload}).collect();
-                        send(&self.remote[&parent.pair],parent.video,packets,wallclock,&self.writable[&parent.video]).await?;
+                        for rid in &self.video_rids {
+                            let payloads=video_payloads(&parent.video_codec,self.frame,keyframe)?;
+                            let last=payloads.len()-1;
+                            let packets=payloads.into_iter().enumerate().map(|(part,payload)|rtp::Packet{header:rtp::header::Header{version:2,marker:part==last,sequence_number:(self.frame as usize+part)as u16,timestamp:parent.base.wrapping_add(self.frame*1800),..Default::default()},payload}).collect();
+                            send_rid(&self.remote[&parent.pair],parent.video,rid.clone(),packets,wallclock,&self.writable[&parent.video]).await?;
+                        }
                     }
                 }
             }
@@ -468,6 +482,16 @@ pub(in crate::peer) fn sps() -> Vec<u8> {
 pub(in crate::peer) async fn send(
     transport: &Transport,
     id: Uuid,
+    packets: Vec<rtp::Packet>,
+    at: Instant,
+    writable: &Notify,
+) -> Result<()> {
+    send_rid(transport, id, String::new(), packets, at, writable).await
+}
+pub(in crate::peer) async fn send_rid(
+    transport: &Transport,
+    id: Uuid,
+    rid: String,
     mut packets: Vec<rtp::Packet>,
     at: Instant,
     writable: &Notify,
@@ -476,7 +500,7 @@ pub(in crate::peer) async fn send(
         let ready = writable.notified();
         tokio::pin!(ready);
         ready.as_mut().enable();
-        match transport.write_au(id, String::new(), packets, at).await? {
+        match transport.write_au(id, rid.clone(), packets, at).await? {
             None => return Ok(()),
             Some(pending) => packets = pending,
         }

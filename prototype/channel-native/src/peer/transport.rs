@@ -207,7 +207,7 @@ pub(crate) struct Track {
     reports: Arc<Mutex<HashMap<u32, (SenderReport, Instant)>>>,
 }
 pub(crate) enum TrackEvent {
-    Rtp(rtp::Packet, u64, u64),
+    Rtp(rtp::Packet, u64, u64, RtpCodec),
     Report(Vec<(SenderReport, Instant)>),
     End,
 }
@@ -1053,13 +1053,6 @@ impl Track {
     pub async fn poll(&self) -> Option<TrackEvent> {
         self.packets.lock().await.recv().await
     }
-    pub fn codec(&self, ssrc: u32) -> Option<RtpCodecParameters> {
-        self.encodings
-            .lock()
-            .unwrap()
-            .get(&ssrc)
-            .map(|(_, c)| c.clone())
-    }
     pub fn rid(&self, ssrc: u32) -> Option<String> {
         self.encodings
             .lock()
@@ -1505,6 +1498,11 @@ impl Engine {
                 let ssrc = *ssrc;
                 let rid = rid.map(|r| r.to_string()).unwrap_or_default();
                 if !self.tracks.contains_key(&mid) {
+                    // Padding can precede the first encoded frame under another
+                    // negotiated PT. It does not establish a track's media format.
+                    if packet.payload.is_empty() {
+                        return;
+                    }
                     let (tx, rx) = mpsc::channel(4096);
                     self.clocks.entry(stream.clone()).or_default();
                     let track = Track {
@@ -1537,12 +1535,14 @@ impl Engine {
                     self.emit(Event::Track(self.handle.pair, track));
                 }
                 let track = self.tracks.get(&mid).unwrap();
-                track
-                    .track
-                    .encodings
-                    .lock()
-                    .unwrap()
-                    .insert(ssrc, (rid, params));
+                if !packet.payload.is_empty() {
+                    track
+                        .track
+                        .encodings
+                        .lock()
+                        .unwrap()
+                        .insert(ssrc, (rid, params.clone()));
+                }
                 let sequence = *packet.seq_no;
                 let time = packet.time.numer();
                 let packet = rtp::Packet {
@@ -1558,7 +1558,10 @@ impl Engine {
                     },
                     payload: packet.payload.to_vec().into(),
                 };
-                let _ = track.tx.try_send(TrackEvent::Rtp(packet, sequence, time));
+                let _ =
+                    track
+                        .tx
+                        .try_send(TrackEvent::Rtp(packet, sequence, time, params.rtp_codec));
             }
             RtcEvent::MediaChanged(change) => {
                 if !change.direction.is_receiving() {

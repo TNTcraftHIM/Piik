@@ -432,6 +432,7 @@ mod tests {
                 pair: Uuid::new_v4(),
                 flow_id: Uuid::new_v4(),
                 stream: "one".into(),
+                reader: Uuid::new_v4(),
             },
             kind: MediaKind::Video,
             codec: RtpCodec {

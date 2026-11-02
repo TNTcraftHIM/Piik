@@ -108,6 +108,7 @@ pub async fn run() -> Result<serde_json::Value> {
             pair: Uuid::new_v4(),
             flow_id: Uuid::new_v4(),
             stream: "generated-encoded-fixture".into(),
+            reader: Uuid::new_v4(),
         },
         codec: format(),
         kind: MediaKind::Video,

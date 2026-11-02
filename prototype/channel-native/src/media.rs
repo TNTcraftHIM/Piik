@@ -183,6 +183,7 @@ pub(crate) enum SourceOrigin {
         pair: Uuid,
         flow_id: Uuid,
         stream: String,
+        reader: Uuid,
     },
     #[cfg(any(feature = "capture", test))]
     Local,
@@ -200,7 +201,7 @@ pub(crate) struct Source {
     pub id: Uuid,
     pub publication_id: Uuid,
     pub origin: SourceOrigin,
-    // SDK format identity: received-track SDP or the local encoder's initial SPS.
+    // Encoded format identity: received media payload or the local encoder's initial SPS.
     // Producers validate actual SPS separately from each Output's negotiation.
     pub codec: RtpCodec,
     pub kind: MediaKind,

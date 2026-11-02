@@ -3,6 +3,8 @@ use super::*;
 mod admission;
 #[path = "bulk.rs"]
 mod bulk;
+#[path = "codec_change.rs"]
+mod codec_change;
 #[path = "history.rs"]
 mod history;
 

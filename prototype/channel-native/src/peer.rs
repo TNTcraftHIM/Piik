@@ -413,7 +413,7 @@ pub(crate) enum Event {
     SourceEnded {
         pair: Uuid,
         key: TrackKey,
-        source: Uuid,
+        reader: Uuid,
     },
     #[cfg(feature = "capture")]
     CaptureEnded {
@@ -460,6 +460,7 @@ struct Pair {
     ignore_offer: bool,
     candidates: Vec<Candidate>,
     remote: HashMap<String, Uuid>,
+    // Receiving tasks outlive encoded-format generations on the same track.
     latest: HashMap<TrackKey, Uuid>,
     outputs: HashMap<TrackKey, Output>,
     rejected_outputs: HashMap<TrackKey, Uuid>,
@@ -1700,14 +1701,10 @@ impl Driver {
             .latest
             .values()
             .copied()
-            .chain(
-                self.sources
-                    .values()
-                    .filter(
-                        |s| matches!(s.origin, SourceOrigin::Incoming { pair, .. } if pair == id),
-                    )
-                    .map(|s| s.id),
-            )
+            .chain(self.sources.values().filter_map(|s| match s.origin {
+                SourceOrigin::Incoming { pair, reader, .. } if pair == id => Some(reader),
+                _ => None,
+            }))
             .collect();
         let retired: Vec<_> = p
             .tasks
@@ -2261,26 +2258,30 @@ impl Driver {
         }
         Ok(())
     }
-    async fn source_ended(&mut self, pair: Uuid, key: TrackKey, source: Uuid) {
+    async fn source_ended(&mut self, pair: Uuid, key: TrackKey, reader: Uuid) {
         // An old active source may end while its replacement is awaiting a first
         // packet. Only the latest reader can invalidate the current incoming lease.
         let assigned_latest = self.pairs.get(&pair).and_then(|p| {
             p.plan
                 .incoming
                 .iter()
-                .find(|flow| flow.id == key.0 && p.latest.get(&key) == Some(&source))
+                .find(|flow| flow.id == key.0 && p.latest.get(&key) == Some(&reader))
                 .copied()
         });
         if let Some(p) = self.pairs.get_mut(&pair) {
-            if p.latest.get(&key) == Some(&source) {
+            if p.latest.get(&key) == Some(&reader) {
                 p.latest.remove(&key);
             }
-            if let Some(reader) = p.tasks.remove(&source) {
+            if let Some(reader) = p.tasks.remove(&reader) {
                 reader.task.abort();
                 let _ = reader.task.await;
             }
         }
-        if let Some(current) = self.sources.remove(&source) {
+        let source = self.sources.values().find(|s|
+            matches!(s.origin, SourceOrigin::Incoming { reader: current, .. } if current == reader))
+            .map(|s| s.id);
+        if let Some(source) = source {
+            let current = self.sources.remove(&source).unwrap();
             let publication = current.publication_id;
             self.relay.remove(source);
             for p in self.pairs.values_mut() {
@@ -2348,7 +2349,7 @@ impl Driver {
                         .await;
                 }
             }
-            Event::SourceEnded { pair, key, source } => self.source_ended(pair, key, source).await,
+            Event::SourceEnded { pair, key, reader } => self.source_ended(pair, key, reader).await,
             #[cfg(feature = "capture")]
             Event::CaptureEnded {
                 publication_id,
@@ -2532,6 +2533,7 @@ impl Driver {
             return Ok(());
         }
         let key = (flow_id, kind);
+        let reader = Uuid::new_v4();
         let (keyframes, mut requests) = watch::channel(0u64);
         let report: crate::media::SourceReport = track.report(ssrc);
         let mut source = Source {
@@ -2541,6 +2543,7 @@ impl Driver {
                 pair: id,
                 flow_id,
                 stream,
+                reader,
             },
             codec,
             kind,
@@ -2548,10 +2551,12 @@ impl Driver {
                 keyframes,
                 report: report.clone(),
             },
-            layers: layered.then(|| crate::media::video::Layers::new(rids)),
+            layers: layered.then(|| crate::media::video::Layers::new(rids.clone())),
         };
-        if let Some(previous) = p.latest.insert(key, source.id) {
-            if !self.sources.contains_key(&previous) {
+        if let Some(previous) = p.latest.insert(key, reader) {
+            if !self.sources.values().any(
+                |s| matches!(s.origin, SourceOrigin::Incoming { reader, .. } if reader == previous),
+            ) {
                 if let Some(task) = p.tasks.remove(&previous) {
                     task.task.abort();
                     let _ = task.task.await;
@@ -2560,7 +2565,6 @@ impl Driver {
         }
         let ready_sources = self.ready_sources.clone();
         let relay = self.relay.clone();
-        let source_id = source.id;
         let events = self.events.clone();
         p.tasks.retain(|_, reader| !reader.task.is_finished());
         let task = tokio::spawn(async move {
@@ -2568,6 +2572,8 @@ impl Driver {
             let framed = crate::media::incoming::Incoming::supports(&source.codec.mime_type);
             struct Layer {
                 rid: String,
+                codec: RtpCodec,
+                sequence: u64,
                 report: crate::media::SourceReport,
                 input: Option<(crate::media::incoming::Incoming, watch::Receiver<u64>)>,
             }
@@ -2608,17 +2614,15 @@ impl Driver {
                     }
                 };
                 match event {
-                    TrackEvent::Rtp(packet, sequence, media_time) => {
+                    TrackEvent::Rtp(packet, sequence, media_time, codec) => {
                         if framed {
                             let packet_ssrc = packet.header.ssrc;
                             if !layered && packet_ssrc != ssrc {
                                 continue;
                             }
+                            let mut format_changed = false;
                             if !layers.contains_key(&packet_ssrc) {
-                                let Some(codec) = track.codec(packet_ssrc) else {
-                                    continue;
-                                };
-                                if !crate::media::compatible(&source.codec, &codec.rtp_codec) {
+                                if packet.payload.is_empty() {
                                     continue;
                                 }
                                 let rid = track.rid(packet_ssrc).unwrap_or_default();
@@ -2634,20 +2638,58 @@ impl Driver {
                                     packet_ssrc,
                                     Layer {
                                         rid,
+                                        codec: codec.clone(),
+                                        sequence,
                                         report: track.report(packet_ssrc),
                                         input: None,
                                     },
                                 );
+                                format_changed = true;
+                            } else if !packet.payload.is_empty() {
+                                let layer = layers.get_mut(&packet_ssrc).unwrap();
+                                if !crate::media::compatible(&layer.codec, &codec) {
+                                    // A reordered packet from the previous format
+                                    // cannot roll this SSRC back after its successor.
+                                    if sequence <= layer.sequence {
+                                        continue;
+                                    }
+                                    layer.codec = codec.clone();
+                                    format_changed = true;
+                                }
+                                layer.sequence = layer.sequence.max(sequence);
+                            }
+                            if format_changed && !crate::media::compatible(&source.codec, &codec) {
+                                if !supported(&codec, kind) {
+                                    break 'reading;
+                                }
+                                source.id = Uuid::new_v4();
+                                source.codec = codec;
+                                source.layers =
+                                    layered.then(|| crate::media::video::Layers::new(rids.clone()));
+                                first = true;
+                                // Keep each RID's actual format and RTP ordering.
+                                // A lagging old-codec RID cannot flip the source back.
+                                for layer in layers.values_mut() {
+                                    layer.input = None;
+                                }
                             }
                             let layer = layers.get_mut(&packet_ssrc).unwrap();
+                            if !crate::media::compatible(&source.codec, &layer.codec) {
+                                continue;
+                            }
                             if layer.input.is_none() {
                                 if packet.payload.is_empty() {
                                     continue;
                                 }
                                 let next_time = match &time {
                                     Some(root) => {
-                                        let report = layer.report.lock().unwrap();
-                                        report.as_ref().and_then(|(sr, _)| {
+                                        let report = layer
+                                            .report
+                                            .lock()
+                                            .unwrap()
+                                            .as_ref()
+                                            .map(|(sr, _)| sr.clone());
+                                        report.as_ref().and_then(|sr| {
                                             root.incoming_layer(packet.header.timestamp, sr)
                                         })
                                     }
@@ -2776,12 +2818,12 @@ impl Driver {
                 .send(Event::SourceEnded {
                     pair: id,
                     key,
-                    source: source_id,
+                    reader,
                 })
                 .await;
         });
         p.tasks.insert(
-            source_id,
+            reader,
             Reader {
                 key,
                 track: track_id,
@@ -2819,6 +2861,7 @@ impl Driver {
                 pair,
                 flow_id,
                 stream,
+                reader,
             } => {
                 let key = (*flow_id, source.kind);
                 let desired = self.pairs.get(pair).is_some_and(|p| {
@@ -2827,21 +2870,33 @@ impl Driver {
                         .iter()
                         .any(|flow| flow.id == *flow_id && flow.publication_id == publication)
                         && p.remote.get(stream) == Some(flow_id)
-                        && p.latest.get(&key) == Some(&source.id)
+                        && p.latest.get(&key) == Some(reader)
                 });
                 if !desired {
                     return Ok(());
                 }
-                // A received successor replaces only its own flow's old track.
-                let old = self.sources.values().find(|old| old.kind == source.kind
-                    && matches!(old.origin, SourceOrigin::Incoming { pair: old_pair, flow_id: old_flow, .. } if old_pair == *pair && old_flow == *flow_id))
-                    .map(|old| old.id);
-                if let Some(old) = old {
+                // A received successor replaces only its flow's encoded format.
+                let old = self.sources.values().find_map(|old| match &old.origin {
+                    SourceOrigin::Incoming {
+                        pair: old_pair,
+                        flow_id: old_flow,
+                        reader,
+                        ..
+                    } if old.kind == source.kind && old_pair == pair && old_flow == flow_id => {
+                        Some((old.id, *reader))
+                    }
+                    _ => None,
+                });
+                if let Some((old, old_reader)) = old {
                     self.sources.remove(&old);
                     self.relay.remove(old);
-                    if let Some(reader) = self.pairs.get_mut(pair).unwrap().tasks.remove(&old) {
-                        reader.task.abort();
-                        let _ = reader.task.await;
+                    if old_reader != *reader {
+                        if let Some(reader) =
+                            self.pairs.get_mut(pair).unwrap().tasks.remove(&old_reader)
+                        {
+                            reader.task.abort();
+                            let _ = reader.task.await;
+                        }
                     }
                 }
                 Some((*pair, *flow_id))
