@@ -7,9 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **Third Viewer remains at route allocation.** Trace the reported room's
-  operation and route assignments when the first two Viewers play. Check the
-  capacity-to-relay/fallback handoff while preserving their streams.
+- [ ] **Public-invitation route allocation.** Investigate v2.5.2 feedback that
+  the third participant remains at route allocation. Confirm the Host/Viewer
+  count and trace the room operation and assignments on its P2P-only path.
 - [ ] **Browser sharing falls to low source FPS during motion.** Trace raw
   capture, sender-owned track input and encoding on Windows Chrome with mixed
   direct/SFU delivery. The observed source fell to roughly 2 fps during video

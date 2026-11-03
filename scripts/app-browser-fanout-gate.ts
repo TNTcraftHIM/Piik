@@ -24,6 +24,7 @@ const probe = String.raw`(() => {
   localStorage.setItem('piik:ui-lang', 'en');
   localStorage.setItem('piik:ui-mode', 'text');
   const pcs = [], requests = [], sockets = [], errors = [];
+  let sourceAudioAvailable = null;
   window.addEventListener('unhandledrejection', (e) => errors.push(String(e.reason)));
   const codecPreferences = RTCRtpTransceiver.prototype.setCodecPreferences;
   RTCRtpTransceiver.prototype.setCodecPreferences = function(value) {
@@ -36,6 +37,11 @@ const probe = String.raw`(() => {
   window.WebSocket = class extends WS {
     constructor(...args) { super(...args); if (String(args[0]).includes('/control')) {
       sockets.push(this);
+    } else if (new URL(String(args[0]), location.href).pathname === '/signal') {
+      this.addEventListener('message', ({data}) => {
+        const message = JSON.parse(data);
+        if (message.type === 'audio-presence') sourceAudioAvailable = message.available;
+      });
     } }
     send(raw) {
       if (this.url.includes('/control')) {
@@ -108,7 +114,7 @@ const probe = String.raw`(() => {
         edgeRequests: requests.filter((r) => r === 'prepare-edge').length,
         controlOpen: sockets.some((s) => s.readyState === WS.OPEN),
         codecSelected: [...document.querySelectorAll('button.lr-chip.is-selected')].map((b) => b.textContent),
-        audio: video?.srcObject?.getAudioTracks().length || 0,
+        audio: video?.srcObject?.getAudioTracks().length || 0, sourceAudioAvailable,
         buttons: [...document.querySelectorAll('.lr-host-share-slot button')].map((b) => b.getAttribute('aria-label')) };
     }
   };
@@ -314,9 +320,10 @@ async function main(): Promise<void> {
     await click(host, 'button[aria-label="Switch source"]');
     await click(host, 'button[data-source-tab="browser"]');
     await click(host, 'button.lr-source-option[aria-label="Choose what to share"]');
-    await waitForSample(() => read(host), (s) => s.receiveRequests === 2 && s.captures === 2 && s.sharing, 15000);
+    await waitForSample(() => read(host), (s) => s.receiveRequests === 1 && s.captures === 2 && s.sharing, 15000);
     const beforeSource = await read(viewers[1]!);
-    await waitForSample(() => read(viewers[1]!), (s) => s.width > 0 && s.frames >= beforeSource.frames+20 && s.audio===Number(!initialAudio), 25000);
+    // Source sound changes independently of the stable mixed transport track.
+    await waitForSample(() => read(viewers[1]!), (s) => s.width > 0 && s.frames >= beforeSource.frames+20 && s.sourceAudioAvailable === !initialAudio, 25000);
     checks.sourceAudioChange = true;
     stage = "app-exit";
     app.stdin.write("\n");
