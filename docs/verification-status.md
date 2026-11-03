@@ -90,6 +90,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   independent public Java/Surface controls reproduce the same assertion with
   direct release and with stop before release. [TODO](./todo.md#now) owns the
   remaining platform acceptance.
+  After the official SDK refresh, the normal Android package completes H264
+  capture, publication and GUI stop, with continuing local RTP/RTCP. The desktop
+  cross-emulator control fails during ICE before decoding; its candidate-pair
+  observations remain part of current acceptance work.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.

@@ -11,6 +11,8 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
+  Resolve the Android-to-Desktop ICE failure with candidate-pair evidence;
+  the current control completes capture, publication and GUI stop.
   Verify repeated VP8 capture with another Android codec provider.
   MuMu's VP8 codec-service crash and Firefox's received-video conversion limit
   are recorded in [device evidence](./verification-status.md#device-evidence-boundary).
@@ -67,6 +69,10 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
+- [ ] **Native dependency consolidation.** Replace the RTCP-only clock container
+  with owned source-clock data, unify duplicate candidate representations and
+  assess one macOS binding family. Keep protocol engines and platform lifetimes
+  with their appropriate libraries; remove dependencies that supply only a model.
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the
