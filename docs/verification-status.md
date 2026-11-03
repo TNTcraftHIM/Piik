@@ -1,6 +1,6 @@
 # Verification Status
 
-Last updated: 2026-11-02
+Last updated: 2026-11-03
 
 This file summarizes evidence boundaries that materially affect product claims.
 [Status](./status.md) owns candidate and deployment readiness; research owns
@@ -36,8 +36,8 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   identity from an independent directory, then exits cleanly on native Ctrl+C.
   Current str0m App and Server archives pass their normal package checks,
   including served source identity, WASM/notices, SQLite room creation and
-  listener release. The [cross-platform candidate build](https://github.com/TNTcraftHIM/Piik/actions/runs/41356545468)
-  at `2f162c14` passes all six App and three Server packages. Both Linux
+  listener release. The [cross-platform candidate build](https://github.com/TNTcraftHIM/Piik/actions/runs/41576330462)
+  at `a8bd6ac1` passes all six App and three Server packages. Both Linux
   container architectures pass shared-Web loading, authenticated Native rooms,
   persistence across recreation and clean shutdown.
 - The combined Windows App and Server pass normal production-UI chat, voice and
@@ -48,11 +48,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
 - macOS/Linux builds and bounded native checks are distinct from physical
   capture and input. Physical platform coverage remains limited.
 - The isolated 3.0 macOS Native and App pass an
-  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41356545468)
-  at `2f162c14` on both architectures, including ScreenCaptureKit, VideoToolbox,
+  [Apple SDK build](https://github.com/TNTcraftHIM/Piik/actions/runs/41576330462)
+  at `a8bd6ac1` on both architectures, including ScreenCaptureKit, VideoToolbox,
   source sound, native microphone capture/conversion and Quartz input.
-  Native test programs also compile and link. System permission, capture,
-  sound and input acceptance on a Mac remain open.
+  System permission, capture, sound and input acceptance on a Mac remain open.
 - The isolated 3.0 Linux adapter passes Native/App/Server compilation and real
   GStreamer encoding checks in a Linux VM. Synthetic frames cover independent
   encoders, backpressure, resizing, source timestamps, keyframes and teardown;
