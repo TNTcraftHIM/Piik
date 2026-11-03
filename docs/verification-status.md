@@ -88,7 +88,7 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   Capability-aware Native H264 capture passes source replacement while retaining
   the physical peer and continuing to decode. Native VP8 also delivers decoded
   picture; repeated VP8 capture still encounters a system codec-service assertion
-  on the emulator. [TODO](./todo.md#now) owns codec-service and helper-quality acceptance.
+  on the emulator. [TODO](./todo.md#now) owns codec-service and platform acceptance.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.
