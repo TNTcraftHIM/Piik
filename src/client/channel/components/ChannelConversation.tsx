@@ -147,8 +147,8 @@ export function ChannelConversation({ roomId, roomName, roomIcon, entry, message
         </article>;
       })}
     </div>
-    {history?.atLatest === false && <div className="c3-history-more"><ChannelAction icon="arrowDown" quiet
-      label={zh ? "最新消息" : "Latest messages"} busy={loadingHistory} disabled={!available} onClick={() => {
+    {roomId && (history?.atLatest === false || (!history && (!loadingHistory || messages.length > 0))) && <div className="c3-history-more"><ChannelAction icon={history ? "arrowDown" : "refresh"} quiet
+      label={history ? (zh ? "最新消息" : "Latest messages") : (zh ? "加载消息" : "Load messages")} busy={loadingHistory} disabled={!available} onClick={() => {
         readingAnchor.current = null;
         reading.current.following = true;
         void onLatest(roomId).catch(() => {});

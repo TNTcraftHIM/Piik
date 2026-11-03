@@ -4545,6 +4545,13 @@ test.each(["before", "after"])("rapid browsing retires unprojected intents only 
       const count = socket.sent.length;
       session.browse("third");
       expect(socket.sent).toHaveLength(count);
+      expect(session.getSnapshot().historyByRoom.third).toBeUndefined();
+      const loading = session.loadLatestHistory("third"), latest = await peer.next();
+      peer.page(latest, [message(1)], false, 1);
+      await loading;
+      expect(session.getSnapshot().historyByRoom.third).toMatchObject({ atLatest: true, hasMore: false });
+      expect(session.getSnapshot().messagesByRoom.third).toEqual([message(1)]);
+      expect(session.getSnapshot().interactionsByRoom.get("third")).toBe(interaction);
     } else peer.page(history, [], false, null);
     expect(socket.sent.slice(start + 2)).toEqual([
       { type: "browse", roomId: "first", active: false },
@@ -4552,7 +4559,7 @@ test.each(["before", "after"])("rapid browsing retires unprojected intents only 
     ]);
     if (order === "after") socket.receive({ type: "ack", requestId: second.requestId });
     await Promise.resolve();
-    expect(peer.sent).toHaveLength(1);
+    expect(peer.sent).toHaveLength(order === "after" ? 2 : 1);
     expect(socket.sent.some(command => command.type === "browse" && command.roomId === "third" && command.active === false)).toBe(false);
   } finally { session.close(); }
 });
