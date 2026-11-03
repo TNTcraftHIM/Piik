@@ -2799,7 +2799,6 @@ dependencies = [
  "aes-gcm 0.10.3",
  "anyhow",
  "ashpd",
- "async-trait",
  "base64 0.22.1",
  "bytes",
  "cidre",
