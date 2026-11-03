@@ -110,6 +110,32 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
       "one Native endpoint hosts the App rooms");
     assert.equal((await view(1)).state.channel.rooms.find(entry => entry.id === browserRoom).delivery.hostSessionId,
       (await view(1)).sessionId, "connecting App does not migrate an existing Browser room");
+    const nextRoom = await action(1, "createRoom({name:'Another App room',icon:'couch',access:'public',hidden:false})");
+    await until("both rooms use the same Native operator", () => view(1), value =>
+      value.state.channel.rooms.find(entry => entry.id === nextRoom)?.delivery?.hostSessionId === nativeEndpoint);
+    const beforeSwitch = await until("reader has its original Native base", () => view(2), value =>
+      value.state.pairs.some(pair => pair.peerId === nativeEndpoint && pair.rooms.includes(room)));
+    const heldPair = beforeSwitch.state.pairs.find(pair => pair.peerId === nativeEndpoint && pair.rooms.includes(room));
+    const peerCount = await evaluate(2, "window.__channelProbe.peers.length");
+    for (const destination of [nextRoom, room]) {
+      await action(2, `browse(${JSON.stringify(destination)})`);
+      await until("new reading commits before the former room leaves", () => view(2), value =>
+        value.state.channel.rooms.some(entry => entry.id === destination && entry.reading) &&
+        !value.state.channel.rooms.some(entry => entry.id !== destination && entry.reading));
+      assert.equal((await view(2)).state.pairs.find(pair => pair.rooms.includes(destination))?.id, heldPair.id,
+        "switching rooms on the same Native host must retain the physical pair");
+      assert.equal(await evaluate(2, "window.__channelProbe.peers.length"), peerCount,
+        "a chat-only room switch must not create another PeerConnection");
+      if (destination === nextRoom) {
+        await action(2, `sendMessage(${JSON.stringify(nextRoom)}, 'Same connection, another room')`);
+        await until("the new room receives its own confirmed message", () => evaluate(1,
+          `${hook}.snapshot().messagesByRoom[${JSON.stringify(nextRoom)}]`), messages =>
+          messages?.some(message => message.text === "Same connection, another room"));
+        assert(!(await evaluate(2, `${hook}.snapshot().messagesByRoom[${JSON.stringify(nextRoom)}]`))
+          .some(message => message.text === "Saved by the linked Rust App"), "room histories stay separate");
+      }
+    }
+    await action(1, `browse(${JSON.stringify(room)})`);
     const [siteData] = await readdir(join(directory, "rooms"));
     const storedPath = join(directory, "rooms", siteData, initial[1].state.channel.id, initial[1].self.id, `${room}.sqlite`);
     const stored = new DatabaseSync(storedPath, { readOnly: true });
@@ -425,6 +451,7 @@ export async function appRoom({ initial, serverRoom, browser, action, view, eval
     await writeFile(join(output, "app-result.json"), JSON.stringify({ passed: true,
       scenarios: ["real Site approval", "unapproved Origin rejected", "saved approval reused", "cross-Site hosting isolation", "reapproval retains Site data",
         "separate hosting and personal endpoints", "Native SQLite ownership", "Browser rooms do not migrate", "peer chat confirmation",
+        "chat-only room switches retain the Native physical pair and separate histories",
         "Browser screen and voice", "control loss preserves media", "page close preserves App hosting and chat",
         "returning page reuses Native hosting", "App loss isolates its rooms", "fresh binding restores saved history"] }, null, 2));
   } catch (error) { console.error(log); throw error; }
