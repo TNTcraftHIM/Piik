@@ -68,8 +68,10 @@ implementation. Failed cases are evidence, not acceptance passes.
 
 The [selected summaries](./data/browser-local-pool.json) retain exact fixture
 hashes, raw artifact names, delivered frames, source ages and limitations.
-The actual `HostPeer` and pool are bundled into the fixture; it does not copy
-their implementation. All workloads ran serially.
+The recorded runs bundled the then-current `HostPeer` and pool rather than
+copying their implementation. All workloads ran serially. The 3.0 runner now
+bundles `ChannelTransport` and the same pool; retained measurements keep their
+recorded source identities.
 
 | Actual product path | Observed result |
 | --- | --- |

@@ -1,6 +1,6 @@
-// Actual HostPeer/BrowserEncodingPool comparison; synthetic source and local receivers only.
+// Actual ChannelTransport/BrowserEncodingPool comparison; synthetic source and local receivers only.
 import { BrowserEncodingPool as ProbePool } from '../src/client/media/browser-encoding-pool';
-import { HostPeer as ProbeHostPeer } from '../src/client/webrtc/host-peer';
+import { ChannelTransport } from '../src/client/channel/transport';
 import { applyVideoCaptureProfile as probeApplyProfile, QUALITY_RESOLUTIONS } from '../src/client/media/quality';
 import { browserDebugEnabled, exportBrowserDebug } from '../src/client/lib/debug';
 
@@ -22,7 +22,7 @@ const selectedProfile = () => ({ resolution: customSize ?? QUALITY_RESOLUTIONS[h
     degradationPreference: settings.get('preference') || (high ? 'maintain-resolution' : 'balanced'),
     maxAudioBitrate: Number(settings.get('audioBitrate') || 128000) });
 const productPool = mode === 'carrier' ? new ProbePool() : null;
-const productPeers = [], peers = [], tracks = [], edges = [], monitors = [], audioMonitors = [];
+const childEdges = [], peers = [], tracks = [], edges = [], monitors = [], audioMonitors = [];
 const errors = [], sourcePulses = [], controls = [], visibility = [], productTrace = [], sourceFrames = [];
 let sourceReader, sourceReading;
 const displayClones = [];
@@ -116,21 +116,24 @@ function watchAudio(video, role) {
 async function pair(role) {
     const receive = new RTCPeerConnection({ iceServers: [] }), pending = [];
     peers.push(receive);
-    const stream = new MediaStream([rawSource, ...(audioTrack ? [audioTrack] : [])]);
-    let peer;
-    peer = new ProbeHostPeer(role, { iceServers: [] }, stream, selectedProfile(), {
-        sendSignal(_id, payload) {
-            if (payload.kind === 'candidate' && !(network && role === 'A')) {
+    let edge;
+    const peer = new ChannelTransport({
+        polite: false, iceServers: [], canReceiveVideoLayers: false, videoPool: role === 'U' ? undefined : productPool,
+        send(payload) {
+            if (payload.description) {
+                if (edge.answer) edge.signaling = edge.signaling.then(() => edge.answer(payload)).catch(error => errors.push(String(error)));
+                else edge.offer = payload;
+            } else if (payload.candidate && !(network && role === 'A')) {
                 if (receive.remoteDescription) receive.addIceCandidate(payload.candidate).catch(error => errors.push(String(error)));
                 else pending.push(payload.candidate);
             }
-            return true;
         },
-        onUpdate(snapshot) { if (snapshot.error) errors.push(snapshot.error); }
-    }, { primary: codec.toLowerCase(), vp8Fallback: false }, undefined, false, role === 'U' ? null : productPool);
+        receive() {}, connected() {}, base() {},
+        failed() { errors.push(role + ': transport failed'); },
+        outgoingFailed(flowId) { errors.push(role + ': output failed ' + flowId); },
+    });
     if (role === 'U') upstreamPeer = peer;
-    else productPeers.push(peer);
-    peers.push(peer.connection);
+    peers.push(peer.pc);
     const video = document.createElement('video'), received = new MediaStream();
     video.autoplay = video.muted = video.playsInline = true;
     video.width = 320; video.srcObject = received;
@@ -138,44 +141,58 @@ async function pair(role) {
     receive.ontrack = event => { received.addTrack(event.track); video.play().catch(() => {}); };
     if (av && role !== 'U') video.addEventListener('loadeddata', () => watchAudio(video, role), { once: true });
     if (!(network && role === 'A')) receive.onicecandidate = event => {
-        if (event.candidate) void peer.acceptSignal({ kind: 'candidate',
-            connectionId: peer.connectionId, candidate: event.candidate.toJSON() });
+        if (event.candidate) peer.signal({ candidate: event.candidate.toJSON() });
     };
-    if (!await peer.start()) throw Error('Product HostPeer failed to start');
-    const edge = { role, peer, send: peer.connection, receive, sender: peer.videoSender, pending, received };
+    edge = { role, peer, send: peer.pc, receive, pending, received, signaling: Promise.resolve() };
     edges.push(edge);
+    if (role !== 'U') childEdges.push(edge);
+    peer.setOutgoing(new Map([[role, screenMedia(selectedProfile())]]));
+    const deadline = performance.now() + 6000;
+    while (!edge.offer && performance.now() < deadline) await wait(20);
+    if (!edge.offer) throw Error('Product transport did not offer its media');
+    edge.sender = peer.pc.getSenders().find(sender => sender.track?.kind === 'video');
     if (role !== 'U') watch(video, role);
     return edge;
 }
 
+function screenMedia(profile) {
+    return { kind: 'screen', stream: new MediaStream([rawSource, ...(audioTrack ? [audioTrack] : [])]),
+        profile, audioBitrate: profile.maxAudioBitrate, paused: !rawSource.enabled,
+        codec: { primary: codec.toLowerCase(), vp8Fallback: false } };
+}
+
 async function connect(edge) {
+    const gathered = async pc => {
+        const end = performance.now() + 5000;
+        while (pc.iceGatheringState !== 'complete' && performance.now() < end) await wait(20);
+    };
     if (network && edge.role === 'A') {
-        const gathered = async pc => {
-            const end = performance.now() + 5000;
-            while (pc.iceGatheringState !== 'complete' && performance.now() < end) await wait(20);
-        };
         const firstPort = sdp => Number(sdp.match(/^a=candidate:\S+ 1 udp \d+ \S+ (\d+)/mi)?.[1]);
         const proxySDP = (description, port) => ({ ...description, sdp: description.sdp.replace(/^a=candidate:.*\r?\n/gm, '')
             .replace(/^a=mid:[^\r\n]+\r?$/gm, line => line.trimEnd() + '\r\na=candidate:proxy 1 udp 2130706431 127.0.0.1 ' + port + ' typ host\r') });
         const proxy = await fetch('/shaper').then(r => r.json());
-        await gathered(edge.send);
-        const offer = { type: 'offer', sdp: edge.send.localDescription.sdp };
-        if (!offer.sdp.includes('a=end-of-candidates')) offer.sdp += 'a=end-of-candidates\r\n';
-        await edge.receive.setRemoteDescription(proxySDP(offer, proxy.ports.right));
-        await edge.receive.setLocalDescription(await edge.receive.createAnswer());
-        await gathered(edge.receive);
-        const answer = { type: 'answer', sdp: edge.receive.localDescription.sdp };
-        if (!answer.sdp.includes('a=end-of-candidates')) answer.sdp += 'a=end-of-candidates\r\n';
-        await fetch('/shaper?left=' + firstPort(offer.sdp) + '&right=' + firstPort(answer.sdp));
-        await edge.peer.acceptSignal({ kind: 'description', connectionId: edge.peer.connectionId,
-            description: proxySDP(answer, proxy.ports.left) });
+        edge.answer = async payload => {
+            await gathered(edge.send);
+            const offer = { type: 'offer', sdp: edge.send.localDescription.sdp };
+            if (!offer.sdp.includes('a=end-of-candidates')) offer.sdp += 'a=end-of-candidates\r\n';
+            await edge.receive.setRemoteDescription(proxySDP(offer, proxy.ports.right));
+            await edge.receive.setLocalDescription(await edge.receive.createAnswer());
+            await gathered(edge.receive);
+            const answer = { type: 'answer', sdp: edge.receive.localDescription.sdp };
+            if (!answer.sdp.includes('a=end-of-candidates')) answer.sdp += 'a=end-of-candidates\r\n';
+            await fetch('/shaper?left=' + firstPort(offer.sdp) + '&right=' + firstPort(answer.sdp));
+            edge.peer.signal({ exchangeId: payload.exchangeId, description: proxySDP(answer, proxy.ports.left) });
+        };
     } else {
-        await edge.receive.setRemoteDescription(edge.send.localDescription);
-        for (const candidate of edge.pending.splice(0)) await edge.receive.addIceCandidate(candidate);
-        await edge.receive.setLocalDescription(await edge.receive.createAnswer());
-        await edge.peer.acceptSignal({ kind: 'description', connectionId: edge.peer.connectionId,
-            description: edge.receive.localDescription });
+        edge.answer = async payload => {
+            await edge.receive.setRemoteDescription(payload.description);
+            for (const candidate of edge.pending.splice(0)) await edge.receive.addIceCandidate(candidate);
+            await edge.receive.setLocalDescription(await edge.receive.createAnswer());
+            edge.peer.signal({ exchangeId: payload.exchangeId, description: edge.receive.localDescription });
+        };
     }
+    edge.signaling = edge.signaling.then(() => edge.answer(edge.offer));
+    await edge.signaling;
     const deadline = performance.now() + 6000;
     while (edge.send.connectionState !== 'connected' && performance.now() < deadline) await wait(30);
     if (edge.send.connectionState !== 'connected') throw Error('Connection deadline');
@@ -197,12 +214,13 @@ const selectReport = report => Array.from(report.values())
 async function statistics() {
     const result = {};
     for (const edge of edges) {
-        const metrics = edge.peer.getSnapshot().metrics;
-        result[edge.role] = { audioParameters: edge.peer.getSnapshot().audioSenderParameters,
-            send: selectReport(await edge.send.getStats()),
+        const report = await edge.send.getStats();
+        const metrics = edge.peer.outgoingMetrics(report, new Set([edge.role]))[0]?.metrics ?? {};
+        result[edge.role] = { audioParameters: edge.send.getSenders().find(sender => sender.track?.kind === 'audio')?.getParameters(),
+            send: selectReport(report),
             receive: selectReport(await edge.receive.getStats()),
             details: Object.fromEntries(['frameWidth', 'frameHeight', 'framesPerSecond', 'bitrateKbps',
-                'qualityLimitationReason', 'nativeEdgeQualityState', 'intervalFramesSent', 'intervalFramesEncoded']
+                'qualityLimitationReason', 'intervalFramesSent', 'intervalFramesEncoded']
                 .map(key => [key, metrics[key]])) };
     }
     if (productPool) {
@@ -306,7 +324,7 @@ async function run() {
             const members = [...productPool.members];
             // Compatible allocations share an owner; distinct BWE budgets must
             // remain independent even when this synthetic scene encodes cheaply.
-            const sharing = members.length === productPeers.length && members.every(m => m.current && m.carrier && !m.replacement) &&
+            const sharing = members.length === childEdges.length && members.every(m => m.current && m.carrier && !m.replacement) &&
                 new Set(members.map(m => m.current)).size === new Set(members.map(m => m.budget)).size;
             if (sharing) activated ??= performance.now();
             else activated = null;
@@ -345,9 +363,11 @@ async function run() {
         const apply = async profile => {
             const at = performance.now();
             await probeApplyProfile(rawSource, profile);
-            const applied = await Promise.all(productPeers.map(peer => peer.updateCaptureProfile(profile)));
-            controls.push({ phase, profile, elapsedMs: performance.now() - at, applied });
-            if (!applied.every(Boolean)) throw Error('Product profile update failed');
+            await Promise.all(childEdges.map(async edge => {
+                edge.peer.setOutgoing(new Map([[edge.role, screenMedia(profile)]]));
+                await edge.peer.configureVideo(edge.role, profile);
+            }));
+            controls.push({ phase, profile, elapsedMs: performance.now() - at });
             appliedProfile = profile;
         };
         const observe = async (name, duration = 6000) => {
@@ -366,16 +386,19 @@ async function run() {
         await apply({ ...p60, resolution: QUALITY_RESOLUTIONS['480p'], maxFramerate: 30, maxBitrate: 3000000 });
         await observe(phase, 2500);
         producing = true; await observe('resumed-480p30');
-        rawSource.enabled = false; productPeers.forEach(peer => peer.setPaused(true));
+        rawSource.enabled = false; childEdges.forEach(edge => edge.peer.setOutgoing(new Map([[edge.role, screenMedia(appliedProfile)]])));
         phase = 'paused-profile-720p30'; await apply({ ...p60, maxFramerate: 30 }); await observe(phase, 2000);
-        rawSource.enabled = true; productPeers.forEach(peer => peer.setPaused(false));
+        rawSource.enabled = true; childEdges.forEach(edge => edge.peer.setOutgoing(new Map([[edge.role, screenMedia(appliedProfile)]])));
         await observe('resumed-720p30');
         const oldSource = rawSource;
         rawSource = source.captureStream(0).getVideoTracks()[0];
         rawSource.contentHint = 'motion'; tracks.push(rawSource);
         await probeApplyProfile(rawSource, appliedProfile);
-        const stream = new MediaStream([rawSource, ...(audioTrack ? [audioTrack] : [])]);
-        const replaced = await Promise.all(productPeers.map(peer => peer.replaceStream(stream)));
+        const replaced = await Promise.all(childEdges.map(async edge => {
+            edge.peer.setOutgoing(new Map([[edge.role, screenMedia(appliedProfile)]]));
+            await edge.peer.configureVideo(edge.role, appliedProfile);
+            return edge.peer.sending.get(edge.role)?.senders.some(binding => binding.source === rawSource);
+        }));
         controls.push({ action: 'source-replaced', replaced });
         if (!replaced.every(Boolean)) throw Error('Product source replacement failed');
         oldSource.stop(); await observe('replaced-source');
@@ -383,7 +406,7 @@ async function run() {
         if (productPool) {
             for (const group of [...productPool.groups]) group.producer.fail();
             await observe('ordinary-after-producer-failure');
-            if (productPool.groups.size || productPeers.some(peer => !peer.isConnected())) throw Error('Ordinary recovery did not retire the pool');
+            if (productPool.groups.size || childEdges.some(edge => edge.send.connectionState !== 'connected')) throw Error('Ordinary recovery did not retire the pool');
         }
     }
     if (background) {
@@ -441,8 +464,8 @@ try {
 } finally {
     clearInterval(drawing); clearInterval(productTraceTimer);
     monitors.forEach(m => m.stop()); audioMonitors.forEach(m => m.stop());
-    productPeers.forEach(peer => peer.dispose()); productPool?.dispose();
-    upstreamPeer?.dispose();
+    childEdges.forEach(edge => edge.peer.close()); productPool?.dispose();
+    upstreamPeer?.close();
     await sourceReader?.cancel();
     await sourceReading;
     tracks.forEach(t => t.stop()); peers.forEach(pc => pc.close());

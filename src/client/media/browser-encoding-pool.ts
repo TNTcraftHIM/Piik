@@ -72,7 +72,7 @@ export class BrowserEncodingPool {
         if (member.disposed || videoQualitySettingsEqual(member.profile, next)) return;
         member.profile = { ...next };
         member.encoderStats = createStatsAccumulator(); member.previousOutput = undefined;
-        // HostPeer awaits this inside its sender queue. Handoffs run outside it.
+        // Callers await this inside their sender queue. Handoffs run outside it.
       },
       setPaused: (paused) => {
         if (member.disposed || member.paused === paused) return;
