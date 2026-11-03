@@ -2260,14 +2260,30 @@ impl Driver {
     }
     async fn source_ended(&mut self, pair: Uuid, key: TrackKey, reader: Uuid) {
         // An old active source may end while its replacement is awaiting a first
-        // packet. Only the latest reader can invalidate the current incoming lease.
+        // packet. Only the latest, still-declared reader can invalidate its lease.
+        let source = self
+            .sources
+            .values()
+            .find_map(|source| match &source.origin {
+                SourceOrigin::Incoming {
+                    reader: current,
+                    stream,
+                    ..
+                } if *current == reader => Some((source.id, stream)),
+                _ => None,
+            });
         let assigned_latest = self.pairs.get(&pair).and_then(|p| {
             p.plan
                 .incoming
                 .iter()
-                .find(|flow| flow.id == key.0 && p.latest.get(&key) == Some(&reader))
+                .find(|flow| {
+                    flow.id == key.0
+                        && p.latest.get(&key) == Some(&reader)
+                        && source.is_some_and(|(_, stream)| p.remote.get(stream) == Some(&flow.id))
+                })
                 .copied()
         });
+        let source = source.map(|(id, _)| id);
         if let Some(p) = self.pairs.get_mut(&pair) {
             if p.latest.get(&key) == Some(&reader) {
                 p.latest.remove(&key);
@@ -2277,9 +2293,6 @@ impl Driver {
                 let _ = reader.task.await;
             }
         }
-        let source = self.sources.values().find(|s|
-            matches!(s.origin, SourceOrigin::Incoming { reader: current, .. } if current == reader))
-            .map(|s| s.id);
         if let Some(source) = source {
             let current = self.sources.remove(&source).unwrap();
             let publication = current.publication_id;

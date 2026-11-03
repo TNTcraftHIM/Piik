@@ -3,6 +3,142 @@ use super::*;
 use support::{vp8, Fixture};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn declared_source_withdrawal_remaps_the_same_flow_without_failing_its_pair() -> Result<()> {
+    let mut f = Fixture::new(vp8()).await?;
+    let result = async {
+        let pair = f.parents[0].pair;
+        let input = f.plans[0].incoming[0].id;
+        let flow = f.plans.last().unwrap().outgoing[0].id;
+        let sibling = f.plans.last().unwrap().outgoing[1].id;
+        f.plans[0].rooms.clear();
+        f.driver
+            .update(f.plans.clone(), vec![f.publication.clone()], vec![])
+            .await?;
+        f.until(|f| {
+            [flow, sibling].iter().all(|id| {
+                f.driver.pairs[&f.sink]
+                    .outputs
+                    .get(&(*id, MediaKind::Video))
+                    .is_some_and(|output| f.observed(&output.stream, MediaKind::Video).is_some())
+            })
+        })
+        .await?;
+        let connection = f.driver.pairs[&pair]
+            .pc
+            .connection_metrics()
+            .await?
+            .connection_id;
+        let sibling_output = f.output(sibling, MediaKind::Video);
+        let old_source = f.driver.pairs[&f.sink].outputs[&(flow, MediaKind::Video)].source;
+        let parent = f.parents.remove(0);
+        let remote = f.remote[&pair].clone();
+        remote.retire_output(parent.audio).await?;
+        remote.retire_output(parent.video).await?;
+        ensure!(remote.offer().await?);
+        let (kind, sdp) = remote.local_description().await?;
+        f.driver
+            .signal(
+                pair,
+                Signal {
+                    udp: None,
+                    description: Some(Description {
+                        kind,
+                        sdp: Some(sdp),
+                    }),
+                    exchange_id: Some(Uuid::new_v4()),
+                    tracks: Some(vec![]),
+                    candidate: None,
+                    resync: None,
+                },
+            )
+            .await?;
+        f.until(|f| !f.driver.sources.contains_key(&old_source))
+            .await?;
+        let drained = f.frame + 2;
+        f.until(|f| f.frame >= drained).await?;
+        ensure!(f.driver.pairs[&pair].remote.is_empty());
+        ensure!(!f.reported.iter().any(|command| matches!(command,
+            Command::FlowState { flow_id, state: FlowState::Failed, .. } if *flow_id == input)));
+        ensure!(f.driver.pairs[&pair].plan.incoming[0].id == input);
+        ensure!(
+            f.driver.pairs[&pair]
+                .pc
+                .connection_metrics()
+                .await?
+                .connection_id
+                == connection
+        );
+
+        f.start_parent(pair, 1_500_000).await?;
+        f.until(|f| {
+            f.driver.pairs[&f.sink]
+                .outputs
+                .get(&(flow, MediaKind::Video))
+                .is_some_and(|output| {
+                    output.source != old_source
+                        && f.observed(&output.stream, MediaKind::Video).is_some()
+                })
+        })
+        .await?;
+        ensure!(f.driver.pairs[&pair].connected());
+        ensure!(
+            f.driver.pairs[&pair]
+                .pc
+                .connection_metrics()
+                .await?
+                .connection_id
+                == connection
+        );
+        ensure!(f.output(sibling, MediaKind::Video) == sibling_output);
+        ensure!(!f.reported.iter().any(|command| matches!(command,
+            Command::FlowState { flow_id, state: FlowState::Failed, .. } if *flow_id == input)));
+
+        // A video ending while its stream remains declared is still a failure.
+        let parent = f
+            .parents
+            .iter_mut()
+            .find(|parent| parent.pair == pair)
+            .unwrap();
+        parent.video_enabled = false;
+        let stream = parent.stream.clone();
+        remote.retire_output(parent.video).await?;
+        ensure!(remote.offer().await?);
+        let (kind, sdp) = remote.local_description().await?;
+        f.driver
+            .signal(
+                pair,
+                Signal {
+                    udp: None,
+                    description: Some(Description {
+                        kind,
+                        sdp: Some(sdp),
+                    }),
+                    exchange_id: Some(Uuid::new_v4()),
+                    tracks: Some(vec![WireTrack {
+                        flow_id: input,
+                        stream_id: stream,
+                    }]),
+                    candidate: None,
+                    resync: None,
+                },
+            )
+            .await?;
+        f.until(|f| {
+            f.reported.iter().any(|command| {
+                matches!(command,
+            Command::FlowState { flow_id, state: FlowState::Failed, .. } if *flow_id == input)
+            })
+        })
+        .await?;
+        ensure!(f.output(sibling, MediaKind::Video) == sibling_output);
+        Ok(())
+    }
+    .await;
+    f.close().await;
+    result
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn selected_screen_metrics_keep_room_voice_and_exclude_other_room() -> Result<()> {
     let mut f = Fixture::new(vp8()).await?;
     let mut voice = f.publication.clone();

@@ -22,6 +22,7 @@ pub(in crate::peer) struct Fixture {
     pub(in crate::peer) driver: Driver,
     pub(in crate::peer) events: mpsc::Receiver<Event>,
     pub(in crate::peer) commands: mpsc::Receiver<NativeEvent>,
+    pub(in crate::peer) reported: Vec<Command>,
     pub(in crate::peer) sources: mpsc::Receiver<SourceReady>,
     pub(in crate::peer) remote_events: mpsc::Receiver<Event>,
     pub(in crate::peer) remote_sender: mpsc::Sender<Event>,
@@ -109,6 +110,7 @@ impl Fixture {
             driver,
             events: input,
             commands: output,
+            reported: vec![],
             sources,
             remote_events,
             remote_sender,
@@ -282,7 +284,8 @@ impl Fixture {
             _=changed.notified()=>self.driver.refresh_media(false).await?,
             Some(event)=self.events.recv()=>self.driver.event(event).await?,
             Some(source)=self.sources.recv()=>self.driver.source_ready(source).await?,
-            Some(command)=self.commands.recv()=>if let NativeEvent::Command(Command::Signal{pair_id,payload})=command {
+            Some(command)=self.commands.recv()=>match command {
+                NativeEvent::Command(Command::Signal{pair_id,payload}) => {
                 let remote=&self.remote[&pair_id];
                 if let Some(description)=payload.description {
                     if description.kind=="offer" && self.withheld.contains(&pair_id){return Ok(());}
@@ -294,6 +297,9 @@ impl Fixture {
                         self.driver.signal(pair_id,Signal{udp:None,description:Some(Description{kind,sdp:Some(sdp)}),exchange_id:payload.exchange_id,tracks:Some(tracks),candidate:None,resync:None}).await?;
                     }
                 }else if let Some(candidate)=payload.candidate {let _=remote.add_candidate(candidate.candidate.unwrap_or_default()).await;}
+                },
+                NativeEvent::Command(command) => self.reported.push(command),
+                _ => {},
             },
             Some(event)=self.remote_events.recv()=>if let Event::Track(_pair,track)=event {self.tracks.insert(track.id.clone(),track);},
             Some((id,event))=readers.next(),if !readers.is_empty()=>match event {

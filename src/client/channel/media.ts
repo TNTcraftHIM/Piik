@@ -203,10 +203,7 @@ export class ChannelMedia {
     if (!peer || !input) return;
     input.release?.();
     peer.inputs.delete(id);
-    const publicationId = peer.plan.incoming.find(flow => flow.id === id)?.publicationId;
-    if (input.ready && this.publications.find(publication => publication.id === publicationId)?.kind === "screen") {
-      this.send({ type: "flow_state", flowId: id, pairId, state: "failed" });
-    }
+    // SDP withdrawal retires this media input, not the authority-owned flow.
     this.refresh();
   }
 

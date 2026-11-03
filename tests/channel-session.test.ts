@@ -3128,17 +3128,17 @@ test.each(["commit", "failed"])("a shadow subtree forwards exact inputs and pres
       expect(shadowConsumer.pause).not.toHaveBeenCalled();
       expect(RoomAudio.instances[0].pause).toHaveBeenCalledOnce();
     } else {
-      media.signal("candidate-pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "candidate-ended" }, tracks: [] });
-      await vi.waitFor(() => expect(next.remoteDescription?.sdp).toBe("candidate-ended"));
+      Object.defineProperty(nextVideo, "readyState", { value: "ended" });
+      nextVideo.dispatchEvent(new Event("ended"));
       expect(sent).toContainEqual({ type: "flow_state", pairId: "candidate-pair", flowId: "candidate-flow", state: "failed" });
+      state.pairs.splice(1, 1);
+      state.pairs[1].outgoing.pop();
+      media.update("a", state);
       expect(downstream.senders).toEqual(currentSenders);
       expect(downstream.senders[0]).toBe(currentSenders[0]);
       expect(shadowBinding.getTracks()).toEqual([]);
       expect(shadowConsumer.pause).toHaveBeenCalledOnce();
       expect(changed.mock.calls.at(-1)![0].get("screen")).toBe(oldStream);
-      state.pairs.splice(1, 1);
-      state.pairs[1].outgoing.pop();
-      media.update("a", state);
       expect(next.close).toHaveBeenCalledOnce();
     }
     expect(pc.close).not.toHaveBeenCalled(); expect(downstream.close).not.toHaveBeenCalled();
@@ -3761,7 +3761,7 @@ test.each(["new", "source", "audio", "ended"])("sender rejection retires only it
   } finally { media.reset(); session.close(); }
 });
 
-test.each(["ended", "removetrack", "unmapped"])("a proven screen withdraws readiness when its video is %s", async ending => {
+test.each(["ended", "removetrack"])("a still-declared screen fails when its video is %s", async ending => {
   const fixture = await screenFixture();
   const { media, session, pc, sent } = fixture;
   const video = remoteTrack("video"), tracks = [video], stream = remoteStream("screen-stream", tracks);
@@ -3772,12 +3772,9 @@ test.each(["ended", "removetrack", "unmapped"])("a proven screen withdraws readi
     if (ending === "ended") {
       Object.defineProperty(video, "readyState", { value: "ended" });
       video.dispatchEvent(new Event("ended"));
-    } else if (ending === "removetrack") {
+    } else {
       tracks.pop();
       stream.dispatchEvent(new Event("removetrack"));
-    } else {
-      media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "unmapped" }, tracks: [] });
-      await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("unmapped"));
     }
     expect(sent.filter(command => command.type === "flow_state")).toEqual([
       { type: "flow_state", flowId: "screen-flow", pairId: "pair", state: "decoded" },
@@ -3786,6 +3783,41 @@ test.each(["ended", "removetrack", "unmapped"])("a proven screen withdraws readi
     video.dispatchEvent(new Event("ended")); stream.dispatchEvent(new Event("removetrack"));
     expect(sent.filter(command => command.type === "flow_state")).toHaveLength(2);
     expect(video.stop).not.toHaveBeenCalled(); expect(pc.close).not.toHaveBeenCalled();
+  } finally { media.reset(); session.close(); }
+});
+
+test("an announced screen withdrawal remaps the same flow without failing its physical pair", async () => {
+  const fixture = await screenFixture();
+  const { media, session, state, pc, sent, changed } = fixture;
+  state.pairs[0].rooms = [];
+  media.update("a", state);
+  const old = remoteTrack("video"), next = remoteTrack("video");
+  const oldStream = remoteStream("old", [old]), nextStream = remoteStream("new", [next]);
+  let resolve!: (report: RTCStatsReport) => void;
+  const pending = new Promise<RTCStatsReport>(done => { resolve = done; });
+  try {
+    pc.receivers = [{ track: old, getStats: async () => decodedReport(5) } as RTCRtpReceiver];
+    await receiveScreen(fixture, oldStream);
+    await vi.waitFor(() => expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1));
+    media.signal("pair", { exchangeId: crypto.randomUUID(), description: { type: "offer", sdp: "withdrawn" }, tracks: [] });
+    await vi.waitFor(() => expect(pc.remoteDescription?.sdp).toBe("withdrawn"));
+    expect(changed.mock.lastCall?.[1].has("screen")).toBe(false);
+    expect(sent.filter(command => command.type === "flow_state")).toEqual([
+      { type: "flow_state", flowId: "screen-flow", pairId: "pair", state: "decoded" },
+    ]);
+    Object.defineProperty(old, "readyState", { value: "ended" }); old.dispatchEvent(new Event("ended"));
+    oldStream.dispatchEvent(new Event("removetrack"));
+    media.update("a", state);
+    pc.receivers = [{ track: next, getStats: () => pending } as RTCRtpReceiver];
+    await receiveScreen(fixture, nextStream);
+    expect(sent.filter(command => command.type === "flow_state")).toHaveLength(1);
+    resolve(decodedReport(1));
+    await vi.waitFor(() => expect(sent.filter(command => command.type === "flow_state")).toHaveLength(2));
+    expect(sent.filter(command => command.type === "flow_state" && command.state === "failed")).toEqual([]);
+    expect(changed.mock.lastCall?.[1].get("screen")?.[0].stream).toBe(nextStream);
+    expect(RoomPeerConnection.instances).toEqual([pc]);
+    expect(pc.close).not.toHaveBeenCalled();
+    expect(old.stop).not.toHaveBeenCalled(); expect(next.stop).not.toHaveBeenCalled();
   } finally { media.reset(); session.close(); }
 });
 
