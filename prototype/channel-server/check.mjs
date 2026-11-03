@@ -142,7 +142,13 @@ test("authenticated users, role authority, peer-only conversation and selective 
   assert.equal((await other.request({ type: "subscribe", publicationId, enabled: true })).type, "ack");
   const routed = await other.wait(event => event.type === "state" && event.state.pairs.some(pair => pair.incoming.some(flow => flow.publicationId === publicationId)), "admitted subscription");
   assert(routed.state.pairs.every(pair => pair.peerId !== other.welcome.sessionId));
-  assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { description: { type: "offer", sdp: "invalid" } } })).type, "error");
+  assert.equal((await owner.request({ type: "signal", pairId: randomUUID(), payload: { resync: true } })).type, "ack",
+    "an unknown or retired pair cannot restore its transport lease");
+  const sourcePair = routed.state.pairs.find(pair => pair.incoming.some(flow => flow.publicationId === publicationId));
+  // A description needs its exchangeId, even on the caller's admitted pair.
+  const malformed = await other.request({ type: "signal", pairId: sourcePair.id, payload: { description: { type: "offer", sdp: "invalid" } } });
+  assert.equal(malformed.type, "error");
+  assert.equal(malformed.code, "invalid_signal");
   assert.equal((await friend.request({ type: "unpublish", publicationId })).type, "ack");
   await other.wait(event => event.type === "state" && !event.state.publications.some(publication => publication.id === publicationId)
     && event.state.pairs.every(pair => !pair.incoming.some(flow => flow.publicationId === publicationId)), "source retirement");
