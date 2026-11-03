@@ -2,20 +2,9 @@ import { parse, parsePayloads, write } from "sdp-transform";
 
 import { OPUS_RECEIVE_MAX_BITRATE } from "../media/quality";
 
-export function preferScreenAudioStereo(
-  answer: RTCSessionDescriptionInit,
-): RTCSessionDescriptionInit {
-  return answer.type === "answer" ? preferOpusReceive(answer) : answer;
-}
-
 /** A shared transport can receive several pictures and voices in either SDP role.
  * Stereo reception also accepts mono input; it does not configure capture. */
-export function preferOpusStereoReceive(description: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
-  return preferOpusReceive(description, "receiving");
-}
-
-function preferOpusReceive(answer: RTCSessionDescriptionInit,
-  scope: "single" | "receiving" = "single"): RTCSessionDescriptionInit {
+export function preferOpusStereoReceive(answer: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
   const preferences = { stereo: "1", maxaveragebitrate: String(OPUS_RECEIVE_MAX_BITRATE) };
   try {
     if (!answer.sdp?.trim()) {
@@ -34,9 +23,9 @@ function preferOpusReceive(answer: RTCSessionDescriptionInit,
 
     const audioSections = session.media.filter(
       (media) => media.type === "audio" && media.port !== 0
-        && (scope !== "receiving" || !["sendonly", "inactive"].includes(media.direction ?? session.direction ?? "sendrecv")),
+        && !["sendonly", "inactive"].includes(media.direction ?? session.direction ?? "sendrecv"),
     );
-    if (!audioSections.length || (scope === "single" && audioSections.length !== 1)) {
+    if (!audioSections.length) {
       return answer;
     }
 

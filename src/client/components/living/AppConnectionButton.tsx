@@ -13,6 +13,7 @@ import type { AppDiscovery } from "../../native/discovery";
 import type { AppReleaseIdentity } from "../../lib/release-update";
 import { useReleaseUpdate } from "../../lib/use-release-update";
 import { AppReleaseNotice } from "./AppReleaseNotice";
+import { channelAppDiscovery } from "../../channel/app-link";
 
 interface AppConnectionProps {
   onConnected?: () => void;
@@ -28,13 +29,7 @@ interface ConnectionAttempt {
   cancel?: () => void;
 }
 
-export function AppConnectionButton({ onConnected, discovery, connected }: AppConnectionProps) {
-  const loadDiscovery = async (): Promise<AppDiscovery> => {
-    if (discovery) return discovery;
-    const native = await import("../../native/client");
-    return { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
-      isIncompatible: error => error instanceof native.NativeCompatibilityError };
-  };
+export function AppConnectionButton({ onConnected, discovery = channelAppDiscovery, connected }: AppConnectionProps) {
   const { t, vis } = useCopy();
   const [state, setState] = useState<"idle" | "waking" | "busy" | "approval" | "approving" | "ready" | "unavailable" | "incompatible">("idle");
   const wakeURL = androidAppIntent("piik://app");
@@ -62,7 +57,7 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
       if (help.current?.matches(":popover-open") || (!connected && !isClientActivated())) return;
       healthCheck.current?.abort();
       const current = healthCheck.current = new AbortController();
-      const native = await loadDiscovery();
+      const native = discovery;
       if (current.signal.aborted) return;
       try {
         const health = await native.health({ signal: current.signal, waitForPermission: false });
@@ -155,7 +150,7 @@ export function AppConnectionButton({ onConnected, discovery, connected }: AppCo
     const discover = async () => {
       setState("busy");
       try {
-        native = await loadDiscovery();
+        native = discovery;
         if (signal.aborted) return;
         const url = await native.connect(signal);
         if (signal.aborted) return;

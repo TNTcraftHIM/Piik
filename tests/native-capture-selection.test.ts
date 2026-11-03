@@ -8,11 +8,9 @@ import { CameraSources } from "../src/client/components/living/CameraSources";
 import { setCopy, t } from "../src/client/ui/copy";
 
 import {
-  defaultNativeCapturePath,
   nativeCaptureTargetKey,
 } from "../src/client/native/capture-selection";
 import type {
-  NativeAdapter,
   NativeCaptureTarget,
 } from "../src/client/native/wire";
 
@@ -300,35 +298,5 @@ describe("native capture source selection", () => {
       expect(render(undefined, tab, true)).not.toContain(label);
     }
     expect(render(true, "browser", true)).not.toContain(label);
-  });
-});
-
-describe("native adapter selection", () => {
-  const adapters: NativeAdapter[] = [
-    { index: 0, name: "GPU A", identity: "a", hardwareH264: [] },
-    {
-      index: 1,
-      name: "GPU B",
-      identity: "b",
-      hardwareH264: [{ index: 0, name: "H264", identity: "encoder" }],
-    },
-  ];
-
-  it("selects the first complete hardware path for UI capture", () => {
-    expect(defaultNativeCapturePath(adapters)).toEqual({
-      adapterIndex: 1,
-      encoderIndex: 0,
-    });
-    expect(defaultNativeCapturePath([adapters[0]!])).toBeNull();
-  });
-
-  it("uses software VP8 only when that capture capability exists", () => {
-    expect(defaultNativeCapturePath(adapters, "vp8", true)).toEqual({
-      adapterIndex: 0, encoderIndex: 0,
-    });
-    expect(defaultNativeCapturePath(adapters, "vp8", false)).toBeNull();
-    expect(defaultNativeCapturePath(adapters, "auto", true)?.adapterIndex).toBe(1);
-    expect(defaultNativeCapturePath([adapters[0]!], "auto", true)?.adapterIndex).toBe(0);
-    expect(defaultNativeCapturePath([adapters[0]!], "h264", true)).toBeNull();
   });
 });

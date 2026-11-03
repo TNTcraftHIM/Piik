@@ -1,6 +1,5 @@
 import { createServer, type Server } from "node:http";
 import { afterEach, expect, it, vi } from "vitest";
-import { NATIVE_CLIENT_PROTOCOL } from "../src/client/native/wire";
 import { NATIVE_CLIENT_PORT_START, NATIVE_CLIENT_PORT_END } from "../src/client/native/discovery-ports";
 
 const servers: Server[] = [];
@@ -20,8 +19,8 @@ async function runtime(delay: number) {
       requests.push(request.url!);
       setTimeout(() => {
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ protocol: NATIVE_CLIENT_PROTOCOL, service: "piik-client",
-          port, instanceToken: "a".repeat(43), nativeMedia: { video: true },
+        response.end(JSON.stringify({ protocol: 1, service: "piik-channel-app",
+          port, token: "fixture-token",
           ...(request.url === "/connect-discovery" ? { connectURL: `http://127.0.0.1:${port}/client` } : {}),
         }));
       }, delay);
@@ -65,16 +64,16 @@ it("selects the launched runtime over a faster resident App and never substitute
     } },
   };
   vi.stubGlobal("window", page);
-  const { discoverNativeHealth, discoverNativeConnect } = await import("../src/client/native/client");
+  const { discoverChannelAppHealth, channelAppDiscovery } = await import("../src/client/channel/app-link");
   const { takeClientLaunchBootstrap, clientRuntimePort } = await import("../src/client/lib/session");
   // Both actual HTTP stubs are discoverable; the older one responds first.
-  await expect(discoverNativeHealth()).resolves.toMatchObject({ port: old.port });
+  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: old.port });
   page.location.search = `?piik-client-port=${selected.port}`;
   page.location.hash = "piik-client=1";
   takeClientLaunchBootstrap();
   old.requests.length = 0;
-  await expect(discoverNativeHealth()).resolves.toMatchObject({ port: selected.port });
-  await expect(discoverNativeConnect()).resolves.toContain(`127.0.0.1:${selected.port}/client?`);
+  await expect(discoverChannelAppHealth()).resolves.toMatchObject({ port: selected.port });
+  await expect(channelAppDiscovery.connect()).resolves.toContain(`127.0.0.1:${selected.port}/client?`);
   expect(old.requests).toEqual([]);
   expect(page.location.href).toBe("http://127.0.0.1:8787/");
   expect([...saved.keys()]).toEqual(["piik:client-launch:v1"]);
@@ -82,16 +81,16 @@ it("selects the launched runtime over a faster resident App and never substitute
   takeClientLaunchBootstrap(); // Consuming an already-clean URL keeps this page's affinity.
   expect(clientRuntimePort()).toBe(selected.port);
   await new Promise<void>(resolve => { selected.server.close(() => resolve()); selected.server.closeAllConnections(); });
-  await expect(discoverNativeHealth()).resolves.toBeNull();
-  await expect(discoverNativeConnect()).resolves.toBeNull();
+  await expect(discoverChannelAppHealth()).resolves.toBeNull();
+  await expect(channelAppDiscovery.connect()).resolves.toBeNull();
   expect(old.requests).toEqual([]);
   vi.resetModules();
   const reloaded = await import("../src/client/lib/session");
   reloaded.takeClientLaunchBootstrap();
   expect(reloaded.clientRuntimePort()).toBe(selected.port);
   expect(reloaded.isClientActivated()).toBe(true);
-  const reloadedDiscovery = await import("../src/client/native/client");
-  await expect(reloadedDiscovery.discoverNativeHealth()).resolves.toBeNull();
+  const reloadedDiscovery = await import("../src/client/channel/app-link");
+  await expect(reloadedDiscovery.discoverChannelAppHealth()).resolves.toBeNull();
   expect(old.requests).toEqual([]);
   // A new explicit launch replaces this tab's previous selection.
   page.location.search = `?piik-client-port=${old.port}`;
@@ -104,6 +103,6 @@ it("selects the launched runtime over a faster resident App and never substitute
   vi.resetModules();
   const freshTab = await import("../src/client/lib/session");
   expect(freshTab.clientRuntimePort()).toBeNull();
-  const freshDiscovery = await import("../src/client/native/client");
-  await expect(freshDiscovery.discoverNativeHealth()).resolves.toMatchObject({ port: old.port });
+  const freshDiscovery = await import("../src/client/channel/app-link");
+  await expect(freshDiscovery.discoverChannelAppHealth()).resolves.toMatchObject({ port: old.port });
 });

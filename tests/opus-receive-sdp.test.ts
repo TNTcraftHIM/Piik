@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parse } from "sdp-transform";
 
-import { preferOpusStereoReceive, preferScreenAudioStereo } from "../src/client/webrtc/opus-receive-sdp.ts";
+import { preferOpusStereoReceive } from "../src/client/webrtc/opus-receive-sdp.ts";
 
 function answerSdp(opusFmtp: string | null = "minptime=10;useinbandfec=1"): string {
   return [
@@ -24,7 +24,7 @@ function answerSdp(opusFmtp: string | null = "minptime=10;useinbandfec=1"): stri
   ].join("\r\n");
 }
 
-describe("preferScreenAudioStereo", () => {
+describe("preferOpusStereoReceive", () => {
   it.each(["offer", "answer"] as const)("configures every receiving Opus section in a shared %s while preserving other directions", type => {
     const audio = (mid: number, direction?: string, port = 9) => [
       `m=audio ${port} UDP/TLS/RTP/SAVPF 111`, `a=mid:${mid}`, ...(direction ? [`a=${direction}`] : []),
@@ -44,7 +44,7 @@ describe("preferScreenAudioStereo", () => {
   });
 
   it("adds exact stereo and bitrate tokens without changing FEC or video fmtp", () => {
-    const result = preferScreenAudioStereo({
+    const result = preferOpusStereoReceive({
       type: "answer",
       sdp: answerSdp("minptime=10;useinbandfec=1;x-stereo=keep"),
     });
@@ -58,11 +58,11 @@ describe("preferScreenAudioStereo", () => {
     expect(session.media[1]?.fmtp).toEqual([
       { payload: 96, config: "packetization-mode=1;profile-level-id=42e01f" },
     ]);
-    expect(preferScreenAudioStereo(result)).toEqual(result);
+    expect(preferOpusStereoReceive(result)).toEqual(result);
   });
 
   it("replaces only exact stereo and bitrate tokens", () => {
-    const result = preferScreenAudioStereo({
+    const result = preferOpusStereoReceive({
       type: "answer",
       sdp: answerSdp(
         "stereo=0;x-stereo=0;maxaveragebitrate=64000;x-maxaveragebitrate=keep",
@@ -75,7 +75,7 @@ describe("preferScreenAudioStereo", () => {
   });
 
   it("creates the Opus fmtp row when it is absent", () => {
-    const result = preferScreenAudioStereo({
+    const result = preferOpusStereoReceive({
       type: "answer",
       sdp: answerSdp(null),
     });
@@ -92,7 +92,7 @@ describe("preferScreenAudioStereo", () => {
       "a=rtpmap:112 opus/48000/2",
       "a=fmtp:112 stereo=0",
     ].join("\r\n");
-    const result = preferScreenAudioStereo({
+    const result = preferOpusStereoReceive({
       type: "answer",
       sdp: answerSdp().replace("m=audio 9", `${rejected}\r\nm=audio 9`),
     });
@@ -107,13 +107,12 @@ describe("preferScreenAudioStereo", () => {
     ["empty", { type: "answer", sdp: "" }],
     ["malformed", { type: "answer", sdp: "not SDP" }],
     ["parser exception", { type: "answer", sdp: { trim: () => "x" } as unknown as string }],
-    ["not an answer", { type: "offer", sdp: answerSdp() }],
     [
       "missing Opus",
       { type: "answer", sdp: answerSdp().replace("opus/48000/2", "ISAC/16000") },
     ],
     [
-      "multiple active audio sections",
+      "missing Opus in another active audio section",
       { type: "answer", sdp: `${answerSdp()}m=audio 9 RTP/AVP 0\r\n` },
     ],
     [
@@ -136,7 +135,7 @@ describe("preferScreenAudioStereo", () => {
       },
     ],
   ] as const)("returns the original answer for %s", (_case, answer) => {
-    const result = preferScreenAudioStereo(answer);
+    const result = preferOpusStereoReceive(answer);
     expect(result).toBe(answer);
     expect(result.sdp).toBe(answer.sdp);
   });

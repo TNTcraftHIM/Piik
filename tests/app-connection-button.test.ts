@@ -10,6 +10,8 @@ import { ChannelShareControl } from "../src/client/channel/components/ChannelSha
 import { DEFAULT_QUALITY_SETTINGS } from "../src/shared/protocol";
 import type { ChannelController } from "../src/client/channel/types";
 import { setCopy, t } from "../src/client/ui/copy";
+import { channelAppDiscovery } from "../src/client/channel/app-link";
+import { NATIVE_CLIENT_PORT_START } from "../src/client/native/discovery-ports";
 
 vi.mock("react", async importOriginal => {
   const actual = await importOriginal<typeof import("react")>();
@@ -127,8 +129,10 @@ const source = ts.createSourceFile("AppConnectionButton.tsx", readFileSync(
 ), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 let connect: string | undefined;
 let rememberBuild: string | undefined;
+let connectionProps: string | undefined;
 const effects: string[] = [];
 function collect(node: ts.Node): void {
+  if (ts.isFunctionDeclaration(node) && node.name?.text === "AppConnectionButton") connectionProps = node.parameters[0]!.getText(source);
   if (ts.isFunctionDeclaration(node) && node.name?.text === "connect") connect = node.getText(source);
   if (ts.isFunctionDeclaration(node) && node.name?.text === "rememberBuild") rememberBuild = node.getText(source);
   if (ts.isCallExpression(node) && node.expression.getText(source) === "useEffect") {
@@ -168,15 +172,11 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
     window, document, pending, healthCheck, help, showHelp, setState, setBuild, activateClient, onConnected, AbortController, URL,
     wakeURL: android ? "intent://app#Intent;scheme=piik;package=tv.piik.android;end" : null,
     state, connected, isClientActivated: () => activated,
-    loadDiscovery: async () => ({ health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
-      isIncompatible: (error: unknown) => error instanceof native.NativeCompatibilityError }),
+    discovery: { health: native.discoverNativeHealth, connect: native.discoverNativeConnect,
+      isIncompatible: (error: unknown) => error instanceof native.NativeCompatibilityError },
     watchClientActivation: (changed: () => void) => {
       window.addEventListener("activation", changed);
       return () => window.removeEventListener("activation", changed);
-    },
-    require: (path: string) => {
-      if (path !== "../../native/client") throw new Error(`Unexpected dependency: ${path}`);
-      return native;
     },
   }) as { connect: (wake?: boolean) => Promise<void>; cleanup: () => void };
   function message(overrides: Record<string, unknown> = {}) {
@@ -190,6 +190,23 @@ function mount(activated = false, state: "idle" | "ready" = "idle", android = fa
 }
 
 describe("App connection approval", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("recognizes the current App through the shared entry's default discovery", async () => {
+    const discovery = runInNewContext(ts.transpileModule(
+      `function entry(${connectionProps}) { return discovery; } entry({});`,
+      { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+    ).outputText, { channelAppDiscovery }) as typeof channelAppDiscovery;
+    expect(discovery).toBe(channelAppDiscovery);
+    vi.stubGlobal("window", { setTimeout, clearTimeout, location: new URL("http://127.0.0.1:8787/__status-preview") });
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const port = Number(new URL(input).port);
+      if (port !== NATIVE_CLIENT_PORT_START) throw new TypeError("No fixture App");
+      return Response.json({ service: "piik-channel-app", protocol: 1, port, token: "fixture-token" });
+    }));
+    await expect(discovery.health()).resolves.toMatchObject({ port: NATIVE_CLIENT_PORT_START });
+  });
+
   it("uses fresh authorized health instead of offering approval again", async () => {
     const page = mount();
     page.native.discoverNativeHealth.mockResolvedValue({});
@@ -498,8 +515,10 @@ describe("App connection approval", () => {
 
   it("does not let an earlier health check overwrite a newer approval", async () => {
     const page = mount(true);
+    await settle();
     let complete!: (health: object | null) => void;
-    page.native.discoverNativeHealth.mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    page.native.discoverNativeHealth.mockClear().mockImplementationOnce(() => new Promise(resolve => { complete = resolve; }));
+    page.window.dispatchEvent(new Event("focus"));
     await settle();
     await page.openApproval();
     expect(page.native.discoverNativeHealth.mock.calls[0]![0].signal.aborted).toBe(true);
