@@ -458,8 +458,10 @@ impl Runtime {
         );
         let stats_origin = Instant::now();
         let mut rtc = config.build(stats_origin);
-        rtc.bwe()
-            .set_desired_bitrate(Bitrate::bps(desired_bps(*demand.borrow_and_update())));
+        rtc.bwe().set_bitrate(
+            Bitrate::ZERO,
+            Bitrate::bps(desired_bps(*demand.borrow_and_update())),
+        );
         let interfaces = netwatch::interfaces::State::new().await;
         let mut bases = Vec::new();
         for socket in &sockets {
@@ -1219,7 +1221,7 @@ impl Engine {
             let demand = *self.demand.borrow_and_update();
             self.rtc
                 .bwe()
-                .set_desired_bitrate(Bitrate::bps(desired_bps(demand)));
+                .set_bitrate(Bitrate::ZERO, Bitrate::bps(desired_bps(demand)));
         }
         loop {
             match self.rtc.poll_output() {

@@ -651,7 +651,7 @@ each outbound track. Consume it once for that connection's active media. As in
 allocate before passing demand to encoders. Independently constrained branches
 need actual independently rate-controlled outputs; copying the same encoded
 packets or applying a minimum/maximum to one shared encoder cannot provide that.
-The library's [built-in BWE](https://github.com/algesten/str0m/blob/0edd131226e679c6fc05ec112fb5bea5d6b97fcb/docs/BWE.md)
+The library's [built-in BWE](https://github.com/algesten/str0m/blob/5f2183ce7c67117cd1960dfeb11bed11fc188b66/docs/BWE.md)
 replaces the private GoogCc/controller and probe-executor integration. Piik
 consumes its transport estimates through the existing Native allocator, without
 another congestion controller. Each connection aggregates known local media
