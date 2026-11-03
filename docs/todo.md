@@ -27,10 +27,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   [#499](https://github.com/TNTcraftHIM/Piik/issues/499) on niri/Wayland with
   GStreamer NVENC. The Browser report records capture ending before connection
   cleanup; obtain the native capture failure to distinguish the encoder and Portal.
-- [ ] **macOS source-picker previews (#500).** The reporter confirmed that sharing
-  works in [#500](https://github.com/TNTcraftHIM/Piik/issues/500); the remaining
-  report concerns missing source thumbnails. The maintenance branch implements
-  the macOS helper's missing preview entry. Verify its build and thumbnails on macOS.
 - [ ] **Mouse input stops when Host Chrome is minimized (#502).** The
   [supplied v2.5.2 reports](https://github.com/TNTcraftHIM/Piik/issues/502)
   retain the grant and receive authorized mouse events, but Windows `SendInput`
