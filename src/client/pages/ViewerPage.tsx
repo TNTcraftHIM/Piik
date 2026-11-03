@@ -1194,7 +1194,7 @@ export function ViewerPage({
         },
         onSfuStream: (
           nextStream,
-          assignment,
+          _assignment,
           initialVideoStream,
           revision,
         ) => {
@@ -1203,7 +1203,7 @@ export function ViewerPage({
           }
           const previousChildPeerIds = currentAssignment.childPeerIds;
           currentAssignment = limitMediaAssignment(
-            { parentPeerId: null, childPeerIds: assignment.childPeerIds },
+            { parentPeerId: null, childPeerIds: currentAssignment.childPeerIds },
             endpointMediaCopyCapacity,
           );
           reconcileRelayChildren(previousChildPeerIds);

@@ -159,6 +159,9 @@ voice readiness never becomes evidence that a video frame has arrived.
 ## Reconciliation
 
 One room controller owns the committed graph and one bounded child transition.
+Committed child membership applies immediately, independently of asynchronous
+upstream activation. A later child preparation does not retire an already
+committed upstream that is still being promoted locally.
 Healthy current edges remain sticky. When admitted overlap exists, a usable old
 route stays active until the exact candidate child decodes a first new frame;
 the candidate must still be connected when that proof is accepted and when it
@@ -224,6 +227,8 @@ Committed P2P recovery first requests an ICE restart, then requests a rebuild
 if necessary, within the existing two-request budget. A sender without restart
 support, including the current Native sender, replaces its connection on that
 first request.
+Restart authority follows the exact retained edge and its endpoint sessions;
+an ancestor repairing its own ingress does not revoke that edge's recovery.
 The budget belongs to the current parent and survives physical connection or
 Browser/Native backend replacement. Only a connected transport or a new parent
 resets it; replacing an unconnected backend cannot renew recovery indefinitely.
