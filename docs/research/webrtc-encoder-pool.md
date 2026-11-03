@@ -479,6 +479,14 @@ Matching source packets and received frame timestamps placed 154–168 ms in the
 send queue before dequeue; the segmented writer control observed no synchronous
 write over 5 ms. The five-click input-to-compositor median was 235.1 ms.
 
+A follow-up with the original settings parsed all six 172–182 KB AUs through
+Pion's H264 reader with SEI included. Each contained one type-1 non-IDR VCL NAL;
+AUD, prefix NAL and Annex-B start codes accounted for only 19 bytes. There was
+no SEI or trailing zero padding. All 139 observed wire markers matched their
+source AU uniquely, and the six large AUs spent 155–170 ms in the send queue.
+The burst is coded picture data, not removable filler. `Recovery=false` remains
+an independent encoder flag; a type-1 NAL does not identify its slice type.
+
 A candidate applied optional H264
 [HRD buffer size](https://learn.microsoft.com/en-us/windows/win32/directshow/avenccommonbuffersize-property)
 in bytes, using one frame of the current rate at initialization and live updates.
