@@ -430,12 +430,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
-name = "byteorder"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
-
-[[package]]
 name = "bytes"
 version = "1.12.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3001,7 +2995,6 @@ dependencies = [
  "portmapper",
  "reis",
  "rtc-crypto",
- "rtc-media",
  "rtc-rtp",
  "rtc-shared",
  "rtc-stun",
@@ -3489,20 +3482,6 @@ dependencies = [
  "subtle",
  "thiserror 2.0.21",
  "zeroize",
-]
-
-[[package]]
-name = "rtc-media"
-version = "0.21.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a76840ad2aff52efeb16a613db26c16981841a6cf50907bff950884f00f9d9a9"
-dependencies = [
- "byteorder",
- "bytes",
- "rand 0.10.3",
- "rtc-rtp",
- "rtc-shared",
- "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -9,7 +9,6 @@ use super::{
 };
 use crate::EncodedFrame;
 use anyhow::{ensure, Result};
-use rtc_media::io::h26x_reader::{H264NalUnitType, H26xNAL, H26xReader};
 use rtc_rtp::{codec::h264::H264Packet, packetizer::Depacketizer, Packet};
 #[cfg(test)]
 use std::time::Instant;
@@ -265,13 +264,12 @@ impl H264 {
                 "H264 access unit exceeds Native media limit"
             );
             self.sps.access_unit(&sample.data)?;
-            let mut reader = H26xReader::new(&sample.data[..], 4096, false);
             let mut idr = false;
-            while let Ok(H26xNAL::H264(nal)) = reader.next_nal() {
-                match nal.unit_type {
-                    H264NalUnitType::SPS => self.parameters[0] = nal.data.to_vec(),
-                    H264NalUnitType::PPS => self.parameters[1] = nal.data.to_vec(),
-                    H264NalUnitType::CodedSliceIdr => idr = true,
+            for nal in super::h264::nals(&sample.data).into_iter().flatten() {
+                match nal[0] & 0x1f {
+                    7 => self.parameters[0] = nal.to_vec(),
+                    8 => self.parameters[1] = nal.to_vec(),
+                    5 => idr = true,
                     _ => {}
                 }
             }

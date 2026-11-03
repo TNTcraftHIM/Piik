@@ -170,8 +170,11 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
 
 ## Implementation Rules
 
-- Reuse a current owner, standard API or mature dependency before adding a
-  mechanism. Extract a complete responsibility for its real consumers, keeping
+- Reuse a current owner or standard API before adding a mechanism. Prefer
+  cohesive, maintained dependencies for substantial protocol and platform work;
+  keep narrow, stable logic local when integration and patch maintenance cost
+  more than owning it. Compare total responsibility, not dependency count.
+  Extract a complete responsibility for its real consumers, keeping
   resource acquisition, replacement and retirement together. File size alone
   does not justify wrappers, a generic manager or a framework.
   Remove superseded paths in the same change; retain no unused legacy copy.

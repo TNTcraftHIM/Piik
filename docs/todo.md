@@ -7,9 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **2.x public-invitation route allocation.** Investigate v2.5.2 feedback
-  that the third participant remains at route allocation. Confirm the Host/Viewer
-  count and trace the room operation and assignments on its P2P-only path.
+- [ ] **2.x public-invitation candidate retirement.** Capture the parent and
+  server reason when a candidate is retired before its first SDP offer. Keep
+  this separate from candidates that actually enter ICE and fail.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)

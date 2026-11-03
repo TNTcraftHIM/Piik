@@ -8,6 +8,7 @@ pub(crate) mod clock;
 pub(crate) mod derived;
 #[cfg(feature = "capture")]
 pub(crate) mod encodings;
+pub(crate) mod h264;
 pub(crate) mod incoming;
 #[cfg(feature = "capture")]
 pub(crate) mod local;
@@ -428,6 +429,7 @@ mod tests {
                 .is_err());
         }
         assert!(sps.access_unit(&[0, 0, 1, 0x67, 0x64, 0, 0x28]).is_err());
+        assert!(sps.access_unit(&[0, 0, 1, 0x67, 0x42, 0xe0, 0]).is_err());
         Ok(())
     }
 }

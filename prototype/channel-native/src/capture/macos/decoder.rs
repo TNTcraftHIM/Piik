@@ -2,12 +2,8 @@
 use super::{checked, Clock, Image, ImageCopy};
 use crate::capture::Format;
 use crate::EncodedFrame;
-use anyhow::{anyhow, ensure, Context as _, Result};
+use anyhow::{ensure, Context as _, Result};
 use cidre::{arc, cf, cm, cv, os, vt};
-use rtc_media::io::h26x_reader::H264NalUnitType;
-use rtc_media::io::h26x_reader::H26xNAL;
-use rtc_media::io::h26x_reader::H26xReader;
-use rtc_shared::error::Error as RtcError;
 use std::time::Instant;
 
 struct Output {
@@ -91,34 +87,25 @@ impl Decoder {
         frame: &EncodedFrame,
         publish: &mut impl FnMut(Image, Instant, Format) -> Result<()>,
     ) -> Result<()> {
-        let mut reader = H26xReader::new(&frame.bytes[..], 4096, false);
         let mut avcc = Vec::with_capacity(frame.bytes.len());
         let mut changed = false;
         let mut picture = false;
-        loop {
-            let nal = match reader.next_nal() {
-                Ok(H26xNAL::H264(nal)) => nal,
-                Err(RtcError::ErrIoEOF) => break,
-                Err(error) => return Err(error.into()),
-                _ => return Err(anyhow!("unexpected HEVC NAL")),
-            };
-            let parameter = match nal.unit_type {
-                H264NalUnitType::SPS => Some(0),
-                H264NalUnitType::PPS => Some(1),
+        for nal in crate::media::h264::nals(&frame.bytes)? {
+            let kind = nal[0] & 0x1f;
+            let parameter = match kind {
+                7 => Some(0),
+                8 => Some(1),
                 _ => None,
             };
             if let Some(index) = parameter {
-                if self.parameters[index] != nal.data {
-                    self.parameters[index] = nal.data.to_vec();
+                if self.parameters[index] != nal {
+                    self.parameters[index] = nal.to_vec();
                     changed = true;
                 }
             }
-            picture |= matches!(
-                nal.unit_type,
-                H264NalUnitType::CodedSliceNonIdr | H264NalUnitType::CodedSliceIdr
-            );
-            avcc.extend_from_slice(&u32::try_from(nal.data.len())?.to_be_bytes());
-            avcc.extend_from_slice(&nal.data);
+            picture |= matches!(kind, 1 | 5);
+            avcc.extend_from_slice(&u32::try_from(nal.len())?.to_be_bytes());
+            avcc.extend_from_slice(nal);
         }
         if !picture && self.parameters.iter().any(|p| p.is_empty()) {
             return Ok(());
