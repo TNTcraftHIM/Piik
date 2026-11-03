@@ -65,8 +65,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Next
 
-- [ ] **macOS binding consolidation.** Assess one framework-binding family
-  for capture and input, preserving their platform resource lifetimes.
+- [ ] **macOS binding consolidation.** Unify capture and input on the objc2
+  framework family, preserving callback ownership, resource lifetimes and the
+  macOS 13 contract. Verify both Mac architectures and physical capture/input.
 - [ ] **Stronger microphone noise suppression (#518).** Assess the
   [requested speech-processing option](https://github.com/TNTcraftHIM/Piik/issues/518)
   through the shared microphone input. Browser voice processing is already the

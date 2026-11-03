@@ -90,17 +90,12 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   independent public Java/Surface controls reproduce the same assertion with
   direct release and with stop before release. [TODO](./todo.md#now) owns the
   remaining platform acceptance.
-  After the official SDK refresh, the normal Android package completes H264
-  capture, publication and GUI stop, with continuing local RTP/RTCP. The desktop
-  cross-emulator control fails during ICE before decoding; its candidate-pair
-  observations remain part of current acceptance work.
-  A capture-free diagnostic isolates an intermittent failure before Native RTC
-  input; subsequent connections in the same runtime exchange room messages,
-  including after a room change.
-  A normal capture-free control at `9ce89372` also fails the Native first
-  connection, then joins through a Browser fallback. Its Native candidate ports
-  match the App's owned sockets. Queue samples show no sustained receive backlog;
-  packet arrival and Native answer acceptance remain unresolved.
+  A normal build at `af13f5be` completes H264 capture, publication and GUI stop,
+  with continuing local RTP/RTCP. Cross-emulator Native ICE remains intermittent:
+  diagnostics include an initial failure before RTC input and a successful
+  Native first connection at `752bbd04` with confirmed room chat. Browser fallback
+  in separate controls is distinct from Native success. The failed initial
+  checks' cause remains unresolved.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.
