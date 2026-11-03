@@ -235,12 +235,20 @@ function captureProbe(name) {
         const snapshot = window.__channelGate.snapshot();
         const publication = snapshot.state.publications.find(value => value.id === publicationId);
         const streamIds = [...flowStreams].filter(([flowId]) => flowBindings.get(flowId)?.publicationId === publicationId).map(([, streamId]) => streamId);
-        return { publication: publication && { id: publication.id, roomId: publication.roomId,
+        return { fullscreen: { enabled: document.fullscreenEnabled, hasFocus: document.hasFocus(),
+            element: document.fullscreenElement && { tag: document.fullscreenElement.tagName,
+              className: document.fullscreenElement.getAttribute('class') },
+            userActivation: navigator.userActivation && { active: navigator.userActivation.isActive, hasBeenActive: navigator.userActivation.hasBeenActive } },
+          publication: publication && { id: publication.id, roomId: publication.roomId,
           sessionId: publication.sessionId, kind: publication.kind, paused: publication.paused },
           streamId: snapshot.streams.get(publicationId)?.id,
           inputs: (snapshot.screenInputs.get(publicationId) ?? []).map(input => {
             const element = [...document.querySelectorAll('video')].find(video => video.dataset.flowId === input.flowId);
             if (element) element.__allocationIdentity ??= crypto.randomUUID();
+            const rect = element?.getBoundingClientRect();
+            const hit = rect && document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+            const buttons = element?.parentElement?.querySelectorAll('.c3-mini-controls button');
+            const fullscreenControl = buttons?.item(buttons.length - 1);
             const pair = snapshot.state.pairs.find(pair => pair.incoming.some(flow => flow.id === input.flowId));
             const flow = pair?.incoming.find(flow => flow.id === input.flowId);
             return { flowId: input.flowId, selected: input.selected, switchReady: input.switchReady, streamId: input.stream.id,
@@ -253,15 +261,23 @@ function captureProbe(name) {
               video: input.stream.getVideoTracks().map(track => track.id), elementId: element?.__allocationIdentity,
               displayed: element?.dataset.selected, composited: element?.dataset.composited, muted: element?.muted,
               paused: element?.paused, fullscreen: !!element && document.fullscreenElement === element.parentElement,
+              rect: rect && { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+              centerHit: hit && { tag: hit.tagName, className: hit.getAttribute('class'), isVideo: hit === element,
+                buttonLabel: hit.closest('button')?.getAttribute('aria-label') },
+              fullscreenControl: fullscreenControl && { label: fullscreenControl.getAttribute('aria-label'),
+                disabled: fullscreenControl.disabled || fullscreenControl.getAttribute('aria-disabled') === 'true' },
               volume: element?.volume, width: element?.videoWidth, height: element?.videoHeight,
               frames: element?.getVideoPlaybackQuality().totalVideoFrames, time: element?.currentTime };
           }), outputs: snapshot.state.pairs.flatMap(pair => pair.outgoing.filter(flow => flow.publicationId === publicationId).map(flow => {
             const streamId = flowStreams.get(flow.id);
-            return { flowId: flow.id, inputFlowId: flow.inputFlowId, selected: flow.selected, streamId, pairId: pair.id, peerId: pair.peerId,
+            const owner = window.__channelGate.session.media.peers.get(pair.id)?.transport.sending.get(flow.id);
+            return { flowId: flow.id, inputFlowId: flow.inputFlowId, selected: flow.selected, streamId, wrapperId: owner?.stream.id, pairId: pair.id, peerId: pair.peerId,
               senders: senders.filter(output => streamId && output.streams.includes(streamId) && output.sender.track)
                 .map(output => { const transceiver = output.pc.getTransceivers().find(value => value.sender === output.sender);
+                  const binding = owner?.senders.find(binding => binding.sender === output.sender);
                   return { id: output.id, trackId: output.sender.track.id, kind: output.sender.track.kind,
-                    track: trackState(output.sender.track), pcIndex: peers.indexOf(output.pc), connectionState: output.pc.connectionState,
+                    track: trackState(output.sender.track), source: binding && trackState(binding.source),
+                    pcIndex: peers.indexOf(output.pc), connectionState: output.pc.connectionState,
                     mid: transceiver?.mid, direction: transceiver?.direction, currentDirection: transceiver?.currentDirection }; }) };
           })), flowStates, qualitySamples, restoredVideo,
           trackEvents: trackEvents.filter(event => event.streamIds.some(id => streamIds.includes(id))),
@@ -386,25 +402,37 @@ function captureProbe(name) {
       blockPeer(sessionId) { blockedPeers.add(sessionId); },
       unblockPeer(sessionId) { blockedPeers.delete(sessionId); },
       async limitVideo(publicationId, peerId, maxFramerate, scaleResolutionDownBy) {
+        const session = window.__channelGate.session;
         const pair = window.__channelGate.snapshot().state.pairs.find(pair => pair.peerId === peerId);
         const flow = pair?.outgoing.find(flow => flow.publicationId === publicationId && flow.selected);
+        const transport = pair && session.media.peers.get(pair.id)?.transport;
+        const owner = flow && transport?.sending.get(flow.id);
+        const video = owner?.senders.find(binding => binding.source.kind === 'video');
         const streamId = flow && flowStreams.get(flow.id);
-        const output = senders.find(output => output.pc.connectionState === 'connected'
-          && output.streams.includes(streamId) && output.sender.track?.kind === 'video');
-        if (!output) return null;
-        const settings = () => { const value = output.sender.track.getSettings();
+        const output = video && senders.find(output => output.sender === video.sender);
+        if (!output || output.pc.connectionState !== 'connected' || !owner.profile) return null;
+        const settings = () => { const value = video.source.getSettings();
           return { width: value.width, height: value.height, frameRate: value.frameRate }; };
-        const encodings = sender => sender.getParameters().encodings.map(encoding => ({
-          active: encoding.active, maxFramerate: encoding.maxFramerate, scaleResolutionDownBy: encoding.scaleResolutionDownBy,
-        }));
-        const others = () => senders.filter(value => value.sender !== output.sender && value.sender.track?.kind === 'video')
-          .map(value => ({ senderId: value.id, encodings: encodings(value.sender) }));
-        const before = { settings: settings(), encodings: encodings(output.sender), others: others() };
-        const parameters = output.sender.getParameters();
-        parameters.encodings.forEach(encoding => { encoding.maxFramerate = maxFramerate; encoding.scaleResolutionDownBy = scaleResolutionDownBy; });
-        await output.sender.setParameters(parameters);
+        const others = () => [...session.media.peers.values()].flatMap(peer => [...peer.transport.sending]
+          .filter(([id, value]) => id !== flow.id && value.kind === 'screen' && value.profile)
+          .map(([flowId, value]) => ({ flowId, profile: structuredClone(value.profile) })));
+        const before = { settings: settings(), profile: structuredClone(owner.profile), others: others() };
+        if (!before.settings.width || !before.settings.height) throw new Error('Controlled source has no capture dimensions');
+        const resolution = { width: Math.floor(before.settings.width / scaleResolutionDownBy), height: Math.floor(before.settings.height / scaleResolutionDownBy) };
+        const profile = { ...owner.profile, resolution, maxFramerate };
+        const setOutgoing = transport.setOutgoing;
+        transport.setOutgoing = function(streams, resourcesReleased) {
+          if (!streams.has(flow.id)) {
+            this.setOutgoing = setOutgoing;
+            return setOutgoing.call(this, streams, resourcesReleased);
+          }
+          const controlled = new Map(streams), value = controlled.get(flow.id);
+          controlled.set(flow.id, { ...value, profile: { ...value.profile, resolution, maxFramerate } });
+          return setOutgoing.call(this, controlled, resourcesReleased);
+        };
+        await transport.configureVideo(flow.id, profile);
         return { flowId: flow.id, pairId: pair.id, streamId, senderId: output.id,
-          before, after: { settings: settings(), encodings: encodings(output.sender), others: others() } };
+          before, after: { settings: settings(), profile: structuredClone(owner.profile), others: others() } };
       },
       stallVideo(publicationId, peerId, candidateOnly = false) { videoStall = { publicationId, peerId, candidateOnly }; },
       async restoreVideo() {

@@ -49,6 +49,7 @@ const appOnly = process.argv.includes("--app") || process.argv.includes("--previ
 const active = backupOnly ? [1] : identityOnly ? [0, 1] : process.argv.includes("--app") ? [0, 1, 2, 3]
   : lifecycleOnly || roomsOnly || hostsOnly || nativeOnly || appOnly ? [0, 1, 2] : [0, 1, 2, 3, 4];
 async function browser(index, ...args) {
+  if (["click", "dblclick", "hover"].includes(args[0])) await browser(index, "scrollintoview", args[1]);
   // Omitting launch options on later commands selects a different Browser context.
   const { stdout } = await run(executable, ["--session", sessions[index], "--json",
     ...(backupOnly ? ["--download-path", output] : ["--args", "--no-sandbox,--autoplay-policy=no-user-gesture-required",
@@ -210,6 +211,19 @@ async function branchShortcut(initial) {
   const base = await Promise.all([host, relay, source, viewer].map(async index => ({ index,
     pairs: (await view(index)).state.pairs.filter(pair => pair.rooms.includes(room)).map(pair => pair.id).sort() })));
   const inspect = (index, publication) => evaluate(index, `window.__channelProbe.screen(${JSON.stringify(publication)})`);
+  const clickFullscreen = async (publication, flowId) => {
+    const video = `video[data-flow-id="${flowId}"]`;
+    await browser(viewer, 'hover', video);
+    await until('the current player exposes its playback controls', () => evaluate(viewer, `(() => {
+      const controls = document.querySelector(${JSON.stringify(video)})?.parentElement?.querySelector('.c3-mini-controls');
+      if (!controls) return false;
+      const style = getComputedStyle(controls);
+      return Number(style.opacity) > 0 && style.pointerEvents !== 'none';
+    })()`), value => value === true);
+    const input = (await inspect(viewer, publication)).inputs.find(input => input.flowId === flowId);
+    assert(input?.fullscreenControl && !input.fullscreenControl.disabled, 'the current player exposes its fullscreen action');
+    await browser(viewer, 'click', `.c3-video:has(> video[data-flow-id="${flowId}"]) .c3-mini-controls button[aria-label=${JSON.stringify(input.fullscreenControl.label)}]`);
+  };
   const records = [];
   await evaluate(source, 'window.__channelProbe.captureAudio(true)');
   try {
@@ -224,13 +238,13 @@ async function branchShortcut(initial) {
         await Promise.all([host, ...watchers].map(index => action(index, `watch(${JSON.stringify(publication)})`)));
         await until('host and both branch watchers are authoritative before media starts', () => Promise.all([host, ...watchers].map(view)), values =>
           values.every(value => value.state.subscriptions.includes(publication)));
-        // Set a real lower-quality incumbent before releasing its first SDP.
-        // The capture and shadow senders remain unconstrained at 640x360/10fps.
+        // Limit the incumbent's actual encoding profile before releasing its first SDP.
+        // Capture and other output profiles remain at the original ceiling.
         const frameLimit = await until('source installs the controlled incumbent sender', () => evaluate(source,
           `window.__channelProbe.limitVideo(${JSON.stringify(publication)}, ${JSON.stringify(initial[host].sessionId)}, 5, 4)`), value => !!value);
-        assert.deepEqual(frameLimit.after.settings, frameLimit.before.settings, 'sender limits do not constrain the capture');
-        assert.deepEqual(frameLimit.after.others, frameLimit.before.others, 'other video senders keep their own encoding parameters');
-        assert(frameLimit.after.encodings.length && frameLimit.after.encodings.every(encoding => encoding.maxFramerate === 5 && encoding.scaleResolutionDownBy === 4));
+        assert.deepEqual(frameLimit.after.settings, frameLimit.before.settings, 'output limits do not constrain the capture');
+        assert.deepEqual(frameLimit.after.others, frameLimit.before.others, 'other video outputs keep their own profiles');
+        assert.deepEqual(frameLimit.after.profile, { ...frameLimit.before.profile, resolution: { width: 160, height: 90 }, maxFramerate: 5 });
         await evaluate(source, `window.__channelProbe.unblockPeer(${JSON.stringify(initial[host].sessionId)})`);
         await action(source, 'reconnect()'); // Replay the original blocked exchange through the production owner.
         await until('source resumes its authenticated session', () => view(source), value => value.connection === 'connected');
@@ -252,9 +266,9 @@ async function branchShortcut(initial) {
         assert.equal(downstream.candidate.pairId, downstream.incumbent.pairId, 'two lineages share the existing relay-viewer physical pair');
         assert.equal(downstream.incumbent.inputFlowId, internal.incumbent.id);
         assert.equal(downstream.candidate.inputFlowId, internal.candidate.id);
-        const faults = await until('only the two shadow video senders stop actual RTP', () => Promise.all([source, relay].map(sample)), values =>
-          values.every((value, offset) => value.videoStall?.flowId === branches[offset].candidate.id && value.videoStall.connected));
-        for (const value of faults) assert.equal(value.videoStall.bytes, 0, 'the candidate fault emits no RTP while the incumbent shares a live PC');
+        const sourceFault = await until('the source shadow video sender stops actual RTP', () => sample(source), value =>
+          value.videoStall?.flowId === internal.candidate.id && value.videoStall.connected);
+        assert.equal(sourceFault.videoStall.bytes, 0, 'the source candidate emits no RTP while the incumbent stays live');
         const decoded = () => Promise.all(branches.map(branch => evaluate(branch.index,
           `window.__channelProbe.decodedVideo(${JSON.stringify(publication)}, ${JSON.stringify(branch.incumbent.id)})`)));
         const baseline = { before: await until('both incumbents decode the controlled dimensions', decoded, values =>
@@ -269,18 +283,38 @@ async function branchShortcut(initial) {
             'the real decoded incumbent advances at the controlled frame rate before the candidate starts');
         });
         await Promise.all(watchers.map(index => progressing(index, publication)));
-        const held = await Promise.all(watchers.map(index => inspect(index, publication)));
-        held.forEach((value, offset) => {
+        const beforeRelease = await Promise.all(watchers.map(index => inspect(index, publication)));
+        beforeRelease.forEach((value, offset) => {
           assert.equal(value.inputs.find(input => input.selected)?.flowId, branches[offset].incumbent.id);
           assert(!value.flowStates.some(proof => proof.flowId === branches[offset].candidate.id && proof.state === 'switch_ready'));
         });
+        if (mode === 'commit') {
+          await Promise.all(branches.map(branch => evaluate(branch.index, `(() => {
+            const video = document.querySelector('video[data-flow-id="${branch.incumbent.id}"]');
+            const slider = video.closest('.c3-video').querySelector('input.c3-mini-volume');
+            if (!slider) throw new Error('screen volume control unavailable');
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(slider, '0.35');
+            slider.dispatchEvent(new Event('input', { bubbles: true })); slider.dispatchEvent(new Event('change', { bubbles: true }));
+          })()`)));
+          await clickFullscreen(publication, downstream.incumbent.id);
+          await until('downstream incumbent enters container fullscreen', () => inspect(viewer, publication), value => value.inputs.some(input => input.flowId === downstream.incumbent.id && input.fullscreen));
+          await browser(viewer, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
+          await until('downstream incumbent pauses before selection', () => inspect(viewer, publication), value => value.inputs.some(input => input.flowId === downstream.incumbent.id && input.paused));
+        }
+        // A relay needs actual decoded input before it can select its output codec.
+        await evaluate(source, 'window.__channelProbe.restoreVideo()');
+        const downstreamFault = await until('the relay shadow video sender stops actual RTP', () => sample(relay), value =>
+          value.videoStall?.flowId === downstream.candidate.id && value.videoStall.connected);
+        assert.equal(downstreamFault.videoStall.bytes, 0, 'the downstream candidate emits no RTP while the incumbent shares its live PC');
+        const held = await until('both candidate consumers exist before they are selected', () => Promise.all(watchers.map(index => inspect(index, publication))), values =>
+          values.every((value, offset) => value.inputs.some(input => input.flowId === branches[offset].candidate.id && input.elementId)));
+        held.forEach((value, offset) => assert.equal(value.inputs.find(input => input.selected)?.flowId, branches[offset].incumbent.id));
         const warm = held.map((value, offset) => value.inputs.find(input => input.flowId === branches[offset].candidate.id));
         assert(warm.every(input => input?.elementId), 'both candidate consumers exist before they are selected');
         const warmOutput = held[0].outputs.find(output => output.flowId === downstream.candidate.id);
         assert.equal(warmOutput.inputFlowId, internal.candidate.id);
         assert.equal(warmOutput.senders.length, 2, 'the shadow output forwards its own video and source audio');
         if (mode !== 'commit') {
-          await evaluate(source, 'window.__channelProbe.restoreVideo()');
           const firstReady = await until('relay proves its candidate but cannot commit for the stalled downstream viewer', () => inspect(relay, publication), value =>
             value.flowStates.some(proof => proof.flowId === internal.candidate.id && proof.state === 'switch_ready'));
           const readyAt = firstReady.flowStates.find(proof => proof.flowId === internal.candidate.id && proof.state === 'switch_ready').time;
@@ -293,25 +327,14 @@ async function branchShortcut(initial) {
             values.every((value, offset) => !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].candidate.id))
               && (mode === 'unwatch' && offset === 1 ? !value.state.subscriptions.includes(publication)
                 : value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].incumbent.id && flow.selected)))), 8_000);
-          records.push({ mode, branches, frameLimit, baseline, firstSwitchReadyAt: readyAt, expiredAfterReadyMs: Date.now() - readyAt,
-            elapsedMs: Date.now() - faults[0].videoStall.startedAt });
+          records.push({ mode, branches, frameLimit, baseline, sourceFault, downstreamFault, firstSwitchReadyAt: readyAt, expiredAfterReadyMs: Date.now() - readyAt,
+            elapsedMs: Date.now() - sourceFault.videoStall.startedAt });
           await Promise.all((mode === 'unwatch' ? [relay] : watchers).map(index => progressing(index, publication)));
         } else {
-          await Promise.all(branches.map(branch => evaluate(branch.index, `(() => {
-            const video = document.querySelector('video[data-flow-id="${branch.incumbent.id}"]');
-            const slider = video.closest('.c3-video').querySelector('input.c3-mini-volume');
-            if (!slider) throw new Error('screen volume control unavailable');
-            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(slider, '0.35');
-            slider.dispatchEvent(new Event('input', { bubbles: true })); slider.dispatchEvent(new Event('change', { bubbles: true }));
-          })()`)));
-          await browser(viewer, 'dblclick', `video[data-flow-id="${downstream.incumbent.id}"]`);
-          await until('downstream incumbent enters container fullscreen', () => inspect(viewer, publication), value => value.inputs.some(input => input.flowId === downstream.incumbent.id && input.fullscreen));
-          await browser(viewer, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
-          await until('downstream incumbent pauses before selection', () => inspect(viewer, publication), value => value.inputs.some(input => input.flowId === downstream.incumbent.id && input.paused));
-          await Promise.all([source, relay].map(index => evaluate(index, 'window.__channelProbe.restoreVideo()')));
+          await evaluate(relay, 'window.__channelProbe.restoreVideo()');
           const selected = await until('both watchers adopt the prepared shadow cohort', () => Promise.all(watchers.map(index => inspect(index, publication))), values =>
             values.every((value, offset) => value.inputs.some(input => input.flowId === branches[offset].candidate.id && input.selected && input.displayed === 'true' && input.composited === 'true')), 25_000);
-          await writeFile(join(output, 'base-branch-commit-observed.json'), JSON.stringify({ branches, frameLimit, baseline, held, selected }, null, 2));
+          await writeFile(join(output, 'base-branch-commit-observed.json'), JSON.stringify({ branches, frameLimit, baseline, sourceFault, downstreamFault, beforeRelease, held, selected }, null, 2));
           const adopted = selected.map((value, offset) => value.inputs.find(input => input.flowId === branches[offset].candidate.id));
           adopted.forEach((input, offset) => {
             assert.equal(input.elementId, warm[offset].elementId, 'commit adopts the prewarmed DOM element');
@@ -329,15 +352,27 @@ async function branchShortcut(initial) {
           });
           assert(adopted[1].paused && adopted[1].fullscreen, 'commit preserves pause and the fullscreen container');
           assert(!adopted[0].paused, 'the relay viewer continues playing');
-          assert.deepEqual(selected[0].outputs.find(output => output.flowId === downstream.candidate.id), warmOutput,
-            'commit preserves the shadow output flow, wrapper and sender identities');
+          const adoptedOutput = selected[0].outputs.find(output => output.flowId === downstream.candidate.id);
+          const outputIdentity = output => ({ flowId: output.flowId, inputFlowId: output.inputFlowId, pairId: output.pairId,
+            peerId: output.peerId, streamId: output.streamId, wrapperId: output.wrapperId,
+            senders: output.senders.map(sender => ({ id: sender.id, pcIndex: sender.pcIndex, mid: sender.mid,
+              source: { id: sender.source?.id, objectId: sender.source?.objectId, kind: sender.source?.kind } })) });
+          assert(warmOutput.senders.every(sender => sender.source), 'the prepared senders expose their actual logical sources');
+          assert.deepEqual(outputIdentity(adoptedOutput), outputIdentity(warmOutput),
+            'commit preserves the shadow flow, wrapper, sender objects and logical sources');
+          assert.equal(warmOutput.selected, false);
+          assert.equal(adoptedOutput.selected, true);
+          assert(adoptedOutput.senders.every(sender => sender.connectionState === 'connected'
+            && sender.source?.readyState === 'live' && sender.track.readyState === 'live'), 'the committed senders and logical sources remain live');
           await until('commit retires only the old media branch', () => Promise.all(watchers.map(view)), values =>
             values.every((value, offset) => !value.state.pairs.some(pair => pair.incoming.some(flow => flow.id === branches[offset].incumbent.id))));
           await browser(viewer, 'screenshot', join(output, 'base-shortcut-fullscreen.png'));
           await browser(viewer, 'click', '.c3-video:fullscreen .c3-mini-controls button:first-child');
           await Promise.all(watchers.map(index => progressing(index, publication)));
-          await browser(viewer, 'dblclick', `video[data-flow-id="${downstream.candidate.id}"]`);
-          records.push({ mode, branches, frameLimit, baseline, warm, warmOutput, adopted,
+          await clickFullscreen(publication, downstream.candidate.id);
+          await until('downstream candidate leaves container fullscreen', () => inspect(viewer, publication), value =>
+            value.inputs.some(input => input.flowId === downstream.candidate.id && !input.fullscreen));
+          records.push({ mode, branches, frameLimit, baseline, sourceFault, downstreamFault, warm, warmOutput, adopted,
             quality: selected.map(value => value.qualitySamples), proofs: selected.map(value => value.flowStates) });
         }
         for (const before of base) assert.deepEqual((await view(before.index)).state.pairs.filter(pair => pair.rooms.includes(room)).map(pair => pair.id).sort(), before.pairs,
@@ -385,6 +420,14 @@ async function roomBase(initial) {
   // This is a controlled unreachable edge, not a model of a particular NAT.
   await evaluate(1, `window.__channelProbe.blockPeer(${JSON.stringify(initial[3].sessionId)})`);
   await evaluate(3, `window.__channelProbe.blockPeer(${JSON.stringify(initial[1].sessionId)})`);
+  // Blocking signaling cannot break a carrier retained from an earlier room.
+  const retiredPairs = await evaluate(1, `(() => {
+    const peers = [...window.__channelGate.session.media.peers.values()].filter(peer => peer.plan.peerId === ${JSON.stringify(initial[3].sessionId)});
+    for (const peer of peers) { peer.transport.pc.close(); peer.transport.fail(); }
+    return peers.map(peer => peer.plan.id);
+  })()`);
+  await until("the old direct carriers retire before the unreachable-edge trial", () => Promise.all([1, 3].map(view)), values =>
+    values.every(value => value.state.pairs.every(pair => !retiredPairs.includes(pair.id))));
   await browser(3, "click", '.c3-room-link[aria-label="Connected room"]');
   await until("D reaches its room through C after B-D fails", () => view(3), value =>
     value.state.pairs.some(pair => pair.peerId === initial[2].sessionId && pair.rooms.includes(room)), 35_000);
