@@ -97,6 +97,10 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   A capture-free diagnostic isolates an intermittent failure before Native RTC
   input; subsequent connections in the same runtime exchange room messages,
   including after a room change.
+  A normal capture-free control at `9ce89372` also fails the Native first
+  connection, then joins through a Browser fallback. Its Native candidate ports
+  match the App's owned sockets. Queue samples show no sustained receive backlog;
+  packet arrival and Native answer acceptance remain unresolved.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.
