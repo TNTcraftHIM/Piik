@@ -5,6 +5,7 @@ import {
   type QualityProfile,
 } from "../src/client/media/quality.ts";
 import { HostProvisionalChild } from "../src/client/media/host-provisional-child.ts";
+import { ViewerSfuRoute } from "../src/client/media/viewer-sfu-route.ts";
 import { senderQualityEvidenceFromSnapshot } from "../src/client/media/sender-quality-evidence.ts";
 import { EMPTY_METRICS, type PeerSnapshot } from "../src/client/types.ts";
 import { HostPeer, RENEGOTIATION_ANSWER_TIMEOUT_MS, type HostMediaPeer } from "../src/client/webrtc/host-peer.ts";
@@ -2558,6 +2559,53 @@ describe("ViewerRelay downstream ownership", () => {
     connectionId: `relay-candidate-${revision}`,
     transport: "direct" as const,
     qualityProbe: false,
+  });
+
+  it("admits a relay replacement after retirement while upstream activation is awaiting SDP", async () => {
+    const relay = new ViewerRelay({ iceServers: [] }, QUALITY_PROFILES["720p30"], {
+      sendSignal: () => true,
+    });
+    relay.setStream(createStream(createTrack("video", "standing-source"), null));
+    let finishActivation!: () => void;
+    const upstreamSdp = new Promise<void>((resolve) => { finishActivation = resolve; });
+    let waitForSdp = false;
+    const activating = vi.fn();
+    const admissions: boolean[] = [];
+    const children = vi.fn((ids: readonly string[], revision: number) => relay.activateChildren(revision, ids));
+    const route = new ViewerSfuRoute("parent-viewer", {
+      activatePeer: () => {
+        if (waitForSdp) { activating(); return upstreamSdp; }
+      },
+      activateChildren: children,
+      prepareChild: (candidate, planned, revision) => {
+        if (candidate && planned && revision !== undefined) admissions.push(relay.prepareChild(revision, candidate, planned));
+        else relay.discardPreparedChild();
+      },
+      onSfuStream: () => undefined,
+      send: () => true,
+    });
+    const assignment = (childPeerIds: string[]): ParticipantRouteAssignment => ({
+      upstream: { kind: "peer", peerId: "upstream" }, childPeerIds, sfuPublicationGeneration: null,
+    });
+    try {
+      route.accept({ revision: 1, phase: "active", assignment: assignment(["retired-child"]) });
+      await vi.waitFor(() => expect(children).toHaveBeenCalledWith(["retired-child"], 1));
+      waitForSdp = true;
+      route.accept({ revision: 2, phase: "active", assignment: assignment([]) });
+      await vi.waitFor(() => expect(activating).toHaveBeenCalledOnce());
+      route.accept({ revision: 3, phase: "prepare", assignment: assignment(["replacement-child"]),
+        candidate: routeCandidate(3, "replacement-child") });
+      expect(admissions).toEqual([true]);
+      finishActivation();
+      await upstreamSdp;
+      await vi.waitFor(() => expect(relay.getSignalRouteRevision(
+        "replacement-child", routeCandidate(3, "replacement-child").connectionId, 2,
+      )).toBe(3));
+    } finally {
+      finishActivation();
+      await route.disconnect();
+      relay.dispose();
+    }
   });
 
   it("prepares against the current source and codec after an in-flight probe is replaced", async () => {

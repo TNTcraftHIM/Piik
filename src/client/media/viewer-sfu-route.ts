@@ -141,7 +141,8 @@ export class ViewerSfuRoute {
     const retiredActive = pausedActiveReconciliation
       ? this.detachUnreferencedActive(update.assignment)
       : null;
-    if (pausedActiveReconciliation) {
+    // Committed child permissions cannot wait for unrelated upstream SDP.
+    if (update.phase === "active" && result !== "duplicate") {
       this.activateChildren(update.assignment.childPeerIds, update.revision);
     }
     if (this.paused && update.phase === "prepare") {
@@ -342,6 +343,9 @@ export class ViewerSfuRoute {
     const accepted = this.route.accept(update);
     this.preparePeer(update.assignment);
     this.events.resetMedia?.();
+    if (update.phase === "active") {
+      this.activateChildren(update.assignment.childPeerIds, update.revision);
+    }
 
     await this.queueTransition(async () => {
       if (active?.activated) {
@@ -644,7 +648,6 @@ export class ViewerSfuRoute {
         }
       }
       if (assignment.upstream.kind === "sfu") {
-        this.activateChildren(assignment.childPeerIds, token.revision);
         const mediaAssignment = this.route.getMediaAssignment();
         if (
           mediaAssignment?.upstream.kind === "sfu" &&
@@ -693,7 +696,6 @@ export class ViewerSfuRoute {
       if (!this.route.owns(token, "active")) {
         return;
       }
-      this.activateChildren(assignment.childPeerIds, token.revision);
       this.commitMedia(token);
     });
   }
