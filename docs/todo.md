@@ -7,9 +7,9 @@ own behavior; research and Git/PRs own evidence and completed history.
 
 ## Now
 
-- [ ] **2.x: third Viewer remains at route allocation.** Trace the reported
-  room's operation and route assignments when the first two Viewers play.
-  Check the capacity-to-relay/fallback handoff while preserving their streams.
+- [ ] **2.x public-invitation route allocation.** Investigate v2.5.2 feedback
+  that the third participant remains at route allocation. Confirm the Host/Viewer
+  count and trace the room operation and assignments on its P2P-only path.
 - [ ] **3.0 Native platform acceptance.** Complete the remaining Linux/macOS
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
