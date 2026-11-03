@@ -49,7 +49,10 @@ function manifest(reference) {
 }
 
 function verifyIndex(reference, index) {
-  assert.deepEqual(index.manifests.map(item => `${item.platform.os}/${item.platform.architecture}`).sort(),
+  const platforms = index.manifests
+    .filter(item => item.annotations?.["vnd.docker.reference.type"] !== "attestation-manifest")
+    .map(item => `${item.platform.os}/${item.platform.architecture}`).sort();
+  assert.deepEqual(platforms,
     linuxServers.map(server => `linux/${server.arch}`).sort(), "Container platforms differ from the release");
   for (const server of linuxServers) {
     run("docker", "pull", "--platform", `linux/${server.arch}`, reference);
