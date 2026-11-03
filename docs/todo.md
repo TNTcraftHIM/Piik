@@ -16,6 +16,10 @@ own behavior; research and Git/PRs own evidence and completed history.
   are recorded in [device evidence](./verification-status.md#device-evidence-boundary).
   Keep the SDK's transport controller,
   the first version's accepted scope and the prototype isolated.
+- [ ] **Retire standalone 2.x Native experiments.** Remove the replaced capture
+  helpers, their probes/fixtures and stale build/documentation references from
+  3.0 together. Preserve the Rust capture owner, required upstream attribution
+  and links to the published 2.x implementation.
 - [ ] **Native RTX reception statistics.** Follow
   [upstream #1121](https://github.com/algesten/str0m/pull/1121), then verify and
   adopt its official repair. Preserve repaired-packet delivery and deduplication.
