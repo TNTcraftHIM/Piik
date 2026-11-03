@@ -14,11 +14,11 @@ on:
         default: false
         type: boolean
       channel_network_lab:
-        description: Run one isolated Rust kernel-NAT control (never publishes)
+        description: Run one isolated network control (never publishes)
         required: false
         default: none
         type: choice
-        options: [none, ordinary, prepared, recovery, media, browser-relay]
+        options: [none, ordinary, prepared, recovery, media, browser-relay, public-peer]
       app_checks:
         description: Build and verify App and Server candidates
         required: false
@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   channel-network:
-    if: github.event_name == 'workflow_dispatch' && inputs.channel_network_lab != 'none' && inputs.channel_network_lab != ''
+    if: github.event_name == 'workflow_dispatch' && inputs.channel_network_lab != 'none' && inputs.channel_network_lab != '' && inputs.channel_network_lab != 'public-peer'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     defaults:
@@ -93,6 +93,39 @@ jobs:
         with:
           name: channel-network-${{ inputs.channel_network_lab }}-${{ github.sha }}
           path: ${{ runner.temp }}/channel-network/
+          if-no-files-found: warn
+          retention-days: 7
+
+  channel-public-peer:
+    if: github.event_name == 'workflow_dispatch' && inputs.channel_network_lab == 'public-peer'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+      - name: Validate the temporary public LAB contract
+        env:
+          CHANNEL_PUBLIC_LAB: ${{ secrets.CHANNEL_PUBLIC_LAB }}
+        run: node prototype/channel-server/browser-public-peer.mjs --check-contract
+      - name: Install the existing browser driver
+        run: npm install --prefix "$RUNNER_TEMP/channel-public-tools" --no-save --package-lock=false agent-browser@0.36.0
+      - name: Confirm the normal Android room and picture
+        env:
+          CHANNEL_PUBLIC_LAB: ${{ secrets.CHANNEL_PUBLIC_LAB }}
+          CHANNEL_ACCEPTANCE_OUTPUT: ${{ runner.temp }}/channel-public-peer
+          AGENT_BROWSER_BIN: ${{ runner.temp }}/channel-public-tools/node_modules/agent-browser/bin/agent-browser-linux-x64
+          AGENT_BROWSER_EXECUTABLE_PATH: /usr/bin/google-chrome
+        run: node prototype/channel-server/browser-public-peer.mjs
+      - name: Save redacted public-peer evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: channel-public-peer-${{ github.sha }}
+          path: ${{ runner.temp }}/channel-public-peer/
           if-no-files-found: warn
           retention-days: 7
 
