@@ -52,6 +52,9 @@ outline: 2
 
 当前 Mac 版本未进行 Developer ID 签名和 Apple 公证。首次打开时，先校验下载文件，再为这个 App 放行：
 
+若 macOS 提示恶意软件、「会损坏你的电脑」，或自动将 App 移到废纸篓，
+请[保留完整提示和下载链接反馈](#反馈问题)，不要使用下方的隔离标记命令。
+
 1. 从项目 Releases 下载对应的 Mac ZIP，核对同一版本公布的 SHA-256。
    在终端运行 `shasum -a256 ~/Downloads/piik-app-darwin-arm64.zip`；
    Intel Mac 将文件名中的 `arm64` 换为 `amd64`。校验不一致时应重新下载，不要绕过警告。
