@@ -215,8 +215,10 @@ in [introduction design](./public-introduction.md) and the [website runbook](../
   Queued events retain physical-owner validity until the final serialized write;
   readiness commits also require the resource's current state. Reused logical
   IDs do not identify a replacement instance. A child's attachment failure does
-  not retire its shared producer. New subscriptions follow the old owner's
-  retirement, including repeated cleanup callers.
+  not retire its shared producer. Replacing an exclusive subscription waits for
+  the current owner's retirement; repeated cleanup callers await that same work.
+  For shared leases, the owning controller confirms the replacement before
+  releasing a healthy lease.
   Closing a Browser connection may leave its API promises pending. Its owner
   cancels the corresponding waits so a serialized successor never depends on
   completion from a retired connection; late results still need identity checks.
