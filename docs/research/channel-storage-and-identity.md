@@ -126,9 +126,11 @@ loading is neither missed nor rendered twice. The
 [Matrix sync model](https://spec.matrix.org/latest/client-server-api/#syncing)
 illustrates separating recent history, older pagination and subsequent events.
 
-Start with refreshing the retained local window on reconnect, replacing it with
-the room owner's current result, including removals. This avoids introducing a
-permanent change-replay service for the first local cache. Browser copies belong
+Refresh the latest reading window when its room path recovers or changes,
+including when the room-host binding stays the same. A reader browsing older
+history keeps that selected window. Refresh from the room owner's current result,
+including removals. This avoids introducing a permanent change-replay service
+for the first local cache. Browser copies belong
 in bounded IndexedDB storage; localStorage remains for small preferences and
 bookmarks. Original author departure does not erase confirmed messages.
 

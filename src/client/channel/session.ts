@@ -110,7 +110,7 @@ export class ChannelSession {
   private watching = new Map<string, string | undefined>();
   private admittedPublications = new Set<string>();
   private historyChannel: string | null = null;
-  private reading: { roomId: string; bindingId: string; socket: WebSocket | null; ready: Promise<void>;
+  private reading: { roomId: string; bindingId: string; socket: WebSocket | null; ready: Promise<void>; history?: Promise<void>;
     interaction?: RoomInteractionSession; interactionBinding?: string } | null = null;
   private readingRooms = new Set<string>();
   private outgoingMessages = new Map<string, { content: string; nonce: string }>();
@@ -135,7 +135,7 @@ export class ChannelSession {
     (peer, kind, data) => {
       if (kind === "chunk") this.attachments.data(peer, kind, data);
       else void this.conversation.receive(peer, data as string).catch(() => {});
-    }, (peer, ready) => { this.attachments.peerState(peer, ready); if (ready) this.syncInteractions(peer); }, peer => this.attachments.bulkClosed(peer),
+    }, (peer, ready) => { this.attachments.peerState(peer, ready); if (ready) this.syncReading(peer); }, peer => this.attachments.bulkClosed(peer),
     (pair, channel) => this.input.setChannel(pair, channel));
   readonly attachments = new ChannelAttachments(command => this.request(command), async (peer, kind, data, allowed) =>
     this.media.sendData(peer, kind, kind === "control" ? await this.conversation.fileFrame(data as string) : data, allowed));
@@ -395,7 +395,11 @@ export class ChannelSession {
     else this.attachments.reset();
     this.sendConversations();
     if (this.roomId && (freshBindings.has(this.roomId) || resumedReading)) this.browse(this.roomId);
-    this.syncInteractions();
+    const room = state.channel.rooms.find(room => room.id === this.reading?.roomId);
+    const previous = previousRooms?.find(previous => previous.id === room?.id);
+    const nextHop = room?.delivery?.nextHops[room.delivery.hostSessionId];
+    const previousHop = previous?.delivery?.nextHops[previous.delivery.hostSessionId];
+    this.syncReading(undefined, nextHop !== undefined && nextHop !== previousHop);
     this.releaseUnusedMicrophone();
   }
 
@@ -746,18 +750,19 @@ export class ChannelSession {
         }).catch(() => {});
         return;
       }
-      const reading = { roomId, bindingId: room.delivery.bindingId, socket: this.socket, ready: this.request({ type: "browse", roomId, active: true }) };
+      const reading: NonNullable<ChannelSession["reading"]> = { roomId, bindingId: room.delivery.bindingId, socket: this.socket, ready: this.request({ type: "browse", roomId, active: true }) };
       this.reading = reading;
       void reading.ready.then(() => {
         if (this.reading !== reading || this.socket !== reading.socket || this.roomId !== roomId) return;
         const room = this.view.state?.channel.rooms.find(room => room.id === roomId);
         if (!room?.authorized || !room.available || room.delivery?.bindingId !== reading.bindingId) return;
         this.retireReadings(roomId);
-        this.syncInteractions();
+        this.syncReading();
         if (this.view.pending.has(`history:${roomId}`)) return;
-        void this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }).catch(error => {
+        reading.history = this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }).catch(error => {
           if (this.reading === reading && this.socket === reading.socket) throw error;
-        })).catch(() => {});
+        }));
+        void reading.history.catch(() => {});
       }, error => {
         if (this.reading === reading && this.socket === reading.socket && this.view.connection === "connected") {
           this.closeInteractions();
@@ -783,7 +788,7 @@ export class ChannelSession {
     if (this.view.interactionsByRoom.size) this.patch({ interactionsByRoom: new Map() });
   }
 
-  private syncInteractions(readyPeer?: string): void {
+  private syncReading(peerId?: string, refreshHistory = false): void {
     const reading = this.reading;
     if (!reading) return;
     void reading.ready.then(() => {
@@ -791,9 +796,20 @@ export class ChannelSession {
       const room = this.view.state?.channel.rooms.find(room => room.id === reading.roomId && room.authorized && room.available);
       const delivery = room?.delivery;
       if (!delivery) return;
+      const isCurrentHop = peerId !== undefined && delivery.nextHops[delivery.hostSessionId] === peerId;
+      if (refreshHistory || isCurrentHop) {
+        const history = reading.history;
+        const refresh = () => {
+          if (this.reading !== reading || this.socket !== reading.socket || reading.history !== history
+            || this.view.historyByRoom[reading.roomId]?.atLatest === false || this.view.pending.has(`history:${reading.roomId}`)) return;
+          void this.loadLatestHistory(reading.roomId).catch(() => {});
+        };
+        if (this.view.pending.has(`history:${reading.roomId}`)) void history?.catch(refresh);
+        else refresh();
+      }
       if (reading.interaction && reading.interactionBinding !== delivery.bindingId) this.closeInteractions();
       if (reading.interaction) {
-        if (readyPeer && delivery.nextHops[delivery.hostSessionId] === readyPeer && !reading.interaction.getSnapshot().ready) {
+        if (isCurrentHop && !reading.interaction.getSnapshot().ready) {
           reading.interaction.authenticated(this.view.self.id);
         }
         return;
@@ -851,8 +867,15 @@ export class ChannelSession {
   });
   setMessageReaction = (roomId: string, messageSeq: number, reaction: string, active: boolean): Promise<void> =>
     this.action(`reaction:${roomId}:${messageSeq}`, () => this.request({ type: "set_reaction", roomId, messageSeq, reaction, active }));
-  loadHistory = (roomId: string): Promise<void> => this.action(`history:${roomId}`, () => this.request({ type: "history", roomId, before: this.view.historyByRoom[roomId]?.before }));
-  loadLatestHistory = (roomId: string): Promise<void> => this.action(`history:${roomId}`, () => this.request({ type: "history", roomId }));
+  loadHistory = (roomId: string): Promise<void> => this.requestHistory(roomId, this.view.historyByRoom[roomId]?.before);
+  loadLatestHistory = (roomId: string): Promise<void> => this.requestHistory(roomId);
+  private requestHistory(roomId: string, before?: number): Promise<void> {
+    const reading = this.reading?.roomId === roomId ? this.reading : null;
+    const pending = this.view.pending.has(`history:${roomId}`);
+    const loading = this.action(`history:${roomId}`, () => this.request({ type: "history", roomId, ...(before !== undefined ? { before } : {}) }));
+    if (reading && !pending) reading.history = loading;
+    return loading;
+  }
   renameSelf = (name: string): Promise<void> => this.action("rename", async () => {
     await this.request({ type: "set_name", name });
     stored(nameKey, name.trim());

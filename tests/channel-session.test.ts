@@ -297,6 +297,89 @@ test("interaction readiness follows read admission and existing peer readiness, 
   } finally { session.close(); }
 });
 
+test.each(["new-pair", "shared-carrier", "pending-carrier", "historical"] as const)("base recovery refreshes the current history window without moving a historical reader (%s)", async mode => {
+  RoomPeerConnection.instances = [];
+  vi.stubGlobal("RTCPeerConnection", RoomPeerConnection);
+  const { session, socket, peer } = await setup(2, false);
+  try {
+    const state = structuredClone(session.getSnapshot().state!);
+    const room = state.channel.rooms[0];
+    const base = (id: string, peerId = "host", rooms = ["first"]) => ({ id, peerId, canReceiveVideoLayers: false, rooms, outgoing: [], incoming: [] });
+    const carrier = base("kept-carrier", "relay", ["second"]);
+    const sharedCarrier = mode === "shared-carrier" || mode === "pending-carrier";
+    state.pairs = [base("base-before"), ...(sharedCarrier ? [carrier] : [])];
+    socket.receive({ type: "state", state });
+    const original = RoomPeerConnection.instances[0];
+    original.connected();
+    original.channels.forEach(channel => channel.open());
+    if (sharedCarrier) {
+      const shared = RoomPeerConnection.instances[1];
+      shared.connected();
+      shared.channels.forEach(channel => channel.open());
+    }
+    const browse = socket.sent.findLast(command => command.type === "browse" && command.active)!;
+    socket.receive({ type: "ack", requestId: browse.requestId });
+    peer.page(await peer.next(), [message(3), message(4)], true);
+    await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+    expect(peer.sent).toHaveLength(1);
+    if (mode === "historical") {
+      const older = session.loadHistory("first");
+      peer.page(await peer.next(), [message(1), message(2)]);
+      await older;
+      expect(session.getSnapshot().historyByRoom.first.atLatest).toBe(false);
+    }
+    let rejectOldWrite: (() => void) | undefined, oldSettled: Promise<unknown> | undefined;
+    if (mode === "pending-carrier") {
+      const send = vi.mocked(ChannelConversation.prototype.send), originalSend = send.getMockImplementation()!;
+      let held = true, reject!: (error: Error) => void;
+      const writing = new Promise<void>((_resolve, fail) => { reject = fail; });
+      send.mockImplementation(async (command, requestId) => {
+        await originalSend(command, requestId);
+        if (held && command.type === "history") await writing;
+      });
+      oldSettled = expect(session.loadLatestHistory("first")).rejects.toThrow("room_unavailable");
+      await peer.next();
+      rejectOldWrite = () => { held = false; reject(new Error("room_unavailable")); };
+    }
+    peer.sent.length = 0;
+    socket.receive({ type: "state", state });
+    await Promise.resolve(); await Promise.resolve();
+    expect(peer.sent).toEqual([]);
+
+    original.connectionState = "failed";
+    original.onconnectionstatechange?.();
+    state.pairs = sharedCarrier ? [carrier] : [];
+    room.delivery!.nextHops = {};
+    socket.receive({ type: "state", state });
+    // The host confirms message 5 while this reader has no room-data path.
+    state.pairs = sharedCarrier ? [{ ...carrier, rooms: ["first", "second"] }] : [base("base-after")];
+    room.delivery!.nextHops = { host: sharedCarrier ? "relay" : "host" };
+    socket.receive({ type: "state", state });
+    const recovered = RoomPeerConnection.instances[1];
+    if (!sharedCarrier) {
+      recovered.connected();
+      recovered.channels.forEach(channel => channel.open());
+    }
+    rejectOldWrite?.();
+    await oldSettled;
+    if (mode === "historical") {
+      await Promise.resolve(); await Promise.resolve();
+      expect(peer.sent).toEqual([]);
+      expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([1, 2]);
+    } else {
+      const refresh = await peer.next();
+      expect(refresh).toMatchObject({ type: "history", roomId: "first" });
+      expect(refresh).not.toHaveProperty("before");
+      peer.live(message(6));
+      peer.page(refresh, [message(4), message(5)]);
+      await vi.waitFor(() => expect(session.getSnapshot().pending.has("history:first")).toBe(false));
+      expect(session.getSnapshot().messagesByRoom.first.map(message => message.seq)).toEqual([5, 6]);
+    }
+    expect(session.getSnapshot().state?.channel.rooms[0]).toMatchObject({ reading: true, available: true, delivery: { bindingId: "binding" } });
+    expect(socket.sent.filter(command => command.type === "browse" && command.active)).toEqual([browse]);
+  } finally { session.close(); }
+});
+
 test("domain and room invitations use the current Welcome origin without local bootstrap data", async () => {
   const { session, peer } = await setup();
   const state = session.getSnapshot().state!;
