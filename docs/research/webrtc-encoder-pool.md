@@ -469,6 +469,28 @@ path remains. The four-second decision budget is unchanged. Current grouping
 at that point still folded multiple weak consumers into one low budget; the
 following integration addresses that independent requirement.
 
+#### H264 Burst And Recovery
+
+A 2026-11-03 Windows 2.x control traced Native H264 scene-change delay through
+normal Host approval, real clicks on an owned window, capture and Browser
+presentation. At a 5 Mbps / 30 fps ceiling, the actual 826×612 output supplied
+six AUs of 170–181 KB, each marked `Recovery=false`.
+Matching source packets and received frame timestamps placed 154–168 ms in the
+send queue before dequeue; the segmented writer control observed no synchronous
+write over 5 ms. The five-click input-to-compositor median was 235.1 ms.
+
+A candidate applied optional H264
+[HRD buffer size](https://learn.microsoft.com/en-us/windows/win32/directshow/avenccommonbuffersize-property)
+in bytes, using one frame of the current rate at initialization and live updates.
+In the same control it reduced the largest AU to 38 KB and the median to
+54.5 ms, with matching sampled colours. The existing 76-second
+`TestAdaptiveOutputFixture` then rejected it: after 2 Mbps → 100 kbps → 2 Mbps,
+output remained 320×180 at about 120–124 kbps through the end, with no restored
+full-size frames. Optional setters did not avoid the earlier recovery failure.
+The candidate was removed and was not applied to the Rust MF owner. Its latency
+gain does not justify restoring the one-frame HRD override; the existing
+encoding and pacing settings remain.
+
 ### Budget Restoration
 
 Transport allocation and encoder resolution recover separately. Replaying the
