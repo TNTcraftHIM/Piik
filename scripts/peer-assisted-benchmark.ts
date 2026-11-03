@@ -2579,9 +2579,16 @@ async function startHost(
       return true;
     })()`,
   );
-  await waitForPage(cdp, page, `document.querySelector('button.lr-source-option[aria-label="Choose what to share"]')`,
-    5_000, "Browser capture choice", signal);
-  await evaluate(cdp, page, `document.querySelector('button.lr-source-option[aria-label="Choose what to share"]').click()`);
+  await waitForPage(cdp, page, `(() => {
+    const tab = document.querySelector('button[data-source-tab="browser"]');
+    return tab instanceof HTMLButtonElement && !tab.disabled && tab.getClientRects().length > 0;
+  })()`, 5_000, "Browser capture tab", signal);
+  await evaluate(cdp, page, `document.querySelector('button[data-source-tab="browser"]').click()`);
+  await waitForPage(cdp, page, `(() => {
+    const choice = document.querySelector('[role="tabpanel"] button.lr-source-option');
+    return choice instanceof HTMLButtonElement && !choice.disabled && choice.getClientRects().length > 0;
+  })()`, 5_000, "Browser capture choice", signal);
+  await evaluate(cdp, page, `document.querySelector('[role="tabpanel"] button.lr-source-option').click()`);
   await waitForPage(
     cdp,
     page,
