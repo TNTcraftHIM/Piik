@@ -190,8 +190,11 @@ to that release and regenerate Native, Server and Android locks, then run the
 existing mapping timer/lifecycle checks and package notice collection.
 
 Native uses str0m's public RTP/Sans-I/O interface, pinned to the official Git
-[snapshot `5f2183ce`](https://github.com/algesten/str0m/commit/5f2183ce7c67117cd1960dfeb11bed11fc188b66).
-The snapshot declares 0.25.0; that version is not yet published on crates.io.
+[snapshot `3b5b7ed1`](https://github.com/algesten/str0m/commit/3b5b7ed1ff25d9432a87336a20bc2de336896db3).
+Published 0.25.0 contains the earlier pacing and TWCC repairs below, but predates
+the merged [RTX jitter-statistics repair](https://github.com/algesten/str0m/pull/1121).
+This pin includes that repair: recovered packets still deliver once, without
+their retransmission delay changing the primary stream's jitter estimate.
 Released 0.24.1 omits authentic early simulcast RTX padding from TWCC feedback
 before the main SSRC is known. This pin includes the upstream
 [receipt-accounting repair](https://github.com/algesten/str0m/pull/1086) and
