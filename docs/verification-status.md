@@ -86,10 +86,12 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   room plans to Firefox and a desktop child, without Browser re-encoding.
   Capability-aware Native H264 capture passes source replacement while retaining
   the physical peer and continuing to decode. Native VP8 also delivers decoded
-  picture. MuMu's VP8 codec service crashes during repeated encoder creation;
-  independent public Java/Surface controls reproduce the same assertion with
-  direct release and with stop before release. [TODO](./todo.md#now) owns the
-  remaining platform acceptance.
+  picture. MuMu's software OMX service has crashed during both VP8 and H264
+  encoder creation. Independent Java/Surface VP8 controls reproduce that
+  assertion with direct release and with stop before release. The normal H264
+  trial's service failure precedes worker release; Android restarts the service,
+  and subsequent encoding produces the public-peer picture below.
+  [TODO](./todo.md#now) owns acceptance with another codec provider.
   The normal `5fe433e9` Android package passes the
   [public-peer control](./research/network-lab.md#rust-process-controls): a remote
   Browser receives signed room history, confirmed chat and decoded H264 directly
