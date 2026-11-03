@@ -189,6 +189,10 @@ async function main() {
     const data = await command(["eval", "-b", Buffer.from(`(async()=>JSON.stringify(await (${expression})))()`).toString("base64")]);
     return JSON.parse(data.result);
   };
+  const click = async selector => {
+    await command(["scrollintoview", selector]);
+    await command(["click", selector]);
+  };
   const sample = () => evaluate(`window.__publicPeer.sample(${JSON.stringify(config)},${JSON.stringify(nonce)})`);
   const wait = async (name, condition) => {
     stage = name; console.log(JSON.stringify({ stage, elapsedMs: Date.now() - start }));
@@ -206,16 +210,18 @@ async function main() {
     && value.base.connection === "connected" && value.base.selected?.channels.some(channel => channel.state === "open")
     && independentEgress(value.base.selected);
   try {
-    launched = true; await command(["open", config.inviteURL]);
+    launched = true;
+    await command(["set", "viewport", "1280", "900"]);
+    await command(["open", config.inviteURL]);
     result.browser = await evaluate("navigator.userAgent");
     await wait("room", value => value.connection === "connected" && value.hostMatches && value.roomName);
-    await command(["click", `.c3-room-link[aria-label=${JSON.stringify(last.roomName)}]`]);
+    await click(`.c3-room-link[aria-label=${JSON.stringify(last.roomName)}]`);
     await wait("native-base", baseReady);
     result.checks.nativeBase = true;
     await wait("signed-history", value => baseReady(value) && value.historyComplete);
     result.checks.historyComplete = true;
     await command(["fill", ".c3-composer textarea", nonce]);
-    await command(["click", '.c3-composer button[type="submit"]']);
+    await click('.c3-composer button[type="submit"]');
     await wait("signed-chat", value => baseReady(value) && value.chatDraftCleared && Number.isSafeInteger(value.confirmationSeq) && value.confirmationSeq > 0);
     result.checks.confirmationSeq = last.confirmationSeq;
     stage = "signed-history-readback";
@@ -224,7 +230,7 @@ async function main() {
     result.checks.historyReadback = readback;
     assert(readback.completed && readback.replaced && readback.received, "signed_history_readback_failed");
     await wait("native-publication", value => value.sourceMatches);
-    await command(["click", `.c3-monitor-offer[data-source-id=${JSON.stringify(config.publicationId)}] button`]);
+    await click(`.c3-monitor-offer[data-source-id=${JSON.stringify(config.publicationId)}] button`);
     let before;
     await wait("h264-picture", value => {
       const picture = value.picture;
