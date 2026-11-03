@@ -14,7 +14,6 @@ own behavior; research and Git/PRs own evidence and completed history.
   capture and input acceptance, retaining the accepted
   [network model](./research/channel-network-design.md)
   and [room-data model](./research/channel-storage-and-identity.md).
-  Verify normal Android Native connections across independent public egresses.
   Verify repeated VP8 capture with another Android codec provider.
   MuMu's VP8 codec-service crash and Firefox's received-video conversion limit
   are recorded in [device evidence](./verification-status.md#device-evidence-boundary).

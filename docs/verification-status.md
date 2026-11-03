@@ -90,17 +90,14 @@ controls; platform-specific integration remains in [TODO](./todo.md).
   independent public Java/Surface controls reproduce the same assertion with
   direct release and with stop before release. [TODO](./todo.md#now) owns the
   remaining platform acceptance.
-  A normal build at `af13f5be` completes H264 capture, publication and GUI stop,
-  with continuing local RTP/RTCP. A successful instrumented `752bbd04` Native
-  first connection carries confirmed room chat across different public egresses.
-  Failed normal and instrumented first connections instead share one public IPv4
-  address. In a failed control, both endpoints successfully submit ICE probes and
-  receive STUN discovery replies, but neither process receives peer datagrams.
-  Credentials, candidates and socket ownership match. A Browser relay connection
-  opens across different public IPv4 addresses after the initial history request
-  expires. Normal-build acceptance still needs an independent public egress and
-  a signed RoomHost history/chat exchange through the recovered path. The
-  same-egress packet-loss point remains open.
+  The normal `5fe433e9` Android package passes the
+  [public-peer control](./research/network-lab.md#rust-process-controls): a remote
+  Browser receives signed room history, confirmed chat and decoded H264 directly
+  from its Native endpoint across independent public UDP egresses. Desktop Web
+  controls this trial's App through loopback forwarding; Android system-browser
+  behavior remains covered by its separate checks above. Earlier same-egress
+  failed controls receive STUN discovery replies but no peer datagrams; that
+  packet-loss point remains open.
   The Firefox relay failure is now traced to Gecko image-conversion errors:
   incoming Native H264 decodes while outgoing video remains unencoded. Automatic
   direct replacement delivers picture.

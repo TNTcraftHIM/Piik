@@ -186,6 +186,13 @@ It loads the App's existing Web/WASM rather
 than building another server or changing network settings. Only redacted results
 and the test picture are retained. Remove the temporary secret after the trial.
 
+The [normal-package public control](https://github.com/TNTcraftHIM/Piik/actions/runs/41735189331)
+at runner revision `c94ed790` passes with Android package `5fe433e9`. One observed
+Native peer carries signed history, a confirmed message and its fresh history
+readback over UDP between distinct public egresses. H264 advances by 33 decoded
+and presented frames at 960 × 540. The desktop control page uses loopback
+forwarding; media travels directly between Android and the remote runner.
+
 Initial picture and sound pass through ordinary and prepared Native paths.
 After 50-second UDP outages, the [Browser-relay control](https://github.com/TNTcraftHIM/Piik/actions/runs/41362949305)
 at `7e85df27` restores decoded picture and current source sound in 21.1 seconds;
