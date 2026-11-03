@@ -11,14 +11,29 @@ import { participantColor } from "../components/living/participant-color";
 import { labelParticipantNames } from "../lib/viewer-presence";
 import { useCopy } from "../ui/copy";
 import { Glyph } from "../ui/icons";
-import type { RoomVoiceSession } from "./session";
+import type { RoomVoiceCommand } from "../../shared/protocol";
+import type { CaptureDevice } from "../media/capture-devices";
 import { MicrophoneLevel } from "./MicrophoneLevel";
 import { VoiceListeningButton, VoiceMicrophoneButton } from "./VoiceAudioButtons";
-import { describeVoiceParticipant } from "./participant-presentation";
+import { describeVoiceParticipant, type RoomVoiceSnapshot } from "./participant-presentation";
 import "./room-voice.css";
 
-export type RoomVoiceView = Pick<RoomVoiceSession, "subscribe" | "getSnapshot" | "resumeAudio" | "command" |
-  "startMicrophone" | "stopMicrophone" | "muteVoice" | "deafen" | "configureInput" | "setVolume" | "setListeningVolume" | "setPeerVolume" | "activity" | "microphones">;
+export interface RoomVoiceView {
+  subscribe(listener: () => void): () => void;
+  getSnapshot(): RoomVoiceSnapshot;
+  resumeAudio(): void;
+  command(command: RoomVoiceCommand): boolean;
+  startMicrophone(settings?: RoomVoiceSnapshot["input"]): Promise<void>;
+  stopMicrophone(): void;
+  muteVoice(peerId: string): void;
+  deafen(deafened: boolean): void;
+  configureInput(patch: Partial<Pick<RoomVoiceSnapshot["input"], "deviceId" | "voiceProcessing">>): Promise<void>;
+  setVolume(volume: number): void;
+  setListeningVolume(volume: number): void;
+  setPeerVolume(peerId: string, volume: number): void;
+  activity(localOnly?: boolean): Promise<ReadonlyMap<string, number>>;
+  microphones(): Promise<CaptureDevice[]>;
+}
 interface Props { session: RoomVoiceView }
 
 function useVoiceLevels(session: RoomVoiceView, enabled: boolean, localOnly = false): ReadonlyMap<string, number> {

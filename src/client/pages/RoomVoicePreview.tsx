@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { RoomVoiceControls, RoomVoicePanel, RoomVoiceSettings, type RoomVoiceView } from "../room-voice/RoomVoicePanel";
-import type { RoomVoiceSnapshot } from "../room-voice/session";
+import type { RoomVoiceSnapshot } from "../room-voice/participant-presentation";
 import type { RoomVoiceCommand } from "../../shared/protocol";
 
 const names = new Map([["preview-host", "Piik"], ["preview-friend", "Piik friend"],

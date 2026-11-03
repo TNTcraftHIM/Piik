@@ -2,8 +2,17 @@ import type { ConnectionDetail } from "../components/living/ConnectionDetails";
 import { Pill } from "../components/living/primitives";
 import type { CopyKey } from "../ui/copy";
 import { STATUS_CATALOG, type StatusDescriptor } from "../ui/media-status";
-import type { RoomVoiceSnapshot } from "./session";
-import type { VoiceConnectionMetric } from "./browser-endpoint";
+import type { RoomVoiceSnapshot } from "./participant-presentation";
+import type { ConnectionMetrics } from "../types";
+
+export interface VoiceConnectionMetric {
+  connectionId: string;
+  peerId: string;
+  viaPeerId: string | null;
+  direction: "send" | "receive";
+  route: "p2p" | "sfu";
+  metrics: ConnectionMetrics;
+}
 
 export function describeVoiceConnection(snapshot: RoomVoiceSnapshot | null | undefined, peerId?: string) {
   const room = snapshot?.room;

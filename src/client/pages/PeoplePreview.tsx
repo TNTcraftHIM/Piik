@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
-import type { RoomVoiceSnapshot, RoomVoiceSession } from "../room-voice/session";
-import { voiceConnectionDetails } from "../room-voice/VoiceConnectionDetails";
-import type { VoiceConnectionMetric } from "../room-voice/browser-endpoint";
+import type { RoomVoiceSnapshot } from "../room-voice/participant-presentation";
+import type { RoomVoiceView } from "../room-voice/RoomVoicePanel";
+import { voiceConnectionDetails, type VoiceConnectionMetric } from "../room-voice/VoiceConnectionDetails";
 import { EMPTY_METRICS } from "../types";
 import { PREVIEW_METRICS } from "./preview-metrics";
 import { CaptureMetricCells } from "../components/living/Metrics";
@@ -67,7 +67,7 @@ export function PeoplePreview() {
   })));
   const self = VIEWER_IDS[0]!;
   const viewers = sourceActive ? routedViewers : routedViewers.map(viewer => ({ ...viewer, upstream: { kind: "none" as const }, mediaReady: undefined }));
-  const voice = useMemo<Pick<RoomVoiceSession, "getSnapshot" | "subscribe"> | undefined>(() => {
+  const voice = useMemo<Pick<RoomVoiceView, "getSnapshot" | "subscribe"> | undefined>(() => {
     if (!voiceActive) return undefined;
     const state: RoomVoiceSnapshot = {
       peerId: view === "host" ? HOST_ID : self, role: view, connected: true,

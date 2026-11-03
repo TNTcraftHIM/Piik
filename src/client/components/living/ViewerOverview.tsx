@@ -7,9 +7,8 @@ import { participantColor } from "./participant-color";
 import type { StatusDescriptor } from "../../ui/media-status";
 import { Tooltip } from "./Tooltip";
 import { METRIC_PRESENTATION, metricHintText, type MetricLabel } from "./metric-presentation";
-import type { RoomVoiceSnapshot } from "../../room-voice/session";
-import { describeVoiceConnection, voiceMetricsForPeer } from "../../room-voice/VoiceConnectionDetails";
-import type { VoiceConnectionMetric } from "../../room-voice/browser-endpoint";
+import type { RoomVoiceSnapshot } from "../../room-voice/participant-presentation";
+import { describeVoiceConnection, voiceMetricsForPeer, type VoiceConnectionMetric } from "../../room-voice/VoiceConnectionDetails";
 
 export interface ViewerOverviewEntry {
   key: string;

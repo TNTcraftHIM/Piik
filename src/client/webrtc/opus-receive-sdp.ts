@@ -5,22 +5,18 @@ import { OPUS_RECEIVE_MAX_BITRATE } from "../media/quality";
 export function preferScreenAudioStereo(
   answer: RTCSessionDescriptionInit,
 ): RTCSessionDescriptionInit {
-  return answer.type === "answer" ? preferOpusReceive(answer, true) : answer;
-}
-
-export function preferRoomVoiceAudio(description: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
-  return preferOpusReceive(description, false);
+  return answer.type === "answer" ? preferOpusReceive(answer) : answer;
 }
 
 /** A shared transport can receive several pictures and voices in either SDP role.
  * Stereo reception also accepts mono input; it does not configure capture. */
 export function preferOpusStereoReceive(description: RTCSessionDescriptionInit): RTCSessionDescriptionInit {
-  return preferOpusReceive(description, true, "receiving");
+  return preferOpusReceive(description, "receiving");
 }
 
-function preferOpusReceive(answer: RTCSessionDescriptionInit, stereo: boolean,
-  scope: "single" | "all" | "receiving" = stereo ? "single" : "all"): RTCSessionDescriptionInit {
-  const preferences = { stereo: stereo ? "1" : "0", maxaveragebitrate: String(OPUS_RECEIVE_MAX_BITRATE) };
+function preferOpusReceive(answer: RTCSessionDescriptionInit,
+  scope: "single" | "receiving" = "single"): RTCSessionDescriptionInit {
+  const preferences = { stereo: "1", maxaveragebitrate: String(OPUS_RECEIVE_MAX_BITRATE) };
   try {
     if (!answer.sdp?.trim()) {
       return answer;
